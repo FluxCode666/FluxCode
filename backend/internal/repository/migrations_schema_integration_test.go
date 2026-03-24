@@ -110,6 +110,25 @@ func TestMigrationsRunner_IsIdempotent_AndSchemaIsUpToDate(t *testing.T) {
 	requireIndex(t, tx, "pricing_plans", "idx_pricing_plans_status")
 	requireIndex(t, tx, "pricing_plans", "idx_pricing_plans_sort_order")
 	requireIndex(t, tx, "pricing_plans", "idx_pricing_plans_is_featured")
+
+	// account_pool_alert_configs / proxy_usage_metrics_hourly: consolidated pool monitor migration (080)
+	var poolAlertConfigRegclass sql.NullString
+	require.NoError(t, tx.QueryRowContext(context.Background(), "SELECT to_regclass('public.account_pool_alert_configs')").Scan(&poolAlertConfigRegclass))
+	require.True(t, poolAlertConfigRegclass.Valid, "expected account_pool_alert_configs table to exist")
+	requireColumn(t, tx, "account_pool_alert_configs", "proxy_active_probe_enabled", "boolean", 0, false)
+	requireColumn(t, tx, "account_pool_alert_configs", "proxy_probe_interval_minutes", "integer", 0, false)
+	requireColumn(t, tx, "account_pool_alert_configs", "disabled_proxy_schedule_mode", "character varying", 32, false)
+	requireColumn(t, tx, "account_pool_alert_configs", "alert_emails", "jsonb", 0, false)
+	requireColumnDefaultContains(t, tx, "account_pool_alert_configs", "disabled_proxy_schedule_mode", "direct_without_proxy")
+
+	var proxyUsageMetricsRegclass sql.NullString
+	require.NoError(t, tx.QueryRowContext(context.Background(), "SELECT to_regclass('public.proxy_usage_metrics_hourly')").Scan(&proxyUsageMetricsRegclass))
+	require.True(t, proxyUsageMetricsRegclass.Valid, "expected proxy_usage_metrics_hourly table to exist")
+	requireColumn(t, tx, "proxy_usage_metrics_hourly", "bucket_start", "timestamp with time zone", 0, false)
+	requireColumn(t, tx, "proxy_usage_metrics_hourly", "platform", "character varying", 20, false)
+	requireColumn(t, tx, "proxy_usage_metrics_hourly", "proxy_id", "bigint", 0, false)
+	requireIndex(t, tx, "proxy_usage_metrics_hourly", "idx_proxy_usage_metrics_hourly_platform_bucket")
+	requireIndex(t, tx, "proxy_usage_metrics_hourly", "idx_proxy_usage_metrics_hourly_platform_proxy_bucket")
 }
 
 func requireIndex(t *testing.T, tx *sql.Tx, table, index string) {
