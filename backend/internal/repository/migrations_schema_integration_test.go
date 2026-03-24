@@ -87,6 +87,29 @@ func TestMigrationsRunner_IsIdempotent_AndSchemaIsUpToDate(t *testing.T) {
 
 	// user_allowed_groups: created_at should be timestamptz
 	requireColumn(t, tx, "user_allowed_groups", "created_at", "timestamp with time zone", 0, false)
+
+	// pricing_plan_groups / pricing_plans: consolidated pricing migration (079)
+	var pricingPlanGroupsRegclass sql.NullString
+	require.NoError(t, tx.QueryRowContext(context.Background(), "SELECT to_regclass('public.pricing_plan_groups')").Scan(&pricingPlanGroupsRegclass))
+	require.True(t, pricingPlanGroupsRegclass.Valid, "expected pricing_plan_groups table to exist")
+	requireColumn(t, tx, "pricing_plan_groups", "name", "character varying", 100, false)
+	requireColumn(t, tx, "pricing_plan_groups", "status", "character varying", 20, false)
+	requireIndex(t, tx, "pricing_plan_groups", "idx_pricing_plan_groups_status")
+	requireIndex(t, tx, "pricing_plan_groups", "idx_pricing_plan_groups_sort_order")
+
+	var pricingPlansRegclass sql.NullString
+	require.NoError(t, tx.QueryRowContext(context.Background(), "SELECT to_regclass('public.pricing_plans')").Scan(&pricingPlansRegclass))
+	require.True(t, pricingPlansRegclass.Valid, "expected pricing_plans table to exist")
+	requireColumn(t, tx, "pricing_plans", "price_currency", "character varying", 10, false)
+	requireColumn(t, tx, "pricing_plans", "contact_methods", "jsonb", 0, false)
+	requireColumn(t, tx, "pricing_plans", "icon_url", "text", 0, true)
+	requireColumn(t, tx, "pricing_plans", "badge_text", "text", 0, true)
+	requireColumn(t, tx, "pricing_plans", "tagline", "text", 0, true)
+	requireColumnDefaultContains(t, tx, "pricing_plans", "price_currency", "CNY")
+	requireIndex(t, tx, "pricing_plans", "idx_pricing_plans_group_id")
+	requireIndex(t, tx, "pricing_plans", "idx_pricing_plans_status")
+	requireIndex(t, tx, "pricing_plans", "idx_pricing_plans_sort_order")
+	requireIndex(t, tx, "pricing_plans", "idx_pricing_plans_is_featured")
 }
 
 func requireIndex(t *testing.T, tx *sql.Tx, table, index string) {
@@ -138,4 +161,20 @@ WHERE table_schema = 'public'
 	} else {
 		require.Equal(t, "NO", row.Nullable, "nullable mismatch for %s.%s", table, column)
 	}
+}
+
+func requireColumnDefaultContains(t *testing.T, tx *sql.Tx, table, column, expected string) {
+	t.Helper()
+
+	var columnDefault sql.NullString
+	err := tx.QueryRowContext(context.Background(), `
+SELECT column_default
+FROM information_schema.columns
+WHERE table_schema = 'public'
+  AND table_name = $1
+  AND column_name = $2
+`, table, column).Scan(&columnDefault)
+	require.NoError(t, err, "query column default for %s.%s", table, column)
+	require.True(t, columnDefault.Valid, "expected default for %s.%s", table, column)
+	require.Contains(t, columnDefault.String, expected, "default mismatch for %s.%s", table, column)
 }
