@@ -2088,8 +2088,9 @@ func (r *stubAccountRepoForHandler) UpdateLastUsed(context.Context, int64) error
 func (r *stubAccountRepoForHandler) BatchUpdateLastUsed(context.Context, map[int64]time.Time) error {
 	return nil
 }
-func (r *stubAccountRepoForHandler) SetError(context.Context, int64, string) error { return nil }
-func (r *stubAccountRepoForHandler) ClearError(context.Context, int64) error       { return nil }
+func (r *stubAccountRepoForHandler) SetError(context.Context, int64, string) error  { return nil }
+func (r *stubAccountRepoForHandler) SetBanned(context.Context, int64, string) error { return nil }
+func (r *stubAccountRepoForHandler) ClearError(context.Context, int64) error        { return nil }
 func (r *stubAccountRepoForHandler) SetSchedulable(context.Context, int64, bool) error {
 	return nil
 }

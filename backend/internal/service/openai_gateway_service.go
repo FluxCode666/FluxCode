@@ -52,7 +52,10 @@ const (
 	openAIWSRetryBackoffMaxDefault     = 2 * time.Second
 	openAIWSRetryJitterRatioDefault    = 0.2
 	openAICompactSessionSeedKey        = "openai_compact_session_seed"
-	codexCLIVersion                    = "0.104.0"
+	// codexCLIVersion 仅用于 compact 端点（/v1/responses/compact）的 Version 请求头，
+	// 正常模型请求（/v1/responses）只发 User-Agent，不发 Version 头。
+	// 更新时需与 codexCLIUserAgent 版本保持一致。
+	codexCLIVersion = "1.0.0"
 	// Codex 限额快照仅用于后台展示/诊断，不需要每个成功请求都立即落库。
 	openAICodexSnapshotPersistMinInterval = 30 * time.Second
 )

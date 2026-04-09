@@ -80,7 +80,11 @@ func (r *resetQuotaUserSubRepoStub) ResetMonthlyUsage(_ context.Context, _ int64
 }
 
 func newResetQuotaSvc(subStub *resetQuotaUserSubRepoStub, grantStub *resetQuotaGrantRepoStub) *SubscriptionService {
-	return NewSubscriptionService(groupRepoNoop{}, subStub, grantStub, nil, nil, nil)
+	var grantRepo SubscriptionGrantRepository
+	if grantStub != nil {
+		grantRepo = grantStub
+	}
+	return NewSubscriptionService(groupRepoNoop{}, subStub, grantRepo, nil, nil, nil)
 }
 
 func TestAdminResetQuota_ResetsGrantUsage(t *testing.T) {
