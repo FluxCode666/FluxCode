@@ -107,6 +107,10 @@ func (s *accountRepoStub) SetError(ctx context.Context, id int64, errorMsg strin
 	panic("unexpected SetError call")
 }
 
+func (s *accountRepoStub) SetBanned(ctx context.Context, id int64, errorMsg string) error {
+	panic("unexpected SetBanned call")
+}
+
 func (s *accountRepoStub) ClearError(ctx context.Context, id int64) error {
 	panic("unexpected ClearError call")
 }

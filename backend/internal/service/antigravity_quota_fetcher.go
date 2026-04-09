@@ -225,7 +225,11 @@ func classifyForbiddenType(body string) string {
 		strings.Contains(lower, "validation_url"):
 		return forbiddenTypeValidation
 	case strings.Contains(lower, "terms of service") ||
-		strings.Contains(lower, "violation"):
+		strings.Contains(lower, "violation") ||
+		strings.Contains(lower, "deactivated") ||
+		strings.Contains(lower, "suspended") ||
+		strings.Contains(lower, "organization has been disabled") ||
+		strings.Contains(lower, "account has been banned"):
 		return forbiddenTypeViolation
 	default:
 		return forbiddenTypeForbidden

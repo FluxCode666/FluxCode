@@ -809,6 +809,24 @@ export default {
     subscriptionModeExtend: '延长时长',
     subscriptionModeStack: '叠加额度',
     modeGuideTitle: '兑换模式示例（按日维度）',
+    modeGuideDesc: '先看示例再兑换：延长时长会增加覆盖天数，叠加额度会提高同一天额度。',
+    modeGuideExtendTab: '延长时长',
+    modeGuideStackTab: '叠加额度',
+    modeGuideStackCase1Tab: '场景1',
+    modeGuideStackCase2Tab: '场景2',
+    modeGuideBeforeCard: '兑换前（日额度）',
+    modeGuideAfterCard: '兑换后（日额度）',
+    modeGuideDay: '第 {day} 天',
+    modeGuideNow: '现在',
+    modeGuideAddedDay: '新增 1 天',
+    modeGuideQuota: '${quota}/日',
+    modeGuideSegmentLine: '{start} ~ {end}，额度：{quota}',
+    modeGuideExtendHint: '延长时长示例：额度不变，覆盖天数增加。',
+    modeGuideStackHint:
+      '已有一张 $60日卡 02-23 18:10 ~ 03-01 18:10，02-24 15:00新叠加一张 $60日卡后，02-24 15:00 ~ 02-25 15:00 为 $120/日，之后至 03-01 18:10 为 $60/日。',
+    modeGuideStackHintCase2:
+      '已有一张 $60日卡 02-23 18:10 ~ 02-24 18:10，02-24 15:00新叠加一张$60日卡后，02-24 15:00 ~ 02-24 18:10 为 $120，02-24 18:10 ~ 02-25 15:00 为 $60。',
+    modeGuideStackPriorityNote: '系统会优先消耗最先过期的订阅。',
     subscriptionDays: '{days} 天',
     days: '天',
     codeRedeemSuccess: '兑换成功！',
@@ -821,6 +839,7 @@ export default {
     subscriptionChoiceCurrentExpires: '当前到期',
     subscriptionChoiceValidityDays: '本次有效期（天）',
     subscriptionChoiceCurrentMultiplier: '当前额度',
+    subscriptionChoiceCancel: '取消',
     subscriptionChoiceExtend: '延长有效期',
     subscriptionChoiceStack: '叠加额度（从现在开始）',
     subscriptionChoiceOptionExtendDesc: '延长 {days} 天，额度倍数不变',
@@ -828,7 +847,18 @@ export default {
     subscriptionChoicePreviewTitle: '兑换后预览',
     subscriptionChoiceResultExpires: '结果到期',
     subscriptionChoiceResultMultiplier: '结果额度',
-    subscriptionChoiceStackUntil: '叠加额度有效期至'
+    subscriptionChoiceBeforeCardTitle: '兑换前',
+    subscriptionChoiceAfterCardTitle: '兑换后预览',
+    subscriptionChoiceAfterHint: '请选择一种兑换方式以查看预览结果',
+    subscriptionChoiceStackUntil: '叠加额度有效期至',
+    subscriptionChoiceTotalExpires: '总到期时间',
+    subscriptionChoiceTimelineBefore: '兑换前（日额度分段）',
+    subscriptionChoiceTimelineAfter: '兑换后（日额度分段）',
+    subscriptionChoiceCardDetailsTitle: '卡片详情',
+    subscriptionChoiceCardMultiplier: '额度倍数',
+    subscriptionChoiceCardRemaining: '剩余额度：${value}',
+    subscriptionChoicePreviewLoadFailed: '订阅预览加载失败，请仍可继续选择后提交。',
+    subscriptionChoicePreviewNotFound: '找不到该分组订阅，完整预览不可用。'
   },
 
   // Profile
@@ -2108,6 +2138,7 @@ export default {
         proxy: '代理',
         lastUsed: '最近使用',
         expiresAt: '过期时间',
+        createdAt: '创建时间',
         actions: '操作'
       },
       privacyTrainingOff: '已关闭训练数据共享',
@@ -5006,9 +5037,12 @@ export default {
   userSubscriptions: {
     title: '我的订阅',
     description: '查看您的订阅计划和用量',
+    detailTitle: '订阅详情',
+    closeDetail: '关闭详情',
     noActiveSubscriptions: '暂无有效订阅',
     noActiveSubscriptionsDesc: '您没有任何有效订阅。请联系管理员获取订阅。',
     failedToLoad: '加载订阅失败',
+    detailLoadFailed: '加载订阅详情失败',
     status: {
       active: '有效',
       expired: '已过期',
@@ -5026,7 +5060,13 @@ export default {
     expiresOn: '{date} 到期',
     resetIn: '{time} 后重置',
     windowNotActive: '等待首次使用',
-    usageOf: '已用 {used} / {limit}'
+    usageOf: '已用 {used} / {limit}',
+    timeline: {
+      title: '额度时间分段',
+      now: '现在',
+      segmentCount: '{count} 个区间',
+      segmentLine: '{start} ~ {end}，额度：{quota}'
+    }
   },
 
   // Onboarding Tour

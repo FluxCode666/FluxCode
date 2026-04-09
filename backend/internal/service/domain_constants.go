@@ -7,6 +7,7 @@ const (
 	StatusActive   = domain.StatusActive
 	StatusDisabled = domain.StatusDisabled
 	StatusError    = domain.StatusError
+	StatusBanned   = domain.StatusBanned
 	StatusUnused   = domain.StatusUnused
 	StatusUsed     = domain.StatusUsed
 	StatusExpired  = domain.StatusExpired

@@ -4,7 +4,7 @@
  */
 
 import { apiClient } from './client'
-import type { UserSubscription, SubscriptionProgress } from '@/types'
+import type { UserSubscription, SubscriptionProgress, UserSubscriptionGrantUsageResponse } from '@/types'
 
 /**
  * Subscription summary for user dashboard
@@ -67,10 +67,23 @@ export async function getSubscriptionProgress(
   return response.data
 }
 
+/**
+ * Get grant usage detail for a specific subscription of current user
+ */
+export async function getSubscriptionGrants(
+  subscriptionId: number
+): Promise<UserSubscriptionGrantUsageResponse> {
+  const response = await apiClient.get<UserSubscriptionGrantUsageResponse>(
+    `/subscriptions/${subscriptionId}/grants`
+  )
+  return response.data
+}
+
 export default {
   getMySubscriptions,
   getActiveSubscriptions,
   getSubscriptionsProgress,
   getSubscriptionSummary,
-  getSubscriptionProgress
+  getSubscriptionProgress,
+  getSubscriptionGrants
 }

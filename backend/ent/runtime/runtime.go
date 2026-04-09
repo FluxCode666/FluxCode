@@ -676,16 +676,20 @@ func init() {
 	redeemcode.DefaultStatus = redeemcodeDescStatus.Default.(string)
 	// redeemcode.StatusValidator is a validator for the "status" field. It is called by the builders before save.
 	redeemcode.StatusValidator = redeemcodeDescStatus.Validators[0].(func(string) error)
+	// redeemcodeDescWelfareNo is the schema descriptor for welfare_no field.
+	redeemcodeDescWelfareNo := redeemcodeFields[7].Descriptor()
+	// redeemcode.WelfareNoValidator is a validator for the "welfare_no" field. It is called by the builders before save.
+	redeemcode.WelfareNoValidator = redeemcodeDescWelfareNo.Validators[0].(func(string) error)
 	// redeemcodeDescCreatedAt is the schema descriptor for created_at field.
-	redeemcodeDescCreatedAt := redeemcodeFields[7].Descriptor()
+	redeemcodeDescCreatedAt := redeemcodeFields[8].Descriptor()
 	// redeemcode.DefaultCreatedAt holds the default value on creation for the created_at field.
 	redeemcode.DefaultCreatedAt = redeemcodeDescCreatedAt.Default.(func() time.Time)
 	// redeemcodeDescValidityDays is the schema descriptor for validity_days field.
-	redeemcodeDescValidityDays := redeemcodeFields[9].Descriptor()
+	redeemcodeDescValidityDays := redeemcodeFields[10].Descriptor()
 	// redeemcode.DefaultValidityDays holds the default value on creation for the validity_days field.
 	redeemcode.DefaultValidityDays = redeemcodeDescValidityDays.Default.(int)
 	// redeemcodeDescSubscriptionMode is the schema descriptor for subscription_mode field.
-	redeemcodeDescSubscriptionMode := redeemcodeFields[10].Descriptor()
+	redeemcodeDescSubscriptionMode := redeemcodeFields[11].Descriptor()
 	// redeemcode.SubscriptionModeValidator is a validator for the "subscription_mode" field. It is called by the builders before save.
 	redeemcode.SubscriptionModeValidator = redeemcodeDescSubscriptionMode.Validators[0].(func(string) error)
 	securitysecretMixin := schema.SecuritySecret{}.Mixin()

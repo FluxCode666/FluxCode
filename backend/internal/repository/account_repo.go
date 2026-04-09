@@ -469,6 +469,8 @@ func (r *accountRepository) ListWithFilters(ctx context.Context, params paginati
 					entsql.GT(col, entsql.Expr("NOW()")),
 				))
 			}))
+		case "banned":
+			q = q.Where(bannedAccountPredicate())
 		default:
 			q = q.Where(dbaccount.StatusEQ(status))
 		}
@@ -530,6 +532,8 @@ func (r *accountRepository) ListWithAdvancedFilters(
 			q = q.Where(rateLimitActivePredicate())
 		case "temp_unschedulable":
 			q = q.Where(tempUnschedulableActivePredicate())
+		case "banned":
+			q = q.Where(bannedAccountPredicate())
 		default:
 			q = q.Where(dbaccount.StatusEQ(status))
 		}
@@ -800,6 +804,22 @@ func (r *accountRepository) SetError(ctx context.Context, id int64, errorMsg str
 	}
 	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
 		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue set error failed: account=%d err=%v", id, err)
+	}
+	r.syncSchedulerAccountSnapshot(ctx, id)
+	return nil
+}
+
+func (r *accountRepository) SetBanned(ctx context.Context, id int64, errorMsg string) error {
+	_, err := r.client.Account.Update().
+		Where(dbaccount.IDEQ(id)).
+		SetStatus(service.StatusBanned).
+		SetErrorMessage(errorMsg).
+		Save(ctx)
+	if err != nil {
+		return err
+	}
+	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
+		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue set banned failed: account=%d err=%v", id, err)
 	}
 	r.syncSchedulerAccountSnapshot(ctx, id)
 	return nil

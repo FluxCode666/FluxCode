@@ -57,7 +57,7 @@ func (s *OpsService) GetAccountAvailabilityStats(ctx context.Context, platformFi
 
 		isRateLimited := acc.RateLimitResetAt != nil && now.Before(*acc.RateLimitResetAt)
 		isOverloaded := acc.OverloadUntil != nil && now.Before(*acc.OverloadUntil)
-		hasError := acc.Status == StatusError
+		hasError := acc.Status == StatusError || acc.Status == StatusBanned
 
 		// Normalize exclusive status flags so the UI doesn't show conflicting badges.
 		if hasError {

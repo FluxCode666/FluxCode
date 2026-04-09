@@ -78,6 +78,192 @@
         </div>
       </div>
 
+      <!-- Redeem Mode Guide -->
+      <div
+        class="card border-primary-100 bg-gradient-to-br from-primary-50/80 to-blue-50/60 dark:border-primary-900/40 dark:from-primary-900/20 dark:to-dark-800"
+      >
+        <div class="space-y-4 p-6">
+          <div class="space-y-1">
+            <h2 class="text-base font-semibold text-gray-900 dark:text-white">
+              {{ t('redeem.modeGuideTitle') }}
+            </h2>
+            <p class="text-sm text-gray-600 dark:text-dark-300">
+              {{ t('redeem.modeGuideDesc') }}
+            </p>
+          </div>
+
+          <div class="inline-flex rounded-xl bg-white p-1 shadow-sm dark:bg-dark-800">
+            <button
+              type="button"
+              class="rounded-lg px-3 py-1.5 text-xs font-medium transition-colors"
+              :class="
+                modeGuideSelection === 'stack'
+                  ? 'bg-primary-500 text-white'
+                  : 'text-gray-600 hover:bg-gray-100 dark:text-dark-300 dark:hover:bg-dark-700'
+              "
+              @click="modeGuideSelection = 'stack'"
+            >
+              {{ t('redeem.modeGuideStackTab') }}
+            </button>
+            <button
+              type="button"
+              class="rounded-lg px-3 py-1.5 text-xs font-medium transition-colors"
+              :class="
+                modeGuideSelection === 'extend'
+                  ? 'bg-primary-500 text-white'
+                  : 'text-gray-600 hover:bg-gray-100 dark:text-dark-300 dark:hover:bg-dark-700'
+              "
+              @click="modeGuideSelection = 'extend'"
+            >
+              {{ t('redeem.modeGuideExtendTab') }}
+            </button>
+          </div>
+
+          <div v-if="modeGuideSelection === 'stack'" class="w-full">
+            <div class="inline-flex w-fit flex-nowrap rounded-xl bg-white p-1 shadow-sm dark:bg-dark-800">
+              <button
+                type="button"
+                class="whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-medium transition-colors"
+                :class="
+                  modeGuideStackScenario === 'case1'
+                    ? 'bg-primary-500 text-white'
+                    : 'text-gray-600 hover:bg-gray-100 dark:text-dark-300 dark:hover:bg-dark-700'
+                "
+                @click="modeGuideStackScenario = 'case1'"
+              >
+                {{ t('redeem.modeGuideStackCase1Tab') }}
+              </button>
+              <button
+                type="button"
+                class="whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-medium transition-colors"
+                :class="
+                  modeGuideStackScenario === 'case2'
+                    ? 'bg-primary-500 text-white'
+                    : 'text-gray-600 hover:bg-gray-100 dark:text-dark-300 dark:hover:bg-dark-700'
+                "
+                @click="modeGuideStackScenario = 'case2'"
+              >
+                {{ t('redeem.modeGuideStackCase2Tab') }}
+              </button>
+            </div>
+          </div>
+
+          <div class="grid gap-4 md:grid-cols-2">
+            <div class="rounded-xl border border-gray-200 bg-white p-3 dark:border-dark-600 dark:bg-dark-800">
+              <p class="text-xs font-semibold text-gray-700 dark:text-gray-200">
+                {{ t('redeem.modeGuideBeforeCard') }}
+              </p>
+              <div class="mt-2 h-3 overflow-hidden rounded-full bg-gray-100 dark:bg-dark-700">
+                <div class="flex h-full w-full">
+                  <div
+                    v-for="(segment, idx) in modeGuideBeforeSegments"
+                    :key="`before-${idx}`"
+                    :class="[
+                      getModeGuideSegmentClass(segment.tone),
+                      'h-full border-r border-white/80 last:border-r-0 dark:border-dark-900/80'
+                    ]"
+                    :style="{ width: `${segment.widthPct ?? 100 / modeGuideBeforeSegments.length}%` }"
+                  ></div>
+                </div>
+              </div>
+              <div class="mt-2 space-y-1">
+                <div
+                  v-for="(segment, idx) in modeGuideBeforeSegments"
+                  :key="`before-line-${idx}`"
+                  class="text-xs"
+                  :class="getModeGuideTextClass(segment.tone)"
+                >
+                  <div
+                    v-if="modeGuideSelection === 'stack' && segment.startLabel && segment.endLabel"
+                    class="flex items-start gap-2"
+                  >
+                    <span
+                      :class="[getModeGuideSegmentClass(segment.tone), 'mt-1 h-2.5 w-2.5 rounded-full']"
+                    ></span>
+                    <span class="leading-relaxed">
+                      {{
+                        t('redeem.modeGuideSegmentLine', {
+                          start: segment.startLabel,
+                          end: segment.endLabel,
+                          quota: t('redeem.modeGuideQuota', { quota: segment.quota })
+                        })
+                      }}
+                    </span>
+                  </div>
+                  <div v-else class="flex items-center justify-between">
+                    <span>{{ segment.label }}</span>
+                    <span class="font-medium text-gray-700 dark:text-gray-200">
+                      {{ t('redeem.modeGuideQuota', { quota: segment.quota }) }}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="rounded-xl border border-gray-200 bg-white p-3 dark:border-dark-600 dark:bg-dark-800">
+              <p class="text-xs font-semibold text-gray-700 dark:text-gray-200">
+                {{ t('redeem.modeGuideAfterCard') }}
+              </p>
+              <div class="mt-2 h-3 overflow-hidden rounded-full bg-gray-100 dark:bg-dark-700">
+                <div class="flex h-full w-full">
+                  <div
+                    v-for="(segment, idx) in modeGuideAfterSegments"
+                    :key="`after-${idx}`"
+                    :class="[
+                      getModeGuideSegmentClass(segment.tone),
+                      'h-full border-r border-white/80 last:border-r-0 dark:border-dark-900/80'
+                    ]"
+                    :style="{ width: `${segment.widthPct ?? 100 / modeGuideAfterSegments.length}%` }"
+                  ></div>
+                </div>
+              </div>
+              <div class="mt-2 space-y-1">
+                <div
+                  v-for="(segment, idx) in modeGuideAfterSegments"
+                  :key="`after-line-${idx}`"
+                  class="text-xs"
+                  :class="getModeGuideTextClass(segment.tone)"
+                >
+                  <div
+                    v-if="modeGuideSelection === 'stack' && segment.startLabel && segment.endLabel"
+                    class="flex items-start gap-2"
+                  >
+                    <span
+                      :class="[getModeGuideSegmentClass(segment.tone), 'mt-1 h-2.5 w-2.5 rounded-full']"
+                    ></span>
+                    <span class="leading-relaxed">
+                      {{
+                        t('redeem.modeGuideSegmentLine', {
+                          start: segment.startLabel,
+                          end: segment.endLabel,
+                          quota: t('redeem.modeGuideQuota', { quota: segment.quota })
+                        })
+                      }}
+                    </span>
+                  </div>
+                  <div v-else class="flex items-center justify-between">
+                    <span>{{ segment.label }}</span>
+                    <span class="font-medium text-gray-700 dark:text-gray-200">
+                      {{ t('redeem.modeGuideQuota', { quota: segment.quota }) }}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <p class="whitespace-pre-line text-xs font-medium text-primary-700 dark:text-primary-300">
+            {{ modeGuideHint }}
+          </p>
+          <p
+            v-if="modeGuideSelection === 'stack' && modeGuideStackScenario === 'case2'"
+            class="text-xs font-medium text-red-600 dark:text-red-400"
+          >
+            {{ t('redeem.modeGuideStackPriorityNote') }}
+          </p>
+        </div>
+      </div>
+
       <!-- Success Message -->
       <transition name="fade">
         <div
@@ -165,7 +351,7 @@
       <BaseDialog
         :show="subscriptionChoiceOpen"
         :title="t('redeem.subscriptionChoiceTitle')"
-        width="normal"
+        width="wide"
         :close-on-click-outside="false"
         :close-on-escape="!submitting"
         :show-close-button="!submitting"
@@ -202,7 +388,7 @@
                 {{ t('redeem.subscriptionChoiceValidityDays') }}
               </p>
               <p class="mt-1 font-medium text-gray-900 dark:text-white">
-                {{ subscriptionChoiceValidityDays }}
+                {{ validityDays }}
               </p>
             </div>
             <div>
@@ -210,7 +396,7 @@
                 {{ t('redeem.subscriptionChoiceCurrentMultiplier') }}
               </p>
               <p class="mt-1 font-medium text-gray-900 dark:text-white">
-                ×{{ subscriptionChoiceCurrentMultiplier }}
+                ×{{ baseQuotaMultiplier }}
               </p>
             </div>
           </div>
@@ -225,17 +411,13 @@
                   ? 'border-primary-500 bg-primary-50 dark:border-primary-400 dark:bg-primary-500/10'
                   : 'border-gray-200 hover:bg-gray-50 dark:border-dark-600 dark:hover:bg-dark-800'
               "
-              @click="selectedSubscriptionMode = 'extend'"
+              @click="toggleSubscriptionMode('extend')"
             >
               <p class="text-sm font-semibold text-gray-900 dark:text-white">
                 {{ t('redeem.subscriptionChoiceExtend') }}
               </p>
               <p class="mt-1 text-xs text-gray-500 dark:text-dark-400">
-                {{
-                  t('redeem.subscriptionChoiceOptionExtendDesc', {
-                    days: subscriptionChoiceValidityDays
-                  })
-                }}
+                {{ t('redeem.subscriptionChoiceOptionExtendDesc', { days: validityDays }) }}
               </p>
             </button>
 
@@ -248,57 +430,76 @@
                   ? 'border-primary-500 bg-primary-50 dark:border-primary-400 dark:bg-primary-500/10'
                   : 'border-gray-200 hover:bg-gray-50 dark:border-dark-600 dark:hover:bg-dark-800'
               "
-              @click="selectedSubscriptionMode = 'stack'"
+              @click="toggleSubscriptionMode('stack')"
             >
               <p class="text-sm font-semibold text-gray-900 dark:text-white">
                 {{ t('redeem.subscriptionChoiceStack') }}
               </p>
               <p class="mt-1 text-xs text-gray-500 dark:text-dark-400">
-                {{
-                  t('redeem.subscriptionChoiceOptionStackDesc', {
-                    days: subscriptionChoiceValidityDays
-                  })
-                }}
+                {{ t('redeem.subscriptionChoiceOptionStackDesc', { days: validityDays }) }}
               </p>
             </button>
           </div>
 
-          <div
-            v-if="selectedSubscriptionMode"
-            data-test="subscription-choice-preview"
-            class="space-y-2 rounded-xl border border-gray-200 p-4 dark:border-dark-600"
-          >
-            <h3 class="text-sm font-semibold text-gray-900 dark:text-white">
-              {{ t('redeem.subscriptionChoicePreviewTitle') }}
-            </h3>
-            <div class="flex items-center justify-between gap-3 text-sm">
-              <span class="text-gray-500 dark:text-dark-400">
-                {{ t('redeem.subscriptionChoiceResultExpires') }}
-              </span>
-              <span class="font-medium text-gray-900 dark:text-white">
-                {{ previewTotalExpiresAt ? formatDateTime(previewTotalExpiresAt) : '-' }}
-              </span>
-            </div>
-            <div class="flex items-center justify-between gap-3 text-sm">
-              <span class="text-gray-500 dark:text-dark-400">
-                {{ t('redeem.subscriptionChoiceResultMultiplier') }}
-              </span>
-              <span class="font-medium text-gray-900 dark:text-white">
-                ×{{ previewResultMultiplier }}
-              </span>
-            </div>
-            <div
-              v-if="selectedSubscriptionMode === 'stack' && previewStackUntil"
-              class="flex items-center justify-between gap-3 text-sm"
+          <div data-test="subscription-choice-preview" class="relative grid gap-4 sm:grid-cols-2">
+            <SubscriptionUsageCard
+              :title="t('redeem.subscriptionChoiceBeforeCardTitle')"
+              :subscription="choiceSubscription"
+              :loading="choiceSubscriptionLoading"
+              :emptyHint="t('redeem.subscriptionChoicePreviewNotFound')"
+              :expiresLabel="t('redeem.subscriptionChoiceCurrentExpires')"
+              :showUsageSections="false"
             >
-              <span class="text-gray-500 dark:text-dark-400">
-                {{ t('redeem.subscriptionChoiceStackUntil') }}
-              </span>
-              <span class="font-medium text-gray-900 dark:text-white">
-                {{ formatDateTime(previewStackUntil) }}
-              </span>
-            </div>
+              <template #extra>
+                <div v-if="choiceBeforeTimelineWindows.length > 0" class="space-y-2">
+                  <SubscriptionQuotaTimeline
+                    v-for="timeline in choiceBeforeTimelineWindows"
+                    :key="`before-${timeline.key}`"
+                    :title="timeline.label"
+                    :segments="timeline.segments"
+                  />
+                </div>
+              </template>
+            </SubscriptionUsageCard>
+
+            <SubscriptionUsageCard
+              :title="t('redeem.subscriptionChoiceAfterCardTitle')"
+              :subscription="choiceSubscription"
+              :loading="choiceSubscriptionLoading"
+              :placeholderText="selectedSubscriptionMode ? '' : t('redeem.subscriptionChoiceAfterHint')"
+              :emptyHint="t('redeem.subscriptionChoicePreviewNotFound')"
+              :quotaMultiplierOverride="previewQuotaMultiplier"
+              :expiresAtOverride="previewTotalExpiresAt"
+              :expiresLabel="t('redeem.subscriptionChoiceTotalExpires')"
+              :showUsageSections="false"
+            >
+              <template #extra>
+                <div v-if="choiceAfterTimelineWindows.length > 0" class="space-y-2">
+                  <SubscriptionQuotaTimeline
+                    v-for="timeline in choiceAfterTimelineWindows"
+                    :key="`after-${timeline.key}`"
+                    :title="timeline.label"
+                    :segments="timeline.segments"
+                  />
+                </div>
+                <div
+                  v-if="selectedSubscriptionMode === 'stack' && previewStackUntil"
+                  class="flex items-center justify-between rounded-xl bg-gray-50 p-3 text-sm dark:bg-dark-800"
+                >
+                  <span class="text-gray-500 dark:text-dark-400">
+                    {{ t('redeem.subscriptionChoiceStackUntil') }}
+                  </span>
+                  <span class="font-medium text-gray-900 dark:text-white">
+                    {{ formatDateTime(previewStackUntil) }}
+                  </span>
+                </div>
+              </template>
+            </SubscriptionUsageCard>
           </div>
+
+          <p v-if="choiceSubscriptionLoadError" class="text-xs text-orange-600 dark:text-orange-400">
+            {{ choiceSubscriptionLoadError }}
+          </p>
         </div>
 
         <template #footer>
@@ -311,7 +512,7 @@
               class="btn btn-primary"
               data-test="subscription-choice-confirm"
               :disabled="submitting || !selectedSubscriptionMode"
-              @click="handleRedeemWithMode(selectedSubscriptionMode as 'extend' | 'stack')"
+              @click="confirmSubscriptionChoice"
             >
               {{ t('common.confirm') }}
             </button>
@@ -499,16 +700,24 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '@/stores/auth'
 import { useAppStore } from '@/stores/app'
 import { useSubscriptionStore } from '@/stores/subscriptions'
 import { redeemAPI, authAPI, type RedeemHistoryItem } from '@/api'
+import subscriptionsAPI from '@/api/subscriptions'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
+import SubscriptionUsageCard from '@/components/common/SubscriptionUsageCard.vue'
+import SubscriptionQuotaTimeline from '@/components/common/SubscriptionQuotaTimeline.vue'
 import Icon from '@/components/icons/Icon.vue'
-import { formatDateTime } from '@/utils/format'
+import { formatDateTime, formatCurrency } from '@/utils/format'
+import type {
+  UserSubscription,
+  UserSubscriptionGrantUsageResponse,
+  AdminSubscriptionGrantUsage
+} from '@/types'
 
 const { t } = useI18n()
 const authStore = useAuthStore()
@@ -533,7 +742,155 @@ const errorMessage = ref('')
 const subscriptionChoiceOpen = ref(false)
 const subscriptionChoiceMeta = ref<Record<string, string>>({})
 const selectedSubscriptionMode = ref<'extend' | 'stack' | ''>('')
-const choiceOpenedAt = ref<Date | null>(null)
+
+type ModeGuideSelection = 'extend' | 'stack'
+type ModeGuideStackScenario = 'case1' | 'case2'
+type ModeGuideTone = 'base' | 'added' | 'boost' | 'priority'
+
+interface ModeGuideSegment {
+  label: string
+  quota: number
+  tone: ModeGuideTone
+  startLabel?: string
+  endLabel?: string
+  widthPct?: number
+}
+
+const modeGuideSelection = ref<ModeGuideSelection>('stack')
+const modeGuideStackScenario = ref<ModeGuideStackScenario>('case1')
+const MODE_GUIDE_BASE_QUOTA = 60
+const MODE_GUIDE_STACK_START = new Date(2026, 1, 24, 15, 0, 0)
+const MODE_GUIDE_STACK_CASE1_BEFORE_START = new Date(2026, 1, 23, 18, 10, 0)
+const MODE_GUIDE_STACK_CASE2_BEFORE_START = new Date(2026, 1, 23, 18, 10, 0)
+const MODE_GUIDE_STACK_CASE1_OVERLAY_END = new Date(2026, 1, 25, 15, 0, 0)
+const MODE_GUIDE_STACK_CASE1_BASE_END = new Date(2026, 2, 1, 18, 10, 0)
+const MODE_GUIDE_STACK_CASE2_BASE_END = new Date(2026, 1, 24, 18, 10, 0)
+const MODE_GUIDE_STACK_CASE2_OVERLAY_END = new Date(2026, 1, 25, 15, 0, 0)
+
+const addDays = (base: Date, days: number): Date => {
+  const d = new Date(base)
+  d.setDate(d.getDate() + days)
+  return d
+}
+
+const buildModeGuideBaseSegments = (): ModeGuideSegment[] => [
+  { label: t('redeem.modeGuideDay', { day: 1 }), quota: MODE_GUIDE_BASE_QUOTA, tone: 'base' },
+  { label: t('redeem.modeGuideDay', { day: 2 }), quota: MODE_GUIDE_BASE_QUOTA, tone: 'base' },
+  { label: t('redeem.modeGuideDay', { day: 3 }), quota: MODE_GUIDE_BASE_QUOTA, tone: 'base' }
+]
+
+const formatGuideTime = (date: Date, withYear: boolean): string => {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  const hour = String(date.getHours()).padStart(2, '0')
+  const minute = String(date.getMinutes()).padStart(2, '0')
+  return withYear ? `${year}-${month}-${day} ${hour}:${minute}` : `${month}-${day} ${hour}:${minute}`
+}
+
+const getModeGuideStackConfig = (): {
+  beforeStart: Date
+  firstStart: Date
+  beforeEnd: Date
+  firstEnd: Date
+  secondEnd: Date
+  firstTone: ModeGuideTone
+  withYear: boolean
+} => {
+  if (modeGuideStackScenario.value === 'case2') {
+    return {
+      beforeStart: MODE_GUIDE_STACK_CASE2_BEFORE_START,
+      firstStart: MODE_GUIDE_STACK_START,
+      beforeEnd: MODE_GUIDE_STACK_CASE2_BASE_END,
+      firstEnd: MODE_GUIDE_STACK_CASE2_BASE_END,
+      secondEnd: MODE_GUIDE_STACK_CASE2_OVERLAY_END,
+      firstTone: 'priority',
+      withYear: false
+    }
+  }
+
+  return {
+    beforeStart: MODE_GUIDE_STACK_CASE1_BEFORE_START,
+    firstStart: MODE_GUIDE_STACK_START,
+    beforeEnd: MODE_GUIDE_STACK_CASE1_BASE_END,
+    firstEnd: MODE_GUIDE_STACK_CASE1_OVERLAY_END,
+    secondEnd: MODE_GUIDE_STACK_CASE1_BASE_END,
+    firstTone: 'boost',
+    withYear: false
+  }
+}
+
+const buildModeGuideStackBeforeSegments = (): ModeGuideSegment[] => {
+  const config = getModeGuideStackConfig()
+  return [
+    {
+      label: t('redeem.modeGuideBeforeCard'),
+      quota: MODE_GUIDE_BASE_QUOTA,
+      tone: 'base',
+      startLabel: formatGuideTime(config.beforeStart, config.withYear),
+      endLabel: formatGuideTime(config.beforeEnd, config.withYear),
+      widthPct: 100
+    }
+  ]
+}
+
+const buildModeGuideStackAfterSegments = (): ModeGuideSegment[] => {
+  const config = getModeGuideStackConfig()
+  const firstMs = config.firstEnd.getTime() - config.firstStart.getTime()
+  const secondMs = config.secondEnd.getTime() - config.firstEnd.getTime()
+  const totalMs = Math.max(1, firstMs + secondMs)
+  const firstWidth = (firstMs / totalMs) * 100
+
+  return [
+    {
+      label: t('redeem.modeGuideDay', { day: 1 }),
+      quota: MODE_GUIDE_BASE_QUOTA * 2,
+      tone: config.firstTone,
+      startLabel: formatGuideTime(config.firstStart, config.withYear),
+      endLabel: formatGuideTime(config.firstEnd, config.withYear),
+      widthPct: firstWidth
+    },
+    {
+      label: t('redeem.modeGuideDay', { day: 2 }),
+      quota: MODE_GUIDE_BASE_QUOTA,
+      tone: 'base',
+      startLabel: formatGuideTime(config.firstEnd, config.withYear),
+      endLabel: formatGuideTime(config.secondEnd, config.withYear),
+      widthPct: 100 - firstWidth
+    }
+  ]
+}
+
+const modeGuideBeforeSegments = computed<ModeGuideSegment[]>(() =>
+  modeGuideSelection.value === 'stack' ? buildModeGuideStackBeforeSegments() : buildModeGuideBaseSegments()
+)
+
+const modeGuideAfterSegments = computed<ModeGuideSegment[]>(() => {
+  if (modeGuideSelection.value === 'extend') {
+    return [
+      ...buildModeGuideBaseSegments(),
+      { label: t('redeem.modeGuideAddedDay'), quota: MODE_GUIDE_BASE_QUOTA, tone: 'added' }
+    ]
+  }
+  return buildModeGuideStackAfterSegments()
+})
+
+const modeGuideHint = computed(() =>
+  modeGuideSelection.value === 'extend'
+    ? t('redeem.modeGuideExtendHint')
+    : modeGuideStackScenario.value === 'case2'
+      ? t('redeem.modeGuideStackHintCase2')
+      : t('redeem.modeGuideStackHint')
+)
+
+const getModeGuideSegmentClass = (tone: ModeGuideTone): string => {
+  if (tone === 'added') return 'bg-emerald-500'
+  if (tone === 'boost') return 'bg-amber-500'
+  if (tone === 'priority') return 'bg-red-500'
+  return 'bg-sky-500'
+}
+
+const getModeGuideTextClass = (_tone: ModeGuideTone): string => 'text-gray-500 dark:text-dark-400'
 
 // History data
 const history = ref<RedeemHistoryItem[]>([])
@@ -553,61 +910,412 @@ const isAdminAdjustment = (type: string) => {
   return type === 'admin_balance' || type === 'admin_concurrency'
 }
 
-const subscriptionChoiceValidityDays = computed(() => {
-  const raw = parseInt(String(subscriptionChoiceMeta.value.validity_days || ''), 10)
-  return Number.isFinite(raw) && raw > 0 ? raw : 30
+const choiceSubscription = ref<UserSubscription | null>(null)
+const choiceSubscriptionGrants = ref<UserSubscriptionGrantUsageResponse | null>(null)
+const choiceSubscriptionLoading = ref(false)
+const choiceSubscriptionLoadError = ref('')
+const choiceDialogOpenedAt = ref<Date | null>(null)
+
+const validityDays = computed(() => {
+  const raw = subscriptionChoiceMeta.value.validity_days
+  const n = parseInt(String(raw ?? ''), 10)
+  if (!Number.isFinite(n) || n <= 0) return 30
+  return n
 })
 
-const subscriptionChoiceCurrentMultiplier = computed(() => {
-  const raw = parseInt(String(subscriptionChoiceMeta.value.current_quota_multiplier || ''), 10)
-  return Number.isFinite(raw) && raw > 0 ? raw : 1
+const baseQuotaMultiplier = computed(() => {
+  const fromSub = choiceSubscription.value?.quota_multiplier
+  if (fromSub !== null && fromSub !== undefined) return Math.max(1, fromSub)
+  const raw = subscriptionChoiceMeta.value.current_quota_multiplier
+  const n = parseInt(String(raw ?? ''), 10)
+  if (!Number.isFinite(n) || n <= 0) return 1
+  return n
 })
 
-const previewResultMultiplier = computed(() => {
-  if (selectedSubscriptionMode.value === 'stack') {
-    return subscriptionChoiceCurrentMultiplier.value + 1
-  }
-  return subscriptionChoiceCurrentMultiplier.value
+const previewQuotaMultiplier = computed(() => {
+  if (!selectedSubscriptionMode.value) return null
+  if (selectedSubscriptionMode.value === 'extend') return baseQuotaMultiplier.value
+  return baseQuotaMultiplier.value + 1
 })
 
 const previewStackUntil = computed(() => {
-  if (selectedSubscriptionMode.value !== 'stack') {
-    return null
+  if (selectedSubscriptionMode.value !== 'stack') return null
+  const now = choiceDialogOpenedAt.value || new Date()
+  return addDays(now, validityDays.value)
+})
+
+const previewBaseExpiresDate = computed(() => {
+  const base = choiceSubscription.value?.expires_at || subscriptionChoiceMeta.value.current_expires_at
+  if (!base) return null
+  const date = new Date(base)
+  if (Number.isNaN(date.getTime())) return null
+  return date
+})
+
+const previewTimelineNow = computed(() => choiceDialogOpenedAt.value || new Date())
+
+interface PreviewTimelineSegmentView {
+  key: string
+  startLabel: string
+  endLabel: string
+  quotaText: string
+  widthPct: number
+  colorClass: string
+}
+
+interface GrantTimelineRawSegment {
+  startMs: number
+  endMs: number
+  quota: number
+}
+
+interface ChoiceTimelineWindowView {
+  key: 'daily' | 'weekly' | 'monthly'
+  label: string
+  segments: PreviewTimelineSegmentView[]
+}
+
+interface GrantTimelineInterval {
+  startMs: number
+  endMs: number
+}
+
+const CHOICE_TIMELINE_COLORS = [
+  'bg-blue-600',
+  'bg-orange-500',
+  'bg-violet-600',
+  'bg-lime-500',
+  'bg-rose-600',
+  'bg-cyan-500',
+  'bg-amber-600',
+  'bg-emerald-600',
+  'bg-fuchsia-600',
+  'bg-sky-500'
+]
+
+const normalizeQuota = (quota: number): string => quota.toFixed(6)
+
+const buildQuotaColorMap = (segments: GrantTimelineRawSegment[]): Map<string, string> => {
+  const unique = Array.from(new Set(segments.map((item) => normalizeQuota(item.quota))))
+  unique.sort((a, b) => Number(a) - Number(b))
+
+  const colorMap = new Map<string, string>()
+  unique.forEach((quota, index) => {
+    colorMap.set(quota, CHOICE_TIMELINE_COLORS[index % CHOICE_TIMELINE_COLORS.length])
+  })
+  return colorMap
+}
+
+const buildGrantTimelineSegments = (
+  grants: AdminSubscriptionGrantUsage[],
+  baseLimit: number,
+  nowMs: number,
+  extraIntervals: GrantTimelineInterval[] = []
+): GrantTimelineRawSegment[] => {
+  if (!Number.isFinite(baseLimit) || baseLimit <= 0) return []
+
+  const intervals: GrantTimelineInterval[] = []
+  const boundaries = new Set<number>([nowMs])
+
+  for (const grant of grants) {
+    const startMs = new Date(grant.starts_at).getTime()
+    const endMs = new Date(grant.expires_at).getTime()
+    if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= nowMs) continue
+
+    intervals.push({ startMs, endMs })
+    if (startMs > nowMs) boundaries.add(startMs)
+    boundaries.add(endMs)
   }
 
-  const base = choiceOpenedAt.value ? new Date(choiceOpenedAt.value) : new Date()
-  base.setUTCDate(base.getUTCDate() + subscriptionChoiceValidityDays.value)
-  return base.toISOString()
+  for (const extra of extraIntervals) {
+    if (!Number.isFinite(extra.startMs) || !Number.isFinite(extra.endMs) || extra.endMs <= nowMs) continue
+    intervals.push({ startMs: extra.startMs, endMs: extra.endMs })
+    if (extra.startMs > nowMs) boundaries.add(extra.startMs)
+    boundaries.add(extra.endMs)
+  }
+
+  const points = Array.from(boundaries).sort((a, b) => a - b)
+  if (points.length < 2) return []
+
+  const raw: GrantTimelineRawSegment[] = []
+  for (let i = 0; i < points.length - 1; i++) {
+    const segmentStart = points[i]
+    const segmentEnd = points[i + 1]
+    if (segmentEnd <= segmentStart) continue
+
+    let activeCount = 0
+    for (const interval of intervals) {
+      if (interval.startMs <= segmentStart && interval.endMs > segmentStart) {
+        activeCount += 1
+      }
+    }
+
+    if (activeCount <= 0) continue
+    raw.push({
+      startMs: segmentStart,
+      endMs: segmentEnd,
+      quota: activeCount * baseLimit
+    })
+  }
+
+  if (raw.length === 0) return []
+
+  const merged: GrantTimelineRawSegment[] = []
+  for (const segment of raw) {
+    const last = merged[merged.length - 1]
+    if (
+      last &&
+      normalizeQuota(last.quota) === normalizeQuota(segment.quota) &&
+      last.endMs === segment.startMs
+    ) {
+      last.endMs = segment.endMs
+    } else {
+      merged.push({ ...segment })
+    }
+  }
+
+  return merged
+}
+
+const formatTimelineDateTime = (ms: number): string => {
+  return formatDateTime(new Date(ms), {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  })
+}
+
+const buildTimelineWindowViews = (
+  windows: Array<{ key: ChoiceTimelineWindowView['key']; label: string; segments: GrantTimelineRawSegment[] }>,
+  nowMs: number
+): ChoiceTimelineWindowView[] => {
+  if (windows.length === 0) return []
+  const colorMap = buildQuotaColorMap(windows.flatMap((item) => item.segments))
+
+  return windows.map((window) => {
+    const timelineStart = window.segments[0].startMs
+    const timelineEnd = window.segments[window.segments.length - 1].endMs
+    const totalMs = Math.max(1, timelineEnd - timelineStart)
+
+    const segments: PreviewTimelineSegmentView[] = window.segments.map((segment, index) => ({
+      key: `${window.key}-${segment.startMs}-${segment.endMs}-${index}`,
+      startLabel:
+        segment.startMs === nowMs ? t('userSubscriptions.timeline.now') : formatTimelineDateTime(segment.startMs),
+      endLabel: formatTimelineDateTime(segment.endMs),
+      quotaText: formatCurrency(segment.quota),
+      widthPct: Math.max(2, ((segment.endMs - segment.startMs) / totalMs) * 100),
+      colorClass: colorMap.get(normalizeQuota(segment.quota)) || CHOICE_TIMELINE_COLORS[0]
+    }))
+
+    return {
+      key: window.key,
+      label: window.label,
+      segments
+    }
+  })
+}
+
+const choiceBeforeTimelineWindows = computed<ChoiceTimelineWindowView[]>(() => {
+  const sub = choiceSubscription.value
+  if (!sub) return []
+
+  const nowMs = previewTimelineNow.value.getTime()
+  const grants = choiceSubscriptionGrants.value?.grants || []
+  const windowsMeta: Array<{
+    key: ChoiceTimelineWindowView['key']
+    label: string
+    baseLimit: number | null
+    fallbackEffectiveLimit: number | null
+  }> = [
+    {
+      key: 'daily',
+      label: t('userSubscriptions.daily'),
+      baseLimit: sub.group?.daily_limit_usd ?? null,
+      fallbackEffectiveLimit: sub.group?.daily_limit_usd ? sub.group.daily_limit_usd * baseQuotaMultiplier.value : null
+    },
+    {
+      key: 'weekly',
+      label: t('userSubscriptions.weekly'),
+      baseLimit: sub.group?.weekly_limit_usd ?? null,
+      fallbackEffectiveLimit: sub.group?.weekly_limit_usd ? sub.group.weekly_limit_usd * baseQuotaMultiplier.value : null
+    },
+    {
+      key: 'monthly',
+      label: t('userSubscriptions.monthly'),
+      baseLimit: sub.group?.monthly_limit_usd ?? null,
+      fallbackEffectiveLimit: sub.group?.monthly_limit_usd ? sub.group.monthly_limit_usd * baseQuotaMultiplier.value : null
+    }
+  ]
+
+  const rawWindows: Array<{ key: ChoiceTimelineWindowView['key']; label: string; segments: GrantTimelineRawSegment[] }> = []
+  for (const item of windowsMeta) {
+    if (!item.baseLimit || item.baseLimit <= 0) continue
+
+    let segments = buildGrantTimelineSegments(grants, item.baseLimit, nowMs)
+    if (segments.length === 0 && grants.length === 0 && item.fallbackEffectiveLimit) {
+      const baseExpires = previewBaseExpiresDate.value?.getTime() || 0
+      if (baseExpires > nowMs) {
+        segments = [
+          {
+            startMs: nowMs,
+            endMs: baseExpires,
+            quota: item.fallbackEffectiveLimit
+          }
+        ]
+      }
+    }
+
+    if (segments.length > 0) {
+      rawWindows.push({
+        key: item.key,
+        label: item.label,
+        segments
+      })
+    }
+  }
+
+  return buildTimelineWindowViews(rawWindows, nowMs)
+})
+
+const choiceAfterTimelineWindows = computed<ChoiceTimelineWindowView[]>(() => {
+  if (!selectedSubscriptionMode.value) return []
+
+  const sub = choiceSubscription.value
+  if (!sub) return []
+
+  const nowMs = previewTimelineNow.value.getTime()
+  const grants = choiceSubscriptionGrants.value?.grants || []
+  const baseEndMs = previewBaseExpiresDate.value?.getTime() ?? nowMs
+  const stackEndMs = previewStackUntil.value?.getTime() || 0
+  const afterEndMs = previewTotalExpiresAt.value ? new Date(previewTotalExpiresAt.value).getTime() : 0
+
+  const windowsMeta: Array<{
+    key: ChoiceTimelineWindowView['key']
+    label: string
+    baseLimit: number | null
+    fallbackBaseLimit: number | null
+    fallbackBoostLimit: number | null
+  }> = [
+    {
+      key: 'daily',
+      label: t('userSubscriptions.daily'),
+      baseLimit: sub.group?.daily_limit_usd ?? null,
+      fallbackBaseLimit: sub.group?.daily_limit_usd ? sub.group.daily_limit_usd * baseQuotaMultiplier.value : null,
+      fallbackBoostLimit: sub.group?.daily_limit_usd
+        ? sub.group.daily_limit_usd * (baseQuotaMultiplier.value + 1)
+        : null
+    },
+    {
+      key: 'weekly',
+      label: t('userSubscriptions.weekly'),
+      baseLimit: sub.group?.weekly_limit_usd ?? null,
+      fallbackBaseLimit: sub.group?.weekly_limit_usd ? sub.group.weekly_limit_usd * baseQuotaMultiplier.value : null,
+      fallbackBoostLimit: sub.group?.weekly_limit_usd
+        ? sub.group.weekly_limit_usd * (baseQuotaMultiplier.value + 1)
+        : null
+    },
+    {
+      key: 'monthly',
+      label: t('userSubscriptions.monthly'),
+      baseLimit: sub.group?.monthly_limit_usd ?? null,
+      fallbackBaseLimit: sub.group?.monthly_limit_usd ? sub.group.monthly_limit_usd * baseQuotaMultiplier.value : null,
+      fallbackBoostLimit: sub.group?.monthly_limit_usd
+        ? sub.group.monthly_limit_usd * (baseQuotaMultiplier.value + 1)
+        : null
+    }
+  ]
+
+  const rawWindows: Array<{ key: ChoiceTimelineWindowView['key']; label: string; segments: GrantTimelineRawSegment[] }> = []
+  for (const item of windowsMeta) {
+    if (!item.baseLimit || item.baseLimit <= 0) continue
+
+    const extraIntervals: GrantTimelineInterval[] = []
+    if (selectedSubscriptionMode.value === 'extend') {
+      const tailStart = Math.max(nowMs, baseEndMs)
+      if (afterEndMs > tailStart) {
+        extraIntervals.push({ startMs: tailStart, endMs: afterEndMs })
+      }
+    } else if (selectedSubscriptionMode.value === 'stack' && stackEndMs > nowMs) {
+      extraIntervals.push({ startMs: nowMs, endMs: stackEndMs })
+    }
+
+    let segments = buildGrantTimelineSegments(grants, item.baseLimit, nowMs, extraIntervals)
+
+    if (segments.length === 0 && grants.length === 0 && item.fallbackBaseLimit) {
+      if (selectedSubscriptionMode.value === 'extend' && afterEndMs > nowMs) {
+        segments = [
+          {
+            startMs: nowMs,
+            endMs: afterEndMs,
+            quota: item.fallbackBaseLimit
+          }
+        ]
+      } else if (selectedSubscriptionMode.value === 'stack' && stackEndMs > nowMs) {
+        const fallbackBoost = item.fallbackBoostLimit || item.fallbackBaseLimit
+        const overlapEndMs = Math.min(baseEndMs, stackEndMs)
+        const tailEndMs = Math.max(baseEndMs, stackEndMs)
+        const fallbackSegments: GrantTimelineRawSegment[] = []
+
+        if (baseEndMs > nowMs && overlapEndMs > nowMs) {
+          fallbackSegments.push({
+            startMs: nowMs,
+            endMs: overlapEndMs,
+            quota: fallbackBoost
+          })
+        }
+
+        const tailStartMs = Math.max(nowMs, overlapEndMs)
+        if (tailEndMs > tailStartMs) {
+          fallbackSegments.push({
+            startMs: tailStartMs,
+            endMs: tailEndMs,
+            quota: item.fallbackBaseLimit
+          })
+        }
+
+        if (fallbackSegments.length === 0) {
+          fallbackSegments.push({
+            startMs: nowMs,
+            endMs: stackEndMs,
+            quota: item.fallbackBaseLimit
+          })
+        }
+
+        segments = fallbackSegments
+      }
+    }
+
+    if (segments.length > 0) {
+      rawWindows.push({
+        key: item.key,
+        label: item.label,
+        segments
+      })
+    }
+  }
+
+  return buildTimelineWindowViews(rawWindows, nowMs)
 })
 
 const previewTotalExpiresAt = computed(() => {
-  const currentExpiresAt = subscriptionChoiceMeta.value.current_expires_at
-  if (!currentExpiresAt) {
-    return previewStackUntil.value
-  }
-
-  const currentDate = new Date(currentExpiresAt)
-  if (Number.isNaN(currentDate.getTime())) {
-    return previewStackUntil.value
-  }
+  if (!selectedSubscriptionMode.value) return null
+  const base = choiceSubscription.value?.expires_at || subscriptionChoiceMeta.value.current_expires_at
+  const baseDate = base ? new Date(base) : null
+  const baseValid = !!baseDate && !Number.isNaN(baseDate.getTime())
 
   if (selectedSubscriptionMode.value === 'extend') {
-    const next = new Date(currentDate)
-    next.setUTCDate(next.getUTCDate() + subscriptionChoiceValidityDays.value)
-    return next.toISOString()
+    if (!baseValid) return null
+    return addDays(baseDate as Date, validityDays.value).toISOString()
   }
 
-  if (selectedSubscriptionMode.value === 'stack') {
-    const stackUntil = previewStackUntil.value ? new Date(previewStackUntil.value) : null
-    if (!stackUntil || Number.isNaN(stackUntil.getTime())) {
-      return currentDate.toISOString()
-    }
-    return stackUntil.getTime() > currentDate.getTime()
-      ? stackUntil.toISOString()
-      : currentDate.toISOString()
-  }
-
-  return currentDate.toISOString()
+  const stackEndMs = previewStackUntil.value?.getTime()
+  const stackUntil = stackEndMs ? new Date(stackEndMs) : null
+  if (!stackUntil) return baseValid ? (baseDate as Date).toISOString() : null
+  if (!baseValid) return stackUntil.toISOString()
+  return (stackUntil.getTime() > (baseDate as Date).getTime() ? stackUntil : (baseDate as Date)).toISOString()
 })
 
 const getSubscriptionModeLabel = (item: RedeemHistoryItem) => {
@@ -711,7 +1419,6 @@ const handleRedeem = async () => {
     if (error?.reason === 'SUBSCRIPTION_REDEEM_CHOICE_REQUIRED') {
       subscriptionChoiceMeta.value = error?.metadata || {}
       selectedSubscriptionMode.value = ''
-      choiceOpenedAt.value = new Date()
       subscriptionChoiceOpen.value = true
       return
     }
@@ -723,6 +1430,52 @@ const handleRedeem = async () => {
   }
 }
 
+const toggleSubscriptionMode = (mode: 'extend' | 'stack') => {
+  if (submitting.value) return
+  selectedSubscriptionMode.value = selectedSubscriptionMode.value === mode ? '' : mode
+}
+
+const confirmSubscriptionChoice = () => {
+  if (selectedSubscriptionMode.value === 'extend' || selectedSubscriptionMode.value === 'stack') {
+    handleRedeemWithMode(selectedSubscriptionMode.value)
+  }
+}
+
+const loadChoiceSubscription = async () => {
+  choiceSubscriptionLoading.value = true
+  choiceSubscriptionLoadError.value = ''
+  choiceSubscription.value = null
+  choiceSubscriptionGrants.value = null
+  try {
+    const groupID = parseInt(String(subscriptionChoiceMeta.value.group_id || ''), 10)
+    if (!Number.isFinite(groupID) || groupID <= 0) {
+      choiceSubscriptionLoadError.value = t('redeem.subscriptionChoicePreviewLoadFailed')
+      return
+    }
+
+    const all = await subscriptionsAPI.getMySubscriptions()
+    const sub = all.find((s) => s.group_id === groupID) || null
+    if (!sub) {
+      choiceSubscriptionLoadError.value = t('redeem.subscriptionChoicePreviewNotFound')
+      return
+    }
+
+    choiceSubscription.value = sub
+
+    try {
+      choiceSubscriptionGrants.value = await subscriptionsAPI.getSubscriptionGrants(sub.id)
+    } catch (error) {
+      console.error('Failed to load subscription grants for redeem preview:', error)
+      choiceSubscriptionGrants.value = null
+    }
+  } catch (error) {
+    console.error('Failed to load subscription for redeem preview:', error)
+    choiceSubscriptionLoadError.value = t('redeem.subscriptionChoicePreviewLoadFailed')
+  } finally {
+    choiceSubscriptionLoading.value = false
+  }
+}
+
 const closeSubscriptionChoice = () => {
   if (submitting.value) {
     return
@@ -730,8 +1483,12 @@ const closeSubscriptionChoice = () => {
   subscriptionChoiceOpen.value = false
   subscriptionChoiceMeta.value = {}
   selectedSubscriptionMode.value = ''
-  choiceOpenedAt.value = null
   pendingRedeemCode.value = ''
+  choiceSubscription.value = null
+  choiceSubscriptionGrants.value = null
+  choiceSubscriptionLoadError.value = ''
+  choiceSubscriptionLoading.value = false
+  choiceDialogOpenedAt.value = null
 }
 
 const handleRedeemWithMode = async (mode: 'extend' | 'stack') => {
@@ -748,7 +1505,11 @@ const handleRedeemWithMode = async (mode: 'extend' | 'stack') => {
     subscriptionChoiceOpen.value = false
     subscriptionChoiceMeta.value = {}
     selectedSubscriptionMode.value = ''
-    choiceOpenedAt.value = null
+    choiceSubscription.value = null
+    choiceSubscriptionGrants.value = null
+    choiceSubscriptionLoadError.value = ''
+    choiceSubscriptionLoading.value = false
+    choiceDialogOpenedAt.value = null
 
     redeemResult.value = result
     await authStore.refreshUser()
@@ -773,6 +1534,16 @@ const handleRedeemWithMode = async (mode: 'extend' | 'stack') => {
     submitting.value = false
   }
 }
+
+watch(
+  () => subscriptionChoiceOpen.value,
+  (open) => {
+    if (!open) return
+    selectedSubscriptionMode.value = ''
+    choiceDialogOpenedAt.value = new Date()
+    loadChoiceSubscription()
+  }
+)
 
 onMounted(async () => {
   fetchHistory()

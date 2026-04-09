@@ -693,6 +693,47 @@ func userSubscriptionFromServiceBase(sub *service.UserSubscription) UserSubscrip
 	}
 }
 
+func subscriptionGrantUsageWindowFromService(w *service.SubscriptionGrantUsageWindow) *SubscriptionGrantUsageWindow {
+	if w == nil {
+		return nil
+	}
+	return &SubscriptionGrantUsageWindow{
+		LimitUSD:   w.LimitUSD,
+		UsedUSD:    w.UsedUSD,
+		Percentage: w.Percentage,
+		Unlimited:  w.Unlimited,
+	}
+}
+
+func ActiveSubscriptionGrantUsageResponseFromService(r *service.ActiveSubscriptionGrantUsageResponse) *ActiveSubscriptionGrantUsageResponse {
+	if r == nil {
+		return nil
+	}
+
+	grants := make([]SubscriptionGrantUsageDetail, 0, len(r.Grants))
+	for i := range r.Grants {
+		g := r.Grants[i]
+		grants = append(grants, SubscriptionGrantUsageDetail{
+			GrantID:         g.GrantID,
+			StartsAt:        g.StartsAt,
+			ExpiresAt:       g.ExpiresAt,
+			DailyUsageUSD:   g.DailyUsageUSD,
+			WeeklyUsageUSD:  g.WeeklyUsageUSD,
+			MonthlyUsageUSD: g.MonthlyUsageUSD,
+			Daily:           subscriptionGrantUsageWindowFromService(g.Daily),
+			Weekly:          subscriptionGrantUsageWindowFromService(g.Weekly),
+			Monthly:         subscriptionGrantUsageWindowFromService(g.Monthly),
+		})
+	}
+
+	return &ActiveSubscriptionGrantUsageResponse{
+		SubscriptionID: r.SubscriptionID,
+		GroupID:        r.GroupID,
+		GroupName:      r.GroupName,
+		Grants:         grants,
+	}
+}
+
 func BulkAssignResultFromService(r *service.BulkAssignResult) *BulkAssignResult {
 	if r == nil {
 		return nil

@@ -18,6 +18,10 @@ const legacyInactiveStatus = "inactive"
 var bannedAccountErrorMessageKeywords = []string{
 	"terms of service",
 	"violation",
+	"deactivated",
+	"suspended",
+	"organization has been disabled",
+	"account has been banned",
 }
 
 type accountSchedulingStrategy interface {
@@ -259,14 +263,18 @@ func inactiveAccountPredicate() dbpredicate.Account {
 }
 
 func bannedAccountPredicate() dbpredicate.Account {
+	// 直接匹配 status='banned'
+	directMatch := dbaccount.StatusEQ(service.StatusBanned)
+	// 兼容历史数据：status='error' + error_message 包含封号关键词
 	messagePredicates := make([]dbpredicate.Account, 0, len(bannedAccountErrorMessageKeywords))
 	for _, keyword := range bannedAccountErrorMessageKeywords {
 		messagePredicates = append(messagePredicates, dbaccount.ErrorMessageContainsFold(keyword))
 	}
-	return andAccountPredicates(
+	legacyMatch := andAccountPredicates(
 		dbaccount.StatusEQ(service.StatusError),
 		orAccountPredicates(messagePredicates...),
 	)
+	return orAccountPredicates(directMatch, legacyMatch)
 }
 
 func inactiveAccountConditionSQL(statusColumn string) string {
@@ -279,7 +287,10 @@ func bannedAccountConditionSQL(statusColumn, errorMessageColumn string) string {
 	for _, keyword := range bannedAccountErrorMessageKeywords {
 		clauses = append(clauses, fmt.Sprintf("%s LIKE '%%%s%%'", normalizedErrorMessage, keyword))
 	}
-	return fmt.Sprintf("%s = '%s' AND (%s)", statusColumn, service.StatusError, strings.Join(clauses, " OR "))
+	// 直接匹配 status='banned' 或兼容历史数据 (status='error' + 关键词)
+	return fmt.Sprintf("(%s = '%s' OR (%s = '%s' AND (%s)))",
+		statusColumn, service.StatusBanned,
+		statusColumn, service.StatusError, strings.Join(clauses, " OR "))
 }
 
 func tempUnschedulableActivePredicate() dbpredicate.Account {

@@ -90,6 +90,11 @@ func Notes(v string) predicate.RedeemCode {
 	return predicate.RedeemCode(sql.FieldEQ(FieldNotes, v))
 }
 
+// WelfareNo applies equality check predicate on the "welfare_no" field. It's identical to WelfareNoEQ.
+func WelfareNo(v string) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldEQ(FieldWelfareNo, v))
+}
+
 // CreatedAt applies equality check predicate on the "created_at" field. It's identical to CreatedAtEQ.
 func CreatedAt(v time.Time) predicate.RedeemCode {
 	return predicate.RedeemCode(sql.FieldEQ(FieldCreatedAt, v))
@@ -498,6 +503,81 @@ func NotesEqualFold(v string) predicate.RedeemCode {
 // NotesContainsFold applies the ContainsFold predicate on the "notes" field.
 func NotesContainsFold(v string) predicate.RedeemCode {
 	return predicate.RedeemCode(sql.FieldContainsFold(FieldNotes, v))
+}
+
+// WelfareNoEQ applies the EQ predicate on the "welfare_no" field.
+func WelfareNoEQ(v string) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldEQ(FieldWelfareNo, v))
+}
+
+// WelfareNoNEQ applies the NEQ predicate on the "welfare_no" field.
+func WelfareNoNEQ(v string) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldNEQ(FieldWelfareNo, v))
+}
+
+// WelfareNoIn applies the In predicate on the "welfare_no" field.
+func WelfareNoIn(vs ...string) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldIn(FieldWelfareNo, vs...))
+}
+
+// WelfareNoNotIn applies the NotIn predicate on the "welfare_no" field.
+func WelfareNoNotIn(vs ...string) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldNotIn(FieldWelfareNo, vs...))
+}
+
+// WelfareNoGT applies the GT predicate on the "welfare_no" field.
+func WelfareNoGT(v string) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldGT(FieldWelfareNo, v))
+}
+
+// WelfareNoGTE applies the GTE predicate on the "welfare_no" field.
+func WelfareNoGTE(v string) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldGTE(FieldWelfareNo, v))
+}
+
+// WelfareNoLT applies the LT predicate on the "welfare_no" field.
+func WelfareNoLT(v string) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldLT(FieldWelfareNo, v))
+}
+
+// WelfareNoLTE applies the LTE predicate on the "welfare_no" field.
+func WelfareNoLTE(v string) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldLTE(FieldWelfareNo, v))
+}
+
+// WelfareNoContains applies the Contains predicate on the "welfare_no" field.
+func WelfareNoContains(v string) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldContains(FieldWelfareNo, v))
+}
+
+// WelfareNoHasPrefix applies the HasPrefix predicate on the "welfare_no" field.
+func WelfareNoHasPrefix(v string) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldHasPrefix(FieldWelfareNo, v))
+}
+
+// WelfareNoHasSuffix applies the HasSuffix predicate on the "welfare_no" field.
+func WelfareNoHasSuffix(v string) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldHasSuffix(FieldWelfareNo, v))
+}
+
+// WelfareNoIsNil applies the IsNil predicate on the "welfare_no" field.
+func WelfareNoIsNil() predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldIsNull(FieldWelfareNo))
+}
+
+// WelfareNoNotNil applies the NotNil predicate on the "welfare_no" field.
+func WelfareNoNotNil() predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldNotNull(FieldWelfareNo))
+}
+
+// WelfareNoEqualFold applies the EqualFold predicate on the "welfare_no" field.
+func WelfareNoEqualFold(v string) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldEqualFold(FieldWelfareNo, v))
+}
+
+// WelfareNoContainsFold applies the ContainsFold predicate on the "welfare_no" field.
+func WelfareNoContainsFold(v string) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldContainsFold(FieldWelfareNo, v))
 }
 
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.

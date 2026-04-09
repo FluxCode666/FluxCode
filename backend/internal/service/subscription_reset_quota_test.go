@@ -11,6 +11,32 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+type resetQuotaGrantRepoStub struct {
+	subscriptionGrantRepoNoop
+
+	resetDailyCalled   bool
+	resetWeeklyCalled  bool
+	resetMonthlyCalled bool
+	resetDailyErr      error
+	resetWeeklyErr     error
+	resetMonthlyErr    error
+}
+
+func (r *resetQuotaGrantRepoStub) ResetDailyUsageBySubscriptionID(context.Context, int64) error {
+	r.resetDailyCalled = true
+	return r.resetDailyErr
+}
+
+func (r *resetQuotaGrantRepoStub) ResetWeeklyUsageBySubscriptionID(context.Context, int64) error {
+	r.resetWeeklyCalled = true
+	return r.resetWeeklyErr
+}
+
+func (r *resetQuotaGrantRepoStub) ResetMonthlyUsageBySubscriptionID(context.Context, int64) error {
+	r.resetMonthlyCalled = true
+	return r.resetMonthlyErr
+}
+
 // resetQuotaUserSubRepoStub 支持 GetByID、ResetDailyUsage、ResetWeeklyUsage、ResetMonthlyUsage，
 // 其余方法继承 userSubRepoNoop（panic）。
 type resetQuotaUserSubRepoStub struct {
@@ -53,15 +79,33 @@ func (r *resetQuotaUserSubRepoStub) ResetMonthlyUsage(_ context.Context, _ int64
 	return r.resetMonthlyErr
 }
 
-func newResetQuotaSvc(stub *resetQuotaUserSubRepoStub) *SubscriptionService {
-	return NewSubscriptionService(groupRepoNoop{}, stub, nil, nil, nil, nil)
+func newResetQuotaSvc(subStub *resetQuotaUserSubRepoStub, grantStub *resetQuotaGrantRepoStub) *SubscriptionService {
+	return NewSubscriptionService(groupRepoNoop{}, subStub, grantStub, nil, nil, nil)
+}
+
+func TestAdminResetQuota_ResetsGrantUsage(t *testing.T) {
+	subStub := &resetQuotaUserSubRepoStub{
+		sub: &UserSubscription{ID: 1, UserID: 10, GroupID: 20},
+	}
+	grantStub := &resetQuotaGrantRepoStub{}
+	svc := newResetQuotaSvc(subStub, grantStub)
+
+	_, err := svc.AdminResetQuota(context.Background(), 1, true, true, true)
+
+	require.NoError(t, err)
+	require.True(t, subStub.resetDailyCalled)
+	require.True(t, subStub.resetWeeklyCalled)
+	require.True(t, subStub.resetMonthlyCalled)
+	require.True(t, grantStub.resetDailyCalled, "应调用 ResetDailyUsageBySubscriptionID")
+	require.True(t, grantStub.resetWeeklyCalled, "应调用 ResetWeeklyUsageBySubscriptionID")
+	require.True(t, grantStub.resetMonthlyCalled, "应调用 ResetMonthlyUsageBySubscriptionID")
 }
 
 func TestAdminResetQuota_ResetBoth(t *testing.T) {
 	stub := &resetQuotaUserSubRepoStub{
 		sub: &UserSubscription{ID: 1, UserID: 10, GroupID: 20},
 	}
-	svc := newResetQuotaSvc(stub)
+	svc := newResetQuotaSvc(stub, nil)
 
 	result, err := svc.AdminResetQuota(context.Background(), 1, true, true, false)
 
@@ -76,7 +120,7 @@ func TestAdminResetQuota_ResetDailyOnly(t *testing.T) {
 	stub := &resetQuotaUserSubRepoStub{
 		sub: &UserSubscription{ID: 2, UserID: 10, GroupID: 20},
 	}
-	svc := newResetQuotaSvc(stub)
+	svc := newResetQuotaSvc(stub, nil)
 
 	result, err := svc.AdminResetQuota(context.Background(), 2, true, false, false)
 
@@ -91,7 +135,7 @@ func TestAdminResetQuota_ResetWeeklyOnly(t *testing.T) {
 	stub := &resetQuotaUserSubRepoStub{
 		sub: &UserSubscription{ID: 3, UserID: 10, GroupID: 20},
 	}
-	svc := newResetQuotaSvc(stub)
+	svc := newResetQuotaSvc(stub, nil)
 
 	result, err := svc.AdminResetQuota(context.Background(), 3, false, true, false)
 
@@ -106,7 +150,7 @@ func TestAdminResetQuota_BothFalseReturnsError(t *testing.T) {
 	stub := &resetQuotaUserSubRepoStub{
 		sub: &UserSubscription{ID: 7, UserID: 10, GroupID: 20},
 	}
-	svc := newResetQuotaSvc(stub)
+	svc := newResetQuotaSvc(stub, nil)
 
 	_, err := svc.AdminResetQuota(context.Background(), 7, false, false, false)
 
@@ -118,7 +162,7 @@ func TestAdminResetQuota_BothFalseReturnsError(t *testing.T) {
 
 func TestAdminResetQuota_SubscriptionNotFound(t *testing.T) {
 	stub := &resetQuotaUserSubRepoStub{sub: nil}
-	svc := newResetQuotaSvc(stub)
+	svc := newResetQuotaSvc(stub, nil)
 
 	_, err := svc.AdminResetQuota(context.Background(), 999, true, true, true)
 
@@ -134,7 +178,7 @@ func TestAdminResetQuota_ResetDailyUsageError(t *testing.T) {
 		sub:           &UserSubscription{ID: 4, UserID: 10, GroupID: 20},
 		resetDailyErr: dbErr,
 	}
-	svc := newResetQuotaSvc(stub)
+	svc := newResetQuotaSvc(stub, nil)
 
 	_, err := svc.AdminResetQuota(context.Background(), 4, true, true, false)
 
@@ -149,7 +193,7 @@ func TestAdminResetQuota_ResetWeeklyUsageError(t *testing.T) {
 		sub:            &UserSubscription{ID: 5, UserID: 10, GroupID: 20},
 		resetWeeklyErr: dbErr,
 	}
-	svc := newResetQuotaSvc(stub)
+	svc := newResetQuotaSvc(stub, nil)
 
 	_, err := svc.AdminResetQuota(context.Background(), 5, false, true, false)
 
@@ -161,7 +205,7 @@ func TestAdminResetQuota_ResetMonthlyOnly(t *testing.T) {
 	stub := &resetQuotaUserSubRepoStub{
 		sub: &UserSubscription{ID: 8, UserID: 10, GroupID: 20},
 	}
-	svc := newResetQuotaSvc(stub)
+	svc := newResetQuotaSvc(stub, nil)
 
 	result, err := svc.AdminResetQuota(context.Background(), 8, false, false, true)
 
@@ -178,7 +222,7 @@ func TestAdminResetQuota_ResetMonthlyUsageError(t *testing.T) {
 		sub:             &UserSubscription{ID: 9, UserID: 10, GroupID: 20},
 		resetMonthlyErr: dbErr,
 	}
-	svc := newResetQuotaSvc(stub)
+	svc := newResetQuotaSvc(stub, nil)
 
 	_, err := svc.AdminResetQuota(context.Background(), 9, false, false, true)
 
@@ -196,7 +240,7 @@ func TestAdminResetQuota_ReturnsRefreshedSub(t *testing.T) {
 		},
 	}
 
-	svc := newResetQuotaSvc(stub)
+	svc := newResetQuotaSvc(stub, nil)
 	result, err := svc.AdminResetQuota(context.Background(), 6, true, false, false)
 
 	require.NoError(t, err)

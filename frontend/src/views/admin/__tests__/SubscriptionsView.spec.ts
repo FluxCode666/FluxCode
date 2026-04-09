@@ -137,6 +137,9 @@ const DataTableStub = defineComponent({
         <slot name="empty" />
       </div>
       <div v-for="row in data" :key="row.id" data-test="subscription-row">
+        <div data-test="group-cell">
+          <slot name="cell-group" :row="row" />
+        </div>
         <slot name="cell-usage" :row="row" />
       </div>
     </div>
@@ -333,5 +336,12 @@ describe('admin SubscriptionsView', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('$20.00')
+  })
+
+  it('shows quota multiplier badge in group cell when subscription is stacked', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+
+    expect(wrapper.get('[data-test="group-cell"]').text()).toContain('×2')
   })
 })

@@ -144,8 +144,9 @@ func (r *stubAccountRepo) UpdateLastUsed(ctx context.Context, id int64) error { 
 func (r *stubAccountRepo) BatchUpdateLastUsed(ctx context.Context, updates map[int64]time.Time) error {
 	return nil
 }
-func (r *stubAccountRepo) SetError(ctx context.Context, id int64, errorMsg string) error { return nil }
-func (r *stubAccountRepo) ClearError(ctx context.Context, id int64) error                { return nil }
+func (r *stubAccountRepo) SetError(ctx context.Context, id int64, errorMsg string) error  { return nil }
+func (r *stubAccountRepo) SetBanned(ctx context.Context, id int64, errorMsg string) error { return nil }
+func (r *stubAccountRepo) ClearError(ctx context.Context, id int64) error                 { return nil }
 func (r *stubAccountRepo) SetSchedulable(ctx context.Context, id int64, schedulable bool) error {
 	return nil
 }

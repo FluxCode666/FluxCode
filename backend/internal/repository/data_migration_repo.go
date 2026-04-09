@@ -112,6 +112,18 @@ func (r *DataMigrationRepository) run(
 		return nil, err
 	}
 
+	// Apply 模式下临时禁用目标库所有外键/触发器约束，避免跨阶段 TRUNCATE CASCADE
+	// 级联清空已迁移的表，以及源库存在孤立外键数据导致 INSERT 失败。
+	// session_replication_role = 'replica' 会让当前连接跳过所有用户触发器（含 FK 检查）。
+	if apply && targetDB != nil {
+		if _, err := targetDB.ExecContext(ctx, "SET session_replication_role = 'replica'"); err != nil {
+			return nil, fmt.Errorf("disable FK constraints: %w", err)
+		}
+		defer func() {
+			_, _ = targetDB.ExecContext(ctx, "SET session_replication_role = 'origin'")
+		}()
+	}
+
 	reports := make([]service.DataMigrationPhaseReport, 0, len(phases))
 	for _, phaseName := range phases {
 		tables := dataMigrationPhaseTables[phaseName]
@@ -366,7 +378,7 @@ func ensureMigrationSerialSequence(
 	var seq sql.NullString
 	if err := db.QueryRowContext(
 		ctx,
-		"SELECT pg_get_serial_sequence(format('%I.%I', $1, $2), $3)",
+		"SELECT pg_get_serial_sequence(format('%I.%I', $1::text, $2::text), $3::text)",
 		schema,
 		table,
 		column,
@@ -379,7 +391,7 @@ func ensureMigrationSerialSequence(
 
 	// Ensure sequence is at least MAX(id) so future inserts won't conflict after we copy explicit IDs.
 	_, err := db.ExecContext(ctx, fmt.Sprintf(
-		"SELECT setval($1::regclass, COALESCE((SELECT MAX(%s) FROM %s), 0), true)",
+		"SELECT setval($1::regclass, GREATEST(COALESCE((SELECT MAX(%s) FROM %s), 0), 1), false)",
 		quoteMigrationIdentifier(column),
 		qualifyMigrationTable(schema, table),
 	), seq.String)

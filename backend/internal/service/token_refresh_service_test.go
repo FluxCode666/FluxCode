@@ -32,6 +32,10 @@ func (r *tokenRefreshAccountRepo) SetError(ctx context.Context, id int64, errorM
 	return nil
 }
 
+func (r *tokenRefreshAccountRepo) SetBanned(ctx context.Context, id int64, errorMsg string) error {
+	return nil
+}
+
 func (r *tokenRefreshAccountRepo) ClearTempUnschedulable(ctx context.Context, id int64) error {
 	r.clearTempCalls++
 	return nil

@@ -100,6 +100,9 @@ func (m *sessionWindowMockRepo) BatchUpdateLastUsed(context.Context, map[int64]t
 func (m *sessionWindowMockRepo) SetError(context.Context, int64, string) error {
 	panic("unexpected")
 }
+func (m *sessionWindowMockRepo) SetBanned(context.Context, int64, string) error {
+	panic("unexpected")
+}
 func (m *sessionWindowMockRepo) ClearError(context.Context, int64) error { panic("unexpected") }
 func (m *sessionWindowMockRepo) SetSchedulable(context.Context, int64, bool) error {
 	panic("unexpected")

@@ -15,13 +15,20 @@ import (
 
 type rateLimitAccountRepoStub struct {
 	mockAccountRepoForGemini
-	setErrorCalls int
-	tempCalls     int
-	lastErrorMsg  string
+	setErrorCalls  int
+	setBannedCalls int
+	tempCalls      int
+	lastErrorMsg   string
 }
 
 func (r *rateLimitAccountRepoStub) SetError(ctx context.Context, id int64, errorMsg string) error {
 	r.setErrorCalls++
+	r.lastErrorMsg = errorMsg
+	return nil
+}
+
+func (r *rateLimitAccountRepoStub) SetBanned(ctx context.Context, id int64, errorMsg string) error {
+	r.setBannedCalls++
 	r.lastErrorMsg = errorMsg
 	return nil
 }
@@ -111,6 +118,42 @@ func TestRateLimitService_HandleUpstreamError_OAuth401InvalidatorError(t *testin
 	require.Equal(t, 0, repo.setErrorCalls)
 	require.Equal(t, 1, repo.tempCalls)
 	require.Len(t, invalidator.accounts, 1)
+}
+
+func TestRateLimitService_HandleUpstreamError_OpenAI401Deactivated_SetsBanned(t *testing.T) {
+	repo := &rateLimitAccountRepoStub{}
+	svc := NewRateLimitService(repo, nil, &config.Config{}, nil, nil)
+	account := &Account{
+		ID:       200,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+	}
+	body := []byte(`{"error":{"message":"Your OpenAI account has been deactivated, please check your email for more information."}}`)
+
+	shouldDisable := svc.HandleUpstreamError(context.Background(), account, 401, http.Header{}, body)
+
+	require.True(t, shouldDisable)
+	require.Equal(t, 1, repo.setBannedCalls, "should call SetBanned")
+	require.Equal(t, 0, repo.setErrorCalls, "should NOT call SetError")
+	require.Contains(t, repo.lastErrorMsg, "deactivated")
+}
+
+func TestRateLimitService_HandleUpstreamError_NonOpenAI401Deactivated_NotBanned(t *testing.T) {
+	// Gemini 平台的 deactivated 响应不应触发 banned（仅限 OpenAI）
+	repo := &rateLimitAccountRepoStub{}
+	svc := NewRateLimitService(repo, nil, &config.Config{}, nil, nil)
+	svc.SetTokenCacheInvalidator(&tokenCacheInvalidatorRecorder{})
+	account := &Account{
+		ID:       201,
+		Platform: PlatformGemini,
+		Type:     AccountTypeOAuth,
+	}
+	body := []byte(`{"error":{"message":"Your account has been deactivated"}}`)
+
+	shouldDisable := svc.HandleUpstreamError(context.Background(), account, 401, http.Header{}, body)
+
+	require.True(t, shouldDisable)
+	require.Equal(t, 0, repo.setBannedCalls, "non-OpenAI should NOT trigger banned")
 }
 
 func TestRateLimitService_HandleUpstreamError_NonOAuth401(t *testing.T) {

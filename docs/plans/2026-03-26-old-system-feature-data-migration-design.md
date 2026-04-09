@@ -321,6 +321,128 @@
 - 直接伪造迁移值风险较高
 - 更适合通过原始 `usage` 数据重建
 
+### 字段差异审计（2026-04-03 更新）
+
+对老项目与新项目所有迁移范围内表的 schema 进行逐字段对比，结论如下。
+
+#### ⚠️ 需处理：老项目有而新项目缺失的字段
+
+| 表 | 字段 | 老项目定义 | 新项目状态 | 风险 | 处理建议 |
+|---|---|---|---|---|---|
+| `redeem_codes` | `welfare_no` | `VARCHAR(64) NULLABLE` | **不存在** | **高 — 数据丢失** | 新项目需补齐该列及 `(used_by, welfare_no)` 唯一索引，否则迁移时列交集机制会丢弃此字段数据 |
+
+#### ✅ 安全：新项目有而老项目没有的字段（列交集跳过，使用默认值）
+
+以下字段在迁移时因列交集机制而不会从老库读取，目标端将使用 DB 默认值。已确认默认值语义正确，不影响业务。
+
+**accounts 表（4 个新增字段）：**
+
+| 字段 | 类型 | 默认值 | 说明 |
+|---|---|---|---|
+| `notes` | `text` | `NULL` | 管理员备注，迁移后为空 |
+| `load_factor` | `int` | `NULL` | 负载因子，新功能字段 |
+| `rate_multiplier` | `decimal(10,4)` | `1.0` | 账号计费倍率，默认 1.0 与老系统行为一致 |
+| `auto_pause_on_expired` | `bool` | `true` | 过期自动暂停，新功能字段 |
+
+> 注：`temp_unschedulable_until` 和 `temp_unschedulable_reason` 两个项目均有（老项目 migration 020），列交集会正确迁移。
+
+**groups 表（15+ 新增字段）：**
+
+| 字段 | 类型 | 默认值 | 说明 |
+|---|---|---|---|
+| `image_price_1k/2k/4k` | `decimal(20,8)` | `NULL` | 图片定价，新功能 |
+| `sora_image_price_360/540` | `decimal(20,8)` | `NULL` | Sora 图片定价 |
+| `sora_video_price_per_request(_hd)` | `decimal(20,8)` | `NULL` | Sora 视频定价 |
+| `sora_storage_quota_bytes` | `bigint` | `0` | Sora 存储配额 |
+| `claude_code_only` | `bool` | `false` | Claude Code 限制 |
+| `fallback_group_id` | `bigint` | `NULL` | 降级分组 ID |
+| `fallback_group_id_on_invalid_request` | `bigint` | `NULL` | 无效请求兜底分组 |
+| `model_routing` | `jsonb` | `NULL` | 模型路由配置 |
+| `model_routing_enabled` | `bool` | `false` | 模型路由开关 |
+| `mcp_xml_inject` | `bool` | `true` | MCP XML 注入 |
+| `supported_model_scopes` | `jsonb` | `["claude","gemini_text","gemini_image"]` | 支持的模型系列 |
+| `sort_order` | `int` | `0` | 分组排序 |
+| `allow_messages_dispatch` | `bool` | `false` | Messages 调度 |
+| `default_mapped_model` | `varchar(100)` | `""` | 默认映射模型 |
+
+**users 表（5 个新增字段）：**
+
+| 字段 | 类型 | 默认值 | 说明 |
+|---|---|---|---|
+| `totp_secret_encrypted` | `text` | `NULL` | TOTP 密钥，老系统无 TOTP |
+| `totp_enabled` | `bool` | `false` | TOTP 启用状态 |
+| `totp_enabled_at` | `timestamptz` | `NULL` | TOTP 启用时间 |
+| `sora_storage_quota_bytes` | `bigint` | `0` | Sora 存储配额 |
+| `sora_storage_used_bytes` | `bigint` | `0` | Sora 存储使用量 |
+
+**api_keys 表（14 个新增字段）：**
+
+| 字段 | 类型 | 默认值 | 说明 |
+|---|---|---|---|
+| `last_used_at` | `timestamptz` | `NULL` | 最后使用时间 |
+| `ip_whitelist` / `ip_blacklist` | `jsonb` | `NULL` | IP 限制 |
+| `quota` / `quota_used` | `decimal(20,8)` | `0` | 配额（0=无限） |
+| `expires_at` | `timestamptz` | `NULL` | 过期时间 |
+| `rate_limit_5h/1d/7d` | `decimal(20,8)` | `0` | 速率限制（0=无限） |
+| `usage_5h/1d/7d` | `decimal(20,8)` | `0` | 窗口内使用量 |
+| `window_5h/1d/7d_start` | `timestamptz` | `NULL` | 限速窗口起始 |
+
+**usage_logs 表（9 个新增字段）：**
+
+| 字段 | 类型 | 默认值 | 说明 |
+|---|---|---|---|
+| `requested_model` | `varchar(100)` | `NULL` | 客户请求模型 |
+| `upstream_model` | `varchar(100)` | `NULL` | 实际上游模型 |
+| `account_rate_multiplier` | `decimal(10,4)` | `NULL` | 账号倍率快照 |
+| `user_agent` | `varchar(512)` | `NULL` | 用户代理 |
+| `ip_address` | `varchar(45)` | `NULL` | IP 地址 |
+| `image_count` | `int` | `0` | 图片数量 |
+| `image_size` | `varchar(10)` | `NULL` | 图片尺寸 |
+| `media_type` | `varchar(16)` | `NULL` | 媒体类型 |
+| `cache_ttl_overridden` | `bool` | `false` | 缓存 TTL 覆盖标记 |
+
+#### ✅ 字段完全一致的表
+
+以下表在老项目与新项目之间字段定义完全一致（仅 import 路径和常量引用不同），迁移无风险：
+
+- `user_subscriptions`
+- `subscription_grants`
+- `user_allowed_groups`
+- `account_groups`
+- `user_attribute_definitions`
+- `user_attribute_values`
+- `proxies`
+- `settings`
+
+#### ✅ SQL-only 表结构一致性
+
+以下纯 SQL 定义的表在两个项目间结构一致（新项目为合并后的建表语句）：
+
+- `pricing_plan_groups` — 一致
+- `pricing_plans` — 新项目已合并 029/030/032 迁移，结构一致
+- `account_pool_alert_configs` — 新项目已合并 037-048 迁移，结构一致
+- `proxy_usage_metrics_hourly` — 一致
+- `ops_metrics_hourly` — 一致
+- `ops_metrics_daily` — 一致
+- `billing_usage_entries` — 一致
+- `orphan_allowed_groups_audit` — 一致
+
+#### 🔧 所需修复动作
+
+1. **[必须] 新项目补齐 `redeem_codes.welfare_no` 列**
+   - 在 `backend/ent/schema/redeem_code.go` 中添加 `welfare_no` 字段
+   - 新建 SQL 迁移文件添加 `ALTER TABLE redeem_codes ADD COLUMN IF NOT EXISTS welfare_no VARCHAR(64)`
+   - 创建 `(used_by, welfare_no)` 唯一索引
+   - 否则老系统福利码数据将在迁移时被截断
+
+2. **[建议] 确认 `accounts.rate_multiplier` 默认值 1.0 的语义**
+   - 老系统账号没有 `rate_multiplier` 概念，迁移后全部默认 1.0
+   - 需确认这不会改变原有计费行为（1.0 = 不加倍 = 与老系统一致）
+
+3. **[建议] 确认 `groups.mcp_xml_inject` 默认值 `true` 的影响**
+   - 老系统无此字段，迁移后全部分组默认开启 MCP XML 注入
+   - 若 antigravity 平台以外的分组也会触发注入逻辑，需确认是否有条件保护
+
 ### 明确排除的数据
 
 以下数据不纳入本次“旧系统数据迁移”范围：

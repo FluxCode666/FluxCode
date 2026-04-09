@@ -487,6 +487,32 @@ type AdminUserSubscription struct {
 	AssignedByUser *User `json:"assigned_by_user,omitempty"`
 }
 
+type SubscriptionGrantUsageWindow struct {
+	LimitUSD   float64 `json:"limit_usd"`
+	UsedUSD    float64 `json:"used_usd"`
+	Percentage float64 `json:"percentage"`
+	Unlimited  bool    `json:"unlimited"`
+}
+
+type SubscriptionGrantUsageDetail struct {
+	GrantID         int64                       `json:"grant_id"`
+	StartsAt        time.Time                   `json:"starts_at"`
+	ExpiresAt       time.Time                   `json:"expires_at"`
+	DailyUsageUSD   float64                     `json:"daily_usage_usd"`
+	WeeklyUsageUSD  float64                     `json:"weekly_usage_usd"`
+	MonthlyUsageUSD float64                     `json:"monthly_usage_usd"`
+	Daily           *SubscriptionGrantUsageWindow `json:"daily,omitempty"`
+	Weekly          *SubscriptionGrantUsageWindow `json:"weekly,omitempty"`
+	Monthly         *SubscriptionGrantUsageWindow `json:"monthly,omitempty"`
+}
+
+type ActiveSubscriptionGrantUsageResponse struct {
+	SubscriptionID int64                        `json:"subscription_id"`
+	GroupID        int64                        `json:"group_id"`
+	GroupName      string                       `json:"group_name"`
+	Grants         []SubscriptionGrantUsageDetail `json:"grants"`
+}
+
 type BulkAssignResult struct {
 	SuccessCount  int                     `json:"success_count"`
 	CreatedCount  int                     `json:"created_count"`

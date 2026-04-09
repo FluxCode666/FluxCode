@@ -59,6 +59,10 @@ func (RedeemCode) Fields() []ent.Field {
 			Optional().
 			Nillable().
 			SchemaType(map[string]string{dialect.Postgres: "text"}),
+		field.String("welfare_no").
+			MaxLen(64).
+			Optional().
+			Nillable(),
 		field.Time("created_at").
 			Immutable().
 			Default(time.Now).
@@ -93,6 +97,7 @@ func (RedeemCode) Indexes() []ent.Index {
 		// code 字段已在 Fields() 中声明 Unique()，无需重复索引
 		index.Fields("status"),
 		index.Fields("used_by"),
+		index.Fields("used_by", "welfare_no").Unique(),
 		index.Fields("group_id"),
 	}
 }

@@ -862,6 +862,10 @@ func (s *SubscriptionService) ListUserSubscriptions(ctx context.Context, userID 
 	if err != nil {
 		return nil, err
 	}
+	now := time.Now()
+	for i := range subs {
+		s.populateQuotaSnapshot(ctx, &subs[i], now)
+	}
 	normalizeExpiredWindows(subs)
 	normalizeSubscriptionStatus(subs)
 	return subs, nil
@@ -872,6 +876,10 @@ func (s *SubscriptionService) ListActiveUserSubscriptions(ctx context.Context, u
 	subs, err := s.userSubRepo.ListActiveByUserID(ctx, userID)
 	if err != nil {
 		return nil, err
+	}
+	now := time.Now()
+	for i := range subs {
+		s.populateQuotaSnapshot(ctx, &subs[i], now)
 	}
 	normalizeExpiredWindows(subs)
 	return subs, nil
@@ -884,6 +892,10 @@ func (s *SubscriptionService) ListGroupSubscriptions(ctx context.Context, groupI
 	if err != nil {
 		return nil, nil, err
 	}
+	now := time.Now()
+	for i := range subs {
+		s.populateQuotaSnapshot(ctx, &subs[i], now)
+	}
 	normalizeExpiredWindows(subs)
 	normalizeSubscriptionStatus(subs)
 	return subs, pag, nil
@@ -895,6 +907,10 @@ func (s *SubscriptionService) List(ctx context.Context, page, pageSize int, user
 	subs, pag, err := s.userSubRepo.List(ctx, params, userID, groupID, status, platform, sortBy, sortOrder)
 	if err != nil {
 		return nil, nil, err
+	}
+	now := time.Now()
+	for i := range subs {
+		s.populateQuotaSnapshot(ctx, &subs[i], now)
 	}
 	normalizeExpiredWindows(subs)
 	normalizeSubscriptionStatus(subs)
@@ -967,15 +983,30 @@ func (s *SubscriptionService) AdminResetQuota(ctx context.Context, subscriptionI
 		if err := s.userSubRepo.ResetDailyUsage(ctx, sub.ID, windowStart); err != nil {
 			return nil, err
 		}
+		if s.grantRepo != nil {
+			if err := s.grantRepo.ResetDailyUsageBySubscriptionID(ctx, sub.ID); err != nil {
+				return nil, err
+			}
+		}
 	}
 	if resetWeekly {
 		if err := s.userSubRepo.ResetWeeklyUsage(ctx, sub.ID, windowStart); err != nil {
 			return nil, err
 		}
+		if s.grantRepo != nil {
+			if err := s.grantRepo.ResetWeeklyUsageBySubscriptionID(ctx, sub.ID); err != nil {
+				return nil, err
+			}
+		}
 	}
 	if resetMonthly {
 		if err := s.userSubRepo.ResetMonthlyUsage(ctx, sub.ID, windowStart); err != nil {
 			return nil, err
+		}
+		if s.grantRepo != nil {
+			if err := s.grantRepo.ResetMonthlyUsageBySubscriptionID(ctx, sub.ID); err != nil {
+				return nil, err
+			}
 		}
 	}
 	// Invalidate L1 ristretto cache. Ristretto's Del() is asynchronous by design,
@@ -1003,6 +1034,11 @@ func (s *SubscriptionService) CheckAndResetWindows(ctx context.Context, sub *Use
 		if err := s.userSubRepo.ResetDailyUsage(ctx, sub.ID, windowStart); err != nil {
 			return err
 		}
+		if s.grantRepo != nil {
+			if err := s.grantRepo.ResetDailyUsageBySubscriptionID(ctx, sub.ID); err != nil {
+				return err
+			}
+		}
 		sub.DailyWindowStart = &windowStart
 		sub.DailyUsageUSD = 0
 		needsInvalidateCache = true
@@ -1013,6 +1049,11 @@ func (s *SubscriptionService) CheckAndResetWindows(ctx context.Context, sub *Use
 		if err := s.userSubRepo.ResetWeeklyUsage(ctx, sub.ID, windowStart); err != nil {
 			return err
 		}
+		if s.grantRepo != nil {
+			if err := s.grantRepo.ResetWeeklyUsageBySubscriptionID(ctx, sub.ID); err != nil {
+				return err
+			}
+		}
 		sub.WeeklyWindowStart = &windowStart
 		sub.WeeklyUsageUSD = 0
 		needsInvalidateCache = true
@@ -1022,6 +1063,11 @@ func (s *SubscriptionService) CheckAndResetWindows(ctx context.Context, sub *Use
 	if sub.NeedsMonthlyReset() {
 		if err := s.userSubRepo.ResetMonthlyUsage(ctx, sub.ID, windowStart); err != nil {
 			return err
+		}
+		if s.grantRepo != nil {
+			if err := s.grantRepo.ResetMonthlyUsageBySubscriptionID(ctx, sub.ID); err != nil {
+				return err
+			}
 		}
 		sub.MonthlyWindowStart = &windowStart
 		sub.MonthlyUsageUSD = 0

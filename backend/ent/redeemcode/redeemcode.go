@@ -28,6 +28,8 @@ const (
 	FieldUsedAt = "used_at"
 	// FieldNotes holds the string denoting the notes field in the database.
 	FieldNotes = "notes"
+	// FieldWelfareNo holds the string denoting the welfare_no field in the database.
+	FieldWelfareNo = "welfare_no"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
 	// FieldGroupID holds the string denoting the group_id field in the database.
@@ -68,6 +70,7 @@ var Columns = []string{
 	FieldUsedBy,
 	FieldUsedAt,
 	FieldNotes,
+	FieldWelfareNo,
 	FieldCreatedAt,
 	FieldGroupID,
 	FieldValidityDays,
@@ -97,6 +100,8 @@ var (
 	DefaultStatus string
 	// StatusValidator is a validator for the "status" field. It is called by the builders before save.
 	StatusValidator func(string) error
+	// WelfareNoValidator is a validator for the "welfare_no" field. It is called by the builders before save.
+	WelfareNoValidator func(string) error
 	// DefaultCreatedAt holds the default value on creation for the "created_at" field.
 	DefaultCreatedAt func() time.Time
 	// DefaultValidityDays holds the default value on creation for the "validity_days" field.
@@ -146,6 +151,11 @@ func ByUsedAt(opts ...sql.OrderTermOption) OrderOption {
 // ByNotes orders the results by the notes field.
 func ByNotes(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldNotes, opts...).ToFunc()
+}
+
+// ByWelfareNo orders the results by the welfare_no field.
+func ByWelfareNo(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldWelfareNo, opts...).ToFunc()
 }
 
 // ByCreatedAt orders the results by the created_at field.

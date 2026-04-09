@@ -5,6 +5,7 @@ const (
 	StatusActive   = "active"
 	StatusDisabled = "disabled"
 	StatusError    = "error"
+	StatusBanned   = "banned"
 	StatusUnused   = "unused"
 	StatusUsed     = "used"
 	StatusExpired  = "expired"

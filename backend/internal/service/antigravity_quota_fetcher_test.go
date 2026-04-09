@@ -442,6 +442,26 @@ func TestClassifyForbiddenType(t *testing.T) {
 			expected: "violation",
 		},
 		{
+			name:     "account deactivated",
+			body:     `Your account has been deactivated`,
+			expected: "violation",
+		},
+		{
+			name:     "account suspended",
+			body:     `{"error":{"message":"This account has been suspended"}}`,
+			expected: "violation",
+		},
+		{
+			name:     "organization has been disabled",
+			body:     `Your organization has been disabled`,
+			expected: "violation",
+		},
+		{
+			name:     "account has been banned",
+			body:     `This account has been banned for abuse`,
+			expected: "violation",
+		},
+		{
 			name:     "generic 403",
 			body:     `Access denied`,
 			expected: "forbidden",

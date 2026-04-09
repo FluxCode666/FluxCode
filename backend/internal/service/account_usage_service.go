@@ -618,12 +618,8 @@ func (s *AccountUsageService) probeOpenAICodexSnapshot(ctx context.Context, acco
 	req.Header.Set("OpenAI-Beta", "responses=experimental")
 	req.Header.Set("Originator", "codex_cli_rs")
 	req.Header.Set("Version", openAICodexProbeVersion)
+	// 发往 OpenAI 上游统一强制覆写 UA，不信任账号自定义 user_agent。
 	req.Header.Set("User-Agent", codexCLIUserAgent)
-	if s.identityCache != nil {
-		if fp, fpErr := s.identityCache.GetFingerprint(reqCtx, account.ID); fpErr == nil && fp != nil && strings.TrimSpace(fp.UserAgent) != "" {
-			req.Header.Set("User-Agent", strings.TrimSpace(fp.UserAgent))
-		}
-	}
 	if chatgptAccountID := account.GetChatGPTAccountID(); chatgptAccountID != "" {
 		req.Header.Set("chatgpt-account-id", chatgptAccountID)
 	}
@@ -911,12 +907,27 @@ func buildAntigravityDegradedUsage(err error) *UsageInfo {
 //
 //	降级逻辑设置了 needs_reauth，但账号实际是 403 封号/需验证，需覆盖为正确状态。
 func enrichUsageWithAccountError(info *UsageInfo, account *Account) {
-	if info == nil || account == nil || account.Status != StatusError {
+	if info == nil || account == nil {
+		return
+	}
+	// status='banned' 直接标记
+	if account.Status == StatusBanned {
+		info.IsForbidden = true
+		info.ForbiddenType = forbiddenTypeViolation
+		info.ForbiddenReason = account.ErrorMessage
+		info.IsBanned = true
+		info.ErrorCode = errorCodeForbidden
+		info.NeedsReauth = false
+		return
+	}
+	if account.Status != StatusError {
 		return
 	}
 	msg := strings.ToLower(account.ErrorMessage)
 	if !strings.Contains(msg, "403") && !strings.Contains(msg, "forbidden") &&
-		!strings.Contains(msg, "violation") && !strings.Contains(msg, "validation") {
+		!strings.Contains(msg, "violation") && !strings.Contains(msg, "validation") &&
+		!strings.Contains(msg, "deactivated") && !strings.Contains(msg, "suspended") &&
+		!strings.Contains(msg, "organization has been disabled") && !strings.Contains(msg, "account has been banned") {
 		return
 	}
 	fbType := classifyForbiddenType(account.ErrorMessage)

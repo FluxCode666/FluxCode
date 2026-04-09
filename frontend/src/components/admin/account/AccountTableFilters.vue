@@ -147,6 +147,7 @@ const statusOptions = computed(() => [
   { value: 'active', label: t('common.active') },
   { value: 'inactive', label: t('common.inactive') },
   { value: 'error', label: t('common.error') },
+  { value: 'banned', label: t('common.banned') },
   { value: 'rate_limited', label: t('admin.accounts.status.rateLimited') },
   { value: 'temp_unschedulable', label: t('admin.accounts.status.tempUnschedulable') },
   { value: 'expired', label: t('admin.accounts.expiration.expired') }

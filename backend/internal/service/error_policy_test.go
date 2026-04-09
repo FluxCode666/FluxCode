@@ -410,3 +410,7 @@ func (r *errorPolicyRepoStub) SetError(ctx context.Context, id int64, errorMsg s
 	r.lastErrorMsg = errorMsg
 	return nil
 }
+
+func (r *errorPolicyRepoStub) SetBanned(ctx context.Context, id int64, errorMsg string) error {
+	return nil
+}

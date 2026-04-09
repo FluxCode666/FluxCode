@@ -504,6 +504,8 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 	// Set common headers
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+authToken)
+	// 发往 OpenAI 上游统一强制覆写 UA，与线上转发行为保持一致。
+	req.Header.Set("User-Agent", codexCLIUserAgent)
 
 	// Set OAuth-specific headers for ChatGPT internal API
 	if isOAuth {

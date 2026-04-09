@@ -98,6 +98,9 @@ func (m *mockAccountRepoForGemini) BatchUpdateLastUsed(ctx context.Context, upda
 func (m *mockAccountRepoForGemini) SetError(ctx context.Context, id int64, errorMsg string) error {
 	return nil
 }
+func (m *mockAccountRepoForGemini) SetBanned(ctx context.Context, id int64, errorMsg string) error {
+	return nil
+}
 func (m *mockAccountRepoForGemini) ClearError(ctx context.Context, id int64) error {
 	return nil
 }

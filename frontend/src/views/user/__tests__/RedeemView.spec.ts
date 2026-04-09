@@ -127,10 +127,14 @@ const BaseDialogStub = defineComponent({
     title: {
       type: String,
       default: ''
+    },
+    width: {
+      type: String,
+      default: 'normal'
     }
   },
   template: `
-    <div v-if="show">
+    <div v-if="show" :data-width="width">
       <h2>{{ title }}</h2>
       <slot />
       <slot name="footer" />
@@ -199,6 +203,7 @@ describe('user RedeemView', () => {
 
     expect(redeem).toHaveBeenCalledWith('STACK-CODE')
     expect(wrapper.find('[data-test="subscription-choice-dialog"]').exists()).toBe(true)
+    expect(wrapper.find('[data-width="wide"]').exists()).toBe(true)
 
     await wrapper.get('[data-test="subscription-mode-stack"]').trigger('click')
     await nextTick()

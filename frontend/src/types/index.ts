@@ -679,7 +679,7 @@ export interface Account {
   current_concurrency?: number // Real-time concurrency count from Redis
   priority: number
   rate_multiplier?: number // Account billing multiplier (>=0, 0 means free)
-  status: 'active' | 'inactive' | 'error'
+  status: 'active' | 'inactive' | 'error' | 'banned'
   error_message: string | null
   last_used_at: string | null
   expires_at: number | null
@@ -1321,6 +1321,34 @@ export interface SubscriptionProgress {
   expires_at: string | null
   days_remaining: number | null
 }
+
+export interface SubscriptionGrantUsageWindow {
+  limit_usd: number
+  used_usd: number
+  percentage: number
+  unlimited: boolean
+}
+
+export interface AdminSubscriptionGrantUsage {
+  grant_id: number
+  starts_at: string
+  expires_at: string
+  daily_usage_usd: number
+  weekly_usage_usd: number
+  monthly_usage_usd: number
+  daily?: SubscriptionGrantUsageWindow
+  weekly?: SubscriptionGrantUsageWindow
+  monthly?: SubscriptionGrantUsageWindow
+}
+
+export interface ActiveSubscriptionGrantUsageResponse {
+  subscription_id: number
+  group_id: number
+  group_name: string
+  grants: AdminSubscriptionGrantUsage[]
+}
+
+export type UserSubscriptionGrantUsageResponse = ActiveSubscriptionGrantUsageResponse
 
 export interface AssignSubscriptionRequest {
   user_id: number

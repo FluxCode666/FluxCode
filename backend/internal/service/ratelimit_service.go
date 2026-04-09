@@ -149,6 +149,15 @@ func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Acc
 		}
 		// 其他 400 错误（如参数问题）不处理，不禁用账号
 	case 401:
+		// OpenAI 账号封禁/停用检测：401 + "account has been deactivated" → 标记为 banned
+		if s.shouldMarkBannedForOpenAIDeactivated(account, responseBody) {
+			msg := "Upstream account deactivated (401): scheduling disabled"
+			if upstreamMsg != "" {
+				msg = "Upstream account deactivated (401): " + upstreamMsg
+			}
+			s.handleBanned(ctx, account, msg)
+			return true
+		}
 		// OAuth 账号在 401 错误时临时不可调度（给 token 刷新窗口）；非 OAuth 账号保持原有 SetError 行为。
 		// Antigravity 除外：其 401 由 applyErrorPolicy 的 temp_unschedulable_rules 自行控制。
 		if account.Type == AccountTypeOAuth && account.Platform != PlatformAntigravity {
@@ -614,6 +623,36 @@ func (s *RateLimitService) handleAuthError(ctx context.Context, account *Account
 		return
 	}
 	slog.Warn("account_disabled_auth_error", "account_id", account.ID, "error", errorMsg)
+}
+
+// handleBanned 处理封号：将账号状态设为 banned，停止调度。
+// 仅用于确认永久封禁的场景（如 OpenAI 401 "account has been deactivated"）。
+func (s *RateLimitService) handleBanned(ctx context.Context, account *Account, reason string) {
+	if s == nil || s.accountRepo == nil || account == nil {
+		return
+	}
+	if err := s.accountRepo.SetBanned(ctx, account.ID, reason); err != nil {
+		slog.Warn("account_set_banned_failed", "account_id", account.ID, "error", err)
+		return
+	}
+	account.Status = StatusBanned
+	slog.Warn("account_banned", "account_id", account.ID, "reason", reason)
+}
+
+// shouldMarkBannedForOpenAIDeactivated 检测 OpenAI 平台 401 响应是否包含 "account has been deactivated"。
+// 该错误表示账号被永久停用，应标记为 banned 而非临时不可调度。
+func (s *RateLimitService) shouldMarkBannedForOpenAIDeactivated(account *Account, responseBody []byte) bool {
+	if s == nil || account == nil {
+		return false
+	}
+	if account.Platform != PlatformOpenAI {
+		return false
+	}
+	msg := strings.ToLower(strings.TrimSpace(extractUpstreamErrorMessage(responseBody)))
+	if msg == "" {
+		msg = strings.ToLower(string(responseBody))
+	}
+	return strings.Contains(msg, "account has been deactivated")
 }
 
 // handle403 处理 403 Forbidden 错误

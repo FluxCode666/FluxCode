@@ -806,6 +806,26 @@ export default {
     subscriptionModeExtend: 'Extend',
     subscriptionModeStack: 'Stack',
     modeGuideTitle: 'Redeem mode examples (daily view)',
+    modeGuideDesc:
+      'Preview before redeeming: extending increases covered days, while stacking increases same-day quota.',
+    modeGuideExtendTab: 'Extend duration',
+    modeGuideStackTab: 'Stack quota',
+    modeGuideStackCase1Tab: 'Case 1',
+    modeGuideStackCase2Tab: 'Case 2',
+    modeGuideBeforeCard: 'Before redeem (daily quota)',
+    modeGuideAfterCard: 'After redeem (daily quota)',
+    modeGuideDay: 'Day {day}',
+    modeGuideNow: 'Now',
+    modeGuideAddedDay: 'Added day',
+    modeGuideQuota: '${quota}/day',
+    modeGuideSegmentLine: '{start} ~ {end}, quota: {quota}',
+    modeGuideExtendHint: 'Extend example: same quota, more covered days.',
+    modeGuideStackHint:
+      'Example: an existing $60/day card ends at 2026-03-01 18:10. After stacking another $60/day card, quota is $120/day from 2026-02-24 15:00 to 2026-02-25 15:00, then $60/day until 2026-03-01 18:10.',
+    modeGuideStackHintCase2:
+      'Stack quota, case 2: an existing $60/day card ends at 02-24 18:10. After stacking another $60/day card at 02-24 15:00, quota is $120 from 02-24 15:00 ~ 02-24 18:10, then $60 from 02-24 18:10 ~ 02-25 15:00.',
+    modeGuideStackPriorityNote:
+      'The system consumes the earliest-expiring subscription first (marked in red).',
     subscriptionDays: '{days} days',
     days: ' days',
     codeRedeemSuccess: 'Code redeemed successfully!',
@@ -819,6 +839,7 @@ export default {
     subscriptionChoiceCurrentExpires: 'Current expiry',
     subscriptionChoiceValidityDays: 'Validity (days)',
     subscriptionChoiceCurrentMultiplier: 'Current quota',
+    subscriptionChoiceCancel: 'Cancel',
     subscriptionChoiceExtend: 'Extend expiry',
     subscriptionChoiceStack: 'Stack quota (from now)',
     subscriptionChoiceOptionExtendDesc:
@@ -828,7 +849,20 @@ export default {
     subscriptionChoicePreviewTitle: 'Redeem preview',
     subscriptionChoiceResultExpires: 'Result expiry',
     subscriptionChoiceResultMultiplier: 'Result quota',
-    subscriptionChoiceStackUntil: 'Stacked quota valid until'
+    subscriptionChoiceBeforeCardTitle: 'Before Redeem',
+    subscriptionChoiceAfterCardTitle: 'After Redeem Preview',
+    subscriptionChoiceAfterHint: 'Select a mode to preview the redeem result',
+    subscriptionChoiceStackUntil: 'Stacked quota valid until',
+    subscriptionChoiceTotalExpires: 'Total expiry',
+    subscriptionChoiceTimelineBefore: 'Before redeem (daily timeline)',
+    subscriptionChoiceTimelineAfter: 'After redeem (daily timeline)',
+    subscriptionChoiceCardDetailsTitle: 'Card details',
+    subscriptionChoiceCardMultiplier: 'Quota multiplier',
+    subscriptionChoiceCardRemaining: 'Remaining quota: ${value}',
+    subscriptionChoicePreviewLoadFailed:
+      'Failed to load subscription preview. You can still pick a mode and submit.',
+    subscriptionChoicePreviewNotFound:
+      'No subscription found for this group, full preview is unavailable.'
   },
 
   // Profile
@@ -2085,6 +2119,7 @@ export default {
         proxy: 'Proxy',
         lastUsed: 'Last Used',
         expiresAt: 'Expires At',
+        createdAt: 'Created At',
         actions: 'Actions'
       },
       privacyTrainingOff: 'Training data sharing disabled',
@@ -4871,10 +4906,13 @@ export default {
   userSubscriptions: {
     title: 'My Subscriptions',
     description: 'View your subscription plans and usage',
+    detailTitle: 'Subscription Detail',
+    closeDetail: 'Close detail',
     noActiveSubscriptions: 'No Active Subscriptions',
     noActiveSubscriptionsDesc:
       "You don't have any active subscriptions. Contact administrator to get one.",
     failedToLoad: 'Failed to load subscriptions',
+    detailLoadFailed: 'Failed to load subscription detail',
     status: {
       active: 'Active',
       expired: 'Expired',
@@ -4892,7 +4930,13 @@ export default {
     expiresOn: 'Expires on {date}',
     resetIn: 'Resets in {time}',
     windowNotActive: 'Awaiting first use',
-    usageOf: '{used} of {limit}'
+    usageOf: '{used} of {limit}',
+    timeline: {
+      title: 'Quota timeline',
+      now: 'Now',
+      segmentCount: '{count} segments',
+      segmentLine: '{start} ~ {end}, quota: {quota}'
+    }
   },
 
   // Onboarding Tour
