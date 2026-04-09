@@ -1,0 +1,297 @@
+# =============================================================================
+# Sub2API Caddyfile Template (集群模式)
+# =============================================================================
+# 由 caddy-entrypoint.sh 在容器启动时通过 envsubst 生成。
+# ${SITE_DOMAIN}       - 域名（如 api.sub2api.com）或 :80（HTTP 模式）
+# ${UPSTREAM_SERVERS}  - 后端地址列表（空格分隔，由 BACKEND_SERVERS 生成）
+# =============================================================================
+
+${SITE_DOMAIN} {
+
+	${TLS_CONFIG}
+
+	# =========================================================================
+	# 静态资源长期缓存
+	# =========================================================================
+	@static {
+		path /assets/*
+		path /logo.png
+		path /favicon.ico
+	}
+	header @static {
+		Cache-Control "public, max-age=31536000, immutable"
+		-Pragma
+		-Expires
+	}
+
+	# =========================================================================
+	# API 路由 → 反向代理到后端集群
+	# =========================================================================
+
+	# /api/* - 主 REST API（含管理后台 WebSocket /api/v1/admin/ops/ws/）
+	handle /api/* {
+		reverse_proxy ${UPSTREAM_SERVERS} {
+			lb_policy round_robin
+			lb_try_duration 5s
+			lb_try_interval 250ms
+
+			health_uri /health
+			health_interval 30s
+			health_timeout 10s
+			health_status 200
+
+			header_up X-Real-IP {remote_host}
+			header_up X-Forwarded-For {remote_host}
+			header_up X-Forwarded-Proto {scheme}
+			header_up X-Forwarded-Host {host}
+			header_up CF-Connecting-IP {http.request.header.CF-Connecting-IP}
+
+			transport http {
+				keepalive 120s
+				keepalive_idle_conns 256
+				read_buffer 16KB
+				write_buffer 16KB
+				compression off
+			}
+
+			fail_duration 30s
+			max_fails 3
+			unhealthy_status 500 502 503 504
+		}
+	}
+
+	# /v1/* - OpenAI 兼容网关 API（SSE 流式）
+	handle /v1/* {
+		reverse_proxy ${UPSTREAM_SERVERS} {
+			lb_policy round_robin
+			lb_try_duration 5s
+			lb_try_interval 250ms
+
+			header_up X-Real-IP {remote_host}
+			header_up X-Forwarded-For {remote_host}
+			header_up X-Forwarded-Proto {scheme}
+			header_up CF-Connecting-IP {http.request.header.CF-Connecting-IP}
+
+			transport http {
+				keepalive 120s
+				keepalive_idle_conns 256
+				compression off
+				response_header_timeout 300s
+			}
+
+			flush_interval -1
+
+			fail_duration 30s
+			max_fails 3
+			unhealthy_status 500 502 503 504
+		}
+	}
+
+	# /v1beta/* - Gemini 原生 API
+	handle /v1beta/* {
+		reverse_proxy ${UPSTREAM_SERVERS} {
+			lb_policy round_robin
+			lb_try_duration 5s
+			lb_try_interval 250ms
+
+			header_up X-Real-IP {remote_host}
+			header_up X-Forwarded-For {remote_host}
+			header_up X-Forwarded-Proto {scheme}
+			header_up CF-Connecting-IP {http.request.header.CF-Connecting-IP}
+
+			transport http {
+				keepalive 120s
+				keepalive_idle_conns 256
+				compression off
+				response_header_timeout 300s
+			}
+
+			flush_interval -1
+
+			fail_duration 30s
+			max_fails 3
+			unhealthy_status 500 502 503 504
+		}
+	}
+
+	# /responses* - OpenAI Responses API（WebSocket + HTTP）
+	handle /responses* {
+		reverse_proxy ${UPSTREAM_SERVERS} {
+			lb_policy round_robin
+			lb_try_duration 5s
+			lb_try_interval 250ms
+
+			header_up X-Real-IP {remote_host}
+			header_up X-Forwarded-For {remote_host}
+			header_up X-Forwarded-Proto {scheme}
+			header_up CF-Connecting-IP {http.request.header.CF-Connecting-IP}
+
+			transport http {
+				keepalive 120s
+				keepalive_idle_conns 256
+				compression off
+				response_header_timeout 3600s
+			}
+
+			flush_interval -1
+
+			fail_duration 30s
+			max_fails 3
+			unhealthy_status 500 502 503 504
+		}
+	}
+
+	# /chat/completions - OpenAI Chat Completions
+	handle /chat/completions {
+		reverse_proxy ${UPSTREAM_SERVERS} {
+			lb_policy round_robin
+
+			header_up X-Real-IP {remote_host}
+			header_up X-Forwarded-For {remote_host}
+			header_up X-Forwarded-Proto {scheme}
+			header_up CF-Connecting-IP {http.request.header.CF-Connecting-IP}
+
+			transport http {
+				keepalive 120s
+				compression off
+				response_header_timeout 300s
+			}
+
+			flush_interval -1
+		}
+	}
+
+	# /sora/* - Sora 客户端路由
+	handle /sora/* {
+		reverse_proxy ${UPSTREAM_SERVERS} {
+			lb_policy round_robin
+			lb_try_duration 5s
+			lb_try_interval 250ms
+
+			header_up X-Real-IP {remote_host}
+			header_up X-Forwarded-For {remote_host}
+			header_up X-Forwarded-Proto {scheme}
+			header_up CF-Connecting-IP {http.request.header.CF-Connecting-IP}
+
+			transport http {
+				keepalive 120s
+				compression off
+				response_header_timeout 300s
+			}
+
+			flush_interval -1
+
+			fail_duration 30s
+			max_fails 3
+			unhealthy_status 500 502 503 504
+		}
+	}
+
+	# /antigravity/* - Antigravity 路由
+	handle /antigravity/* {
+		reverse_proxy ${UPSTREAM_SERVERS} {
+			lb_policy round_robin
+
+			header_up X-Real-IP {remote_host}
+			header_up X-Forwarded-For {remote_host}
+			header_up X-Forwarded-Proto {scheme}
+			header_up CF-Connecting-IP {http.request.header.CF-Connecting-IP}
+
+			transport http {
+				keepalive 120s
+				compression off
+				response_header_timeout 300s
+			}
+
+			flush_interval -1
+		}
+	}
+
+	# /setup/* - 初始化设置向导
+	handle /setup/* {
+		reverse_proxy ${UPSTREAM_SERVERS} {
+			lb_policy round_robin
+
+			header_up X-Real-IP {remote_host}
+			header_up X-Forwarded-For {remote_host}
+			header_up X-Forwarded-Proto {scheme}
+		}
+	}
+
+	# /health - 健康检查
+	handle /health {
+		reverse_proxy ${UPSTREAM_SERVERS} {
+			lb_policy round_robin
+		}
+	}
+
+	# =========================================================================
+	# 前端静态文件 + SPA fallback
+	# =========================================================================
+	handle {
+		root * /srv/sub2api
+		try_files {path} /index.html
+		file_server
+
+		@html {
+			path /
+			path /index.html
+		}
+		header @html {
+			Cache-Control "no-cache, no-store, must-revalidate"
+			Pragma "no-cache"
+		}
+	}
+
+	# =========================================================================
+	# 压缩
+	# =========================================================================
+	encode {
+		zstd
+		gzip 6
+		minimum_length 256
+		match {
+			header Content-Type text/*
+			header Content-Type application/json*
+			header Content-Type application/javascript*
+			header Content-Type application/xml*
+			header Content-Type application/rss+xml*
+			header Content-Type image/svg+xml*
+		}
+	}
+
+	# =========================================================================
+	# 安全 Headers
+	# =========================================================================
+	header {
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+	}
+
+	# =========================================================================
+	# 请求大小限制
+	# =========================================================================
+	request_body {
+		max_size 256MB
+	}
+
+	# =========================================================================
+	# 日志
+	# =========================================================================
+	log {
+		output file /var/log/caddy/sub2api.log {
+			roll_size 50mb
+			roll_keep 10
+			roll_keep_for 720h
+		}
+		format json
+		level INFO
+	}
+
+	# =========================================================================
+	# 错误处理
+	# =========================================================================
+	handle_errors {
+		respond "{err.status_code} {err.status_text}"
+	}
+}

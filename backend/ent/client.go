@@ -29,6 +29,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/redeemcode"
 	"github.com/Wei-Shaw/sub2api/ent/securitysecret"
 	"github.com/Wei-Shaw/sub2api/ent/setting"
+	"github.com/Wei-Shaw/sub2api/ent/subscriptiongrant"
 	"github.com/Wei-Shaw/sub2api/ent/usagecleanuptask"
 	"github.com/Wei-Shaw/sub2api/ent/usagelog"
 	"github.com/Wei-Shaw/sub2api/ent/user"
@@ -73,6 +74,8 @@ type Client struct {
 	SecuritySecret *SecuritySecretClient
 	// Setting is the client for interacting with the Setting builders.
 	Setting *SettingClient
+	// SubscriptionGrant is the client for interacting with the SubscriptionGrant builders.
+	SubscriptionGrant *SubscriptionGrantClient
 	// UsageCleanupTask is the client for interacting with the UsageCleanupTask builders.
 	UsageCleanupTask *UsageCleanupTaskClient
 	// UsageLog is the client for interacting with the UsageLog builders.
@@ -112,6 +115,7 @@ func (c *Client) init() {
 	c.RedeemCode = NewRedeemCodeClient(c.config)
 	c.SecuritySecret = NewSecuritySecretClient(c.config)
 	c.Setting = NewSettingClient(c.config)
+	c.SubscriptionGrant = NewSubscriptionGrantClient(c.config)
 	c.UsageCleanupTask = NewUsageCleanupTaskClient(c.config)
 	c.UsageLog = NewUsageLogClient(c.config)
 	c.User = NewUserClient(c.config)
@@ -225,6 +229,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		RedeemCode:              NewRedeemCodeClient(cfg),
 		SecuritySecret:          NewSecuritySecretClient(cfg),
 		Setting:                 NewSettingClient(cfg),
+		SubscriptionGrant:       NewSubscriptionGrantClient(cfg),
 		UsageCleanupTask:        NewUsageCleanupTaskClient(cfg),
 		UsageLog:                NewUsageLogClient(cfg),
 		User:                    NewUserClient(cfg),
@@ -265,6 +270,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		RedeemCode:              NewRedeemCodeClient(cfg),
 		SecuritySecret:          NewSecuritySecretClient(cfg),
 		Setting:                 NewSettingClient(cfg),
+		SubscriptionGrant:       NewSubscriptionGrantClient(cfg),
 		UsageCleanupTask:        NewUsageCleanupTaskClient(cfg),
 		UsageLog:                NewUsageLogClient(cfg),
 		User:                    NewUserClient(cfg),
@@ -304,8 +310,9 @@ func (c *Client) Use(hooks ...Hook) {
 		c.APIKey, c.Account, c.AccountGroup, c.Announcement, c.AnnouncementRead,
 		c.ErrorPassthroughRule, c.Group, c.IdempotencyRecord, c.PromoCode,
 		c.PromoCodeUsage, c.Proxy, c.RedeemCode, c.SecuritySecret, c.Setting,
-		c.UsageCleanupTask, c.UsageLog, c.User, c.UserAllowedGroup,
-		c.UserAttributeDefinition, c.UserAttributeValue, c.UserSubscription,
+		c.SubscriptionGrant, c.UsageCleanupTask, c.UsageLog, c.User,
+		c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
+		c.UserSubscription,
 	} {
 		n.Use(hooks...)
 	}
@@ -318,8 +325,9 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 		c.APIKey, c.Account, c.AccountGroup, c.Announcement, c.AnnouncementRead,
 		c.ErrorPassthroughRule, c.Group, c.IdempotencyRecord, c.PromoCode,
 		c.PromoCodeUsage, c.Proxy, c.RedeemCode, c.SecuritySecret, c.Setting,
-		c.UsageCleanupTask, c.UsageLog, c.User, c.UserAllowedGroup,
-		c.UserAttributeDefinition, c.UserAttributeValue, c.UserSubscription,
+		c.SubscriptionGrant, c.UsageCleanupTask, c.UsageLog, c.User,
+		c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
+		c.UserSubscription,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -356,6 +364,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.SecuritySecret.mutate(ctx, m)
 	case *SettingMutation:
 		return c.Setting.mutate(ctx, m)
+	case *SubscriptionGrantMutation:
+		return c.SubscriptionGrant.mutate(ctx, m)
 	case *UsageCleanupTaskMutation:
 		return c.UsageCleanupTask.mutate(ctx, m)
 	case *UsageLogMutation:
@@ -2612,6 +2622,157 @@ func (c *SettingClient) mutate(ctx context.Context, m *SettingMutation) (Value, 
 	}
 }
 
+// SubscriptionGrantClient is a client for the SubscriptionGrant schema.
+type SubscriptionGrantClient struct {
+	config
+}
+
+// NewSubscriptionGrantClient returns a client for the SubscriptionGrant from the given config.
+func NewSubscriptionGrantClient(c config) *SubscriptionGrantClient {
+	return &SubscriptionGrantClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `subscriptiongrant.Hooks(f(g(h())))`.
+func (c *SubscriptionGrantClient) Use(hooks ...Hook) {
+	c.hooks.SubscriptionGrant = append(c.hooks.SubscriptionGrant, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `subscriptiongrant.Intercept(f(g(h())))`.
+func (c *SubscriptionGrantClient) Intercept(interceptors ...Interceptor) {
+	c.inters.SubscriptionGrant = append(c.inters.SubscriptionGrant, interceptors...)
+}
+
+// Create returns a builder for creating a SubscriptionGrant entity.
+func (c *SubscriptionGrantClient) Create() *SubscriptionGrantCreate {
+	mutation := newSubscriptionGrantMutation(c.config, OpCreate)
+	return &SubscriptionGrantCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of SubscriptionGrant entities.
+func (c *SubscriptionGrantClient) CreateBulk(builders ...*SubscriptionGrantCreate) *SubscriptionGrantCreateBulk {
+	return &SubscriptionGrantCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *SubscriptionGrantClient) MapCreateBulk(slice any, setFunc func(*SubscriptionGrantCreate, int)) *SubscriptionGrantCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &SubscriptionGrantCreateBulk{err: fmt.Errorf("calling to SubscriptionGrantClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*SubscriptionGrantCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &SubscriptionGrantCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for SubscriptionGrant.
+func (c *SubscriptionGrantClient) Update() *SubscriptionGrantUpdate {
+	mutation := newSubscriptionGrantMutation(c.config, OpUpdate)
+	return &SubscriptionGrantUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *SubscriptionGrantClient) UpdateOne(_m *SubscriptionGrant) *SubscriptionGrantUpdateOne {
+	mutation := newSubscriptionGrantMutation(c.config, OpUpdateOne, withSubscriptionGrant(_m))
+	return &SubscriptionGrantUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *SubscriptionGrantClient) UpdateOneID(id int64) *SubscriptionGrantUpdateOne {
+	mutation := newSubscriptionGrantMutation(c.config, OpUpdateOne, withSubscriptionGrantID(id))
+	return &SubscriptionGrantUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for SubscriptionGrant.
+func (c *SubscriptionGrantClient) Delete() *SubscriptionGrantDelete {
+	mutation := newSubscriptionGrantMutation(c.config, OpDelete)
+	return &SubscriptionGrantDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *SubscriptionGrantClient) DeleteOne(_m *SubscriptionGrant) *SubscriptionGrantDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *SubscriptionGrantClient) DeleteOneID(id int64) *SubscriptionGrantDeleteOne {
+	builder := c.Delete().Where(subscriptiongrant.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &SubscriptionGrantDeleteOne{builder}
+}
+
+// Query returns a query builder for SubscriptionGrant.
+func (c *SubscriptionGrantClient) Query() *SubscriptionGrantQuery {
+	return &SubscriptionGrantQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeSubscriptionGrant},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a SubscriptionGrant entity by its id.
+func (c *SubscriptionGrantClient) Get(ctx context.Context, id int64) (*SubscriptionGrant, error) {
+	return c.Query().Where(subscriptiongrant.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *SubscriptionGrantClient) GetX(ctx context.Context, id int64) *SubscriptionGrant {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QuerySubscription queries the subscription edge of a SubscriptionGrant.
+func (c *SubscriptionGrantClient) QuerySubscription(_m *SubscriptionGrant) *UserSubscriptionQuery {
+	query := (&UserSubscriptionClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(subscriptiongrant.Table, subscriptiongrant.FieldID, id),
+			sqlgraph.To(usersubscription.Table, usersubscription.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, subscriptiongrant.SubscriptionTable, subscriptiongrant.SubscriptionColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *SubscriptionGrantClient) Hooks() []Hook {
+	hooks := c.hooks.SubscriptionGrant
+	return append(hooks[:len(hooks):len(hooks)], subscriptiongrant.Hooks[:]...)
+}
+
+// Interceptors returns the client interceptors.
+func (c *SubscriptionGrantClient) Interceptors() []Interceptor {
+	inters := c.inters.SubscriptionGrant
+	return append(inters[:len(inters):len(inters)], subscriptiongrant.Interceptors[:]...)
+}
+
+func (c *SubscriptionGrantClient) mutate(ctx context.Context, m *SubscriptionGrantMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&SubscriptionGrantCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&SubscriptionGrantUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&SubscriptionGrantUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&SubscriptionGrantDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown SubscriptionGrant mutation op: %q", m.Op())
+	}
+}
+
 // UsageCleanupTaskClient is a client for the UsageCleanupTask schema.
 type UsageCleanupTaskClient struct {
 	config
@@ -3841,6 +4002,22 @@ func (c *UserSubscriptionClient) QueryAssignedByUser(_m *UserSubscription) *User
 	return query
 }
 
+// QueryGrants queries the grants edge of a UserSubscription.
+func (c *UserSubscriptionClient) QueryGrants(_m *UserSubscription) *SubscriptionGrantQuery {
+	query := (&SubscriptionGrantClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(usersubscription.Table, usersubscription.FieldID, id),
+			sqlgraph.To(subscriptiongrant.Table, subscriptiongrant.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, usersubscription.GrantsTable, usersubscription.GrantsColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
 // QueryUsageLogs queries the usage_logs edge of a UserSubscription.
 func (c *UserSubscriptionClient) QueryUsageLogs(_m *UserSubscription) *UsageLogQuery {
 	query := (&UsageLogClient{config: c.config}).Query()
@@ -3889,16 +4066,16 @@ type (
 	hooks struct {
 		APIKey, Account, AccountGroup, Announcement, AnnouncementRead,
 		ErrorPassthroughRule, Group, IdempotencyRecord, PromoCode, PromoCodeUsage,
-		Proxy, RedeemCode, SecuritySecret, Setting, UsageCleanupTask, UsageLog, User,
-		UserAllowedGroup, UserAttributeDefinition, UserAttributeValue,
-		UserSubscription []ent.Hook
+		Proxy, RedeemCode, SecuritySecret, Setting, SubscriptionGrant,
+		UsageCleanupTask, UsageLog, User, UserAllowedGroup, UserAttributeDefinition,
+		UserAttributeValue, UserSubscription []ent.Hook
 	}
 	inters struct {
 		APIKey, Account, AccountGroup, Announcement, AnnouncementRead,
 		ErrorPassthroughRule, Group, IdempotencyRecord, PromoCode, PromoCodeUsage,
-		Proxy, RedeemCode, SecuritySecret, Setting, UsageCleanupTask, UsageLog, User,
-		UserAllowedGroup, UserAttributeDefinition, UserAttributeValue,
-		UserSubscription []ent.Interceptor
+		Proxy, RedeemCode, SecuritySecret, Setting, SubscriptionGrant,
+		UsageCleanupTask, UsageLog, User, UserAllowedGroup, UserAttributeDefinition,
+		UserAttributeValue, UserSubscription []ent.Interceptor
 	}
 )
 

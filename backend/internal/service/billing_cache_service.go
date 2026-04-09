@@ -24,12 +24,14 @@ var (
 
 // subscriptionCacheData 订阅缓存数据结构（内部使用）
 type subscriptionCacheData struct {
-	Status       string
-	ExpiresAt    time.Time
-	DailyUsage   float64
-	WeeklyUsage  float64
-	MonthlyUsage float64
-	Version      int64
+	Status             string
+	ExpiresAt          time.Time
+	DailyUsage         float64
+	WeeklyUsage        float64
+	MonthlyUsage       float64
+	QuotaMultiplier    int
+	NextGrantExpiresAt *time.Time
+	Version            int64
 }
 
 // 缓存写入任务类型
@@ -86,6 +88,7 @@ type BillingCacheService struct {
 	cache                 BillingCache
 	userRepo              UserRepository
 	subRepo               UserSubscriptionRepository
+	grantRepo             SubscriptionGrantRepository
 	apiKeyRateLimitLoader apiKeyRateLimitLoader
 	cfg                   *config.Config
 	circuitBreaker        *billingCircuitBreaker
@@ -104,11 +107,12 @@ type BillingCacheService struct {
 }
 
 // NewBillingCacheService 创建计费缓存服务
-func NewBillingCacheService(cache BillingCache, userRepo UserRepository, subRepo UserSubscriptionRepository, apiKeyRepo APIKeyRepository, cfg *config.Config) *BillingCacheService {
+func NewBillingCacheService(cache BillingCache, userRepo UserRepository, subRepo UserSubscriptionRepository, grantRepo SubscriptionGrantRepository, apiKeyRepo APIKeyRepository, cfg *config.Config) *BillingCacheService {
 	svc := &BillingCacheService{
 		cache:                 cache,
 		userRepo:              userRepo,
 		subRepo:               subRepo,
+		grantRepo:             grantRepo,
 		apiKeyRateLimitLoader: apiKeyRepo,
 		cfg:                   cfg,
 	}
@@ -405,23 +409,27 @@ func (s *BillingCacheService) GetSubscriptionStatus(ctx context.Context, userID,
 
 func (s *BillingCacheService) convertFromPortsData(data *SubscriptionCacheData) *subscriptionCacheData {
 	return &subscriptionCacheData{
-		Status:       data.Status,
-		ExpiresAt:    data.ExpiresAt,
-		DailyUsage:   data.DailyUsage,
-		WeeklyUsage:  data.WeeklyUsage,
-		MonthlyUsage: data.MonthlyUsage,
-		Version:      data.Version,
+		Status:             data.Status,
+		ExpiresAt:          data.ExpiresAt,
+		DailyUsage:         data.DailyUsage,
+		WeeklyUsage:        data.WeeklyUsage,
+		MonthlyUsage:       data.MonthlyUsage,
+		QuotaMultiplier:    data.QuotaMultiplier,
+		NextGrantExpiresAt: data.NextGrantExpiresAt,
+		Version:            data.Version,
 	}
 }
 
 func (s *BillingCacheService) convertToPortsData(data *subscriptionCacheData) *SubscriptionCacheData {
 	return &SubscriptionCacheData{
-		Status:       data.Status,
-		ExpiresAt:    data.ExpiresAt,
-		DailyUsage:   data.DailyUsage,
-		WeeklyUsage:  data.WeeklyUsage,
-		MonthlyUsage: data.MonthlyUsage,
-		Version:      data.Version,
+		Status:             data.Status,
+		ExpiresAt:          data.ExpiresAt,
+		DailyUsage:         data.DailyUsage,
+		WeeklyUsage:        data.WeeklyUsage,
+		MonthlyUsage:       data.MonthlyUsage,
+		QuotaMultiplier:    data.QuotaMultiplier,
+		NextGrantExpiresAt: data.NextGrantExpiresAt,
+		Version:            data.Version,
 	}
 }
 
@@ -432,14 +440,48 @@ func (s *BillingCacheService) getSubscriptionFromDB(ctx context.Context, userID,
 		return nil, fmt.Errorf("get subscription: %w", err)
 	}
 
-	return &subscriptionCacheData{
-		Status:       sub.Status,
-		ExpiresAt:    sub.ExpiresAt,
-		DailyUsage:   sub.DailyUsageUSD,
-		WeeklyUsage:  sub.WeeklyUsageUSD,
-		MonthlyUsage: sub.MonthlyUsageUSD,
-		Version:      sub.UpdatedAt.Unix(),
-	}, nil
+	out := &subscriptionCacheData{
+		Status:          sub.Status,
+		ExpiresAt:       sub.ExpiresAt,
+		DailyUsage:      sub.DailyUsageUSD,
+		WeeklyUsage:     sub.WeeklyUsageUSD,
+		MonthlyUsage:    sub.MonthlyUsageUSD,
+		QuotaMultiplier: 1,
+		Version:         sub.UpdatedAt.Unix(),
+	}
+
+	if s.grantRepo == nil {
+		return out, nil
+	}
+
+	at := time.Now()
+	count, err := s.grantRepo.CountActiveBySubscriptionID(ctx, sub.ID, at)
+	if err != nil {
+		logger.LegacyPrintf("service.billing_cache", "Warning: count active grants failed in cache warmup for subscription %d: %v", sub.ID, err)
+		return out, nil
+	}
+	if count <= 0 {
+		return out, nil
+	}
+	out.QuotaMultiplier = count
+
+	daily, weekly, monthly, err := s.grantRepo.SumActiveUsageBySubscriptionID(ctx, sub.ID, at)
+	if err != nil {
+		logger.LegacyPrintf("service.billing_cache", "Warning: sum active grant usage failed in cache warmup for subscription %d: %v", sub.ID, err)
+		return out, nil
+	}
+	out.DailyUsage = daily
+	out.WeeklyUsage = weekly
+	out.MonthlyUsage = monthly
+
+	nextExpiry, err := s.grantRepo.MinActiveExpiresAtBySubscriptionID(ctx, sub.ID, at)
+	if err != nil {
+		logger.LegacyPrintf("service.billing_cache", "Warning: min active grant expiry failed in cache warmup for subscription %d: %v", sub.ID, err)
+		return out, nil
+	}
+	out.NextGrantExpiresAt = nextExpiry
+
+	return out, nil
 }
 
 // setSubscriptionCache 设置订阅缓存
@@ -713,16 +755,21 @@ func (s *BillingCacheService) checkSubscriptionEligibility(ctx context.Context, 
 		return ErrSubscriptionInvalid
 	}
 
+	multiplier := subData.QuotaMultiplier
+	if multiplier < 1 {
+		multiplier = 1
+	}
+
 	// 检查限额（使用传入的Group限额配置）
-	if group.HasDailyLimit() && subData.DailyUsage >= *group.DailyLimitUSD {
+	if group.HasDailyLimit() && subData.DailyUsage >= (*group.DailyLimitUSD*float64(multiplier)) {
 		return ErrDailyLimitExceeded
 	}
 
-	if group.HasWeeklyLimit() && subData.WeeklyUsage >= *group.WeeklyLimitUSD {
+	if group.HasWeeklyLimit() && subData.WeeklyUsage >= (*group.WeeklyLimitUSD*float64(multiplier)) {
 		return ErrWeeklyLimitExceeded
 	}
 
-	if group.HasMonthlyLimit() && subData.MonthlyUsage >= *group.MonthlyLimitUSD {
+	if group.HasMonthlyLimit() && subData.MonthlyUsage >= (*group.MonthlyLimitUSD*float64(multiplier)) {
 		return ErrMonthlyLimitExceeded
 	}
 

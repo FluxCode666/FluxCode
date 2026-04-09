@@ -67,11 +67,13 @@ type UserSubscriptionEdges struct {
 	Group *Group `json:"group,omitempty"`
 	// AssignedByUser holds the value of the assigned_by_user edge.
 	AssignedByUser *User `json:"assigned_by_user,omitempty"`
+	// Grants holds the value of the grants edge.
+	Grants []*SubscriptionGrant `json:"grants,omitempty"`
 	// UsageLogs holds the value of the usage_logs edge.
 	UsageLogs []*UsageLog `json:"usage_logs,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [4]bool
+	loadedTypes [5]bool
 }
 
 // UserOrErr returns the User value or an error if the edge
@@ -107,10 +109,19 @@ func (e UserSubscriptionEdges) AssignedByUserOrErr() (*User, error) {
 	return nil, &NotLoadedError{edge: "assigned_by_user"}
 }
 
+// GrantsOrErr returns the Grants value or an error if the edge
+// was not loaded in eager-loading.
+func (e UserSubscriptionEdges) GrantsOrErr() ([]*SubscriptionGrant, error) {
+	if e.loadedTypes[3] {
+		return e.Grants, nil
+	}
+	return nil, &NotLoadedError{edge: "grants"}
+}
+
 // UsageLogsOrErr returns the UsageLogs value or an error if the edge
 // was not loaded in eager-loading.
 func (e UserSubscriptionEdges) UsageLogsOrErr() ([]*UsageLog, error) {
-	if e.loadedTypes[3] {
+	if e.loadedTypes[4] {
 		return e.UsageLogs, nil
 	}
 	return nil, &NotLoadedError{edge: "usage_logs"}
@@ -284,6 +295,11 @@ func (_m *UserSubscription) QueryGroup() *GroupQuery {
 // QueryAssignedByUser queries the "assigned_by_user" edge of the UserSubscription entity.
 func (_m *UserSubscription) QueryAssignedByUser() *UserQuery {
 	return NewUserSubscriptionClient(_m.config).QueryAssignedByUser(_m)
+}
+
+// QueryGrants queries the "grants" edge of the UserSubscription entity.
+func (_m *UserSubscription) QueryGrants() *SubscriptionGrantQuery {
+	return NewUserSubscriptionClient(_m.config).QueryGrants(_m)
 }
 
 // QueryUsageLogs queries the "usage_logs" edge of the UserSubscription entity.

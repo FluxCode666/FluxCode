@@ -7188,6 +7188,7 @@ type RecordUsageInput struct {
 	User               *User
 	Account            *Account
 	Subscription       *UserSubscription  // 可选：订阅信息
+	BilledAt           time.Time          // 计费归属时刻（用于按 grant 活跃集分摊）
 	InboundEndpoint    string             // 入站端点（客户端请求路径）
 	UpstreamEndpoint   string             // 上游端点（标准化后的上游路径）
 	UserAgent          string             // 请求的 User-Agent
@@ -7218,6 +7219,7 @@ type postUsageBillingParams struct {
 	APIKey                *APIKey
 	Account               *Account
 	Subscription          *UserSubscription
+	BilledAt              time.Time
 	RequestPayloadHash    string
 	IsSubscriptionBill    bool
 	AccountRateMultiplier float64
@@ -7238,10 +7240,23 @@ func postUsageBilling(ctx context.Context, p *postUsageBillingParams, deps *bill
 	// 1. 订阅 / 余额扣费
 	if p.IsSubscriptionBill {
 		if cost.TotalCost > 0 {
-			if err := deps.userSubRepo.IncrementUsage(billingCtx, p.Subscription.ID, cost.TotalCost); err != nil {
-				slog.Error("increment subscription usage failed", "subscription_id", p.Subscription.ID, "error", err)
+			billedAt := p.BilledAt
+			if billedAt.IsZero() {
+				billedAt = time.Now()
 			}
-			deps.billingCacheService.QueueUpdateSubscriptionUsage(p.User.ID, *p.APIKey.GroupID, cost.TotalCost)
+			if deps.billingCacheService != nil && deps.billingCacheService.grantRepo != nil && p.Subscription != nil {
+				if err := deps.billingCacheService.grantRepo.AllocateUsageToActiveGrants(billingCtx, p.Subscription.ID, p.APIKey.Group, billedAt, cost.TotalCost); err != nil {
+					slog.Error("allocate subscription grant usage failed", "subscription_id", p.Subscription.ID, "error", err)
+				}
+			}
+			if deps.userSubRepo != nil {
+				if err := deps.userSubRepo.IncrementUsage(billingCtx, p.Subscription.ID, cost.TotalCost); err != nil {
+					slog.Error("increment subscription usage failed", "subscription_id", p.Subscription.ID, "error", err)
+				}
+			}
+			if deps.billingCacheService != nil && p.APIKey != nil && p.APIKey.GroupID != nil && p.User != nil {
+				deps.billingCacheService.QueueUpdateSubscriptionUsage(p.User.ID, *p.APIKey.GroupID, cost.TotalCost)
+			}
 		}
 	} else {
 		if cost.ActualCost > 0 {
@@ -7319,6 +7334,7 @@ func buildUsageBillingCommand(requestID string, usageLog *UsageLog, p *postUsage
 		AccountID:          p.Account.ID,
 		AccountType:        p.Account.Type,
 		RequestPayloadHash: strings.TrimSpace(p.RequestPayloadHash),
+		BilledAt:           p.BilledAt,
 	}
 	if usageLog != nil {
 		cmd.Model = usageLog.Model
@@ -7486,6 +7502,10 @@ func (s *GatewayService) RecordUsage(ctx context.Context, input *RecordUsageInpu
 	user := input.User
 	account := input.Account
 	subscription := input.Subscription
+	billedAt := input.BilledAt
+	if billedAt.IsZero() {
+		billedAt = time.Now()
+	}
 
 	// 强制缓存计费：将 input_tokens 转为 cache_read_input_tokens
 	// 用于粘性会话切换时的特殊计费处理
@@ -7615,7 +7635,7 @@ func (s *GatewayService) RecordUsage(ctx context.Context, input *RecordUsageInpu
 		ImageSize:             imageSize,
 		MediaType:             mediaType,
 		CacheTTLOverridden:    cacheTTLOverridden,
-		CreatedAt:             time.Now(),
+		CreatedAt:             billedAt,
 	}
 
 	// 添加 UserAgent
@@ -7650,6 +7670,7 @@ func (s *GatewayService) RecordUsage(ctx context.Context, input *RecordUsageInpu
 			APIKey:                apiKey,
 			Account:               account,
 			Subscription:          subscription,
+			BilledAt:              billedAt,
 			RequestPayloadHash:    resolveUsageBillingPayloadFingerprint(ctx, input.RequestPayloadHash),
 			IsSubscriptionBill:    isSubscriptionBilling,
 			AccountRateMultiplier: accountRateMultiplier,
@@ -7673,6 +7694,7 @@ type RecordUsageLongContextInput struct {
 	User                  *User
 	Account               *Account
 	Subscription          *UserSubscription  // 可选：订阅信息
+	BilledAt              time.Time          // 计费归属时刻（用于按 grant 活跃集分摊）
 	InboundEndpoint       string             // 入站端点（客户端请求路径）
 	UpstreamEndpoint      string             // 上游端点（标准化后的上游路径）
 	UserAgent             string             // 请求的 User-Agent
@@ -7691,6 +7713,10 @@ func (s *GatewayService) RecordUsageWithLongContext(ctx context.Context, input *
 	user := input.User
 	account := input.Account
 	subscription := input.Subscription
+	billedAt := input.BilledAt
+	if billedAt.IsZero() {
+		billedAt = time.Now()
+	}
 
 	// 强制缓存计费：将 input_tokens 转为 cache_read_input_tokens
 	// 用于粘性会话切换时的特殊计费处理
@@ -7798,7 +7824,7 @@ func (s *GatewayService) RecordUsageWithLongContext(ctx context.Context, input *
 		ImageCount:            result.ImageCount,
 		ImageSize:             imageSize,
 		CacheTTLOverridden:    cacheTTLOverridden,
-		CreatedAt:             time.Now(),
+		CreatedAt:             billedAt,
 	}
 
 	// 添加 UserAgent
@@ -7833,6 +7859,7 @@ func (s *GatewayService) RecordUsageWithLongContext(ctx context.Context, input *
 			APIKey:                apiKey,
 			Account:               account,
 			Subscription:          subscription,
+			BilledAt:              billedAt,
 			RequestPayloadHash:    resolveUsageBillingPayloadFingerprint(ctx, input.RequestPayloadHash),
 			IsSubscriptionBill:    isSubscriptionBilling,
 			AccountRateMultiplier: accountRateMultiplier,

@@ -40,10 +40,11 @@ func NewSubscriptionHandler(subscriptionService *service.SubscriptionService) *S
 
 // AssignSubscriptionRequest represents assign subscription request
 type AssignSubscriptionRequest struct {
-	UserID       int64  `json:"user_id" binding:"required"`
-	GroupID      int64  `json:"group_id" binding:"required"`
-	ValidityDays int    `json:"validity_days" binding:"omitempty,max=36500"` // max 100 years
-	Notes        string `json:"notes"`
+	UserID           int64  `json:"user_id" binding:"required"`
+	GroupID          int64  `json:"group_id" binding:"required"`
+	ValidityDays     int    `json:"validity_days" binding:"omitempty,max=36500"` // max 100 years
+	SubscriptionMode string `json:"subscription_mode" binding:"omitempty,oneof=extend stack"`
+	Notes            string `json:"notes"`
 }
 
 // BulkAssignSubscriptionRequest represents bulk assign subscription request
@@ -144,12 +145,13 @@ func (h *SubscriptionHandler) Assign(c *gin.Context) {
 	// Get admin user ID from context
 	adminID := getAdminIDFromContext(c)
 
-	subscription, err := h.subscriptionService.AssignSubscription(c.Request.Context(), &service.AssignSubscriptionInput{
-		UserID:       req.UserID,
-		GroupID:      req.GroupID,
-		ValidityDays: req.ValidityDays,
-		AssignedBy:   adminID,
-		Notes:        req.Notes,
+	subscription, err := h.subscriptionService.AssignSubscriptionWithMode(c.Request.Context(), &service.AssignSubscriptionWithModeInput{
+		UserID:           req.UserID,
+		GroupID:          req.GroupID,
+		ValidityDays:     req.ValidityDays,
+		AssignedBy:       adminID,
+		SubscriptionMode: service.SubscriptionMode(req.SubscriptionMode),
+		Notes:            req.Notes,
 	})
 	if err != nil {
 		response.ErrorFrom(c, err)

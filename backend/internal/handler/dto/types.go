@@ -307,8 +307,9 @@ type RedeemCode struct {
 	UsedAt    *time.Time `json:"used_at"`
 	CreatedAt time.Time  `json:"created_at"`
 
-	GroupID      *int64 `json:"group_id"`
-	ValidityDays int    `json:"validity_days"`
+	GroupID          *int64  `json:"group_id"`
+	ValidityDays     int     `json:"validity_days"`
+	SubscriptionMode *string `json:"subscription_mode,omitempty"`
 
 	// Notes is only populated for admin_balance/admin_concurrency types
 	// so users can see why they were charged or credited
@@ -454,9 +455,10 @@ type UserSubscription struct {
 	UserID  int64 `json:"user_id"`
 	GroupID int64 `json:"group_id"`
 
-	StartsAt  time.Time `json:"starts_at"`
-	ExpiresAt time.Time `json:"expires_at"`
-	Status    string    `json:"status"`
+	StartsAt        time.Time `json:"starts_at"`
+	ExpiresAt       time.Time `json:"expires_at"`
+	Status          string    `json:"status"`
+	QuotaMultiplier int       `json:"quota_multiplier"`
 
 	DailyWindowStart   *time.Time `json:"daily_window_start"`
 	WeeklyWindowStart  *time.Time `json:"weekly_window_start"`
@@ -518,4 +520,50 @@ type PromoCodeUsage struct {
 	UsedAt      time.Time `json:"used_at"`
 
 	User *User `json:"user,omitempty"`
+}
+
+// PricingPlanGroup represents a pricing plan group for the public pricing page
+type PricingPlanGroup struct {
+	ID          int64   `json:"id"`
+	Name        string  `json:"name"`
+	Description *string `json:"description"`
+	SortOrder   int     `json:"sort_order"`
+	Status      string  `json:"status"`
+
+	Plans []PricingPlan `json:"plans,omitempty"`
+
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// PricingPlan represents a single pricing plan
+type PricingPlan struct {
+	ID          int64   `json:"id"`
+	GroupID     int64   `json:"group_id"`
+	Name        string  `json:"name"`
+	Description *string `json:"description"`
+
+	IconURL   *string `json:"icon_url"`
+	BadgeText *string `json:"badge_text"`
+	Tagline   *string `json:"tagline"`
+
+	PriceAmount   *float64 `json:"price_amount"`
+	PriceCurrency string   `json:"price_currency"`
+	PricePeriod   string   `json:"price_period"`
+	PriceText     *string  `json:"price_text"`
+
+	Features       []string                   `json:"features"`
+	ContactMethods []PricingPlanContactMethod `json:"contact_methods"`
+	IsFeatured     bool                       `json:"is_featured"`
+	SortOrder      int                        `json:"sort_order"`
+	Status         string                     `json:"status"`
+
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// PricingPlanContactMethod represents a contact method for a pricing plan
+type PricingPlanContactMethod struct {
+	Type  string `json:"type"`
+	Value string `json:"value"`
 }

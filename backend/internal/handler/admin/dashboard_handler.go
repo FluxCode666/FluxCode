@@ -470,6 +470,27 @@ func (h *DashboardHandler) GetUserUsageTrend(c *gin.Context) {
 	})
 }
 
+// GetProxyUsageSummary handles getting proxy usage timeline data
+// GET /api/v1/admin/dashboard/proxies-usage
+// Query params: start_date, end_date (YYYY-MM-DD), granularity (day/hour), hours
+func (h *DashboardHandler) GetProxyUsageSummary(c *gin.Context) {
+	startTime, endTime := parseTimeRange(c)
+	granularity := c.DefaultQuery("granularity", "day")
+
+	items, err := h.dashboardService.GetProxyUsageSummary(c.Request.Context(), startTime, endTime, granularity)
+	if err != nil {
+		response.Error(c, 500, "Failed to get proxy usage summary")
+		return
+	}
+
+	response.Success(c, gin.H{
+		"items":       items,
+		"start_date":  startTime.Format("2006-01-02"),
+		"end_date":    endTime.Add(-time.Nanosecond).Format("2006-01-02"),
+		"granularity": granularity,
+	})
+}
+
 // BatchUsersUsageRequest represents the request body for batch user usage stats
 type BatchUsersUsageRequest struct {
 	UserIDs []int64 `json:"user_ids" binding:"required"`

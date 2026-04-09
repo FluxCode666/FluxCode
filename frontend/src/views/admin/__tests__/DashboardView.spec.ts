@@ -4,10 +4,11 @@ import { flushPromises, mount } from '@vue/test-utils'
 import type { DashboardStats } from '@/types'
 import DashboardView from '../DashboardView.vue'
 
-const { getSnapshotV2, getUserUsageTrend, getUserSpendingRanking } = vi.hoisted(() => ({
+const { getSnapshotV2, getUserUsageTrend, getUserSpendingRanking, getProxyUsageSummary } = vi.hoisted(() => ({
   getSnapshotV2: vi.fn(),
   getUserUsageTrend: vi.fn(),
-  getUserSpendingRanking: vi.fn()
+  getUserSpendingRanking: vi.fn(),
+  getProxyUsageSummary: vi.fn()
 }))
 
 vi.mock('@/api/admin', () => ({
@@ -15,7 +16,8 @@ vi.mock('@/api/admin', () => ({
     dashboard: {
       getSnapshotV2,
       getUserUsageTrend,
-      getUserSpendingRanking
+      getUserSpendingRanking,
+      getProxyUsageSummary
     }
   }
 }))
@@ -90,6 +92,7 @@ describe('admin DashboardView', () => {
     getSnapshotV2.mockReset()
     getUserUsageTrend.mockReset()
     getUserSpendingRanking.mockReset()
+    getProxyUsageSummary.mockReset()
 
     getSnapshotV2.mockResolvedValue({
       stats: createDashboardStats(),
@@ -110,6 +113,12 @@ describe('admin DashboardView', () => {
       start_date: '',
       end_date: ''
     })
+    getProxyUsageSummary.mockResolvedValue({
+      items: [],
+      start_date: '',
+      end_date: '',
+      granularity: 'hour'
+    })
   })
 
   it('uses last 24 hours as default dashboard range', async () => {
@@ -123,6 +132,8 @@ describe('admin DashboardView', () => {
           Select: true,
           ModelDistributionChart: true,
           TokenUsageTrend: true,
+          RequestCountTrend: true,
+          ProxyUsageSummaryChart: true,
           Line: true
         }
       }
@@ -139,5 +150,72 @@ describe('admin DashboardView', () => {
       end_date: formatLocalDate(now),
       granularity: 'hour'
     }))
+  })
+
+  it('renders request count and proxy usage charts and loads proxy summary data', async () => {
+    const wrapper = mount(DashboardView, {
+      global: {
+        stubs: {
+          AppLayout: { template: '<div><slot /></div>' },
+          LoadingSpinner: true,
+          Icon: true,
+          DateRangePicker: true,
+          Select: true,
+          ModelDistributionChart: true,
+          TokenUsageTrend: {
+            template: '<div data-test="token-usage-trend" />'
+          },
+          RequestCountTrend: {
+            template: '<div data-test="request-count-trend" />'
+          },
+          ProxyUsageSummaryChart: {
+            template: '<div data-test="proxy-usage-summary-chart" />'
+          },
+          Line: true
+        }
+      }
+    })
+
+    await flushPromises()
+
+    expect(wrapper.find('[data-test="token-usage-trend"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="request-count-trend"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="proxy-usage-summary-chart"]').exists()).toBe(true)
+    expect(getProxyUsageSummary).toHaveBeenCalledTimes(1)
+  })
+
+  it('still renders dashboard when proxy usage summary endpoint fails', async () => {
+    getProxyUsageSummary.mockRejectedValueOnce({ status: 404, message: 'Not Found' })
+
+    const wrapper = mount(DashboardView, {
+      global: {
+        stubs: {
+          AppLayout: { template: '<div><slot /></div>' },
+          LoadingSpinner: true,
+          Icon: true,
+          DateRangePicker: true,
+          Select: true,
+          ModelDistributionChart: true,
+          TokenUsageTrend: {
+            template: '<div data-test="token-usage-trend" />'
+          },
+          RequestCountTrend: {
+            template: '<div data-test="request-count-trend" />'
+          },
+          ProxyUsageSummaryChart: {
+            template: '<div data-test="proxy-usage-summary-chart" />'
+          },
+          Line: true
+        }
+      }
+    })
+
+    await flushPromises()
+
+    expect(getSnapshotV2).toHaveBeenCalledTimes(1)
+    expect(getProxyUsageSummary).toHaveBeenCalledTimes(1)
+    expect(wrapper.find('[data-test="token-usage-trend"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="request-count-trend"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="proxy-usage-summary-chart"]').exists()).toBe(true)
   })
 })

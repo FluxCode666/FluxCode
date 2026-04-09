@@ -23,7 +23,8 @@ func NewRedeemHandler(redeemService *service.RedeemService) *RedeemHandler {
 
 // RedeemRequest represents the redeem code request payload
 type RedeemRequest struct {
-	Code string `json:"code" binding:"required"`
+	Code             string `json:"code" binding:"required"`
+	SubscriptionMode string `json:"subscription_mode"`
 }
 
 // RedeemResponse represents the redeem response
@@ -50,7 +51,7 @@ func (h *RedeemHandler) Redeem(c *gin.Context) {
 		return
 	}
 
-	result, err := h.redeemService.Redeem(c.Request.Context(), subject.UserID, req.Code)
+	result, err := h.redeemService.Redeem(c.Request.Context(), subject.UserID, req.Code, req.SubscriptionMode)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

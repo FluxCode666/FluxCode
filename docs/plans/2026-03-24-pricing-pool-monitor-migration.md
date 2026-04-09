@@ -709,3 +709,16 @@ git add docs/plans/2026-03-24-pricing-pool-monitor-migration-design.md \
   docs/plans/2026-03-24-pricing-pool-monitor-migration.md
 git commit -m "docs: update migration execution record"
 ```
+
+## 执行收口（2026-03-25）
+
+- 已完成：定价接口、定价页面、监控接口、监控页面、账号增强
+- 未做：独立工具、pricing fallback 补丁
+- 已知边界：保留当前仓库 UI 组织，不追求旧仓库外观一致
+- 验证结果：
+  - `go test ./internal/service ./internal/handler/... ./internal/server/... -run 'TestPricingPlan|TestPoolMonitor|TestAccountHandler|TestAccountSchedulingStrategy' -count=1` 通过
+  - `corepack pnpm --dir frontend exec vitest --run src/views/__tests__/PricingView.spec.ts src/views/admin/__tests__/PricingPlansView.spec.ts src/views/admin/__tests__/PoolMonitorView.spec.ts src/views/admin/__tests__/PoolMonitorDashboardView.spec.ts src/views/admin/__tests__/AccountsView.spec.ts` 通过
+  - `corepack pnpm --dir frontend run typecheck` 通过
+  - `corepack pnpm --dir frontend run build` 通过，存在既有 chunk size warning，但不阻断构建
+  - `go test ./cmd/server/... -count=1` 通过
+- 提交说明：当前工作区仍有多组共享文件与混合改动，尚未自动切分提交，避免把无关半成品一并写入历史

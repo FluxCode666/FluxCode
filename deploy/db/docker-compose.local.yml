@@ -1,0 +1,85 @@
+# =============================================================================
+# Sub2API - Database Deployment (Multi-Machine)
+# =============================================================================
+# Deploy this on the DATABASE machine.
+# Runs PostgreSQL and Redis with ports exposed for external access.
+#
+# Usage:
+#   1. cp .env.example .env
+#   2. Edit .env: set passwords and resource parameters
+#   3. docker compose up -d
+#
+# Security:
+#   - Use firewall rules to restrict access to database ports
+#   - Only allow backend machine IPs to connect to 5432 and 6379
+# =============================================================================
+
+services:
+  # ===========================================================================
+  # PostgreSQL Database
+  # ===========================================================================
+  postgres:
+    image: postgres:18-alpine
+    container_name: sub2api-postgres
+    restart: unless-stopped
+    ulimits:
+      nofile:
+        soft: 100000
+        hard: 100000
+    ports:
+      # Exposed for external backend connections
+      - "${BIND_HOST:-0.0.0.0}:${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - ./postgres_data:/var/lib/postgresql/data
+    environment:
+      - PGDATA=/var/lib/postgresql/data
+      - POSTGRES_USER=${POSTGRES_USER:-sub2api}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      - POSTGRES_DB=${POSTGRES_DB:-sub2api}
+      - TZ=${TZ:-Asia/Shanghai}
+    command: >
+        postgres
+        -c max_connections=${POSTGRES_MAX_CONNECTIONS:-256}
+        -c shared_buffers=${POSTGRES_SHARED_BUFFERS:-256MB}
+        -c effective_cache_size=${POSTGRES_EFFECTIVE_CACHE_SIZE:-1GB}
+        -c maintenance_work_mem=${POSTGRES_MAINTENANCE_WORK_MEM:-64MB}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-sub2api} -d ${POSTGRES_DB:-sub2api}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ===========================================================================
+  # Redis Cache
+  # ===========================================================================
+  redis:
+    image: redis:8-alpine
+    container_name: sub2api-redis
+    restart: unless-stopped
+    ulimits:
+      nofile:
+        soft: 100000
+        hard: 100000
+    ports:
+      # Exposed for external backend connections
+      - "${BIND_HOST:-0.0.0.0}:${REDIS_PORT:-6379}:6379"
+    volumes:
+      - ./redis_data:/data
+    command: >
+        sh -c '
+          redis-server
+          --save 60 1
+          --appendonly yes
+          --appendfsync everysec
+          --maxclients ${REDIS_MAXCLIENTS:-10000}
+          ${REDIS_PASSWORD:+--requirepass "$REDIS_PASSWORD"}'
+    environment:
+      - TZ=${TZ:-Asia/Shanghai}
+      - REDISCLI_AUTH=${REDIS_PASSWORD:-}
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s

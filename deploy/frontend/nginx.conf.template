@@ -1,0 +1,289 @@
+# =============================================================================
+# Sub2API Frontend Nginx Configuration Template
+# =============================================================================
+# This is a template processed by envsubst at container startup.
+# The entrypoint.sh script replaces ${UPSTREAM_SERVERS} with the actual
+# backend server list from the BACKEND_SERVERS environment variable.
+#
+# For static configuration (no envsubst), use nginx.conf directly.
+# =============================================================================
+
+worker_processes auto;
+error_log /var/log/nginx/error.log warn;
+pid /var/run/nginx.pid;
+
+events {
+    worker_connections 4096;
+    multi_accept on;
+}
+
+http {
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
+
+    # =========================================================================
+    # IMPORTANT: Allow headers with underscores (e.g. session_id)
+    # Nginx drops such headers by default, breaking sticky session routing
+    # for Sora multi-account scenarios.
+    # =========================================================================
+    underscores_in_headers on;
+
+    # Performance
+    sendfile on;
+    tcp_nopush on;
+    tcp_nodelay on;
+    keepalive_timeout 65;
+    types_hash_max_size 2048;
+
+    # Max request body size (align with backend GATEWAY_MAX_BODY_SIZE)
+    client_max_body_size 256m;
+
+    # Gzip compression
+    gzip on;
+    gzip_vary on;
+    gzip_proxied any;
+    gzip_comp_level 6;
+    gzip_min_length 256;
+    gzip_types
+        text/plain
+        text/css
+        application/json
+        application/javascript
+        text/xml
+        application/xml
+        application/xml+rss
+        text/javascript
+        image/svg+xml
+        application/wasm;
+
+    # Logging
+    log_format main '$remote_addr - $remote_user [$time_local] "$request" '
+                    '$status $body_bytes_sent "$http_referer" '
+                    '"$http_user_agent" "$http_x_forwarded_for" '
+                    'rt=$request_time urt=$upstream_response_time';
+    access_log /var/log/nginx/access.log main;
+
+    # =========================================================================
+    # WebSocket upgrade mapping
+    # =========================================================================
+    map $http_upgrade $connection_upgrade {
+        default upgrade;
+        ''      close;
+    }
+
+    # =========================================================================
+    # Backend upstream cluster
+    # =========================================================================
+    # This block is populated by entrypoint.sh from BACKEND_SERVERS env var.
+    # Example: BACKEND_SERVERS=10.0.1.10:8080,10.0.1.11:8080,10.0.1.12:8080
+    # =========================================================================
+    upstream backend {
+        ${UPSTREAM_SERVERS}
+
+        keepalive 64;
+        keepalive_timeout 120s;
+    }
+
+    server {
+        listen 80;
+        server_name _;
+
+        # =================================================================
+        # Security headers
+        # =================================================================
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+
+        # -----------------------------------------------------------------
+        # API routes → reverse proxy to backend cluster
+        # -----------------------------------------------------------------
+
+        # /api/ - Main REST API (includes admin WebSocket at /api/v1/admin/ops/ws/)
+        location /api/ {
+            proxy_pass http://backend;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_set_header X-Forwarded-Host $host;
+            proxy_set_header CF-Connecting-IP $http_cf_connecting_ip;
+
+            # WebSocket support (for /api/v1/admin/ops/ws/qps)
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection $connection_upgrade;
+
+            # SSE / streaming support
+            proxy_buffering off;
+            proxy_cache off;
+            proxy_read_timeout 300s;
+            proxy_send_timeout 300s;
+        }
+
+        # /v1/ - OpenAI-compatible gateway API
+        location /v1/ {
+            proxy_pass http://backend;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_set_header CF-Connecting-IP $http_cf_connecting_ip;
+
+            proxy_http_version 1.1;
+            proxy_set_header Connection "";
+
+            proxy_buffering off;
+            proxy_cache off;
+            proxy_read_timeout 300s;
+            proxy_send_timeout 300s;
+        }
+
+        # /v1beta/ - Gemini native API
+        location /v1beta/ {
+            proxy_pass http://backend;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_set_header CF-Connecting-IP $http_cf_connecting_ip;
+
+            proxy_http_version 1.1;
+            proxy_set_header Connection "";
+
+            proxy_buffering off;
+            proxy_cache off;
+            proxy_read_timeout 300s;
+            proxy_send_timeout 300s;
+        }
+
+        # /responses - OpenAI Responses API (WebSocket + HTTP)
+        location /responses {
+            proxy_pass http://backend;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_set_header CF-Connecting-IP $http_cf_connecting_ip;
+
+            # WebSocket upgrade support
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection $connection_upgrade;
+
+            proxy_buffering off;
+            proxy_cache off;
+            proxy_read_timeout 3600s;
+            proxy_send_timeout 3600s;
+        }
+
+        # /chat/completions - OpenAI Chat Completions (alias without /v1 prefix)
+        location /chat/completions {
+            proxy_pass http://backend;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_set_header CF-Connecting-IP $http_cf_connecting_ip;
+
+            proxy_http_version 1.1;
+            proxy_set_header Connection "";
+
+            proxy_buffering off;
+            proxy_cache off;
+            proxy_read_timeout 300s;
+            proxy_send_timeout 300s;
+        }
+
+        # /sora/ - Sora client routes
+        location /sora/ {
+            proxy_pass http://backend;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_set_header CF-Connecting-IP $http_cf_connecting_ip;
+
+            proxy_http_version 1.1;
+            proxy_set_header Connection "";
+
+            proxy_buffering off;
+            proxy_cache off;
+            proxy_read_timeout 300s;
+            proxy_send_timeout 300s;
+        }
+
+        # /antigravity/ - Antigravity routes
+        location /antigravity/ {
+            proxy_pass http://backend;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_set_header CF-Connecting-IP $http_cf_connecting_ip;
+
+            proxy_http_version 1.1;
+            proxy_set_header Connection "";
+
+            proxy_buffering off;
+            proxy_cache off;
+            proxy_read_timeout 300s;
+            proxy_send_timeout 300s;
+        }
+
+        # /setup/ - Initial setup wizard
+        location /setup/ {
+            proxy_pass http://backend;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+
+            proxy_http_version 1.1;
+            proxy_set_header Connection "";
+        }
+
+        # /health - Health check endpoint
+        location = /health {
+            proxy_pass http://backend;
+            proxy_set_header Host $host;
+            proxy_http_version 1.1;
+            proxy_set_header Connection "";
+        }
+
+        # -----------------------------------------------------------------
+        # Static files → served directly by Nginx
+        # -----------------------------------------------------------------
+
+        # Hashed assets (Vite build output) — permanent cache
+        location /assets/ {
+            root /usr/share/nginx/html;
+            expires max;
+            add_header Cache-Control "public, max-age=31536000, immutable";
+            try_files $uri =404;
+        }
+
+        # Other static files (favicon, logo, etc.)
+        location ~* \.(ico|png|jpg|jpeg|gif|svg|woff|woff2|ttf|eot|map)$ {
+            root /usr/share/nginx/html;
+            expires 7d;
+            add_header Cache-Control "public, max-age=604800";
+            try_files $uri =404;
+        }
+
+        # -----------------------------------------------------------------
+        # SPA fallback — all other routes serve index.html
+        # -----------------------------------------------------------------
+        location / {
+            root /usr/share/nginx/html;
+            index index.html;
+            try_files $uri $uri/ /index.html;
+
+            # index.html must not be cached
+            location = /index.html {
+                add_header Cache-Control "no-cache, no-store, must-revalidate";
+                add_header Pragma "no-cache";
+                add_header Expires "0";
+            }
+        }
+    }
+}

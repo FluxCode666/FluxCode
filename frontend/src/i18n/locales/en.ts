@@ -10,100 +10,81 @@ export default {
     login: 'Login',
     getStarted: 'Get Started',
     goToDashboard: 'Go to Dashboard',
-    // User-focused value proposition
-    heroSubtitle: 'One Key, All AI Models',
-    heroDescription: 'No need to manage multiple subscriptions. Access Claude, GPT, Gemini and more with a single API key',
+    nav: {
+      features: 'Features',
+      pricing: 'Pricing',
+      docs: 'Docs',
+      menu: 'Menu'
+    },
+    hero: {
+      headline: 'Fast & Stable · Built for Teams',
+      description:
+        'One entry for multi-model APIs. Providing observable, controllable, stable and reliable API relay services.',
+      secondaryCta: 'View Usage',
+      stats: {
+        performance: 'Fast & stable routing',
+        control: 'Billing & quotas',
+        security: 'Security & isolation'
+      }
+    },
+    sections: {
+      featuresTitle: 'Features',
+      featuresSubtitle: 'One entry, real-time billing, stable & reliable.',
+      pricingTitle: 'Pricing',
+      pricingSubtitle: 'Subscription-based, with clear and traceable bills.',
+      docsTitle: 'Documentation',
+      docsSubtitle: 'Quick start, API reference, and best practices.'
+    },
+    pricing: {
+      usageTitle: 'Usage-based Billing',
+      usageDesc: 'Token-based billing with precise usage tracking, visible in real time.',
+      quotaTitle: 'Quota Control',
+      quotaDesc: 'User/group quotas and limit policies to prevent overspending.',
+      redeemTitle: 'Recharge & Redeem',
+      redeemDesc: 'Recharge, redeem codes, and balance management for flexible settlement.'
+    },
+    quickstart: {
+      title: 'Quick Start',
+      subtitle: '3 steps: create a key → choose an API → make requests.',
+      cta: 'Open Dashboard',
+      steps: {
+        createKey: {
+          title: 'Create an API Key',
+          desc: 'Generate a key in the dashboard and bind it to a group/permissions & quota policy.'
+        },
+        chooseApi: {
+          title: 'Pick a Compatible API',
+          desc: 'Claude: /v1/messages; OpenAI: /v1/responses; Gemini: /v1beta/.'
+        },
+        call: {
+          title: 'Start Calling',
+          desc: 'Point the Base URL to your FluxCode and run with your SDK/CLI.'
+        }
+      }
+    },
     tags: {
       subscriptionToApi: 'Subscription to API',
-      stickySession: 'Session Persistence',
-      realtimeBilling: 'Pay As You Go'
-    },
-    // Pain points section
-    painPoints: {
-      title: 'Sound Familiar?',
-      items: {
-        expensive: {
-          title: 'High Subscription Costs',
-          desc: 'Paying for multiple AI subscriptions that add up every month'
-        },
-        complex: {
-          title: 'Account Chaos',
-          desc: 'Managing scattered accounts and API keys across different platforms'
-        },
-        unstable: {
-          title: 'Service Interruptions',
-          desc: 'Single accounts hitting rate limits and disrupting your workflow'
-        },
-        noControl: {
-          title: 'No Usage Control',
-          desc: "Can't track where your money goes or limit team member usage"
-        }
-      }
-    },
-    // Solutions section
-    solutions: {
-      title: 'We Solve These Problems',
-      subtitle: 'Three simple steps to stress-free AI access'
+      stickySession: 'Sticky Session',
+      realtimeBilling: 'Real-time Billing'
     },
     features: {
-      unifiedGateway: 'One-Click Access',
-      unifiedGatewayDesc: 'Get a single API key to call all connected AI models. No separate applications needed.',
-      multiAccount: 'Always Reliable',
-      multiAccountDesc: 'Smart routing across multiple upstream accounts with automatic failover. Say goodbye to errors.',
-      balanceQuota: 'Pay What You Use',
-      balanceQuotaDesc: 'Usage-based billing with quota limits. Full visibility into team consumption.'
-    },
-    // Comparison section
-    comparison: {
-      title: 'Why Choose Us?',
-      headers: {
-        feature: 'Comparison',
-        official: 'Official Subscriptions',
-        us: 'Our Platform'
-      },
-      items: {
-        pricing: {
-          feature: 'Pricing',
-          official: 'Fixed monthly fee, pay even if unused',
-          us: 'Pay only for what you use'
-        },
-        models: {
-          feature: 'Model Selection',
-          official: 'Single provider only',
-          us: 'Switch between models freely'
-        },
-        management: {
-          feature: 'Account Management',
-          official: 'Manage each service separately',
-          us: 'Unified key, one dashboard'
-        },
-        stability: {
-          feature: 'Stability',
-          official: 'Single account rate limits',
-          us: 'Multi-account pool, auto-failover'
-        },
-        control: {
-          feature: 'Usage Control',
-          official: 'Not available',
-          us: 'Quotas & detailed analytics'
-        }
-      }
+      unifiedGateway: 'Stable & Secure',
+      unifiedGatewayDesc: 'Official upstream experience with no degradation risk.',
+      multiAccount: 'Fast & Reliable Relay',
+      multiAccountDesc:
+        'Dedicated routes with 99.9% availability — say goodbye to unstable connections.',
+      balanceQuota: 'Balance & Quota',
+      balanceQuotaDesc: 'Token-based billing with precise usage tracking.'
     },
     providers: {
-      title: 'Supported AI Models',
-      description: 'One API, Multiple Choices',
+      title: 'Trusted Partners & Stack',
+      description: 'Deep compatibility with ecosystems like OpenAI, Anthropic, and Claude — and continuously expanding.',
       supported: 'Supported',
       soon: 'Soon',
       claude: 'Claude',
       gemini: 'Gemini',
       antigravity: 'Antigravity',
       more: 'More'
-    },
-    // CTA section
-    cta: {
-      title: 'Ready to Get Started?',
-      description: 'Sign up now and get free trial credits to experience seamless AI access',
-      button: 'Sign Up Free'
     },
     footer: {
       allRightsReserved: 'All rights reserved.'
@@ -304,12 +285,32 @@ export default {
     saving: 'Saving...',
     selectedCount: '({count} selected)',
     refresh: 'Refresh',
+    apply: 'Apply',
+    clear: 'Clear',
     settings: 'Settings',
     chooseFile: 'Choose File',
     notAvailable: 'N/A',
     now: 'Now',
     unknown: 'Unknown',
     minutes: 'min',
+    banned: 'Banned',
+    creating: 'Creating...',
+    sending: 'Sending...',
+    purchase: 'Purchase',
+    recommended: 'Recommended',
+    currency: {
+      cny: 'CNY',
+      usd: 'USD',
+      eur: 'EUR',
+      gbp: 'GBP'
+    },
+    period: {
+      day: 'Day',
+      week: 'Week',
+      month: 'Month',
+      year: 'Year',
+      once: 'One-time'
+    },
     time: {
       never: 'Never',
       justNow: 'Just now',
@@ -335,9 +336,11 @@ export default {
     profile: 'Profile',
     users: 'Users',
     groups: 'Groups',
+    pricingPlans: 'Pricing Plans',
     subscriptions: 'Subscriptions',
     accounts: 'Accounts',
     proxies: 'Proxies',
+    poolMonitor: 'Pool Monitor',
     redeemCodes: 'Redeem Codes',
     ops: 'Ops',
     promoCodes: 'Promo Codes',
@@ -797,13 +800,35 @@ export default {
     concurrencyReducedAdmin: 'Concurrency Reduced (Admin)',
     adminAdjustment: 'Admin Adjustment',
     subscriptionAssigned: 'Subscription Assigned',
+    subscriptionExtended: 'Subscription Extended',
+    subscriptionStacked: 'Subscription Quota Stacked',
     subscriptionAssignedDesc: 'You have been granted access to {groupName}',
+    subscriptionModeExtend: 'Extend',
+    subscriptionModeStack: 'Stack',
+    modeGuideTitle: 'Redeem mode examples (daily view)',
     subscriptionDays: '{days} days',
     days: ' days',
     codeRedeemSuccess: 'Code redeemed successfully!',
     failedToRedeem: 'Failed to redeem code. Please check the code and try again.',
     subscriptionRefreshFailed: 'Redeemed successfully, but failed to refresh subscription status.',
-    pleaseEnterCode: 'Please enter a redeem code'
+    pleaseEnterCode: 'Please enter a redeem code',
+    subscriptionChoiceTitle: 'Choose subscription redeem mode',
+    subscriptionChoiceDesc:
+      'You already have an unexpired subscription in this group. Choose to extend expiry, or stack quota starting now.',
+    subscriptionChoiceGroup: 'Group',
+    subscriptionChoiceCurrentExpires: 'Current expiry',
+    subscriptionChoiceValidityDays: 'Validity (days)',
+    subscriptionChoiceCurrentMultiplier: 'Current quota',
+    subscriptionChoiceExtend: 'Extend expiry',
+    subscriptionChoiceStack: 'Stack quota (from now)',
+    subscriptionChoiceOptionExtendDesc:
+      'Extend by {days} days, quota multiplier unchanged',
+    subscriptionChoiceOptionStackDesc:
+      'Stack quota for {days} days starting now, quota multiplier +1',
+    subscriptionChoicePreviewTitle: 'Redeem preview',
+    subscriptionChoiceResultExpires: 'Result expiry',
+    subscriptionChoiceResultMultiplier: 'Result quota',
+    subscriptionChoiceStackUntil: 'Stacked quota valid until'
   },
 
   // Profile
@@ -964,6 +989,13 @@ export default {
       metricTokens: 'By Tokens',
       metricActualCost: 'By Actual Cost',
       tokenUsageTrend: 'Token Usage Trend',
+      requestCountTrend: 'Request Count Trend',
+      proxyUsageSummary: 'Proxy Usage Summary',
+      metricLegend: 'Metric Legend',
+      proxyLegend: 'Proxy IP Legend',
+      totalCount: 'Total Count',
+      successCount: 'Success Count',
+      failureCount: 'Failure Count',
       userUsageTrend: 'User Usage Trend (Top 12)',
       model: 'Model',
       group: 'Group',
@@ -1308,6 +1340,7 @@ export default {
       leaveEmptyToKeep: 'Leave empty to keep current password',
       generatePassword: 'Generate random password',
       copyPassword: 'Copy password',
+      passwordCopied: 'Password copied to clipboard',
       creating: 'Creating...',
       updating: 'Updating...',
       columns: {
@@ -1572,6 +1605,7 @@ export default {
       groupUpdated: 'Group updated successfully',
       groupDeleted: 'Group deleted successfully',
       failedToLoad: 'Failed to load groups',
+      failedToSave: 'Failed to save group',
       failedToCreate: 'Failed to create group',
       failedToUpdate: 'Failed to update group',
       failedToDelete: 'Failed to delete group',
@@ -1599,6 +1633,7 @@ export default {
       platforms: {
         all: 'All Platforms',
         anthropic: 'Anthropic',
+        kiro: 'Kiro',
         openai: 'OpenAI',
         gemini: 'Gemini',
         antigravity: 'Antigravity',
@@ -1711,6 +1746,63 @@ export default {
       }
     },
 
+    pricingPlans: {
+      createGroup: 'Create Group',
+      createPlan: 'Create Plan',
+      editGroup: 'Edit Group',
+      editPlan: 'Edit Plan',
+      deleteGroup: 'Delete Group',
+      deleteGroupConfirm: 'Delete pricing group "{name}"? All plans in this group will also be removed.',
+      deletePlan: 'Delete Plan',
+      deletePlanConfirm: 'Delete plan "{name}" from group "{group}"?',
+      emptyTitle: 'No pricing groups yet',
+      emptyDesc: 'Create pricing groups and plans to expose purchase options on the public pricing page.',
+      failedToLoad: 'Failed to load pricing plans',
+      noPlans: 'No plans yet',
+      sortOrder: 'Sort Order',
+      columns: {
+        name: 'Name',
+        price: 'Price',
+        sortOrder: 'Sort',
+        status: 'Status',
+        actions: 'Actions'
+      },
+      groupForm: {
+        name: 'Group Name',
+        description: 'Group Description',
+        sortOrder: 'Sort Order',
+        status: 'Status'
+      },
+      planForm: {
+        group: 'Group',
+        name: 'Plan Name',
+        description: 'Plan Description',
+        iconUrl: 'Icon URL',
+        iconUrlHint: 'Optional icon URL',
+        badgeText: 'Badge Text',
+        badgeTextHint: 'e.g. Recommended / Popular',
+        priceText: 'Price Text',
+        priceTextHint: 'e.g. $19 / month. When filled, it overrides the formatted price.',
+        tagline: 'Tagline',
+        taglineHint: 'e.g. Best for individual developers',
+        priceAmount: 'Price Amount',
+        priceCurrency: 'Currency',
+        pricePeriod: 'Billing Period',
+        features: 'Features',
+        featuresHint: 'One feature per line',
+        purchaseEntries: 'Purchase Entries',
+        purchaseEntriesHint: 'Configure one or more purchase entries; they are shown in order on the public page.',
+        addPurchaseEntry: 'Add Purchase Entry',
+        dragToSort: 'Drag to sort',
+        purchaseEntryLabelPlaceholder: 'Button label, e.g. Buy Now',
+        purchaseEntryValuePlaceholder: 'Link, redeem code, or contact info',
+        removePurchaseEntry: 'Remove Entry',
+        featured: 'Featured Plan',
+        sortOrder: 'Sort Order',
+        status: 'Status'
+      }
+    },
+
     // Subscriptions
     subscriptions: {
       title: 'Subscription Management',
@@ -1759,6 +1851,16 @@ export default {
       validityHint: 'Number of days the subscription will be valid',
       adjustingFor: 'Adjusting subscription for',
       currentExpiration: 'Current expiration',
+      assignChoiceTitle: 'Choose assignment mode',
+      assignChoiceDesc:
+        'This user already has an unexpired subscription in this group. Choose to extend expiry, or stack quota starting now.',
+      assignChoiceGroup: 'Group',
+      assignChoiceCurrentExpires: 'Current expiry',
+      assignChoiceValidityDays: 'Validity (days)',
+      assignChoiceCurrentMultiplier: 'Current quota',
+      assignChoiceCancel: 'Cancel',
+      assignChoiceExtend: 'Extend expiry',
+      assignChoiceStack: 'Stack quota (from now)',
       adjustDaysPlaceholder: 'Positive to extend, negative to shorten',
       adjustHint: 'Enter positive number to extend, negative to shorten (remaining days must be > 0)',
       assign: 'Assign',
@@ -1774,6 +1876,7 @@ export default {
       noSubscriptionsYet: 'No subscriptions yet',
       assignFirstSubscription: 'Assign a subscription to get started.',
       subscriptionAssigned: 'Subscription assigned successfully',
+      subscriptionExtended: 'Subscription extended successfully',
       subscriptionAdjusted: 'Subscription adjusted successfully',
       subscriptionRevoked: 'Subscription revoked successfully',
       failedToLoad: 'Failed to load subscriptions',
@@ -1897,11 +2000,23 @@ export default {
       allPlatforms: 'All Platforms',
       allTypes: 'All Types',
       allStatus: 'All Status',
+      allSchedulingStatus: 'All Scheduling Status',
       allGroups: 'All Groups',
+      allProxies: 'All Proxies',
       ungroupedGroup: 'Ungrouped',
+      schedulingStatus: 'Account Scheduling Status',
+      selectedProxies: '{count} proxies selected',
+      createdTime: 'Created Time',
       oauthType: 'OAuth',
       setupToken: 'Setup Token',
       apiKey: 'API Key',
+      fromModel: 'Requested Model',
+      toModel: 'Target Model',
+      expiration: {
+        expired: 'Expired'
+      },
+      soraBaseUrlRequired: 'Sora API Key account requires a Base URL',
+      soraBaseUrlInvalidScheme: 'Base URL must start with http:// or https://',
       // Schedulable toggle
       schedulable: 'Schedulable',
       schedulableHint: 'Enable to include this account in API request scheduling',
@@ -1912,6 +2027,7 @@ export default {
       platforms: {
         anthropic: 'Anthropic',
         claude: 'Claude',
+        kiro: 'Kiro',
         openai: 'OpenAI',
         gemini: 'Gemini',
         antigravity: 'Antigravity',
@@ -2459,6 +2575,10 @@ export default {
           refreshTokenAuth: 'Manual RT Input',
           refreshTokenDesc: 'Enter your existing OpenAI Refresh Token(s). Supports batch input (one per line). The system will automatically validate and create accounts.',
           refreshTokenPlaceholder: 'Paste your OpenAI Refresh Token...\nSupports multiple, one per line',
+          accessTokenAuth: 'Manual AT Input',
+          accessTokenDesc: 'Paste Access Token(s) directly to create accounts without going through the OAuth authorization flow. Batch import is supported (one per line).',
+          accessTokenPlaceholder: 'Paste Access Token(s), one per line',
+          importAccessToken: 'Import Access Token',
           sessionTokenAuth: 'Manual ST Input',
           sessionTokenDesc: 'Enter your existing Sora Session Token(s). Supports batch input (one per line). The system will automatically validate and create accounts.',
           sessionTokenPlaceholder: 'Paste your Sora Session Token...\nSupports multiple, one per line',
@@ -2949,6 +3069,30 @@ export default {
       batchImportSuccess: 'Successfully imported {created} proxies, skipped {skipped} duplicates',
       batchImportAllSkipped: 'All {skipped} proxies already exist, skipped import',
       failedToImport: 'Failed to batch import',
+      accountCountHelp:
+        'Available = active account, schedulable, not expired, not rate limited, not overloaded, and not temporarily abnormal. All = count associated accounts whose status is active only.',
+      countStates: {
+        allActive: 'All',
+        allActiveDescription: 'Only accounts with active status',
+        available: 'Available',
+        availableDescription: 'Active, schedulable, not expired, not rate limited, not overloaded, and not temporarily abnormal',
+        manualUnschedulable: 'Manual Off',
+        manualUnschedulableDescription: 'Active account, but scheduling is manually disabled',
+        tempUnschedulable: 'Temp Abnormal',
+        tempUnschedulableDescription: 'Active and scheduling enabled, but temporarily abnormal',
+        rateLimited: 'Rate Limited',
+        rateLimitedDescription: 'Active and scheduling enabled, currently rate limited',
+        overloaded: 'Overloaded',
+        overloadedDescription: 'Active and scheduling enabled, currently overloaded',
+        expired: 'Expired',
+        expiredDescription: 'Account has expired',
+        inactive: 'Inactive',
+        inactiveDescription: 'Account status is inactive or disabled',
+        error: 'Error',
+        errorDescription: 'Account status is error',
+        banned: 'Banned',
+        bannedDescription: 'Account status is banned'
+      },
       // Other messages
       creating: 'Creating...',
       updating: 'Updating...',
@@ -3273,6 +3417,91 @@ export default {
       }
     },
 
+    poolMonitorDashboard: {
+      title: 'Pool Monitor',
+      description: 'View platform-based account pool status summary dashboard.',
+      openConfig: 'Monitor Settings',
+      allPlatforms: 'All Platforms',
+      platformSummaryTitle: 'Account Pool Status Dashboard',
+      platformSummaryDescription:
+        'View raw-status and scheduling-status summaries for all accounts by platform.',
+      failedToLoadSummary: 'Failed to load pool monitor summary'
+    },
+
+    poolMonitorConfig: {
+      title: 'Pool Monitor Settings',
+      description: 'Configure OpenAI account pool threshold alerts and proxy transport failure alerts',
+      backToDashboard: 'Back to Monitor'
+    },
+
+    poolMonitor: {
+      title: 'Pool Monitor Settings',
+      description: 'Configure OpenAI account pool threshold alerts and proxy transport failure alerts',
+      cards: {
+        poolThresholdTitle: 'Pool Threshold Monitor',
+        poolThresholdDescription:
+          'Monitor pool health by available count and available ratio thresholds.',
+        proxyFailureTitle: 'Proxy Failure Monitor',
+        proxyFailureDescription: 'Count transport_error failures by proxy and trigger alerts.',
+        alertDeliveryTitle: 'Alert Delivery Settings',
+        alertDeliveryDescription:
+          'Configure recipient emails and cooldown for repeated alerts.'
+      },
+      openaiOnly:
+        'This page currently supports OpenAI only, with data model ready for multi-platform expansion.',
+      poolThresholdEnabled: 'Enable pool threshold monitor',
+      poolThresholdEnabledHint:
+        'When disabled, account-count/ratio threshold alerts will not be triggered.',
+      poolThresholdDisabledHint:
+        'Pool threshold monitor is disabled. Current thresholds are retained but inactive.',
+      proxyFailureEnabled: 'Enable proxy failure monitor',
+      proxyFailureEnabledHint:
+        'When disabled, transport_error failures are not counted for alerts.',
+      proxyFailureDisabledHint:
+        'Proxy failure monitor is disabled. Current window/threshold are retained but inactive.',
+      proxyActiveProbeEnabled: 'Enable scheduled proxy probing',
+      proxyActiveProbeEnabledHint:
+        'When enabled, proxy connectivity to OpenAI is probed on schedule.',
+      proxyActiveProbeDisabledHint:
+        'Scheduled proxy probing is disabled; list status remains at last snapshot.',
+      disabledProxyScheduleMode: 'Disabled proxy scheduling mode (all platforms)',
+      disabledProxyScheduleModeHint:
+        'Choose scheduling behavior when an account is bound to a disabled proxy.',
+      disabledProxyScheduleModeDirectWithoutProxy: 'Direct without proxy',
+      disabledProxyScheduleModeDirectWithoutProxyHint:
+        'Account still participates in scheduling, but requests are forced to bypass proxy.',
+      disabledProxyScheduleModeExcludeAccount: 'Exclude account from scheduling',
+      disabledProxyScheduleModeExcludeAccountHint:
+        'Accounts bound to disabled proxies are excluded from scheduling, including sticky hits.',
+      proxyProbeIntervalMinutes: 'Proxy probe interval (minutes)',
+      proxyProbeIntervalMinutesHint:
+        'How often to actively probe proxy connectivity. Recommended at least 1 minute.',
+      availableCountThreshold: 'Available account threshold',
+      availableCountThresholdHint:
+        'Alert when available accounts drop below this value; set 0 to disable this rule.',
+      availableRatioThreshold: 'Available ratio threshold (%)',
+      availableRatioThresholdHint:
+        'Alert when available account ratio drops below this percentage; set 0 to disable this rule.',
+      checkIntervalMinutes: 'Pool check interval (minutes)',
+      checkIntervalMinutesHint: 'How often to evaluate pool thresholds. Recommended at least 1 minute.',
+      proxyFailureWindowMinutes: 'Proxy failure window (minutes)',
+      proxyFailureWindowMinutesHint:
+        'Rolling time window used to count transport_error failures per proxy.',
+      proxyFailureThreshold: 'Proxy failure threshold',
+      proxyFailureThresholdHint:
+        'Alert when failures within the rolling window reach this count; set 0 to disable this rule.',
+      alertCooldownMinutes: 'Alert cooldown (minutes)',
+      alertCooldownMinutesHint:
+        'Repeated alerts of the same type are suppressed during cooldown.',
+      alertEmails: 'Alert recipients',
+      alertEmailPlaceholder: 'name@example.com',
+      addEmail: 'Add recipient',
+      removeEmail: 'Remove',
+      failedToLoad: 'Failed to load pool monitor settings',
+      failedToSave: 'Failed to save pool monitor settings',
+      saved: 'Pool monitor settings saved'
+    },
+
     // Ops Monitoring
     ops: {
       title: 'Ops Monitoring',
@@ -3298,6 +3527,7 @@ export default {
       lastRun: 'last_run:',
       lastSuccess: 'last_success:',
       lastError: 'last_error:',
+      result: 'Result',
       noData: 'No data.',
       loadingText: 'loading',
       ready: 'ready',
@@ -3372,7 +3602,12 @@ export default {
         '6h': 'Last 6 hours',
         '24h': 'Last 24 hours',
         '7d': 'Last 7 days',
-        '30d': 'Last 30 days'
+        '30d': 'Last 30 days',
+        custom: 'Custom'
+      },
+      customTimeRange: {
+        startTime: 'Start Time',
+        endTime: 'End Time'
       },
       openaiTokenStats: {
         title: 'OpenAI Token Request Stats',
@@ -3844,6 +4079,16 @@ export default {
         showAdvancedDeveloperSettings: 'Show advanced developer settings (Distributed Lock)',
         advancedSettingsSummary: 'Advanced settings (Distributed Lock)',
         evalIntervalHint: 'How often the evaluator runs. Keeping the default is recommended.',
+        metricThresholds: 'Metric Thresholds',
+        metricThresholdsHint: 'Configure alert thresholds for metrics. Values exceeding thresholds are highlighted in red.',
+        slaMinPercent: 'SLA Minimum Percentage',
+        slaMinPercentHint: 'Values below this SLA are highlighted in red (default: 99.5%).',
+        ttftP99MaxMs: 'TTFT P99 Maximum (ms)',
+        ttftP99MaxMsHint: 'Values above this TTFT P99 are highlighted in red (default: 500ms).',
+        requestErrorRateMaxPercent: 'Request Error Rate Maximum (%)',
+        requestErrorRateMaxPercentHint: 'Values above this request error rate are highlighted in red (default: 5%).',
+        upstreamErrorRateMaxPercent: 'Upstream Error Rate Maximum (%)',
+        upstreamErrorRateMaxPercentHint: 'Values above this upstream error rate are highlighted in red (default: 5%).',
         validation: {
           title: 'Please fix the following issues',
           invalid: 'Invalid settings',
@@ -4327,6 +4572,7 @@ export default {
           provider: 'Type',
           active: 'Active',
           endpoint: 'Endpoint',
+          bucket: 'Bucket',
           storagePath: 'Storage Path',
           capacityUsage: 'Capacity / Used',
           capacityUnlimited: 'Unlimited',

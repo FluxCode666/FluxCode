@@ -457,6 +457,8 @@ func (r *accountRepository) ListWithFilters(ctx context.Context, params paginati
 	}
 	if status != "" {
 		switch status {
+		case legacyInactiveStatus:
+			q = q.Where(inactiveAccountPredicate())
 		case "rate_limited":
 			q = q.Where(dbaccount.RateLimitResetAtGT(time.Now()))
 		case "temp_unschedulable":
@@ -499,6 +501,202 @@ func (r *accountRepository) ListWithFilters(ctx context.Context, params paginati
 		return nil, nil, err
 	}
 	return outAccounts, paginationResultFromTotal(int64(total), params), nil
+}
+
+func (r *accountRepository) ListWithAdvancedFilters(
+	ctx context.Context,
+	params pagination.PaginationParams,
+	platform, accountType, status, schedulableStatus string,
+	groupID int64,
+	search, sortBy, sortOrder string,
+	proxyIDs []int64,
+	createdStart, createdEndExclusive *time.Time,
+) ([]service.Account, *pagination.PaginationResult, error) {
+	q := r.client.Account.Query()
+
+	if platform != "" {
+		q = q.Where(dbaccount.PlatformEQ(platform))
+	}
+	if accountType != "" {
+		q = q.Where(dbaccount.TypeEQ(accountType))
+	}
+	if status != "" {
+		switch status {
+		case service.StatusExpired:
+			q = q.Where(expiredSchedulingPredicate())
+		case legacyInactiveStatus:
+			q = q.Where(inactiveAccountPredicate())
+		case "rate_limited":
+			q = q.Where(rateLimitActivePredicate())
+		case "temp_unschedulable":
+			q = q.Where(tempUnschedulableActivePredicate())
+		default:
+			q = q.Where(dbaccount.StatusEQ(status))
+		}
+	}
+	if schedulingState := service.NormalizeAccountSchedulingState(service.AccountSchedulingState(schedulableStatus)); schedulingState != "" {
+		if predicate := accountSchedulingStatePredicate([]string{platform}, schedulingState, time.Now()); predicate != nil {
+			q = q.Where(predicate)
+		}
+	}
+	if groupID == service.AccountListGroupUngrouped {
+		q = q.Where(dbaccount.Not(dbaccount.HasAccountGroups()))
+	} else if groupID > 0 {
+		q = q.Where(dbaccount.HasAccountGroupsWith(dbaccountgroup.GroupIDEQ(groupID)))
+	}
+	if search != "" {
+		q = q.Where(dbaccount.NameContainsFold(search))
+	}
+	if len(proxyIDs) > 0 {
+		q = q.Where(dbaccount.ProxyIDIn(proxyIDs...))
+	}
+	if createdStart != nil {
+		q = q.Where(dbaccount.CreatedAtGTE(*createdStart))
+	}
+	if createdEndExclusive != nil {
+		q = q.Where(dbaccount.CreatedAtLT(*createdEndExclusive))
+	}
+
+	total, err := q.Count(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	accounts, err := q.
+		Offset(params.Offset()).
+		Limit(params.Limit()).
+		Order(accountListOrders(sortBy, sortOrder)...).
+		All(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	outAccounts, err := r.accountsToService(ctx, accounts)
+	if err != nil {
+		return nil, nil, err
+	}
+	return outAccounts, paginationResultFromTotal(int64(total), params), nil
+}
+
+func (r *accountRepository) GetAccountSummary(ctx context.Context) ([]service.AccountPlatformSummaryItem, error) {
+	rows, err := r.sql.QueryContext(ctx, `
+		WITH classified AS (
+			SELECT
+				platform,
+				status,
+				error_message,
+				expires_at,
+				`+buildAccountSchedulingBucketCaseSQL()+` AS scheduling_bucket
+			FROM accounts
+			WHERE deleted_at IS NULL
+		)
+		SELECT
+			platform,
+			COUNT(*) AS all_count,
+			COUNT(*) FILTER (WHERE status = $1) AS active_count,
+			COUNT(*) FILTER (WHERE status IN ($2, $3)) AS inactive_count,
+			COUNT(*) FILTER (WHERE expires_at IS NOT NULL AND expires_at <= NOW()) AS expired_count,
+			COUNT(*) FILTER (WHERE status = $4) AS error_count,
+			COUNT(*) FILTER (WHERE `+bannedAccountConditionSQL("status", "error_message")+`) AS banned_count,
+			COUNT(*) FILTER (WHERE scheduling_bucket = $5) AS available_count,
+			COUNT(*) FILTER (WHERE scheduling_bucket = $6) AS manual_unschedulable_count,
+			COUNT(*) FILTER (WHERE scheduling_bucket = $7) AS temp_unschedulable_count,
+			COUNT(*) FILTER (WHERE scheduling_bucket = $8) AS rate_limited_count,
+			COUNT(*) FILTER (WHERE scheduling_bucket = $9) AS overloaded_count
+		FROM classified
+		GROUP BY platform
+		ORDER BY platform ASC
+	`,
+		service.StatusActive,
+		legacyInactiveStatus,
+		service.StatusDisabled,
+		service.StatusError,
+		string(service.AccountSchedulingStateAvailable),
+		string(service.AccountSchedulingStateManualUnschedulable),
+		string(service.AccountSchedulingStateTempUnschedulable),
+		string(service.AccountSchedulingStateRateLimited),
+		string(service.AccountSchedulingStateOverloaded),
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := make([]service.AccountPlatformSummaryItem, 0)
+	for rows.Next() {
+		var item service.AccountPlatformSummaryItem
+		if err := rows.Scan(
+			&item.Platform,
+			&item.Counts.All,
+			&item.Counts.Active,
+			&item.Counts.Inactive,
+			&item.Counts.Expired,
+			&item.Counts.Error,
+			&item.Counts.Banned,
+			&item.Counts.Available,
+			&item.Counts.ManualUnschedulable,
+			&item.Counts.TempUnschedulable,
+			&item.Counts.RateLimited,
+			&item.Counts.Overloaded,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+func accountListOrders(sortBy, sortOrder string) []dbaccount.OrderOption {
+	if sortBy == "" {
+		return []dbaccount.OrderOption{dbent.Desc(dbaccount.FieldID)}
+	}
+
+	primary := accountOrderFunc(sortBy, sortOrder)
+	if sortBy == "id" {
+		return []dbaccount.OrderOption{primary}
+	}
+	return []dbaccount.OrderOption{primary, dbent.Desc(dbaccount.FieldID)}
+}
+
+func accountOrderFunc(sortBy, sortOrder string) dbaccount.OrderOption {
+	asc := sortOrder == "asc"
+	switch sortBy {
+	case "id":
+		if asc {
+			return dbent.Asc(dbaccount.FieldID)
+		}
+		return dbent.Desc(dbaccount.FieldID)
+	case "name":
+		if asc {
+			return dbent.Asc(dbaccount.FieldName)
+		}
+		return dbent.Desc(dbaccount.FieldName)
+	case "expires_at":
+		if asc {
+			return dbent.Asc(dbaccount.FieldExpiresAt)
+		}
+		return dbent.Desc(dbaccount.FieldExpiresAt)
+	case "priority":
+		if asc {
+			return dbent.Asc(dbaccount.FieldPriority)
+		}
+		return dbent.Desc(dbaccount.FieldPriority)
+	case "last_used_at":
+		if asc {
+			return dbent.Asc(dbaccount.FieldLastUsedAt)
+		}
+		return dbent.Desc(dbaccount.FieldLastUsedAt)
+	case "created_at":
+		if asc {
+			return dbent.Asc(dbaccount.FieldCreatedAt)
+		}
+		return dbent.Desc(dbaccount.FieldCreatedAt)
+	default:
+		return dbent.Desc(dbaccount.FieldID)
+	}
 }
 
 func (r *accountRepository) ListByGroup(ctx context.Context, groupID int64) ([]service.Account, error) {

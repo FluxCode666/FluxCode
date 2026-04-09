@@ -32,6 +32,8 @@ func ProvideAdminHandlers(
 	errorPassthroughHandler *admin.ErrorPassthroughHandler,
 	apiKeyHandler *admin.AdminAPIKeyHandler,
 	scheduledTestHandler *admin.ScheduledTestHandler,
+	pricingPlanHandler *admin.PricingPlanHandler,
+	poolMonitorHandler *admin.PoolMonitorHandler,
 ) *AdminHandlers {
 	return &AdminHandlers{
 		Dashboard:        dashboardHandler,
@@ -57,6 +59,8 @@ func ProvideAdminHandlers(
 		ErrorPassthrough: errorPassthroughHandler,
 		APIKey:           apiKeyHandler,
 		ScheduledTest:    scheduledTestHandler,
+		PricingPlan:      pricingPlanHandler,
+		PoolMonitor:      poolMonitorHandler,
 	}
 }
 
@@ -86,6 +90,7 @@ func ProvideHandlers(
 	soraClientHandler *SoraClientHandler,
 	settingHandler *SettingHandler,
 	totpHandler *TotpHandler,
+	pricingPlanHandler *PricingPlanHandler,
 	_ *service.IdempotencyCoordinator,
 	_ *service.IdempotencyCleanupService,
 ) *Handlers {
@@ -104,6 +109,7 @@ func ProvideHandlers(
 		SoraClient:    soraClientHandler,
 		Setting:       settingHandler,
 		Totp:          totpHandler,
+		PricingPlan:   pricingPlanHandler,
 	}
 }
 
@@ -120,8 +126,10 @@ var ProviderSet = wire.NewSet(
 	NewGatewayHandler,
 	NewOpenAIGatewayHandler,
 	NewSoraGatewayHandler,
+	NewSoraClientHandler,
 	NewTotpHandler,
 	ProvideSettingHandler,
+	NewPricingPlanHandler,
 
 	// Admin handlers
 	admin.NewDashboardHandler,
@@ -147,6 +155,8 @@ var ProviderSet = wire.NewSet(
 	admin.NewErrorPassthroughHandler,
 	admin.NewAdminAPIKeyHandler,
 	admin.NewScheduledTestHandler,
+	admin.NewPricingPlanHandler,
+	admin.NewPoolMonitorHandler,
 
 	// AdminHandlers and Handlers constructors
 	ProvideAdminHandlers,

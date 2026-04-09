@@ -1888,20 +1888,20 @@ const exclusiveOptions = computed(() => [
 ])
 
 const platformOptions = computed(() => [
-  { value: 'anthropic', label: 'Anthropic' },
-  { value: 'openai', label: 'OpenAI' },
-  { value: 'gemini', label: 'Gemini' },
-  { value: 'antigravity', label: 'Antigravity' },
-  { value: 'sora', label: 'Sora' }
+  { value: 'anthropic', label: t('admin.groups.platforms.anthropic') },
+  { value: 'openai', label: t('admin.groups.platforms.openai') },
+  { value: 'gemini', label: t('admin.groups.platforms.gemini') },
+  { value: 'antigravity', label: t('admin.groups.platforms.antigravity') },
+  { value: 'sora', label: t('admin.groups.platforms.sora') }
 ])
 
 const platformFilterOptions = computed(() => [
   { value: '', label: t('admin.groups.allPlatforms') },
-  { value: 'anthropic', label: 'Anthropic' },
-  { value: 'openai', label: 'OpenAI' },
-  { value: 'gemini', label: 'Gemini' },
-  { value: 'antigravity', label: 'Antigravity' },
-  { value: 'sora', label: 'Sora' }
+  { value: 'anthropic', label: t('admin.groups.platforms.anthropic') },
+  { value: 'openai', label: t('admin.groups.platforms.openai') },
+  { value: 'gemini', label: t('admin.groups.platforms.gemini') },
+  { value: 'antigravity', label: t('admin.groups.platforms.antigravity') },
+  { value: 'sora', label: t('admin.groups.platforms.sora') }
 ])
 
 const editStatusOptions = computed(() => [

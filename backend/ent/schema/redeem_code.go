@@ -68,6 +68,10 @@ func (RedeemCode) Fields() []ent.Field {
 			Nillable(),
 		field.Int("validity_days").
 			Default(30),
+		field.String("subscription_mode").
+			MaxLen(16).
+			Optional().
+			Nillable(),
 	}
 }
 

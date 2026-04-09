@@ -5,11 +5,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
+	"strings"
 	"sync/atomic"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
 )
 
@@ -40,17 +43,18 @@ type dashboardStatsCacheEntry struct {
 
 // DashboardService 提供管理员仪表盘统计服务。
 type DashboardService struct {
-	usageRepo      UsageLogRepository
-	aggRepo        DashboardAggregationRepository
-	cache          DashboardStatsCache
-	cacheFreshTTL  time.Duration
-	cacheTTL       time.Duration
-	refreshTimeout time.Duration
-	refreshing     int32
-	aggEnabled     bool
-	aggInterval    time.Duration
-	aggLookback    time.Duration
-	aggUsageDays   int
+	usageRepo        UsageLogRepository
+	aggRepo          DashboardAggregationRepository
+	cache            DashboardStatsCache
+	cacheFreshTTL    time.Duration
+	cacheTTL         time.Duration
+	refreshTimeout   time.Duration
+	refreshing       int32
+	aggEnabled       bool
+	aggInterval      time.Duration
+	aggLookback      time.Duration
+	aggUsageDays     int
+	proxyMetricsRepo ProxyUsageMetricsRepository
 }
 
 func NewDashboardService(usageRepo UsageLogRepository, aggRepo DashboardAggregationRepository, cache DashboardStatsCache, cfg *config.Config) *DashboardService {
@@ -100,6 +104,13 @@ func NewDashboardService(usageRepo UsageLogRepository, aggRepo DashboardAggregat
 		aggLookback:    aggLookback,
 		aggUsageDays:   aggUsageDays,
 	}
+}
+
+func (s *DashboardService) SetProxyMetricsRepo(repo ProxyUsageMetricsRepository) {
+	if s == nil {
+		return
+	}
+	s.proxyMetricsRepo = repo
 }
 
 func (s *DashboardService) GetDashboardStats(ctx context.Context) (*usagestats.DashboardStats, error) {
@@ -387,4 +398,91 @@ func (s *DashboardService) GetBatchAPIKeyUsageStats(ctx context.Context, apiKeyI
 		return nil, fmt.Errorf("get batch api key usage stats: %w", err)
 	}
 	return stats, nil
+}
+
+func (s *DashboardService) GetProxyUsageSummary(ctx context.Context, startTime, endTime time.Time, granularity string) ([]usagestats.ProxyUsageSummaryItem, error) {
+	if s.proxyMetricsRepo == nil {
+		return []usagestats.ProxyUsageSummaryItem{}, nil
+	}
+	rows, err := s.proxyMetricsRepo.ListHourlyBuckets(ctx, ProxyUsageMetricsPlatformOpenAI, startTime, endTime)
+	if err != nil {
+		return nil, fmt.Errorf("get proxy usage summary: %w", err)
+	}
+	if len(rows) == 0 {
+		return []usagestats.ProxyUsageSummaryItem{}, nil
+	}
+
+	loc := timezone.Location()
+	isDay := strings.EqualFold(strings.TrimSpace(granularity), "day")
+	type itemBuilder struct {
+		item     usagestats.ProxyUsageSummaryItem
+		byBucket map[string]int
+	}
+	byProxy := make(map[int64]*itemBuilder, len(rows))
+	proxyOrder := make([]int64, 0, len(rows))
+
+	for i := range rows {
+		row := rows[i]
+		builder, ok := byProxy[row.ProxyID]
+		if !ok {
+			builder = &itemBuilder{
+				item: usagestats.ProxyUsageSummaryItem{
+					ProxyID:      row.ProxyID,
+					ProxyName:    row.ProxyName,
+					ProxyAddr:    row.ProxyAddr,
+					ProxyStatus:  row.ProxyStatus,
+					TotalCount:   0,
+					SuccessCount: 0,
+					FailureCount: 0,
+					Points:       make([]usagestats.ProxyUsageTimelinePoint, 0),
+				},
+				byBucket: make(map[string]int),
+			}
+			byProxy[row.ProxyID] = builder
+			proxyOrder = append(proxyOrder, row.ProxyID)
+		}
+
+		bucketStart := row.BucketStart.In(loc)
+		if isDay {
+			bucketStart = time.Date(bucketStart.Year(), bucketStart.Month(), bucketStart.Day(), 0, 0, 0, 0, loc)
+		} else {
+			bucketStart = time.Date(bucketStart.Year(), bucketStart.Month(), bucketStart.Day(), bucketStart.Hour(), 0, 0, 0, loc)
+		}
+		bucketLabel := bucketStart.Format("2006-01-02")
+		if !isDay {
+			bucketLabel = bucketStart.Format("2006-01-02 15:00")
+		}
+
+		if idx, exists := builder.byBucket[bucketLabel]; exists {
+			builder.item.Points[idx].TotalCount += row.TotalCount
+			builder.item.Points[idx].SuccessCount += row.SuccessCount
+			builder.item.Points[idx].FailureCount += row.FailureCount
+		} else {
+			builder.item.Points = append(builder.item.Points, usagestats.ProxyUsageTimelinePoint{
+				Bucket:       bucketLabel,
+				TotalCount:   row.TotalCount,
+				SuccessCount: row.SuccessCount,
+				FailureCount: row.FailureCount,
+			})
+			builder.byBucket[bucketLabel] = len(builder.item.Points) - 1
+		}
+
+		builder.item.TotalCount += row.TotalCount
+		builder.item.SuccessCount += row.SuccessCount
+		builder.item.FailureCount += row.FailureCount
+	}
+
+	out := make([]usagestats.ProxyUsageSummaryItem, 0, len(byProxy))
+	for _, proxyID := range proxyOrder {
+		if builder, ok := byProxy[proxyID]; ok {
+			out = append(out, builder.item)
+		}
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].TotalCount == out[j].TotalCount {
+			return out[i].ProxyID < out[j].ProxyID
+		}
+		return out[i].TotalCount > out[j].TotalCount
+	})
+	return out, nil
 }

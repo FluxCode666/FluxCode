@@ -43,13 +43,14 @@ type GenerateRedeemCodesRequest struct {
 // CreateAndRedeemCodeRequest represents creating a fixed code and redeeming it for a target user.
 // Type 为 omitempty 而非 required 是为了向后兼容旧版调用方（不传 type 时默认 balance）。
 type CreateAndRedeemCodeRequest struct {
-	Code         string  `json:"code" binding:"required,min=3,max=128"`
-	Type         string  `json:"type" binding:"omitempty,oneof=balance concurrency subscription invitation"` // 不传时默认 balance（向后兼容）
-	Value        float64 `json:"value" binding:"required,gt=0"`
-	UserID       int64   `json:"user_id" binding:"required,gt=0"`
-	GroupID      *int64  `json:"group_id"`                                    // subscription 类型必填
-	ValidityDays int     `json:"validity_days" binding:"omitempty,max=36500"` // subscription 类型必填，>0
-	Notes        string  `json:"notes"`
+	Code             string  `json:"code" binding:"required,min=3,max=128"`
+	Type             string  `json:"type" binding:"omitempty,oneof=balance concurrency subscription invitation"` // 不传时默认 balance（向后兼容）
+	Value            float64 `json:"value" binding:"required,gt=0"`
+	UserID           int64   `json:"user_id" binding:"required,gt=0"`
+	GroupID          *int64  `json:"group_id"`                                    // subscription 类型必填
+	ValidityDays     int     `json:"validity_days" binding:"omitempty,max=36500"` // subscription 类型必填，>0
+	SubscriptionMode string  `json:"subscription_mode"`
+	Notes            string  `json:"notes"`
 }
 
 // List handles listing all redeem codes with pagination
@@ -183,7 +184,7 @@ func (h *RedeemHandler) CreateAndRedeem(c *gin.Context) {
 			return nil, createErr
 		}
 
-		redeemed, redeemErr := h.redeemService.Redeem(ctx, req.UserID, req.Code)
+		redeemed, redeemErr := h.redeemService.Redeem(ctx, req.UserID, req.Code, req.SubscriptionMode)
 		if redeemErr != nil {
 			return nil, redeemErr
 		}
@@ -198,7 +199,7 @@ func (h *RedeemHandler) resolveCreateAndRedeemExisting(ctx context.Context, exis
 
 	// If previous run created the code but crashed before redeem, redeem it now.
 	if existing.CanUse() {
-		redeemed, err := h.redeemService.Redeem(ctx, userID, existing.Code)
+		redeemed, err := h.redeemService.Redeem(ctx, userID, existing.Code, "")
 		if err == nil {
 			return gin.H{"redeem_code": dto.RedeemCodeFromServiceAdmin(redeemed)}, nil
 		}

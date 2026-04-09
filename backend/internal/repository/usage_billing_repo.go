@@ -4,7 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"math"
 	"strings"
+	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
@@ -107,7 +109,7 @@ func (r *usageBillingRepository) claimUsageBillingKey(ctx context.Context, tx *s
 
 func (r *usageBillingRepository) applyUsageBillingEffects(ctx context.Context, tx *sql.Tx, cmd *service.UsageBillingCommand, result *service.UsageBillingApplyResult) error {
 	if cmd.SubscriptionCost > 0 && cmd.SubscriptionID != nil {
-		if err := incrementUsageBillingSubscription(ctx, tx, *cmd.SubscriptionID, cmd.SubscriptionCost); err != nil {
+		if err := incrementUsageBillingSubscription(ctx, tx, *cmd.SubscriptionID, cmd.BilledAt, cmd.SubscriptionCost); err != nil {
 			return err
 		}
 	}
@@ -141,7 +143,18 @@ func (r *usageBillingRepository) applyUsageBillingEffects(ctx context.Context, t
 	return nil
 }
 
-func incrementUsageBillingSubscription(ctx context.Context, tx *sql.Tx, subscriptionID int64, costUSD float64) error {
+func incrementUsageBillingSubscription(ctx context.Context, tx *sql.Tx, subscriptionID int64, billedAt time.Time, costUSD float64) error {
+	group, err := loadUsageBillingSubscriptionGroup(ctx, tx, subscriptionID)
+	if err != nil {
+		return err
+	}
+	if billedAt.IsZero() {
+		billedAt = time.Now()
+	}
+	if err := allocateUsageBillingSubscriptionGrants(ctx, tx, subscriptionID, group, billedAt, costUSD); err != nil {
+		return err
+	}
+
 	const updateSQL = `
 		UPDATE user_subscriptions us
 		SET
@@ -167,6 +180,158 @@ func incrementUsageBillingSubscription(ctx context.Context, tx *sql.Tx, subscrip
 		return nil
 	}
 	return service.ErrSubscriptionNotFound
+}
+
+func loadUsageBillingSubscriptionGroup(ctx context.Context, tx *sql.Tx, subscriptionID int64) (*service.Group, error) {
+	var daily, weekly, monthly sql.NullFloat64
+	err := tx.QueryRowContext(ctx, `
+		SELECT g.daily_limit_usd, g.weekly_limit_usd, g.monthly_limit_usd
+		FROM user_subscriptions us
+		JOIN groups g ON g.id = us.group_id
+		WHERE us.id = $1
+			AND us.deleted_at IS NULL
+			AND g.deleted_at IS NULL
+	`, subscriptionID).Scan(&daily, &weekly, &monthly)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, service.ErrSubscriptionNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	group := &service.Group{}
+	if daily.Valid {
+		v := daily.Float64
+		group.DailyLimitUSD = &v
+	}
+	if weekly.Valid {
+		v := weekly.Float64
+		group.WeeklyLimitUSD = &v
+	}
+	if monthly.Valid {
+		v := monthly.Float64
+		group.MonthlyLimitUSD = &v
+	}
+	return group, nil
+}
+
+type usageBillingGrantRow struct {
+	id      int64
+	daily   float64
+	weekly  float64
+	monthly float64
+}
+
+func allocateUsageBillingSubscriptionGrants(ctx context.Context, tx *sql.Tx, subscriptionID int64, group *service.Group, at time.Time, costUSD float64) error {
+	if costUSD <= 0 {
+		return nil
+	}
+
+	rows, err := tx.QueryContext(ctx, `
+		SELECT id, daily_usage_usd, weekly_usage_usd, monthly_usage_usd
+		FROM subscription_grants
+		WHERE subscription_id = $1
+			AND deleted_at IS NULL
+			AND starts_at <= $2
+			AND expires_at > $2
+		ORDER BY expires_at ASC, id ASC
+		FOR UPDATE
+	`, subscriptionID, at)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	grants := make([]usageBillingGrantRow, 0, 4)
+	for rows.Next() {
+		var grant usageBillingGrantRow
+		if err := rows.Scan(&grant.id, &grant.daily, &grant.weekly, &grant.monthly); err != nil {
+			return err
+		}
+		grants = append(grants, grant)
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	if len(grants) == 0 {
+		var tailID int64
+		err := tx.QueryRowContext(ctx, `
+			SELECT id
+			FROM subscription_grants
+			WHERE subscription_id = $1
+				AND deleted_at IS NULL
+			ORDER BY expires_at DESC, id DESC
+			LIMIT 1
+			FOR UPDATE
+		`, subscriptionID).Scan(&tailID)
+		if errors.Is(err, sql.ErrNoRows) {
+			return service.ErrSubscriptionGrantNotFound
+		}
+		if err != nil {
+			return err
+		}
+		_, err = tx.ExecContext(ctx, `
+			UPDATE subscription_grants
+			SET
+				daily_usage_usd = daily_usage_usd + $1,
+				weekly_usage_usd = weekly_usage_usd + $1,
+				monthly_usage_usd = monthly_usage_usd + $1,
+				updated_at = NOW()
+			WHERE id = $2
+		`, costUSD, tailID)
+		return err
+	}
+
+	remaining := costUSD
+	for i, grant := range grants {
+		if remaining <= 0 {
+			break
+		}
+
+		cap := math.Inf(1)
+		if group != nil {
+			if group.HasDailyLimit() {
+				cap = math.Min(cap, *group.DailyLimitUSD-grant.daily)
+			}
+			if group.HasWeeklyLimit() {
+				cap = math.Min(cap, *group.WeeklyLimitUSD-grant.weekly)
+			}
+			if group.HasMonthlyLimit() {
+				cap = math.Min(cap, *group.MonthlyLimitUSD-grant.monthly)
+			}
+		}
+		if cap < 0 {
+			cap = 0
+		}
+
+		allocation := remaining
+		if !math.IsInf(cap, 1) {
+			allocation = math.Min(remaining, cap)
+		}
+		if allocation <= 0 && i == len(grants)-1 {
+			allocation = remaining
+		}
+		if allocation <= 0 {
+			continue
+		}
+
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE subscription_grants
+			SET
+				daily_usage_usd = daily_usage_usd + $1,
+				weekly_usage_usd = weekly_usage_usd + $1,
+				monthly_usage_usd = monthly_usage_usd + $1,
+				updated_at = NOW()
+			WHERE id = $2
+		`, allocation, grant.id); err != nil {
+			return err
+		}
+
+		remaining -= allocation
+	}
+
+	return nil
 }
 
 func deductUsageBillingBalance(ctx context.Context, tx *sql.Tx, userID int64, amount float64) error {

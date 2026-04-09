@@ -20,6 +20,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/schema"
 	"github.com/Wei-Shaw/sub2api/ent/securitysecret"
 	"github.com/Wei-Shaw/sub2api/ent/setting"
+	"github.com/Wei-Shaw/sub2api/ent/subscriptiongrant"
 	"github.com/Wei-Shaw/sub2api/ent/usagecleanuptask"
 	"github.com/Wei-Shaw/sub2api/ent/usagelog"
 	"github.com/Wei-Shaw/sub2api/ent/user"
@@ -683,6 +684,10 @@ func init() {
 	redeemcodeDescValidityDays := redeemcodeFields[9].Descriptor()
 	// redeemcode.DefaultValidityDays holds the default value on creation for the validity_days field.
 	redeemcode.DefaultValidityDays = redeemcodeDescValidityDays.Default.(int)
+	// redeemcodeDescSubscriptionMode is the schema descriptor for subscription_mode field.
+	redeemcodeDescSubscriptionMode := redeemcodeFields[10].Descriptor()
+	// redeemcode.SubscriptionModeValidator is a validator for the "subscription_mode" field. It is called by the builders before save.
+	redeemcode.SubscriptionModeValidator = redeemcodeDescSubscriptionMode.Validators[0].(func(string) error)
 	securitysecretMixin := schema.SecuritySecret{}.Mixin()
 	securitysecretMixinFields0 := securitysecretMixin[0].Fields()
 	_ = securitysecretMixinFields0
@@ -746,6 +751,41 @@ func init() {
 	setting.DefaultUpdatedAt = settingDescUpdatedAt.Default.(func() time.Time)
 	// setting.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
 	setting.UpdateDefaultUpdatedAt = settingDescUpdatedAt.UpdateDefault.(func() time.Time)
+	subscriptiongrantMixin := schema.SubscriptionGrant{}.Mixin()
+	subscriptiongrantMixinHooks1 := subscriptiongrantMixin[1].Hooks()
+	subscriptiongrant.Hooks[0] = subscriptiongrantMixinHooks1[0]
+	subscriptiongrantMixinInters1 := subscriptiongrantMixin[1].Interceptors()
+	subscriptiongrant.Interceptors[0] = subscriptiongrantMixinInters1[0]
+	subscriptiongrantMixinFields0 := subscriptiongrantMixin[0].Fields()
+	_ = subscriptiongrantMixinFields0
+	subscriptiongrantFields := schema.SubscriptionGrant{}.Fields()
+	_ = subscriptiongrantFields
+	// subscriptiongrantDescCreatedAt is the schema descriptor for created_at field.
+	subscriptiongrantDescCreatedAt := subscriptiongrantMixinFields0[0].Descriptor()
+	// subscriptiongrant.DefaultCreatedAt holds the default value on creation for the created_at field.
+	subscriptiongrant.DefaultCreatedAt = subscriptiongrantDescCreatedAt.Default.(func() time.Time)
+	// subscriptiongrantDescUpdatedAt is the schema descriptor for updated_at field.
+	subscriptiongrantDescUpdatedAt := subscriptiongrantMixinFields0[1].Descriptor()
+	// subscriptiongrant.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	subscriptiongrant.DefaultUpdatedAt = subscriptiongrantDescUpdatedAt.Default.(func() time.Time)
+	// subscriptiongrant.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	subscriptiongrant.UpdateDefaultUpdatedAt = subscriptiongrantDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// subscriptiongrantDescStartsAt is the schema descriptor for starts_at field.
+	subscriptiongrantDescStartsAt := subscriptiongrantFields[1].Descriptor()
+	// subscriptiongrant.DefaultStartsAt holds the default value on creation for the starts_at field.
+	subscriptiongrant.DefaultStartsAt = subscriptiongrantDescStartsAt.Default.(func() time.Time)
+	// subscriptiongrantDescDailyUsageUsd is the schema descriptor for daily_usage_usd field.
+	subscriptiongrantDescDailyUsageUsd := subscriptiongrantFields[3].Descriptor()
+	// subscriptiongrant.DefaultDailyUsageUsd holds the default value on creation for the daily_usage_usd field.
+	subscriptiongrant.DefaultDailyUsageUsd = subscriptiongrantDescDailyUsageUsd.Default.(float64)
+	// subscriptiongrantDescWeeklyUsageUsd is the schema descriptor for weekly_usage_usd field.
+	subscriptiongrantDescWeeklyUsageUsd := subscriptiongrantFields[4].Descriptor()
+	// subscriptiongrant.DefaultWeeklyUsageUsd holds the default value on creation for the weekly_usage_usd field.
+	subscriptiongrant.DefaultWeeklyUsageUsd = subscriptiongrantDescWeeklyUsageUsd.Default.(float64)
+	// subscriptiongrantDescMonthlyUsageUsd is the schema descriptor for monthly_usage_usd field.
+	subscriptiongrantDescMonthlyUsageUsd := subscriptiongrantFields[5].Descriptor()
+	// subscriptiongrant.DefaultMonthlyUsageUsd holds the default value on creation for the monthly_usage_usd field.
+	subscriptiongrant.DefaultMonthlyUsageUsd = subscriptiongrantDescMonthlyUsageUsd.Default.(float64)
 	usagecleanuptaskMixin := schema.UsageCleanupTask{}.Mixin()
 	usagecleanuptaskMixinFields0 := usagecleanuptaskMixin[0].Fields()
 	_ = usagecleanuptaskMixinFields0

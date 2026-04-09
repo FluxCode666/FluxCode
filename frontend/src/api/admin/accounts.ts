@@ -6,6 +6,7 @@
 import { apiClient } from '../client'
 import type {
   Account,
+  AccountSchedulingState,
   CreateAccountRequest,
   UpdateAccountRequest,
   PaginatedResponse,
@@ -17,8 +18,25 @@ import type {
   AdminDataPayload,
   AdminDataImportResult,
   CheckMixedChannelRequest,
-  CheckMixedChannelResponse
+  CheckMixedChannelResponse,
+  AccountSummaryResponse
 } from '@/types'
+
+export interface AccountListFilters {
+  platform?: string
+  type?: string
+  status?: string
+  group?: string
+  group_id?: number
+  search?: string
+  lite?: string
+  schedulable_status?: AccountSchedulingState | ''
+  proxy_ids?: number[]
+  created_start_date?: string
+  created_end_date?: string
+  sort_by?: string
+  sort_order?: 'asc' | 'desc'
+}
 
 /**
  * List all accounts with pagination
@@ -30,26 +48,30 @@ import type {
 export async function list(
   page: number = 1,
   pageSize: number = 20,
-  filters?: {
-    platform?: string
-    type?: string
-    status?: string
-    group?: string
-    search?: string
-    lite?: string
-  },
+  filters?: AccountListFilters,
   options?: {
     signal?: AbortSignal
   }
 ): Promise<PaginatedResponse<Account>> {
+  const { proxy_ids, ...restFilters } = filters || {}
   const { data } = await apiClient.get<PaginatedResponse<Account>>('/admin/accounts', {
     params: {
       page,
       page_size: pageSize,
-      ...filters
+      ...restFilters,
+      proxy_ids: proxy_ids && proxy_ids.length > 0 ? proxy_ids.join(',') : undefined
     },
     signal: options?.signal
   })
+  return data
+}
+
+/**
+ * Get account summary counts by platform
+ * @returns Summary of account counts across all platforms
+ */
+export async function getSummary(): Promise<AccountSummaryResponse> {
+  const { data } = await apiClient.get<AccountSummaryResponse>('/admin/accounts/summary')
   return data
 }
 
@@ -62,14 +84,7 @@ export interface AccountListWithEtagResult {
 export async function listWithEtag(
   page: number = 1,
   pageSize: number = 20,
-  filters?: {
-    platform?: string
-    type?: string
-    status?: string
-    group?: string
-    search?: string
-    lite?: string
-  },
+  filters?: AccountListFilters,
   options?: {
     signal?: AbortSignal
     etag?: string | null
@@ -80,11 +95,13 @@ export async function listWithEtag(
     headers['If-None-Match'] = options.etag
   }
 
+  const { proxy_ids, ...restFilters } = filters || {}
   const response = await apiClient.get<PaginatedResponse<Account>>('/admin/accounts', {
     params: {
       page,
       page_size: pageSize,
-      ...filters
+      ...restFilters,
+      proxy_ids: proxy_ids && proxy_ids.length > 0 ? proxy_ids.join(',') : undefined
     },
     headers,
     signal: options?.signal,
@@ -625,6 +642,7 @@ export const accountsAPI = {
   list,
   listWithEtag,
   getById,
+  getSummary,
   create,
   update,
   checkMixedChannelRisk,

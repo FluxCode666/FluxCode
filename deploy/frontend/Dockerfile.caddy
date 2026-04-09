@@ -1,0 +1,73 @@
+# =============================================================================
+# Sub2API Frontend Dockerfile - Caddy Edition (Cluster Mode)
+# =============================================================================
+# Builds the Vue 3 frontend and serves it via Caddy.
+# API requests are reverse-proxied to the backend cluster.
+# Caddy automatically handles HTTPS (Let's Encrypt / ZeroSSL) when a domain
+# is provided via SITE_DOMAIN.
+#
+# Build context: project root (../..)
+# Usage:
+#   docker build -f deploy/frontend/Dockerfile.caddy -t sub2api-frontend-caddy .
+#
+# Runtime environment variables:
+#   BACKEND_SERVERS - Comma-separated backend addresses (default: backend-1:8080)
+#                     Example: "10.0.1.10:8080,10.0.1.11:8080"
+#   SITE_DOMAIN     - Domain name for auto HTTPS, or ":80" for HTTP-only
+#                     Example: "api.sub2api.com" or ":80"
+# =============================================================================
+
+ARG NODE_IMAGE=node:24-alpine
+ARG CADDY_IMAGE=caddy:2-alpine
+
+# -----------------------------------------------------------------------------
+# Stage 1: Frontend Builder
+# -----------------------------------------------------------------------------
+FROM ${NODE_IMAGE} AS frontend-builder
+
+WORKDIR /app/frontend
+
+# Install pnpm
+RUN corepack enable && corepack prepare pnpm@latest --activate
+
+# Install dependencies first (better caching)
+COPY frontend/package.json frontend/pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile
+
+# Copy frontend source and build
+COPY frontend/ ./
+RUN pnpm run build
+
+# The build output goes to ../backend/internal/web/dist (relative to frontend/)
+# which is /app/backend/internal/web/dist in the container
+
+# -----------------------------------------------------------------------------
+# Stage 2: Caddy Runtime
+# -----------------------------------------------------------------------------
+FROM ${CADDY_IMAGE}
+
+LABEL maintainer="Wei-Shaw <github.com/Wei-Shaw>"
+LABEL description="Sub2API Frontend - Caddy + Vue 3 SPA (Cluster Mode)"
+
+# Install envsubst (part of gettext)
+RUN apk add --no-cache gettext
+
+# Copy Caddyfile template and entrypoint
+COPY deploy/frontend/Caddyfile.template /etc/caddy/Caddyfile.template
+COPY deploy/frontend/caddy-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
+
+# Copy frontend dist from builder to Caddy serve directory
+COPY --from=frontend-builder /app/backend/internal/web/dist /srv/sub2api
+
+# Create log directory
+RUN mkdir -p /var/log/caddy
+
+# Expose HTTP and HTTPS ports
+EXPOSE 80 443
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD wget -q -T 3 -O /dev/null http://localhost/ || exit 1
+
+ENTRYPOINT ["/docker-entrypoint.sh"]

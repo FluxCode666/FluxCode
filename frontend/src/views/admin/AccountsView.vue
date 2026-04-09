@@ -7,6 +7,7 @@
             v-model:searchQuery="params.search"
             :filters="params"
             :groups="groups"
+            :proxies="proxies"
             @update:filters="(newFilters) => Object.assign(params, newFilters)"
             @change="debouncedReload"
             @update:searchQuery="debouncedReload"
@@ -138,9 +139,11 @@
           :data="accounts"
           :loading="loading"
           row-key="id"
-          default-sort-key="name"
-          default-sort-order="asc"
+          :default-sort-key="params.sort_by || 'name'"
+          :default-sort-order="params.sort_order || 'asc'"
           :sort-storage-key="ACCOUNT_SORT_STORAGE_KEY"
+          :server-side-sort="true"
+          @sort="handleSortChange"
         >
           <template #header-select>
             <input
@@ -328,11 +331,26 @@ import Icon from '@/components/icons/Icon.vue'
 import ErrorPassthroughRulesModal from '@/components/admin/ErrorPassthroughRulesModal.vue'
 import { buildOpenAIUsageRefreshKey } from '@/utils/accountUsageRefresh'
 import { formatDateTime, formatRelativeTime } from '@/utils/format'
-import type { Account, AccountPlatform, AccountType, Proxy as AccountProxy, AdminGroup, WindowStats, ClaudeModel } from '@/types'
+import type { Account, AccountPlatform, AccountSchedulingState, AccountType, Proxy as AccountProxy, AdminGroup, WindowStats, ClaudeModel } from '@/types'
 
 const { t } = useI18n()
 const appStore = useAppStore()
 const authStore = useAuthStore()
+
+type AccountTableParams = {
+  platform: string
+  type: string
+  status: string
+  group: string
+  search: string
+  schedulable_status: '' | AccountSchedulingState
+  proxy_ids: number[]
+  created_start_date: string
+  created_end_date: string
+  sort_by: string
+  sort_order: 'asc' | 'desc'
+  lite?: string
+}
 
 const proxies = ref<AccountProxy[]>([])
 const groups = ref<AdminGroup[]>([])
@@ -579,9 +597,21 @@ const {
   debouncedReload: baseDebouncedReload,
   handlePageChange: baseHandlePageChange,
   handlePageSizeChange: baseHandlePageSizeChange
-} = useTableLoader<Account, any>({
+} = useTableLoader<Account, AccountTableParams>({
   fetchFn: adminAPI.accounts.list,
-  initialParams: { platform: '', type: '', status: '', group: '', search: '' }
+  initialParams: {
+    platform: '',
+    type: '',
+    status: '',
+    group: '',
+    search: '',
+    schedulable_status: '',
+    proxy_ids: [],
+    created_start_date: '',
+    created_end_date: '',
+    sort_by: 'name',
+    sort_order: 'asc'
+  }
 })
 
 const {
@@ -656,6 +686,12 @@ const handlePageSizeChange = (size: number) => {
   resetAutoRefreshCache()
   pendingTodayStatsRefresh.value = true
   baseHandlePageSizeChange(size)
+}
+
+const handleSortChange = (key: string, order: 'asc' | 'desc') => {
+  params.sort_by = key
+  params.sort_order = order
+  void reload()
 }
 
 watch(loading, (isLoading, wasLoading) => {
@@ -754,14 +790,7 @@ const refreshAccountsIncrementally = async () => {
     const result = await adminAPI.accounts.listWithEtag(
       pagination.page,
       pagination.page_size,
-      toRaw(params) as {
-        platform?: string
-        type?: string
-        status?: string
-        group?: string
-        search?: string
-
-      },
+      toRaw(params) as AccountTableParams,
       { etag: autoRefreshETag.value }
     )
 
@@ -1089,16 +1118,76 @@ const handleBulkToggleSchedulable = async (schedulable: boolean) => {
 }
 const handleBulkUpdated = () => { showBulkEdit.value = false; clearSelection(); reload() }
 const handleDataImported = () => { showImportData.value = false; reload() }
+const isRateLimitedAccount = (account: Account) => {
+  if (!account.rate_limit_reset_at) return false
+  const resetAt = new Date(account.rate_limit_reset_at).getTime()
+  return Number.isFinite(resetAt) && resetAt > Date.now()
+}
+const isTempUnschedulableAccount = (account: Account) => {
+  if (!account.temp_unschedulable_until) return false
+  const until = new Date(account.temp_unschedulable_until).getTime()
+  return Number.isFinite(until) && until > Date.now()
+}
+const isOverloadedAccount = (account: Account) => {
+  if (!account.overload_until) return false
+  const until = new Date(account.overload_until).getTime()
+  return Number.isFinite(until) && until > Date.now()
+}
+const isExpiredSchedulingAccount = (account: Account) => {
+  if (!account.expires_at) return false
+  return account.expires_at * 1000 <= Date.now()
+}
+const isBannedAccount = (account: Account) => {
+  if (account.status !== 'error') return false
+  return /(terms of service|violation)/i.test(account.error_message || '')
+}
+const resolveSchedulingState = (account: Account): '' | AccountSchedulingState => {
+  if (isBannedAccount(account)) return 'banned'
+  if (account.status === 'error') return 'error'
+  if (account.status === 'inactive') return 'inactive'
+  if (isExpiredSchedulingAccount(account)) return 'expired'
+  if (!account.schedulable) return 'manual_unschedulable'
+  if (isTempUnschedulableAccount(account)) return 'temp_unschedulable'
+  if (isRateLimitedAccount(account)) return 'rate_limited'
+  if (isOverloadedAccount(account)) return 'overloaded'
+  if (account.status === 'active') return 'available'
+  return ''
+}
 const accountMatchesCurrentFilters = (account: Account) => {
   if (params.platform && account.platform !== params.platform) return false
   if (params.type && account.type !== params.type) return false
   if (params.status) {
     if (params.status === 'rate_limited') {
-      if (!account.rate_limit_reset_at) return false
-      const resetAt = new Date(account.rate_limit_reset_at).getTime()
-      if (!Number.isFinite(resetAt) || resetAt <= Date.now()) return false
+      if (!isRateLimitedAccount(account)) return false
+    } else if (params.status === 'temp_unschedulable') {
+      if (!isTempUnschedulableAccount(account)) return false
+    } else if (params.status === 'expired') {
+      if (!isExpiredSchedulingAccount(account)) return false
     } else if (account.status !== params.status) {
       return false
+    }
+  }
+  if (params.schedulable_status && resolveSchedulingState(account) !== params.schedulable_status) return false
+  if (params.group) {
+    if (params.group === 'ungrouped') {
+      if ((account.group_ids || []).length > 0) return false
+    } else if (!(account.group_ids || []).includes(Number(params.group))) {
+      return false
+    }
+  }
+  if (params.proxy_ids.length > 0 && (account.proxy_id == null || !params.proxy_ids.includes(account.proxy_id))) return false
+  if (params.created_start_date || params.created_end_date) {
+    const createdAt = new Date(account.created_at).getTime()
+    if (!Number.isFinite(createdAt)) return false
+    if (params.created_start_date) {
+      const start = new Date(`${params.created_start_date}T00:00:00`).getTime()
+      if (Number.isFinite(start) && createdAt < start) return false
+    }
+    if (params.created_end_date) {
+      const endExclusiveDate = new Date(`${params.created_end_date}T00:00:00`)
+      endExclusiveDate.setDate(endExclusiveDate.getDate() + 1)
+      const endExclusive = endExclusiveDate.getTime()
+      if (Number.isFinite(endExclusive) && createdAt >= endExclusive) return false
     }
   }
   const search = String(params.search || '').trim().toLowerCase()

@@ -12,6 +12,7 @@ import {
   type ReleaseInfo
 } from '@/api/admin/system'
 import { getPublicSettings as fetchPublicSettingsAPI } from '@/api/auth'
+import { DEFAULT_OPENAI_USE_KEY_MODEL_ID } from '@/utils/openaiUseKeyModel'
 
 export const useAppStore = defineStore('app', () => {
   // ==================== State ====================
@@ -29,6 +30,7 @@ export const useAppStore = defineStore('app', () => {
   const siteVersion = ref<string>('')
   const contactInfo = ref<string>('')
   const apiBaseUrl = ref<string>('')
+  const openaiUseKeyModelId = ref<string>(DEFAULT_OPENAI_USE_KEY_MODEL_ID)
   const docUrl = ref<string>('')
   const cachedPublicSettings = ref<PublicSettings | null>(null)
 
@@ -392,6 +394,7 @@ export const useAppStore = defineStore('app', () => {
     siteVersion,
     contactInfo,
     apiBaseUrl,
+    openaiUseKeyModelId,
     docUrl,
     cachedPublicSettings,
 

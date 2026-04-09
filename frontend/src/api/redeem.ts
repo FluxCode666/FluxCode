@@ -19,6 +19,7 @@ export interface RedeemHistoryItem {
   // Subscription-specific fields
   group_id?: number
   validity_days?: number
+  subscription_mode?: 'extend' | 'stack' | null
   group?: {
     id: number
     name: string
@@ -30,14 +31,19 @@ export interface RedeemHistoryItem {
  * @param code - Redeem code string
  * @returns Redemption result with updated balance or concurrency
  */
-export async function redeem(code: string): Promise<{
+export async function redeem(code: string, subscriptionMode?: 'extend' | 'stack'): Promise<{
   message: string
   type: string
   value: number
   new_balance?: number
   new_concurrency?: number
+  group_name?: string
+  validity_days?: number
 }> {
   const payload: RedeemCodeRequest = { code }
+  if (subscriptionMode) {
+    payload.subscription_mode = subscriptionMode
+  }
 
   const { data } = await apiClient.post<{
     message: string
@@ -45,6 +51,8 @@ export async function redeem(code: string): Promise<{
     value: number
     new_balance?: number
     new_concurrency?: number
+    group_name?: string
+    validity_days?: number
   }>('/redeem', payload)
 
   return data

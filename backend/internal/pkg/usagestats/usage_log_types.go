@@ -266,6 +266,26 @@ type BatchAPIKeyUsageStats struct {
 	TotalActualCost float64 `json:"total_actual_cost"`
 }
 
+// ProxyUsageSummaryItem represents aggregated proxy usage counts in a time window.
+type ProxyUsageSummaryItem struct {
+	ProxyID      int64                     `json:"proxy_id"`
+	ProxyName    string                    `json:"proxy_name"`
+	ProxyAddr    string                    `json:"proxy_addr"`
+	ProxyStatus  string                    `json:"proxy_status"`
+	TotalCount   int64                     `json:"total_count"`
+	SuccessCount int64                     `json:"success_count"`
+	FailureCount int64                     `json:"failure_count"`
+	Points       []ProxyUsageTimelinePoint `json:"points"`
+}
+
+// ProxyUsageTimelinePoint represents one time bucket in proxy usage timeline.
+type ProxyUsageTimelinePoint struct {
+	Bucket       string `json:"bucket"`
+	TotalCount   int64  `json:"total_count"`
+	SuccessCount int64  `json:"success_count"`
+	FailureCount int64  `json:"failure_count"`
+}
+
 // AccountUsageHistory represents daily usage history for an account
 type AccountUsageHistory struct {
 	Date       string  `json:"date"`

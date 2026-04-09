@@ -11,6 +11,10 @@ type UserSubscription struct {
 	ExpiresAt time.Time
 	Status    string
 
+	// QuotaMultiplier is the number of active subscription grants at the current time.
+	// It is computed dynamically from subscription_grants and used to scale quota limits.
+	QuotaMultiplier int
+
 	DailyWindowStart   *time.Time
 	WeeklyWindowStart  *time.Time
 	MonthlyWindowStart *time.Time
@@ -99,21 +103,33 @@ func (s *UserSubscription) CheckDailyLimit(group *Group, additionalCost float64)
 	if !group.HasDailyLimit() {
 		return true
 	}
-	return s.DailyUsageUSD+additionalCost <= *group.DailyLimitUSD
+	m := s.QuotaMultiplier
+	if m < 1 {
+		m = 1
+	}
+	return s.DailyUsageUSD+additionalCost <= (*group.DailyLimitUSD * float64(m))
 }
 
 func (s *UserSubscription) CheckWeeklyLimit(group *Group, additionalCost float64) bool {
 	if !group.HasWeeklyLimit() {
 		return true
 	}
-	return s.WeeklyUsageUSD+additionalCost <= *group.WeeklyLimitUSD
+	m := s.QuotaMultiplier
+	if m < 1 {
+		m = 1
+	}
+	return s.WeeklyUsageUSD+additionalCost <= (*group.WeeklyLimitUSD * float64(m))
 }
 
 func (s *UserSubscription) CheckMonthlyLimit(group *Group, additionalCost float64) bool {
 	if !group.HasMonthlyLimit() {
 		return true
 	}
-	return s.MonthlyUsageUSD+additionalCost <= *group.MonthlyLimitUSD
+	m := s.QuotaMultiplier
+	if m < 1 {
+		m = 1
+	}
+	return s.MonthlyUsageUSD+additionalCost <= (*group.MonthlyLimitUSD * float64(m))
 }
 
 func (s *UserSubscription) CheckAllLimits(group *Group, additionalCost float64) (daily, weekly, monthly bool) {

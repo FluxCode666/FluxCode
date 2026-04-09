@@ -69,10 +69,19 @@ var ProviderSet = wire.NewSet(
 	NewSettingRepository,
 	NewOpsRepository,
 	NewUserSubscriptionRepository,
+	NewSubscriptionGrantRepository,
 	NewUserAttributeDefinitionRepository,
 	NewUserAttributeValueRepository,
 	NewUserGroupRateRepository,
 	NewErrorPassthroughRepository,
+	NewPricingPlanRepository,
+	NewPoolAlertConfigRepository,
+	NewPoolAlertConfigCache,
+	NewProxyTransportFailureCounter,
+	NewProxyUsageMetricsRepository,
+	NewAlertCooldownStore,
+	NewProxyConnectivitySnapshotStore,
+	NewSoraGenerationRepository, // Sora 生成记录仓储
 
 	// Cache implementations
 	NewGatewayCache,

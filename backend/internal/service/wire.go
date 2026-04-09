@@ -131,6 +131,18 @@ func ProvideDashboardAggregationService(repo DashboardAggregationRepository, tim
 	return svc
 }
 
+func ProvideDashboardService(
+	usageRepo UsageLogRepository,
+	aggRepo DashboardAggregationRepository,
+	cache DashboardStatsCache,
+	cfg *config.Config,
+	proxyMetricsRepo ProxyUsageMetricsRepository,
+) *DashboardService {
+	svc := NewDashboardService(usageRepo, aggRepo, cache, cfg)
+	svc.SetProxyMetricsRepo(proxyMetricsRepo)
+	return svc
+}
+
 // ProvideUsageCleanupService 创建并启动使用记录清理任务服务
 func ProvideUsageCleanupService(repo UsageCleanupRepository, timingWheel *TimingWheelService, dashboardAgg *DashboardAggregationService, cfg *config.Config) *UsageCleanupService {
 	svc := NewUsageCleanupService(repo, timingWheel, dashboardAgg, cfg)
@@ -166,6 +178,71 @@ func ProvideTimingWheelService() (*TimingWheelService, error) {
 func ProvideDeferredService(accountRepo AccountRepository, timingWheel *TimingWheelService) *DeferredService {
 	svc := NewDeferredService(accountRepo, timingWheel, 10*time.Second)
 	svc.Start()
+	return svc
+}
+
+func ProvideOpenAIPoolMonitorWorker(
+	db *sql.DB,
+	timingWheel *TimingWheelService,
+	accountRepo AccountRepository,
+	proxyRepo ProxyRepository,
+	poolMonitorService *PoolMonitorService,
+	alertService *AlertService,
+	proxyProber ProxyExitInfoProber,
+	connectivitySnapshotStore ProxyConnectivitySnapshotStore,
+) *OpenAIPoolMonitorWorker {
+	svc := NewOpenAIPoolMonitorWorker(
+		db,
+		timingWheel,
+		accountRepo,
+		proxyRepo,
+		poolMonitorService,
+		alertService,
+		proxyProber,
+		connectivitySnapshotStore,
+	)
+	svc.Start()
+	return svc
+}
+
+func ProvideOpenAIGatewayService(
+	accountRepo AccountRepository,
+	usageLogRepo UsageLogRepository,
+	usageBillingRepo UsageBillingRepository,
+	userRepo UserRepository,
+	userSubRepo UserSubscriptionRepository,
+	userGroupRateRepo UserGroupRateRepository,
+	cache GatewayCache,
+	cfg *config.Config,
+	schedulerSnapshot *SchedulerSnapshotService,
+	concurrencyService *ConcurrencyService,
+	billingService *BillingService,
+	rateLimitService *RateLimitService,
+	billingCacheService *BillingCacheService,
+	httpUpstream HTTPUpstream,
+	deferredService *DeferredService,
+	openAITokenProvider *OpenAITokenProvider,
+	proxyMetricsRepo ProxyUsageMetricsRepository,
+) *OpenAIGatewayService {
+	svc := NewOpenAIGatewayService(
+		accountRepo,
+		usageLogRepo,
+		usageBillingRepo,
+		userRepo,
+		userSubRepo,
+		userGroupRateRepo,
+		cache,
+		cfg,
+		schedulerSnapshot,
+		concurrencyService,
+		billingService,
+		rateLimitService,
+		billingCacheService,
+		httpUpstream,
+		deferredService,
+		openAITokenProvider,
+	)
+	svc.SetProxyMetricsRepo(proxyMetricsRepo)
 	return svc
 }
 
@@ -418,7 +495,7 @@ var ProviderSet = wire.NewSet(
 	NewRedeemService,
 	NewPromoService,
 	NewUsageService,
-	NewDashboardService,
+	ProvideDashboardService,
 	ProvidePricingService,
 	NewBillingService,
 	NewBillingCacheService,
@@ -430,7 +507,10 @@ var ProviderSet = wire.NewSet(
 	ProvideSoraSDKClient,
 	wire.Bind(new(SoraClient), new(*SoraSDKClient)),
 	NewSoraGatewayService,
-	NewOpenAIGatewayService,
+	NewSoraS3Storage,
+	NewSoraQuotaService,
+	NewSoraGenerationService,
+	ProvideOpenAIGatewayService,
 	NewOAuthService,
 	NewOpenAIOAuthService,
 	NewGeminiOAuthService,
@@ -489,4 +569,9 @@ var ProviderSet = wire.NewSet(
 	ProvideScheduledTestService,
 	ProvideScheduledTestRunnerService,
 	NewGroupCapacityService,
+	NewPricingPlanService,
+	NewPoolMonitorService,
+	NewAlertService,
+	wire.Bind(new(PoolMonitorConfigProvider), new(*PoolMonitorService)),
+	ProvideOpenAIPoolMonitorWorker,
 )

@@ -105,6 +105,11 @@ func ValidityDays(v int) predicate.RedeemCode {
 	return predicate.RedeemCode(sql.FieldEQ(FieldValidityDays, v))
 }
 
+// SubscriptionMode applies equality check predicate on the "subscription_mode" field. It's identical to SubscriptionModeEQ.
+func SubscriptionMode(v string) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldEQ(FieldSubscriptionMode, v))
+}
+
 // CodeEQ applies the EQ predicate on the "code" field.
 func CodeEQ(v string) predicate.RedeemCode {
 	return predicate.RedeemCode(sql.FieldEQ(FieldCode, v))
@@ -603,6 +608,81 @@ func ValidityDaysLT(v int) predicate.RedeemCode {
 // ValidityDaysLTE applies the LTE predicate on the "validity_days" field.
 func ValidityDaysLTE(v int) predicate.RedeemCode {
 	return predicate.RedeemCode(sql.FieldLTE(FieldValidityDays, v))
+}
+
+// SubscriptionModeEQ applies the EQ predicate on the "subscription_mode" field.
+func SubscriptionModeEQ(v string) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldEQ(FieldSubscriptionMode, v))
+}
+
+// SubscriptionModeNEQ applies the NEQ predicate on the "subscription_mode" field.
+func SubscriptionModeNEQ(v string) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldNEQ(FieldSubscriptionMode, v))
+}
+
+// SubscriptionModeIn applies the In predicate on the "subscription_mode" field.
+func SubscriptionModeIn(vs ...string) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldIn(FieldSubscriptionMode, vs...))
+}
+
+// SubscriptionModeNotIn applies the NotIn predicate on the "subscription_mode" field.
+func SubscriptionModeNotIn(vs ...string) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldNotIn(FieldSubscriptionMode, vs...))
+}
+
+// SubscriptionModeGT applies the GT predicate on the "subscription_mode" field.
+func SubscriptionModeGT(v string) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldGT(FieldSubscriptionMode, v))
+}
+
+// SubscriptionModeGTE applies the GTE predicate on the "subscription_mode" field.
+func SubscriptionModeGTE(v string) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldGTE(FieldSubscriptionMode, v))
+}
+
+// SubscriptionModeLT applies the LT predicate on the "subscription_mode" field.
+func SubscriptionModeLT(v string) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldLT(FieldSubscriptionMode, v))
+}
+
+// SubscriptionModeLTE applies the LTE predicate on the "subscription_mode" field.
+func SubscriptionModeLTE(v string) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldLTE(FieldSubscriptionMode, v))
+}
+
+// SubscriptionModeContains applies the Contains predicate on the "subscription_mode" field.
+func SubscriptionModeContains(v string) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldContains(FieldSubscriptionMode, v))
+}
+
+// SubscriptionModeHasPrefix applies the HasPrefix predicate on the "subscription_mode" field.
+func SubscriptionModeHasPrefix(v string) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldHasPrefix(FieldSubscriptionMode, v))
+}
+
+// SubscriptionModeHasSuffix applies the HasSuffix predicate on the "subscription_mode" field.
+func SubscriptionModeHasSuffix(v string) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldHasSuffix(FieldSubscriptionMode, v))
+}
+
+// SubscriptionModeIsNil applies the IsNil predicate on the "subscription_mode" field.
+func SubscriptionModeIsNil() predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldIsNull(FieldSubscriptionMode))
+}
+
+// SubscriptionModeNotNil applies the NotNil predicate on the "subscription_mode" field.
+func SubscriptionModeNotNil() predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldNotNull(FieldSubscriptionMode))
+}
+
+// SubscriptionModeEqualFold applies the EqualFold predicate on the "subscription_mode" field.
+func SubscriptionModeEqualFold(v string) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldEqualFold(FieldSubscriptionMode, v))
+}
+
+// SubscriptionModeContainsFold applies the ContainsFold predicate on the "subscription_mode" field.
+func SubscriptionModeContainsFold(v string) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldContainsFold(FieldSubscriptionMode, v))
 }
 
 // HasUser applies the HasEdge predicate on the "user" edge.

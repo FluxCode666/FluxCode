@@ -156,6 +156,20 @@ func (_c *RedeemCodeCreate) SetNillableValidityDays(v *int) *RedeemCodeCreate {
 	return _c
 }
 
+// SetSubscriptionMode sets the "subscription_mode" field.
+func (_c *RedeemCodeCreate) SetSubscriptionMode(v string) *RedeemCodeCreate {
+	_c.mutation.SetSubscriptionMode(v)
+	return _c
+}
+
+// SetNillableSubscriptionMode sets the "subscription_mode" field if the given value is not nil.
+func (_c *RedeemCodeCreate) SetNillableSubscriptionMode(v *string) *RedeemCodeCreate {
+	if v != nil {
+		_c.SetSubscriptionMode(*v)
+	}
+	return _c
+}
+
 // SetUserID sets the "user" edge to the User entity by ID.
 func (_c *RedeemCodeCreate) SetUserID(id int64) *RedeemCodeCreate {
 	_c.mutation.SetUserID(id)
@@ -272,6 +286,11 @@ func (_c *RedeemCodeCreate) check() error {
 	if _, ok := _c.mutation.ValidityDays(); !ok {
 		return &ValidationError{Name: "validity_days", err: errors.New(`ent: missing required field "RedeemCode.validity_days"`)}
 	}
+	if v, ok := _c.mutation.SubscriptionMode(); ok {
+		if err := redeemcode.SubscriptionModeValidator(v); err != nil {
+			return &ValidationError{Name: "subscription_mode", err: fmt.Errorf(`ent: validator failed for field "RedeemCode.subscription_mode": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -330,6 +349,10 @@ func (_c *RedeemCodeCreate) createSpec() (*RedeemCode, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.ValidityDays(); ok {
 		_spec.SetField(redeemcode.FieldValidityDays, field.TypeInt, value)
 		_node.ValidityDays = value
+	}
+	if value, ok := _c.mutation.SubscriptionMode(); ok {
+		_spec.SetField(redeemcode.FieldSubscriptionMode, field.TypeString, value)
+		_node.SubscriptionMode = &value
 	}
 	if nodes := _c.mutation.UserIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
@@ -561,6 +584,24 @@ func (u *RedeemCodeUpsert) AddValidityDays(v int) *RedeemCodeUpsert {
 	return u
 }
 
+// SetSubscriptionMode sets the "subscription_mode" field.
+func (u *RedeemCodeUpsert) SetSubscriptionMode(v string) *RedeemCodeUpsert {
+	u.Set(redeemcode.FieldSubscriptionMode, v)
+	return u
+}
+
+// UpdateSubscriptionMode sets the "subscription_mode" field to the value that was provided on create.
+func (u *RedeemCodeUpsert) UpdateSubscriptionMode() *RedeemCodeUpsert {
+	u.SetExcluded(redeemcode.FieldSubscriptionMode)
+	return u
+}
+
+// ClearSubscriptionMode clears the value of the "subscription_mode" field.
+func (u *RedeemCodeUpsert) ClearSubscriptionMode() *RedeemCodeUpsert {
+	u.SetNull(redeemcode.FieldSubscriptionMode)
+	return u
+}
+
 // UpdateNewValues updates the mutable fields using the new values that were set on create.
 // Using this option is equivalent to using:
 //
@@ -771,6 +812,27 @@ func (u *RedeemCodeUpsertOne) AddValidityDays(v int) *RedeemCodeUpsertOne {
 func (u *RedeemCodeUpsertOne) UpdateValidityDays() *RedeemCodeUpsertOne {
 	return u.Update(func(s *RedeemCodeUpsert) {
 		s.UpdateValidityDays()
+	})
+}
+
+// SetSubscriptionMode sets the "subscription_mode" field.
+func (u *RedeemCodeUpsertOne) SetSubscriptionMode(v string) *RedeemCodeUpsertOne {
+	return u.Update(func(s *RedeemCodeUpsert) {
+		s.SetSubscriptionMode(v)
+	})
+}
+
+// UpdateSubscriptionMode sets the "subscription_mode" field to the value that was provided on create.
+func (u *RedeemCodeUpsertOne) UpdateSubscriptionMode() *RedeemCodeUpsertOne {
+	return u.Update(func(s *RedeemCodeUpsert) {
+		s.UpdateSubscriptionMode()
+	})
+}
+
+// ClearSubscriptionMode clears the value of the "subscription_mode" field.
+func (u *RedeemCodeUpsertOne) ClearSubscriptionMode() *RedeemCodeUpsertOne {
+	return u.Update(func(s *RedeemCodeUpsert) {
+		s.ClearSubscriptionMode()
 	})
 }
 
@@ -1150,6 +1212,27 @@ func (u *RedeemCodeUpsertBulk) AddValidityDays(v int) *RedeemCodeUpsertBulk {
 func (u *RedeemCodeUpsertBulk) UpdateValidityDays() *RedeemCodeUpsertBulk {
 	return u.Update(func(s *RedeemCodeUpsert) {
 		s.UpdateValidityDays()
+	})
+}
+
+// SetSubscriptionMode sets the "subscription_mode" field.
+func (u *RedeemCodeUpsertBulk) SetSubscriptionMode(v string) *RedeemCodeUpsertBulk {
+	return u.Update(func(s *RedeemCodeUpsert) {
+		s.SetSubscriptionMode(v)
+	})
+}
+
+// UpdateSubscriptionMode sets the "subscription_mode" field to the value that was provided on create.
+func (u *RedeemCodeUpsertBulk) UpdateSubscriptionMode() *RedeemCodeUpsertBulk {
+	return u.Update(func(s *RedeemCodeUpsert) {
+		s.UpdateSubscriptionMode()
+	})
+}
+
+// ClearSubscriptionMode clears the value of the "subscription_mode" field.
+func (u *RedeemCodeUpsertBulk) ClearSubscriptionMode() *RedeemCodeUpsertBulk {
+	return u.Update(func(s *RedeemCodeUpsert) {
+		s.ClearSubscriptionMode()
 	})
 }
 

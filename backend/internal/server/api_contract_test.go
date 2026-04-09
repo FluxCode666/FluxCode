@@ -639,7 +639,7 @@ func newContractDeps(t *testing.T) *contractDeps {
 	usageRepo := newStubUsageLogRepo()
 	usageService := service.NewUsageService(usageRepo, userRepo, nil, nil)
 
-	subscriptionService := service.NewSubscriptionService(groupRepo, userSubRepo, nil, nil, cfg)
+	subscriptionService := service.NewSubscriptionService(groupRepo, userSubRepo, nil, nil, nil, cfg)
 	subscriptionHandler := handler.NewSubscriptionHandler(subscriptionService)
 
 	redeemService := service.NewRedeemService(redeemRepo, userRepo, subscriptionService, nil, nil, nil, nil)
@@ -1211,7 +1211,7 @@ func (stubRedeemCodeRepo) Delete(ctx context.Context, id int64) error {
 	return errors.New("not implemented")
 }
 
-func (stubRedeemCodeRepo) Use(ctx context.Context, id, userID int64) error {
+func (stubRedeemCodeRepo) Use(ctx context.Context, id, userID int64, subscriptionMode *string) error {
 	return errors.New("not implemented")
 }
 

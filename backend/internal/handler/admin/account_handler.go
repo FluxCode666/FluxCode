@@ -59,6 +59,22 @@ type AccountHandler struct {
 	tokenCacheInvalidator   service.TokenCacheInvalidator
 }
 
+type accountListAdvancedAdminService interface {
+	ListAccountsAdvanced(
+		ctx context.Context,
+		page, pageSize int,
+		platform, accountType, status, schedulableStatus string,
+		groupID int64,
+		search, sortBy, sortOrder string,
+		proxyIDs []int64,
+		createdStart, createdEndExclusive *time.Time,
+	) ([]service.Account, int64, error)
+}
+
+type accountSummaryAdminService interface {
+	GetAccountSummary(ctx context.Context) (*service.AccountSummaryResponse, error)
+}
+
 // NewAccountHandler creates a new admin account handler
 func NewAccountHandler(
 	adminService service.AdminService,
@@ -167,6 +183,67 @@ type AccountWithConcurrency struct {
 
 const accountListGroupUngroupedQueryValue = "ungrouped"
 
+func parseProxyIDsQuery(raw string) ([]int64, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, nil
+	}
+	parts := strings.Split(raw, ",")
+	seen := make(map[int64]struct{}, len(parts))
+	out := make([]int64, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		id, err := strconv.ParseInt(part, 10, 64)
+		if err != nil || id <= 0 {
+			return nil, errors.New("invalid proxy_ids")
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		out = append(out, id)
+	}
+	return out, nil
+}
+
+func parseDateOnlyQuery(raw string) (*time.Time, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, nil
+	}
+	parsed, err := timezone.ParseInLocation("2006-01-02", raw)
+	if err != nil {
+		return nil, err
+	}
+	return &parsed, nil
+}
+
+func parseGroupIDQuery(raw string) (int64, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return 0, nil
+	}
+	id, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || id <= 0 {
+		return 0, errors.New("invalid group_id")
+	}
+	return id, nil
+}
+
+func parseAccountSchedulingStateQuery(raw string) (service.AccountSchedulingState, error) {
+	state := service.AccountSchedulingState(strings.TrimSpace(raw))
+	if state == "" {
+		return "", nil
+	}
+	if !service.IsValidAccountSchedulingState(state) {
+		return "", errors.New("invalid schedulable_status")
+	}
+	return state, nil
+}
+
 func (h *AccountHandler) buildAccountResponseWithRuntime(ctx context.Context, account *service.Account) AccountWithConcurrency {
 	item := AccountWithConcurrency{
 		Account:            dto.AccountFromService(account),
@@ -218,6 +295,11 @@ func (h *AccountHandler) List(c *gin.Context) {
 	platform := c.Query("platform")
 	accountType := c.Query("type")
 	status := c.Query("status")
+	schedulableStatus, err := parseAccountSchedulingStateQuery(c.Query("schedulable_status"))
+	if err != nil {
+		response.BadRequest(c, "Invalid schedulable_status")
+		return
+	}
 	search := c.Query("search")
 	// 标准化和验证 search 参数
 	search = strings.TrimSpace(search)
@@ -227,7 +309,13 @@ func (h *AccountHandler) List(c *gin.Context) {
 	lite := parseBoolQueryWithDefault(c.Query("lite"), false)
 
 	var groupID int64
-	if groupIDStr := c.Query("group"); groupIDStr != "" {
+	if groupIDStr := c.Query("group_id"); groupIDStr != "" {
+		groupID, err = parseGroupIDQuery(groupIDStr)
+		if err != nil {
+			response.BadRequest(c, "Invalid group_id")
+			return
+		}
+	} else if groupIDStr := c.Query("group"); groupIDStr != "" {
 		if groupIDStr == accountListGroupUngroupedQueryValue {
 			groupID = service.AccountListGroupUngrouped
 		} else {
@@ -244,7 +332,79 @@ func (h *AccountHandler) List(c *gin.Context) {
 		}
 	}
 
-	accounts, total, err := h.adminService.ListAccounts(c.Request.Context(), page, pageSize, platform, accountType, status, search, groupID)
+	proxyIDs, err := parseProxyIDsQuery(c.Query("proxy_ids"))
+	if err != nil {
+		response.BadRequest(c, "Invalid proxy_ids")
+		return
+	}
+	createdStart, err := parseDateOnlyQuery(c.Query("created_start_date"))
+	if err != nil {
+		response.BadRequest(c, "Invalid created_start_date format, use YYYY-MM-DD")
+		return
+	}
+	createdEnd, err := parseDateOnlyQuery(c.Query("created_end_date"))
+	if err != nil {
+		response.BadRequest(c, "Invalid created_end_date format, use YYYY-MM-DD")
+		return
+	}
+	if createdStart != nil && createdEnd != nil && createdStart.After(*createdEnd) {
+		response.BadRequest(c, "created_start_date must be <= created_end_date")
+		return
+	}
+	var createdEndExclusive *time.Time
+	if createdEnd != nil {
+		t := createdEnd.Add(24 * time.Hour)
+		createdEndExclusive = &t
+	}
+
+	sortBy := strings.ToLower(strings.TrimSpace(c.Query("sort_by")))
+	sortOrder := strings.ToLower(strings.TrimSpace(c.Query("sort_order")))
+	if sortBy != "" {
+		allowedSortBy := map[string]struct{}{
+			"id":           {},
+			"name":         {},
+			"expires_at":   {},
+			"priority":     {},
+			"last_used_at": {},
+			"created_at":   {},
+		}
+		if _, ok := allowedSortBy[sortBy]; !ok {
+			response.BadRequest(c, "Invalid sort_by")
+			return
+		}
+		if sortOrder == "" {
+			sortOrder = "asc"
+		}
+		if sortOrder != "asc" && sortOrder != "desc" {
+			response.BadRequest(c, "Invalid sort_order")
+			return
+		}
+	} else {
+		sortOrder = ""
+	}
+
+	var accounts []service.Account
+	var total int64
+	if advancedSvc, ok := h.adminService.(accountListAdvancedAdminService); ok {
+		accounts, total, err = advancedSvc.ListAccountsAdvanced(
+			c.Request.Context(),
+			page,
+			pageSize,
+			platform,
+			accountType,
+			status,
+			string(schedulableStatus),
+			groupID,
+			search,
+			sortBy,
+			sortOrder,
+			proxyIDs,
+			createdStart,
+			createdEndExclusive,
+		)
+	} else {
+		accounts, total, err = h.adminService.ListAccounts(c.Request.Context(), page, pageSize, platform, accountType, status, search, groupID)
+	}
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -377,6 +537,25 @@ func (h *AccountHandler) List(c *gin.Context) {
 	}
 
 	response.Paginated(c, result, total, page, pageSize)
+}
+
+// GetSummary handles GET /api/v1/admin/accounts/summary.
+func (h *AccountHandler) GetSummary(c *gin.Context) {
+	summarySvc, ok := h.adminService.(accountSummaryAdminService)
+	if !ok {
+		response.ErrorFrom(c, infraerrors.InternalServer("ACCOUNT_SUMMARY_NOT_SUPPORTED", "account summary is not supported"))
+		return
+	}
+
+	summary, err := summarySvc.GetAccountSummary(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	if summary == nil {
+		summary = &service.AccountSummaryResponse{}
+	}
+	response.Success(c, summary)
 }
 
 func buildAccountsListETag(

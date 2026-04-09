@@ -1,0 +1,78 @@
+# =============================================================================
+# Sub2API - Frontend Deployment with Caddy (Multi-Machine)
+# =============================================================================
+# Deploy this on the FRONTEND / LOAD BALANCER machine.
+# Serves Vue 3 static files via Caddy and reverse-proxies API requests
+# to backend instances on other machines.
+#
+# Features over Nginx:
+#   - Automatic HTTPS (Let's Encrypt / ZeroSSL) when SITE_DOMAIN is set
+#   - Built-in HTTP/2 and HTTP/3 support
+#   - Simpler configuration
+#
+# Usage:
+#   1. cp .env.example .env
+#   2. Edit .env: set BACKEND_SERVERS and optionally SITE_DOMAIN
+#   3. docker compose -f docker-compose.caddy.yml up -d
+# =============================================================================
+
+services:
+  frontend:
+    image: weishaw/sub2api-frontend-caddy:latest
+    # Or build from source (run from project root):
+    # build:
+    #   context: ../../
+    #   dockerfile: deploy/frontend/Dockerfile.caddy
+    container_name: sub2api-frontend-caddy
+    restart: unless-stopped
+    ports:
+      # HTTP
+      - "${BIND_HOST:-0.0.0.0}:${FRONTEND_PORT:-80}:80"
+      # HTTPS (auto-enabled when SITE_DOMAIN is a real domain)
+      - "${BIND_HOST:-0.0.0.0}:${FRONTEND_HTTPS_PORT:-443}:443"
+      # HTTP/3 (QUIC)
+      - "${BIND_HOST:-0.0.0.0}:${FRONTEND_HTTPS_PORT:-443}:443/udp"
+    environment:
+      # Comma-separated list of backend server addresses
+      # Example: "10.0.1.10:8080,10.0.1.11:8080,10.0.1.12:8080"
+      - BACKEND_SERVERS=${BACKEND_SERVERS:?BACKEND_SERVERS is required}
+      # Domain name for automatic HTTPS (Let's Encrypt / ZeroSSL)
+      # Set to ":80" for HTTP-only mode (default)
+      # Example: "api.sub2api.com"
+      - SITE_DOMAIN=${SITE_DOMAIN:-:80}
+      # Manual TLS certificate paths (optional)
+      # When set, Caddy uses these files instead of auto HTTPS.
+      # This allows multiple Caddy instances to share the same certificate.
+      # Leave empty for auto HTTPS or HTTP-only mode.
+      - TLS_CERT=${TLS_CERT:-}
+      - TLS_KEY=${TLS_KEY:-}
+    volumes:
+      # Persist Caddy TLS certificates and ACME data across restarts
+      - caddy_data:/data
+      - caddy_config:/config
+
+      # Optional: mount manual TLS certificates for shared-cert multi-instance mode
+      # Uncomment and adjust paths to your certificate files:
+      # - ./ssl/fullchain.pem:/etc/caddy/ssl/fullchain.pem:ro
+      # - ./ssl/privkey.pem:/etc/caddy/ssl/privkey.pem:ro
+
+      # Optional: mount custom Caddyfile to fully override (bypasses template)
+      # - ./custom-Caddyfile:/etc/caddy/Caddyfile:ro
+
+      # Persist access logs
+      - caddy_logs:/var/log/caddy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-T", "3", "-O", "/dev/null", "http://localhost/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  # Caddy data volume - stores TLS certificates and ACME account keys
+  # IMPORTANT: Do not delete this volume, or certificates will be re-issued
+  caddy_data:
+  # Caddy config volume - stores auto-generated config
+  caddy_config:
+  # Caddy log volume
+  caddy_logs:

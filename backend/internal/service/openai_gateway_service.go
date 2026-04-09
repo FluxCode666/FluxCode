@@ -320,6 +320,7 @@ type OpenAIGatewayService struct {
 	httpUpstream          HTTPUpstream
 	deferredService       *DeferredService
 	openAITokenProvider   *OpenAITokenProvider
+	proxyMetricsRepo      ProxyUsageMetricsRepository
 	toolCorrector         *CodexToolCorrector
 	openaiWSResolver      OpenAIWSProtocolResolver
 
@@ -389,6 +390,13 @@ func NewOpenAIGatewayService(
 	}
 	svc.logOpenAIWSModeBootstrap()
 	return svc
+}
+
+func (s *OpenAIGatewayService) SetProxyMetricsRepo(repo ProxyUsageMetricsRepository) {
+	if s == nil {
+		return
+	}
+	s.proxyMetricsRepo = repo
 }
 
 func (s *OpenAIGatewayService) getCodexSnapshotThrottle() *accountWriteThrottle {
@@ -2159,6 +2167,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		resp, err := s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
 		SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
 		if err != nil {
+			s.recordProxyUsageMetric(ctx, account, proxyURL, false, startTime)
 			// Ensure the client receives an error response (handlers assume Forward writes on non-failover errors).
 			safeErr := sanitizeUpstreamErrorMessage(err.Error())
 			setOpsUpstreamError(c, 0, safeErr, "")
@@ -2221,6 +2230,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 					Detail:             upstreamDetail,
 				})
 
+				s.recordProxyUsageMetric(ctx, account, proxyURL, false, startTime)
 				s.handleFailoverSideEffects(ctx, resp, account)
 				return nil, &UpstreamFailoverError{
 					StatusCode:             resp.StatusCode,
@@ -2228,8 +2238,10 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 					RetryableOnSameAccount: account.IsPoolMode() && (isPoolModeRetryableStatus(resp.StatusCode) || isOpenAITransientProcessingError(resp.StatusCode, upstreamMsg, respBody)),
 				}
 			}
+			s.recordProxyUsageMetric(ctx, account, proxyURL, false, startTime)
 			return s.handleErrorResponse(ctx, resp, c, account, body)
 		}
+		s.recordProxyUsageMetric(ctx, account, proxyURL, true, startTime)
 		defer func() { _ = resp.Body.Close() }()
 
 		// Handle normal response
@@ -2372,6 +2384,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	resp, err := s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
 	SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
 	if err != nil {
+		s.recordProxyUsageMetric(ctx, account, proxyURL, false, startTime)
 		safeErr := sanitizeUpstreamErrorMessage(err.Error())
 		setOpsUpstreamError(c, 0, safeErr, "")
 		appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
@@ -2394,9 +2407,11 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 400 {
+		s.recordProxyUsageMetric(ctx, account, proxyURL, false, startTime)
 		// 透传模式不做 failover（避免改变原始上游语义），按上游原样返回错误响应。
 		return nil, s.handleErrorResponsePassthrough(ctx, resp, c, account, body)
 	}
+	s.recordProxyUsageMetric(ctx, account, proxyURL, true, startTime)
 
 	var usage *OpenAIUsage
 	var firstTokenMs *int
@@ -2464,6 +2479,19 @@ func logOpenAIPassthroughInstructionsRejected(
 	}
 	fields = appendCodexCLIOnlyRejectedRequestFields(fields, c, body)
 	logger.FromContext(ctx).With(fields...).Warn("OpenAI passthrough 本地拦截：Codex 请求缺少有效 instructions")
+}
+
+func (s *OpenAIGatewayService) recordProxyUsageMetric(ctx context.Context, account *Account, proxyURL string, success bool, occurredAt time.Time) {
+	if s == nil || s.proxyMetricsRepo == nil || account == nil || account.ProxyID == nil || strings.TrimSpace(proxyURL) == "" {
+		return
+	}
+	proxyID := *account.ProxyID
+	if proxyID <= 0 {
+		return
+	}
+	if err := s.proxyMetricsRepo.Increment(ctx, ProxyUsageMetricsPlatformOpenAI, proxyID, occurredAt, success); err != nil {
+		logger.LegacyPrintf("service.openai_gateway", "[OpenAI] record proxy usage metric failed: account=%d proxy=%d success=%t err=%v", account.ID, proxyID, success, err)
+	}
 }
 
 func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthrough(
@@ -4062,6 +4090,7 @@ type OpenAIRecordUsageInput struct {
 	User               *User
 	Account            *Account
 	Subscription       *UserSubscription
+	BilledAt           time.Time
 	InboundEndpoint    string
 	UpstreamEndpoint   string
 	UserAgent          string // 请求的 User-Agent
@@ -4084,6 +4113,10 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	user := input.User
 	account := input.Account
 	subscription := input.Subscription
+	billedAt := input.BilledAt
+	if billedAt.IsZero() {
+		billedAt = time.Now()
+	}
 
 	// 计算实际的新输入token（减去缓存读取的token）
 	// 因为 input_tokens 包含了 cache_read_tokens，而缓存读取的token不应按输入价格计费
@@ -4163,7 +4196,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		OpenAIWSMode:          result.OpenAIWSMode,
 		DurationMs:            &durationMs,
 		FirstTokenMs:          result.FirstTokenMs,
-		CreatedAt:             time.Now(),
+		CreatedAt:             billedAt,
 	}
 	// 添加 UserAgent
 	if input.UserAgent != "" {
@@ -4196,6 +4229,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 			APIKey:                apiKey,
 			Account:               account,
 			Subscription:          subscription,
+			BilledAt:              billedAt,
 			RequestPayloadHash:    resolveUsageBillingPayloadFingerprint(ctx, input.RequestPayloadHash),
 			IsSubscriptionBill:    isSubscriptionBilling,
 			AccountRateMultiplier: accountRateMultiplier,

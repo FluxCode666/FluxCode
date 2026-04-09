@@ -218,16 +218,16 @@
                   <div class="h-1.5 flex-1 rounded-full bg-gray-200 dark:bg-dark-600">
                     <div
                       class="h-1.5 rounded-full transition-all"
-                      :class="getProgressClass(row.daily_usage_usd, row.group?.daily_limit_usd)"
+                      :class="getProgressClass(row.daily_usage_usd, getEffectiveDailyLimit(row))"
                       :style="{
-                        width: getProgressWidth(row.daily_usage_usd, row.group?.daily_limit_usd)
+                        width: getProgressWidth(row.daily_usage_usd, getEffectiveDailyLimit(row))
                       }"
                     ></div>
                   </div>
                   <span class="usage-amount">
                     ${{ row.daily_usage_usd?.toFixed(2) || '0.00' }}
                     <span class="text-gray-400">/</span>
-                    ${{ row.group?.daily_limit_usd?.toFixed(2) }}
+                    ${{ getEffectiveDailyLimit(row)?.toFixed(2) }}
                   </span>
                 </div>
                 <div class="reset-info" v-if="row.daily_window_start">
@@ -255,16 +255,16 @@
                   <div class="h-1.5 flex-1 rounded-full bg-gray-200 dark:bg-dark-600">
                     <div
                       class="h-1.5 rounded-full transition-all"
-                      :class="getProgressClass(row.weekly_usage_usd, row.group?.weekly_limit_usd)"
+                      :class="getProgressClass(row.weekly_usage_usd, getEffectiveWeeklyLimit(row))"
                       :style="{
-                        width: getProgressWidth(row.weekly_usage_usd, row.group?.weekly_limit_usd)
+                        width: getProgressWidth(row.weekly_usage_usd, getEffectiveWeeklyLimit(row))
                       }"
                     ></div>
                   </div>
                   <span class="usage-amount">
                     ${{ row.weekly_usage_usd?.toFixed(2) || '0.00' }}
                     <span class="text-gray-400">/</span>
-                    ${{ row.group?.weekly_limit_usd?.toFixed(2) }}
+                    ${{ getEffectiveWeeklyLimit(row)?.toFixed(2) }}
                   </span>
                 </div>
                 <div class="reset-info" v-if="row.weekly_window_start">
@@ -292,16 +292,16 @@
                   <div class="h-1.5 flex-1 rounded-full bg-gray-200 dark:bg-dark-600">
                     <div
                       class="h-1.5 rounded-full transition-all"
-                      :class="getProgressClass(row.monthly_usage_usd, row.group?.monthly_limit_usd)"
+                      :class="getProgressClass(row.monthly_usage_usd, getEffectiveMonthlyLimit(row))"
                       :style="{
-                        width: getProgressWidth(row.monthly_usage_usd, row.group?.monthly_limit_usd)
+                        width: getProgressWidth(row.monthly_usage_usd, getEffectiveMonthlyLimit(row))
                       }"
                     ></div>
                   </div>
                   <span class="usage-amount">
                     ${{ row.monthly_usage_usd?.toFixed(2) || '0.00' }}
                     <span class="text-gray-400">/</span>
-                    ${{ row.group?.monthly_limit_usd?.toFixed(2) }}
+                    ${{ getEffectiveMonthlyLimit(row)?.toFixed(2) }}
                   </span>
                 </div>
                 <div class="reset-info" v-if="row.monthly_window_start">
@@ -563,6 +563,89 @@
       </template>
     </BaseDialog>
 
+    <BaseDialog
+      :show="showAssignChoiceDialog"
+      :title="t('admin.subscriptions.assignChoiceTitle')"
+      width="normal"
+      :closeOnClickOutside="false"
+      @close="closeAssignChoiceDialog"
+    >
+      <div class="space-y-4" data-test="assign-choice-dialog">
+        <p class="text-sm text-gray-600 dark:text-dark-300">
+          {{ t('admin.subscriptions.assignChoiceDesc') }}
+        </p>
+
+        <div class="grid gap-3 rounded-xl bg-gray-50 p-4 text-sm dark:bg-dark-800 sm:grid-cols-2">
+          <div>
+            <p class="text-xs text-gray-500 dark:text-dark-400">
+              {{ t('admin.subscriptions.assignChoiceGroup') }}
+            </p>
+            <p class="mt-1 font-medium text-gray-900 dark:text-white">
+              {{ assignChoiceMeta.group_name || '-' }}
+            </p>
+          </div>
+          <div>
+            <p class="text-xs text-gray-500 dark:text-dark-400">
+              {{ t('admin.subscriptions.assignChoiceCurrentExpires') }}
+            </p>
+            <p class="mt-1 font-medium text-gray-900 dark:text-white">
+              {{
+                assignChoiceMeta.current_expires_at
+                  ? formatDateOnly(assignChoiceMeta.current_expires_at)
+                  : '-'
+              }}
+            </p>
+          </div>
+          <div>
+            <p class="text-xs text-gray-500 dark:text-dark-400">
+              {{ t('admin.subscriptions.assignChoiceValidityDays') }}
+            </p>
+            <p class="mt-1 font-medium text-gray-900 dark:text-white">
+              {{ assignChoiceMeta.validity_days || '-' }}
+            </p>
+          </div>
+          <div>
+            <p class="text-xs text-gray-500 dark:text-dark-400">
+              {{ t('admin.subscriptions.assignChoiceCurrentMultiplier') }}
+            </p>
+            <p class="mt-1 font-medium text-gray-900 dark:text-white">
+              ×{{ assignChoiceMeta.current_quota_multiplier || '1' }}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <template #footer>
+        <div class="flex flex-col gap-2 sm:flex-row sm:justify-end">
+          <button
+            type="button"
+            class="btn btn-secondary"
+            :disabled="submitting"
+            @click="closeAssignChoiceDialog"
+          >
+            {{ t('admin.subscriptions.assignChoiceCancel') }}
+          </button>
+          <button
+            type="button"
+            class="btn btn-primary"
+            :disabled="submitting"
+            @click="handleAssignWithMode('extend')"
+          >
+            {{ t('admin.subscriptions.assignChoiceExtend') }}
+          </button>
+          <button
+            type="button"
+            class="btn btn-primary"
+            data-test="assign-choice-stack"
+            :disabled="submitting"
+            @click="handleAssignWithMode('stack')"
+          >
+            {{ t('admin.subscriptions.assignChoiceStack') }}
+          </button>
+        </div>
+      </template>
+    </BaseDialog>
+
     <!-- Adjust Subscription Modal -->
     <BaseDialog
       :show="showExtendModal"
@@ -740,7 +823,13 @@ import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { adminAPI } from '@/api/admin'
-import type { UserSubscription, Group, GroupPlatform, SubscriptionType } from '@/types'
+import type {
+  UserSubscription,
+  Group,
+  GroupPlatform,
+  SubscriptionType,
+  AssignSubscriptionRequest
+} from '@/types'
 import type { SimpleUser } from '@/api/admin/usage'
 import type { Column } from '@/components/common/types'
 import { formatDateOnly } from '@/utils/format'
@@ -935,10 +1024,13 @@ const pagination = reactive({
 })
 
 const showAssignModal = ref(false)
+const showAssignChoiceDialog = ref(false)
 const showExtendModal = ref(false)
 const showRevokeDialog = ref(false)
 const showResetQuotaConfirm = ref(false)
 const submitting = ref(false)
+const assignChoiceMeta = ref<Record<string, string>>({})
+const pendingAssignRequest = ref<AssignSubscriptionRequest | null>(null)
 const resettingSubscription = ref<UserSubscription | null>(null)
 const resettingQuota = ref(false)
 const extendingSubscription = ref<UserSubscription | null>(null)
@@ -962,11 +1054,11 @@ const groupOptions = computed(() => [
 
 const platformFilterOptions = computed(() => [
   { value: '', label: t('admin.subscriptions.allPlatforms') },
-  { value: 'anthropic', label: 'Anthropic' },
-  { value: 'openai', label: 'OpenAI' },
-  { value: 'gemini', label: 'Gemini' },
-  { value: 'antigravity', label: 'Antigravity' },
-  { value: 'sora', label: 'Sora' }
+  { value: 'anthropic', label: t('admin.groups.platforms.anthropic') },
+  { value: 'openai', label: t('admin.groups.platforms.openai') },
+  { value: 'gemini', label: t('admin.groups.platforms.gemini') },
+  { value: 'antigravity', label: t('admin.groups.platforms.antigravity') },
+  { value: 'sora', label: t('admin.groups.platforms.sora') }
 ])
 
 // Group options for assign (only subscription type groups)
@@ -1157,6 +1249,7 @@ const handleSort = (key: string, order: 'asc' | 'desc') => {
 
 const closeAssignModal = () => {
   showAssignModal.value = false
+  closeAssignChoiceDialog()
   assignForm.user_id = null
   assignForm.group_id = null
   assignForm.validity_days = 30
@@ -1165,6 +1258,30 @@ const closeAssignModal = () => {
   userSearchKeyword.value = ''
   userSearchResults.value = []
   showUserDropdown.value = false
+}
+
+const closeAssignChoiceDialog = () => {
+  showAssignChoiceDialog.value = false
+  assignChoiceMeta.value = {}
+  pendingAssignRequest.value = null
+}
+
+const buildAssignRequestPayload = (
+  mode?: 'extend' | 'stack'
+): AssignSubscriptionRequest | null => {
+  if (!assignForm.user_id || !assignForm.group_id) {
+    return null
+  }
+
+  const payload: AssignSubscriptionRequest = {
+    user_id: assignForm.user_id,
+    group_id: assignForm.group_id,
+    validity_days: assignForm.validity_days
+  }
+  if (mode) {
+    payload.subscription_mode = mode
+  }
+  return payload
 }
 
 const handleAssignSubscription = async () => {
@@ -1181,19 +1298,48 @@ const handleAssignSubscription = async () => {
     return
   }
 
+  const payload = buildAssignRequestPayload()
+  if (!payload) {
+    return
+  }
+
   submitting.value = true
   try {
-    await adminAPI.subscriptions.assign({
-      user_id: assignForm.user_id,
-      group_id: assignForm.group_id,
-      validity_days: assignForm.validity_days
-    })
+    await adminAPI.subscriptions.assign(payload)
     appStore.showSuccess(t('admin.subscriptions.subscriptionAssigned'))
     closeAssignModal()
     loadSubscriptions()
   } catch (error: any) {
-    appStore.showError(error.response?.data?.detail || t('admin.subscriptions.failedToAssign'))
+    if (error?.reason === 'SUBSCRIPTION_REDEEM_CHOICE_REQUIRED') {
+      pendingAssignRequest.value = payload
+      assignChoiceMeta.value = error?.metadata || {}
+      showAssignChoiceDialog.value = true
+      return
+    }
+    appStore.showError(error?.message || t('admin.subscriptions.failedToAssign'))
     console.error('Error assigning subscription:', error)
+  } finally {
+    submitting.value = false
+  }
+}
+
+const handleAssignWithMode = async (mode: 'extend' | 'stack') => {
+  if (!pendingAssignRequest.value) {
+    return
+  }
+
+  submitting.value = true
+  try {
+    await adminAPI.subscriptions.assign({
+      ...pendingAssignRequest.value,
+      subscription_mode: mode
+    })
+    appStore.showSuccess(t('admin.subscriptions.subscriptionAssigned'))
+    closeAssignModal()
+    await loadSubscriptions()
+  } catch (error: any) {
+    appStore.showError(error?.message || t('admin.subscriptions.failedToAssign'))
+    console.error('Error assigning subscription with mode:', error)
   } finally {
     submitting.value = false
   }
@@ -1294,6 +1440,30 @@ const getDaysRemaining = (expiresAt: string): number | null => {
 const isExpiringSoon = (expiresAt: string): boolean => {
   const days = getDaysRemaining(expiresAt)
   return days !== null && days <= 7
+}
+
+const getEffectiveDailyLimit = (subscription: UserSubscription): number | null => {
+  if (!subscription.group?.daily_limit_usd) {
+    return null
+  }
+  const multiplier = Math.max(1, subscription.quota_multiplier ?? 1)
+  return subscription.group.daily_limit_usd * multiplier
+}
+
+const getEffectiveWeeklyLimit = (subscription: UserSubscription): number | null => {
+  if (!subscription.group?.weekly_limit_usd) {
+    return null
+  }
+  const multiplier = Math.max(1, subscription.quota_multiplier ?? 1)
+  return subscription.group.weekly_limit_usd * multiplier
+}
+
+const getEffectiveMonthlyLimit = (subscription: UserSubscription): number | null => {
+  if (!subscription.group?.monthly_limit_usd) {
+    return null
+  }
+  const multiplier = Math.max(1, subscription.quota_multiplier ?? 1)
+  return subscription.group.monthly_limit_usd * multiplier
 }
 
 const getProgressWidth = (used: number | null | undefined, limit: number | null): string => {

@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -15,11 +16,12 @@ import (
 )
 
 var (
-	ErrRedeemCodeNotFound  = infraerrors.NotFound("REDEEM_CODE_NOT_FOUND", "redeem code not found")
-	ErrRedeemCodeUsed      = infraerrors.Conflict("REDEEM_CODE_USED", "redeem code already used")
-	ErrInsufficientBalance = infraerrors.BadRequest("INSUFFICIENT_BALANCE", "insufficient balance")
-	ErrRedeemRateLimited   = infraerrors.TooManyRequests("REDEEM_RATE_LIMITED", "too many failed attempts, please try again later")
-	ErrRedeemCodeLocked    = infraerrors.Conflict("REDEEM_CODE_LOCKED", "redeem code is being processed, please try again")
+	ErrRedeemCodeNotFound               = infraerrors.NotFound("REDEEM_CODE_NOT_FOUND", "redeem code not found")
+	ErrRedeemCodeUsed                   = infraerrors.Conflict("REDEEM_CODE_USED", "redeem code already used")
+	ErrInsufficientBalance              = infraerrors.BadRequest("INSUFFICIENT_BALANCE", "insufficient balance")
+	ErrRedeemRateLimited                = infraerrors.TooManyRequests("REDEEM_RATE_LIMITED", "too many failed attempts, please try again later")
+	ErrRedeemCodeLocked                 = infraerrors.Conflict("REDEEM_CODE_LOCKED", "redeem code is being processed, please try again")
+	ErrSubscriptionRedeemChoiceRequired = infraerrors.Conflict("SUBSCRIPTION_REDEEM_CHOICE_REQUIRED", "subscription redeem choice required")
 )
 
 const (
@@ -44,7 +46,7 @@ type RedeemCodeRepository interface {
 	GetByCode(ctx context.Context, code string) (*RedeemCode, error)
 	Update(ctx context.Context, code *RedeemCode) error
 	Delete(ctx context.Context, id int64) error
-	Use(ctx context.Context, id, userID int64) error
+	Use(ctx context.Context, id, userID int64, subscriptionMode *string) error
 
 	List(ctx context.Context, params pagination.PaginationParams) ([]RedeemCode, *pagination.PaginationResult, error)
 	ListWithFilters(ctx context.Context, params pagination.PaginationParams, codeType, status, search string) ([]RedeemCode, *pagination.PaginationResult, error)
@@ -254,7 +256,7 @@ func (s *RedeemService) releaseRedeemLock(ctx context.Context, code string) {
 }
 
 // Redeem 使用兑换码
-func (s *RedeemService) Redeem(ctx context.Context, userID int64, code string) (*RedeemCode, error) {
+func (s *RedeemService) Redeem(ctx context.Context, userID int64, code string, subscriptionMode string) (*RedeemCode, error) {
 	// 检查限流
 	if err := s.checkRedeemRateLimit(ctx, userID); err != nil {
 		return nil, err
@@ -287,6 +289,60 @@ func (s *RedeemService) Redeem(ctx context.Context, userID int64, code string) (
 		return nil, infraerrors.BadRequest("REDEEM_CODE_INVALID", "invalid subscription redeem code: missing group_id")
 	}
 
+	normalizedMode := strings.TrimSpace(subscriptionMode)
+	var subscriptionModeToRecord *string
+
+	if redeemCode.Type == RedeemTypeSubscription && redeemCode.GroupID != nil {
+		now := time.Now()
+
+		existingSub, err := s.subscriptionService.userSubRepo.GetByUserIDAndGroupID(ctx, userID, *redeemCode.GroupID)
+		if err == nil {
+			needsChoice := existingSub.ExpiresAt.After(now) &&
+				(existingSub.Status == SubscriptionStatusActive || existingSub.Status == SubscriptionStatusSuspended)
+			if needsChoice && normalizedMode == "" {
+				s.subscriptionService.populateQuotaSnapshot(ctx, existingSub, now)
+				multiplier := existingSub.QuotaMultiplier
+				if multiplier < 1 {
+					multiplier = 1
+				}
+
+				groupName := ""
+				if existingSub.Group != nil {
+					groupName = existingSub.Group.Name
+				} else if s.subscriptionService.groupRepo != nil {
+					if group, groupErr := s.subscriptionService.groupRepo.GetByID(ctx, existingSub.GroupID); groupErr == nil && group != nil {
+						groupName = group.Name
+					}
+				}
+
+				validityDays := redeemCode.ValidityDays
+				if validityDays <= 0 {
+					validityDays = 30
+				}
+				if validityDays > MaxValidityDays {
+					validityDays = MaxValidityDays
+				}
+
+				return nil, ErrSubscriptionRedeemChoiceRequired.WithMetadata(map[string]string{
+					"group_id":                 strconv.FormatInt(*redeemCode.GroupID, 10),
+					"group_name":               groupName,
+					"current_expires_at":       existingSub.ExpiresAt.Format(time.RFC3339),
+					"validity_days":            strconv.Itoa(validityDays),
+					"current_quota_multiplier": strconv.Itoa(multiplier),
+				})
+			}
+		} else if !errors.Is(err, ErrSubscriptionNotFound) {
+			return nil, fmt.Errorf("get subscription: %w", err)
+		}
+
+		if normalizedMode != "" && normalizedMode != string(SubscriptionModeExtend) && normalizedMode != string(SubscriptionModeStack) {
+			return nil, infraerrors.BadRequest("INVALID_SUBSCRIPTION_MODE", "invalid subscription_mode")
+		}
+		if normalizedMode != "" {
+			subscriptionModeToRecord = &normalizedMode
+		}
+	}
+
 	// 获取用户信息
 	user, err := s.userRepo.GetByID(ctx, userID)
 	if err != nil {
@@ -306,7 +362,7 @@ func (s *RedeemService) Redeem(ctx context.Context, userID int64, code string) (
 
 	// 【关键】先标记兑换码为已使用，确保并发安全
 	// 利用数据库乐观锁（WHERE status = 'unused'）保证原子性
-	if err := s.redeemRepo.Use(txCtx, redeemCode.ID, userID); err != nil {
+	if err := s.redeemRepo.Use(txCtx, redeemCode.ID, userID, subscriptionModeToRecord); err != nil {
 		if errors.Is(err, ErrRedeemCodeNotFound) || errors.Is(err, ErrRedeemCodeUsed) {
 			return nil, ErrRedeemCodeUsed
 		}
@@ -332,12 +388,12 @@ func (s *RedeemService) Redeem(ctx context.Context, userID int64, code string) (
 		if validityDays <= 0 {
 			validityDays = 30
 		}
-		_, _, err := s.subscriptionService.AssignOrExtendSubscription(txCtx, &AssignSubscriptionInput{
-			UserID:       userID,
-			GroupID:      *redeemCode.GroupID,
-			ValidityDays: validityDays,
-			AssignedBy:   0, // 系统分配
-			Notes:        fmt.Sprintf("通过兑换码 %s 兑换", redeemCode.Code),
+		_, err := s.subscriptionService.ApplyRedeemSubscription(txCtx, &ApplyRedeemSubscriptionInput{
+			UserID:           userID,
+			GroupID:          *redeemCode.GroupID,
+			ValidityDays:     validityDays,
+			SubscriptionMode: SubscriptionMode(normalizedMode),
+			Notes:            fmt.Sprintf("通过兑换码 %s 兑换", redeemCode.Code),
 		})
 		if err != nil {
 			return nil, fmt.Errorf("assign or extend subscription: %w", err)

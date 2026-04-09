@@ -302,6 +302,21 @@ const CreditCardIcon = {
     )
 }
 
+const CurrencyYenIcon = {
+  render: () =>
+    h(
+      'svg',
+      { fill: 'none', viewBox: '0 0 24 24', stroke: 'currentColor', 'stroke-width': '1.5' },
+      [
+        h('path', {
+          'stroke-linecap': 'round',
+          'stroke-linejoin': 'round',
+          d: 'M9 8.25h6m-6 3h6m-5.25 7.5V15l-3-3h10.5l-3 3v3.75m-3-6L6.75 6h10.5L12 12.75z'
+        })
+      ]
+    )
+}
+
 const RechargeSubscriptionIcon = {
   render: () =>
     h(
@@ -367,6 +382,21 @@ const BellIcon = {
           'stroke-linecap': 'round',
           'stroke-linejoin': 'round',
           d: 'M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75V9a6 6 0 10-12 0v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0'
+        })
+      ]
+    )
+}
+
+const BellAlertIcon = {
+  render: () =>
+    h(
+      'svg',
+      { fill: 'none', viewBox: '0 0 24 24', stroke: 'currentColor', 'stroke-width': '1.5' },
+      [
+        h('path', {
+          'stroke-linecap': 'round',
+          'stroke-linejoin': 'round',
+          d: 'M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75V9a6 6 0 10-12 0v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0M12 9v3.75m0 0h.008v.008H12v-.008z'
         })
       ]
     )
@@ -568,6 +598,12 @@ const adminNavItems = computed((): NavItem[] => {
       : []),
     { path: '/admin/users', label: t('nav.users'), icon: UsersIcon, hideInSimpleMode: true },
     { path: '/admin/groups', label: t('nav.groups'), icon: FolderIcon, hideInSimpleMode: true },
+    {
+      path: '/admin/pricing-plans',
+      label: t('nav.pricingPlans'),
+      icon: CurrencyYenIcon,
+      hideInSimpleMode: true
+    },
     { path: '/admin/subscriptions', label: t('nav.subscriptions'), icon: CreditCardIcon, hideInSimpleMode: true },
     { path: '/admin/accounts', label: t('nav.accounts'), icon: GlobeIcon },
     { path: '/admin/announcements', label: t('nav.announcements'), icon: BellIcon },
@@ -581,6 +617,7 @@ const adminNavItems = computed((): NavItem[] => {
   if (authStore.isSimpleMode) {
     const filtered = baseItems.filter(item => !item.hideInSimpleMode)
     filtered.push({ path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon })
+    filtered.push({ path: '/admin/pool-monitor', label: t('nav.poolMonitor'), icon: BellAlertIcon })
     filtered.push({ path: '/admin/settings', label: t('nav.settings'), icon: CogIcon })
     // Add admin custom menu items after settings
     for (const cm of customMenuItemsForAdmin.value) {
@@ -589,6 +626,7 @@ const adminNavItems = computed((): NavItem[] => {
     return filtered
   }
 
+  baseItems.push({ path: '/admin/pool-monitor', label: t('nav.poolMonitor'), icon: BellAlertIcon })
   baseItems.push({ path: '/admin/settings', label: t('nav.settings'), icon: CogIcon })
   // Add admin custom menu items after settings
   for (const cm of customMenuItemsForAdmin.value) {

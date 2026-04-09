@@ -53,6 +53,8 @@ const (
 	subFieldDailyUsage   = "daily_usage"
 	subFieldWeeklyUsage  = "weekly_usage"
 	subFieldMonthlyUsage = "monthly_usage"
+	subFieldQuotaMult    = "quota_multiplier"
+	subFieldNextGrantExp = "next_grant_expires_at"
 	subFieldVersion      = "version"
 )
 
@@ -88,10 +90,30 @@ var (
 			return 0
 		end
 		local cost = tonumber(ARGV[1])
+		local ttl_seconds = tonumber(ARGV[2])
+		local safety_seconds = tonumber(ARGV[3])
 		redis.call('HINCRBYFLOAT', KEYS[1], 'daily_usage', cost)
 		redis.call('HINCRBYFLOAT', KEYS[1], 'weekly_usage', cost)
 		redis.call('HINCRBYFLOAT', KEYS[1], 'monthly_usage', cost)
-		redis.call('EXPIRE', KEYS[1], ARGV[2])
+
+		local t = redis.call('TIME')
+		local now_sec = tonumber(t[1])
+		local hard_expire_at = now_sec + ttl_seconds
+		local expire_at = hard_expire_at
+		local next_exp = redis.call('HGET', KEYS[1], 'next_grant_expires_at')
+		if next_exp and next_exp ~= false and next_exp ~= '' then
+			local next_sec = tonumber(next_exp)
+			if next_sec and next_sec > 0 then
+				local boundary = next_sec - safety_seconds
+				if boundary < expire_at then
+					expire_at = boundary
+				end
+			end
+		end
+		if expire_at <= now_sec then
+			expire_at = now_sec + 1
+		end
+		redis.call('EXPIREAT', KEYS[1], expire_at)
 		return 1
 	`)
 
@@ -214,7 +236,37 @@ func (c *billingCache) parseSubscriptionCache(data map[string]string) (*service.
 		result.Version, _ = strconv.ParseInt(versionStr, 10, 64)
 	}
 
+	if multStr, ok := data[subFieldQuotaMult]; ok {
+		m, _ := strconv.ParseInt(multStr, 10, 32)
+		result.QuotaMultiplier = int(m)
+	}
+	if result.QuotaMultiplier <= 0 {
+		result.QuotaMultiplier = 1
+	}
+
+	if nextStr, ok := data[subFieldNextGrantExp]; ok {
+		nextSec, err := strconv.ParseInt(nextStr, 10, 64)
+		if err == nil && nextSec > 0 {
+			t := time.Unix(nextSec, 0)
+			result.NextGrantExpiresAt = &t
+		}
+	}
+
 	return result, nil
+}
+
+func computeSubCacheExpireAt(now time.Time, nextGrantExpiresAt *time.Time) time.Time {
+	expireAt := now.Add(jitteredTTL())
+	if nextGrantExpiresAt != nil {
+		boundary := nextGrantExpiresAt.Add(-2 * time.Second)
+		if boundary.Before(expireAt) {
+			expireAt = boundary
+		}
+	}
+	if !expireAt.After(now.Add(1 * time.Second)) {
+		expireAt = now.Add(1 * time.Second)
+	}
+	return expireAt
 }
 
 func (c *billingCache) SetSubscriptionCache(ctx context.Context, userID, groupID int64, data *service.SubscriptionCacheData) error {
@@ -223,6 +275,11 @@ func (c *billingCache) SetSubscriptionCache(ctx context.Context, userID, groupID
 	}
 
 	key := billingSubKey(userID, groupID)
+	now := time.Now()
+	quotaMultiplier := data.QuotaMultiplier
+	if quotaMultiplier <= 0 {
+		quotaMultiplier = 1
+	}
 
 	fields := map[string]any{
 		subFieldStatus:       data.Status,
@@ -230,19 +287,23 @@ func (c *billingCache) SetSubscriptionCache(ctx context.Context, userID, groupID
 		subFieldDailyUsage:   data.DailyUsage,
 		subFieldWeeklyUsage:  data.WeeklyUsage,
 		subFieldMonthlyUsage: data.MonthlyUsage,
+		subFieldQuotaMult:    quotaMultiplier,
 		subFieldVersion:      data.Version,
+	}
+	if data.NextGrantExpiresAt != nil {
+		fields[subFieldNextGrantExp] = data.NextGrantExpiresAt.Unix()
 	}
 
 	pipe := c.rdb.Pipeline()
 	pipe.HSet(ctx, key, fields)
-	pipe.Expire(ctx, key, jitteredTTL())
+	pipe.ExpireAt(ctx, key, computeSubCacheExpireAt(now, data.NextGrantExpiresAt))
 	_, err := pipe.Exec(ctx)
 	return err
 }
 
 func (c *billingCache) UpdateSubscriptionUsage(ctx context.Context, userID, groupID int64, cost float64) error {
 	key := billingSubKey(userID, groupID)
-	_, err := updateSubUsageScript.Run(ctx, c.rdb, []string{key}, cost, int(jitteredTTL().Seconds())).Result()
+	_, err := updateSubUsageScript.Run(ctx, c.rdb, []string{key}, cost, int(jitteredTTL().Seconds()), 2).Result()
 	if err != nil && !errors.Is(err, redis.Nil) {
 		log.Printf("Warning: update subscription usage cache failed for user %d group %d: %v", userID, groupID, err)
 		return err

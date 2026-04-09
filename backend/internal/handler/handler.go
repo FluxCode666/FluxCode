@@ -29,6 +29,8 @@ type AdminHandlers struct {
 	ErrorPassthrough *admin.ErrorPassthroughHandler
 	APIKey           *admin.AdminAPIKeyHandler
 	ScheduledTest    *admin.ScheduledTestHandler
+	PricingPlan      *admin.PricingPlanHandler
+	PoolMonitor      *admin.PoolMonitorHandler
 }
 
 // Handlers contains all HTTP handlers
@@ -47,6 +49,7 @@ type Handlers struct {
 	SoraClient    *SoraClientHandler
 	Setting       *SettingHandler
 	Totp          *TotpHandler
+	PricingPlan   *PricingPlanHandler
 }
 
 // BuildInfo contains build-time information

@@ -1,0 +1,126 @@
+# =============================================================================
+# Sub2API - Backend Deployment (Multi-Machine)
+# =============================================================================
+# Deploy this on each BACKEND machine.
+# Runs the Go API server (without embedded frontend).
+# Connects to external PostgreSQL and Redis.
+#
+# Usage:
+#   1. cp .env.example .env
+#   2. Edit .env: set database, Redis, and security keys
+#   3. docker compose up -d
+#
+# IMPORTANT:
+#   - All backend instances MUST share the same JWT_SECRET and TOTP_ENCRYPTION_KEY
+#   - First instance should start alone to complete database initialization
+# =============================================================================
+
+services:
+  backend:
+    image: weishaw/sub2api-backend:latest
+    # Or build from source (run from project root):
+    # build:
+    #   context: ../../
+    #   dockerfile: deploy/backend/Dockerfile
+    container_name: sub2api-backend
+    restart: unless-stopped
+    ulimits:
+      nofile:
+        soft: 100000
+        hard: 100000
+    ports:
+      # Expose to host so frontend/LB machine can reach this backend
+      - "${BIND_HOST:-0.0.0.0}:${SERVER_PORT:-8080}:8080"
+    volumes:
+      - ./data:/app/data
+    environment:
+      # =======================================================================
+      # Auto Setup (creates admin account and DB schema on first run)
+      # =======================================================================
+      - AUTO_SETUP=true
+
+      # =======================================================================
+      # Server Configuration
+      # =======================================================================
+      - SERVER_HOST=0.0.0.0
+      - SERVER_PORT=8080
+      - SERVER_MODE=${SERVER_MODE:-release}
+      - RUN_MODE=${RUN_MODE:-standard}
+
+      # =======================================================================
+      # Database Configuration (external PostgreSQL)
+      # =======================================================================
+      - DATABASE_HOST=${DATABASE_HOST:?DATABASE_HOST is required}
+      - DATABASE_PORT=${DATABASE_PORT:-5432}
+      - DATABASE_USER=${DATABASE_USER:-sub2api}
+      - DATABASE_PASSWORD=${DATABASE_PASSWORD:?DATABASE_PASSWORD is required}
+      - DATABASE_DBNAME=${DATABASE_DBNAME:-sub2api}
+      - DATABASE_SSLMODE=${DATABASE_SSLMODE:-disable}
+      - DATABASE_MAX_OPEN_CONNS=${DATABASE_MAX_OPEN_CONNS:-50}
+      - DATABASE_MAX_IDLE_CONNS=${DATABASE_MAX_IDLE_CONNS:-10}
+      - DATABASE_CONN_MAX_LIFETIME_MINUTES=${DATABASE_CONN_MAX_LIFETIME_MINUTES:-30}
+      - DATABASE_CONN_MAX_IDLE_TIME_MINUTES=${DATABASE_CONN_MAX_IDLE_TIME_MINUTES:-5}
+
+      # =======================================================================
+      # Redis Configuration (external Redis)
+      # =======================================================================
+      - REDIS_HOST=${REDIS_HOST:?REDIS_HOST is required}
+      - REDIS_PORT=${REDIS_PORT:-6379}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      - REDIS_DB=${REDIS_DB:-0}
+      - REDIS_POOL_SIZE=${REDIS_POOL_SIZE:-1024}
+      - REDIS_MIN_IDLE_CONNS=${REDIS_MIN_IDLE_CONNS:-10}
+      - REDIS_ENABLE_TLS=${REDIS_ENABLE_TLS:-false}
+
+      # =======================================================================
+      # Admin Account (auto-created on first run of first instance)
+      # =======================================================================
+      - ADMIN_EMAIL=${ADMIN_EMAIL:-admin@sub2api.local}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}
+
+      # =======================================================================
+      # JWT Configuration
+      # CRITICAL: Must be IDENTICAL across ALL backend instances!
+      # =======================================================================
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET is required for multi-machine deployment}
+      - JWT_EXPIRE_HOUR=${JWT_EXPIRE_HOUR:-24}
+
+      # =======================================================================
+      # TOTP (2FA) Configuration
+      # CRITICAL: Must be IDENTICAL across ALL backend instances!
+      # =======================================================================
+      - TOTP_ENCRYPTION_KEY=${TOTP_ENCRYPTION_KEY:-}
+
+      # =======================================================================
+      # Timezone
+      # =======================================================================
+      - TZ=${TZ:-Asia/Shanghai}
+
+      # =======================================================================
+      # Gemini OAuth (optional)
+      # =======================================================================
+      - GEMINI_OAUTH_CLIENT_ID=${GEMINI_OAUTH_CLIENT_ID:-}
+      - GEMINI_OAUTH_CLIENT_SECRET=${GEMINI_OAUTH_CLIENT_SECRET:-}
+      - GEMINI_OAUTH_SCOPES=${GEMINI_OAUTH_SCOPES:-}
+      - GEMINI_QUOTA_POLICY=${GEMINI_QUOTA_POLICY:-}
+      - GEMINI_CLI_OAUTH_CLIENT_SECRET=${GEMINI_CLI_OAUTH_CLIENT_SECRET:-}
+      - ANTIGRAVITY_OAUTH_CLIENT_SECRET=${ANTIGRAVITY_OAUTH_CLIENT_SECRET:-}
+
+      # =======================================================================
+      # Security Configuration
+      # =======================================================================
+      - SECURITY_URL_ALLOWLIST_ENABLED=${SECURITY_URL_ALLOWLIST_ENABLED:-false}
+      - SECURITY_URL_ALLOWLIST_ALLOW_INSECURE_HTTP=${SECURITY_URL_ALLOWLIST_ALLOW_INSECURE_HTTP:-false}
+      - SECURITY_URL_ALLOWLIST_ALLOW_PRIVATE_HOSTS=${SECURITY_URL_ALLOWLIST_ALLOW_PRIVATE_HOSTS:-false}
+      - SECURITY_URL_ALLOWLIST_UPSTREAM_HOSTS=${SECURITY_URL_ALLOWLIST_UPSTREAM_HOSTS:-}
+
+      # =======================================================================
+      # Update Proxy (optional)
+      # =======================================================================
+      - UPDATE_PROXY_URL=${UPDATE_PROXY_URL:-}
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-T", "5", "-O", "/dev/null", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s

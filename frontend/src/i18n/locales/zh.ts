@@ -8,102 +8,81 @@ export default {
     switchToDark: '切换到深色模式',
     dashboard: '控制台',
     login: '登录',
-    getStarted: '立即开始',
+    getStarted: '开始使用',
     goToDashboard: '进入控制台',
-    // 新增：面向用户的价值主张
-    heroSubtitle: '一个密钥，畅用多个 AI 模型',
-    heroDescription: '无需管理多个订阅账号，一站式接入 Claude、GPT、Gemini 等主流 AI 服务',
+    nav: {
+      features: '功能特性',
+      pricing: '购买入口',
+      docs: '使用文档',
+      menu: '菜单'
+    },
+    hero: {
+      headline: '稳定高速 · 专业服务',
+      description: '统一入口，兼容多模型接口；提供可观测、可控、稳定可靠的 API 中转服务。',
+      secondaryCta: '查看用量',
+      stats: {
+        performance: '高速稳定转发',
+        control: '计费与配额可控',
+        security: '数据安全与隔离'
+      }
+    },
+    sections: {
+      featuresTitle: '功能特性',
+      featuresSubtitle: '统一入口，实时计费，构建稳定可控的 API 中转层。',
+      pricingTitle: '购买入口',
+      pricingSubtitle: '订阅制，账单清晰可追踪。',
+      docsTitle: '使用文档',
+      docsSubtitle: '快速开始、API 说明与最佳实践。'
+    },
+    pricing: {
+      usageTitle: '按量计费',
+      usageDesc: '基于 Token 的精确计费与用量追踪，实时可见。',
+      quotaTitle: '配额管理',
+      quotaDesc: '支持用户/分组配额与限额策略，避免超支。',
+      redeemTitle: '充值与兑换码',
+      redeemDesc: '支持充值、兑换码与余额管理，结算更灵活。'
+    },
+    quickstart: {
+      title: '快速上手',
+      subtitle: '三步接入：创建 Key → 选择接口 → 直接调用。',
+      cta: '打开控制台',
+      steps: {
+        createKey: {
+          title: '创建 API Key',
+          desc: '在控制台生成 Key，并绑定分组/权限与配额策略。'
+        },
+        chooseApi: {
+          title: '选择兼容接口',
+          desc: 'Claude：/v1/messages；OpenAI：/v1/responses；Gemini：/v1beta/。'
+        },
+        call: {
+          title: '开始调用',
+          desc: '把 Base URL 指向你的 FluxCode，SDK/CLI 即可直连运行。'
+        }
+      }
+    },
     tags: {
       subscriptionToApi: '订阅转 API',
-      stickySession: '会话保持',
-      realtimeBilling: '按量计费'
-    },
-    // 用户痛点区块
-    painPoints: {
-      title: '你是否也遇到这些问题？',
-      items: {
-        expensive: {
-          title: '订阅费用高',
-          desc: '每个 AI 服务都要单独订阅，每月支出越来越多'
-        },
-        complex: {
-          title: '多账号难管理',
-          desc: '不同平台的账号、密钥分散各处，管理起来很麻烦'
-        },
-        unstable: {
-          title: '服务不稳定',
-          desc: '单一账号容易触发限制，影响正常使用'
-        },
-        noControl: {
-          title: '用量无法控制',
-          desc: '不知道钱花在哪了，也无法限制团队成员的使用'
-        }
-      }
-    },
-    // 解决方案区块
-    solutions: {
-      title: '我们帮你解决',
-      subtitle: '简单三步，开始省心使用 AI'
+      stickySession: '粘性会话',
+      realtimeBilling: '实时计费'
     },
     features: {
-      unifiedGateway: '一键接入',
-      unifiedGatewayDesc: '获取一个 API 密钥，即可调用所有已接入的 AI 模型，无需分别申请。',
-      multiAccount: '稳定可靠',
-      multiAccountDesc: '智能调度多个上游账号，自动切换和负载均衡，告别频繁报错。',
-      balanceQuota: '用多少付多少',
-      balanceQuotaDesc: '按实际使用量计费，支持设置配额上限，团队用量一目了然。'
-    },
-    // 优势对比
-    comparison: {
-      title: '为什么选择我们？',
-      headers: {
-        feature: '对比项',
-        official: '官方订阅',
-        us: '本平台'
-      },
-      items: {
-        pricing: {
-          feature: '付费方式',
-          official: '固定月费，用不完也付',
-          us: '按量付费，用多少付多少'
-        },
-        models: {
-          feature: '模型选择',
-          official: '单一服务商',
-          us: '多模型随意切换'
-        },
-        management: {
-          feature: '账号管理',
-          official: '每个服务单独管理',
-          us: '统一密钥，一站管理'
-        },
-        stability: {
-          feature: '服务稳定性',
-          official: '单账号易触发限制',
-          us: '多账号池，自动切换'
-        },
-        control: {
-          feature: '用量控制',
-          official: '无法限制',
-          us: '可设配额、查明细'
-        }
-      }
+      unifiedGateway: '稳定安全',
+      unifiedGatewayDesc: '官方原版，无降智风险。',
+      multiAccount: '高速稳定的中转服务',
+      multiAccountDesc: '专线直连，99.9% 可用性保障，告别连接不稳定。',
+      balanceQuota: '余额与配额',
+      balanceQuotaDesc: '基于 Token 的精确计费和用量追踪。'
     },
     providers: {
-      title: '已支持的 AI 模型',
-      description: '一个 API，多种选择',
+      title: '受信赖的伙伴与技术栈',
+      description: '与 OpenAI、Anthropic、Claude 等生态深度兼容，持续扩展。',
       supported: '已支持',
       soon: '即将推出',
       claude: 'Claude',
       gemini: 'Gemini',
       antigravity: 'Antigravity',
       more: '更多'
-    },
-    // CTA 区块
-    cta: {
-      title: '准备好开始了吗？',
-      description: '注册即可获得免费试用额度，体验一站式 AI 服务',
-      button: '免费注册'
     },
     footer: {
       allRightsReserved: '保留所有权利。'
@@ -304,12 +283,32 @@ export default {
     saving: '保存中...',
     selectedCount: '（已选 {count} 个）',
     refresh: '刷新',
+    apply: '应用',
+    clear: '清空',
     settings: '设置',
     chooseFile: '选择文件',
     notAvailable: '不可用',
     now: '现在',
     unknown: '未知',
     minutes: '分钟',
+    banned: '封禁',
+    creating: '创建中...',
+    sending: '发送中...',
+    purchase: '购买',
+    recommended: '推荐',
+    currency: {
+      cny: '人民币',
+      usd: '美元',
+      eur: '欧元',
+      gbp: '英镑'
+    },
+    period: {
+      day: '日',
+      week: '周',
+      month: '月',
+      year: '年',
+      once: '一次性'
+    },
     time: {
       never: '从未',
       justNow: '刚刚',
@@ -335,9 +334,11 @@ export default {
     profile: '个人资料',
     users: '用户管理',
     groups: '分组管理',
+    pricingPlans: '定价方案',
     subscriptions: '订阅管理',
     accounts: '账号管理',
     proxies: 'IP管理',
+    poolMonitor: '号池监控',
     redeemCodes: '兑换码',
     ops: '运维监控',
     promoCodes: '优惠码',
@@ -802,13 +803,32 @@ export default {
     concurrencyReducedAdmin: '并发减少（管理员）',
     adminAdjustment: '管理员调整',
     subscriptionAssigned: '订阅已分配',
+    subscriptionExtended: '订阅已延长',
+    subscriptionStacked: '订阅额度已叠加',
     subscriptionAssignedDesc: '您已获得 {groupName} 的访问权限',
+    subscriptionModeExtend: '延长时长',
+    subscriptionModeStack: '叠加额度',
+    modeGuideTitle: '兑换模式示例（按日维度）',
     subscriptionDays: '{days} 天',
     days: '天',
     codeRedeemSuccess: '兑换成功！',
     failedToRedeem: '兑换失败，请检查兑换码后重试。',
     subscriptionRefreshFailed: '兑换成功，但订阅状态刷新失败。',
-    pleaseEnterCode: '请输入兑换码'
+    pleaseEnterCode: '请输入兑换码',
+    subscriptionChoiceTitle: '订阅兑换方式',
+    subscriptionChoiceDesc: '你在该分组已有未过期订阅，请选择延长有效期或从现在开始叠加额度。',
+    subscriptionChoiceGroup: '分组',
+    subscriptionChoiceCurrentExpires: '当前到期',
+    subscriptionChoiceValidityDays: '本次有效期（天）',
+    subscriptionChoiceCurrentMultiplier: '当前额度',
+    subscriptionChoiceExtend: '延长有效期',
+    subscriptionChoiceStack: '叠加额度（从现在开始）',
+    subscriptionChoiceOptionExtendDesc: '延长 {days} 天，额度倍数不变',
+    subscriptionChoiceOptionStackDesc: '从现在开始叠加额度 {days} 天，额度倍数 +1',
+    subscriptionChoicePreviewTitle: '兑换后预览',
+    subscriptionChoiceResultExpires: '结果到期',
+    subscriptionChoiceResultMultiplier: '结果额度',
+    subscriptionChoiceStackUntil: '叠加额度有效期至'
   },
 
   // Profile
@@ -977,6 +997,13 @@ export default {
       metricTokens: '按 Token',
       metricActualCost: '按实际消费',
       tokenUsageTrend: 'Token 使用趋势',
+      requestCountTrend: '请求数统计',
+      proxyUsageSummary: '代理使用统计',
+      metricLegend: '指标图例',
+      proxyLegend: '代理 IP 图例',
+      totalCount: '总次数',
+      successCount: '成功次数',
+      failureCount: '失败次数',
       noDataAvailable: '暂无数据',
       model: '模型',
       group: '分组',
@@ -1335,6 +1362,7 @@ export default {
       leaveEmptyToKeep: '留空则保持原密码不变',
       generatePassword: '生成随机密码',
       copyPassword: '复制密码',
+      passwordCopied: '密码已复制到剪贴板',
       creating: '创建中...',
       updating: '更新中...',
       columns: {
@@ -1636,6 +1664,7 @@ export default {
       platforms: {
         all: '全部平台',
         anthropic: 'Anthropic',
+        kiro: 'Kiro',
         openai: 'OpenAI',
         gemini: 'Gemini',
         antigravity: 'Antigravity',
@@ -1791,6 +1820,63 @@ export default {
       }
     },
 
+    pricingPlans: {
+      createGroup: '创建分组',
+      createPlan: '创建方案',
+      editGroup: '编辑分组',
+      editPlan: '编辑方案',
+      deleteGroup: '删除分组',
+      deleteGroupConfirm: '确定要删除定价分组“{name}”吗？该分组下的所有方案都会一并删除。',
+      deletePlan: '删除方案',
+      deletePlanConfirm: '确定要删除方案“{name}”吗？所属分组：{group}。',
+      emptyTitle: '暂无定价分组',
+      emptyDesc: '创建定价分组和方案后，前台购买入口会在这里展示。',
+      failedToLoad: '加载定价方案失败',
+      noPlans: '暂无方案',
+      sortOrder: '排序',
+      columns: {
+        name: '名称',
+        price: '价格',
+        sortOrder: '排序',
+        status: '状态',
+        actions: '操作'
+      },
+      groupForm: {
+        name: '分组名称',
+        description: '分组描述',
+        sortOrder: '排序',
+        status: '状态'
+      },
+      planForm: {
+        group: '所属分组',
+        name: '方案名称',
+        description: '方案描述',
+        iconUrl: '图标 URL',
+        iconUrlHint: '填写图标地址，可留空',
+        badgeText: '徽标文本',
+        badgeTextHint: '例如：推荐 / 热门',
+        priceText: '价格文案',
+        priceTextHint: '例如：¥199 / 月；填写后优先展示',
+        tagline: '副标题',
+        taglineHint: '例如：适合个人开发者',
+        priceAmount: '价格数值',
+        priceCurrency: '货币',
+        pricePeriod: '计费周期',
+        features: '功能亮点',
+        featuresHint: '每行填写一条功能说明',
+        purchaseEntries: '购买入口',
+        purchaseEntriesHint: '可配置多个购买入口，前台会按顺序展示。',
+        addPurchaseEntry: '添加购买入口',
+        dragToSort: '拖拽排序',
+        purchaseEntryLabelPlaceholder: '按钮文案，例如：立即购买',
+        purchaseEntryValuePlaceholder: '链接、兑换码或联系方式',
+        removePurchaseEntry: '移除购买入口',
+        featured: '推荐方案',
+        sortOrder: '排序',
+        status: '状态'
+      }
+    },
+
     // Subscriptions Management
     subscriptions: {
       title: '订阅管理',
@@ -1839,6 +1925,15 @@ export default {
       validityHint: '订阅的有效天数',
       adjustingFor: '为以下用户调整订阅',
       currentExpiration: '当前到期时间',
+      assignChoiceTitle: '选择分配方式',
+      assignChoiceDesc: '该用户在此分组已有未过期订阅，请选择延长时长或从现在开始叠加额度。',
+      assignChoiceGroup: '分组',
+      assignChoiceCurrentExpires: '当前到期',
+      assignChoiceValidityDays: '本次有效期（天）',
+      assignChoiceCurrentMultiplier: '当前额度',
+      assignChoiceCancel: '取消',
+      assignChoiceExtend: '延长有效期',
+      assignChoiceStack: '叠加额度（从现在开始）',
       adjustDaysPlaceholder: '正数延长，负数缩短',
       adjustHint: '输入正数延长订阅，负数缩短订阅（缩短后剩余天数需大于0）',
       assign: '分配',
@@ -1854,6 +1949,7 @@ export default {
       noSubscriptionsYet: '暂无订阅',
       assignFirstSubscription: '分配一个订阅以开始使用。',
       subscriptionAssigned: '订阅分配成功',
+      subscriptionExtended: '订阅延长成功',
       subscriptionAdjusted: '订阅调整成功',
       subscriptionRevoked: '订阅撤销成功',
       failedToLoad: '加载订阅列表失败',
@@ -1979,8 +2075,13 @@ export default {
       allPlatforms: '全部平台',
       allTypes: '全部类型',
       allStatus: '全部状态',
+      allSchedulingStatus: '全部调度状态',
       allGroups: '全部分组',
+      allProxies: '全部代理',
       ungroupedGroup: '未分配分组',
+      schedulingStatus: '账号调度状态',
+      selectedProxies: '已选择 {count} 个代理',
+      createdTime: '创建时间',
       oauthType: 'OAuth',
       // Schedulable toggle
       schedulable: '参与调度',
@@ -2082,12 +2183,20 @@ export default {
       rateLimitCleared: '速率限制已清除',
       setupToken: 'Setup Token',
       apiKey: 'API Key',
+      fromModel: '请求模型',
+      toModel: '实际模型',
+      expiration: {
+        expired: '已过期'
+      },
       deleteConfirm: "确定要删除账号 '{name}' 吗？此操作无法撤销。",
+      soraBaseUrlRequired: 'Sora apikey 账号必须设置上游地址（Base URL）',
+      soraBaseUrlInvalidScheme: 'Base URL 必须以 http:// 或 https:// 开头',
       failedToClearRateLimit: '清除速率限制失败',
       platforms: {
         claude: 'Claude',
         openai: 'OpenAI',
         anthropic: 'Anthropic',
+        kiro: 'Kiro',
         gemini: 'Gemini',
         antigravity: 'Antigravity',
         sora: 'Sora'
@@ -2597,6 +2706,10 @@ export default {
           refreshTokenAuth: '手动输入 RT',
           refreshTokenDesc: '输入您已有的 OpenAI Refresh Token，支持批量输入（每行一个），系统将自动验证并创建账号。',
           refreshTokenPlaceholder: '粘贴您的 OpenAI Refresh Token...\n支持多个，每行一个',
+          accessTokenAuth: '手动输入 AT',
+          accessTokenDesc: '直接粘贴 Access Token 创建账号，无需 OAuth 授权流程。支持批量导入（每行一个）。',
+          accessTokenPlaceholder: '粘贴 Access Token，每行一个',
+          importAccessToken: '导入 Access Token',
           sessionTokenAuth: '手动输入 ST',
           sessionTokenDesc: '输入您已有的 Sora Session Token，支持批量输入（每行一个），系统将自动验证并创建账号。',
           sessionTokenPlaceholder: '粘贴您的 Sora Session Token...\n支持多个，每行一个',
@@ -3069,6 +3182,29 @@ export default {
       batchImportSuccess: '成功导入 {created} 个代理，跳过 {skipped} 个重复',
       batchImportAllSkipped: '全部 {skipped} 个代理已存在，跳过导入',
       failedToImport: '批量导入失败',
+      accountCountHelp: '可用 = 账号启用、调度开启、未过期、未限流、未过载、非临时异常。全部 = 仅统计账号状态为启用的关联账号。',
+      countStates: {
+        allActive: '全部',
+        allActiveDescription: '仅统计账号状态为启用',
+        available: '可用',
+        availableDescription: '账号启用、调度开启、未过期、未限流、未过载、非临时异常',
+        manualUnschedulable: '手动停调度',
+        manualUnschedulableDescription: '账号启用，但调度开关关闭',
+        tempUnschedulable: '临时异常',
+        tempUnschedulableDescription: '账号启用、调度开启，但临时调度状态异常',
+        rateLimited: '限流中',
+        rateLimitedDescription: '账号启用、调度开启，当前处于限流中',
+        overloaded: '过载中',
+        overloadedDescription: '账号启用、调度开启，当前处于过载中',
+        expired: '已过期',
+        expiredDescription: '账号已过期',
+        inactive: '已停用',
+        inactiveDescription: '账号状态为禁用或停用',
+        error: '异常',
+        errorDescription: '账号状态为异常',
+        banned: '封禁',
+        bannedDescription: '账号状态为封禁'
+      },
       // Other messages
       saving: '保存中...',
       testing: '测试中...',
@@ -3430,6 +3566,77 @@ export default {
           canceled: '已取消'
         }
       }
+    },
+
+    poolMonitorDashboard: {
+      title: '号池监控',
+      description: '查看账号池按平台拆分的状态汇总看板。',
+      openConfig: '监控配置',
+      allPlatforms: '全部平台',
+      platformSummaryTitle: '账号池状态看板',
+      platformSummaryDescription: '按平台查看全量账号的原始状态与调度状态汇总。',
+      failedToLoadSummary: '加载号池监控汇总失败'
+    },
+
+    poolMonitorConfig: {
+      title: '号池监控配置',
+      description: '配置 OpenAI 账号池阈值告警与代理连接失败告警',
+      backToDashboard: '返回监控'
+    },
+
+    poolMonitor: {
+      title: '号池监控配置',
+      description: '配置 OpenAI 账号池阈值告警与代理连接失败告警',
+      cards: {
+        poolThresholdTitle: '号池阈值监控',
+        poolThresholdDescription: '按可用账号数量与可用百分比巡检号池状态并触发告警。',
+        proxyFailureTitle: '代理失败监控',
+        proxyFailureDescription: '按代理维度统计 transport_error 失败次数并触发告警。',
+        alertDeliveryTitle: '告警发送配置',
+        alertDeliveryDescription: '配置告警收件邮箱与同类告警冷却时间。'
+      },
+      openaiOnly: '当前页面仅支持 OpenAI 平台配置，已预留后续多平台扩展能力。',
+      poolThresholdEnabled: '启用号池阈值监控',
+      poolThresholdEnabledHint: '关闭后，不再根据可用账号数/可用比例触发告警。',
+      poolThresholdDisabledHint: '号池阈值监控已关闭，当前阈值仅保留配置，不会触发告警。',
+      proxyFailureEnabled: '启用代理失败监控',
+      proxyFailureEnabledHint: '关闭后，不再统计 transport_error 失败次数并触发告警。',
+      proxyFailureDisabledHint: '代理失败监控已关闭，当前窗口和阈值仅保留配置，不会触发告警。',
+      proxyActiveProbeEnabled: '启用代理定时探测',
+      proxyActiveProbeEnabledHint: '开启后定时探测代理到 OpenAI 平台的连通性。',
+      proxyActiveProbeDisabledHint: '代理定时探测已关闭，列表连通性将停留在上次探测结果。',
+      disabledProxyScheduleMode: '禁用代理调度模式（全平台）',
+      disabledProxyScheduleModeHint: '当账号绑定的代理被禁用时，选择调度策略。',
+      disabledProxyScheduleModeDirectWithoutProxy: '不走代理',
+      disabledProxyScheduleModeDirectWithoutProxyHint:
+        '账号继续参与调度，但请求将强制直连（不走代理）。',
+      disabledProxyScheduleModeExcludeAccount: '排除账号调度',
+      disabledProxyScheduleModeExcludeAccountHint:
+        '绑定禁用代理的账号不参与调度（含 sticky 命中）。',
+      proxyProbeIntervalMinutes: '代理定时探测间隔（分钟）',
+      proxyProbeIntervalMinutesHint: '代理主动探测周期，建议不低于 1 分钟。',
+      availableCountThreshold: '可用账号数阈值',
+      availableCountThresholdHint:
+        '当可用账号数低于该值时触发告警；设置为 0 表示禁用该规则。',
+      availableRatioThreshold: '可用账号比例阈值（%）',
+      availableRatioThresholdHint:
+        '当可用账号比例低于该百分比时触发告警；设置为 0 表示禁用该规则。',
+      checkIntervalMinutes: '号池巡检间隔（分钟）',
+      checkIntervalMinutesHint: '检测号池阈值的执行周期，建议不低于 1 分钟。',
+      proxyFailureWindowMinutes: '代理失败窗口（分钟）',
+      proxyFailureWindowMinutesHint: '按代理统计 transport_error 失败次数的滚动时间窗口。',
+      proxyFailureThreshold: '代理失败阈值',
+      proxyFailureThresholdHint:
+        '当滚动窗口内失败次数达到该值时触发告警；设置为 0 表示禁用该规则。',
+      alertCooldownMinutes: '告警冷却时间（分钟）',
+      alertCooldownMinutesHint: '同类型告警在冷却时间内将被抑制重复发送。',
+      alertEmails: '告警收件邮箱',
+      alertEmailPlaceholder: 'name@example.com',
+      addEmail: '添加邮箱',
+      removeEmail: '移除',
+      failedToLoad: '加载号池监控配置失败',
+      failedToSave: '保存号池监控配置失败',
+      saved: '号池监控配置已保存'
     },
 
     // Ops Monitoring
@@ -4009,6 +4216,16 @@ export default {
         showAdvancedDeveloperSettings: '显示高级开发者设置 (Distributed Lock)',
         advancedSettingsSummary: '高级设置 (分布式锁)',
         evalIntervalHint: '检测任务的执行频率，建议保持默认。',
+        metricThresholds: '指标阈值配置',
+        metricThresholdsHint: '配置各项指标的告警阈值，超出阈值时将以红色显示。',
+        slaMinPercent: 'SLA最低百分比',
+        slaMinPercentHint: 'SLA低于此值时显示为红色（默认：99.5%）',
+        ttftP99MaxMs: 'TTFT P99最大值（毫秒）',
+        ttftP99MaxMsHint: 'TTFT P99高于此值时显示为红色（默认：500ms）',
+        requestErrorRateMaxPercent: '请求错误率最大值（%）',
+        requestErrorRateMaxPercentHint: '请求错误率高于此值时显示为红色（默认：5%）',
+        upstreamErrorRateMaxPercent: '上游错误率最大值（%）',
+        upstreamErrorRateMaxPercentHint: '上游错误率高于此值时显示为红色（默认：5%）',
         validation: {
           title: '请先修正以下问题',
           invalid: '设置不合法',
@@ -4491,6 +4708,7 @@ export default {
           provider: '存储类型',
           active: '生效状态',
           endpoint: '端点',
+          bucket: '存储桶',
           storagePath: '存储路径',
           capacityUsage: '容量 / 已用',
           capacityUnlimited: '无限制',

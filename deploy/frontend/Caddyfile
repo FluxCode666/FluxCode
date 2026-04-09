@@ -1,0 +1,320 @@
+# =============================================================================
+# Sub2API Caddyfile - 集群模式（前后端分离 + 多后端负载均衡）
+# =============================================================================
+# 用法:
+#   1. 修改域名（将 api.sub2api.com 改为你的域名）
+#   2. 修改后端地址（将 backend-1:8080 等改为实际后端 IP:PORT）
+#   3. 将前端 dist 放到 /srv/sub2api/ 目录
+#   4. caddy run --config Caddyfile
+#
+# 架构:
+#   Caddy 同时承担前端静态文件服务和 API 反向代理/负载均衡
+#   ┌─ 静态文件请求 → 本地 /srv/sub2api/ 目录
+#   └─ API 请求     → upstream 后端集群
+# =============================================================================
+
+# 修改为你的域名
+api.sub2api.com {
+
+	# =========================================================================
+	# TLS 安全配置
+	# =========================================================================
+	tls {
+		protocols tls1.2 tls1.3
+		ciphers TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384 TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384 TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256 TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256 TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256 TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
+	}
+
+	# =========================================================================
+	# 静态资源长期缓存（高优先级，放在最前面）
+	# 带 hash 的文件可以永久缓存，浏览器和 CDN 都会缓存
+	# =========================================================================
+	@static {
+		path /assets/*
+		path /logo.png
+		path /favicon.ico
+	}
+	header @static {
+		Cache-Control "public, max-age=31536000, immutable"
+		-Pragma
+		-Expires
+	}
+
+	# =========================================================================
+	# API 路由 → 反向代理到后端集群
+	# =========================================================================
+	# 注意：Caddy 默认传递含下划线的 header（如 session_id），无需额外配置
+
+	# /api/* - 主 REST API（包含管理后台 WebSocket /api/v1/admin/ops/ws/）
+	handle /api/* {
+		reverse_proxy backend-1:8080 backend-2:8080 {
+			lb_policy round_robin
+			lb_try_duration 5s
+			lb_try_interval 250ms
+
+			health_uri /health
+			health_interval 30s
+			health_timeout 10s
+			health_status 200
+
+			header_up X-Real-IP {remote_host}
+			header_up X-Forwarded-For {remote_host}
+			header_up X-Forwarded-Proto {scheme}
+			header_up X-Forwarded-Host {host}
+			header_up CF-Connecting-IP {http.request.header.CF-Connecting-IP}
+
+			transport http {
+				keepalive 120s
+				keepalive_idle_conns 256
+				read_buffer 16KB
+				write_buffer 16KB
+				compression off
+			}
+
+			fail_duration 30s
+			max_fails 3
+			unhealthy_status 500 502 503 504
+		}
+	}
+
+	# /v1/* - OpenAI 兼容网关 API（流式响应 SSE）
+	handle /v1/* {
+		reverse_proxy backend-1:8080 backend-2:8080 {
+			lb_policy round_robin
+			lb_try_duration 5s
+			lb_try_interval 250ms
+
+			header_up X-Real-IP {remote_host}
+			header_up X-Forwarded-For {remote_host}
+			header_up X-Forwarded-Proto {scheme}
+			header_up CF-Connecting-IP {http.request.header.CF-Connecting-IP}
+
+			transport http {
+				keepalive 120s
+				keepalive_idle_conns 256
+				compression off
+				# 流式响应：不缓冲
+				response_header_timeout 300s
+				read_buffer 16KB
+				write_buffer 16KB
+			}
+
+			flush_interval -1
+
+			fail_duration 30s
+			max_fails 3
+			unhealthy_status 500 502 503 504
+		}
+	}
+
+	# /v1beta/* - Gemini 原生 API
+	handle /v1beta/* {
+		reverse_proxy backend-1:8080 backend-2:8080 {
+			lb_policy round_robin
+			lb_try_duration 5s
+			lb_try_interval 250ms
+
+			header_up X-Real-IP {remote_host}
+			header_up X-Forwarded-For {remote_host}
+			header_up X-Forwarded-Proto {scheme}
+			header_up CF-Connecting-IP {http.request.header.CF-Connecting-IP}
+
+			transport http {
+				keepalive 120s
+				keepalive_idle_conns 256
+				compression off
+				response_header_timeout 300s
+			}
+
+			flush_interval -1
+
+			fail_duration 30s
+			max_fails 3
+			unhealthy_status 500 502 503 504
+		}
+	}
+
+	# /responses* - OpenAI Responses API（WebSocket + HTTP）
+	handle /responses* {
+		reverse_proxy backend-1:8080 backend-2:8080 {
+			lb_policy round_robin
+			lb_try_duration 5s
+			lb_try_interval 250ms
+
+			header_up X-Real-IP {remote_host}
+			header_up X-Forwarded-For {remote_host}
+			header_up X-Forwarded-Proto {scheme}
+			header_up CF-Connecting-IP {http.request.header.CF-Connecting-IP}
+
+			transport http {
+				keepalive 120s
+				keepalive_idle_conns 256
+				compression off
+				response_header_timeout 3600s
+			}
+
+			flush_interval -1
+
+			fail_duration 30s
+			max_fails 3
+			unhealthy_status 500 502 503 504
+		}
+	}
+
+	# /chat/completions - OpenAI Chat Completions（无 /v1 前缀别名）
+	handle /chat/completions {
+		reverse_proxy backend-1:8080 backend-2:8080 {
+			lb_policy round_robin
+
+			header_up X-Real-IP {remote_host}
+			header_up X-Forwarded-For {remote_host}
+			header_up X-Forwarded-Proto {scheme}
+			header_up CF-Connecting-IP {http.request.header.CF-Connecting-IP}
+
+			transport http {
+				keepalive 120s
+				compression off
+				response_header_timeout 300s
+			}
+
+			flush_interval -1
+		}
+	}
+
+	# /sora/* - Sora 客户端路由
+	# session_id header（含下划线）Caddy 默认传递，无需特殊配置
+	handle /sora/* {
+		reverse_proxy backend-1:8080 backend-2:8080 {
+			lb_policy round_robin
+			lb_try_duration 5s
+			lb_try_interval 250ms
+
+			header_up X-Real-IP {remote_host}
+			header_up X-Forwarded-For {remote_host}
+			header_up X-Forwarded-Proto {scheme}
+			header_up CF-Connecting-IP {http.request.header.CF-Connecting-IP}
+
+			transport http {
+				keepalive 120s
+				compression off
+				response_header_timeout 300s
+			}
+
+			flush_interval -1
+
+			fail_duration 30s
+			max_fails 3
+			unhealthy_status 500 502 503 504
+		}
+	}
+
+	# /antigravity/* - Antigravity 路由
+	handle /antigravity/* {
+		reverse_proxy backend-1:8080 backend-2:8080 {
+			lb_policy round_robin
+
+			header_up X-Real-IP {remote_host}
+			header_up X-Forwarded-For {remote_host}
+			header_up X-Forwarded-Proto {scheme}
+			header_up CF-Connecting-IP {http.request.header.CF-Connecting-IP}
+
+			transport http {
+				keepalive 120s
+				compression off
+				response_header_timeout 300s
+			}
+
+			flush_interval -1
+		}
+	}
+
+	# /setup/* - 初始化设置向导
+	handle /setup/* {
+		reverse_proxy backend-1:8080 backend-2:8080 {
+			lb_policy round_robin
+
+			header_up X-Real-IP {remote_host}
+			header_up X-Forwarded-For {remote_host}
+			header_up X-Forwarded-Proto {scheme}
+		}
+	}
+
+	# /health - 健康检查端点
+	handle /health {
+		reverse_proxy backend-1:8080 backend-2:8080 {
+			lb_policy round_robin
+		}
+	}
+
+	# =========================================================================
+	# 前端静态文件 + SPA fallback
+	# =========================================================================
+	# 所有未匹配 API 路由的请求，从本地目录服务前端
+	# 如果文件不存在，返回 index.html（SPA 路由支持）
+	handle {
+		root * /srv/sub2api
+		try_files {path} /index.html
+		file_server
+
+		# index.html 不缓存（确保总是获取最新版本）
+		@html {
+			path /
+			path /index.html
+		}
+		header @html {
+			Cache-Control "no-cache, no-store, must-revalidate"
+			Pragma "no-cache"
+		}
+	}
+
+	# =========================================================================
+	# 压缩配置
+	# =========================================================================
+	encode {
+		zstd
+		gzip 6
+		minimum_length 256
+		match {
+			header Content-Type text/*
+			header Content-Type application/json*
+			header Content-Type application/javascript*
+			header Content-Type application/xml*
+			header Content-Type application/rss+xml*
+			header Content-Type image/svg+xml*
+		}
+	}
+
+	# =========================================================================
+	# 安全 Headers
+	# =========================================================================
+	header {
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+	}
+
+	# =========================================================================
+	# 请求大小限制
+	# =========================================================================
+	request_body {
+		max_size 256MB
+	}
+
+	# =========================================================================
+	# 日志配置
+	# =========================================================================
+	log {
+		output file /var/log/caddy/sub2api.log {
+			roll_size 50mb
+			roll_keep 10
+			roll_keep_for 720h
+		}
+		format json
+		level INFO
+	}
+
+	# =========================================================================
+	# 错误处理
+	# =========================================================================
+	handle_errors {
+		respond "{err.status_code} {err.status_text}"
+	}
+}

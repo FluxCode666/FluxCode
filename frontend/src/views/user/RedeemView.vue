@@ -162,6 +162,163 @@
         </div>
       </transition>
 
+      <BaseDialog
+        :show="subscriptionChoiceOpen"
+        :title="t('redeem.subscriptionChoiceTitle')"
+        width="normal"
+        :close-on-click-outside="false"
+        :close-on-escape="!submitting"
+        :show-close-button="!submitting"
+        @close="closeSubscriptionChoice"
+      >
+        <div class="space-y-4" data-test="subscription-choice-dialog">
+          <p class="text-sm text-gray-600 dark:text-dark-300">
+            {{ t('redeem.subscriptionChoiceDesc') }}
+          </p>
+
+          <div class="grid gap-3 rounded-xl bg-gray-50 p-4 text-sm dark:bg-dark-800 sm:grid-cols-2">
+            <div>
+              <p class="text-xs text-gray-500 dark:text-dark-400">
+                {{ t('redeem.subscriptionChoiceGroup') }}
+              </p>
+              <p class="mt-1 font-medium text-gray-900 dark:text-white">
+                {{ subscriptionChoiceMeta.group_name || '-' }}
+              </p>
+            </div>
+            <div>
+              <p class="text-xs text-gray-500 dark:text-dark-400">
+                {{ t('redeem.subscriptionChoiceCurrentExpires') }}
+              </p>
+              <p class="mt-1 font-medium text-gray-900 dark:text-white">
+                {{
+                  subscriptionChoiceMeta.current_expires_at
+                    ? formatDateTime(subscriptionChoiceMeta.current_expires_at)
+                    : '-'
+                }}
+              </p>
+            </div>
+            <div>
+              <p class="text-xs text-gray-500 dark:text-dark-400">
+                {{ t('redeem.subscriptionChoiceValidityDays') }}
+              </p>
+              <p class="mt-1 font-medium text-gray-900 dark:text-white">
+                {{ subscriptionChoiceValidityDays }}
+              </p>
+            </div>
+            <div>
+              <p class="text-xs text-gray-500 dark:text-dark-400">
+                {{ t('redeem.subscriptionChoiceCurrentMultiplier') }}
+              </p>
+              <p class="mt-1 font-medium text-gray-900 dark:text-white">
+                ×{{ subscriptionChoiceCurrentMultiplier }}
+              </p>
+            </div>
+          </div>
+
+          <div class="space-y-2">
+            <button
+              type="button"
+              data-test="subscription-mode-extend"
+              class="w-full rounded-xl border px-4 py-3 text-left transition-colors"
+              :class="
+                selectedSubscriptionMode === 'extend'
+                  ? 'border-primary-500 bg-primary-50 dark:border-primary-400 dark:bg-primary-500/10'
+                  : 'border-gray-200 hover:bg-gray-50 dark:border-dark-600 dark:hover:bg-dark-800'
+              "
+              @click="selectedSubscriptionMode = 'extend'"
+            >
+              <p class="text-sm font-semibold text-gray-900 dark:text-white">
+                {{ t('redeem.subscriptionChoiceExtend') }}
+              </p>
+              <p class="mt-1 text-xs text-gray-500 dark:text-dark-400">
+                {{
+                  t('redeem.subscriptionChoiceOptionExtendDesc', {
+                    days: subscriptionChoiceValidityDays
+                  })
+                }}
+              </p>
+            </button>
+
+            <button
+              type="button"
+              data-test="subscription-mode-stack"
+              class="w-full rounded-xl border px-4 py-3 text-left transition-colors"
+              :class="
+                selectedSubscriptionMode === 'stack'
+                  ? 'border-primary-500 bg-primary-50 dark:border-primary-400 dark:bg-primary-500/10'
+                  : 'border-gray-200 hover:bg-gray-50 dark:border-dark-600 dark:hover:bg-dark-800'
+              "
+              @click="selectedSubscriptionMode = 'stack'"
+            >
+              <p class="text-sm font-semibold text-gray-900 dark:text-white">
+                {{ t('redeem.subscriptionChoiceStack') }}
+              </p>
+              <p class="mt-1 text-xs text-gray-500 dark:text-dark-400">
+                {{
+                  t('redeem.subscriptionChoiceOptionStackDesc', {
+                    days: subscriptionChoiceValidityDays
+                  })
+                }}
+              </p>
+            </button>
+          </div>
+
+          <div
+            v-if="selectedSubscriptionMode"
+            data-test="subscription-choice-preview"
+            class="space-y-2 rounded-xl border border-gray-200 p-4 dark:border-dark-600"
+          >
+            <h3 class="text-sm font-semibold text-gray-900 dark:text-white">
+              {{ t('redeem.subscriptionChoicePreviewTitle') }}
+            </h3>
+            <div class="flex items-center justify-between gap-3 text-sm">
+              <span class="text-gray-500 dark:text-dark-400">
+                {{ t('redeem.subscriptionChoiceResultExpires') }}
+              </span>
+              <span class="font-medium text-gray-900 dark:text-white">
+                {{ previewTotalExpiresAt ? formatDateTime(previewTotalExpiresAt) : '-' }}
+              </span>
+            </div>
+            <div class="flex items-center justify-between gap-3 text-sm">
+              <span class="text-gray-500 dark:text-dark-400">
+                {{ t('redeem.subscriptionChoiceResultMultiplier') }}
+              </span>
+              <span class="font-medium text-gray-900 dark:text-white">
+                ×{{ previewResultMultiplier }}
+              </span>
+            </div>
+            <div
+              v-if="selectedSubscriptionMode === 'stack' && previewStackUntil"
+              class="flex items-center justify-between gap-3 text-sm"
+            >
+              <span class="text-gray-500 dark:text-dark-400">
+                {{ t('redeem.subscriptionChoiceStackUntil') }}
+              </span>
+              <span class="font-medium text-gray-900 dark:text-white">
+                {{ formatDateTime(previewStackUntil) }}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <template #footer>
+          <div class="flex justify-end gap-3">
+            <button type="button" class="btn btn-secondary" :disabled="submitting" @click="closeSubscriptionChoice">
+              {{ t('common.cancel') }}
+            </button>
+            <button
+              type="button"
+              class="btn btn-primary"
+              data-test="subscription-choice-confirm"
+              :disabled="submitting || !selectedSubscriptionMode"
+              @click="handleRedeemWithMode(selectedSubscriptionMode as 'extend' | 'stack')"
+            >
+              {{ t('common.confirm') }}
+            </button>
+          </div>
+        </template>
+      </BaseDialog>
+
       <!-- Information Card -->
       <div
         class="card border-primary-200 bg-primary-50 dark:border-primary-800/50 dark:bg-primary-900/20"
@@ -349,6 +506,7 @@ import { useAppStore } from '@/stores/app'
 import { useSubscriptionStore } from '@/stores/subscriptions'
 import { redeemAPI, authAPI, type RedeemHistoryItem } from '@/api'
 import AppLayout from '@/components/layout/AppLayout.vue'
+import BaseDialog from '@/components/common/BaseDialog.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { formatDateTime } from '@/utils/format'
 
@@ -360,6 +518,7 @@ const subscriptionStore = useSubscriptionStore()
 const user = computed(() => authStore.user)
 
 const redeemCode = ref('')
+const pendingRedeemCode = ref('')
 const submitting = ref(false)
 const redeemResult = ref<{
   message: string
@@ -371,6 +530,10 @@ const redeemResult = ref<{
   validity_days?: number
 } | null>(null)
 const errorMessage = ref('')
+const subscriptionChoiceOpen = ref(false)
+const subscriptionChoiceMeta = ref<Record<string, string>>({})
+const selectedSubscriptionMode = ref<'extend' | 'stack' | ''>('')
+const choiceOpenedAt = ref<Date | null>(null)
 
 // History data
 const history = ref<RedeemHistoryItem[]>([])
@@ -390,6 +553,73 @@ const isAdminAdjustment = (type: string) => {
   return type === 'admin_balance' || type === 'admin_concurrency'
 }
 
+const subscriptionChoiceValidityDays = computed(() => {
+  const raw = parseInt(String(subscriptionChoiceMeta.value.validity_days || ''), 10)
+  return Number.isFinite(raw) && raw > 0 ? raw : 30
+})
+
+const subscriptionChoiceCurrentMultiplier = computed(() => {
+  const raw = parseInt(String(subscriptionChoiceMeta.value.current_quota_multiplier || ''), 10)
+  return Number.isFinite(raw) && raw > 0 ? raw : 1
+})
+
+const previewResultMultiplier = computed(() => {
+  if (selectedSubscriptionMode.value === 'stack') {
+    return subscriptionChoiceCurrentMultiplier.value + 1
+  }
+  return subscriptionChoiceCurrentMultiplier.value
+})
+
+const previewStackUntil = computed(() => {
+  if (selectedSubscriptionMode.value !== 'stack') {
+    return null
+  }
+
+  const base = choiceOpenedAt.value ? new Date(choiceOpenedAt.value) : new Date()
+  base.setUTCDate(base.getUTCDate() + subscriptionChoiceValidityDays.value)
+  return base.toISOString()
+})
+
+const previewTotalExpiresAt = computed(() => {
+  const currentExpiresAt = subscriptionChoiceMeta.value.current_expires_at
+  if (!currentExpiresAt) {
+    return previewStackUntil.value
+  }
+
+  const currentDate = new Date(currentExpiresAt)
+  if (Number.isNaN(currentDate.getTime())) {
+    return previewStackUntil.value
+  }
+
+  if (selectedSubscriptionMode.value === 'extend') {
+    const next = new Date(currentDate)
+    next.setUTCDate(next.getUTCDate() + subscriptionChoiceValidityDays.value)
+    return next.toISOString()
+  }
+
+  if (selectedSubscriptionMode.value === 'stack') {
+    const stackUntil = previewStackUntil.value ? new Date(previewStackUntil.value) : null
+    if (!stackUntil || Number.isNaN(stackUntil.getTime())) {
+      return currentDate.toISOString()
+    }
+    return stackUntil.getTime() > currentDate.getTime()
+      ? stackUntil.toISOString()
+      : currentDate.toISOString()
+  }
+
+  return currentDate.toISOString()
+})
+
+const getSubscriptionModeLabel = (item: RedeemHistoryItem) => {
+  if (item.subscription_mode === 'extend') {
+    return t('redeem.subscriptionModeExtend')
+  }
+  if (item.subscription_mode === 'stack') {
+    return t('redeem.subscriptionModeStack')
+  }
+  return ''
+}
+
 const getHistoryItemTitle = (item: RedeemHistoryItem) => {
   if (item.type === 'balance') {
     return t('redeem.balanceAddedRedeem')
@@ -400,6 +630,12 @@ const getHistoryItemTitle = (item: RedeemHistoryItem) => {
   } else if (item.type === 'admin_concurrency') {
     return item.value >= 0 ? t('redeem.concurrencyAddedAdmin') : t('redeem.concurrencyReducedAdmin')
   } else if (item.type === 'subscription') {
+    if (item.subscription_mode === 'extend') {
+      return t('redeem.subscriptionExtended')
+    }
+    if (item.subscription_mode === 'stack') {
+      return t('redeem.subscriptionStacked')
+    }
     return t('redeem.subscriptionAssigned')
   }
   return t('common.unknown')
@@ -413,7 +649,9 @@ const formatHistoryValue = (item: RedeemHistoryItem) => {
     // 订阅类型显示有效天数和分组名称
     const days = item.validity_days || Math.round(item.value)
     const groupName = item.group?.name || ''
-    return groupName ? `${days}${t('redeem.days')} - ${groupName}` : `${days}${t('redeem.days')}`
+    const base = groupName ? `${days}${t('redeem.days')} - ${groupName}` : `${days}${t('redeem.days')}`
+    const modeLabel = getSubscriptionModeLabel(item)
+    return modeLabel ? `${base} · ${modeLabel}` : base
   } else {
     const sign = item.value >= 0 ? '+' : ''
     return `${sign}${item.value} ${t('redeem.requests')}`
@@ -437,12 +675,13 @@ const handleRedeem = async () => {
     return
   }
 
+  pendingRedeemCode.value = redeemCode.value.trim()
   submitting.value = true
   errorMessage.value = ''
   redeemResult.value = null
 
   try {
-    const result = await redeemAPI.redeem(redeemCode.value.trim())
+    const result = await redeemAPI.redeem(pendingRedeemCode.value)
 
     redeemResult.value = result
 
@@ -461,6 +700,7 @@ const handleRedeem = async () => {
 
     // Clear the input
     redeemCode.value = ''
+    pendingRedeemCode.value = ''
 
     // Refresh history
     await fetchHistory()
@@ -468,9 +708,67 @@ const handleRedeem = async () => {
     // Show success toast
     appStore.showSuccess(t('redeem.codeRedeemSuccess'))
   } catch (error: any) {
-    errorMessage.value = error.response?.data?.detail || t('redeem.failedToRedeem')
+    if (error?.reason === 'SUBSCRIPTION_REDEEM_CHOICE_REQUIRED') {
+      subscriptionChoiceMeta.value = error?.metadata || {}
+      selectedSubscriptionMode.value = ''
+      choiceOpenedAt.value = new Date()
+      subscriptionChoiceOpen.value = true
+      return
+    }
 
-    appStore.showError(t('redeem.redeemFailed'))
+    errorMessage.value = error?.message || t('redeem.failedToRedeem')
+    appStore.showError(errorMessage.value)
+  } finally {
+    submitting.value = false
+  }
+}
+
+const closeSubscriptionChoice = () => {
+  if (submitting.value) {
+    return
+  }
+  subscriptionChoiceOpen.value = false
+  subscriptionChoiceMeta.value = {}
+  selectedSubscriptionMode.value = ''
+  choiceOpenedAt.value = null
+  pendingRedeemCode.value = ''
+}
+
+const handleRedeemWithMode = async (mode: 'extend' | 'stack') => {
+  if (!pendingRedeemCode.value) {
+    return
+  }
+
+  submitting.value = true
+  errorMessage.value = ''
+  redeemResult.value = null
+
+  try {
+    const result = await redeemAPI.redeem(pendingRedeemCode.value, mode)
+    subscriptionChoiceOpen.value = false
+    subscriptionChoiceMeta.value = {}
+    selectedSubscriptionMode.value = ''
+    choiceOpenedAt.value = null
+
+    redeemResult.value = result
+    await authStore.refreshUser()
+
+    if (result.type === 'subscription') {
+      try {
+        await subscriptionStore.fetchActiveSubscriptions(true)
+      } catch (error) {
+        console.error('Failed to refresh subscriptions after redeem:', error)
+        appStore.showWarning(t('redeem.subscriptionRefreshFailed'))
+      }
+    }
+
+    redeemCode.value = ''
+    pendingRedeemCode.value = ''
+    await fetchHistory()
+    appStore.showSuccess(t('redeem.codeRedeemSuccess'))
+  } catch (error: any) {
+    errorMessage.value = error?.message || t('redeem.failedToRedeem')
+    appStore.showError(errorMessage.value)
   } finally {
     submitting.value = false
   }

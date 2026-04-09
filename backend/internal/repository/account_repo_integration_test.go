@@ -339,6 +339,170 @@ func (s *AccountRepoSuite) TestListByPlatform() {
 	s.Require().Equal(service.PlatformAnthropic, accounts[0].Platform)
 }
 
+func (s *AccountRepoSuite) TestListWithAdvancedFilters_FilterBySchedulingStatus() {
+	tests := []struct {
+		name     string
+		platform string
+		state    string
+		want     []string
+	}{
+		{name: "available_all_platforms", state: string(service.AccountSchedulingStateAvailable), want: []string{"openai-available", "anthropic-available", "antigravity-available"}},
+		{name: "manual_unschedulable", state: string(service.AccountSchedulingStateManualUnschedulable), want: []string{"manual"}},
+		{name: "temp_unschedulable", state: string(service.AccountSchedulingStateTempUnschedulable), want: []string{"temp", "temp-rate"}},
+		{name: "rate_limited", state: string(service.AccountSchedulingStateRateLimited), want: []string{"rate", "rate-overloaded"}},
+		{name: "overloaded", state: string(service.AccountSchedulingStateOverloaded), want: []string{"overloaded"}},
+		{name: "expired", state: string(service.AccountSchedulingStateExpired), want: []string{"expired", "expired-manual"}},
+		{name: "inactive_includes_legacy_and_disabled", state: string(service.AccountSchedulingStateInactive), want: []string{"inactive-legacy", "disabled"}},
+		{name: "error_includes_generic_and_banned", state: string(service.AccountSchedulingStateError), want: []string{"error", "banned"}},
+		{name: "banned_uses_error_message", state: string(service.AccountSchedulingStateBanned), want: []string{"banned"}},
+		{name: "platform_specific_antigravity", platform: service.PlatformAntigravity, state: string(service.AccountSchedulingStateAvailable), want: []string{"antigravity-available"}},
+	}
+
+	for _, tt := range tests {
+		s.Run(tt.name, func() {
+			tx := testEntTx(s.T())
+			client := tx.Client()
+			repo := newAccountRepositoryWithSQL(client, tx, nil)
+			ctx := context.Background()
+
+			now := time.Now().UTC()
+			future := now.Add(2 * time.Hour)
+			past := now.Add(-2 * time.Hour)
+
+			mustCreateAccount(s.T(), client, &service.Account{Name: "openai-available", Platform: service.PlatformOpenAI, Status: service.StatusActive, Schedulable: true})
+			mustCreateAccount(s.T(), client, &service.Account{Name: "anthropic-available", Platform: service.PlatformAnthropic, Status: service.StatusActive, Schedulable: true})
+			mustCreateAccount(s.T(), client, &service.Account{Name: "antigravity-available", Platform: service.PlatformAntigravity, Status: service.StatusActive, Schedulable: true})
+
+			manual := mustCreateAccount(s.T(), client, &service.Account{Name: "manual", Platform: service.PlatformAnthropic, Status: service.StatusActive, Schedulable: true})
+			_, err := client.Account.UpdateOneID(manual.ID).SetSchedulable(false).Save(ctx)
+			s.Require().NoError(err)
+
+			temp := mustCreateAccount(s.T(), client, &service.Account{Name: "temp", Platform: service.PlatformAnthropic, Status: service.StatusActive, Schedulable: true})
+			_, err = client.ExecContext(ctx, "UPDATE accounts SET temp_unschedulable_until = $1 WHERE id = $2", future, temp.ID)
+			s.Require().NoError(err)
+
+			tempRate := mustCreateAccount(s.T(), client, &service.Account{Name: "temp-rate", Platform: service.PlatformOpenAI, Status: service.StatusActive, Schedulable: true, RateLimitResetAt: &future})
+			_, err = client.ExecContext(ctx, "UPDATE accounts SET temp_unschedulable_until = $1 WHERE id = $2", future, tempRate.ID)
+			s.Require().NoError(err)
+
+			mustCreateAccount(s.T(), client, &service.Account{Name: "rate", Platform: service.PlatformAnthropic, Status: service.StatusActive, Schedulable: true, RateLimitResetAt: &future})
+			mustCreateAccount(s.T(), client, &service.Account{Name: "rate-overloaded", Platform: service.PlatformOpenAI, Status: service.StatusActive, Schedulable: true, RateLimitResetAt: &future, OverloadUntil: &future})
+			mustCreateAccount(s.T(), client, &service.Account{Name: "overloaded", Platform: service.PlatformAnthropic, Status: service.StatusActive, Schedulable: true, OverloadUntil: &future})
+			mustCreateAccount(s.T(), client, &service.Account{Name: "expired", Platform: service.PlatformAnthropic, Status: service.StatusActive, Schedulable: true, ExpiresAt: &past})
+
+			expiredManual := mustCreateAccount(s.T(), client, &service.Account{Name: "expired-manual", Platform: service.PlatformOpenAI, Status: service.StatusActive, ExpiresAt: &past})
+			_, err = client.ExecContext(ctx, "UPDATE accounts SET schedulable = FALSE, temp_unschedulable_until = $1 WHERE id = $2", future, expiredManual.ID)
+			s.Require().NoError(err)
+
+			inactiveLegacy := mustCreateAccount(s.T(), client, &service.Account{Name: "inactive-legacy", Platform: service.PlatformAnthropic, Status: service.StatusDisabled})
+			_, err = client.ExecContext(ctx, "UPDATE accounts SET status = $1 WHERE id = $2", legacyInactiveStatus, inactiveLegacy.ID)
+			s.Require().NoError(err)
+
+			mustCreateAccount(s.T(), client, &service.Account{Name: "disabled", Platform: service.PlatformOpenAI, Status: service.StatusDisabled})
+			mustCreateAccount(s.T(), client, &service.Account{Name: "error", Platform: service.PlatformAnthropic, Status: service.StatusError, ErrorMessage: "generic upstream error"})
+			mustCreateAccount(s.T(), client, &service.Account{Name: "banned", Platform: service.PlatformAnthropic, Status: service.StatusError, ErrorMessage: "Account violation (403): terms of service violation"})
+
+			accounts, _, err := repo.ListWithAdvancedFilters(
+				ctx,
+				pagination.PaginationParams{Page: 1, PageSize: 50},
+				tt.platform,
+				"",
+				"",
+				tt.state,
+				0,
+				"",
+				"",
+				"",
+				nil,
+				nil,
+				nil,
+			)
+			s.Require().NoError(err)
+
+			names := make([]string, 0, len(accounts))
+			for _, account := range accounts {
+				names = append(names, account.Name)
+			}
+			s.ElementsMatch(tt.want, names)
+		})
+	}
+}
+
+func (s *AccountRepoSuite) TestGetAccountSummary() {
+	now := time.Now().UTC()
+	future := now.Add(2 * time.Hour)
+	past := now.Add(-2 * time.Hour)
+
+	mustCreateAccount(s.T(), s.client, &service.Account{Name: "openai-available", Platform: service.PlatformOpenAI, Status: service.StatusActive, Schedulable: true})
+
+	openAIManual := mustCreateAccount(s.T(), s.client, &service.Account{Name: "openai-manual", Platform: service.PlatformOpenAI, Status: service.StatusActive, Schedulable: true})
+	s.Require().NoError(s.client.Account.UpdateOneID(openAIManual.ID).SetSchedulable(false).Exec(s.ctx))
+
+	openAITemp := mustCreateAccount(s.T(), s.client, &service.Account{Name: "openai-temp", Platform: service.PlatformOpenAI, Status: service.StatusActive, Schedulable: true})
+	_, err := s.client.ExecContext(s.ctx, "UPDATE accounts SET temp_unschedulable_until = $1 WHERE id = $2", future, openAITemp.ID)
+	s.Require().NoError(err)
+
+	mustCreateAccount(s.T(), s.client, &service.Account{Name: "openai-rate", Platform: service.PlatformOpenAI, Status: service.StatusActive, Schedulable: true, RateLimitResetAt: &future})
+	mustCreateAccount(s.T(), s.client, &service.Account{Name: "openai-overload", Platform: service.PlatformOpenAI, Status: service.StatusActive, Schedulable: true, OverloadUntil: &future})
+	mustCreateAccount(s.T(), s.client, &service.Account{Name: "openai-error", Platform: service.PlatformOpenAI, Status: service.StatusError, ErrorMessage: "boom"})
+	mustCreateAccount(s.T(), s.client, &service.Account{Name: "openai-banned", Platform: service.PlatformOpenAI, Status: service.StatusError, ErrorMessage: "Account violation (403): terms of service violation"})
+	mustCreateAccount(s.T(), s.client, &service.Account{Name: "openai-disabled", Platform: service.PlatformOpenAI, Status: service.StatusDisabled})
+
+	openAILegacyInactive := mustCreateAccount(s.T(), s.client, &service.Account{Name: "openai-legacy-inactive", Platform: service.PlatformOpenAI, Status: service.StatusDisabled})
+	_, err = s.client.ExecContext(s.ctx, "UPDATE accounts SET status = $1 WHERE id = $2", legacyInactiveStatus, openAILegacyInactive.ID)
+	s.Require().NoError(err)
+
+	mustCreateAccount(s.T(), s.client, &service.Account{Name: "openai-expired", Platform: service.PlatformOpenAI, Status: service.StatusActive, Schedulable: true, ExpiresAt: &past})
+	mustCreateAccount(s.T(), s.client, &service.Account{Name: "anthropic-available", Platform: service.PlatformAnthropic, Status: service.StatusActive, Schedulable: true})
+	mustCreateAccount(s.T(), s.client, &service.Account{Name: "ag-available", Platform: service.PlatformAntigravity, Status: service.StatusActive, Schedulable: true})
+
+	items, err := s.repo.GetAccountSummary(s.ctx)
+	s.Require().NoError(err)
+	s.Require().Len(items, 3)
+
+	byPlatform := make(map[string]service.AccountSummaryCounts, len(items))
+	var overall service.AccountSummaryCounts
+	for _, item := range items {
+		byPlatform[item.Platform] = item.Counts
+		overall.Add(item.Counts)
+	}
+
+	openAI := byPlatform[service.PlatformOpenAI]
+	s.Require().Equal(int64(10), openAI.All)
+	s.Require().Equal(int64(6), openAI.Active)
+	s.Require().Equal(int64(2), openAI.Inactive)
+	s.Require().Equal(int64(1), openAI.Expired)
+	s.Require().Equal(int64(2), openAI.Error)
+	s.Require().Equal(int64(1), openAI.Banned)
+	s.Require().Equal(int64(1), openAI.Available)
+	s.Require().Equal(int64(1), openAI.ManualUnschedulable)
+	s.Require().Equal(int64(1), openAI.TempUnschedulable)
+	s.Require().Equal(int64(1), openAI.RateLimited)
+	s.Require().Equal(int64(1), openAI.Overloaded)
+
+	anthropic := byPlatform[service.PlatformAnthropic]
+	s.Require().Equal(int64(1), anthropic.All)
+	s.Require().Equal(int64(1), anthropic.Active)
+	s.Require().Equal(int64(1), anthropic.Available)
+
+	ag := byPlatform[service.PlatformAntigravity]
+	s.Require().Equal(int64(1), ag.All)
+	s.Require().Equal(int64(1), ag.Active)
+	s.Require().Equal(int64(1), ag.Available)
+
+	s.Require().Equal(int64(12), overall.All)
+	s.Require().Equal(int64(8), overall.Active)
+	s.Require().Equal(int64(2), overall.Inactive)
+	s.Require().Equal(int64(1), overall.Expired)
+	s.Require().Equal(int64(2), overall.Error)
+	s.Require().Equal(int64(1), overall.Banned)
+	s.Require().Equal(int64(3), overall.Available)
+	s.Require().Equal(int64(1), overall.ManualUnschedulable)
+	s.Require().Equal(int64(1), overall.TempUnschedulable)
+	s.Require().Equal(int64(1), overall.RateLimited)
+	s.Require().Equal(int64(1), overall.Overloaded)
+}
+
 // --- Preload and VirtualFields ---
 
 func (s *AccountRepoSuite) TestPreload_And_VirtualFields() {

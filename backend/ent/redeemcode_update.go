@@ -194,6 +194,26 @@ func (_u *RedeemCodeUpdate) AddValidityDays(v int) *RedeemCodeUpdate {
 	return _u
 }
 
+// SetSubscriptionMode sets the "subscription_mode" field.
+func (_u *RedeemCodeUpdate) SetSubscriptionMode(v string) *RedeemCodeUpdate {
+	_u.mutation.SetSubscriptionMode(v)
+	return _u
+}
+
+// SetNillableSubscriptionMode sets the "subscription_mode" field if the given value is not nil.
+func (_u *RedeemCodeUpdate) SetNillableSubscriptionMode(v *string) *RedeemCodeUpdate {
+	if v != nil {
+		_u.SetSubscriptionMode(*v)
+	}
+	return _u
+}
+
+// ClearSubscriptionMode clears the value of the "subscription_mode" field.
+func (_u *RedeemCodeUpdate) ClearSubscriptionMode() *RedeemCodeUpdate {
+	_u.mutation.ClearSubscriptionMode()
+	return _u
+}
+
 // SetUserID sets the "user" edge to the User entity by ID.
 func (_u *RedeemCodeUpdate) SetUserID(id int64) *RedeemCodeUpdate {
 	_u.mutation.SetUserID(id)
@@ -279,6 +299,11 @@ func (_u *RedeemCodeUpdate) check() error {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "RedeemCode.status": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.SubscriptionMode(); ok {
+		if err := redeemcode.SubscriptionModeValidator(v); err != nil {
+			return &ValidationError{Name: "subscription_mode", err: fmt.Errorf(`ent: validator failed for field "RedeemCode.subscription_mode": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -326,6 +351,12 @@ func (_u *RedeemCodeUpdate) sqlSave(ctx context.Context) (_node int, err error) 
 	}
 	if value, ok := _u.mutation.AddedValidityDays(); ok {
 		_spec.AddField(redeemcode.FieldValidityDays, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.SubscriptionMode(); ok {
+		_spec.SetField(redeemcode.FieldSubscriptionMode, field.TypeString, value)
+	}
+	if _u.mutation.SubscriptionModeCleared() {
+		_spec.ClearField(redeemcode.FieldSubscriptionMode, field.TypeString)
 	}
 	if _u.mutation.UserCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -569,6 +600,26 @@ func (_u *RedeemCodeUpdateOne) AddValidityDays(v int) *RedeemCodeUpdateOne {
 	return _u
 }
 
+// SetSubscriptionMode sets the "subscription_mode" field.
+func (_u *RedeemCodeUpdateOne) SetSubscriptionMode(v string) *RedeemCodeUpdateOne {
+	_u.mutation.SetSubscriptionMode(v)
+	return _u
+}
+
+// SetNillableSubscriptionMode sets the "subscription_mode" field if the given value is not nil.
+func (_u *RedeemCodeUpdateOne) SetNillableSubscriptionMode(v *string) *RedeemCodeUpdateOne {
+	if v != nil {
+		_u.SetSubscriptionMode(*v)
+	}
+	return _u
+}
+
+// ClearSubscriptionMode clears the value of the "subscription_mode" field.
+func (_u *RedeemCodeUpdateOne) ClearSubscriptionMode() *RedeemCodeUpdateOne {
+	_u.mutation.ClearSubscriptionMode()
+	return _u
+}
+
 // SetUserID sets the "user" edge to the User entity by ID.
 func (_u *RedeemCodeUpdateOne) SetUserID(id int64) *RedeemCodeUpdateOne {
 	_u.mutation.SetUserID(id)
@@ -667,6 +718,11 @@ func (_u *RedeemCodeUpdateOne) check() error {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "RedeemCode.status": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.SubscriptionMode(); ok {
+		if err := redeemcode.SubscriptionModeValidator(v); err != nil {
+			return &ValidationError{Name: "subscription_mode", err: fmt.Errorf(`ent: validator failed for field "RedeemCode.subscription_mode": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -731,6 +787,12 @@ func (_u *RedeemCodeUpdateOne) sqlSave(ctx context.Context) (_node *RedeemCode, 
 	}
 	if value, ok := _u.mutation.AddedValidityDays(); ok {
 		_spec.AddField(redeemcode.FieldValidityDays, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.SubscriptionMode(); ok {
+		_spec.SetField(redeemcode.FieldSubscriptionMode, field.TypeString, value)
+	}
+	if _u.mutation.SubscriptionModeCleared() {
+		_spec.ClearField(redeemcode.FieldSubscriptionMode, field.TypeString)
 	}
 	if _u.mutation.UserCleared() {
 		edge := &sqlgraph.EdgeSpec{

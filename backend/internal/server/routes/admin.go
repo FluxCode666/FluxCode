@@ -84,6 +84,12 @@ func RegisterAdminRoutes(
 
 		// 定时测试计划
 		registerScheduledTestRoutes(admin, h)
+
+		// 定价方案管理
+		registerPricingPlanRoutes(admin, h)
+
+		// 号池监控
+		registerPoolMonitorRoutes(admin, h)
 	}
 }
 
@@ -195,6 +201,7 @@ func registerDashboardRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		dashboard.GET("/groups", h.Admin.Dashboard.GetGroupStats)
 		dashboard.GET("/api-keys-trend", h.Admin.Dashboard.GetAPIKeyUsageTrend)
 		dashboard.GET("/users-trend", h.Admin.Dashboard.GetUserUsageTrend)
+		dashboard.GET("/proxies-usage", h.Admin.Dashboard.GetProxyUsageSummary)
 		dashboard.GET("/users-ranking", h.Admin.Dashboard.GetUserSpendingRanking)
 		dashboard.POST("/users-usage", h.Admin.Dashboard.GetBatchUsersUsage)
 		dashboard.POST("/api-keys-usage", h.Admin.Dashboard.GetBatchAPIKeysUsage)
@@ -247,6 +254,7 @@ func registerAccountRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	accounts := admin.Group("/accounts")
 	{
 		accounts.GET("", h.Admin.Account.List)
+		accounts.GET("/summary", h.Admin.Account.GetSummary)
 		accounts.GET("/:id", h.Admin.Account.GetByID)
 		accounts.POST("", h.Admin.Account.Create)
 		accounts.POST("/check-mixed-channel", h.Admin.Account.CheckMixedChannel)
@@ -550,5 +558,33 @@ func registerErrorPassthroughRoutes(admin *gin.RouterGroup, h *handler.Handlers)
 		rules.POST("", h.Admin.ErrorPassthrough.Create)
 		rules.PUT("/:id", h.Admin.ErrorPassthrough.Update)
 		rules.DELETE("/:id", h.Admin.ErrorPassthrough.Delete)
+	}
+}
+
+func registerPricingPlanRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	if h == nil || h.Admin == nil || h.Admin.PricingPlan == nil {
+		return
+	}
+	pricing := admin.Group("/pricing")
+	{
+		pricing.GET("/plan-groups", h.Admin.PricingPlan.ListGroups)
+		pricing.POST("/plan-groups", h.Admin.PricingPlan.CreateGroup)
+		pricing.PUT("/plan-groups/:id", h.Admin.PricingPlan.UpdateGroup)
+		pricing.DELETE("/plan-groups/:id", h.Admin.PricingPlan.DeleteGroup)
+
+		pricing.POST("/plans", h.Admin.PricingPlan.CreatePlan)
+		pricing.PUT("/plans/:id", h.Admin.PricingPlan.UpdatePlan)
+		pricing.DELETE("/plans/:id", h.Admin.PricingPlan.DeletePlan)
+	}
+}
+
+func registerPoolMonitorRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	if h == nil || h.Admin == nil || h.Admin.PoolMonitor == nil {
+		return
+	}
+	poolMonitor := admin.Group("/pool-monitor")
+	{
+		poolMonitor.GET("/:platform", h.Admin.PoolMonitor.GetConfig)
+		poolMonitor.PUT("/:platform", h.Admin.PoolMonitor.UpdateConfig)
 	}
 }

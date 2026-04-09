@@ -75,8 +75,10 @@ func (f *fakeGroupRepo) ListActive(context.Context) ([]service.Group, error) { r
 func (f *fakeGroupRepo) ListActiveByPlatform(context.Context, string) ([]service.Group, error) {
 	return nil, nil
 }
-func (f *fakeGroupRepo) ExistsByName(context.Context, string) (bool, error)    { return false, nil }
-func (f *fakeGroupRepo) GetAccountCount(context.Context, int64) (int64, int64, error) { return 0, 0, nil }
+func (f *fakeGroupRepo) ExistsByName(context.Context, string) (bool, error) { return false, nil }
+func (f *fakeGroupRepo) GetAccountCount(context.Context, int64) (int64, int64, error) {
+	return 0, 0, nil
+}
 func (f *fakeGroupRepo) DeleteAccountGroupsByGroupID(context.Context, int64) (int64, error) {
 	return 0, nil
 }
@@ -162,7 +164,7 @@ func newTestGatewayHandler(t *testing.T, group *service.Group, accounts []*servi
 
 	// RunModeSimple：跳过计费检查，避免引入 repo/cache 依赖。
 	cfg := &config.Config{RunMode: config.RunModeSimple}
-	billingCacheSvc := service.NewBillingCacheService(nil, nil, nil, nil, cfg)
+	billingCacheSvc := service.NewBillingCacheService(nil, nil, nil, nil, nil, cfg)
 
 	concurrencySvc := service.NewConcurrencyService(&fakeConcurrencyCache{})
 	concurrencyHelper := NewConcurrencyHelper(concurrencySvc, SSEPingFormatClaude, 0)

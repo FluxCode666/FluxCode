@@ -299,6 +299,8 @@ export interface ApiResponse<T = unknown> {
   code: number
   message: string
   data: T
+  reason?: string
+  metadata?: Record<string, string>
 }
 
 export interface ApiError {
@@ -1098,6 +1100,7 @@ export interface GenerateRedeemCodesRequest {
 
 export interface RedeemCodeRequest {
   code: string
+  subscription_mode?: 'extend' | 'stack'
 }
 
 // ==================== Dashboard & Statistics ====================
@@ -1280,7 +1283,8 @@ export interface UserSubscription {
   id: number
   user_id: number
   group_id: number
-  status: 'active' | 'expired' | 'revoked'
+  status: 'active' | 'expired' | 'suspended' | 'revoked'
+  quota_multiplier?: number
   daily_usage_usd: number
   weekly_usage_usd: number
   monthly_usage_usd: number
@@ -1322,6 +1326,7 @@ export interface AssignSubscriptionRequest {
   user_id: number
   group_id: number
   validity_days?: number
+  subscription_mode?: 'extend' | 'stack'
 }
 
 export interface BulkAssignSubscriptionRequest {
@@ -1569,6 +1574,105 @@ export interface TotpLoginResponse {
 export interface TotpLogin2FARequest {
   temp_token: string
   totp_code: string
+}
+
+// ==================== Pricing Plan Types ====================
+
+export interface PricingPlanContactMethod {
+  type: string
+  value: string
+}
+
+export interface PricingPlan {
+  id: number
+  group_id: number
+  name: string
+  description: string | null
+  icon_url: string | null
+  badge_text: string | null
+  tagline: string | null
+  price_amount: number | null
+  price_currency: string
+  price_period: string
+  price_text: string | null
+  features: string[]
+  contact_methods: PricingPlanContactMethod[]
+  is_featured: boolean
+  sort_order: number
+  status: 'active' | 'inactive'
+  created_at: string
+  updated_at: string
+}
+
+export interface PricingPlanGroup {
+  id: number
+  name: string
+  description: string | null
+  sort_order: number
+  status: 'active' | 'inactive'
+  plans?: PricingPlan[]
+  created_at: string
+  updated_at: string
+}
+
+// ==================== Account Summary Types ====================
+
+export type ProxyAccountCountState =
+  | 'all_active'
+  | 'available'
+  | 'manual_unschedulable'
+  | 'temp_unschedulable'
+  | 'rate_limited'
+  | 'overloaded'
+  | 'expired'
+  | 'inactive'
+  | 'error'
+  | 'banned'
+
+export type AccountSchedulingState = Exclude<ProxyAccountCountState, 'all_active'>
+
+export interface AccountSummaryCounts {
+  all: number
+  active: number
+  inactive: number
+  expired: number
+  error: number
+  banned: number
+  available: number
+  manual_unschedulable: number
+  temp_unschedulable: number
+  rate_limited: number
+  overloaded: number
+}
+
+export interface AccountPlatformSummaryItem {
+  platform: string
+  counts: AccountSummaryCounts
+}
+
+export interface AccountSummaryResponse {
+  overall: AccountSummaryCounts
+  platforms: AccountPlatformSummaryItem[]
+}
+
+// ==================== Proxy Usage Types ====================
+
+export interface ProxyUsageTimelinePoint {
+  bucket: string
+  total_count: number
+  success_count: number
+  failure_count: number
+}
+
+export interface ProxyUsageSummaryItem {
+  proxy_id: number
+  proxy_name: string
+  proxy_addr: string
+  proxy_status: string
+  total_count: number
+  success_count: number
+  failure_count: number
+  points: ProxyUsageTimelinePoint[]
 }
 
 // ==================== Scheduled Test Types ====================

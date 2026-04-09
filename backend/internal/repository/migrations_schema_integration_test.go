@@ -39,6 +39,7 @@ func TestMigrationsRunner_IsIdempotent_AndSchemaIsUpToDate(t *testing.T) {
 	// redeem_codes: subscription fields
 	requireColumn(t, tx, "redeem_codes", "group_id", "bigint", 0, true)
 	requireColumn(t, tx, "redeem_codes", "validity_days", "integer", 0, false)
+	requireColumn(t, tx, "redeem_codes", "subscription_mode", "character varying", 16, true)
 
 	// usage_logs: billing_type used by filters/stats
 	requireColumn(t, tx, "usage_logs", "billing_type", "smallint", 0, false)
@@ -129,6 +130,21 @@ func TestMigrationsRunner_IsIdempotent_AndSchemaIsUpToDate(t *testing.T) {
 	requireColumn(t, tx, "proxy_usage_metrics_hourly", "proxy_id", "bigint", 0, false)
 	requireIndex(t, tx, "proxy_usage_metrics_hourly", "idx_proxy_usage_metrics_hourly_platform_bucket")
 	requireIndex(t, tx, "proxy_usage_metrics_hourly", "idx_proxy_usage_metrics_hourly_platform_proxy_bucket")
+
+	// subscription_grants: stacked subscription foundation (081)
+	var subscriptionGrantsRegclass sql.NullString
+	require.NoError(t, tx.QueryRowContext(context.Background(), "SELECT to_regclass('public.subscription_grants')").Scan(&subscriptionGrantsRegclass))
+	require.True(t, subscriptionGrantsRegclass.Valid, "expected subscription_grants table to exist")
+	requireColumn(t, tx, "subscription_grants", "subscription_id", "bigint", 0, false)
+	requireColumn(t, tx, "subscription_grants", "starts_at", "timestamp with time zone", 0, false)
+	requireColumn(t, tx, "subscription_grants", "expires_at", "timestamp with time zone", 0, false)
+	requireColumn(t, tx, "subscription_grants", "daily_usage_usd", "numeric", 0, false)
+	requireColumn(t, tx, "subscription_grants", "weekly_usage_usd", "numeric", 0, false)
+	requireColumn(t, tx, "subscription_grants", "monthly_usage_usd", "numeric", 0, false)
+	requireColumn(t, tx, "subscription_grants", "deleted_at", "timestamp with time zone", 0, true)
+	requireIndex(t, tx, "subscription_grants", "idx_subscription_grants_subscription_id_active")
+	requireIndex(t, tx, "subscription_grants", "idx_subscription_grants_active_lookup")
+	requireIndex(t, tx, "subscription_grants", "idx_subscription_grants_expires_at_active")
 }
 
 func requireIndex(t *testing.T, tx *sql.Tx, table, index string) {

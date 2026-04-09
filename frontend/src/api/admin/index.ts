@@ -24,6 +24,8 @@ import dataManagementAPI from './dataManagement'
 import apiKeysAPI from './apiKeys'
 import scheduledTestsAPI from './scheduledTests'
 import backupAPI from './backup'
+import pricingPlansAPI from './pricingPlans'
+import poolMonitorAPI from './poolMonitor'
 
 /**
  * Unified admin API object for convenient access
@@ -49,7 +51,9 @@ export const adminAPI = {
   dataManagement: dataManagementAPI,
   apiKeys: apiKeysAPI,
   scheduledTests: scheduledTestsAPI,
-  backup: backupAPI
+  backup: backupAPI,
+  pricingPlans: pricingPlansAPI,
+  poolMonitor: poolMonitorAPI
 }
 
 export {
@@ -73,7 +77,9 @@ export {
   dataManagementAPI,
   apiKeysAPI,
   scheduledTestsAPI,
-  backupAPI
+  backupAPI,
+  pricingPlansAPI,
+  poolMonitorAPI
 }
 
 export default adminAPI

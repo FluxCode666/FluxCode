@@ -84,6 +84,7 @@ func provideCleanup(
 	usageCleanup *service.UsageCleanupService,
 	idempotencyCleanup *service.IdempotencyCleanupService,
 	pricing *service.PricingService,
+	openAIPoolMonitorWorker *service.OpenAIPoolMonitorWorker,
 	emailQueue *service.EmailQueueService,
 	billingCache *service.BillingCacheService,
 	usageRecordWorkerPool *service.UsageRecordWorkerPool,
@@ -187,6 +188,12 @@ func provideCleanup(
 			}},
 			{"PricingService", func() error {
 				pricing.Stop()
+				return nil
+			}},
+			{"OpenAIPoolMonitorWorker", func() error {
+				if openAIPoolMonitorWorker != nil {
+					openAIPoolMonitorWorker.Stop()
+				}
 				return nil
 			}},
 			{"EmailQueueService", func() error {

@@ -55,6 +55,8 @@ const (
 	EdgeGroup = "group"
 	// EdgeAssignedByUser holds the string denoting the assigned_by_user edge name in mutations.
 	EdgeAssignedByUser = "assigned_by_user"
+	// EdgeGrants holds the string denoting the grants edge name in mutations.
+	EdgeGrants = "grants"
 	// EdgeUsageLogs holds the string denoting the usage_logs edge name in mutations.
 	EdgeUsageLogs = "usage_logs"
 	// Table holds the table name of the usersubscription in the database.
@@ -80,6 +82,13 @@ const (
 	AssignedByUserInverseTable = "users"
 	// AssignedByUserColumn is the table column denoting the assigned_by_user relation/edge.
 	AssignedByUserColumn = "assigned_by"
+	// GrantsTable is the table that holds the grants relation/edge.
+	GrantsTable = "subscription_grants"
+	// GrantsInverseTable is the table name for the SubscriptionGrant entity.
+	// It exists in this package in order to avoid circular dependency with the "subscriptiongrant" package.
+	GrantsInverseTable = "subscription_grants"
+	// GrantsColumn is the table column denoting the grants relation/edge.
+	GrantsColumn = "subscription_id"
 	// UsageLogsTable is the table that holds the usage_logs relation/edge.
 	UsageLogsTable = "usage_logs"
 	// UsageLogsInverseTable is the table name for the UsageLog entity.
@@ -263,6 +272,20 @@ func ByAssignedByUserField(field string, opts ...sql.OrderTermOption) OrderOptio
 	}
 }
 
+// ByGrantsCount orders the results by grants count.
+func ByGrantsCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newGrantsStep(), opts...)
+	}
+}
+
+// ByGrants orders the results by grants terms.
+func ByGrants(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newGrantsStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
+
 // ByUsageLogsCount orders the results by usage_logs count.
 func ByUsageLogsCount(opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {
@@ -295,6 +318,13 @@ func newAssignedByUserStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(AssignedByUserInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.M2O, true, AssignedByUserTable, AssignedByUserColumn),
+	)
+}
+func newGrantsStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(GrantsInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, GrantsTable, GrantsColumn),
 	)
 }
 func newUsageLogsStep() *sqlgraph.Step {

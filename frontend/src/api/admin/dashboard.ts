@@ -12,6 +12,7 @@ import type {
   ApiKeyUsageTrendPoint,
   UserUsageTrendPoint,
   UserSpendingRankingResponse,
+  ProxyUsageSummaryItem,
   UserBreakdownItem,
   UsageRequestType
 } from '@/types'
@@ -228,6 +229,13 @@ export interface UserTrendResponse {
   granularity: string
 }
 
+export interface ProxyUsageSummaryResponse {
+  items: ProxyUsageSummaryItem[]
+  start_date: string
+  end_date: string
+  granularity: string
+}
+
 export interface UserSpendingRankingParams
   extends Pick<TrendParams, 'start_date' | 'end_date'> {
   limit?: number
@@ -240,6 +248,20 @@ export interface UserSpendingRankingParams
  */
 export async function getUserUsageTrend(params?: UserTrendParams): Promise<UserTrendResponse> {
   const { data } = await apiClient.get<UserTrendResponse>('/admin/dashboard/users-trend', {
+    params
+  })
+  return data
+}
+
+/**
+ * Get proxy usage timeline for dashboard
+ * @param params - Query parameters for filtering
+ * @returns Proxy usage timeline grouped by proxy
+ */
+export async function getProxyUsageSummary(
+  params?: TrendParams
+): Promise<ProxyUsageSummaryResponse> {
+  const { data } = await apiClient.get<ProxyUsageSummaryResponse>('/admin/dashboard/proxies-usage', {
     params
   })
   return data
@@ -318,6 +340,7 @@ export const dashboardAPI = {
   getApiKeyUsageTrend,
   getUserUsageTrend,
   getUserSpendingRanking,
+  getProxyUsageSummary,
   getBatchUsersUsage,
   getBatchApiKeysUsage
 }

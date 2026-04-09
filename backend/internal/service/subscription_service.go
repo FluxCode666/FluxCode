@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"math/rand/v2"
@@ -43,6 +44,7 @@ var (
 type SubscriptionService struct {
 	groupRepo           GroupRepository
 	userSubRepo         UserSubscriptionRepository
+	grantRepo           SubscriptionGrantRepository
 	billingCacheService *BillingCacheService
 	entClient           *dbent.Client
 
@@ -56,10 +58,11 @@ type SubscriptionService struct {
 }
 
 // NewSubscriptionService 创建订阅服务
-func NewSubscriptionService(groupRepo GroupRepository, userSubRepo UserSubscriptionRepository, billingCacheService *BillingCacheService, entClient *dbent.Client, cfg *config.Config) *SubscriptionService {
+func NewSubscriptionService(groupRepo GroupRepository, userSubRepo UserSubscriptionRepository, grantRepo SubscriptionGrantRepository, billingCacheService *BillingCacheService, entClient *dbent.Client, cfg *config.Config) *SubscriptionService {
 	svc := &SubscriptionService{
 		groupRepo:           groupRepo,
 		userSubRepo:         userSubRepo,
+		grantRepo:           grantRepo,
 		billingCacheService: billingCacheService,
 		entClient:           entClient,
 	}
@@ -151,6 +154,30 @@ type AssignSubscriptionInput struct {
 	Notes        string
 }
 
+type SubscriptionMode string
+
+const (
+	SubscriptionModeExtend SubscriptionMode = "extend"
+	SubscriptionModeStack  SubscriptionMode = "stack"
+)
+
+type ApplyRedeemSubscriptionInput struct {
+	UserID           int64
+	GroupID          int64
+	ValidityDays     int
+	SubscriptionMode SubscriptionMode
+	Notes            string
+}
+
+type AssignSubscriptionWithModeInput struct {
+	UserID           int64
+	GroupID          int64
+	ValidityDays     int
+	AssignedBy       int64
+	Notes            string
+	SubscriptionMode SubscriptionMode
+}
+
 // AssignSubscription 分配订阅给用户（不允许重复分配）
 func (s *SubscriptionService) AssignSubscription(ctx context.Context, input *AssignSubscriptionInput) (*UserSubscription, error) {
 	sub, _, err := s.assignSubscriptionWithReuse(ctx, input)
@@ -158,6 +185,89 @@ func (s *SubscriptionService) AssignSubscription(ctx context.Context, input *Ass
 		return nil, err
 	}
 	return sub, nil
+}
+
+// AssignSubscriptionWithMode 分配订阅给用户，对齐 extend/stack 语义。
+func (s *SubscriptionService) AssignSubscriptionWithMode(ctx context.Context, input *AssignSubscriptionWithModeInput) (*UserSubscription, error) {
+	if input == nil {
+		return nil, ErrSubscriptionNilInput
+	}
+
+	group, err := s.groupRepo.GetByID(ctx, input.GroupID)
+	if err != nil {
+		return nil, fmt.Errorf("group not found: %w", err)
+	}
+	if !group.IsSubscriptionType() {
+		return nil, ErrGroupNotSubscriptionType
+	}
+
+	validityDays := input.ValidityDays
+	if validityDays <= 0 {
+		validityDays = 30
+	}
+	if validityDays > MaxValidityDays {
+		validityDays = MaxValidityDays
+	}
+
+	mode := input.SubscriptionMode
+	if mode != "" && mode != SubscriptionModeExtend && mode != SubscriptionModeStack {
+		return nil, infraerrors.BadRequest("INVALID_SUBSCRIPTION_MODE", "invalid subscription_mode")
+	}
+
+	existingSub, err := s.userSubRepo.GetByUserIDAndGroupID(ctx, input.UserID, input.GroupID)
+	if err != nil {
+		if !errors.Is(err, ErrSubscriptionNotFound) {
+			return nil, fmt.Errorf("get subscription: %w", err)
+		}
+		return s.AssignSubscription(ctx, &AssignSubscriptionInput{
+			UserID:       input.UserID,
+			GroupID:      input.GroupID,
+			ValidityDays: validityDays,
+			AssignedBy:   input.AssignedBy,
+			Notes:        input.Notes,
+		})
+	}
+
+	now := time.Now()
+	needsChoice := existingSub.ExpiresAt.After(now) &&
+		(existingSub.Status == SubscriptionStatusActive || existingSub.Status == SubscriptionStatusSuspended)
+	if needsChoice && mode == "" {
+		s.populateQuotaSnapshot(ctx, existingSub, now)
+		multiplier := existingSub.QuotaMultiplier
+		if multiplier < 1 {
+			multiplier = 1
+		}
+
+		return nil, ErrSubscriptionRedeemChoiceRequired.WithMetadata(map[string]string{
+			"group_id":                 strconv.FormatInt(input.GroupID, 10),
+			"group_name":               group.Name,
+			"current_expires_at":       existingSub.ExpiresAt.Format(time.RFC3339),
+			"validity_days":            strconv.Itoa(validityDays),
+			"current_quota_multiplier": strconv.Itoa(multiplier),
+		})
+	}
+
+	var updated *UserSubscription
+	if err := s.withTx(ctx, func(txCtx context.Context) error {
+		var txErr error
+		updated, txErr = s.ApplyRedeemSubscription(txCtx, &ApplyRedeemSubscriptionInput{
+			UserID:           input.UserID,
+			GroupID:          input.GroupID,
+			ValidityDays:     validityDays,
+			SubscriptionMode: mode,
+			Notes:            input.Notes,
+		})
+		return txErr
+	}); err != nil {
+		return nil, err
+	}
+
+	if updated != nil && input.AssignedBy > 0 && updated.AssignedBy == nil {
+		assignedBy := input.AssignedBy
+		updated.AssignedBy = &assignedBy
+	}
+
+	return updated, nil
 }
 
 // AssignOrExtendSubscription 分配或续期订阅（用于兑换码等场景）
@@ -284,6 +394,132 @@ func (s *SubscriptionService) AssignOrExtendSubscription(ctx context.Context, in
 	return sub, false, nil // false 表示是新建
 }
 
+// ApplyRedeemSubscription applies a subscription redeem with a specific mode.
+func (s *SubscriptionService) ApplyRedeemSubscription(ctx context.Context, input *ApplyRedeemSubscriptionInput) (*UserSubscription, error) {
+	if input == nil {
+		return nil, ErrSubscriptionNilInput
+	}
+
+	group, err := s.groupRepo.GetByID(ctx, input.GroupID)
+	if err != nil {
+		return nil, fmt.Errorf("group not found: %w", err)
+	}
+	if !group.IsSubscriptionType() {
+		return nil, ErrGroupNotSubscriptionType
+	}
+
+	validityDays := input.ValidityDays
+	if validityDays <= 0 {
+		validityDays = 30
+	}
+	if validityDays > MaxValidityDays {
+		validityDays = MaxValidityDays
+	}
+
+	mode := input.SubscriptionMode
+	if mode == "" {
+		mode = SubscriptionModeExtend
+	}
+	if mode != SubscriptionModeExtend && mode != SubscriptionModeStack {
+		return nil, infraerrors.BadRequest("INVALID_SUBSCRIPTION_MODE", "invalid subscription_mode")
+	}
+
+	existingSub, err := s.userSubRepo.GetByUserIDAndGroupID(ctx, input.UserID, input.GroupID)
+	if err != nil {
+		if !errors.Is(err, ErrSubscriptionNotFound) {
+			return nil, fmt.Errorf("get subscription: %w", err)
+		}
+		return s.createSubscription(ctx, &AssignSubscriptionInput{
+			UserID:       input.UserID,
+			GroupID:      input.GroupID,
+			ValidityDays: validityDays,
+			AssignedBy:   0,
+			Notes:        input.Notes,
+		})
+	}
+
+	now := time.Now()
+	if s.grantRepo == nil {
+		return nil, fmt.Errorf("subscription grant repository is not configured")
+	}
+
+	if mode == SubscriptionModeExtend && existingSub.ExpiresAt.After(now) {
+		tail, err := s.grantRepo.GetTailGrantBySubscriptionID(ctx, existingSub.ID)
+		if err != nil {
+			return nil, fmt.Errorf("get tail grant: %w", err)
+		}
+
+		newExpiresAt := tail.ExpiresAt.AddDate(0, 0, validityDays)
+		if newExpiresAt.After(MaxExpiresAt) {
+			newExpiresAt = MaxExpiresAt
+		}
+		if newExpiresAt.Before(tail.StartsAt) {
+			newExpiresAt = tail.StartsAt
+		}
+
+		if err := s.grantRepo.UpdateExpiresAt(ctx, tail.ID, newExpiresAt); err != nil {
+			return nil, fmt.Errorf("update tail grant expires_at: %w", err)
+		}
+		if err := s.userSubRepo.ExtendExpiry(ctx, existingSub.ID, newExpiresAt); err != nil {
+			return nil, fmt.Errorf("update subscription expires_at: %w", err)
+		}
+	} else {
+		startsAt := now
+		expiresAt := startsAt.AddDate(0, 0, validityDays)
+		if expiresAt.After(MaxExpiresAt) {
+			expiresAt = MaxExpiresAt
+		}
+		if expiresAt.Before(startsAt) {
+			expiresAt = startsAt
+		}
+
+		if err := s.grantRepo.Create(ctx, &SubscriptionGrant{
+			SubscriptionID: existingSub.ID,
+			StartsAt:       startsAt,
+			ExpiresAt:      expiresAt,
+		}); err != nil {
+			return nil, fmt.Errorf("create subscription grant: %w", err)
+		}
+
+		newAggExpires := existingSub.ExpiresAt
+		if expiresAt.After(newAggExpires) {
+			newAggExpires = expiresAt
+		}
+		if err := s.userSubRepo.ExtendExpiry(ctx, existingSub.ID, newAggExpires); err != nil {
+			return nil, fmt.Errorf("update subscription expires_at: %w", err)
+		}
+	}
+
+	if existingSub.Status != SubscriptionStatusActive {
+		if err := s.userSubRepo.UpdateStatus(ctx, existingSub.ID, SubscriptionStatusActive); err != nil {
+			return nil, fmt.Errorf("update subscription status: %w", err)
+		}
+	}
+
+	if input.Notes != "" {
+		newNotes := existingSub.Notes
+		if newNotes != "" {
+			newNotes += "\n"
+		}
+		newNotes += input.Notes
+		if err := s.userSubRepo.UpdateNotes(ctx, existingSub.ID, newNotes); err != nil {
+			log.Printf("update subscription notes failed: sub_id=%d err=%v", existingSub.ID, err)
+		}
+	}
+
+	s.InvalidateSubCache(existingSub.UserID, existingSub.GroupID)
+	if s.billingCacheService != nil {
+		userID, groupID := existingSub.UserID, existingSub.GroupID
+		go func() {
+			cacheCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			_ = s.billingCacheService.InvalidateSubscription(cacheCtx, userID, groupID)
+		}()
+	}
+
+	return s.GetByID(ctx, existingSub.ID)
+}
+
 // createSubscription 创建新订阅（内部方法）
 func (s *SubscriptionService) createSubscription(ctx context.Context, input *AssignSubscriptionInput) (*UserSubscription, error) {
 	validityDays := input.ValidityDays
@@ -316,12 +552,26 @@ func (s *SubscriptionService) createSubscription(ctx context.Context, input *Ass
 		sub.AssignedBy = &input.AssignedBy
 	}
 
-	if err := s.userSubRepo.Create(ctx, sub); err != nil {
+	if err := s.withTx(ctx, func(txCtx context.Context) error {
+		if err := s.userSubRepo.Create(txCtx, sub); err != nil {
+			return err
+		}
+		if s.grantRepo != nil {
+			if err := s.grantRepo.Create(txCtx, &SubscriptionGrant{
+				SubscriptionID: sub.ID,
+				StartsAt:       sub.StartsAt,
+				ExpiresAt:      sub.ExpiresAt,
+			}); err != nil {
+				return fmt.Errorf("create initial subscription grant: %w", err)
+			}
+		}
+		return nil
+	}); err != nil {
 		return nil, err
 	}
 
 	// 重新获取完整订阅信息（包含关联）
-	return s.userSubRepo.GetByID(ctx, sub.ID)
+	return s.GetByID(ctx, sub.ID)
 }
 
 // BulkAssignSubscriptionInput 批量分配订阅输入
@@ -557,7 +807,12 @@ func (s *SubscriptionService) ExtendSubscription(ctx context.Context, subscripti
 
 // GetByID 根据ID获取订阅
 func (s *SubscriptionService) GetByID(ctx context.Context, id int64) (*UserSubscription, error) {
-	return s.userSubRepo.GetByID(ctx, id)
+	sub, err := s.userSubRepo.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	s.populateQuotaSnapshot(ctx, sub, time.Now())
+	return sub, nil
 }
 
 // GetActiveSubscription 获取用户对特定分组的有效订阅
@@ -582,6 +837,7 @@ func (s *SubscriptionService) GetActiveSubscription(ctx context.Context, userID,
 		if err != nil {
 			return nil, err // 直接透传 repo 已翻译的错误（NotFound → ErrSubscriptionNotFound，其他错误原样返回）
 		}
+		s.populateQuotaSnapshot(ctx, sub, time.Now())
 		// 写入 L1 缓存
 		if s.subCacheL1 != nil {
 			_ = s.subCacheL1.SetWithTTL(key, sub, 1, s.jitteredTTL(s.subCacheTTL))
@@ -1051,4 +1307,57 @@ func (s *SubscriptionService) ValidateSubscription(ctx context.Context, sub *Use
 		return ErrSubscriptionExpired
 	}
 	return nil
+}
+
+func (s *SubscriptionService) withTx(ctx context.Context, fn func(context.Context) error) error {
+	if fn == nil {
+		return nil
+	}
+	if dbent.TxFromContext(ctx) != nil || s.entClient == nil {
+		return fn(ctx)
+	}
+
+	tx, err := s.entClient.Tx(ctx)
+	if err != nil {
+		return fmt.Errorf("begin transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	txCtx := dbent.NewTxContext(ctx, tx)
+	if err := fn(txCtx); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit transaction: %w", err)
+	}
+	return nil
+}
+
+func (s *SubscriptionService) populateQuotaSnapshot(ctx context.Context, sub *UserSubscription, at time.Time) {
+	if sub == nil {
+		return
+	}
+
+	sub.QuotaMultiplier = 1
+	if s.grantRepo == nil {
+		return
+	}
+
+	count, err := s.grantRepo.CountActiveBySubscriptionID(ctx, sub.ID, at)
+	if err != nil {
+		log.Printf("warning: count active subscription grants failed: sub_id=%d err=%v", sub.ID, err)
+		return
+	}
+	if count > 0 {
+		sub.QuotaMultiplier = count
+	}
+
+	daily, weekly, monthly, err := s.grantRepo.SumActiveUsageBySubscriptionID(ctx, sub.ID, at)
+	if err != nil {
+		log.Printf("warning: sum active subscription grants failed: sub_id=%d err=%v", sub.ID, err)
+		return
+	}
+	sub.DailyUsageUSD = daily
+	sub.WeeklyUsageUSD = weekly
+	sub.MonthlyUsageUSD = monthly
 }

@@ -37,6 +37,24 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/pricing',
+    name: 'Pricing',
+    component: () => import('@/views/PricingView.vue'),
+    meta: {
+      requiresAuth: false,
+      title: 'Pricing'
+    }
+  },
+  {
+    path: '/docs',
+    name: 'Docs',
+    component: () => import('@/views/DocsView.vue'),
+    meta: {
+      requiresAuth: false,
+      title: 'Docs'
+    }
+  },
+  {
     path: '/login',
     name: 'Login',
     component: () => import('@/views/auth/LoginView.vue'),
@@ -348,6 +366,51 @@ const routes: RouteRecordRaw[] = [
       title: 'Promo Code Management',
       titleKey: 'admin.promo.title',
       descriptionKey: 'admin.promo.description'
+    }
+  },
+  {
+    path: '/admin/pricing-plans',
+    name: 'AdminPricingPlans',
+    component: () => import('@/views/admin/PricingPlansView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Pricing Plans',
+      titleKey: 'admin.pricingPlans.title',
+      descriptionKey: 'admin.pricingPlans.description'
+    }
+  },
+  {
+    path: '/admin/pool-monitor/config',
+    name: 'AdminPoolMonitorConfig',
+    component: () => import('@/views/admin/PoolMonitorView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Pool Monitor Settings',
+      titleKey: 'admin.poolMonitorConfig.title',
+      descriptionKey: 'admin.poolMonitorConfig.description',
+      hideInMenu: true
+    }
+  },
+  {
+    path: '/admin/pool-monitor',
+    name: 'AdminPoolMonitor',
+    component: () => import('@/views/admin/PoolMonitorDashboardView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Pool Monitor',
+      titleKey: 'admin.poolMonitorDashboard.title',
+      descriptionKey: 'admin.poolMonitorDashboard.description'
+    }
+  },
+  {
+    path: '/admin/pool-monitor/dashboard',
+    redirect: '/admin/pool-monitor',
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true
     }
   },
   {

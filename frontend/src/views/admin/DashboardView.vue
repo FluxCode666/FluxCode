@@ -6,7 +6,15 @@
         <LoadingSpinner />
       </div>
 
-      <template v-else-if="stats">
+      <template v-else>
+        <div
+          v-if="loadError"
+          class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/40 dark:bg-red-900/20 dark:text-red-300"
+        >
+          {{ loadError }}
+        </div>
+
+        <template v-if="stats">
         <!-- Row 1: Core Stats -->
         <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
           <!-- Total API Keys -->
@@ -251,6 +259,20 @@
               @ranking-click="goToUserUsage"
             />
             <TokenUsageTrend :trend-data="trendData" :loading="chartsLoading" />
+            <RequestCountTrend
+              :trend-data="trendData"
+              :loading="chartsLoading"
+              :granularity="granularity"
+              :title="t('admin.dashboard.requestCountTrend')"
+              :series-label="t('admin.dashboard.requests')"
+            />
+            <ProxyUsageSummaryChart
+              :items="proxyUsageSummary"
+              :loading="chartsLoading"
+              :title="t('admin.dashboard.proxyUsageSummary')"
+              :granularity="granularity"
+              :timeline-labels="proxyTimelineLabels"
+            />
           </div>
 
           <!-- User Usage Trend (Full Width) -->
@@ -273,6 +295,18 @@
           </div>
         </div>
       </template>
+
+        <div v-else class="card p-8 text-center">
+          <p class="text-sm text-gray-600 dark:text-gray-300">
+            {{ t('admin.dashboard.failedToLoad') }}
+          </p>
+          <div class="mt-4 flex justify-center">
+            <button type="button" class="btn btn-secondary" @click="loadDashboardStats">
+              {{ t('common.refresh') }}
+            </button>
+          </div>
+        </div>
+      </template>
     </div>
   </AppLayout>
 </template>
@@ -290,7 +324,8 @@ import type {
   TrendDataPoint,
   ModelStat,
   UserUsageTrendPoint,
-  UserSpendingRankingItem
+  UserSpendingRankingItem,
+  ProxyUsageSummaryItem
 } from '@/types'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
@@ -299,6 +334,8 @@ import DateRangePicker from '@/components/common/DateRangePicker.vue'
 import Select from '@/components/common/Select.vue'
 import ModelDistributionChart from '@/components/charts/ModelDistributionChart.vue'
 import TokenUsageTrend from '@/components/charts/TokenUsageTrend.vue'
+import RequestCountTrend from '@/components/charts/RequestCountTrend.vue'
+import ProxyUsageSummaryChart from '@/components/charts/ProxyUsageSummaryChart.vue'
 
 import {
   Chart as ChartJS,
@@ -331,15 +368,21 @@ const chartsLoading = ref(false)
 const userTrendLoading = ref(false)
 const rankingLoading = ref(false)
 const rankingError = ref(false)
+const loadError = ref('')
 
 // Chart data
 const trendData = ref<TrendDataPoint[]>([])
 const modelStats = ref<ModelStat[]>([])
 const userTrend = ref<UserUsageTrendPoint[]>([])
+const proxyUsageSummary = ref<ProxyUsageSummaryItem[]>([])
 const rankingItems = ref<UserSpendingRankingItem[]>([])
 const rankingTotalActualCost = ref(0)
 const rankingTotalRequests = ref(0)
 const rankingTotalTokens = ref(0)
+const proxyTimelineLabels = computed(() => {
+  if (!trendData.value?.length) return []
+  return trendData.value.map((point) => point.date)
+})
 let chartLoadSeq = 0
 let usersTrendLoadSeq = 0
 let rankingLoadSeq = 0
@@ -579,26 +622,49 @@ const loadDashboardSnapshot = async (includeStats: boolean) => {
     loading.value = true
   }
   chartsLoading.value = true
+  loadError.value = ''
   try {
-    const response = await adminAPI.dashboard.getSnapshotV2({
-      start_date: startDate.value,
-      end_date: endDate.value,
-      granularity: granularity.value,
-      include_stats: includeStats,
-      include_trend: true,
-      include_model_stats: true,
-      include_group_stats: false,
-      include_users_trend: false
-    })
+    const [snapshotResult, proxyResult] = await Promise.allSettled([
+      adminAPI.dashboard.getSnapshotV2({
+        start_date: startDate.value,
+        end_date: endDate.value,
+        granularity: granularity.value,
+        include_stats: includeStats,
+        include_trend: true,
+        include_model_stats: true,
+        include_group_stats: false,
+        include_users_trend: false
+      }),
+      adminAPI.dashboard.getProxyUsageSummary({
+        start_date: startDate.value,
+        end_date: endDate.value,
+        granularity: granularity.value
+      })
+    ])
     if (currentSeq !== chartLoadSeq) return
+
+    if (snapshotResult.status === 'rejected') {
+      throw snapshotResult.reason
+    }
+
+    const response = snapshotResult.value
     if (includeStats && response.stats) {
       stats.value = response.stats
     }
     trendData.value = response.trend || []
     modelStats.value = response.models || []
+
+    if (proxyResult.status === 'fulfilled') {
+      proxyUsageSummary.value = proxyResult.value.items || []
+    } else {
+      // 代理用量统计不是渲染 Dashboard 的硬依赖，失败时降级为空数据，避免整页空白
+      proxyUsageSummary.value = []
+      console.error('Error loading proxy usage summary:', proxyResult.reason)
+    }
   } catch (error) {
     if (currentSeq !== chartLoadSeq) return
-    appStore.showError(t('admin.dashboard.failedToLoad'))
+    loadError.value = t('admin.dashboard.failedToLoad')
+    appStore.showError(loadError.value)
     console.error('Error loading dashboard snapshot:', error)
   } finally {
     if (currentSeq === chartLoadSeq) {

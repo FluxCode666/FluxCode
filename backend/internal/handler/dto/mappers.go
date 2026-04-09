@@ -483,18 +483,19 @@ func RedeemCodeFromServiceAdmin(rc *service.RedeemCode) *AdminRedeemCode {
 
 func redeemCodeFromServiceBase(rc *service.RedeemCode) RedeemCode {
 	out := RedeemCode{
-		ID:           rc.ID,
-		Code:         rc.Code,
-		Type:         rc.Type,
-		Value:        rc.Value,
-		Status:       rc.Status,
-		UsedBy:       rc.UsedBy,
-		UsedAt:       rc.UsedAt,
-		CreatedAt:    rc.CreatedAt,
-		GroupID:      rc.GroupID,
-		ValidityDays: rc.ValidityDays,
-		User:         UserFromServiceShallow(rc.User),
-		Group:        GroupFromServiceShallow(rc.Group),
+		ID:               rc.ID,
+		Code:             rc.Code,
+		Type:             rc.Type,
+		Value:            rc.Value,
+		Status:           rc.Status,
+		UsedBy:           rc.UsedBy,
+		UsedAt:           rc.UsedAt,
+		CreatedAt:        rc.CreatedAt,
+		GroupID:          rc.GroupID,
+		ValidityDays:     rc.ValidityDays,
+		SubscriptionMode: rc.SubscriptionMode,
+		User:             UserFromServiceShallow(rc.User),
+		Group:            GroupFromServiceShallow(rc.Group),
 	}
 
 	// For admin_balance/admin_concurrency types, include notes so users can see
@@ -678,6 +679,7 @@ func userSubscriptionFromServiceBase(sub *service.UserSubscription) UserSubscrip
 		StartsAt:           sub.StartsAt,
 		ExpiresAt:          sub.ExpiresAt,
 		Status:             sub.Status,
+		QuotaMultiplier:    sub.QuotaMultiplier,
 		DailyWindowStart:   sub.DailyWindowStart,
 		WeeklyWindowStart:  sub.WeeklyWindowStart,
 		MonthlyWindowStart: sub.MonthlyWindowStart,
@@ -744,4 +746,63 @@ func PromoCodeUsageFromService(u *service.PromoCodeUsage) *PromoCodeUsage {
 		UsedAt:      u.UsedAt,
 		User:        UserFromServiceShallow(u.User),
 	}
+}
+
+// PricingPlanFromService converts a service PricingPlan to a DTO PricingPlan
+func PricingPlanFromService(p *service.PricingPlan) *PricingPlan {
+	if p == nil {
+		return nil
+	}
+	contactMethods := make([]PricingPlanContactMethod, 0, len(p.ContactMethods))
+	for i := range p.ContactMethods {
+		m := p.ContactMethods[i]
+		contactMethods = append(contactMethods, PricingPlanContactMethod{
+			Type:  m.Type,
+			Value: m.Value,
+		})
+	}
+	return &PricingPlan{
+		ID:             p.ID,
+		GroupID:        p.GroupID,
+		Name:           p.Name,
+		Description:    p.Description,
+		IconURL:        p.IconURL,
+		BadgeText:      p.BadgeText,
+		Tagline:        p.Tagline,
+		PriceAmount:    p.PriceAmount,
+		PriceCurrency:  p.PriceCurrency,
+		PricePeriod:    p.PricePeriod,
+		PriceText:      p.PriceText,
+		Features:       p.Features,
+		ContactMethods: contactMethods,
+		IsFeatured:     p.IsFeatured,
+		SortOrder:      p.SortOrder,
+		Status:         p.Status,
+		CreatedAt:      p.CreatedAt,
+		UpdatedAt:      p.UpdatedAt,
+	}
+}
+
+// PricingPlanGroupFromService converts a service PricingPlanGroup to a DTO PricingPlanGroup
+func PricingPlanGroupFromService(g *service.PricingPlanGroup) *PricingPlanGroup {
+	if g == nil {
+		return nil
+	}
+	out := &PricingPlanGroup{
+		ID:          g.ID,
+		Name:        g.Name,
+		Description: g.Description,
+		SortOrder:   g.SortOrder,
+		Status:      g.Status,
+		CreatedAt:   g.CreatedAt,
+		UpdatedAt:   g.UpdatedAt,
+	}
+	if len(g.Plans) > 0 {
+		out.Plans = make([]PricingPlan, 0, len(g.Plans))
+		for i := range g.Plans {
+			p := g.Plans[i]
+			out.Plans = append(out.Plans, *PricingPlanFromService(&p))
+		}
+	}
+	return out
 }

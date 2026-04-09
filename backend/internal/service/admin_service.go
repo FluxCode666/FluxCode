@@ -95,6 +95,19 @@ type AdminService interface {
 	ResetAccountQuota(ctx context.Context, id int64) error
 }
 
+type accountListAdvancedRepository interface {
+	ListWithAdvancedFilters(
+		ctx context.Context,
+		params pagination.PaginationParams,
+		platform, accountType, status, schedulableStatus string,
+		groupID int64,
+		search, sortBy, sortOrder string,
+		proxyIDs []int64,
+		createdStart, createdEndExclusive *time.Time,
+	) ([]Account, *pagination.PaginationResult, error)
+	GetAccountSummary(ctx context.Context) ([]AccountPlatformSummaryItem, error)
+}
+
 // CreateUserInput represents input for creating a new user via admin operations.
 type CreateUserInput struct {
 	Email                 string
@@ -1462,6 +1475,63 @@ func (s *adminServiceImpl) ListAccounts(ctx context.Context, page, pageSize int,
 		syncOpenAICodexRateLimitFromExtra(ctx, s.accountRepo, &accounts[i], now)
 	}
 	return accounts, result.Total, nil
+}
+
+func (s *adminServiceImpl) ListAccountsAdvanced(
+	ctx context.Context,
+	page, pageSize int,
+	platform, accountType, status, schedulableStatus string,
+	groupID int64,
+	search, sortBy, sortOrder string,
+	proxyIDs []int64,
+	createdStart, createdEndExclusive *time.Time,
+) ([]Account, int64, error) {
+	repo, ok := s.accountRepo.(accountListAdvancedRepository)
+	if !ok {
+		return s.ListAccounts(ctx, page, pageSize, platform, accountType, status, search, groupID)
+	}
+
+	params := pagination.PaginationParams{Page: page, PageSize: pageSize}
+	accounts, result, err := repo.ListWithAdvancedFilters(
+		ctx,
+		params,
+		platform,
+		accountType,
+		status,
+		schedulableStatus,
+		groupID,
+		search,
+		sortBy,
+		sortOrder,
+		proxyIDs,
+		createdStart,
+		createdEndExclusive,
+	)
+	if err != nil {
+		return nil, 0, err
+	}
+	now := time.Now()
+	for i := range accounts {
+		syncOpenAICodexRateLimitFromExtra(ctx, s.accountRepo, &accounts[i], now)
+	}
+	return accounts, result.Total, nil
+}
+
+func (s *adminServiceImpl) GetAccountSummary(ctx context.Context) (*AccountSummaryResponse, error) {
+	repo, ok := s.accountRepo.(accountListAdvancedRepository)
+	if !ok {
+		return &AccountSummaryResponse{}, nil
+	}
+
+	items, err := repo.GetAccountSummary(ctx)
+	if err != nil {
+		return nil, err
+	}
+	response := &AccountSummaryResponse{Platforms: items}
+	for _, item := range items {
+		response.Overall.Add(item.Counts)
+	}
+	return response, nil
 }
 
 func (s *adminServiceImpl) GetAccount(ctx context.Context, id int64) (*Account, error) {
