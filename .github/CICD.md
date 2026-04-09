@@ -13,11 +13,11 @@
 │  ├── backend-ci.yml ─── Go 单元测试 + 集成测试 + golangci-lint   │
 │  └── security-scan.yml ─ govulncheck + pnpm audit (+ 每周定时)   │
 │                                                                 │
-│  生产部署 (推送 v* tag 或手动触发，前后端分离)                       │
+│  生产部署 (仅手动触发，选择 main 分支 + 填写版本号)              │
 │  ├── deploy-frontend.yml ──── rsync 到 Nginx 宿主机             │
 │  └── deploy-backend.yml ───── GHCR → SSH 滚动部署               │
 │                                                                 │
-│  镜像构建 (推送 v* tag 或手动触发，仅构建不部署)                    │
+│  镜像构建 (仅手动触发，构建前端 Docker 镜像)                    │
 │  └── build-frontend-image.yml ─ 前端 Docker 镜像 → GHCR       │
 │                                                                 │
 │  测试部署 (push test 或手动触发，前后端分离)                       │
@@ -133,13 +133,13 @@ exceptions:
 
 | | 生产 | 测试 |
 |---|---|---|
-| **触发** | 推送 `v*` tag | push `test` 分支 |
+| **触发** | 仅手动触发（填写版本号） | push `test` 分支 |
 | **前端流水线** | `deploy-frontend.yml` | `deploy-test-frontend.yml` |
 | **后端流水线** | `deploy-backend.yml` | `deploy-test-backend.yml` |
 | **Environment** | `production-frontend` / `production-backend` | `test-frontend` / `test-backend` |
 | **Secrets 前缀** | `FRONTEND_*` / `BACKEND_*` | `TEST_FRONTEND_*` / `TEST_BACKEND_*` |
 | **后端镜像标签** | `{version}` + `latest` | `test-{sha7}` + `test-latest` |
-| **镜像仓库** | GHCR (+可选 DockerHub) | 仅 GHCR |
+| **镜像仓库** | GHCR | GHCR |
 
 ---
 
@@ -160,7 +160,7 @@ exceptions:
 | 属性 | 值 |
 |------|-----|
 | **文件** | `.github/workflows/deploy-frontend.yml` |
-| **触发** | 推送 `v*` tag（如 `v1.0.0`）或手动触发 |
+| **触发** | 仅手动触发（选择 `main` 分支，填写版本号） |
 | **权限** | `contents: read` |
 | **环境** | `production-frontend`（deploy job） |
 
@@ -220,7 +220,7 @@ upstream backend {
 | 属性 | 值 |
 |------|-----|
 | **文件** | `.github/workflows/deploy-backend.yml` |
-| **触发** | 推送 `v*` tag（如 `v1.0.0`）或手动触发 |
+| **触发** | 仅手动触发（选择 `main` 分支，填写版本号） |
 | **权限** | `contents: read`, `packages: write` |
 | **环境** | `production-backend`（deploy job） |
 
@@ -261,7 +261,7 @@ upstream backend {
 
 | 参数 | 说明 | 默认值 |
 |------|------|--------|
-| `tag` | 版本号（如 `v1.0.0`） | 必填 |
+| `version` | 版本号（如 `1.0.0`） | 必填 |
 | `skip_deploy` | 仅构建推送镜像，跳过 SSH 部署 | `false` |
 | `target_hosts` | 覆盖目标主机列表 | 使用 secret |
 
@@ -412,16 +412,16 @@ docker compose logs -f  # 确认启动成功
 
 ## 工作流触发规则一览
 
-| 工作流 | v* tag | push test | 手动 | 其他 |
-|--------|:-:|:-:|:-:|:-:|
-| CI (`backend-ci.yml`) | — | ✅ | — | 所有 push/PR |
-| Security Scan | — | ✅ | — | 所有 push/PR + 每周一 |
-| Deploy Frontend (`deploy-frontend.yml`) | ✅ | — | ✅ | — |
-| Deploy Backend (`deploy-backend.yml`) | ✅ | — | ✅ | — |
-| Build Frontend Image (`build-frontend-image.yml`) | ✅ | — | ✅ | — |
-| Deploy Test Frontend (`deploy-test-frontend.yml`) | — | ✅¹ | ✅ | — |
-| Deploy Test Backend (`deploy-test-backend.yml`) | — | ✅² | ✅ | — |
-| Release 备用 (`release.yml`) | — | — | ✅ | — |
+| 工作流 | push test | 手动 | 其他 |
+|--------|:-:|:-:|:-:|
+| CI (`backend-ci.yml`) | ✅ | — | 所有 push/PR |
+| Security Scan | ✅ | — | 所有 push/PR + 每周一 |
+| Deploy Frontend (`deploy-frontend.yml`) | — | ✅ | — |
+| Deploy Backend (`deploy-backend.yml`) | — | ✅ | — |
+| Build Frontend Image (`build-frontend-image.yml`) | — | ✅ | — |
+| Deploy Test Frontend (`deploy-test-frontend.yml`) | ✅¹ | ✅ | — |
+| Deploy Test Backend (`deploy-test-backend.yml`) | ✅² | ✅ | — |
+| Release 备用 (`release.yml`) | — | ✅ | — |
 
 - ¹ 仅 `frontend/**` 或 `deploy/frontend/**` 路径变更时触发
 - ² 仅 `backend/**` 或 `deploy/backend/**` 路径变更时触发
@@ -430,22 +430,19 @@ docker compose logs -f  # 确认启动成功
 
 ## 常见操作
 
-### 发布生产版本
+### 部署生产环境
 
-```bash
-# 创建版本 tag 并推送，自动触发前后端部署
-git tag -a v1.2.3 -m "版本说明"
-git push origin v1.2.3
-```
+生产环境仅支持手动触发，在 GitHub → Actions 页面操作：
 
-> 推送 tag 后，`deploy-frontend.yml`、`deploy-backend.yml` 和 `build-frontend-image.yml` 同时触发。后端镜像标签为 `1.2.3`，并自动更新服务器 `.env` 中的 `BACKEND_TAG`。前端 Docker 镜像也会同步构建推送到 GHCR。
+1. 选择工作流（如 `Deploy Backend`）
+2. 点击 **Run workflow**
+3. 分支选择 `main`
+4. 填写 `version`：`1.2.3`（必填）
+5. 可选填写 `target_hosts`、`skip_deploy` 等
 
-### 手动部署生产环境
-
-GitHub → Actions → Deploy Backend → Run workflow：
-- `tag`: `v1.2.3`（必填）
-- `target_hosts`: `10.0.1.10`（可选，指定单台）
-- `skip_deploy`: `true`（可选，仅构建镜像不部署）
+> 后端部署时，镜像标签为你填写的版本号（如 `1.2.3`），并自动更新服务器 `.env` 中的 `BACKEND_TAG`。
+>
+> 前端部署和前端镜像构建需要分别手动触发。
 
 ### 部署到测试环境
 

@@ -6,27 +6,21 @@
 # pull the image manually or use docker-compose.
 #
 # Triggers:
-#   - Push v* tag (e.g., v1.0.0)
-#   - Manual workflow_dispatch
+#   - Manual workflow_dispatch only (select main branch, input version)
 #
 # Required secrets:
 #   GITHUB_TOKEN (auto-provided) for GHCR push
 #
-# Optional secrets:
-#   DOCKERHUB_USERNAME  - DockerHub username (to also push to DockerHub)
-#   DOCKERHUB_TOKEN     - DockerHub access token
+# No additional secrets required.
 # =============================================================================
 
 name: Build Frontend Image
 
 on:
-  push:
-    tags:
-      - 'v*'
   workflow_dispatch:
     inputs:
-      tag:
-        description: 'Version tag (e.g., v1.0.0)'
+      version:
+        description: 'Version number (e.g., 1.0.0)'
         required: true
         type: string
 
@@ -50,21 +44,13 @@ jobs:
       - name: Set image metadata
         id: meta
         run: |
-          # Determine version tag
-          if [ -n "${{ github.event.inputs.tag }}" ]; then
-            VERSION_TAG="${{ github.event.inputs.tag }}"
-          else
-            VERSION_TAG="${GITHUB_REF#refs/tags/}"
-          fi
-          # Strip leading 'v' for image tag (v1.0.0 -> 1.0.0)
-          TAG="${VERSION_TAG#v}"
+          TAG="${{ github.event.inputs.version }}"
           echo "image_tag=${TAG}" >> $GITHUB_OUTPUT
-          echo "version_tag=${VERSION_TAG}" >> $GITHUB_OUTPUT
 
           OWNER_LOWER=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')
           echo "ghcr_image=ghcr.io/${OWNER_LOWER}/sub2api-frontend" >> $GITHUB_OUTPUT
 
-          echo "Image tag: ${TAG}, Version tag: ${VERSION_TAG}"
+          echo "Image tag: ${TAG}"
 
       - name: Set up QEMU (for multi-arch builds)
         uses: docker/setup-qemu-action@v3
@@ -78,13 +64,6 @@ jobs:
           registry: ghcr.io
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Login to DockerHub
-        if: ${{ secrets.DOCKERHUB_USERNAME != '' }}
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Build and push frontend image
         uses: docker/build-push-action@v6
