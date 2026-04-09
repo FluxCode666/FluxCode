@@ -1,9 +1,9 @@
-name: Release
+name: Release (Backup - Manual Only)
 
+# This is the ORIGINAL all-in-one release workflow (GoReleaser).
+# Kept as backup. Use release-production.yml and release-prerelease.yml instead.
+# To run it, trigger manually from GitHub Actions UI.
 on:
-  push:
-    tags:
-      - 'v*'
   workflow_dispatch:
     inputs:
       tag:

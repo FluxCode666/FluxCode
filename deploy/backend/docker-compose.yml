@@ -17,7 +17,7 @@
 
 services:
   backend:
-    image: weishaw/sub2api-backend:latest
+    image: ${BACKEND_IMAGE:-ghcr.io/wei-shaw/sub2api-backend}:${BACKEND_TAG:-latest}
     # Or build from source (run from project root):
     # build:
     #   context: ../../
@@ -32,7 +32,7 @@ services:
       # Expose to host so frontend/LB machine can reach this backend
       - "${BIND_HOST:-0.0.0.0}:${SERVER_PORT:-8080}:8080"
     volumes:
-      - ./data:/app/data
+      - fluxcode-data:/app/data
     environment:
       # =======================================================================
       # Auto Setup (creates admin account and DB schema on first run)
@@ -124,3 +124,6 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
+
+volumes:
+  fluxcode-data:

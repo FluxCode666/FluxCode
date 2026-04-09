@@ -1,0 +1,199 @@
+# =============================================================================
+# Sub2API - Backend Deployment Pipeline
+# =============================================================================
+# Builds the Go backend Docker image (no frontend) and deploys to
+# multiple backend servers via SSH (multi-machine deployment).
+#
+# Triggers:
+#   - Push v* tag (e.g., v1.0.0)
+#   - Manual workflow_dispatch
+#
+# Required secrets:
+#   GHCR is used by default (GITHUB_TOKEN auto-provided).
+#   BACKEND_DEPLOY_HOSTS    - Comma-separated backend server IPs/hostnames
+#                             Example: "10.0.1.10,10.0.1.11,10.0.1.12"
+#   BACKEND_DEPLOY_USER     - SSH user on the backend servers (default: root)
+#   BACKEND_DEPLOY_PASSWORD  - SSH password for the backend servers
+#   BACKEND_DEPLOY_PATH     - Path to docker-compose directory on servers
+#
+# Optional secrets:
+#   BACKEND_DEPLOY_PORT     - SSH port (default: 22)
+#   DOCKERHUB_USERNAME      - DockerHub username (to also push to DockerHub)
+#   DOCKERHUB_TOKEN         - DockerHub access token
+#
+# Deployment strategy:
+#   Rolling update — deploys to one server at a time, waits for health check
+#   before proceeding to the next server. First instance should complete
+#   database migrations before others restart.
+# =============================================================================
+
+name: Deploy Backend
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Version tag (e.g., v1.0.0)'
+        required: true
+        type: string
+      skip_deploy:
+        description: 'Only build & push image, skip SSH deploy'
+        required: false
+        type: boolean
+        default: false
+      target_hosts:
+        description: 'Override target hosts (comma-separated, empty = all from secret)'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  GHCR_IMAGE: ghcr.io/${{ github.repository_owner }}/sub2api-backend
+  PLATFORMS: linux/amd64,linux/arm64
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    outputs:
+      image_tag: ${{ steps.meta.outputs.image_tag }}
+      ghcr_image: ${{ steps.meta.outputs.ghcr_image }}
+      version: ${{ steps.meta.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set image metadata
+        id: meta
+        run: |
+          # Determine version tag
+          if [ -n "${{ github.event.inputs.tag }}" ]; then
+            VERSION_TAG="${{ github.event.inputs.tag }}"
+          else
+            VERSION_TAG="${GITHUB_REF#refs/tags/}"
+          fi
+          # Strip leading 'v' for image tag (v1.0.0 -> 1.0.0)
+          TAG="${VERSION_TAG#v}"
+          echo "image_tag=${TAG}" >> $GITHUB_OUTPUT
+          echo "version_tag=${VERSION_TAG}" >> $GITHUB_OUTPUT
+
+          OWNER_LOWER=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')
+          echo "ghcr_image=ghcr.io/${OWNER_LOWER}/sub2api-backend" >> $GITHUB_OUTPUT
+
+          echo "Image tag: ${TAG}, Version tag: ${VERSION_TAG}"
+
+      - name: Set up QEMU (for multi-arch builds)
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Login to DockerHub
+        if: ${{ secrets.DOCKERHUB_USERNAME != '' }}
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push backend image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/backend/Dockerfile
+          platforms: ${{ env.PLATFORMS }}
+          push: true
+          tags: |
+            ${{ steps.meta.outputs.ghcr_image }}:${{ steps.meta.outputs.image_tag }}
+            ${{ steps.meta.outputs.ghcr_image }}:latest
+          build-args: |
+            VERSION=${{ steps.meta.outputs.image_tag }}
+            COMMIT=${{ github.sha }}
+            DATE=${{ github.event.head_commit.timestamp || github.event.repository.pushed_at }}
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,mode=max,scope=backend
+
+  deploy:
+    needs: build-and-push
+    if: ${{ github.event.inputs.skip_deploy != 'true' }}
+    runs-on: ubuntu-latest
+    environment: production-backend
+    strategy:
+      # Rolling deployment: one server at a time
+      max-parallel: 1
+      matrix:
+        # This will be overridden by the deploy step using BACKEND_DEPLOY_HOSTS
+        include:
+          - index: 0
+    steps:
+      - name: Deploy to backend servers (rolling update)
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ github.event.inputs.target_hosts || secrets.BACKEND_DEPLOY_HOSTS }}
+          username: ${{ secrets.BACKEND_DEPLOY_USER || 'root' }}
+          password: ${{ secrets.BACKEND_DEPLOY_PASSWORD }}
+          port: ${{ secrets.BACKEND_DEPLOY_PORT || '22' }}
+          # appleboy/ssh-action supports comma-separated hosts natively
+          # and executes on each host sequentially
+          script: |
+            set -e
+            DEPLOY_PATH="${{ secrets.BACKEND_DEPLOY_PATH || '/opt/sub2api/backend' }}"
+            cd "$DEPLOY_PATH"
+
+            echo "==> Host: $(hostname) ($(hostname -I | awk '{print $1}'))"
+            echo "==> Deploying version: ${{ needs.build-and-push.outputs.image_tag }}"
+
+            # Update BACKEND_TAG in .env to pin the exact version
+            if grep -q '^BACKEND_TAG=' .env 2>/dev/null; then
+              sed -i 's/^BACKEND_TAG=.*/BACKEND_TAG=${{ needs.build-and-push.outputs.image_tag }}/' .env
+            else
+              echo 'BACKEND_TAG=${{ needs.build-and-push.outputs.image_tag }}' >> .env
+            fi
+
+            echo "==> Pulling backend image..."
+            docker compose pull backend
+
+            echo "==> Restarting backend service..."
+            docker compose up -d --remove-orphans backend
+
+            echo "==> Waiting for backend to be healthy..."
+            RETRIES=0
+            MAX_RETRIES=30
+            while [ $RETRIES -lt $MAX_RETRIES ]; do
+              if docker compose ps backend | grep -q "healthy"; then
+                echo "✅ Backend is healthy on $(hostname)!"
+                break
+              fi
+              RETRIES=$((RETRIES + 1))
+              if [ $RETRIES -ge $MAX_RETRIES ]; then
+                echo "❌ Backend health check timed out on $(hostname)"
+                docker compose logs --tail=30 backend
+                exit 1
+              fi
+              echo "  Waiting for health check... ($RETRIES/$MAX_RETRIES)"
+              sleep 10
+            done
+
+            echo "==> Cleaning up old images..."
+            docker image prune -f --filter "until=168h"
+
+      - name: Deployment summary
+        run: |
+          echo "## Backend Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Image**: \`${{ needs.build-and-push.outputs.ghcr_image }}:${{ needs.build-and-push.outputs.image_tag }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Version**: \`${{ needs.build-and-push.outputs.image_tag }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Target Hosts**: \`${{ github.event.inputs.target_hosts || secrets.BACKEND_DEPLOY_HOSTS }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Commit**: \`${GITHUB_SHA}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Triggered by**: ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY

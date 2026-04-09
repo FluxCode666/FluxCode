@@ -5,9 +5,15 @@
 # Uses the default build tag (!embed), so the backend does not serve
 # static files — frontend is served by a separate Nginx container.
 #
+# Multi-arch build strategy:
+#   Go compilation runs on the BUILD platform (native, fast) using
+#   GOOS/GOARCH cross-compilation. Only the final runtime image uses
+#   the TARGET platform, avoiding slow QEMU emulation for Go builds.
+#
 # Build context: project root (../..)
 # Usage:
 #   docker build -f deploy/backend/Dockerfile -t sub2api-backend .
+#   docker buildx build --platform linux/amd64,linux/arm64 ...
 # =============================================================================
 
 ARG GOLANG_IMAGE=golang:1.26.1-alpine
@@ -18,8 +24,9 @@ ARG GOSUMDB=sum.golang.google.cn
 
 # -----------------------------------------------------------------------------
 # Stage 1: Backend Builder (No frontend)
+# Runs on BUILD platform (native CPU) — Go cross-compiles for TARGETARCH
 # -----------------------------------------------------------------------------
-FROM ${GOLANG_IMAGE} AS backend-builder
+FROM --platform=$BUILDPLATFORM ${GOLANG_IMAGE} AS backend-builder
 
 # Build arguments for version info (set by CI)
 ARG VERSION=
@@ -27,6 +34,10 @@ ARG COMMIT=docker
 ARG DATE
 ARG GOPROXY
 ARG GOSUMDB
+
+# Buildx injects these automatically
+ARG TARGETOS=linux
+ARG TARGETARCH
 
 ENV GOPROXY=${GOPROXY}
 ENV GOSUMDB=${GOSUMDB}
@@ -45,10 +56,11 @@ COPY backend/ ./
 
 # Build the binary WITHOUT -tags embed (uses embed_off.go)
 # This produces a backend-only binary that does not serve frontend files.
+# Cross-compilation: CGO_ENABLED=0 + GOOS/GOARCH = fast native build
 RUN VERSION_VALUE="${VERSION}" && \
     if [ -z "${VERSION_VALUE}" ]; then VERSION_VALUE="$(tr -d '\r\n' < ./cmd/server/VERSION)"; fi && \
     DATE_VALUE="${DATE:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}" && \
-    CGO_ENABLED=0 GOOS=linux go build \
+    CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build \
     -ldflags="-s -w -X main.Version=${VERSION_VALUE} -X main.Commit=${COMMIT} -X main.Date=${DATE_VALUE} -X main.BuildType=release" \
     -trimpath \
     -o /app/sub2api \
@@ -56,13 +68,14 @@ RUN VERSION_VALUE="${VERSION}" && \
 
 # -----------------------------------------------------------------------------
 # Stage 2: PostgreSQL Client (version-matched with docker-compose)
+# Runs on TARGET platform to get correct arch pg binaries
 # -----------------------------------------------------------------------------
-FROM ${POSTGRES_IMAGE} AS pg-client
+FROM --platform=$TARGETPLATFORM ${POSTGRES_IMAGE} AS pg-client
 
 # -----------------------------------------------------------------------------
-# Stage 3: Final Runtime Image
+# Stage 3: Final Runtime Image (TARGET platform)
 # -----------------------------------------------------------------------------
-FROM ${ALPINE_IMAGE}
+FROM --platform=$TARGETPLATFORM ${ALPINE_IMAGE}
 
 # Labels
 LABEL maintainer="Wei-Shaw <github.com/Wei-Shaw>"

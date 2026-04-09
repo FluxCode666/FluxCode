@@ -1,0 +1,204 @@
+# =============================================================================
+# Sub2API - Test Frontend Deployment Pipeline
+# =============================================================================
+# Builds the Vue 3 frontend as static files, then deploys to test
+# Nginx host machines via rsync + nginx reload.
+#
+# Mirrors deploy-frontend.yml but targets the test environment.
+#
+# Triggers:
+#   - Push to test branch with frontend or deploy/frontend changes
+#   - Manual workflow_dispatch
+#
+# Required secrets (in test-frontend environment):
+#   TEST_FRONTEND_DEPLOY_HOSTS      - Comma-separated test frontend server IPs
+#   TEST_FRONTEND_DEPLOY_USER       - SSH user (default: root)
+#   TEST_FRONTEND_DEPLOY_PASSWORD   - SSH password for the test frontend servers
+#
+# Optional secrets:
+#   TEST_FRONTEND_DEPLOY_PORT       - SSH port (default: 22)
+#   TEST_FRONTEND_NGINX_HTML_PATH   - Nginx html root (default: /var/www/html)
+#   TEST_FRONTEND_NGINX_CONF_PATH   - Nginx config path (default: /etc/nginx/nginx.conf)
+# =============================================================================
+
+name: Deploy Test Frontend
+
+on:
+  push:
+    branches: [test]
+    paths:
+      - 'frontend/**'
+      - 'deploy/frontend/**'
+      - '.github/workflows/deploy-test-frontend.yml'
+  workflow_dispatch:
+    inputs:
+      skip_deploy:
+        description: 'Only build, skip deployment to servers'
+        required: false
+        type: boolean
+        default: false
+      target_hosts:
+        description: 'Override target hosts (comma-separated, empty = all from secret)'
+        required: false
+        type: string
+      deploy_nginx_conf:
+        description: 'Also deploy nginx.conf (default: false, only deploy static files)'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+
+      - name: Build frontend
+        working-directory: frontend
+        run: pnpm run build
+
+      # Vite outputs to ../backend/internal/web/dist
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: frontend-dist
+          path: backend/internal/web/dist/
+          retention-days: 3
+
+  deploy:
+    needs: build
+    if: ${{ github.event.inputs.skip_deploy != 'true' }}
+    runs-on: ubuntu-latest
+    environment: test-frontend
+    steps:
+      - name: Checkout (for nginx.conf)
+        uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            deploy/frontend
+
+      - name: Download build artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: frontend-dist
+          path: ./dist
+
+      - name: Install sshpass
+        run: sudo apt-get update && sudo apt-get install -y sshpass
+
+      - name: Deploy to test frontend servers
+        env:
+          HOSTS: ${{ github.event.inputs.target_hosts || secrets.TEST_FRONTEND_DEPLOY_HOSTS }}
+          USER: ${{ secrets.TEST_FRONTEND_DEPLOY_USER || 'root' }}
+          SSHPASS: ${{ secrets.TEST_FRONTEND_DEPLOY_PASSWORD }}
+          PORT: ${{ secrets.TEST_FRONTEND_DEPLOY_PORT || '22' }}
+          HTML_PATH: ${{ secrets.TEST_FRONTEND_NGINX_HTML_PATH || '/var/www/html' }}
+          CONF_PATH: ${{ secrets.TEST_FRONTEND_NGINX_CONF_PATH || '/etc/nginx/nginx.conf' }}
+          DEPLOY_CONF: ${{ github.event.inputs.deploy_nginx_conf }}
+        run: |
+          set -e
+
+          # SSH options: disable host key checking for CI
+          SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -p ${PORT}"
+
+          # Parse comma-separated hosts
+          IFS=',' read -ra HOST_LIST <<< "$HOSTS"
+
+          FAILED_HOSTS=""
+          SUCCESS_COUNT=0
+
+          for HOST in "${HOST_LIST[@]}"; do
+            HOST=$(echo "$HOST" | xargs)  # trim whitespace
+            [ -z "$HOST" ] && continue
+
+            echo ""
+            echo "============================================"
+            echo "[Test] Deploying frontend to: ${HOST}"
+            echo "============================================"
+
+            # Step 1: Create backup directory on remote
+            sshpass -e ssh ${SSH_OPTS} "${USER}@${HOST}" \
+              "mkdir -p ${HTML_PATH}.bak && cp -a ${HTML_PATH}/. ${HTML_PATH}.bak/ 2>/dev/null || true"
+
+            # Step 2: Rsync static files
+            echo "==> Syncing static files to ${HOST}:${HTML_PATH}..."
+            sshpass -e rsync -avz --delete \
+              -e "ssh ${SSH_OPTS}" \
+              ./dist/ \
+              "${USER}@${HOST}:${HTML_PATH}/"
+
+            # Step 3: Optionally deploy nginx.conf
+            if [ "$DEPLOY_CONF" = "true" ]; then
+              echo "==> Deploying nginx.conf to ${HOST}..."
+              sshpass -e rsync -avz \
+                -e "ssh ${SSH_OPTS}" \
+                ./deploy/frontend/nginx.conf \
+                "${USER}@${HOST}:${CONF_PATH}"
+            fi
+
+            # Step 4: Test and reload nginx
+            echo "==> Testing and reloading nginx on ${HOST}..."
+            sshpass -e ssh ${SSH_OPTS} "${USER}@${HOST}" << 'REMOTE_SCRIPT'
+              set -e
+
+              # Test nginx configuration
+              if ! nginx -t 2>&1; then
+                echo "❌ nginx config test failed, rolling back..."
+                exit 1
+              fi
+
+              # Reload nginx via systemd (Ubuntu apt-installed nginx)
+              systemctl reload nginx
+              echo "✅ nginx reloaded successfully"
+          REMOTE_SCRIPT
+
+            if [ $? -eq 0 ]; then
+              echo "✅ Successfully deployed to ${HOST}"
+              SUCCESS_COUNT=$((SUCCESS_COUNT + 1))
+            else
+              echo "❌ Failed to deploy to ${HOST}"
+              FAILED_HOSTS="${FAILED_HOSTS} ${HOST}"
+            fi
+          done
+
+          echo ""
+          echo "============================================"
+          echo "Deployment complete: ${SUCCESS_COUNT}/${#HOST_LIST[@]} servers succeeded"
+          echo "============================================"
+
+          if [ -n "$FAILED_HOSTS" ]; then
+            echo "❌ Failed hosts:${FAILED_HOSTS}"
+            exit 1
+          fi
+
+      - name: Deployment summary
+        if: always()
+        run: |
+          echo "## Test Frontend Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Environment**: test" >> $GITHUB_STEP_SUMMARY
+          echo "- **Target Hosts**: \`${{ github.event.inputs.target_hosts || secrets.TEST_FRONTEND_DEPLOY_HOSTS }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Nginx HTML Path**: \`${{ secrets.TEST_FRONTEND_NGINX_HTML_PATH || '/var/www/html' }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Commit**: \`${GITHUB_SHA}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Deploy nginx.conf**: \`${{ github.event.inputs.deploy_nginx_conf || 'false' }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Triggered by**: ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
