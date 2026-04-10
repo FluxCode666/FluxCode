@@ -17,12 +17,12 @@
 
 services:
   backend:
-    image: ${BACKEND_IMAGE:-ghcr.io/wei-shaw/sub2api-backend}:${BACKEND_TAG:-latest}
+    image: ${BACKEND_IMAGE:-ghcr.io/fluxcode666/fluxcode-backend}:${BACKEND_TAG:-latest}
     # Or build from source (run from project root):
     # build:
     #   context: ../../
     #   dockerfile: deploy/backend/Dockerfile
-    container_name: sub2api-backend
+    container_name: fluxcode-backend
     restart: unless-stopped
     ulimits:
       nofile:

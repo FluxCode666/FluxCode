@@ -27,8 +27,8 @@ services:
     build:
       context: ../
       dockerfile: deploy/frontend/Dockerfile
-    image: sub2api-frontend:latest
-    container_name: sub2api-frontend
+    image: fluxcode-frontend:latest
+    container_name: fluxcode-frontend
     restart: unless-stopped
     ports:
       - "${BIND_HOST:-0.0.0.0}:${FRONTEND_PORT:-80}:80"
@@ -55,8 +55,8 @@ services:
     build:
       context: ../
       dockerfile: deploy/backend/Dockerfile
-    image: sub2api-backend:latest
-    container_name: sub2api-backend-1
+    image: fluxcode-backend:latest
+    container_name: fluxcode-backend-1
     restart: unless-stopped
     ulimits:
       nofile:
@@ -170,8 +170,8 @@ services:
   # in deploy/frontend/nginx.conf to include the new backend.
   # ===========================================================================
   # backend-2:
-  #   image: sub2api-backend:latest
-  #   container_name: sub2api-backend-2
+  #   image: fluxcode-backend:latest
+  #   container_name: fluxcode-backend-2
   #   restart: unless-stopped
   #   ulimits:
   #     nofile:
@@ -233,7 +233,7 @@ services:
   # ===========================================================================
   postgres:
     image: postgres:18-alpine
-    container_name: sub2api-cluster-postgres
+    container_name: fluxcode-cluster-postgres
     restart: unless-stopped
     ulimits:
       nofile:
@@ -263,7 +263,7 @@ services:
   # ===========================================================================
   redis:
     image: redis:8-alpine
-    container_name: sub2api-cluster-redis
+    container_name: fluxcode-cluster-redis
     restart: unless-stopped
     ulimits:
       nofile:

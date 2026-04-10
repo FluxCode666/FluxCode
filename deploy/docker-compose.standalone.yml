@@ -12,8 +12,8 @@
 
 services:
   sub2api:
-    image: weishaw/sub2api:latest
-    container_name: sub2api
+    image: fluxcode666/fluxcode:latest
+    container_name: fluxcode
     restart: unless-stopped
     ulimits:
       nofile:

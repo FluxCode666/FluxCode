@@ -18,12 +18,12 @@
 
 services:
   frontend:
-    image: weishaw/sub2api-frontend-caddy:latest
+    image: fluxcode666/fluxcode-frontend-caddy:latest
     # Or build from source (run from project root):
     # build:
     #   context: ../../
     #   dockerfile: deploy/frontend/Dockerfile.caddy
-    container_name: sub2api-frontend-caddy
+    container_name: fluxcode-frontend-caddy
     restart: unless-stopped
     ports:
       # HTTP
