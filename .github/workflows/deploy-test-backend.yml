@@ -124,6 +124,8 @@ jobs:
       matrix:
         include:
           - index: 0
+    env:
+      GHCR_PAT: ${{ secrets.GHCR_PAT }}
     steps:
       - name: Deploy to test backend servers (rolling update)
         uses: appleboy/ssh-action@v1
@@ -132,12 +134,19 @@ jobs:
           username: ${{ secrets.TEST_BACKEND_DEPLOY_USER || 'root' }}
           password: ${{ secrets.TEST_BACKEND_DEPLOY_PASSWORD }}
           port: ${{ secrets.TEST_BACKEND_DEPLOY_PORT || '22' }}
+          envs: GHCR_PAT
           script: |
             set -e
             DEPLOY_PATH="${{ secrets.TEST_BACKEND_DEPLOY_PATH || '/opt/sub2api/backend' }}"
             cd "$DEPLOY_PATH"
 
             echo "==> [Test] Host: $(hostname) ($(hostname -I | awk '{print $1}'))"
+
+            # Login to GHCR (using PAT passed via environment)
+            if [ -n "$GHCR_PAT" ]; then
+              echo "$GHCR_PAT" | docker login ghcr.io -u ${{ github.repository_owner }} --password-stdin
+            fi
+
             echo "==> Updating .env: BACKEND_TAG=${{ needs.build-and-push.outputs.image_tag }}"
             sed -i 's|^BACKEND_TAG=.*|BACKEND_TAG=${{ needs.build-and-push.outputs.image_tag }}|' .env
 

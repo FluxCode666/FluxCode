@@ -115,6 +115,8 @@ jobs:
         # This will be overridden by the deploy step using BACKEND_DEPLOY_HOSTS
         include:
           - index: 0
+    env:
+      GHCR_PAT: ${{ secrets.GHCR_PAT }}
     steps:
       - name: Deploy to backend servers (rolling update)
         uses: appleboy/ssh-action@v1
@@ -123,6 +125,7 @@ jobs:
           username: ${{ secrets.BACKEND_DEPLOY_USER || 'root' }}
           password: ${{ secrets.BACKEND_DEPLOY_PASSWORD }}
           port: ${{ secrets.BACKEND_DEPLOY_PORT || '22' }}
+          envs: GHCR_PAT
           # appleboy/ssh-action supports comma-separated hosts natively
           # and executes on each host sequentially
           script: |
@@ -132,6 +135,11 @@ jobs:
 
             echo "==> Host: $(hostname) ($(hostname -I | awk '{print $1}'))"
             echo "==> Deploying version: ${{ needs.build-and-push.outputs.image_tag }}"
+
+            # Login to GHCR (using PAT passed via environment)
+            if [ -n "$GHCR_PAT" ]; then
+              echo "$GHCR_PAT" | docker login ghcr.io -u ${{ github.repository_owner }} --password-stdin
+            fi
 
             # Update BACKEND_TAG in .env to pin the exact version
             if grep -q '^BACKEND_TAG=' .env 2>/dev/null; then

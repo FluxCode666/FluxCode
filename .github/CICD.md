@@ -298,6 +298,7 @@ upstream backend {
 | `BACKEND_DEPLOY_PASSWORD` | SSH 密码 | ✅ | — |
 | `BACKEND_DEPLOY_PORT` | SSH 端口 | — | `22` |
 | `BACKEND_DEPLOY_PATH` | docker-compose 所在目录 | — | `/opt/sub2api/backend` |
+| `GHCR_PAT` | GHCR 拉取用 PAT（`read:packages`） | ✅ | — |
 
 ### 测试前端 Secrets（`test-frontend` Environment）
 
@@ -318,6 +319,7 @@ upstream backend {
 | `TEST_BACKEND_DEPLOY_PASSWORD` | SSH 密码 | ✅ | — |
 | `TEST_BACKEND_DEPLOY_PORT` | SSH 端口 | — | `22` |
 | `TEST_BACKEND_DEPLOY_PATH` | docker-compose 所在目录 | — | `/opt/sub2api/backend` |
+| `GHCR_PAT` | GHCR 拉取用 PAT（`read:packages`） | ✅ | — |
 
 ### 发布 Secrets
 
