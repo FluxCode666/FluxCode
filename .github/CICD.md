@@ -362,8 +362,8 @@ upstream backend {
 
 | 脚本 | 说明 | 镜像名 |
 |------|------|--------|
-| `deploy/build-and-push-backend.sh` | 构建后端镜像（纯 Go，无前端） | `ghcr.io/{owner}/sub2api-backend` |
-| `deploy/build-and-push-frontend.sh` | 构建前端镜像（Vue 3 + Nginx） | `ghcr.io/{owner}/sub2api-frontend` |
+| `deploy/build-and-push-backend.sh` | 构建后端镜像（纯 Go，无前端） | `ghcr.io/{owner}/fluxcode-backend` |
+| `deploy/build-and-push-frontend.sh` | 构建前端镜像（Vue 3 + Nginx） | `ghcr.io/{owner}/fluxcode-frontend` |
 
 ### 用法
 

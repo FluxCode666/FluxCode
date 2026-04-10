@@ -80,7 +80,7 @@ if [[ -z "${GHCR_OWNER:-}" ]]; then
 fi
 GHCR_OWNER=$(echo "$GHCR_OWNER" | tr '[:upper:]' '[:lower:]')
 
-IMAGE_NAME="ghcr.io/${GHCR_OWNER}/sub2api-backend"
+IMAGE_NAME="ghcr.io/${GHCR_OWNER}/fluxcode-backend"
 PLATFORMS="${PLATFORMS:-linux/amd64,linux/arm64}"
 GOPROXY="${GOPROXY:-https://goproxy.cn,direct}"
 GOSUMDB="${GOSUMDB:-sum.golang.google.cn}"

@@ -48,7 +48,7 @@ jobs:
           echo "image_tag=${TAG}" >> $GITHUB_OUTPUT
 
           OWNER_LOWER=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')
-          echo "ghcr_image=ghcr.io/${OWNER_LOWER}/sub2api-frontend" >> $GITHUB_OUTPUT
+          echo "ghcr_image=ghcr.io/${OWNER_LOWER}/fluxcode-frontend" >> $GITHUB_OUTPUT
 
           echo "Image tag: ${TAG}"
 

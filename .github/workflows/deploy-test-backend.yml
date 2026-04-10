@@ -75,7 +75,7 @@ jobs:
           echo "image_tag=${TAG}" >> $GITHUB_OUTPUT
 
           OWNER_LOWER=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')
-          echo "ghcr_image=ghcr.io/${OWNER_LOWER}/sub2api-backend" >> $GITHUB_OUTPUT
+          echo "ghcr_image=ghcr.io/${OWNER_LOWER}/fluxcode-backend" >> $GITHUB_OUTPUT
 
           # Read version from VERSION file
           VERSION=$(tr -d '\r\n' < backend/cmd/server/VERSION || echo "unknown")
@@ -138,6 +138,9 @@ jobs:
             cd "$DEPLOY_PATH"
 
             echo "==> [Test] Host: $(hostname) ($(hostname -I | awk '{print $1}'))"
+            echo "==> Updating .env: BACKEND_TAG=${{ needs.build-and-push.outputs.image_tag }}"
+            sed -i 's|^BACKEND_TAG=.*|BACKEND_TAG=${{ needs.build-and-push.outputs.image_tag }}|' .env
+
             echo "==> Pulling image: ${{ needs.build-and-push.outputs.ghcr_image }}:${{ needs.build-and-push.outputs.image_tag }}"
             docker compose pull backend
 

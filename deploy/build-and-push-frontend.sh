@@ -78,7 +78,7 @@ if [[ -z "${GHCR_OWNER:-}" ]]; then
 fi
 GHCR_OWNER=$(echo "$GHCR_OWNER" | tr '[:upper:]' '[:lower:]')
 
-IMAGE_NAME="ghcr.io/${GHCR_OWNER}/sub2api-frontend"
+IMAGE_NAME="ghcr.io/${GHCR_OWNER}/fluxcode-frontend"
 PLATFORMS="${PLATFORMS:-linux/amd64,linux/arm64}"
 
 # ---- 打印构建信息 ----
