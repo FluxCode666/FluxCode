@@ -347,6 +347,56 @@ upstream backend {
 
 ---
 
+## 手动构建镜像并推送到 GHCR
+
+除 CI 自动构建外，还可以在本地手动构建前后端 Docker 镜像并推送到 GHCR。
+
+### 前提条件
+
+1. 安装 Docker 并启用 Buildx
+2. 登录 GHCR：`docker login ghcr.io -u <GitHub用户名>`（使用 PAT 作为密码，需 `write:packages` 权限）
+
+> 登录凭证保存在 `~/.docker/config.json`，PAT 不过期则登录态永久有效。每台机器需独立登录。
+
+### 脚本
+
+| 脚本 | 说明 | 镜像名 |
+|------|------|--------|
+| `deploy/build-and-push-backend.sh` | 构建后端镜像（纯 Go，无前端） | `ghcr.io/{owner}/sub2api-backend` |
+| `deploy/build-and-push-frontend.sh` | 构建前端镜像（Vue 3 + Nginx） | `ghcr.io/{owner}/sub2api-frontend` |
+
+### 用法
+
+```bash
+# 构建并推送（版本号为必填参数）
+./deploy/build-and-push-backend.sh 1.0.0
+./deploy/build-and-push-frontend.sh 1.0.0
+
+# 仅构建多架构镜像，不推送（验证用）
+./deploy/build-and-push-backend.sh 1.0.0 --no-push
+
+# 仅构建本机架构并加载到本地 Docker（开发调试用）
+./deploy/build-and-push-frontend.sh 1.0.0 --local
+```
+
+### 构建参数
+
+两个脚本均支持以下环境变量覆盖默认值：
+
+| 环境变量 | 说明 | 默认值 |
+|----------|------|--------|
+| `GHCR_OWNER` | GHCR 仓库所有者 | 自动从 git remote 检测 |
+| `PLATFORMS` | 目标平台 | `linux/amd64,linux/arm64` |
+
+后端脚本额外支持：
+
+| 环境变量 | 说明 | 默认值 |
+|----------|------|--------|
+| `GOPROXY` | Go 模块代理 | `https://goproxy.cn,direct` |
+| `GOSUMDB` | Go checksum 数据库 | `sum.golang.google.cn` |
+
+---
+
 ## 首次部署指南
 
 ### 前端服务器初始化
@@ -368,6 +418,8 @@ vim /etc/nginx/nginx.conf
 # 4. 测试并启动
 nginx -t && systemctl enable --now nginx
 ```
+
+> **Nginx 配置详解、SSL 证书申请与管理**请参阅独立文档：[`deploy/frontend/NGINX_SSL.md`](../deploy/frontend/NGINX_SSL.md)
 
 ### 后端服务器初始化
 
