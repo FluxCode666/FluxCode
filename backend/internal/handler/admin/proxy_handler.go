@@ -2,6 +2,7 @@ package admin
 
 import (
 	"context"
+	"errors"
 	"strconv"
 	"strings"
 
@@ -43,6 +44,64 @@ type UpdateProxyRequest struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
 	Status   string `json:"status" binding:"omitempty,oneof=active inactive"`
+}
+
+func parseProxyCountStatesQuery(raw string) ([]service.ProxyAccountCountState, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return []service.ProxyAccountCountState{service.ProxyAccountCountStateAvailable}, nil
+	}
+
+	parts := strings.Split(raw, ",")
+	seen := make(map[service.ProxyAccountCountState]struct{}, len(parts))
+	out := make([]service.ProxyAccountCountState, 0, len(parts))
+	for _, part := range parts {
+		state := service.ProxyAccountCountState(strings.TrimSpace(part))
+		if state == "" {
+			continue
+		}
+		if !service.IsValidProxyAccountCountState(state) {
+			return nil, errors.New("invalid count_states")
+		}
+		if _, ok := seen[state]; ok {
+			continue
+		}
+		seen[state] = struct{}{}
+		if state == service.ProxyAccountCountStateAllActive {
+			return []service.ProxyAccountCountState{service.ProxyAccountCountStateAllActive}, nil
+		}
+		out = append(out, state)
+	}
+	if len(out) == 0 {
+		return []service.ProxyAccountCountState{service.ProxyAccountCountStateAvailable}, nil
+	}
+	return out, nil
+}
+
+func parseProxyIDsForCounts(raw string) ([]int64, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, nil
+	}
+	parts := strings.Split(raw, ",")
+	seen := make(map[int64]struct{}, len(parts))
+	out := make([]int64, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		id, err := strconv.ParseInt(part, 10, 64)
+		if err != nil || id <= 0 {
+			return nil, errors.New("invalid proxy_ids")
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		out = append(out, id)
+	}
+	return out, nil
 }
 
 // List handles listing all proxies with pagination
@@ -100,6 +159,33 @@ func (h *ProxyHandler) GetAll(c *gin.Context) {
 	out := make([]dto.AdminProxy, 0, len(proxies))
 	for i := range proxies {
 		out = append(out, *dto.ProxyFromServiceAdmin(&proxies[i]))
+	}
+	response.Success(c, out)
+}
+
+// GetCounts handles getting account counts for specific proxies.
+// GET /api/v1/admin/proxies/counts
+func (h *ProxyHandler) GetCounts(c *gin.Context) {
+	proxyIDs, err := parseProxyIDsForCounts(c.Query("proxy_ids"))
+	if err != nil || len(proxyIDs) == 0 {
+		response.BadRequest(c, "Invalid proxy_ids")
+		return
+	}
+	countStates, err := parseProxyCountStatesQuery(c.Query("count_states"))
+	if err != nil {
+		response.BadRequest(c, "Invalid count_states")
+		return
+	}
+
+	items, err := h.adminService.GetProxyAccountCounts(c.Request.Context(), proxyIDs, countStates)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	out := make([]dto.ProxyAccountCountItem, 0, len(items))
+	for i := range items {
+		out = append(out, *dto.ProxyAccountCountItemFromService(&items[i]))
 	}
 	response.Success(c, out)
 }
@@ -284,7 +370,13 @@ func (h *ProxyHandler) GetProxyAccounts(c *gin.Context) {
 		return
 	}
 
-	accounts, err := h.adminService.GetProxyAccounts(c.Request.Context(), proxyID)
+	countStates, err := parseProxyCountStatesQuery(c.Query("count_states"))
+	if err != nil {
+		response.BadRequest(c, "Invalid count_states")
+		return
+	}
+
+	accounts, err := h.adminService.GetProxyAccounts(c.Request.Context(), proxyID, countStates)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

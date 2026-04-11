@@ -1685,6 +1685,11 @@ export interface AccountSummaryResponse {
   platforms: AccountPlatformSummaryItem[]
 }
 
+export interface ProxyAccountCountItem {
+  proxy_id: number
+  account_count: number
+}
+
 // ==================== Proxy Usage Types ====================
 
 export interface ProxyUsageTimelinePoint {

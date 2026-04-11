@@ -190,20 +190,86 @@
             </div>
           </template>
 
-          <template #cell-account_count="{ row, value }">
+          <template #header-account_count>
+            <div ref="countFilterRef" class="inline-flex items-center gap-2 normal-case tracking-normal">
+              <span>{{ t('admin.proxies.columns.accounts') }}</span>
+              <button
+                ref="countFilterTriggerRef"
+                type="button"
+                :class="[
+                  'flex min-w-[84px] items-center justify-between gap-2 rounded-xl border px-3 py-1.5 text-xs font-normal transition-all duration-200',
+                  'bg-white text-gray-900 shadow-sm dark:bg-dark-800 dark:text-dark-100',
+                  countFilterOpen
+                    ? 'border-primary-500 ring-2 ring-primary-500/30'
+                    : 'border-gray-200 hover:border-gray-300 dark:border-dark-600 dark:hover:border-dark-500'
+                ]"
+                @click.stop="toggleCountFilterOpen"
+              >
+                <span class="truncate text-left">{{ proxyCountStatesSummary }}</span>
+                <Icon
+                  name="chevronDown"
+                  size="sm"
+                  :class="['flex-none text-gray-400 transition-transform duration-200', countFilterOpen && 'rotate-180']"
+                />
+              </button>
+              <Teleport to="body">
+                <Transition name="select-dropdown">
+                  <div
+                    v-if="countFilterOpen"
+                    ref="countFilterDropdownRef"
+                    class="proxy-count-filter-dropdown select-dropdown-portal"
+                    :style="countFilterDropdownStyle"
+                    @click.stop
+                    @mousedown.stop
+                  >
+                    <div class="proxy-count-filter-options max-h-60 overflow-y-auto py-1">
+                      <button
+                        v-for="option in proxyCountStateOptions"
+                        :key="option.value"
+                        type="button"
+                        :class="[
+                          'select-option w-full text-left',
+                          isProxyCountStateSelected(option.value) && 'select-option-selected'
+                        ]"
+                        @click.stop="handleSelectProxyCountState(option.value)"
+                      >
+                        <span class="flex min-w-0 flex-col">
+                          <span class="truncate">{{ option.label }}</span>
+                          <span
+                            v-if="option.description"
+                            class="text-[10px] leading-tight text-gray-400 dark:text-dark-400"
+                          >
+                            {{ option.description }}
+                          </span>
+                        </span>
+                        <Icon
+                          v-if="isProxyCountStateSelected(option.value)"
+                          name="check"
+                          size="sm"
+                          class="flex-none text-primary-500"
+                        />
+                      </button>
+                    </div>
+                  </div>
+                </Transition>
+              </Teleport>
+            </div>
+          </template>
+
+          <template #cell-account_count="{ row }">
             <button
-              v-if="(value || 0) > 0"
+              v-if="(getProxyAccountCountDisplay(row.id) as number) > 0"
               type="button"
               class="inline-flex items-center rounded bg-gray-100 px-2 py-0.5 text-xs font-medium text-primary-700 hover:bg-gray-200 dark:bg-dark-600 dark:text-primary-300 dark:hover:bg-dark-500"
               @click="openAccountsModal(row)"
             >
-              {{ t('admin.groups.accountsCount', { count: value || 0 }) }}
+              {{ t('admin.groups.accountsCount', { count: getProxyAccountCountDisplay(row.id) }) }}
             </button>
             <span
               v-else
               class="inline-flex items-center rounded bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-800 dark:bg-dark-600 dark:text-gray-300"
             >
-              {{ t('admin.groups.accountsCount', { count: 0 }) }}
+              {{ t('admin.groups.accountsCount', { count: getProxyAccountCountDisplay(row.id) }) }}
             </span>
           </template>
 
@@ -819,7 +885,7 @@
     <!-- Proxy Accounts Dialog -->
     <BaseDialog
       :show="showAccountsModal"
-      :title="t('admin.proxies.accountsTitle', { name: accountsProxy?.name || '' })"
+      :title="`${t('admin.proxies.accountsTitle', { name: accountsProxy?.name || '' })} (${proxyCountStatesSummary})`"
       width="normal"
       @close="closeAccountsModal"
     >
@@ -864,11 +930,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
+import { ref, reactive, computed, nextTick, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { adminAPI } from '@/api/admin'
-import type { Proxy, ProxyAccountSummary, ProxyProtocol, ProxyQualityCheckResult } from '@/types'
+import type { Proxy, ProxyAccountSummary, ProxyAccountCountState, ProxyProtocol, ProxyQualityCheckResult } from '@/types'
 import type { Column } from '@/components/common/types'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import TablePageLayout from '@/components/layout/TablePageLayout.vue'
@@ -931,10 +997,75 @@ const editStatusOptions = computed(() => [
   { value: 'inactive', label: t('admin.accounts.status.inactive') }
 ])
 
+const proxyCountStateOptions = computed(
+  () =>
+    [
+      {
+        value: 'all_active' as ProxyAccountCountState,
+        label: t('admin.proxies.countStates.allActive'),
+        description: t('admin.proxies.countStates.allActiveDescription')
+      },
+      {
+        value: 'available' as ProxyAccountCountState,
+        label: t('admin.proxies.countStates.available'),
+        description: t('admin.proxies.countStates.availableDescription')
+      },
+      {
+        value: 'manual_unschedulable' as ProxyAccountCountState,
+        label: t('admin.proxies.countStates.manualUnschedulable'),
+        description: t('admin.proxies.countStates.manualUnschedulableDescription')
+      },
+      {
+        value: 'temp_unschedulable' as ProxyAccountCountState,
+        label: t('admin.proxies.countStates.tempUnschedulable'),
+        description: t('admin.proxies.countStates.tempUnschedulableDescription')
+      },
+      {
+        value: 'rate_limited' as ProxyAccountCountState,
+        label: t('admin.proxies.countStates.rateLimited'),
+        description: t('admin.proxies.countStates.rateLimitedDescription')
+      },
+      {
+        value: 'overloaded' as ProxyAccountCountState,
+        label: t('admin.proxies.countStates.overloaded'),
+        description: t('admin.proxies.countStates.overloadedDescription')
+      },
+      {
+        value: 'expired' as ProxyAccountCountState,
+        label: t('admin.proxies.countStates.expired'),
+        description: t('admin.proxies.countStates.expiredDescription')
+      },
+      {
+        value: 'inactive' as ProxyAccountCountState,
+        label: t('admin.proxies.countStates.inactive'),
+        description: t('admin.proxies.countStates.inactiveDescription')
+      },
+      {
+        value: 'error' as ProxyAccountCountState,
+        label: t('admin.proxies.countStates.error'),
+        description: t('admin.proxies.countStates.errorDescription')
+      },
+      {
+        value: 'banned' as ProxyAccountCountState,
+        label: t('admin.proxies.countStates.banned'),
+        description: t('admin.proxies.countStates.bannedDescription')
+      }
+    ] satisfies Array<{ value: ProxyAccountCountState; label: string; description?: string }>
+)
+
 const proxies = ref<Proxy[]>([])
 const visiblePasswordIds = reactive(new Set<number>())
 const copyMenuProxyId = ref<number | null>(null)
+const proxyAccountCounts = ref<Record<number, number>>({})
 const loading = ref(false)
+const countsLoading = ref(false)
+const countFilterOpen = ref(false)
+const countFilterRef = ref<HTMLElement | null>(null)
+const countFilterTriggerRef = ref<HTMLElement | null>(null)
+const countFilterDropdownRef = ref<HTMLElement | null>(null)
+const countFilterTriggerRect = ref<DOMRect | null>(null)
+const countFilterDropdownPosition = ref<'bottom' | 'top'>('bottom')
+const selectedProxyCountState = ref<ProxyAccountCountState>('available')
 const searchQuery = ref('')
 const filters = reactive({
   protocol: '',
@@ -1029,6 +1160,167 @@ const editForm = reactive({
 })
 
 let abortController: AbortController | null = null
+let countsAbortController: AbortController | null = null
+
+const proxyCountStatesSummary = computed(() => {
+  const matched = proxyCountStateOptions.value.find(
+    (option) => option.value === selectedProxyCountState.value
+  )
+  return matched?.label ?? t('admin.proxies.countStates.available')
+})
+
+const countFilterDropdownStyle = computed(() => {
+  if (!countFilterTriggerRect.value) {
+    return {}
+  }
+
+  const rect = countFilterTriggerRect.value
+  const style: Record<string, string> = {
+    position: 'fixed',
+    left: `${rect.left}px`,
+    minWidth: `${Math.max(rect.width, 160)}px`,
+    zIndex: '100000020'
+  }
+
+  if (countFilterDropdownPosition.value === 'top') {
+    style.bottom = `${window.innerHeight - rect.top + 8}px`
+  } else {
+    style.top = `${rect.bottom + 8}px`
+  }
+
+  return style
+})
+
+const isProxyCountStateSelected = (state: ProxyAccountCountState) => {
+  return selectedProxyCountState.value === state
+}
+
+const syncCountFilterDropdownPosition = () => {
+  if (!countFilterTriggerRef.value) {
+    return
+  }
+
+  countFilterTriggerRect.value = countFilterTriggerRef.value.getBoundingClientRect()
+
+  nextTick(() => {
+    if (!countFilterTriggerRect.value || !countFilterDropdownRef.value) {
+      return
+    }
+
+    const rect = countFilterTriggerRect.value
+    const dropdownHeight = countFilterDropdownRef.value.offsetHeight || 240
+    const spaceBelow = window.innerHeight - rect.bottom
+    const spaceAbove = rect.top
+
+    if (spaceBelow < dropdownHeight && spaceAbove > dropdownHeight) {
+      countFilterDropdownPosition.value = 'top'
+      return
+    }
+
+    countFilterDropdownPosition.value = 'bottom'
+  })
+}
+
+const closeCountFilter = () => {
+  countFilterOpen.value = false
+}
+
+const toggleCountFilterOpen = () => {
+  if (countFilterOpen.value) {
+    closeCountFilter()
+    return
+  }
+
+  countFilterOpen.value = true
+  syncCountFilterDropdownPosition()
+}
+
+const handleDocumentClickForCountFilter = (event: MouseEvent) => {
+  const target = event.target as HTMLElement | null
+  if (!target) return
+  if (target.closest('.proxy-count-filter-dropdown')) return
+  if (countFilterRef.value?.contains(target)) return
+  closeCountFilter()
+}
+
+const handleCountFilterEscape = (event: KeyboardEvent) => {
+  if (event.key === 'Escape' && countFilterOpen.value) {
+    closeCountFilter()
+  }
+}
+
+const handleCountFilterViewportChange = () => {
+  if (!countFilterOpen.value) {
+    return
+  }
+  syncCountFilterDropdownPosition()
+}
+
+const loadProxyCounts = async (items: Proxy[] = proxies.value) => {
+  if (countsAbortController) {
+    countsAbortController.abort()
+  }
+
+  const proxyIds = items.map((item) => item.id)
+  if (proxyIds.length === 0) {
+    proxyAccountCounts.value = {}
+    countsLoading.value = false
+    return
+  }
+
+  const currentAbortController = new AbortController()
+  countsAbortController = currentAbortController
+  countsLoading.value = true
+  proxyAccountCounts.value = {}
+
+  try {
+    const items = await adminAPI.proxies.getCounts(
+      proxyIds,
+      [selectedProxyCountState.value],
+      { signal: currentAbortController.signal }
+    )
+    if (currentAbortController.signal.aborted || countsAbortController !== currentAbortController) {
+      return
+    }
+    const nextCounts: Record<number, number> = {}
+    for (const item of items) {
+      nextCounts[item.proxy_id] = item.account_count
+    }
+    proxyAccountCounts.value = nextCounts
+  } catch (error) {
+    if (isAbortError(error)) {
+      return
+    }
+    proxyAccountCounts.value = {}
+    appStore.showError(t('admin.proxies.failedToLoadCounts'))
+    console.error('Error loading proxy counts:', error)
+  } finally {
+    if (countsAbortController === currentAbortController) {
+      countsLoading.value = false
+      countsAbortController = null
+    }
+  }
+}
+
+const setProxyCountState = (state: ProxyAccountCountState) => {
+  if (state === selectedProxyCountState.value) {
+    return
+  }
+  selectedProxyCountState.value = state
+  void loadProxyCounts()
+}
+
+const handleSelectProxyCountState = (state: ProxyAccountCountState) => {
+  setProxyCountState(state)
+  closeCountFilter()
+}
+
+const getProxyAccountCountDisplay = (proxyID: number): string | number => {
+  if (Object.prototype.hasOwnProperty.call(proxyAccountCounts.value, proxyID)) {
+    return proxyAccountCounts.value[proxyID]
+  }
+  return countsLoading.value ? '...' : '-'
+}
 
 const isAbortError = (error: unknown) => {
   if (!error || typeof error !== 'object') return false
@@ -1069,6 +1361,7 @@ const loadProxies = async () => {
     proxies.value = response.items
     pagination.total = response.total
     pagination.pages = response.pages
+    void loadProxyCounts(response.items)
   } catch (error) {
     if (isAbortError(error)) {
       return
@@ -1782,7 +2075,7 @@ const openAccountsModal = async (proxy: Proxy) => {
   showAccountsModal.value = true
 
   try {
-    proxyAccounts.value = await adminAPI.proxies.getProxyAccounts(proxy.id)
+    proxyAccounts.value = await adminAPI.proxies.getProxyAccounts(proxy.id, selectedProxyCountState.value)
   } catch (error: any) {
     appStore.showError(error.response?.data?.detail || t('admin.proxies.accountsFailed'))
     console.error('Error loading proxy accounts:', error)
@@ -1846,11 +2139,20 @@ function closeCopyMenu() {
 onMounted(() => {
   loadProxies()
   document.addEventListener('click', closeCopyMenu)
+  document.addEventListener('click', handleDocumentClickForCountFilter)
+  document.addEventListener('keydown', handleCountFilterEscape)
+  window.addEventListener('scroll', handleCountFilterViewportChange, true)
+  window.addEventListener('resize', handleCountFilterViewportChange)
 })
 
 onUnmounted(() => {
   clearTimeout(searchTimeout)
   abortController?.abort()
+  countsAbortController?.abort()
   document.removeEventListener('click', closeCopyMenu)
+  document.removeEventListener('click', handleDocumentClickForCountFilter)
+  document.removeEventListener('keydown', handleCountFilterEscape)
+  window.removeEventListener('scroll', handleCountFilterViewportChange, true)
+  window.removeEventListener('resize', handleCountFilterViewportChange)
 })
 </script>

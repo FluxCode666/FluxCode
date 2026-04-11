@@ -26,9 +26,11 @@ type ProxyRepository interface {
 	ListActive(ctx context.Context) ([]Proxy, error)
 	ListActiveWithAccountCount(ctx context.Context) ([]ProxyWithAccountCount, error)
 
+	GetProxyAccountCounts(ctx context.Context, proxyIDs []int64, states []ProxyAccountCountState) ([]ProxyAccountCountItem, error)
+
 	ExistsByHostPortAuth(ctx context.Context, host string, port int, username, password string) (bool, error)
 	CountAccountsByProxyID(ctx context.Context, proxyID int64) (int64, error)
-	ListAccountSummariesByProxyID(ctx context.Context, proxyID int64) ([]ProxyAccountSummary, error)
+	ListAccountSummariesByProxyID(ctx context.Context, proxyID int64, states []ProxyAccountCountState) ([]ProxyAccountSummary, error)
 }
 
 // CreateProxyRequest 创建代理请求

@@ -82,20 +82,20 @@
                       :class="
                         getProgressBarClass(
                           subscription.daily_usage_usd,
-                          subscription.group?.daily_limit_usd
+                          getEffectiveLimit(subscription.group?.daily_limit_usd, subscription)
                         )
                       "
                       :style="{
                         width: getProgressWidth(
                           subscription.daily_usage_usd,
-                          subscription.group?.daily_limit_usd
+                          getEffectiveLimit(subscription.group?.daily_limit_usd, subscription)
                         )
                       }"
                     ></div>
                   </div>
                   <span class="w-24 flex-shrink-0 text-right text-[10px] text-gray-500">
                     {{
-                      formatUsage(subscription.daily_usage_usd, subscription.group?.daily_limit_usd)
+                      formatUsage(subscription.daily_usage_usd, getEffectiveLimit(subscription.group?.daily_limit_usd, subscription))
                     }}
                   </span>
                 </div>
@@ -110,20 +110,20 @@
                       :class="
                         getProgressBarClass(
                           subscription.weekly_usage_usd,
-                          subscription.group?.weekly_limit_usd
+                          getEffectiveLimit(subscription.group?.weekly_limit_usd, subscription)
                         )
                       "
                       :style="{
                         width: getProgressWidth(
                           subscription.weekly_usage_usd,
-                          subscription.group?.weekly_limit_usd
+                          getEffectiveLimit(subscription.group?.weekly_limit_usd, subscription)
                         )
                       }"
                     ></div>
                   </div>
                   <span class="w-24 flex-shrink-0 text-right text-[10px] text-gray-500">
                     {{
-                      formatUsage(subscription.weekly_usage_usd, subscription.group?.weekly_limit_usd)
+                      formatUsage(subscription.weekly_usage_usd, getEffectiveLimit(subscription.group?.weekly_limit_usd, subscription))
                     }}
                   </span>
                 </div>
@@ -138,13 +138,13 @@
                       :class="
                         getProgressBarClass(
                           subscription.monthly_usage_usd,
-                          subscription.group?.monthly_limit_usd
+                          getEffectiveLimit(subscription.group?.monthly_limit_usd, subscription)
                         )
                       "
                       :style="{
                         width: getProgressWidth(
                           subscription.monthly_usage_usd,
-                          subscription.group?.monthly_limit_usd
+                          getEffectiveLimit(subscription.group?.monthly_limit_usd, subscription)
                         )
                       }"
                     ></div>
@@ -153,7 +153,7 @@
                     {{
                       formatUsage(
                         subscription.monthly_usage_usd,
-                        subscription.group?.monthly_limit_usd
+                        getEffectiveLimit(subscription.group?.monthly_limit_usd, subscription)
                       )
                     }}
                   </span>
@@ -204,16 +204,20 @@ const displaySubscriptions = computed(() => {
   })
 })
 
+function getEffectiveLimit(limit: number | null | undefined, sub: UserSubscription): number {
+  return (limit ?? 0) * Math.max(1, sub.quota_multiplier ?? 1)
+}
+
 function getMaxUsagePercentage(sub: UserSubscription): number {
   const percentages: number[] = []
   if (sub.group?.daily_limit_usd) {
-    percentages.push(((sub.daily_usage_usd || 0) / sub.group.daily_limit_usd) * 100)
+    percentages.push(((sub.daily_usage_usd || 0) / getEffectiveLimit(sub.group.daily_limit_usd, sub)) * 100)
   }
   if (sub.group?.weekly_limit_usd) {
-    percentages.push(((sub.weekly_usage_usd || 0) / sub.group.weekly_limit_usd) * 100)
+    percentages.push(((sub.weekly_usage_usd || 0) / getEffectiveLimit(sub.group.weekly_limit_usd, sub)) * 100)
   }
   if (sub.group?.monthly_limit_usd) {
-    percentages.push(((sub.monthly_usage_usd || 0) / sub.group.monthly_limit_usd) * 100)
+    percentages.push(((sub.monthly_usage_usd || 0) / getEffectiveLimit(sub.group.monthly_limit_usd, sub)) * 100)
   }
   return percentages.length > 0 ? Math.max(...percentages) : 0
 }

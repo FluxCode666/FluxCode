@@ -3289,6 +3289,7 @@ export default {
       proxyDeletedSuccess: '代理删除成功',
       testSuccess: '代理测试通过',
       failedToLoad: '加载代理列表失败',
+      failedToLoadCounts: '加载代理账号数失败',
       failedToSave: '保存代理失败',
       failedToDelete: '删除代理失败',
       failedToCreate: '创建代理失败',

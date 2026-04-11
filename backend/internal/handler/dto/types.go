@@ -297,6 +297,11 @@ type ProxyAccountSummary struct {
 	Notes    *string `json:"notes,omitempty"`
 }
 
+type ProxyAccountCountItem struct {
+	ProxyID      int64 `json:"proxy_id"`
+	AccountCount int64 `json:"account_count"`
+}
+
 type RedeemCode struct {
 	ID        int64      `json:"id"`
 	Code      string     `json:"code"`
