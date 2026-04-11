@@ -508,6 +508,8 @@ export default {
     modelDistribution: 'Model Distribution',
     groupDistribution: 'Group Usage Distribution',
     tokenUsageTrend: 'Token Usage Trend',
+    costUsageTrend: 'Cost Trend',
+    requestCountTrend: 'Request Count Trend',
     noDataAvailable: 'No data available',
     model: 'Model',
     group: 'Group',
@@ -530,7 +532,11 @@ export default {
     viewUsage: 'View Usage',
     checkDetailedLogs: 'Check detailed usage logs',
     redeemCode: 'Redeem Code',
-    addBalanceWithCode: 'Add balance with a code'
+    addBalanceWithCode: 'Add balance with a code',
+    range24Hours: 'Last 24h',
+    range7Days: 'Last 7d',
+    range14Days: 'Last 14d',
+    range30Days: 'Last 30d'
   },
 
   // Groups (shared)

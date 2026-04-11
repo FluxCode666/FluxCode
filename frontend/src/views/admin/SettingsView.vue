@@ -2322,7 +2322,10 @@ async function saveSettings() {
       identity_patch_prompt: form.identity_patch_prompt,
       min_claude_code_version: form.min_claude_code_version,
       max_claude_code_version: form.max_claude_code_version,
-      allow_ungrouped_key_scheduling: form.allow_ungrouped_key_scheduling
+      allow_ungrouped_key_scheduling: form.allow_ungrouped_key_scheduling,
+      redeem_delivery_text: form.redeem_delivery_text,
+      attract_popup_title: form.attract_popup_title,
+      attract_popup_markdown: form.attract_popup_markdown
     }
     const updated = await adminAPI.settings.updateSettings(payload)
     Object.assign(form, updated)

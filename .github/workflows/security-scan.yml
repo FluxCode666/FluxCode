@@ -1,7 +1,7 @@
 name: Security Scan
 
 on:
-  push:
+  # push:  # 暂时关闭推送触发
   pull_request:
   schedule:
     - cron: '0 3 * * 1'

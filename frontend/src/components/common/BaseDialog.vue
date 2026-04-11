@@ -3,7 +3,7 @@
     <Transition name="modal">
       <div
         v-if="show"
-        class="modal-overlay"
+        :class="['modal-overlay', alignTop && 'modal-overlay--top']"
         :style="zIndexStyle"
         :aria-labelledby="dialogId"
         role="dialog"
@@ -62,6 +62,7 @@ interface Props {
   closeOnEscape?: boolean
   closeOnClickOutside?: boolean
   zIndex?: number
+  alignTop?: boolean
 }
 
 interface Emits {
@@ -72,7 +73,8 @@ const props = withDefaults(defineProps<Props>(), {
   width: 'normal',
   closeOnEscape: true,
   closeOnClickOutside: false,
-  zIndex: 50
+  zIndex: 50,
+  alignTop: false
 })
 
 const emit = defineEmits<Emits>()

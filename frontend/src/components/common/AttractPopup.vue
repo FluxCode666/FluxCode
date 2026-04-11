@@ -3,6 +3,7 @@
     :show="show"
     :title="dialogTitle"
     width="narrow"
+    align-top
     @close="handleClose"
   >
     <div class="space-y-5">
@@ -55,7 +56,7 @@ import { userAPI } from '@/api'
 type PopupContext = 'public' | 'dashboard'
 
 // 只在官网首页展示；使用文档页/定价页不展示。
-const PUBLIC_PATHS = new Set(['/home'])
+const PUBLIC_PATHS = new Set(['/', '/home'])
 const DASHBOARD_PATHS = new Set(['/dashboard', '/keys', '/usage', '/redeem', '/profile', '/subscriptions'])
 
 // 仅用于 public 页「今日不再提醒」：避免引入登录态依赖。
@@ -195,7 +196,7 @@ watch(
 )
 
 watch(
-  () => [route.path, markdown.value, authStore.isAuthenticated, authStore.isAdmin],
+  () => [route.path, markdown.value, authStore.isAuthenticated, authStore.isAdmin, appStore.publicSettingsLoaded],
   () => {
     void maybeShow()
   },

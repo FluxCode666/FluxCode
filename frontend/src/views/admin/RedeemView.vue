@@ -269,14 +269,28 @@
               </div>
               <div>
                 <label class="input-label">{{ t('admin.redeem.validityDays') }}</label>
-                <input
-                  v-model.number="generateForm.validity_days"
-                  type="number"
-                  min="1"
-                  max="365"
-                  required
-                  class="input"
-                />
+                <div class="flex items-center gap-2">
+                  <input
+                    v-model.number="generateForm.validity_days"
+                    type="number"
+                    min="1"
+                    max="365"
+                    required
+                    class="input flex-1"
+                  />
+                  <div class="flex gap-1">
+                    <button
+                      v-for="d in [1, 7, 30]"
+                      :key="d"
+                      type="button"
+                      class="rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors"
+                      :class="generateForm.validity_days === d ? 'bg-primary-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-600 dark:text-gray-300 dark:hover:bg-dark-500'"
+                      @click="generateForm.validity_days = d"
+                    >
+                      {{ d }}{{ t('admin.redeem.days', '天') }}
+                    </button>
+                  </div>
+                </div>
               </div>
             </template>
             <div>
@@ -589,11 +603,11 @@ const deletingCode = ref<RedeemCode | null>(null)
 const copiedCode = ref<string | null>(null)
 
 const generateForm = reactive({
-  type: 'balance' as RedeemCodeType,
+  type: 'subscription' as RedeemCodeType,
   value: 10,
   count: 1,
   group_id: null as number | null,
-  validity_days: 30
+  validity_days: 1
 })
 
 // 监听类型变化，邀请码类型时自动设置 value 为 0
@@ -693,7 +707,7 @@ const handleGenerateCodes = async () => {
     showResultDialog.value = true
     // 重置表单
     generateForm.group_id = null
-    generateForm.validity_days = 30
+    generateForm.validity_days = 1
     loadCodes()
   } catch (error: any) {
     appStore.showError(error.response?.data?.detail || t('admin.redeem.failedToGenerate'))
