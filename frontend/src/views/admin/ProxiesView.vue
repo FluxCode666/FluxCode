@@ -885,7 +885,7 @@
     <!-- Proxy Accounts Dialog -->
     <BaseDialog
       :show="showAccountsModal"
-      :title="t('admin.proxies.accountsTitle', { name: accountsProxy?.name || '' })"
+      :title="`${t('admin.proxies.accountsTitle', { name: accountsProxy?.name || '' })} (${proxyCountStatesSummary})`"
       width="normal"
       @close="closeAccountsModal"
     >
@@ -2075,7 +2075,7 @@ const openAccountsModal = async (proxy: Proxy) => {
   showAccountsModal.value = true
 
   try {
-    proxyAccounts.value = await adminAPI.proxies.getProxyAccounts(proxy.id)
+    proxyAccounts.value = await adminAPI.proxies.getProxyAccounts(proxy.id, selectedProxyCountState.value)
   } catch (error: any) {
     appStore.showError(error.response?.data?.detail || t('admin.proxies.accountsFailed'))
     console.error('Error loading proxy accounts:', error)

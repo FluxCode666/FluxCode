@@ -206,8 +206,12 @@ export async function getStats(id: number): Promise<{
  * @param id - Proxy ID
  * @returns List of accounts using the proxy
  */
-export async function getProxyAccounts(id: number): Promise<ProxyAccountSummary[]> {
-  const { data } = await apiClient.get<ProxyAccountSummary[]>(`/admin/proxies/${id}/accounts`)
+export async function getProxyAccounts(id: number, countState?: string): Promise<ProxyAccountSummary[]> {
+  const params: Record<string, string> = {}
+  if (countState) {
+    params.count_states = countState
+  }
+  const { data } = await apiClient.get<ProxyAccountSummary[]>(`/admin/proxies/${id}/accounts`, { params })
   return data
 }
 

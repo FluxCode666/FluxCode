@@ -370,7 +370,13 @@ func (h *ProxyHandler) GetProxyAccounts(c *gin.Context) {
 		return
 	}
 
-	accounts, err := h.adminService.GetProxyAccounts(c.Request.Context(), proxyID)
+	countStates, err := parseProxyCountStatesQuery(c.Query("count_states"))
+	if err != nil {
+		response.BadRequest(c, "Invalid count_states")
+		return
+	}
+
+	accounts, err := h.adminService.GetProxyAccounts(c.Request.Context(), proxyID, countStates)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

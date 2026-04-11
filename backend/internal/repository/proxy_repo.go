@@ -263,13 +263,32 @@ func (r *proxyRepository) CountAccountsByProxyID(ctx context.Context, proxyID in
 	return count, nil
 }
 
-func (r *proxyRepository) ListAccountSummariesByProxyID(ctx context.Context, proxyID int64) ([]service.ProxyAccountSummary, error) {
-	rows, err := r.sql.QueryContext(ctx, `
-		SELECT id, name, platform, type, notes
-		FROM accounts
-		WHERE proxy_id = $1 AND deleted_at IS NULL
-		ORDER BY id DESC
-	`, proxyID)
+func (r *proxyRepository) ListAccountSummariesByProxyID(ctx context.Context, proxyID int64, states []service.ProxyAccountCountState) ([]service.ProxyAccountSummary, error) {
+	normalizedStates := service.NormalizeProxyAccountCountStates(states)
+
+	var rows *sql.Rows
+	var err error
+
+	if len(normalizedStates) == 1 && normalizedStates[0] == service.ProxyAccountCountStateAllActive {
+		rows, err = r.sql.QueryContext(ctx, `
+			SELECT id, name, platform, type, notes
+			FROM accounts
+			WHERE proxy_id = $1 AND deleted_at IS NULL AND status = $2
+			ORDER BY id DESC
+		`, proxyID, service.StatusActive)
+	} else {
+		rows, err = r.sql.QueryContext(ctx, `
+			WITH classified AS (
+				SELECT id, name, platform, type, notes, `+proxyAccountCountBucketCaseSQL+` AS bucket
+				FROM accounts
+				WHERE proxy_id = $1 AND deleted_at IS NULL
+			)
+			SELECT id, name, platform, type, notes
+			FROM classified
+			WHERE bucket = ANY($2)
+			ORDER BY id DESC
+		`, proxyID, pq.Array(service.ProxyAccountCountStateStrings(normalizedStates)))
+	}
 	if err != nil {
 		return nil, err
 	}

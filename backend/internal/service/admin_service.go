@@ -81,7 +81,7 @@ type AdminService interface {
 	UpdateProxy(ctx context.Context, id int64, input *UpdateProxyInput) (*Proxy, error)
 	DeleteProxy(ctx context.Context, id int64) error
 	BatchDeleteProxies(ctx context.Context, ids []int64) (*ProxyBatchDeleteResult, error)
-	GetProxyAccounts(ctx context.Context, proxyID int64) ([]ProxyAccountSummary, error)
+	GetProxyAccounts(ctx context.Context, proxyID int64, states []ProxyAccountCountState) ([]ProxyAccountSummary, error)
 	CheckProxyExists(ctx context.Context, host string, port int, username, password string) (bool, error)
 	TestProxy(ctx context.Context, id int64) (*ProxyTestResult, error)
 	CheckProxyQuality(ctx context.Context, id int64) (*ProxyQualityCheckResult, error)
@@ -2092,8 +2092,8 @@ func (s *adminServiceImpl) BatchDeleteProxies(ctx context.Context, ids []int64) 
 	return result, nil
 }
 
-func (s *adminServiceImpl) GetProxyAccounts(ctx context.Context, proxyID int64) ([]ProxyAccountSummary, error) {
-	return s.proxyRepo.ListAccountSummariesByProxyID(ctx, proxyID)
+func (s *adminServiceImpl) GetProxyAccounts(ctx context.Context, proxyID int64, states []ProxyAccountCountState) ([]ProxyAccountSummary, error) {
+	return s.proxyRepo.ListAccountSummariesByProxyID(ctx, proxyID, states)
 }
 
 func (s *adminServiceImpl) CheckProxyExists(ctx context.Context, host string, port int, username, password string) (bool, error) {
