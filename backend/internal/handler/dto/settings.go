@@ -86,6 +86,11 @@ type SystemSettings struct {
 
 	// Backend Mode
 	BackendModeEnabled bool `json:"backend_mode_enabled"`
+
+	// 兑换码发货文案 & 引流弹窗
+	RedeemDeliveryText   string `json:"redeem_delivery_text"`
+	AttractPopupTitle    string `json:"attract_popup_title"`
+	AttractPopupMarkdown string `json:"attract_popup_markdown"`
 }
 
 type DefaultSubscriptionSetting struct {
@@ -117,6 +122,8 @@ type PublicSettings struct {
 	LinuxDoOAuthEnabled              bool             `json:"linuxdo_oauth_enabled"`
 	SoraClientEnabled                bool             `json:"sora_client_enabled"`
 	BackendModeEnabled               bool             `json:"backend_mode_enabled"`
+	AttractPopupTitle                string           `json:"attract_popup_title,omitempty"`
+	AttractPopupMarkdown             string           `json:"attract_popup_markdown,omitempty"`
 	Version                          string           `json:"version"`
 }
 

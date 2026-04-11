@@ -223,6 +223,13 @@ export default {
     }
   },
 
+  // Attract Popup (component-level keys)
+  attractPopup: {
+    title: 'Notice',
+    dismissToday: "Don't show today",
+    dismissForever: "Don't show again"
+  },
+
   // Common
   common: {
     loading: 'Loading...',
@@ -3215,6 +3222,7 @@ export default {
       generating: 'Generating...',
       generate: 'Generate',
       copyAll: 'Copy All',
+      copyDeliveryText: 'Copy Delivery Text',
       copied: 'Copied!',
       download: 'Download',
       codesExported: 'Codes exported successfully',
@@ -4501,6 +4509,23 @@ export default {
         remove: 'Remove',
         moveUp: 'Move Up',
         moveDown: 'Move Down',
+      },
+      redeemDeliveryText: {
+        label: 'Redeem Delivery Text',
+        placeholder: 'e.g. Your redeem codes:\n${redeemCodes}',
+        hint: 'Supports placeholder ${redeemCodes}, which will be replaced with the redeem codes generated this time.'
+      },
+      attractPopup: {
+        sectionTitle: 'Delivery Text & Attract Popup',
+        sectionDescription: 'Configure redeem code delivery text template and attract popup content for public pages',
+        title: 'Attract Popup',
+        description:
+          'Configure the popup content shown on public pages and the user dashboard (Markdown supported)',
+        popupTitle: 'Popup Title',
+        popupTitlePlaceholder: 'Join our community to get $5 test credit',
+        popupMarkdown: 'Popup Content (Markdown)',
+        popupMarkdownPlaceholder: 'e.g. Join our community to get **$5 test credit**...',
+        popupMarkdownHint: 'Supports Markdown. Links will open in a new tab.'
       },
       smtp: {
         title: 'SMTP Settings',

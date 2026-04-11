@@ -45,10 +45,34 @@ export async function changePassword(
   return data
 }
 
+export interface UserUIPreferences {
+  dashboard_attract_popup_disabled: boolean
+}
+
+/**
+ * Get current user's UI preferences
+ */
+export async function getUiPreferences(): Promise<UserUIPreferences> {
+  const { data } = await apiClient.get<UserUIPreferences>('/user/ui-preferences')
+  return data
+}
+
+/**
+ * Update current user's UI preferences
+ */
+export async function updateUiPreferences(
+  prefs: Partial<UserUIPreferences>
+): Promise<UserUIPreferences> {
+  const { data } = await apiClient.put<UserUIPreferences>('/user/ui-preferences', prefs)
+  return data
+}
+
 export const userAPI = {
   getProfile,
   updateProfile,
-  changePassword
+  changePassword,
+  getUiPreferences,
+  updateUiPreferences
 }
 
 export default userAPI

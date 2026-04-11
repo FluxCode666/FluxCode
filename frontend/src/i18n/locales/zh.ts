@@ -221,6 +221,13 @@ export default {
     }
   },
 
+  // Attract Popup (component-level keys)
+  attractPopup: {
+    title: '温馨提示',
+    dismissToday: '今日不再提醒',
+    dismissForever: '不再提醒'
+  },
+
   // Common
   common: {
     loading: '加载中...',
@@ -3336,6 +3343,7 @@ export default {
       count: '数量',
       generate: '生成',
       copyAll: '全部复制',
+      copyDeliveryText: '复制发货文案',
       download: '下载',
       codesExported: '兑换码导出成功',
       codeDeleted: '兑换码删除成功',
@@ -4634,6 +4642,22 @@ export default {
         remove: '删除',
         moveUp: '上移',
         moveDown: '下移',
+      },
+      redeemDeliveryText: {
+        label: '兑换码发货文案',
+        placeholder: '例如：您的兑换码如下：\n${redeemCodes}',
+        hint: '支持占位符 ${redeemCodes}，将替换为本次生成的兑换码列表。'
+      },
+      attractPopup: {
+        sectionTitle: '发货文案 & 引流弹窗',
+        sectionDescription: '配置兑换码发货文案模板和官网/控制台引流弹窗内容',
+        title: '引流弹窗',
+        description: '配置官网/控制台引导用户进入社群/渠道的弹窗文案（支持 Markdown）',
+        popupTitle: '弹窗标题',
+        popupTitlePlaceholder: '加入社群领取 $5 测试卡',
+        popupMarkdown: '弹窗文案（Markdown）',
+        popupMarkdownPlaceholder: '例如：加入我们的社群即可领取 **$5 测试卡**……',
+        popupMarkdownHint: '支持 Markdown；链接会在新窗口打开。'
       },
       smtp: {
         title: 'SMTP 设置',
