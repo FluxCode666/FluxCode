@@ -128,6 +128,9 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		MaxClaudeCodeVersion:                 settings.MaxClaudeCodeVersion,
 		AllowUngroupedKeyScheduling:          settings.AllowUngroupedKeyScheduling,
 		BackendModeEnabled:                   settings.BackendModeEnabled,
+		RedeemDeliveryText:                   settings.RedeemDeliveryText,
+		AttractPopupTitle:                    settings.AttractPopupTitle,
+		AttractPopupMarkdown:                 settings.AttractPopupMarkdown,
 	})
 }
 
@@ -207,6 +210,11 @@ type UpdateSettingsRequest struct {
 
 	// Backend Mode
 	BackendModeEnabled bool `json:"backend_mode_enabled"`
+
+	// 兑换码发货文案 & 引流弹窗
+	RedeemDeliveryText   string `json:"redeem_delivery_text"`
+	AttractPopupTitle    string `json:"attract_popup_title"`
+	AttractPopupMarkdown string `json:"attract_popup_markdown"`
 }
 
 // UpdateSettings 更新系统设置
@@ -509,6 +517,9 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		MaxClaudeCodeVersion:             req.MaxClaudeCodeVersion,
 		AllowUngroupedKeyScheduling:      req.AllowUngroupedKeyScheduling,
 		BackendModeEnabled:               req.BackendModeEnabled,
+		RedeemDeliveryText:               req.RedeemDeliveryText,
+		AttractPopupTitle:                req.AttractPopupTitle,
+		AttractPopupMarkdown:             req.AttractPopupMarkdown,
 		OpsMonitoringEnabled: func() bool {
 			if req.OpsMonitoringEnabled != nil {
 				return *req.OpsMonitoringEnabled
@@ -610,6 +621,9 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		MaxClaudeCodeVersion:                 updatedSettings.MaxClaudeCodeVersion,
 		AllowUngroupedKeyScheduling:          updatedSettings.AllowUngroupedKeyScheduling,
 		BackendModeEnabled:                   updatedSettings.BackendModeEnabled,
+		RedeemDeliveryText:                   updatedSettings.RedeemDeliveryText,
+		AttractPopupTitle:                    updatedSettings.AttractPopupTitle,
+		AttractPopupMarkdown:                 updatedSettings.AttractPopupMarkdown,
 	})
 }
 
@@ -781,6 +795,15 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	}
 	if before.CustomMenuItems != after.CustomMenuItems {
 		changed = append(changed, "custom_menu_items")
+	}
+	if before.RedeemDeliveryText != after.RedeemDeliveryText {
+		changed = append(changed, "redeem_delivery_text")
+	}
+	if before.AttractPopupTitle != after.AttractPopupTitle {
+		changed = append(changed, "attract_popup_title")
+	}
+	if before.AttractPopupMarkdown != after.AttractPopupMarkdown {
+		changed = append(changed, "attract_popup_markdown")
 	}
 	return changed
 }
