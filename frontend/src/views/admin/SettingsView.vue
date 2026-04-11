@@ -1280,6 +1280,63 @@
               </p>
             </div>
 
+            <!-- Redeem Delivery Text -->
+            <div>
+              <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                {{ t('admin.settings.redeemDeliveryText.label') }}
+              </label>
+              <textarea
+                v-model="form.redeem_delivery_text"
+                rows="4"
+                class="textarea font-mono text-sm"
+                :placeholder="t('admin.settings.redeemDeliveryText.placeholder')"
+              ></textarea>
+              <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.settings.redeemDeliveryText.hint') }}
+              </p>
+            </div>
+
+            <!-- Attract Popup -->
+            <div class="border-t border-gray-100 pt-6 dark:border-dark-700">
+              <div class="mb-4">
+                <h3 class="text-sm font-semibold text-gray-900 dark:text-white">
+                  {{ t('admin.settings.attractPopup.title') }}
+                </h3>
+                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  {{ t('admin.settings.attractPopup.description') }}
+                </p>
+              </div>
+
+              <div class="space-y-4">
+                <div>
+                  <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {{ t('admin.settings.attractPopup.popupTitle') }}
+                  </label>
+                  <input
+                    v-model="form.attract_popup_title"
+                    type="text"
+                    class="input"
+                    :placeholder="t('admin.settings.attractPopup.popupTitlePlaceholder')"
+                  />
+                </div>
+
+                <div>
+                  <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {{ t('admin.settings.attractPopup.popupMarkdown') }}
+                  </label>
+                  <textarea
+                    v-model="form.attract_popup_markdown"
+                    rows="6"
+                    class="textarea font-mono text-sm"
+                    :placeholder="t('admin.settings.attractPopup.popupMarkdownPlaceholder')"
+                  ></textarea>
+                  <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t('admin.settings.attractPopup.popupMarkdownHint') }}
+                  </p>
+                </div>
+              </div>
+            </div>
+
             <!-- Site Logo Upload -->
             <div>
               <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
@@ -2322,7 +2379,10 @@ async function saveSettings() {
       identity_patch_prompt: form.identity_patch_prompt,
       min_claude_code_version: form.min_claude_code_version,
       max_claude_code_version: form.max_claude_code_version,
-      allow_ungrouped_key_scheduling: form.allow_ungrouped_key_scheduling
+      allow_ungrouped_key_scheduling: form.allow_ungrouped_key_scheduling,
+      redeem_delivery_text: form.redeem_delivery_text,
+      attract_popup_title: form.attract_popup_title,
+      attract_popup_markdown: form.attract_popup_markdown
     }
     const updated = await adminAPI.settings.updateSettings(payload)
     Object.assign(form, updated)
