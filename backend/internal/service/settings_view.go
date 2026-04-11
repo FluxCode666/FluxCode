@@ -74,6 +74,11 @@ type SystemSettings struct {
 
 	// Backend 模式：禁用用户注册和自助服务，仅管理员可登录
 	BackendModeEnabled bool
+
+	// 兑换码发货文案 & 引流弹窗
+	RedeemDeliveryText   string
+	AttractPopupTitle    string
+	AttractPopupMarkdown string
 }
 
 type DefaultSubscriptionSetting struct {
@@ -108,6 +113,10 @@ type PublicSettings struct {
 	LinuxDoOAuthEnabled bool
 	BackendModeEnabled  bool
 	Version             string
+
+	// 引流弹窗（公开设置，前端需要读取）
+	AttractPopupTitle    string
+	AttractPopupMarkdown string
 }
 
 // SoraS3Settings Sora S3 存储配置

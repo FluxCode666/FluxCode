@@ -32,6 +32,9 @@ export const useAppStore = defineStore('app', () => {
   const apiBaseUrl = ref<string>('')
   const openaiUseKeyModelId = ref<string>(DEFAULT_OPENAI_USE_KEY_MODEL_ID)
   const docUrl = ref<string>('')
+  // 引流弹窗文案（来自 public settings，可在后台配置；内容支持 Markdown）
+  const attractPopupTitle = ref<string>('')
+  const attractPopupMarkdown = ref<string>('')
   const cachedPublicSettings = ref<PublicSettings | null>(null)
 
   // Version cache state
@@ -293,6 +296,8 @@ export const useAppStore = defineStore('app', () => {
     contactInfo.value = config.contact_info || ''
     apiBaseUrl.value = config.api_base_url || ''
     docUrl.value = config.doc_url || ''
+    attractPopupTitle.value = config.attract_popup_title || ''
+    attractPopupMarkdown.value = config.attract_popup_markdown || ''
     publicSettingsLoaded.value = true
   }
 
@@ -396,6 +401,8 @@ export const useAppStore = defineStore('app', () => {
     apiBaseUrl,
     openaiUseKeyModelId,
     docUrl,
+    attractPopupTitle,
+    attractPopupMarkdown,
     cachedPublicSettings,
 
     // Version state
