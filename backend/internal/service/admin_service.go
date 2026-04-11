@@ -74,6 +74,7 @@ type AdminService interface {
 	ListProxiesWithAccountCount(ctx context.Context, page, pageSize int, protocol, status, search string) ([]ProxyWithAccountCount, int64, error)
 	GetAllProxies(ctx context.Context) ([]Proxy, error)
 	GetAllProxiesWithAccountCount(ctx context.Context) ([]ProxyWithAccountCount, error)
+	GetProxyAccountCounts(ctx context.Context, proxyIDs []int64, states []ProxyAccountCountState) ([]ProxyAccountCountItem, error)
 	GetProxy(ctx context.Context, id int64) (*Proxy, error)
 	GetProxiesByIDs(ctx context.Context, ids []int64) ([]Proxy, error)
 	CreateProxy(ctx context.Context, input *CreateProxyInput) (*Proxy, error)
@@ -1979,6 +1980,10 @@ func (s *adminServiceImpl) GetAllProxiesWithAccountCount(ctx context.Context) ([
 	}
 	s.attachProxyLatency(ctx, proxies)
 	return proxies, nil
+}
+
+func (s *adminServiceImpl) GetProxyAccountCounts(ctx context.Context, proxyIDs []int64, states []ProxyAccountCountState) ([]ProxyAccountCountItem, error) {
+	return s.proxyRepo.GetProxyAccountCounts(ctx, proxyIDs, states)
 }
 
 func (s *adminServiceImpl) GetProxy(ctx context.Context, id int64) (*Proxy, error) {

@@ -358,6 +358,7 @@ func registerProxyRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	{
 		proxies.GET("", h.Admin.Proxy.List)
 		proxies.GET("/all", h.Admin.Proxy.GetAll)
+		proxies.GET("/counts", h.Admin.Proxy.GetCounts)
 		proxies.GET("/data", h.Admin.Proxy.ExportData)
 		proxies.POST("/data", h.Admin.Proxy.ImportData)
 		proxies.GET("/:id", h.Admin.Proxy.GetByID)

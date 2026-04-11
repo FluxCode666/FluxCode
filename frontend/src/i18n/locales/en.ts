@@ -3174,6 +3174,7 @@ export default {
       qualityStatusChallenge: 'Challenge',
       qualityTargetBase: 'Base Connectivity',
       failedToLoad: 'Failed to load proxies',
+      failedToLoadCounts: 'Failed to load proxy account counts',
       failedToCreate: 'Failed to create proxy',
       failedToUpdate: 'Failed to update proxy',
       failedToDelete: 'Failed to delete proxy',

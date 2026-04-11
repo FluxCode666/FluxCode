@@ -461,6 +461,16 @@ func ProxyAccountSummaryFromService(a *service.ProxyAccountSummary) *ProxyAccoun
 	}
 }
 
+func ProxyAccountCountItemFromService(item *service.ProxyAccountCountItem) *ProxyAccountCountItem {
+	if item == nil {
+		return nil
+	}
+	return &ProxyAccountCountItem{
+		ProxyID:      item.ProxyID,
+		AccountCount: item.AccountCount,
+	}
+}
+
 func RedeemCodeFromService(rc *service.RedeemCode) *RedeemCode {
 	if rc == nil {
 		return nil

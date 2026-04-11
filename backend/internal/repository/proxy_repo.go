@@ -9,10 +9,29 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
+	"github.com/lib/pq"
 )
+
+var proxyAccountCountBucketCaseSQL = buildAccountSchedulingBucketCaseSQL()
 
 type sqlQuerier interface {
 	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+}
+
+func uniquePositiveInt64s(ids []int64) []int64 {
+	seen := make(map[int64]struct{}, len(ids))
+	out := make([]int64, 0, len(ids))
+	for _, id := range ids {
+		if id <= 0 {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		out = append(out, id)
+	}
+	return out
 }
 
 type proxyRepository struct {
@@ -343,6 +362,67 @@ func (r *proxyRepository) ListActiveWithAccountCount(ctx context.Context) ([]ser
 	}
 
 	return result, nil
+}
+
+func (r *proxyRepository) GetProxyAccountCounts(ctx context.Context, proxyIDs []int64, states []service.ProxyAccountCountState) ([]service.ProxyAccountCountItem, error) {
+	uniqueProxyIDs := uniquePositiveInt64s(proxyIDs)
+	if len(uniqueProxyIDs) == 0 {
+		return []service.ProxyAccountCountItem{}, nil
+	}
+
+	normalizedStates := service.NormalizeProxyAccountCountStates(states)
+	counts := make(map[int64]int64, len(uniqueProxyIDs))
+
+	var rows *sql.Rows
+	var err error
+	if len(normalizedStates) == 1 && normalizedStates[0] == service.ProxyAccountCountStateAllActive {
+		rows, err = r.sql.QueryContext(ctx, `
+			SELECT proxy_id, COUNT(*) AS account_count
+			FROM accounts
+			WHERE proxy_id = ANY($1)
+				AND deleted_at IS NULL
+				AND status = $2
+			GROUP BY proxy_id
+		`, pq.Array(uniqueProxyIDs), service.StatusActive)
+	} else {
+		rows, err = r.sql.QueryContext(ctx, `
+			WITH classified AS (
+				SELECT proxy_id, `+proxyAccountCountBucketCaseSQL+` AS bucket
+				FROM accounts
+				WHERE proxy_id = ANY($1)
+					AND deleted_at IS NULL
+			)
+			SELECT proxy_id, COUNT(*) AS account_count
+			FROM classified
+			WHERE bucket = ANY($2)
+			GROUP BY proxy_id
+		`, pq.Array(uniqueProxyIDs), pq.Array(service.ProxyAccountCountStateStrings(normalizedStates)))
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var proxyID int64
+		var accountCount int64
+		if err := rows.Scan(&proxyID, &accountCount); err != nil {
+			return nil, err
+		}
+		counts[proxyID] = accountCount
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	items := make([]service.ProxyAccountCountItem, 0, len(uniqueProxyIDs))
+	for _, proxyID := range uniqueProxyIDs {
+		items = append(items, service.ProxyAccountCountItem{
+			ProxyID:      proxyID,
+			AccountCount: counts[proxyID],
+		})
+	}
+	return items, nil
 }
 
 func proxyEntityToService(m *dbent.Proxy) *service.Proxy {
