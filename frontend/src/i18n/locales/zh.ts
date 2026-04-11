@@ -506,6 +506,8 @@ export default {
     modelDistribution: '模型分布',
     groupDistribution: '分组使用分布',
     tokenUsageTrend: 'Token 使用趋势',
+    costUsageTrend: '消费金额趋势',
+    requestCountTrend: '请求数统计',
     noDataAvailable: '暂无数据',
     model: '模型',
     group: '分组',
@@ -528,7 +530,11 @@ export default {
     viewUsage: '查看使用记录',
     checkDetailedLogs: '查看详细的使用日志',
     redeemCode: '兑换码',
-    addBalanceWithCode: '使用兑换码充值'
+    addBalanceWithCode: '使用兑换码充值',
+    range24Hours: '近 24 小时',
+    range7Days: '近 7 天',
+    range14Days: '近 14 天',
+    range30Days: '近 30 天'
   },
 
   // Groups (shared)

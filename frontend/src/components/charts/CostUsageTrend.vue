@@ -29,13 +29,14 @@ import {
   LineElement,
   Title,
   Tooltip,
-  Legend
+  Legend,
+  Filler
 } from 'chart.js'
 import { Line } from 'vue-chartjs'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import type { TrendDataPoint } from '@/types'
 
-ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend)
+ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, Filler)
 
 const { t } = useI18n()
 
@@ -43,13 +44,12 @@ const props = withDefaults(
   defineProps<{
     trendData: TrendDataPoint[]
     title: string
-    seriesLabel: string
     loading?: boolean
     granularity?: 'day' | 'hour'
   }>(),
   {
-    granularity: 'day',
-    loading: false
+    loading: false,
+    granularity: 'day'
   }
 )
 
@@ -58,10 +58,11 @@ const isDarkMode = computed(() => document.documentElement.classList.contains('d
 const chartColors = computed(() => ({
   text: isDarkMode.value ? '#e5e7eb' : '#374151',
   grid: isDarkMode.value ? '#374151' : '#e5e7eb',
-  line: '#06b6d4'
+  actualCost: '#8b5cf6',
+  standardCost: '#94a3b8'
 }))
 
-const toNonNegativeRequest = (value: number): number => {
+const toNonNegativeCost = (value: number): number => {
   if (!Number.isFinite(value)) return 0
   return Math.max(0, value)
 }
@@ -82,17 +83,28 @@ const formatXAxisLabel = (label: string): string => {
 
 const chartData = computed(() => {
   if (!props.trendData?.length) return null
+
   return {
     labels: props.trendData.map((d) => d.date),
     datasets: [
       {
-        label: props.seriesLabel,
-        data: props.trendData.map((d) => toNonNegativeRequest(d.requests)),
-        borderColor: chartColors.value.line,
-        backgroundColor: `${chartColors.value.line}1f`,
-        borderWidth: 3,
+        label: t('dashboard.actual'),
+        data: props.trendData.map((d) => toNonNegativeCost(d.actual_cost)),
+        borderColor: chartColors.value.actualCost,
+        backgroundColor: `${chartColors.value.actualCost}20`,
+        fill: true,
+        tension: 0.3,
+        borderWidth: 2
+      },
+      {
+        label: t('dashboard.standard'),
+        data: props.trendData.map((d) => toNonNegativeCost(d.cost)),
+        borderColor: chartColors.value.standardCost,
+        backgroundColor: `${chartColors.value.standardCost}10`,
         fill: false,
-        tension: 0.3
+        tension: 0.3,
+        borderWidth: 2,
+        borderDash: [5, 5]
       }
     ]
   }
@@ -114,11 +126,20 @@ const lineOptions = computed(() => ({
   },
   plugins: {
     legend: {
-      display: false
+      position: 'top' as const,
+      labels: {
+        color: chartColors.value.text,
+        usePointStyle: true,
+        pointStyle: 'circle',
+        padding: 15,
+        font: {
+          size: 11
+        }
+      }
     },
     tooltip: {
       callbacks: {
-        label: (context: any) => `${context.dataset.label}: ${formatRequests(Number(context.raw))}`
+        label: (context: any) => `${context.dataset.label}: $${formatCost(Number(context.raw))}`
       }
     }
   },
@@ -153,18 +174,22 @@ const lineOptions = computed(() => ({
         font: {
           size: 10
         },
-        callback: (value: string | number) => formatRequests(Number(value))
+        callback: (value: string | number) => `$${formatCost(Number(value))}`
       }
     }
   }
 }))
 
-const formatRequests = (value: number): string => {
+const formatCost = (value: number): string => {
   if (!Number.isFinite(value)) return '0'
   const safeValue = Math.max(0, value)
-  if (safeValue >= 1_000_000_000) return `${(safeValue / 1_000_000_000).toFixed(2)}B`
-  if (safeValue >= 1_000_000) return `${(safeValue / 1_000_000).toFixed(2)}M`
-  if (safeValue >= 1_000) return `${(safeValue / 1_000).toFixed(2)}K`
-  return Math.round(safeValue).toLocaleString()
+  if (safeValue >= 1000) {
+    return (safeValue / 1000).toFixed(2) + 'K'
+  } else if (safeValue >= 1) {
+    return safeValue.toFixed(2)
+  } else if (safeValue >= 0.01) {
+    return safeValue.toFixed(3)
+  }
+  return safeValue.toFixed(4)
 }
 </script>

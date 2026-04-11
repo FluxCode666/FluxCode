@@ -242,38 +242,38 @@
             </div>
           </div>
 
-          <!-- Charts Grid -->
-          <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
-            <ModelDistributionChart
-              :model-stats="modelStats"
-              :enable-ranking-view="true"
-              :ranking-items="rankingItems"
-              :ranking-total-actual-cost="rankingTotalActualCost"
-              :ranking-total-requests="rankingTotalRequests"
-              :ranking-total-tokens="rankingTotalTokens"
-              :loading="chartsLoading"
-              :ranking-loading="rankingLoading"
-              :ranking-error="rankingError"
-              :start-date="startDate"
-              :end-date="endDate"
-              @ranking-click="goToUserUsage"
-            />
-            <TokenUsageTrend :trend-data="trendData" :loading="chartsLoading" />
-            <RequestCountTrend
-              :trend-data="trendData"
-              :loading="chartsLoading"
-              :granularity="granularity"
-              :title="t('admin.dashboard.requestCountTrend')"
-              :series-label="t('admin.dashboard.requests')"
-            />
-            <ProxyUsageSummaryChart
-              :items="proxyUsageSummary"
-              :loading="chartsLoading"
-              :title="t('admin.dashboard.proxyUsageSummary')"
-              :granularity="granularity"
-              :timeline-labels="proxyTimelineLabels"
-            />
-          </div>
+          <!-- Model Distribution -->
+          <ModelDistributionChart
+            :model-stats="modelStats"
+            :enable-ranking-view="true"
+            :ranking-items="rankingItems"
+            :ranking-total-actual-cost="rankingTotalActualCost"
+            :ranking-total-requests="rankingTotalRequests"
+            :ranking-total-tokens="rankingTotalTokens"
+            :loading="chartsLoading"
+            :ranking-loading="rankingLoading"
+            :ranking-error="rankingError"
+            :start-date="startDate"
+            :end-date="endDate"
+            @ranking-click="goToUserUsage"
+          />
+
+          <!-- Full-width Charts -->
+          <TokenUsageTrend :trend-data="trendData" :loading="chartsLoading" />
+          <RequestCountTrend
+            :trend-data="trendData"
+            :loading="chartsLoading"
+            :granularity="granularity"
+            :title="t('admin.dashboard.requestCountTrend')"
+            :series-label="t('admin.dashboard.requests')"
+          />
+          <ProxyUsageSummaryChart
+            :items="proxyUsageSummary"
+            :loading="chartsLoading"
+            :title="t('admin.dashboard.proxyUsageSummary')"
+            :granularity="granularity"
+            :timeline-labels="proxyTimelineLabels"
+          />
 
           <!-- User Usage Trend (Full Width) -->
           <div class="card p-4">
@@ -336,6 +336,7 @@ import ModelDistributionChart from '@/components/charts/ModelDistributionChart.v
 import TokenUsageTrend from '@/components/charts/TokenUsageTrend.vue'
 import RequestCountTrend from '@/components/charts/RequestCountTrend.vue'
 import ProxyUsageSummaryChart from '@/components/charts/ProxyUsageSummaryChart.vue'
+import { fillTrendDataGaps } from '@/utils/trendFill'
 
 import {
   Chart as ChartJS,
@@ -651,7 +652,7 @@ const loadDashboardSnapshot = async (includeStats: boolean) => {
     if (includeStats && response.stats) {
       stats.value = response.stats
     }
-    trendData.value = response.trend || []
+    trendData.value = fillTrendDataGaps(response.trend || [], startDate.value, endDate.value, granularity.value)
     modelStats.value = response.models || []
 
     if (proxyResult.status === 'fulfilled') {

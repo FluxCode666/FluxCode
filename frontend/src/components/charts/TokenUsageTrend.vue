@@ -158,6 +158,7 @@ const lineOptions = computed(() => ({
       }
     },
     y: {
+      beginAtZero: true,
       grid: {
         color: chartColors.value.grid
       },
