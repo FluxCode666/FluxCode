@@ -533,10 +533,10 @@ export default {
     checkDetailedLogs: 'Check detailed usage logs',
     redeemCode: 'Redeem Code',
     addBalanceWithCode: 'Add balance with a code',
-    range24Hours: 'Last 24h',
-    range7Days: 'Last 7d',
-    range14Days: 'Last 14d',
-    range30Days: 'Last 30d'
+    range24Hours: '24h',
+    range7Days: '7d',
+    range14Days: '14d',
+    range30Days: '30d'
   },
 
   // Groups (shared)

@@ -531,10 +531,10 @@ export default {
     checkDetailedLogs: '查看详细的使用日志',
     redeemCode: '兑换码',
     addBalanceWithCode: '使用兑换码充值',
-    range24Hours: '近 24 小时',
-    range7Days: '近 7 天',
-    range14Days: '近 14 天',
-    range30Days: '近 30 天'
+    range24Hours: '24 小时',
+    range7Days: '7 天',
+    range14Days: '14 天',
+    range30Days: '30 天'
   },
 
   // Groups (shared)
