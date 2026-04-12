@@ -624,7 +624,7 @@ func (r *accountRepository) GetAccountSummary(ctx context.Context) ([]service.Ac
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer rows.Close() //nolint:errcheck
 
 	items := make([]service.AccountPlatformSummaryItem, 0)
 	for rows.Next() {

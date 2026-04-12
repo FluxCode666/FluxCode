@@ -230,7 +230,7 @@ func (s *AlertService) getCooldown(ctx context.Context) time.Duration {
 	s.cooldownMu.Unlock()
 
 	minutes := defaultAlertCooldownMinutes
-	if s != nil && s.poolConfig != nil {
+	if s.poolConfig != nil {
 		if cfg, err := s.poolConfig.GetConfig(ctx, PlatformOpenAI); err == nil && cfg != nil {
 			minutes = cfg.AlertCooldownMinutes
 		}
@@ -249,28 +249,28 @@ func (s *AlertService) getCooldown(ctx context.Context) time.Duration {
 
 func (s *AlertService) buildNoAvailableAccountsBody(detail NoAvailableAccountsAlert) string {
 	var builder strings.Builder
-	builder.WriteString("<div>")
-	builder.WriteString("<p>号池异常：没有可用账号。</p>")
-	builder.WriteString(fmt.Sprintf("<p>时间：%s</p>", time.Now().Format("2006-01-02 15:04:05")))
+	_, _ = builder.WriteString("<div>")
+	_, _ = builder.WriteString("<p>号池异常：没有可用账号。</p>")
+	_, _ = builder.WriteString(fmt.Sprintf("<p>时间：%s</p>", time.Now().Format("2006-01-02 15:04:05")))
 	if detail.Method != "" || detail.Path != "" {
-		builder.WriteString(fmt.Sprintf("<p>请求：%s %s</p>", detail.Method, detail.Path))
+		_, _ = builder.WriteString(fmt.Sprintf("<p>请求：%s %s</p>", detail.Method, detail.Path))
 	}
 	if detail.Platform != "" {
-		builder.WriteString(fmt.Sprintf("<p>平台：%s</p>", html.EscapeString(detail.Platform)))
+		_, _ = builder.WriteString(fmt.Sprintf("<p>平台：%s</p>", html.EscapeString(detail.Platform)))
 	}
 	if detail.UserID != nil {
-		builder.WriteString(fmt.Sprintf("<p>UserID：%d</p>", *detail.UserID))
+		_, _ = builder.WriteString(fmt.Sprintf("<p>UserID：%d</p>", *detail.UserID))
 	}
 	if detail.GroupID != nil {
-		builder.WriteString(fmt.Sprintf("<p>GroupID：%d</p>", *detail.GroupID))
+		_, _ = builder.WriteString(fmt.Sprintf("<p>GroupID：%d</p>", *detail.GroupID))
 	}
 	if detail.APIKeyID != nil {
-		builder.WriteString(fmt.Sprintf("<p>APIKeyID：%d</p>", *detail.APIKeyID))
+		_, _ = builder.WriteString(fmt.Sprintf("<p>APIKeyID：%d</p>", *detail.APIKeyID))
 	}
 	if detail.Message != "" {
-		builder.WriteString(fmt.Sprintf("<p>详情：%s</p>", html.EscapeString(detail.Message)))
+		_, _ = builder.WriteString(fmt.Sprintf("<p>详情：%s</p>", html.EscapeString(detail.Message)))
 	}
-	builder.WriteString("</div>")
+	_, _ = builder.WriteString("</div>")
 	return builder.String()
 }
 

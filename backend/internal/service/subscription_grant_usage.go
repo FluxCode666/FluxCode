@@ -29,9 +29,9 @@ type SubscriptionGrantUsageDetail struct {
 
 // ActiveSubscriptionGrantUsageResponse 订阅未过期子订阅用量响应（包含未来排期）
 type ActiveSubscriptionGrantUsageResponse struct {
-	SubscriptionID int64                        `json:"subscription_id"`
-	GroupID        int64                        `json:"group_id"`
-	GroupName      string                       `json:"group_name"`
+	SubscriptionID int64                          `json:"subscription_id"`
+	GroupID        int64                          `json:"group_id"`
+	GroupName      string                         `json:"group_name"`
 	Grants         []SubscriptionGrantUsageDetail `json:"grants"`
 }
 
@@ -125,4 +125,3 @@ func (s *SubscriptionService) GetUserGrantUsageDetails(ctx context.Context, user
 		Grants:         out,
 	}, nil
 }
-

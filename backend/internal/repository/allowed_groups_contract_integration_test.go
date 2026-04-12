@@ -4,6 +4,8 @@ package repository
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"strings"
 	"testing"
@@ -15,7 +17,12 @@ import (
 func uniqueTestValue(t *testing.T, prefix string) string {
 	t.Helper()
 	safeName := strings.NewReplacer("/", "_", " ", "_").Replace(t.Name())
-	return fmt.Sprintf("%s-%s", prefix, safeName)
+	v := fmt.Sprintf("%s-%s", prefix, safeName)
+	if len(v) > 90 {
+		h := sha256.Sum256([]byte(v))
+		v = v[:74] + "-" + hex.EncodeToString(h[:8])
+	}
+	return v
 }
 
 func TestUserRepository_RemoveGroupFromAllowedGroups_RemovesAllOccurrences(t *testing.T) {
