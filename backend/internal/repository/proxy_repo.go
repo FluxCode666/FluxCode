@@ -420,7 +420,7 @@ func (r *proxyRepository) GetProxyAccountCounts(ctx context.Context, proxyIDs []
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer rows.Close() //nolint:errcheck
 
 	for rows.Next() {
 		var proxyID int64

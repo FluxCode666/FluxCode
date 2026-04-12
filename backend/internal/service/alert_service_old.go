@@ -281,23 +281,23 @@ func (s *AlertService) buildOpenAIPoolThresholdBody(detail OpenAIPoolThresholdAl
 	}
 
 	var builder strings.Builder
-	builder.WriteString("<div>")
-	builder.WriteString("<p>号池异常：OpenAI 账号池可用量低于阈值。</p>")
-	builder.WriteString(fmt.Sprintf("<p>时间：%s</p>", time.Now().Format("2006-01-02 15:04:05")))
-	builder.WriteString(fmt.Sprintf("<p>平台：%s</p>", html.EscapeString(platform)))
-	builder.WriteString(fmt.Sprintf("<p>当前可用账号数：%d</p>", detail.AvailableCount))
-	builder.WriteString(fmt.Sprintf("<p>分母账号数（status=active && schedulable=true）：%d</p>", detail.BaseAccountCount))
+	_, _ = builder.WriteString("<div>")
+	_, _ = builder.WriteString("<p>号池异常：OpenAI 账号池可用量低于阈值。</p>")
+	_, _ = builder.WriteString(fmt.Sprintf("<p>时间：%s</p>", time.Now().Format("2006-01-02 15:04:05")))
+	_, _ = builder.WriteString(fmt.Sprintf("<p>平台：%s</p>", html.EscapeString(platform)))
+	_, _ = builder.WriteString(fmt.Sprintf("<p>当前可用账号数：%d</p>", detail.AvailableCount))
+	_, _ = builder.WriteString(fmt.Sprintf("<p>分母账号数（status=active && schedulable=true）：%d</p>", detail.BaseAccountCount))
 	if detail.BaseAccountCount > 0 {
-		builder.WriteString(fmt.Sprintf("<p>当前可用比例：%.2f%%</p>", detail.AvailableRatioPercent))
+		_, _ = builder.WriteString(fmt.Sprintf("<p>当前可用比例：%.2f%%</p>", detail.AvailableRatioPercent))
 	}
 	if detail.CountThreshold > 0 {
-		builder.WriteString(fmt.Sprintf("<p>账号数阈值：%d</p>", detail.CountThreshold))
+		_, _ = builder.WriteString(fmt.Sprintf("<p>账号数阈值：%d</p>", detail.CountThreshold))
 	}
 	if detail.RatioThreshold > 0 {
-		builder.WriteString(fmt.Sprintf("<p>比例阈值：%d%%</p>", detail.RatioThreshold))
+		_, _ = builder.WriteString(fmt.Sprintf("<p>比例阈值：%d%%</p>", detail.RatioThreshold))
 	}
-	builder.WriteString(fmt.Sprintf("<p>命中规则：账号数=%t，比例=%t</p>", detail.CountRuleTriggered, detail.RatioRuleTriggered))
-	builder.WriteString("</div>")
+	_, _ = builder.WriteString(fmt.Sprintf("<p>命中规则：账号数=%t，比例=%t</p>", detail.CountRuleTriggered, detail.RatioRuleTriggered))
+	_, _ = builder.WriteString("</div>")
 	return builder.String()
 }
 
@@ -312,21 +312,21 @@ func (s *AlertService) buildOpenAIProxyTransportFailureBody(detail OpenAIProxyTr
 	}
 
 	var builder strings.Builder
-	builder.WriteString("<div>")
-	builder.WriteString("<p>号池异常：代理连接上游失败次数达到阈值。</p>")
-	builder.WriteString(fmt.Sprintf("<p>时间：%s</p>", time.Now().Format("2006-01-02 15:04:05")))
-	builder.WriteString(fmt.Sprintf("<p>平台：%s</p>", html.EscapeString(platform)))
-	builder.WriteString(fmt.Sprintf("<p>代理ID：%d</p>", detail.ProxyID))
+	_, _ = builder.WriteString("<div>")
+	_, _ = builder.WriteString("<p>号池异常：代理连接上游失败次数达到阈值。</p>")
+	_, _ = builder.WriteString(fmt.Sprintf("<p>时间：%s</p>", time.Now().Format("2006-01-02 15:04:05")))
+	_, _ = builder.WriteString(fmt.Sprintf("<p>平台：%s</p>", html.EscapeString(platform)))
+	_, _ = builder.WriteString(fmt.Sprintf("<p>代理ID：%d</p>", detail.ProxyID))
 	if strings.TrimSpace(detail.ProxyName) != "" {
-		builder.WriteString(fmt.Sprintf("<p>代理名称：%s</p>", html.EscapeString(detail.ProxyName)))
+		_, _ = builder.WriteString(fmt.Sprintf("<p>代理名称：%s</p>", html.EscapeString(detail.ProxyName)))
 	}
-	builder.WriteString(fmt.Sprintf("<p>窗口：%d 分钟</p>", window))
-	builder.WriteString(fmt.Sprintf("<p>失败次数：%d</p>", detail.FailureCount))
-	builder.WriteString(fmt.Sprintf("<p>阈值：%d</p>", detail.Threshold))
+	_, _ = builder.WriteString(fmt.Sprintf("<p>窗口：%d 分钟</p>", window))
+	_, _ = builder.WriteString(fmt.Sprintf("<p>失败次数：%d</p>", detail.FailureCount))
+	_, _ = builder.WriteString(fmt.Sprintf("<p>阈值：%d</p>", detail.Threshold))
 	if strings.TrimSpace(detail.LastError) != "" {
-		builder.WriteString(fmt.Sprintf("<p>最近错误：%s</p>", html.EscapeString(detail.LastError)))
+		_, _ = builder.WriteString(fmt.Sprintf("<p>最近错误：%s</p>", html.EscapeString(detail.LastError)))
 	}
-	builder.WriteString("</div>")
+	_, _ = builder.WriteString("</div>")
 	return builder.String()
 }
 
