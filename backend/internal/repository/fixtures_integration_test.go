@@ -218,6 +218,9 @@ func mustCreateAccount(t *testing.T, client *dbent.Client, a *service.Account) *
 	if a.OverloadUntil != nil {
 		create.SetOverloadUntil(*a.OverloadUntil)
 	}
+	if a.ExpiresAt != nil {
+		create.SetExpiresAt(*a.ExpiresAt)
+	}
 	if a.SessionWindowStart != nil {
 		create.SetSessionWindowStart(*a.SessionWindowStart)
 	}
