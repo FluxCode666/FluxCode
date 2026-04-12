@@ -295,6 +295,10 @@ func (s *stubAdminService) GetAllProxiesWithAccountCount(ctx context.Context) ([
 	return s.proxyCounts, nil
 }
 
+func (s *stubAdminService) GetProxyAccountCounts(ctx context.Context, proxyIDs []int64, states []service.ProxyAccountCountState) ([]service.ProxyAccountCountItem, error) {
+	return nil, nil
+}
+
 func (s *stubAdminService) GetProxy(ctx context.Context, id int64) (*service.Proxy, error) {
 	for i := range s.proxies {
 		proxy := s.proxies[i]
@@ -349,7 +353,7 @@ func (s *stubAdminService) BatchDeleteProxies(ctx context.Context, ids []int64) 
 	return &service.ProxyBatchDeleteResult{DeletedIDs: ids}, nil
 }
 
-func (s *stubAdminService) GetProxyAccounts(ctx context.Context, proxyID int64) ([]service.ProxyAccountSummary, error) {
+func (s *stubAdminService) GetProxyAccounts(ctx context.Context, proxyID int64, states []service.ProxyAccountCountState) ([]service.ProxyAccountSummary, error) {
 	return []service.ProxyAccountSummary{{ID: 1, Name: "account"}}, nil
 }
 

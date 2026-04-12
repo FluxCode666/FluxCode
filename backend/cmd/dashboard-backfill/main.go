@@ -111,7 +111,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("open database: %v", err)
 	}
-	defer db.Close()
+	defer db.Close() //nolint:errcheck
 	if err := db.Ping(); err != nil {
 		log.Fatalf("ping database: %v", err)
 	}

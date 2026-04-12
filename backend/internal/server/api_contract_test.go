@@ -515,10 +515,12 @@ func TestAPIContracts(t *testing.T) {
 						"ops_realtime_monitoring_enabled": true,
 						"ops_query_mode_default": "auto",
 						"ops_metrics_interval_seconds": 60,
-						"site_name": "FluxCode",
+						"site_name": "Sub2API",
 						"site_logo": "",
 						"site_subtitle": "Subtitle",
-						"api_base_url": "https://api.example.com",
+						"attract_popup_markdown": "",
+					"attract_popup_title": "",
+					"api_base_url": "https://api.example.com",
 					"contact_info": "support",
 					"doc_url": "https://docs.example.com",
 					"default_concurrency": 5,
@@ -537,6 +539,7 @@ func TestAPIContracts(t *testing.T) {
 					"hide_ccs_import_button": false,
 					"purchase_subscription_enabled": false,
 					"purchase_subscription_url": "",
+					"redeem_delivery_text": "${redeemCodes}",
 					"min_claude_code_version": "",
 					"max_claude_code_version": "",
 					"allow_ungrouped_key_scheduling": false,
@@ -1177,7 +1180,11 @@ func (stubProxyRepo) CountAccountsByProxyID(ctx context.Context, proxyID int64) 
 	return 0, errors.New("not implemented")
 }
 
-func (stubProxyRepo) ListAccountSummariesByProxyID(ctx context.Context, proxyID int64) ([]service.ProxyAccountSummary, error) {
+func (stubProxyRepo) ListAccountSummariesByProxyID(ctx context.Context, proxyID int64, states []service.ProxyAccountCountState) ([]service.ProxyAccountSummary, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (stubProxyRepo) GetProxyAccountCounts(ctx context.Context, proxyIDs []int64, states []service.ProxyAccountCountState) ([]service.ProxyAccountCountItem, error) {
 	return nil, errors.New("not implemented")
 }
 

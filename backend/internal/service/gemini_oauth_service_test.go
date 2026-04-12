@@ -802,7 +802,10 @@ func (m *mockGeminiProxyRepo) ExistsByHostPortAuth(ctx context.Context, host str
 func (m *mockGeminiProxyRepo) CountAccountsByProxyID(ctx context.Context, proxyID int64) (int64, error) {
 	panic("not impl")
 }
-func (m *mockGeminiProxyRepo) ListAccountSummariesByProxyID(ctx context.Context, proxyID int64) ([]ProxyAccountSummary, error) {
+func (m *mockGeminiProxyRepo) ListAccountSummariesByProxyID(ctx context.Context, proxyID int64, states []ProxyAccountCountState) ([]ProxyAccountSummary, error) {
+	panic("not impl")
+}
+func (m *mockGeminiProxyRepo) GetProxyAccountCounts(ctx context.Context, proxyIDs []int64, states []ProxyAccountCountState) ([]ProxyAccountCountItem, error) {
 	panic("not impl")
 }
 

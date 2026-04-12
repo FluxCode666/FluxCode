@@ -373,3 +373,55 @@ func TestPoolMonitorService_DisabledProxyScheduleMode_ReadsConfig(t *testing.T) 
 	svc := NewPoolMonitorService(repo, &proxyCounterStub{}, nil)
 	require.Equal(t, DisabledProxyScheduleModeExcludeAccount, svc.DisabledProxyScheduleMode(context.Background()))
 }
+
+func ptrInt64(v int64) *int64 { return &v }
+
+func TestFilterAccountsByDisabledProxyScheduleMode_DirectMode_KeepsAll(t *testing.T) {
+	accounts := []Account{
+		{ID: 1, ProxyID: nil},
+		{ID: 2, ProxyID: ptrInt64(10), Proxy: &Proxy{ID: 10, Status: StatusActive}},
+		{ID: 3, ProxyID: ptrInt64(20), Proxy: &Proxy{ID: 20, Status: "disabled"}},
+	}
+	result := filterAccountsByDisabledProxyScheduleMode(accounts, DisabledProxyScheduleModeDirectWithoutProxy)
+	require.Len(t, result, 3)
+}
+
+func TestFilterAccountsByDisabledProxyScheduleMode_ExcludeMode_KeepsNoProxy(t *testing.T) {
+	accounts := []Account{
+		{ID: 1, ProxyID: nil},
+	}
+	result := filterAccountsByDisabledProxyScheduleMode(accounts, DisabledProxyScheduleModeExcludeAccount)
+	require.Len(t, result, 1)
+	require.Equal(t, int64(1), result[0].ID)
+}
+
+func TestFilterAccountsByDisabledProxyScheduleMode_ExcludeMode_KeepsActiveProxy(t *testing.T) {
+	accounts := []Account{
+		{ID: 1, ProxyID: nil},
+		{ID: 2, ProxyID: ptrInt64(10), Proxy: &Proxy{ID: 10, Status: StatusActive}},
+	}
+	result := filterAccountsByDisabledProxyScheduleMode(accounts, DisabledProxyScheduleModeExcludeAccount)
+	require.Len(t, result, 2)
+}
+
+func TestFilterAccountsByDisabledProxyScheduleMode_ExcludeMode_DropsInactiveProxy(t *testing.T) {
+	accounts := []Account{
+		{ID: 1, ProxyID: nil},
+		{ID: 2, ProxyID: ptrInt64(10), Proxy: &Proxy{ID: 10, Status: StatusActive}},
+		{ID: 3, ProxyID: ptrInt64(20), Proxy: &Proxy{ID: 20, Status: "disabled"}},
+		{ID: 4, ProxyID: ptrInt64(30), Proxy: nil}, // dangling proxy reference
+	}
+	result := filterAccountsByDisabledProxyScheduleMode(accounts, DisabledProxyScheduleModeExcludeAccount)
+	require.Len(t, result, 2)
+	require.Equal(t, int64(1), result[0].ID)
+	require.Equal(t, int64(2), result[1].ID)
+}
+
+func TestFilterAccountsByDisabledProxyScheduleMode_UnrecognizedMode_KeepsAll(t *testing.T) {
+	accounts := []Account{
+		{ID: 1, ProxyID: ptrInt64(10), Proxy: &Proxy{ID: 10, Status: "disabled"}},
+		{ID: 2, ProxyID: nil},
+	}
+	result := filterAccountsByDisabledProxyScheduleMode(accounts, "unknown_mode")
+	require.Len(t, result, 2)
+}

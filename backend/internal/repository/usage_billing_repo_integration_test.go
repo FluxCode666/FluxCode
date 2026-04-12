@@ -105,6 +105,15 @@ func TestUsageBillingRepositoryApply_DeduplicatesSubscriptionBilling(t *testing.
 		GroupID: group.ID,
 	})
 
+	// Create an active subscription grant so Apply can allocate usage
+	now := time.Now()
+	_, err := client.SubscriptionGrant.Create().
+		SetSubscriptionID(subscription.ID).
+		SetStartsAt(now.Add(-1 * time.Hour)).
+		SetExpiresAt(now.Add(24 * time.Hour)).
+		Save(ctx)
+	require.NoError(t, err, "create subscription grant")
+
 	requestID := uuid.NewString()
 	cmd := &service.UsageBillingCommand{
 		RequestID:        requestID,

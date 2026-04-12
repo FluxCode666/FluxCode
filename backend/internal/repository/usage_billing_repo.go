@@ -240,7 +240,7 @@ func allocateUsageBillingSubscriptionGrants(ctx context.Context, tx *sql.Tx, sub
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
+	defer rows.Close() //nolint:errcheck
 
 	grants := make([]usageBillingGrantRow, 0, 4)
 	for rows.Next() {

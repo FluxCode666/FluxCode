@@ -124,7 +124,7 @@ WHERE subscription_id = $1
 	if err != nil {
 		return 0, 0, 0, err
 	}
-	defer rows.Close()
+	defer rows.Close() //nolint:errcheck
 
 	if !rows.Next() {
 		return 0, 0, 0, nil
@@ -153,7 +153,7 @@ WHERE subscription_id = $1
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer rows.Close() //nolint:errcheck
 
 	if !rows.Next() {
 		return nil, nil
@@ -200,7 +200,7 @@ FOR UPDATE
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer rows.Close() //nolint:errcheck
 
 	out := make([]*service.SubscriptionGrant, 0)
 	for rows.Next() {

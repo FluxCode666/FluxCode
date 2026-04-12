@@ -32,8 +32,7 @@ func TestSubscriptionServiceGrantsSuite(t *testing.T) {
 
 func (s *SubscriptionServiceGrantsSuite) SetupTest() {
 	s.ctx = context.Background()
-	tx := testEntTx(s.T())
-	s.client = tx.Client()
+	s.client = testEntClient(s.T())
 
 	s.groupRepo = NewGroupRepository(s.client, integrationDB)
 	s.userSubRepo = NewUserSubscriptionRepository(s.client)

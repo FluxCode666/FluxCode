@@ -3544,7 +3544,7 @@ export default {
       alertCooldownMinutesHint:
         'Repeated alerts of the same type are suppressed during cooldown.',
       alertEmails: 'Alert recipients',
-      alertEmailPlaceholder: 'name@example.com',
+      alertEmailPlaceholder: "name{'@'}example.com",
       addEmail: 'Add recipient',
       removeEmail: 'Remove',
       failedToLoad: 'Failed to load pool monitor settings',

@@ -111,24 +111,32 @@ func normalizeDisabledProxyScheduleMode(mode string) string {
 // proxy is disabled, according to the configured scheduling mode.
 //
 // - "direct_without_proxy": keep all accounts (they will route without proxy).
-// - "exclude_account": remove accounts that reference a non-nil ProxyID
+// - "exclude_account": remove accounts whose proxy is inactive or missing
 //
-//	(these are assumed to need a proxy that is currently disabled).
+//	(the account depends on a proxy that is currently unavailable).
 //
+// Accounts without a proxy (ProxyID == nil) are always kept.
+// Accounts with an active proxy are always kept.
 // If the mode is unrecognized the accounts are returned unmodified (fail-open).
 func filterAccountsByDisabledProxyScheduleMode(accounts []Account, mode string) []Account {
 	mode = normalizeDisabledProxyScheduleMode(mode)
 	if mode != DisabledProxyScheduleModeExcludeAccount {
 		return accounts
 	}
-	// In exclude_account mode, drop accounts that have a ProxyID assigned
-	// (those accounts depend on a proxy; if the proxy is disabled they
-	// should not be counted as available).
+	// In exclude_account mode, drop accounts whose assigned proxy is
+	// inactive or missing (dangling ProxyID). Accounts without a proxy
+	// or with an active proxy are kept.
 	filtered := make([]Account, 0, len(accounts))
 	for _, a := range accounts {
 		if a.ProxyID == nil {
 			filtered = append(filtered, a)
+			continue
 		}
+		if a.Proxy != nil && a.Proxy.IsActive() {
+			filtered = append(filtered, a)
+			continue
+		}
+		// ProxyID set but proxy is nil (deleted) or not active → exclude
 	}
 	return filtered
 }

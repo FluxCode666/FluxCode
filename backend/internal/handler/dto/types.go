@@ -500,21 +500,21 @@ type SubscriptionGrantUsageWindow struct {
 }
 
 type SubscriptionGrantUsageDetail struct {
-	GrantID         int64                       `json:"grant_id"`
-	StartsAt        time.Time                   `json:"starts_at"`
-	ExpiresAt       time.Time                   `json:"expires_at"`
-	DailyUsageUSD   float64                     `json:"daily_usage_usd"`
-	WeeklyUsageUSD  float64                     `json:"weekly_usage_usd"`
-	MonthlyUsageUSD float64                     `json:"monthly_usage_usd"`
+	GrantID         int64                         `json:"grant_id"`
+	StartsAt        time.Time                     `json:"starts_at"`
+	ExpiresAt       time.Time                     `json:"expires_at"`
+	DailyUsageUSD   float64                       `json:"daily_usage_usd"`
+	WeeklyUsageUSD  float64                       `json:"weekly_usage_usd"`
+	MonthlyUsageUSD float64                       `json:"monthly_usage_usd"`
 	Daily           *SubscriptionGrantUsageWindow `json:"daily,omitempty"`
 	Weekly          *SubscriptionGrantUsageWindow `json:"weekly,omitempty"`
 	Monthly         *SubscriptionGrantUsageWindow `json:"monthly,omitempty"`
 }
 
 type ActiveSubscriptionGrantUsageResponse struct {
-	SubscriptionID int64                        `json:"subscription_id"`
-	GroupID        int64                        `json:"group_id"`
-	GroupName      string                       `json:"group_name"`
+	SubscriptionID int64                          `json:"subscription_id"`
+	GroupID        int64                          `json:"group_id"`
+	GroupName      string                         `json:"group_name"`
 	Grants         []SubscriptionGrantUsageDetail `json:"grants"`
 }
 

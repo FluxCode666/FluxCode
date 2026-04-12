@@ -243,8 +243,12 @@ func (s *proxyRepoStub) CountAccountsByProxyID(ctx context.Context, proxyID int6
 	return s.accountCount, nil
 }
 
-func (s *proxyRepoStub) ListAccountSummariesByProxyID(ctx context.Context, proxyID int64) ([]ProxyAccountSummary, error) {
+func (s *proxyRepoStub) ListAccountSummariesByProxyID(ctx context.Context, proxyID int64, states []ProxyAccountCountState) ([]ProxyAccountSummary, error) {
 	panic("unexpected ListAccountSummariesByProxyID call")
+}
+
+func (s *proxyRepoStub) GetProxyAccountCounts(ctx context.Context, proxyIDs []int64, states []ProxyAccountCountState) ([]ProxyAccountCountItem, error) {
+	panic("unexpected GetProxyAccountCounts call")
 }
 
 type redeemRepoStub struct {

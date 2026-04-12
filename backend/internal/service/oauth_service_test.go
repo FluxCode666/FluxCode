@@ -93,8 +93,11 @@ func (m *mockProxyRepoForOAuth) ExistsByHostPortAuth(ctx context.Context, host s
 func (m *mockProxyRepoForOAuth) CountAccountsByProxyID(ctx context.Context, proxyID int64) (int64, error) {
 	panic("CountAccountsByProxyID not implemented")
 }
-func (m *mockProxyRepoForOAuth) ListAccountSummariesByProxyID(ctx context.Context, proxyID int64) ([]ProxyAccountSummary, error) {
+func (m *mockProxyRepoForOAuth) ListAccountSummariesByProxyID(ctx context.Context, proxyID int64, states []ProxyAccountCountState) ([]ProxyAccountSummary, error) {
 	panic("ListAccountSummariesByProxyID not implemented")
+}
+func (m *mockProxyRepoForOAuth) GetProxyAccountCounts(ctx context.Context, proxyIDs []int64, states []ProxyAccountCountState) ([]ProxyAccountCountItem, error) {
+	panic("GetProxyAccountCounts not implemented")
 }
 
 // =====================

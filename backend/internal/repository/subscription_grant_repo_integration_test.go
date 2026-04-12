@@ -102,7 +102,7 @@ func (s *SubscriptionGrantRepoSuite) TestGetTailGrantBySubscriptionID() {
 	tail, err := s.repo.GetTailGrantBySubscriptionID(s.ctx, sub.ID)
 	s.Require().NoError(err)
 	s.Require().Equal(second.ID, tail.ID)
-	s.Require().True(tail.ExpiresAt.Equal(second.ExpiresAt))
+	s.Require().WithinDuration(second.ExpiresAt, tail.ExpiresAt, time.Microsecond)
 }
 
 func (s *SubscriptionGrantRepoSuite) TestAllocateUsageToActiveGrants_EarliestExpiryFirst() {

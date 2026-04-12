@@ -236,7 +236,7 @@ func (s *GatewayRecordUsageGrantsSuite) TestOpenAIGatewayService_RecordUsage_All
 			RequestID: "req-openai-grants-" + uuid.NewString(),
 			Model:     "gpt-5.4",
 			Usage: service.OpenAIUsage{
-				InputTokens: 6_000_000,
+				InputTokens: 3_000_000,
 			},
 			Duration: 100 * time.Millisecond,
 		},

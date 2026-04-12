@@ -3677,7 +3677,7 @@ export default {
       alertCooldownMinutes: '告警冷却时间（分钟）',
       alertCooldownMinutesHint: '同类型告警在冷却时间内将被抑制重复发送。',
       alertEmails: '告警收件邮箱',
-      alertEmailPlaceholder: 'name@example.com',
+      alertEmailPlaceholder: "name{'@'}example.com",
       addEmail: '添加邮箱',
       removeEmail: '移除',
       failedToLoad: '加载号池监控配置失败',

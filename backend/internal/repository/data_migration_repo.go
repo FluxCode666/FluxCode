@@ -202,7 +202,7 @@ func (r *DataMigrationRepository) processTable(
 	if err != nil {
 		return service.DataMigrationTableReport{}, fmt.Errorf("query source rows: %w", err)
 	}
-	defer rows.Close()
+	defer rows.Close() //nolint:errcheck
 
 	columnList := joinMigrationColumns(columns)
 	conflictClause := ""
@@ -230,14 +230,14 @@ func (r *DataMigrationRepository) processTable(
 		}
 		var buf bytes.Buffer
 		buf.Grow(2 + len(batch)*256) // rough prealloc, avoids a lot of small growth on large tables
-		buf.WriteByte('[')
+		_ = buf.WriteByte('[')
 		for i, item := range batch {
 			if i > 0 {
-				buf.WriteByte(',')
+				_ = buf.WriteByte(',')
 			}
-			buf.Write(item)
+			_, _ = buf.Write(item)
 		}
-		buf.WriteByte(']')
+		_ = buf.WriteByte(']')
 
 		res, err := targetDB.ExecContext(ctx, insertSQL, buf.String())
 		if err != nil {
@@ -322,7 +322,7 @@ func listMigrationColumns(ctx context.Context, db *sql.DB, schema string, table 
 	if err != nil {
 		return nil, fmt.Errorf("list columns: %w", err)
 	}
-	defer rows.Close()
+	defer rows.Close() //nolint:errcheck
 
 	var columns []string
 	for rows.Next() {
@@ -391,7 +391,7 @@ func ensureMigrationSerialSequence(
 
 	// Ensure sequence is at least MAX(id) so future inserts won't conflict after we copy explicit IDs.
 	_, err := db.ExecContext(ctx, fmt.Sprintf(
-		"SELECT setval($1::regclass, GREATEST(COALESCE((SELECT MAX(%s) FROM %s), 0), 1), false)",
+		"SELECT setval($1::regclass, GREATEST(COALESCE((SELECT MAX(%s) FROM %s), 0), 1), true)",
 		quoteMigrationIdentifier(column),
 		qualifyMigrationTable(schema, table),
 	), seq.String)

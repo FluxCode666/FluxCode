@@ -133,7 +133,7 @@
       </template>
       <template #table>
         <AccountBulkActionsBar :selected-ids="selIds" @delete="handleBulkDelete" @reset-status="handleBulkResetStatus" @refresh-token="handleBulkRefreshToken" @edit="showBulkEdit = true" @clear="clearSelection" @select-page="selectPage" @toggle-schedulable="handleBulkToggleSchedulable" />
-        <div ref="accountTableRef" class="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <div class="flex min-h-0 flex-1 flex-col overflow-hidden">
         <DataTable
           :columns="cols"
           :data="accounts"
@@ -306,7 +306,6 @@ import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
 import { adminAPI } from '@/api/admin'
 import { useTableLoader } from '@/composables/useTableLoader'
-import { useSwipeSelect } from '@/composables/useSwipeSelect'
 import { useTableSelection } from '@/composables/useTableSelection'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import TablePageLayout from '@/components/layout/TablePageLayout.vue'
@@ -357,7 +356,6 @@ type AccountTableParams = {
 
 const proxies = ref<AccountProxy[]>([])
 const groups = ref<AdminGroup[]>([])
-const accountTableRef = ref<HTMLElement | null>(null)
 const selPlatforms = computed<AccountPlatform[]>(() => {
   const platforms = new Set(
     accounts.value
@@ -622,8 +620,6 @@ const {
   allVisibleSelected,
   isSelected,
   setSelectedIds,
-  select,
-  deselect,
   toggle: toggleSel,
   clear: clearSelection,
   removeMany: removeSelectedAccounts,
@@ -632,12 +628,6 @@ const {
 } = useTableSelection<Account>({
   rows: accounts,
   getId: (account) => account.id
-})
-
-useSwipeSelect(accountTableRef, {
-  isSelected,
-  select,
-  deselect
 })
 
 const resetAutoRefreshCache = () => {
