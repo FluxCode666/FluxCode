@@ -200,7 +200,7 @@ FOR UPDATE
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer rows.Close() //nolint:errcheck
 
 	out := make([]*service.SubscriptionGrant, 0)
 	for rows.Next() {
