@@ -237,7 +237,8 @@ done
 
 ```bash
 /opt/homebrew/bin/go run ./cmd/data-migrator \
-  --source_dsn "$SOURCE_DSN" --target_dsn "$TARGET_DSN" \
+  --source_dsn "$SOURCE_DSN" \
+  --target_dsn "$TARGET_DSN" \
   --mode dry-run --phase all \
   --report_file /tmp/migration-verify.json
 ```
