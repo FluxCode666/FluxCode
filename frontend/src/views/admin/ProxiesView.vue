@@ -1097,7 +1097,6 @@ const {
   selectedSet: selectedProxyIds,
   selectedCount,
   allVisibleSelected,
-  isSelected,
   select,
   deselect,
   clear: clearSelectedProxies,

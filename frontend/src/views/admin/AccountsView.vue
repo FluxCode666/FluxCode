@@ -620,8 +620,6 @@ const {
   allVisibleSelected,
   isSelected,
   setSelectedIds,
-  select,
-  deselect,
   toggle: toggleSel,
   clear: clearSelection,
   removeMany: removeSelectedAccounts,
