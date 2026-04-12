@@ -29,24 +29,24 @@ const trendData = ref<TrendDataPoint[]>([]); const modelStats = ref<ModelStat[]>
 type TimeRangeTab = '24h' | '7d' | '14d' | '30d'
 const formatLD = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 const timeRange = ref<TimeRangeTab>('24h')
-const startDate = ref(''); const endDate = ref(''); const granularity = ref<'day' | 'hour'>('hour')
+const startDate = ref(''); const endDate = ref(''); const granularity = ref<'day' | 'hour'>('hour'); const startHour = ref(0)
 
 const applyTimeRange = (value: TimeRangeTab) => {
   const now = new Date()
   if (value === '24h') {
     const start = new Date(now); start.setHours(start.getHours() - 24)
-    startDate.value = formatLD(start); endDate.value = formatLD(now); granularity.value = 'hour'
+    startDate.value = formatLD(start); endDate.value = formatLD(now); granularity.value = 'hour'; startHour.value = start.getHours()
   } else {
     const days = value === '7d' ? 7 : value === '14d' ? 14 : 30
     const start = new Date(now); start.setDate(start.getDate() - (days - 1))
-    startDate.value = formatLD(start); endDate.value = formatLD(now); granularity.value = 'day'
+    startDate.value = formatLD(start); endDate.value = formatLD(now); granularity.value = 'day'; startHour.value = 0
   }
 }
 applyTimeRange(timeRange.value)
 watch(timeRange, (val) => { applyTimeRange(val); loadCharts() })
 
 const loadStats = async () => { loading.value = true; try { await authStore.refreshUser(); stats.value = await usageAPI.getDashboardStats() } catch (error) { console.error('Failed to load dashboard stats:', error) } finally { loading.value = false } }
-const loadCharts = async () => { loadingCharts.value = true; try { const res = await Promise.all([usageAPI.getDashboardTrend({ start_date: startDate.value, end_date: endDate.value, granularity: granularity.value as any }), usageAPI.getDashboardModels({ start_date: startDate.value, end_date: endDate.value })]); trendData.value = fillTrendDataGaps(res[0].trend || [], startDate.value, endDate.value, granularity.value as 'day' | 'hour'); modelStats.value = res[1].models || [] } catch (error) { console.error('Failed to load charts:', error) } finally { loadingCharts.value = false } }
+const loadCharts = async () => { loadingCharts.value = true; try { const res = await Promise.all([usageAPI.getDashboardTrend({ start_date: startDate.value, end_date: endDate.value, granularity: granularity.value as any }), usageAPI.getDashboardModels({ start_date: startDate.value, end_date: endDate.value })]); let filled = fillTrendDataGaps(res[0].trend || [], startDate.value, endDate.value, granularity.value as 'day' | 'hour', timeRange.value === '24h' ? { startHour: startHour.value } : undefined); if (timeRange.value === '24h') { filled = filled.map(d => ({ ...d, date: d.date.split(' ')[1] || d.date })) }; trendData.value = filled; modelStats.value = res[1].models || [] } catch (error) { console.error('Failed to load charts:', error) } finally { loadingCharts.value = false } }
 const loadRecent = async () => { loadingUsage.value = true; try { const res = await usageAPI.getByDateRange(startDate.value, endDate.value); recentUsage.value = res.items.slice(0, 5) } catch (error) { console.error('Failed to load recent usage:', error) } finally { loadingUsage.value = false } }
 
 onMounted(() => { loadStats(); loadCharts(); loadRecent() })

@@ -27,8 +27,13 @@ function generateDayLabels(startDate: string, endDate: string): string[] {
   const start = new Date(sy, sm - 1, sd)
   const end = new Date(ey, em - 1, ed)
 
+  // Cap at today so we don't generate future dates with no data
+  const now = new Date()
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const cappedEnd = end > today ? today : end
+
   const current = new Date(start)
-  while (current <= end) {
+  while (current <= cappedEnd) {
     const y = current.getFullYear()
     const m = String(current.getMonth() + 1).padStart(2, '0')
     const d = String(current.getDate()).padStart(2, '0')
@@ -45,16 +50,21 @@ function generateDayLabels(startDate: string, endDate: string): string[] {
  * @param endDate   - "YYYY-MM-DD"
  * @returns Array of "YYYY-MM-DD HH:00" strings covering all hours in the range.
  */
-function generateHourLabels(startDate: string, endDate: string): string[] {
+function generateHourLabels(startDate: string, endDate: string, fromHour: number = 0): string[] {
   const labels: string[] = []
   const [sy, sm, sd] = startDate.split('-').map(Number)
   const [ey, em, ed] = endDate.split('-').map(Number)
-  const start = new Date(sy, sm - 1, sd, 0, 0, 0)
+  const start = new Date(sy, sm - 1, sd, fromHour, 0, 0)
   // End date is inclusive: go up to 23:00 on that day
   const end = new Date(ey, em - 1, ed, 23, 0, 0)
 
+  // Cap at the current hour so we don't generate future hours with no data
+  const now = new Date()
+  const currentHour = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours(), 0, 0)
+  const cappedEnd = end > currentHour ? currentHour : end
+
   const current = new Date(start)
-  while (current <= end) {
+  while (current <= cappedEnd) {
     const y = current.getFullYear()
     const mo = String(current.getMonth() + 1).padStart(2, '0')
     const d = String(current.getDate()).padStart(2, '0')
@@ -79,11 +89,12 @@ export function fillTrendDataGaps(
   data: TrendDataPoint[],
   startDate: string,
   endDate: string,
-  granularity: 'day' | 'hour'
+  granularity: 'day' | 'hour',
+  options?: { startHour?: number }
 ): TrendDataPoint[] {
   const allLabels =
     granularity === 'hour'
-      ? generateHourLabels(startDate, endDate)
+      ? generateHourLabels(startDate, endDate, options?.startHour)
       : generateDayLabels(startDate, endDate)
 
   if (allLabels.length === 0) return data
