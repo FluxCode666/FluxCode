@@ -255,13 +255,15 @@ func (s *SchedulerSnapshotService) pollOutbox() {
 	}
 
 	lastID := events[len(events)-1].ID
-	if err := s.cache.SetOutboxWatermark(ctx, lastID); err != nil {
+	wmCtx, wmCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer wmCancel()
+	if err := s.cache.SetOutboxWatermark(wmCtx, lastID); err != nil {
 		logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] outbox watermark write failed: %v", err)
 	} else {
 		watermarkForCheck = lastID
 	}
 
-	s.checkOutboxLag(ctx, events[0], watermarkForCheck)
+	s.checkOutboxLag(wmCtx, events[0], watermarkForCheck)
 }
 
 func (s *SchedulerSnapshotService) handleOutboxEvent(ctx context.Context, event SchedulerOutboxEvent) error {

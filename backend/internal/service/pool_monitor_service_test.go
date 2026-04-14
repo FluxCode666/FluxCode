@@ -374,8 +374,6 @@ func TestPoolMonitorService_DisabledProxyScheduleMode_ReadsConfig(t *testing.T) 
 	require.Equal(t, DisabledProxyScheduleModeExcludeAccount, svc.DisabledProxyScheduleMode(context.Background()))
 }
 
-func ptrInt64(v int64) *int64 { return &v }
-
 func TestFilterAccountsByDisabledProxyScheduleMode_DirectMode_KeepsAll(t *testing.T) {
 	accounts := []Account{
 		{ID: 1, ProxyID: nil},

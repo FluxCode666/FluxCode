@@ -540,6 +540,7 @@ func TestIsNonRetryableRefreshError(t *testing.T) {
 		{name: "access_denied", err: errors.New("access_denied"), expected: true},
 		{name: "no_refresh_token", err: errors.New("no refresh token available"), expected: true},
 		{name: "invalid_grant_with_desc", err: errors.New("Error: invalid_grant - token revoked"), expected: true},
+		{name: "refresh_token_reused", err: errors.New(`token refresh failed: status 401, body: {"error":{"code":"refresh_token_reused"}}`), expected: true},
 		{name: "case_insensitive", err: errors.New("INVALID_GRANT"), expected: true},
 	}
 
