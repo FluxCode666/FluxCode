@@ -74,6 +74,16 @@
                 <span class="hidden md:inline">{{ t('admin.errorPassthrough.title') }}</span>
               </button>
 
+              <!-- TLS Fingerprint Profiles -->
+              <button
+                @click="showTLSFingerprintProfiles = true"
+                class="btn btn-secondary"
+                :title="t('admin.tlsFingerprintProfiles.title')"
+              >
+                <Icon name="lock" size="md" class="mr-1.5" />
+                <span class="hidden md:inline">{{ t('admin.tlsFingerprintProfiles.title') }}</span>
+              </button>
+
               <!-- Column Settings Dropdown -->
               <div class="relative" ref="columnDropdownRef">
                 <button
@@ -135,15 +145,18 @@
         <AccountBulkActionsBar :selected-ids="selIds" @delete="handleBulkDelete" @reset-status="handleBulkResetStatus" @refresh-token="handleBulkRefreshToken" @edit="showBulkEdit = true" @clear="clearSelection" @select-page="selectPage" @toggle-schedulable="handleBulkToggleSchedulable" />
         <div class="flex min-h-0 flex-1 flex-col overflow-hidden">
         <DataTable
+          ref="dataTableRef"
           :columns="cols"
           :data="accounts"
           :loading="loading"
           row-key="id"
+          :server-side-sort="true"
+          @sort="handleSort"
           :default-sort-key="params.sort_by || 'name'"
           :default-sort-order="params.sort_order || 'asc'"
           :sort-storage-key="ACCOUNT_SORT_STORAGE_KEY"
-          :server-side-sort="true"
-          @sort="handleSortChange"
+          :estimate-row-height="72"
+          :overscan="5"
         >
           <template #header-select>
             <input
@@ -155,7 +168,7 @@
             />
           </template>
           <template #cell-select="{ row }">
-            <input type="checkbox" :checked="selIds.includes(row.id)" @change="toggleSel(row.id)" class="rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
+            <input type="checkbox" :checked="isSelected(row.id)" @change="toggleSel(row.id)" class="rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
           </template>
           <template #cell-name="{ row, value }">
             <div class="flex flex-col">
@@ -175,7 +188,7 @@
           </template>
           <template #cell-platform_type="{ row }">
             <div class="flex flex-wrap items-center gap-1">
-              <PlatformTypeBadge :platform="row.platform" :type="row.type" :plan-type="row.credentials?.plan_type" :privacy-mode="row.extra?.privacy_mode" />
+              <PlatformTypeBadge :platform="row.platform" :type="row.type" :plan-type="row.credentials?.plan_type" :privacy-mode="row.extra?.privacy_mode" :subscription-expires-at="row.credentials?.subscription_expires_at" />
               <span
                 v-if="getAntigravityTierLabel(row)"
                 :class="['inline-block rounded px-1.5 py-0.5 text-[10px] font-medium', getAntigravityTierClass(row)]"
@@ -188,7 +201,9 @@
             <AccountCapacityCell :account="row" />
           </template>
           <template #cell-status="{ row }">
-            <AccountStatusIndicator :account="row" @show-temp-unsched="handleShowTempUnsched" />
+            <div class="flex items-center gap-1.5">
+              <AccountStatusIndicator :account="row" @show-temp-unsched="handleShowTempUnsched" />
+            </div>
           </template>
           <template #cell-schedulable="{ row }">
             <button @click="handleToggleSchedulable(row)" :disabled="togglingSchedulable === row.id" class="relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:focus:ring-offset-dark-800" :class="[row.schedulable ? 'bg-primary-500 hover:bg-primary-600' : 'bg-gray-200 hover:bg-gray-300 dark:bg-dark-600 dark:hover:bg-dark-500']" :title="row.schedulable ? t('admin.accounts.schedulableEnabled') : t('admin.accounts.schedulableDisabled')">
@@ -282,7 +297,7 @@
     <AccountTestModal :show="showTest" :account="testingAcc" @close="closeTestModal" />
     <AccountStatsModal :show="showStats" :account="statsAcc" @close="closeStatsModal" />
     <ScheduledTestsPanel :show="showSchedulePanel" :account-id="scheduleAcc?.id ?? null" :model-options="scheduleModelOptions" @close="closeSchedulePanel" />
-    <AccountActionMenu :show="menu.show" :account="menu.acc" :position="menu.pos" @close="menu.show = false" @test="handleTest" @stats="handleViewStats" @schedule="handleSchedule" @reauth="handleReAuth" @refresh-token="handleRefresh" @recover-state="handleRecoverState" @reset-quota="handleResetQuota" />
+    <AccountActionMenu :show="menu.show" :account="menu.acc" :position="menu.pos" @close="menu.show = false" @test="handleTest" @stats="handleViewStats" @schedule="handleSchedule" @reauth="handleReAuth" @refresh-token="handleRefresh" @recover-state="handleRecoverState" @reset-quota="handleResetQuota" @set-privacy="handleSetPrivacy" />
     <SyncFromCrsModal :show="showSync" @close="showSync = false" @synced="reload" />
     <ImportDataModal :show="showImportData" @close="showImportData = false" @imported="handleDataImported" />
     <BulkEditAccountModal :show="showBulkEdit" :account-ids="selIds" :selected-platforms="selPlatforms" :selected-types="selTypes" :proxies="proxies" :groups="groups" @close="showBulkEdit = false" @updated="handleBulkUpdated" />
@@ -295,6 +310,7 @@
       </label>
     </ConfirmDialog>
     <ErrorPassthroughRulesModal :show="showErrorPassthrough" @close="showErrorPassthrough = false" />
+    <TLSFingerprintProfilesModal :show="showTLSFingerprintProfiles" @close="showTLSFingerprintProfiles = false" />
   </AppLayout>
 </template>
 
@@ -306,6 +322,7 @@ import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
 import { adminAPI } from '@/api/admin'
 import { useTableLoader } from '@/composables/useTableLoader'
+import { useSwipeSelect, type SwipeSelectVirtualContext } from '@/composables/useSwipeSelect'
 import { useTableSelection } from '@/composables/useTableSelection'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import TablePageLayout from '@/components/layout/TablePageLayout.vue'
@@ -331,6 +348,7 @@ import AccountCapacityCell from '@/components/account/AccountCapacityCell.vue'
 import PlatformTypeBadge from '@/components/common/PlatformTypeBadge.vue'
 import Icon from '@/components/icons/Icon.vue'
 import ErrorPassthroughRulesModal from '@/components/admin/ErrorPassthroughRulesModal.vue'
+import TLSFingerprintProfilesModal from '@/components/admin/TLSFingerprintProfilesModal.vue'
 import { buildOpenAIUsageRefreshKey } from '@/utils/accountUsageRefresh'
 import { formatDateTime, formatRelativeTime } from '@/utils/format'
 import type { Account, AccountPlatform, AccountSchedulingState, AccountType, Proxy as AccountProxy, AdminGroup, WindowStats, ClaudeModel } from '@/types'
@@ -343,6 +361,7 @@ type AccountTableParams = {
   platform: string
   type: string
   status: string
+  privacy_mode: string
   group: string
   search: string
   schedulable_status: '' | AccountSchedulingState
@@ -356,6 +375,8 @@ type AccountTableParams = {
 
 const proxies = ref<AccountProxy[]>([])
 const groups = ref<AdminGroup[]>([])
+const accountTableRef = ref<HTMLElement | null>(null)
+const dataTableRef = ref<InstanceType<typeof DataTable> | null>(null)
 const selPlatforms = computed<AccountPlatform[]>(() => {
   const platforms = new Set(
     accounts.value
@@ -385,6 +406,7 @@ const showReAuth = ref(false)
 const showTest = ref(false)
 const showStats = ref(false)
 const showErrorPassthrough = ref(false)
+const showTLSFingerprintProfiles = ref(false)
 const edAcc = ref<Account | null>(null)
 const tempUnschedAcc = ref<Account | null>(null)
 const deletingAcc = ref<Account | null>(null)
@@ -407,7 +429,6 @@ const HIDDEN_COLUMNS_KEY = 'account-hidden-columns'
 
 // Sorting settings
 const ACCOUNT_SORT_STORAGE_KEY = 'account-table-sort'
-
 // Auto refresh settings
 const showAutoRefreshDropdown = ref(false)
 const autoRefreshDropdownRef = ref<HTMLElement | null>(null)
@@ -604,6 +625,7 @@ const {
     platform: '',
     type: '',
     status: '',
+    privacy_mode: '',
     group: '',
     search: '',
     schedulable_status: '',
@@ -619,16 +641,32 @@ const {
   selectedIds: selIds,
   allVisibleSelected,
   isSelected,
+  select,
+  deselect,
   setSelectedIds,
   toggle: toggleSel,
   clear: clearSelection,
   removeMany: removeSelectedAccounts,
   toggleVisible,
-  selectVisible: selectPage
+  selectVisible: selectPage,
+  batchUpdate
 } = useTableSelection<Account>({
   rows: accounts,
   getId: (account) => account.id
 })
+
+const swipeVirtualContext: SwipeSelectVirtualContext = {
+  getVirtualizer: () => dataTableRef.value?.virtualizer ?? null,
+  getSortedData: () => dataTableRef.value?.sortedData ?? accounts.value,
+  getRowId: (row: any) => row.id,
+}
+
+useSwipeSelect(accountTableRef, {
+  isSelected,
+  select,
+  deselect,
+  batchUpdate
+}, swipeVirtualContext)
 
 const resetAutoRefreshCache = () => {
   autoRefreshETag.value = null
@@ -681,10 +719,14 @@ const handlePageSizeChange = (size: number) => {
   baseHandlePageSizeChange(size)
 }
 
-const handleSortChange = (key: string, order: 'asc' | 'desc') => {
+const handleSort = (key: string, order: 'asc' | 'desc') => {
   params.sort_by = key
   params.sort_order = order
-  void reload()
+  pagination.page = 1
+  hasPendingListSync.value = false
+  resetAutoRefreshCache()
+  pendingTodayStatsRefresh.value = true
+  load()
 }
 
 watch(loading, (isLoading, wasLoading) => {
@@ -1147,6 +1189,18 @@ const resolveSchedulingState = (account: Account): '' | AccountSchedulingState =
   if (account.status === 'active') return 'available'
   return ''
 }
+const ACCOUNT_UNGROUPED_GROUP_QUERY_VALUE = 'ungrouped'
+const ACCOUNT_PRIVACY_MODE_UNSET_QUERY_VALUE = '__unset__'
+const buildAccountQueryFilters = () => ({
+  platform: params.platform || '',
+  type: params.type || '',
+  status: params.status || '',
+  group: params.group || '',
+  privacy_mode: params.privacy_mode || '',
+  search: params.search || '',
+  sort_by: params.sort_by,
+  sort_order: params.sort_order
+})
 const accountMatchesCurrentFilters = (account: Account) => {
   if (params.platform && account.platform !== params.platform) return false
   if (params.type && account.type !== params.type) return false
@@ -1163,9 +1217,18 @@ const accountMatchesCurrentFilters = (account: Account) => {
   }
   if (params.schedulable_status && resolveSchedulingState(account) !== params.schedulable_status) return false
   if (params.group) {
-    if (params.group === 'ungrouped') {
-      if ((account.group_ids || []).length > 0) return false
-    } else if (!(account.group_ids || []).includes(Number(params.group))) {
+    const groupIds = account.group_ids ?? account.groups?.map((group) => group.id) ?? []
+    if (params.group === ACCOUNT_UNGROUPED_GROUP_QUERY_VALUE) {
+      if (groupIds.length > 0) return false
+    } else if (!groupIds.includes(Number(params.group))) {
+      return false
+    }
+  }
+  const privacyMode = typeof account.extra?.privacy_mode === 'string' ? account.extra.privacy_mode : ''
+  if (params.privacy_mode) {
+    if (params.privacy_mode === ACCOUNT_PRIVACY_MODE_UNSET_QUERY_VALUE) {
+      if (privacyMode.trim() !== '') return false
+    } else if (privacyMode !== params.privacy_mode) {
       return false
     }
   }
@@ -1250,12 +1313,7 @@ const handleExportData = async () => {
         ? { ids: selIds.value, includeProxies: includeProxyOnExport.value }
         : {
             includeProxies: includeProxyOnExport.value,
-            filters: {
-              platform: params.platform,
-              type: params.type,
-              status: params.status,
-              search: params.search
-            }
+            filters: buildAccountQueryFilters()
           }
     )
     const timestamp = formatExportTimestamp()
@@ -1321,6 +1379,17 @@ const handleResetQuota = async (a: Account) => {
     appStore.showSuccess(t('common.success'))
   } catch (error) {
     console.error('Failed to reset quota:', error)
+  }
+}
+const handleSetPrivacy = async (a: Account) => {
+  try {
+    const updated = await adminAPI.accounts.setPrivacy(a.id)
+    patchAccountInList(updated)
+    enterAutoRefreshSilentWindow()
+    appStore.showSuccess(t('common.success'))
+  } catch (error: any) {
+    console.error('Failed to set privacy:', error)
+    appStore.showError(error?.response?.data?.message || t('admin.accounts.privacyFailed'))
   }
 }
 const handleDelete = (a: Account) => { deletingAcc.value = a; showDeleteDialog.value = true }

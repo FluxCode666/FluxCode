@@ -158,6 +158,9 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 	reqStream := parsedReq.Stream
 	reqLog = reqLog.With(zap.String("model", reqModel), zap.Bool("stream", reqStream))
 
+	// 解析渠道级模型映射
+	channelMapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, reqModel)
+
 	// 设置 max_tokens=1 + haiku 探测请求标识到 context 中
 	// 必须在 SetClaudeCodeClientContext 之前设置，因为 ClaudeCodeValidator 需要读取此标识进行绕过判断
 	if isMaxTokensOneHaikuRequest(reqModel, parsedReq.MaxTokens, reqStream) {
@@ -178,6 +181,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 	c.Request = c.Request.WithContext(service.WithThinkingEnabled(c.Request.Context(), parsedReq.ThinkingEnabled, h.metadataBridgeEnabled()))
 
 	setOpsRequestContext(c, reqModel, reqStream, body)
+	setOpsEndpointContext(c, "", int16(service.RequestTypeFromLegacy(reqStream, false)))
 
 	// 验证 model 必填
 	if reqModel == "" {
@@ -244,6 +248,9 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 		return
 	}
 
+	// 设置请求所属分组 ID（用于渠道级功能判断，如 WebSearch 模拟）
+	parsedReq.GroupID = apiKey.GroupID
+
 	// 计算粘性会话hash
 	parsedReq.SessionContext = &service.SessionContext{
 		ClientIP:  ip.GetClientIP(c),
@@ -291,7 +298,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 		}
 
 		for {
-			selection, err := h.gatewayService.SelectAccountWithLoadAwareness(c.Request.Context(), apiKey.GroupID, sessionKey, reqModel, fs.FailedAccountIDs, "") // Gemini 不使用会话限制
+			selection, err := h.gatewayService.SelectAccountWithLoadAwareness(c.Request.Context(), apiKey.GroupID, sessionKey, reqModel, fs.FailedAccountIDs, "", int64(0)) // Gemini 不使用会话限制
 			if err != nil {
 				if len(fs.FailedAccountIDs) == 0 {
 					h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "No available accounts: "+err.Error(), streamStarted)
@@ -421,11 +428,24 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 					}
 				}
 				wroteFallback := h.ensureForwardErrorResponse(c, streamStarted)
-				reqLog.Error("gateway.forward_failed",
+				forwardFailedFields := []zap.Field{
 					zap.Int64("account_id", account.ID),
+					zap.String("account_name", account.Name),
+					zap.String("account_platform", account.Platform),
 					zap.Bool("fallback_error_response_written", wroteFallback),
 					zap.Error(err),
-				)
+				}
+				if account.Proxy != nil {
+					forwardFailedFields = append(forwardFailedFields,
+						zap.Int64("proxy_id", account.Proxy.ID),
+						zap.String("proxy_name", account.Proxy.Name),
+						zap.String("proxy_host", account.Proxy.Host),
+						zap.Int("proxy_port", account.Proxy.Port),
+					)
+				} else if account.ProxyID != nil {
+					forwardFailedFields = append(forwardFailedFields, zap.Int64p("proxy_id", account.ProxyID))
+				}
+				reqLog.Error("gateway.forward_failed", forwardFailedFields...)
 				return
 			}
 
@@ -453,6 +473,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			h.submitUsageRecordTask(func(ctx context.Context) {
 				if err := h.gatewayService.RecordUsage(ctx, &service.RecordUsageInput{
 					Result:             result,
+					ParsedRequest:      parsedReq,
 					APIKey:             apiKey,
 					User:               apiKey.User,
 					Account:            account,
@@ -464,6 +485,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 					RequestPayloadHash: requestPayloadHash,
 					ForceCacheBilling:  fs.ForceCacheBilling,
 					APIKeyService:      h.apiKeyService,
+					ChannelUsageFields: channelMapping.ToUsageFields(reqModel, result.UpstreamModel),
 				}); err != nil {
 					logger.L().With(
 						zap.String("component", "handler.gateway.messages"),
@@ -500,7 +522,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 
 		for {
 			// 选择支持该模型的账号
-			selection, err := h.gatewayService.SelectAccountWithLoadAwareness(c.Request.Context(), currentAPIKey.GroupID, sessionKey, reqModel, fs.FailedAccountIDs, parsedReq.MetadataUserID)
+			selection, err := h.gatewayService.SelectAccountWithLoadAwareness(c.Request.Context(), currentAPIKey.GroupID, sessionKey, reqModel, fs.FailedAccountIDs, parsedReq.MetadataUserID, subject.UserID)
 			if err != nil {
 				if len(fs.FailedAccountIDs) == 0 {
 					h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "No available accounts: "+err.Error(), streamStarted)
@@ -646,7 +668,15 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			parsedReq.OnUpstreamAccepted = queueRelease
 			// ===== 用户消息串行队列 END =====
 
+			// 应用渠道模型映射到请求
+			if channelMapping.Mapped {
+				parsedReq.Model = channelMapping.MappedModel
+				parsedReq.Body = h.gatewayService.ReplaceModelInBody(parsedReq.Body, channelMapping.MappedModel)
+				body = h.gatewayService.ReplaceModelInBody(body, channelMapping.MappedModel)
+			}
+
 			// 转发请求 - 根据账号平台分流
+			c.Set("parsed_request", parsedReq)
 			var result *service.ForwardResult
 			requestCtx := c.Request.Context()
 			if fs.SwitchCount > 0 {
@@ -740,11 +770,24 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 					}
 				}
 				wroteFallback := h.ensureForwardErrorResponse(c, streamStarted)
-				reqLog.Error("gateway.forward_failed",
+				forwardFailedFields := []zap.Field{
 					zap.Int64("account_id", account.ID),
+					zap.String("account_name", account.Name),
+					zap.String("account_platform", account.Platform),
 					zap.Bool("fallback_error_response_written", wroteFallback),
 					zap.Error(err),
-				)
+				}
+				if account.Proxy != nil {
+					forwardFailedFields = append(forwardFailedFields,
+						zap.Int64("proxy_id", account.Proxy.ID),
+						zap.String("proxy_name", account.Proxy.Name),
+						zap.String("proxy_host", account.Proxy.Host),
+						zap.Int("proxy_port", account.Proxy.Port),
+					)
+				} else if account.ProxyID != nil {
+					forwardFailedFields = append(forwardFailedFields, zap.Int64p("proxy_id", account.ProxyID))
+				}
+				reqLog.Error("gateway.forward_failed", forwardFailedFields...)
 				return
 			}
 
@@ -772,6 +815,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			h.submitUsageRecordTask(func(ctx context.Context) {
 				if err := h.gatewayService.RecordUsage(ctx, &service.RecordUsageInput{
 					Result:             result,
+					ParsedRequest:      parsedReq,
 					APIKey:             currentAPIKey,
 					User:               currentAPIKey.User,
 					Account:            account,
@@ -783,6 +827,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 					RequestPayloadHash: requestPayloadHash,
 					ForceCacheBilling:  fs.ForceCacheBilling,
 					APIKeyService:      h.apiKeyService,
+					ChannelUsageFields: channelMapping.ToUsageFields(reqModel, result.UpstreamModel),
 				}); err != nil {
 					logger.L().With(
 						zap.String("component", "handler.gateway.messages"),
@@ -818,14 +863,6 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 	}
 	if forcedPlatform, ok := middleware2.GetForcePlatformFromContext(c); ok && strings.TrimSpace(forcedPlatform) != "" {
 		platform = forcedPlatform
-	}
-
-	if platform == service.PlatformSora {
-		c.JSON(http.StatusOK, gin.H{
-			"object": "list",
-			"data":   service.DefaultSoraModels(h.cfg),
-		})
-		return
 	}
 
 	// Get available models from account configurations (without platform filter)
@@ -1396,6 +1433,7 @@ func (h *GatewayHandler) CountTokens(c *gin.Context) {
 	}
 
 	setOpsRequestContext(c, parsedReq.Model, parsedReq.Stream, body)
+	setOpsEndpointContext(c, "", int16(service.RequestTypeFromLegacy(parsedReq.Stream, false)))
 
 	// 获取订阅信息（可能为nil）
 	subscription, _ := middleware2.GetSubscriptionFromContext(c)
