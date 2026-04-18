@@ -332,6 +332,7 @@ type OpenAIGatewayService struct {
 	resolver              *ModelPricingResolver
 	channelService        *ChannelService
 	balanceNotifyService  *BalanceNotifyService
+	poolMonitorSvc       *PoolMonitorService
 
 	openaiWSPoolOnce              sync.Once
 	openaiWSStateStoreOnce        sync.Once
@@ -405,6 +406,13 @@ func NewOpenAIGatewayService(
 	}
 	svc.logOpenAIWSModeBootstrap()
 	return svc
+}
+
+func (s *OpenAIGatewayService) SetPoolMonitorService(svc *PoolMonitorService) {
+	if s == nil {
+		return
+	}
+	s.poolMonitorSvc = svc
 }
 
 func (s *OpenAIGatewayService) SetProxyMetricsRepo(repo ProxyUsageMetricsRepository) {
@@ -1633,7 +1641,10 @@ func (s *OpenAIGatewayService) SelectAccountWithLoadAwareness(ctx context.Contex
 func (s *OpenAIGatewayService) listSchedulableAccounts(ctx context.Context, groupID *int64) ([]Account, error) {
 	if s.schedulerSnapshot != nil {
 		accounts, _, err := s.schedulerSnapshot.ListSchedulableAccounts(ctx, groupID, PlatformOpenAI, false)
-		return accounts, err
+		if err != nil {
+			return nil, err
+		}
+		return applyDisabledProxyFilter(ctx, accounts, s.poolMonitorSvc), nil
 	}
 	var accounts []Account
 	var err error
@@ -1647,7 +1658,7 @@ func (s *OpenAIGatewayService) listSchedulableAccounts(ctx context.Context, grou
 	if err != nil {
 		return nil, fmt.Errorf("query accounts failed: %w", err)
 	}
-	return accounts, nil
+	return applyDisabledProxyFilter(ctx, accounts, s.poolMonitorSvc), nil
 }
 
 func (s *OpenAIGatewayService) tryAcquireAccountSlot(ctx context.Context, accountID int64, maxConcurrency int) (*AcquireResult, error) {

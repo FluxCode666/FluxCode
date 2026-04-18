@@ -570,6 +570,7 @@ type GatewayService struct {
 	debugGatewayBodyFile  atomic.Pointer[os.File] // non-nil when SUB2API_DEBUG_GATEWAY_BODY is set
 	tlsFPProfileService   *TLSFingerprintProfileService
 	balanceNotifyService  *BalanceNotifyService
+	poolMonitorSvc        *PoolMonitorService
 }
 
 // NewGatewayService creates a new GatewayService
@@ -649,6 +650,13 @@ func NewGatewayService(
 		svc.initDebugGatewayBodyFile(path)
 	}
 	return svc
+}
+
+func (s *GatewayService) SetPoolMonitorService(svc *PoolMonitorService) {
+	if s == nil {
+		return
+	}
+	s.poolMonitorSvc = svc
 }
 
 // GenerateSessionHash 从预解析请求计算粘性会话 hash
@@ -1939,6 +1947,7 @@ func (s *GatewayService) listSchedulableAccounts(ctx context.Context, groupID *i
 	if s.schedulerSnapshot != nil {
 		accounts, useMixed, err := s.schedulerSnapshot.ListSchedulableAccounts(ctx, groupID, platform, hasForcePlatform)
 		if err == nil {
+			accounts = applyDisabledProxyFilter(ctx, accounts, s.poolMonitorSvc)
 			slog.Debug("account_scheduling_list_snapshot",
 				"group_id", derefGroupID(groupID),
 				"platform", platform,
@@ -1996,7 +2005,7 @@ func (s *GatewayService) listSchedulableAccounts(ctx context.Context, groupID *i
 				"status", acc.Status,
 				"tls_fingerprint", acc.IsTLSFingerprintEnabled())
 		}
-		return filtered, useMixed, nil
+		return applyDisabledProxyFilter(ctx, filtered, s.poolMonitorSvc), useMixed, nil
 	}
 
 	var accounts []Account
@@ -2029,7 +2038,7 @@ func (s *GatewayService) listSchedulableAccounts(ctx context.Context, groupID *i
 			"status", acc.Status,
 			"tls_fingerprint", acc.IsTLSFingerprintEnabled())
 	}
-	return accounts, useMixed, nil
+	return applyDisabledProxyFilter(ctx, accounts, s.poolMonitorSvc), useMixed, nil
 }
 
 // IsSingleAntigravityAccountGroup 检查指定分组是否只有一个 antigravity 平台的可调度账号。

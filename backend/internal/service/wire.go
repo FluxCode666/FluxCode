@@ -225,6 +225,7 @@ func ProvideOpenAIGatewayService(
 	channelService *ChannelService,
 	balanceNotifyService *BalanceNotifyService,
 	proxyMetricsRepo ProxyUsageMetricsRepository,
+	poolMonitorService *PoolMonitorService,
 ) *OpenAIGatewayService {
 	svc := NewOpenAIGatewayService(
 		accountRepo,
@@ -248,6 +249,7 @@ func ProvideOpenAIGatewayService(
 		balanceNotifyService,
 	)
 	svc.SetProxyMetricsRepo(proxyMetricsRepo)
+	svc.SetPoolMonitorService(poolMonitorService)
 	return svc
 }
 
@@ -464,6 +466,96 @@ func ProvideSettingService(settingRepo SettingRepository, groupRepo GroupReposit
 	return svc
 }
 
+// ProvideGatewayService creates GatewayService and injects PoolMonitorService.
+func ProvideGatewayService(
+	accountRepo AccountRepository,
+	groupRepo GroupRepository,
+	usageLogRepo UsageLogRepository,
+	usageBillingRepo UsageBillingRepository,
+	userRepo UserRepository,
+	userSubRepo UserSubscriptionRepository,
+	userGroupRateRepo UserGroupRateRepository,
+	cache GatewayCache,
+	cfg *config.Config,
+	schedulerSnapshot *SchedulerSnapshotService,
+	concurrencyService *ConcurrencyService,
+	billingService *BillingService,
+	rateLimitService *RateLimitService,
+	billingCacheService *BillingCacheService,
+	identityService *IdentityService,
+	httpUpstream HTTPUpstream,
+	deferredService *DeferredService,
+	claudeTokenProvider *ClaudeTokenProvider,
+	sessionLimitCache SessionLimitCache,
+	rpmCache RPMCache,
+	digestStore *DigestSessionStore,
+	settingService *SettingService,
+	tlsFPProfileService *TLSFingerprintProfileService,
+	channelService *ChannelService,
+	resolver *ModelPricingResolver,
+	balanceNotifyService *BalanceNotifyService,
+	poolMonitorService *PoolMonitorService,
+) *GatewayService {
+	svc := NewGatewayService(
+		accountRepo,
+		groupRepo,
+		usageLogRepo,
+		usageBillingRepo,
+		userRepo,
+		userSubRepo,
+		userGroupRateRepo,
+		cache,
+		cfg,
+		schedulerSnapshot,
+		concurrencyService,
+		billingService,
+		rateLimitService,
+		billingCacheService,
+		identityService,
+		httpUpstream,
+		deferredService,
+		claudeTokenProvider,
+		sessionLimitCache,
+		rpmCache,
+		digestStore,
+		settingService,
+		tlsFPProfileService,
+		channelService,
+		resolver,
+		balanceNotifyService,
+	)
+	svc.SetPoolMonitorService(poolMonitorService)
+	return svc
+}
+
+// ProvideGeminiMessagesCompatService creates GeminiMessagesCompatService and injects PoolMonitorService.
+func ProvideGeminiMessagesCompatService(
+	accountRepo AccountRepository,
+	groupRepo GroupRepository,
+	cache GatewayCache,
+	schedulerSnapshot *SchedulerSnapshotService,
+	tokenProvider *GeminiTokenProvider,
+	rateLimitService *RateLimitService,
+	httpUpstream HTTPUpstream,
+	antigravityGatewayService *AntigravityGatewayService,
+	cfg *config.Config,
+	poolMonitorService *PoolMonitorService,
+) *GeminiMessagesCompatService {
+	svc := NewGeminiMessagesCompatService(
+		accountRepo,
+		groupRepo,
+		cache,
+		schedulerSnapshot,
+		tokenProvider,
+		rateLimitService,
+		httpUpstream,
+		antigravityGatewayService,
+		cfg,
+	)
+	svc.SetPoolMonitorService(poolMonitorService)
+	return svc
+}
+
 // ProviderSet is the Wire provider set for all services
 var ProviderSet = wire.NewSet(
 	// Core services
@@ -484,7 +576,7 @@ var ProviderSet = wire.NewSet(
 	NewBillingCacheService,
 	NewAnnouncementService,
 	NewAdminService,
-	NewGatewayService,
+	ProvideGatewayService,
 	ProvideOpenAIGatewayService,
 	NewOAuthService,
 	NewOpenAIOAuthService,
@@ -495,7 +587,7 @@ var ProviderSet = wire.NewSet(
 	NewAntigravityOAuthService,
 	NewOAuthRefreshAPI,
 	ProvideGeminiTokenProvider,
-	NewGeminiMessagesCompatService,
+	ProvideGeminiMessagesCompatService,
 	ProvideAntigravityTokenProvider,
 	ProvideOpenAITokenProvider,
 	ProvideClaudeTokenProvider,

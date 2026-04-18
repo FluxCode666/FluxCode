@@ -107,6 +107,18 @@ func normalizeDisabledProxyScheduleMode(mode string) string {
 	}
 }
 
+// applyDisabledProxyFilter is a convenience wrapper that reads the current
+// disabled-proxy scheduling mode from PoolMonitorService and applies
+// filterAccountsByDisabledProxyScheduleMode. Nil-safe: returns accounts
+// unchanged when svc is nil.
+func applyDisabledProxyFilter(ctx context.Context, accounts []Account, svc *PoolMonitorService) []Account {
+	if svc == nil {
+		return accounts
+	}
+	mode := svc.DisabledProxyScheduleMode(ctx)
+	return filterAccountsByDisabledProxyScheduleMode(accounts, mode)
+}
+
 // filterAccountsByDisabledProxyScheduleMode filters out accounts whose assigned
 // proxy is disabled, according to the configured scheduling mode.
 //
