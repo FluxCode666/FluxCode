@@ -308,6 +308,8 @@ export default {
     banned: 'Banned',
     creating: 'Creating...',
     sending: 'Sending...',
+    submitting: 'Submitting...',
+    required: 'Required',
     purchase: 'Purchase',
     recommended: 'Recommended',
     currency: {
@@ -1753,6 +1755,7 @@ export default {
         openai: 'OpenAI',
         gemini: 'Gemini',
         antigravity: 'Antigravity',
+        sora: 'Sora',
       },
       deleteConfirm:
         "Are you sure you want to delete '{name}'? All associated API keys will no longer belong to any group.",
@@ -1945,6 +1948,8 @@ export default {
       updateError: 'Failed to update channel',
       deleteError: 'Failed to delete channel',
       nameRequired: 'Please enter a channel name',
+      noGroupsSelected: 'No groups selected for {platform} platform. Please select at least one group or disable the platform',
+      emptyModelsInPricing: 'Pricing entry under {platform} platform has no models. Please add models or remove the entry',
       duplicateModels: 'Model "{0}" appears in multiple pricing entries',
       modelConflict: "Model patterns '{model1}' and '{model2}' conflict: overlapping match range",
       mappingConflict: "Mapping source patterns '{model1}' and '{model2}' conflict: overlapping match range",
@@ -2267,6 +2272,7 @@ export default {
         openai: 'OpenAI',
         gemini: 'Gemini',
         antigravity: 'Antigravity',
+        sora: 'Sora',
       },
       types: {
         oauth: 'OAuth',
@@ -2829,6 +2835,7 @@ export default {
             'You can copy the entire URL or just the code parameter value, the system will auto-detect',
           // Refresh Token auth
           refreshTokenAuth: 'Manual RT Input',
+          mobileRefreshTokenAuth: 'Manual Mobile RT Input',
           refreshTokenDesc: 'Enter your existing OpenAI Refresh Token(s). Supports batch input (one per line). The system will automatically validate and create accounts.',
           refreshTokenPlaceholder: 'Paste your OpenAI Refresh Token...\nSupports multiple, one per line',
           accessTokenAuth: 'Manual AT Input',

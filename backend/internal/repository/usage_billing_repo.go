@@ -186,7 +186,6 @@ func incrementUsageBillingSubscription(ctx context.Context, tx *sql.Tx, subscrip
 	return service.ErrSubscriptionNotFound
 }
 
-<<<<<<< HEAD
 func loadUsageBillingSubscriptionGroup(ctx context.Context, tx *sql.Tx, subscriptionID int64) (*service.Group, error) {
 	var daily, weekly, monthly sql.NullFloat64
 	err := tx.QueryRowContext(ctx, `
@@ -339,8 +338,6 @@ func allocateUsageBillingSubscriptionGrants(ctx context.Context, tx *sql.Tx, sub
 	return nil
 }
 
-=======
->>>>>>> upstream/main
 func deductUsageBillingBalance(ctx context.Context, tx *sql.Tx, userID int64, amount float64) (float64, error) {
 	var newBalance float64
 	err := tx.QueryRowContext(ctx, `

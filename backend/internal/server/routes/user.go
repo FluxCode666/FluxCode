@@ -37,15 +37,6 @@ func RegisterUserRoutes(
 				notifyEmail.DELETE("", h.User.RemoveNotifyEmail)
 			}
 
-			// 通知邮箱管理
-			notifyEmail := user.Group("/notify-email")
-			{
-				notifyEmail.POST("/send-code", h.User.SendNotifyEmailCode)
-				notifyEmail.POST("/verify", h.User.VerifyNotifyEmail)
-				notifyEmail.PUT("/toggle", h.User.ToggleNotifyEmail)
-				notifyEmail.DELETE("", h.User.RemoveNotifyEmail)
-			}
-
 			// TOTP 双因素认证
 			totp := user.Group("/totp")
 			{

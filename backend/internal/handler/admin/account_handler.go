@@ -336,7 +336,6 @@ func (h *AccountHandler) List(c *gin.Context) {
 		}
 	}
 
-<<<<<<< HEAD
 	proxyIDs, err := parseProxyIDsQuery(c.Query("proxy_ids"))
 	if err != nil {
 		response.BadRequest(c, "Invalid proxy_ids")
@@ -410,9 +409,6 @@ func (h *AccountHandler) List(c *gin.Context) {
 	} else {
 		accounts, total, err = h.adminService.ListAccounts(c.Request.Context(), page, pageSize, platform, accountType, status, search, groupID, privacyMode, sortBy, sortOrder)
 	}
-=======
-	accounts, total, err := h.adminService.ListAccounts(c.Request.Context(), page, pageSize, platform, accountType, status, search, groupID, privacyMode, sortBy, sortOrder)
->>>>>>> upstream/main
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

@@ -306,6 +306,8 @@ export default {
     banned: '封禁',
     creating: '创建中...',
     sending: '发送中...',
+    submitting: '提交中...',
+    required: '必填',
     purchase: '购买',
     recommended: '推荐',
     currency: {
@@ -1779,6 +1781,7 @@ export default {
         openai: 'OpenAI',
         gemini: 'Gemini',
         antigravity: 'Antigravity',
+        sora: 'Sora',
       },
       saving: '保存中...',
       noGroups: '暂无分组',
@@ -2014,6 +2017,8 @@ export default {
       updateError: '更新渠道失败',
       deleteError: '删除渠道失败',
       nameRequired: '请输入渠道名称',
+      noGroupsSelected: '{platform} 平台未选择分组，请至少选择一个分组或禁用该平台',
+      emptyModelsInPricing: '{platform} 平台下有定价条目未添加模型，请添加模型或删除该条目',
       duplicateModels: '模型「{0}」在多个定价条目中重复',
       modelConflict: "模型模式 '{model1}' 和 '{model2}' 冲突：匹配范围重叠",
       mappingConflict: "模型映射源 '{model1}' 和 '{model2}' 冲突：匹配范围重叠",
@@ -2444,6 +2449,7 @@ export default {
         kiro: 'Kiro',
         gemini: 'Gemini',
         antigravity: 'Antigravity',
+        sora: 'Sora',
       },
       types: {
         oauth: 'OAuth',
@@ -2955,6 +2961,7 @@ export default {
           authCodeHint: '您可以直接复制整个链接或仅复制 code 参数值，系统会自动识别',
           // Refresh Token auth
           refreshTokenAuth: '手动输入 RT',
+          mobileRefreshTokenAuth: '手动输入 Mobile RT',
           refreshTokenDesc: '输入您已有的 OpenAI Refresh Token，支持批量输入（每行一个），系统将自动验证并创建账号。',
           refreshTokenPlaceholder: '粘贴您的 OpenAI Refresh Token...\n支持多个，每行一个',
           accessTokenAuth: '手动输入 AT',
