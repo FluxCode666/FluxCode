@@ -81,6 +81,8 @@ type AdminService interface {
 	ListProxiesWithAccountCount(ctx context.Context, page, pageSize int, protocol, status, search string, sortBy, sortOrder string) ([]ProxyWithAccountCount, int64, error)
 	GetAllProxies(ctx context.Context) ([]Proxy, error)
 	GetAllProxiesWithAccountCount(ctx context.Context) ([]ProxyWithAccountCount, error)
+	GetAllProxiesIncludeInactive(ctx context.Context) ([]Proxy, error)
+	GetAllProxiesWithAccountCountIncludeInactive(ctx context.Context) ([]ProxyWithAccountCount, error)
 	GetProxyAccountCounts(ctx context.Context, proxyIDs []int64, states []ProxyAccountCountState) ([]ProxyAccountCountItem, error)
 	GetProxy(ctx context.Context, id int64) (*Proxy, error)
 	GetProxiesByIDs(ctx context.Context, ids []int64) ([]Proxy, error)
@@ -1985,6 +1987,19 @@ func (s *adminServiceImpl) GetAllProxies(ctx context.Context) ([]Proxy, error) {
 
 func (s *adminServiceImpl) GetAllProxiesWithAccountCount(ctx context.Context) ([]ProxyWithAccountCount, error) {
 	proxies, err := s.proxyRepo.ListActiveWithAccountCount(ctx)
+	if err != nil {
+		return nil, err
+	}
+	s.attachProxyLatency(ctx, proxies)
+	return proxies, nil
+}
+
+func (s *adminServiceImpl) GetAllProxiesIncludeInactive(ctx context.Context) ([]Proxy, error) {
+	return s.proxyRepo.ListAll(ctx)
+}
+
+func (s *adminServiceImpl) GetAllProxiesWithAccountCountIncludeInactive(ctx context.Context) ([]ProxyWithAccountCount, error) {
+	proxies, err := s.proxyRepo.ListAllWithAccountCount(ctx)
 	if err != nil {
 		return nil, err
 	}

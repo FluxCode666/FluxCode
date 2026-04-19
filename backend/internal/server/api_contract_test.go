@@ -1242,6 +1242,14 @@ func (stubProxyRepo) ListActiveWithAccountCount(ctx context.Context) ([]service.
 	return nil, errors.New("not implemented")
 }
 
+func (stubProxyRepo) ListAll(ctx context.Context) ([]service.Proxy, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (stubProxyRepo) ListAllWithAccountCount(ctx context.Context) ([]service.ProxyWithAccountCount, error) {
+	return nil, errors.New("not implemented")
+}
+
 func (stubProxyRepo) ExistsByHostPortAuth(ctx context.Context, host string, port int, username, password string) (bool, error) {
 	return false, errors.New("not implemented")
 }

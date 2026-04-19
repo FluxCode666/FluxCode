@@ -51,20 +51,29 @@ export async function list(
 
 /**
  * Get all active proxies (without pagination)
- * @returns List of all active proxies
+ * @param options.includeInactive - Include inactive proxies
+ * @returns List of proxies
  */
-export async function getAll(): Promise<Proxy[]> {
-  const { data } = await apiClient.get<Proxy[]>('/admin/proxies/all')
+export async function getAll(options?: { includeInactive?: boolean }): Promise<Proxy[]> {
+  const { data } = await apiClient.get<Proxy[]>('/admin/proxies/all', {
+    params: {
+      ...(options?.includeInactive ? { include_inactive: 'true' } : {})
+    }
+  })
   return data
 }
 
 /**
- * Get all active proxies with account count (sorted by creation time desc)
- * @returns List of all active proxies with account count
+ * Get all proxies with account count (sorted by creation time desc)
+ * @param options.includeInactive - Include inactive proxies
+ * @returns List of proxies with account count
  */
-export async function getAllWithCount(): Promise<Proxy[]> {
+export async function getAllWithCount(options?: { includeInactive?: boolean }): Promise<Proxy[]> {
   const { data } = await apiClient.get<Proxy[]>('/admin/proxies/all', {
-    params: { with_count: 'true' }
+    params: {
+      with_count: 'true',
+      ...(options?.includeInactive ? { include_inactive: 'true' } : {})
+    }
   })
   return data
 }

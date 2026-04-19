@@ -472,6 +472,48 @@ func (r *proxyRepository) GetAccountCountsForProxies(ctx context.Context) (count
 	return counts, nil
 }
 
+func (r *proxyRepository) ListAll(ctx context.Context) ([]service.Proxy, error) {
+	proxies, err := r.client.Proxy.Query().
+		Order(dbent.Desc(proxy.FieldCreatedAt)).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	outProxies := make([]service.Proxy, 0, len(proxies))
+	for i := range proxies {
+		outProxies = append(outProxies, *proxyEntityToService(proxies[i]))
+	}
+	return outProxies, nil
+}
+
+func (r *proxyRepository) ListAllWithAccountCount(ctx context.Context) ([]service.ProxyWithAccountCount, error) {
+	proxies, err := r.client.Proxy.Query().
+		Order(dbent.Desc(proxy.FieldCreatedAt)).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	counts, err := r.GetAccountCountsForProxies(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]service.ProxyWithAccountCount, 0, len(proxies))
+	for i := range proxies {
+		proxyOut := proxyEntityToService(proxies[i])
+		if proxyOut == nil {
+			continue
+		}
+		result = append(result, service.ProxyWithAccountCount{
+			Proxy:        *proxyOut,
+			AccountCount: counts[proxyOut.ID],
+		})
+	}
+
+	return result, nil
+}
+
 // ListActiveWithAccountCount returns all active proxies with account count, sorted by creation time descending
 func (r *proxyRepository) ListActiveWithAccountCount(ctx context.Context) ([]service.ProxyWithAccountCount, error) {
 	proxies, err := r.client.Proxy.Query().

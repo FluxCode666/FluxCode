@@ -85,6 +85,17 @@
             <div class="min-w-0 flex-1">
               <div class="flex items-center gap-2">
                 <span class="truncate font-medium">{{ proxy.name }}</span>
+                <!-- Status badge -->
+                <span
+                  :class="[
+                    'inline-flex flex-shrink-0 items-center rounded px-1.5 py-0.5 text-xs',
+                    proxy.status === 'active'
+                      ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+                      : 'bg-gray-100 text-gray-600 dark:bg-dark-600 dark:text-gray-400'
+                  ]"
+                >
+                  {{ proxy.status === 'active' ? t('common.active') : t('common.inactive') }}
+                </span>
                 <!-- Account count badge -->
                 <span
                   v-if="proxy.account_count !== undefined"

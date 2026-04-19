@@ -134,12 +134,21 @@ func (h *ProxyHandler) List(c *gin.Context) {
 
 // GetAll handles getting all active proxies without pagination
 // GET /api/v1/admin/proxies/all
-// Optional query param: with_count=true to include account count per proxy
+// Optional query params:
+//   - with_count=true to include account count per proxy
+//   - include_inactive=true to include inactive proxies
 func (h *ProxyHandler) GetAll(c *gin.Context) {
 	withCount := c.Query("with_count") == "true"
+	includeInactive := c.Query("include_inactive") == "true"
 
 	if withCount {
-		proxies, err := h.adminService.GetAllProxiesWithAccountCount(c.Request.Context())
+		var proxies []service.ProxyWithAccountCount
+		var err error
+		if includeInactive {
+			proxies, err = h.adminService.GetAllProxiesWithAccountCountIncludeInactive(c.Request.Context())
+		} else {
+			proxies, err = h.adminService.GetAllProxiesWithAccountCount(c.Request.Context())
+		}
 		if err != nil {
 			response.ErrorFrom(c, err)
 			return
@@ -152,7 +161,13 @@ func (h *ProxyHandler) GetAll(c *gin.Context) {
 		return
 	}
 
-	proxies, err := h.adminService.GetAllProxies(c.Request.Context())
+	var proxies []service.Proxy
+	var err error
+	if includeInactive {
+		proxies, err = h.adminService.GetAllProxiesIncludeInactive(c.Request.Context())
+	} else {
+		proxies, err = h.adminService.GetAllProxies(c.Request.Context())
+	}
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

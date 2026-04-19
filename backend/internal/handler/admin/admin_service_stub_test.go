@@ -337,6 +337,14 @@ func (s *stubAdminService) GetAllProxiesWithAccountCount(ctx context.Context) ([
 	return s.proxyCounts, nil
 }
 
+func (s *stubAdminService) GetAllProxiesIncludeInactive(ctx context.Context) ([]service.Proxy, error) {
+	return s.proxies, nil
+}
+
+func (s *stubAdminService) GetAllProxiesWithAccountCountIncludeInactive(ctx context.Context) ([]service.ProxyWithAccountCount, error) {
+	return s.proxyCounts, nil
+}
+
 func (s *stubAdminService) GetProxyAccountCounts(ctx context.Context, proxyIDs []int64, states []service.ProxyAccountCountState) ([]service.ProxyAccountCountItem, error) {
 	return nil, nil
 }

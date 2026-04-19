@@ -1454,7 +1454,7 @@ const handleClickOutside = (event: MouseEvent) => {
 onMounted(async () => {
   load()
   try {
-    const [p, g] = await Promise.all([adminAPI.proxies.getAll(), adminAPI.groups.getAll()])
+    const [p, g] = await Promise.all([adminAPI.proxies.getAllWithCount({ includeInactive: true }), adminAPI.groups.getAll()])
     proxies.value = p
     groups.value = g
   } catch (error) {
