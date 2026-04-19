@@ -503,4 +503,135 @@ func TestGatewayService_ApplyDisabledProxyScheduleMode_EmptyAccounts_NoProviderC
 	require.Empty(t, result)
 }
 
+// ---------------------------------------------------------------------------
+// isAccountExcludedByDisabledProxy — single-account helper
+// ---------------------------------------------------------------------------
+
+func TestIsAccountExcludedByDisabledProxy_NilAccount(t *testing.T) {
+	require.False(t, isAccountExcludedByDisabledProxy(nil, DisabledProxyScheduleModeExcludeAccount))
+}
+
+func TestIsAccountExcludedByDisabledProxy_DirectMode_NeverExcluded(t *testing.T) {
+	a := &Account{ID: 1, ProxyID: ptrInt64(10), Proxy: &Proxy{ID: 10, Status: "disabled"}}
+	require.False(t, isAccountExcludedByDisabledProxy(a, DisabledProxyScheduleModeDirectWithoutProxy))
+}
+
+func TestIsAccountExcludedByDisabledProxy_ExcludeMode_NoProxy(t *testing.T) {
+	a := &Account{ID: 1, ProxyID: nil}
+	require.False(t, isAccountExcludedByDisabledProxy(a, DisabledProxyScheduleModeExcludeAccount))
+}
+
+func TestIsAccountExcludedByDisabledProxy_ExcludeMode_ActiveProxy(t *testing.T) {
+	a := &Account{ID: 1, ProxyID: ptrInt64(10), Proxy: &Proxy{ID: 10, Status: StatusActive}}
+	require.False(t, isAccountExcludedByDisabledProxy(a, DisabledProxyScheduleModeExcludeAccount))
+}
+
+func TestIsAccountExcludedByDisabledProxy_ExcludeMode_DisabledProxy(t *testing.T) {
+	a := &Account{ID: 1, ProxyID: ptrInt64(10), Proxy: &Proxy{ID: 10, Status: "disabled"}}
+	require.True(t, isAccountExcludedByDisabledProxy(a, DisabledProxyScheduleModeExcludeAccount))
+}
+
+func TestIsAccountExcludedByDisabledProxy_ExcludeMode_NilProxy(t *testing.T) {
+	a := &Account{ID: 1, ProxyID: ptrInt64(10), Proxy: nil}
+	require.True(t, isAccountExcludedByDisabledProxy(a, DisabledProxyScheduleModeExcludeAccount))
+}
+
+// ---------------------------------------------------------------------------
+// OpenAIGatewayService.isAccountBlockedByDisabledProxy
+// ---------------------------------------------------------------------------
+
+func TestOpenAIGatewayService_IsAccountBlockedByDisabledProxy_NilProvider(t *testing.T) {
+	svc := &OpenAIGatewayService{}
+	a := &Account{ID: 1, ProxyID: ptrInt64(10), Proxy: &Proxy{ID: 10, Status: "disabled"}}
+	require.False(t, svc.isAccountBlockedByDisabledProxy(context.Background(), a))
+}
+
+func TestOpenAIGatewayService_IsAccountBlockedByDisabledProxy_ExcludeMode_Blocks(t *testing.T) {
+	svc := &OpenAIGatewayService{
+		disabledProxyMode: &stubDisabledProxyScheduleModeProvider{mode: DisabledProxyScheduleModeExcludeAccount},
+	}
+	a := &Account{ID: 1, ProxyID: ptrInt64(10), Proxy: &Proxy{ID: 10, Status: "disabled"}}
+	require.True(t, svc.isAccountBlockedByDisabledProxy(context.Background(), a))
+}
+
+func TestOpenAIGatewayService_IsAccountBlockedByDisabledProxy_ExcludeMode_AllowsActive(t *testing.T) {
+	svc := &OpenAIGatewayService{
+		disabledProxyMode: &stubDisabledProxyScheduleModeProvider{mode: DisabledProxyScheduleModeExcludeAccount},
+	}
+	a := &Account{ID: 1, ProxyID: ptrInt64(10), Proxy: &Proxy{ID: 10, Status: StatusActive}}
+	require.False(t, svc.isAccountBlockedByDisabledProxy(context.Background(), a))
+}
+
+// ---------------------------------------------------------------------------
+// GeminiMessagesCompatService.applyDisabledProxyScheduleMode
+// ---------------------------------------------------------------------------
+
+func TestGeminiMessagesCompatService_ApplyDisabledProxyScheduleMode_NilProvider(t *testing.T) {
+	svc := &GeminiMessagesCompatService{}
+	accounts := []Account{
+		{ID: 1, ProxyID: ptrInt64(10), Proxy: &Proxy{ID: 10, Status: "disabled"}},
+	}
+	result := svc.applyDisabledProxyScheduleMode(context.Background(), accounts)
+	require.Len(t, result, 1)
+}
+
+func TestGeminiMessagesCompatService_ApplyDisabledProxyScheduleMode_ExcludeMode(t *testing.T) {
+	svc := &GeminiMessagesCompatService{
+		disabledProxyMode: &stubDisabledProxyScheduleModeProvider{mode: DisabledProxyScheduleModeExcludeAccount},
+	}
+	accounts := []Account{
+		{ID: 1, ProxyID: nil},
+		{ID: 2, ProxyID: ptrInt64(10), Proxy: &Proxy{ID: 10, Status: StatusActive}},
+		{ID: 3, ProxyID: ptrInt64(20), Proxy: &Proxy{ID: 20, Status: "disabled"}},
+	}
+	result := svc.applyDisabledProxyScheduleMode(context.Background(), accounts)
+	require.Len(t, result, 2)
+	require.Equal(t, int64(1), result[0].ID)
+	require.Equal(t, int64(2), result[1].ID)
+}
+
+// ---------------------------------------------------------------------------
+// GatewayService.isAccountBlockedByDisabledProxy
+// ---------------------------------------------------------------------------
+
+func TestGatewayService_IsAccountBlockedByDisabledProxy_NilProvider(t *testing.T) {
+	svc := &GatewayService{}
+	a := &Account{ID: 1, ProxyID: ptrInt64(10), Proxy: &Proxy{ID: 10, Status: "disabled"}}
+	require.False(t, svc.isAccountBlockedByDisabledProxy(context.Background(), a))
+}
+
+func TestGatewayService_IsAccountBlockedByDisabledProxy_ExcludeMode_Blocks(t *testing.T) {
+	svc := &GatewayService{
+		disabledProxyMode: &stubDisabledProxyScheduleModeProvider{mode: DisabledProxyScheduleModeExcludeAccount},
+	}
+	a := &Account{ID: 1, ProxyID: ptrInt64(10), Proxy: &Proxy{ID: 10, Status: "disabled"}}
+	require.True(t, svc.isAccountBlockedByDisabledProxy(context.Background(), a))
+}
+
+func TestGatewayService_IsAccountBlockedByDisabledProxy_ExcludeMode_AllowsActive(t *testing.T) {
+	svc := &GatewayService{
+		disabledProxyMode: &stubDisabledProxyScheduleModeProvider{mode: DisabledProxyScheduleModeExcludeAccount},
+	}
+	a := &Account{ID: 1, ProxyID: ptrInt64(10), Proxy: &Proxy{ID: 10, Status: StatusActive}}
+	require.False(t, svc.isAccountBlockedByDisabledProxy(context.Background(), a))
+}
+
+// ---------------------------------------------------------------------------
+// GeminiMessagesCompatService.isAccountBlockedByDisabledProxy
+// ---------------------------------------------------------------------------
+
+func TestGeminiMessagesCompatService_IsAccountBlockedByDisabledProxy_NilProvider(t *testing.T) {
+	svc := &GeminiMessagesCompatService{}
+	a := &Account{ID: 1, ProxyID: ptrInt64(10), Proxy: &Proxy{ID: 10, Status: "disabled"}}
+	require.False(t, svc.isAccountBlockedByDisabledProxy(context.Background(), a))
+}
+
+func TestGeminiMessagesCompatService_IsAccountBlockedByDisabledProxy_ExcludeMode_Blocks(t *testing.T) {
+	svc := &GeminiMessagesCompatService{
+		disabledProxyMode: &stubDisabledProxyScheduleModeProvider{mode: DisabledProxyScheduleModeExcludeAccount},
+	}
+	a := &Account{ID: 1, ProxyID: ptrInt64(10), Proxy: &Proxy{ID: 10, Status: "disabled"}}
+	require.True(t, svc.isAccountBlockedByDisabledProxy(context.Background(), a))
+}
+
 func ptrInt64(i int64) *int64 { return &i }

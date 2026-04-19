@@ -1313,11 +1313,19 @@ func (s *OpenAIGatewayService) tryStickySessionHit(ctx context.Context, groupID 
 	if !account.IsSchedulable() || !account.IsOpenAI() {
 		return nil
 	}
+	if s.isAccountBlockedByDisabledProxy(ctx, account) {
+		_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
+		return nil
+	}
 	if requestedModel != "" && !account.IsModelSupported(requestedModel) {
 		return nil
 	}
 	account = s.recheckSelectedOpenAIAccountFromDB(ctx, account, requestedModel)
 	if account == nil {
+		_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
+		return nil
+	}
+	if s.isAccountBlockedByDisabledProxy(ctx, account) {
 		_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
 		return nil
 	}
@@ -1483,9 +1491,12 @@ func (s *OpenAIGatewayService) SelectAccountWithLoadAwareness(ctx context.Contex
 					_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
 				}
 				if !clearSticky && account.IsSchedulable() && account.IsOpenAI() &&
+					!s.isAccountBlockedByDisabledProxy(ctx, account) &&
 					(requestedModel == "" || account.IsModelSupported(requestedModel)) {
 					account = s.recheckSelectedOpenAIAccountFromDB(ctx, account, requestedModel)
 					if account == nil {
+						_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
+					} else if s.isAccountBlockedByDisabledProxy(ctx, account) {
 						_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
 					} else if needsUpstreamCheck && s.isUpstreamModelRestrictedByChannel(ctx, *groupID, account, requestedModel) {
 						_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
@@ -1674,6 +1685,16 @@ func (s *OpenAIGatewayService) applyDisabledProxyScheduleMode(ctx context.Contex
 		return accounts
 	}
 	return filterAccountsByDisabledProxyScheduleMode(accounts, s.disabledProxyMode.DisabledProxyScheduleMode(ctx))
+}
+
+// isAccountBlockedByDisabledProxy checks if a single account should be excluded
+// from scheduling because its assigned proxy is disabled. Used by sticky-session
+// and previous-response code paths that bypass the list-level filter.
+func (s *OpenAIGatewayService) isAccountBlockedByDisabledProxy(ctx context.Context, account *Account) bool {
+	if s == nil || s.disabledProxyMode == nil || account == nil {
+		return false
+	}
+	return isAccountExcludedByDisabledProxy(account, s.disabledProxyMode.DisabledProxyScheduleMode(ctx))
 }
 
 func (s *OpenAIGatewayService) tryAcquireAccountSlot(ctx context.Context, accountID int64, maxConcurrency int) (*AcquireResult, error) {
