@@ -152,8 +152,8 @@
           row-key="id"
           :server-side-sort="true"
           @sort="handleSort"
-          :default-sort-key="params.sort_by || 'name'"
-          :default-sort-order="params.sort_order || 'asc'"
+          :default-sort-key="params.sort_by || 'created_at'"
+          :default-sort-order="params.sort_order || 'desc'"
           :sort-storage-key="ACCOUNT_SORT_STORAGE_KEY"
           :estimate-row-height="72"
           :overscan="5"
@@ -632,8 +632,8 @@ const {
     proxy_ids: [],
     created_start_date: '',
     created_end_date: '',
-    sort_by: 'name',
-    sort_order: 'asc'
+    sort_by: 'created_at',
+    sort_order: 'desc'
   }
 })
 
