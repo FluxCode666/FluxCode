@@ -54,6 +54,8 @@
         :model-value="filters.proxy_ids || []"
         :options="proxies || []"
         :placeholder="t('admin.accounts.allProxies')"
+        :show-no-proxy-option="true"
+        :no-proxy-label="t('admin.accounts.noProxy')"
         @update:model-value="updateProxyIDs"
         @change="$emit('change')"
       />
@@ -62,6 +64,7 @@
       <DateRangePicker
         :start-date="filters.created_start_date || ''"
         :end-date="filters.created_end_date || ''"
+        :placeholder="t('admin.accounts.createdTime')"
         @update:start-date="updateCreatedStartDate"
         @update:end-date="updateCreatedEndDate"
         @change="$emit('change')"

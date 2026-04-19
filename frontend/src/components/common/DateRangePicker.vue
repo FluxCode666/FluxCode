@@ -89,6 +89,7 @@ interface DatePreset {
 interface Props {
   startDate: string
   endDate: string
+  placeholder?: string
 }
 
 interface Emits {
@@ -231,7 +232,7 @@ const displayValue = computed(() => {
     return `${formatDate(localStartDate.value)} - ${formatDate(localEndDate.value)}`
   }
 
-  return t('dates.selectDateRange')
+  return props.placeholder || t('dates.selectDateRange')
 })
 
 const formatDate = (dateStr: string): string => {

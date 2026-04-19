@@ -625,7 +625,22 @@ func (r *accountRepository) ListWithAdvancedFilters(
 		q = q.Where(dbaccount.NameContainsFold(search))
 	}
 	if len(proxyIDs) > 0 {
-		q = q.Where(dbaccount.ProxyIDIn(proxyIDs...))
+		var includeNoProxy bool
+		realIDs := make([]int64, 0, len(proxyIDs))
+		for _, pid := range proxyIDs {
+			if pid == 0 {
+				includeNoProxy = true
+			} else {
+				realIDs = append(realIDs, pid)
+			}
+		}
+		if includeNoProxy && len(realIDs) > 0 {
+			q = q.Where(dbaccount.Or(dbaccount.ProxyIDIn(realIDs...), dbaccount.ProxyIDIsNil()))
+		} else if includeNoProxy {
+			q = q.Where(dbaccount.ProxyIDIsNil())
+		} else {
+			q = q.Where(dbaccount.ProxyIDIn(realIDs...))
+		}
 	}
 	if createdStart != nil {
 		q = q.Where(dbaccount.CreatedAtGTE(*createdStart))

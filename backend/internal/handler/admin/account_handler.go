@@ -198,7 +198,7 @@ func parseProxyIDsQuery(raw string) ([]int64, error) {
 			continue
 		}
 		id, err := strconv.ParseInt(part, 10, 64)
-		if err != nil || id <= 0 {
+		if err != nil || id < 0 {
 			return nil, errors.New("invalid proxy_ids")
 		}
 		if _, ok := seen[id]; ok {

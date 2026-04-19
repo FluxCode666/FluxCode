@@ -48,6 +48,58 @@ func newAccountListTestRouter(adminSvc service.AdminService) *gin.Engine {
 	return r
 }
 
+func TestAccountHandlerList_ProxyIDsZeroNoProxy(t *testing.T) {
+	var gotProxyIDs []int64
+
+	r := newAccountListTestRouter(stubAccountListAdminService{
+		listAccountsAdvancedFn: func(
+			ctx context.Context,
+			page, pageSize int,
+			platform, accountType, status, schedulableStatus string,
+			groupID int64,
+			search, sortBy, sortOrder string,
+			proxyIDs []int64,
+			createdStart, createdEndExclusive *time.Time,
+		) ([]service.Account, int64, error) {
+			gotProxyIDs = proxyIDs
+			return []service.Account{}, 0, nil
+		},
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/accounts?proxy_ids=0", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	require.Equal(t, []int64{0}, gotProxyIDs)
+}
+
+func TestAccountHandlerList_ProxyIDsZeroWithOthers(t *testing.T) {
+	var gotProxyIDs []int64
+
+	r := newAccountListTestRouter(stubAccountListAdminService{
+		listAccountsAdvancedFn: func(
+			ctx context.Context,
+			page, pageSize int,
+			platform, accountType, status, schedulableStatus string,
+			groupID int64,
+			search, sortBy, sortOrder string,
+			proxyIDs []int64,
+			createdStart, createdEndExclusive *time.Time,
+		) ([]service.Account, int64, error) {
+			gotProxyIDs = proxyIDs
+			return []service.Account{}, 0, nil
+		},
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/accounts?proxy_ids=0,3,7", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	require.Equal(t, []int64{0, 3, 7}, gotProxyIDs)
+}
+
 func TestAccountHandlerList_InvalidProxyIDs(t *testing.T) {
 	r := newAccountListTestRouter(stubAccountListAdminService{})
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/accounts?proxy_ids=1,abc", nil)
