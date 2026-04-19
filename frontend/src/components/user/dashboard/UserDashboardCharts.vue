@@ -5,17 +5,26 @@
       <div class="flex flex-wrap items-center gap-4">
         <div class="flex items-center gap-2">
           <span class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('dashboard.timeRange') }}:</span>
-          <DateRangePicker :start-date="startDate" :end-date="endDate" @update:startDate="$emit('update:startDate', $event)" @update:endDate="$emit('update:endDate', $event)" @change="$emit('dateRangeChange', $event)" />
+          <div class="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-0.5 dark:border-gray-700 dark:bg-dark-700">
+            <button
+              v-for="opt in timeRangeOptions"
+              :key="opt.value"
+              type="button"
+              @click="$emit('update:timeRange', opt.value)"
+              :class="[
+                'rounded-md px-3 py-1 text-sm font-medium transition-colors',
+                timeRange === opt.value
+                  ? 'bg-white text-primary-600 shadow-sm dark:bg-dark-800 dark:text-primary-400'
+                  : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white'
+              ]"
+            >
+              {{ t(opt.labelKey) }}
+            </button>
+          </div>
         </div>
         <button @click="$emit('refresh')" :disabled="loading" class="btn btn-secondary">
           {{ t('common.refresh') }}
         </button>
-        <div class="ml-auto flex items-center gap-2">
-          <span class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('dashboard.granularity') }}:</span>
-          <div class="w-28">
-            <Select :model-value="granularity" :options="[{value:'day', label:t('dashboard.day')}, {value:'hour', label:t('dashboard.hour')}]" @update:model-value="$emit('update:granularity', $event)" @change="$emit('granularityChange')" />
-          </div>
-        </div>
       </div>
     </div>
 
@@ -91,9 +100,21 @@ import { formatCostFixed as formatCost, formatNumberLocaleString as formatNumber
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, ArcElement, Title, Tooltip, Legend, Filler } from 'chart.js'
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, ArcElement, Title, Tooltip, Legend, Filler)
 
-const props = defineProps<{ loading: boolean, startDate: string, endDate: string, granularity: string, trend: TrendDataPoint[], models: ModelStat[] }>()
-defineEmits(['update:startDate', 'update:endDate', 'update:granularity', 'dateRangeChange', 'granularityChange', 'refresh'])
+type TimeRangeTab = '24h' | '7d' | '14d' | '30d'
+
+const props = defineProps<{ loading: boolean, timeRange: TimeRangeTab, granularity: string, trend: TrendDataPoint[], models: ModelStat[] }>()
+defineEmits<{
+  (e: 'update:timeRange', value: TimeRangeTab): void
+  (e: 'refresh'): void
+}>()
 const { t } = useI18n()
+
+const timeRangeOptions: { value: TimeRangeTab; labelKey: string }[] = [
+  { value: '24h', labelKey: 'dashboard.range24Hours' },
+  { value: '7d', labelKey: 'dashboard.range7Days' },
+  { value: '14d', labelKey: 'dashboard.range14Days' },
+  { value: '30d', labelKey: 'dashboard.range30Days' }
+]
 
 const modelData = computed(() => !props.models?.length ? null : {
   labels: props.models.map((m: ModelStat) => m.model),
