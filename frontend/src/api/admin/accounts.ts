@@ -29,6 +29,7 @@ export interface AccountListFilters {
   group?: string
   group_id?: number
   search?: string
+  privacy_mode?: string
   lite?: string
   schedulable_status?: AccountSchedulingState | ''
   proxy_ids?: number[]

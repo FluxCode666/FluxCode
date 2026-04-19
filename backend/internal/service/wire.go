@@ -19,6 +19,74 @@ type BuildInfo struct {
 	BuildType string
 }
 
+// ProvideOAuthRefreshAPI wraps NewOAuthRefreshAPI for wire (skips the variadic lockTTL parameter).
+func ProvideOAuthRefreshAPI(accountRepo AccountRepository, tokenCache GeminiTokenCache) *OAuthRefreshAPI {
+	return NewOAuthRefreshAPI(accountRepo, tokenCache)
+}
+
+// ProvideGatewayService creates a GatewayService and wires the disabled-proxy
+// scheduling mode provider so account scheduling honors pool-monitor settings.
+func ProvideGatewayService(
+	accountRepo AccountRepository,
+	groupRepo GroupRepository,
+	usageLogRepo UsageLogRepository,
+	usageBillingRepo UsageBillingRepository,
+	userRepo UserRepository,
+	userSubRepo UserSubscriptionRepository,
+	userGroupRateRepo UserGroupRateRepository,
+	cache GatewayCache,
+	cfg *config.Config,
+	schedulerSnapshot *SchedulerSnapshotService,
+	concurrencyService *ConcurrencyService,
+	billingService *BillingService,
+	rateLimitService *RateLimitService,
+	billingCacheService *BillingCacheService,
+	identityService *IdentityService,
+	httpUpstream HTTPUpstream,
+	deferredService *DeferredService,
+	claudeTokenProvider *ClaudeTokenProvider,
+	sessionLimitCache SessionLimitCache,
+	rpmCache RPMCache,
+	digestStore *DigestSessionStore,
+	settingService *SettingService,
+	tlsFPProfileService *TLSFingerprintProfileService,
+	channelService *ChannelService,
+	resolver *ModelPricingResolver,
+	balanceNotifyService *BalanceNotifyService,
+	disabledProxyModeProvider DisabledProxyScheduleModeProvider,
+) *GatewayService {
+	svc := NewGatewayService(
+		accountRepo,
+		groupRepo,
+		usageLogRepo,
+		usageBillingRepo,
+		userRepo,
+		userSubRepo,
+		userGroupRateRepo,
+		cache,
+		cfg,
+		schedulerSnapshot,
+		concurrencyService,
+		billingService,
+		rateLimitService,
+		billingCacheService,
+		identityService,
+		httpUpstream,
+		deferredService,
+		claudeTokenProvider,
+		sessionLimitCache,
+		rpmCache,
+		digestStore,
+		settingService,
+		tlsFPProfileService,
+		channelService,
+		resolver,
+		balanceNotifyService,
+	)
+	svc.SetDisabledProxyScheduleModeProvider(disabledProxyModeProvider)
+	return svc
+}
+
 // ProvidePricingService creates and initializes PricingService
 func ProvidePricingService(cfg *config.Config, remoteClient PricingRemoteClient) (*PricingService, error) {
 	svc := NewPricingService(cfg, remoteClient)
@@ -225,6 +293,7 @@ func ProvideOpenAIGatewayService(
 	channelService *ChannelService,
 	balanceNotifyService *BalanceNotifyService,
 	proxyMetricsRepo ProxyUsageMetricsRepository,
+	disabledProxyModeProvider DisabledProxyScheduleModeProvider,
 ) *OpenAIGatewayService {
 	svc := NewOpenAIGatewayService(
 		accountRepo,
@@ -248,6 +317,7 @@ func ProvideOpenAIGatewayService(
 		balanceNotifyService,
 	)
 	svc.SetProxyMetricsRepo(proxyMetricsRepo)
+	svc.SetDisabledProxyScheduleModeProvider(disabledProxyModeProvider)
 	return svc
 }
 
@@ -484,7 +554,7 @@ var ProviderSet = wire.NewSet(
 	NewBillingCacheService,
 	NewAnnouncementService,
 	NewAdminService,
-	NewGatewayService,
+	ProvideGatewayService,
 	ProvideOpenAIGatewayService,
 	NewOAuthService,
 	NewOpenAIOAuthService,
@@ -493,7 +563,7 @@ var ProviderSet = wire.NewSet(
 	NewCompositeTokenCacheInvalidator,
 	wire.Bind(new(TokenCacheInvalidator), new(*CompositeTokenCacheInvalidator)),
 	NewAntigravityOAuthService,
-	NewOAuthRefreshAPI,
+	ProvideOAuthRefreshAPI,
 	ProvideGeminiTokenProvider,
 	NewGeminiMessagesCompatService,
 	ProvideAntigravityTokenProvider,
@@ -549,6 +619,7 @@ var ProviderSet = wire.NewSet(
 	NewPoolMonitorService,
 	NewAlertService,
 	wire.Bind(new(PoolMonitorConfigProvider), new(*PoolMonitorService)),
+	wire.Bind(new(DisabledProxyScheduleModeProvider), new(*PoolMonitorService)),
 	ProvideOpenAIPoolMonitorWorker,
 	NewChannelService,
 	NewModelPricingResolver,

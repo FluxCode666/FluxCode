@@ -639,7 +639,7 @@ func (r *accountRepository) ListWithAdvancedFilters(
 		return nil, nil, err
 	}
 
-	accounts, err := q.
+	accountsQuery := q.
 		Offset(params.Offset()).
 		Limit(params.Limit()).
 		Order(accountListOrders(sortBy, sortOrder)...).

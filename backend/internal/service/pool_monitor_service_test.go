@@ -423,3 +423,84 @@ func TestFilterAccountsByDisabledProxyScheduleMode_UnrecognizedMode_KeepsAll(t *
 	result := filterAccountsByDisabledProxyScheduleMode(accounts, "unknown_mode")
 	require.Len(t, result, 2)
 }
+
+// stubDisabledProxyScheduleModeProvider is a test double returning a fixed mode.
+type stubDisabledProxyScheduleModeProvider struct {
+	mode string
+}
+
+func (s *stubDisabledProxyScheduleModeProvider) DisabledProxyScheduleMode(_ context.Context) string {
+	return s.mode
+}
+
+func TestOpenAIGatewayService_ApplyDisabledProxyScheduleMode_NilProvider_ReturnsAll(t *testing.T) {
+	svc := &OpenAIGatewayService{}
+	accounts := []Account{
+		{ID: 1, ProxyID: ptrInt64(10), Proxy: &Proxy{ID: 10, Status: "disabled"}},
+		{ID: 2, ProxyID: nil},
+	}
+	result := svc.applyDisabledProxyScheduleMode(context.Background(), accounts)
+	require.Len(t, result, 2)
+}
+
+func TestOpenAIGatewayService_ApplyDisabledProxyScheduleMode_ExcludeMode_DropsDisabledProxy(t *testing.T) {
+	svc := &OpenAIGatewayService{
+		disabledProxyMode: &stubDisabledProxyScheduleModeProvider{mode: DisabledProxyScheduleModeExcludeAccount},
+	}
+	accounts := []Account{
+		{ID: 1, ProxyID: nil},
+		{ID: 2, ProxyID: ptrInt64(10), Proxy: &Proxy{ID: 10, Status: StatusActive}},
+		{ID: 3, ProxyID: ptrInt64(20), Proxy: &Proxy{ID: 20, Status: "disabled"}},
+		{ID: 4, ProxyID: ptrInt64(30), Proxy: nil},
+	}
+	result := svc.applyDisabledProxyScheduleMode(context.Background(), accounts)
+	require.Len(t, result, 2)
+	require.Equal(t, int64(1), result[0].ID)
+	require.Equal(t, int64(2), result[1].ID)
+}
+
+func TestOpenAIGatewayService_ApplyDisabledProxyScheduleMode_DirectMode_KeepsAll(t *testing.T) {
+	svc := &OpenAIGatewayService{
+		disabledProxyMode: &stubDisabledProxyScheduleModeProvider{mode: DisabledProxyScheduleModeDirectWithoutProxy},
+	}
+	accounts := []Account{
+		{ID: 1, ProxyID: ptrInt64(10), Proxy: &Proxy{ID: 10, Status: "disabled"}},
+		{ID: 2, ProxyID: nil},
+	}
+	result := svc.applyDisabledProxyScheduleMode(context.Background(), accounts)
+	require.Len(t, result, 2)
+}
+
+func TestGatewayService_ApplyDisabledProxyScheduleMode_NilProvider_ReturnsAll(t *testing.T) {
+	svc := &GatewayService{}
+	accounts := []Account{
+		{ID: 1, ProxyID: ptrInt64(10), Proxy: &Proxy{ID: 10, Status: "disabled"}},
+	}
+	result := svc.applyDisabledProxyScheduleMode(context.Background(), accounts)
+	require.Len(t, result, 1)
+}
+
+func TestGatewayService_ApplyDisabledProxyScheduleMode_ExcludeMode_DropsDisabledProxy(t *testing.T) {
+	svc := &GatewayService{
+		disabledProxyMode: &stubDisabledProxyScheduleModeProvider{mode: DisabledProxyScheduleModeExcludeAccount},
+	}
+	accounts := []Account{
+		{ID: 1, ProxyID: nil},
+		{ID: 2, ProxyID: ptrInt64(10), Proxy: &Proxy{ID: 10, Status: StatusActive}},
+		{ID: 3, ProxyID: ptrInt64(20), Proxy: &Proxy{ID: 20, Status: "disabled"}},
+	}
+	result := svc.applyDisabledProxyScheduleMode(context.Background(), accounts)
+	require.Len(t, result, 2)
+	require.Equal(t, int64(1), result[0].ID)
+	require.Equal(t, int64(2), result[1].ID)
+}
+
+func TestGatewayService_ApplyDisabledProxyScheduleMode_EmptyAccounts_NoProviderCall(t *testing.T) {
+	svc := &GatewayService{
+		disabledProxyMode: &stubDisabledProxyScheduleModeProvider{mode: DisabledProxyScheduleModeExcludeAccount},
+	}
+	result := svc.applyDisabledProxyScheduleMode(context.Background(), nil)
+	require.Empty(t, result)
+}
+
+func ptrInt64(i int64) *int64 { return &i }

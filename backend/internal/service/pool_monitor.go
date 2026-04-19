@@ -107,6 +107,13 @@ func normalizeDisabledProxyScheduleMode(mode string) string {
 	}
 }
 
+// DisabledProxyScheduleModeProvider exposes the pool-monitor scheduling mode
+// for disabled proxies. Implemented by *PoolMonitorService. Gateway services
+// depend on this narrow interface to apply filtering at scheduling time.
+type DisabledProxyScheduleModeProvider interface {
+	DisabledProxyScheduleMode(ctx context.Context) string
+}
+
 // filterAccountsByDisabledProxyScheduleMode filters out accounts whose assigned
 // proxy is disabled, according to the configured scheduling mode.
 //
