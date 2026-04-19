@@ -8,6 +8,7 @@ import (
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/proxy"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
@@ -40,14 +41,14 @@ func uniquePositiveInt64s(ids []int64) []int64 {
 
 type proxyRepository struct {
 	client *dbent.Client
-	sql    sqlQuerier
+	sql    sqlExecutor
 }
 
 func NewProxyRepository(client *dbent.Client, sqlDB *sql.DB) service.ProxyRepository {
 	return newProxyRepositoryWithSQL(client, sqlDB)
 }
 
-func newProxyRepositoryWithSQL(client *dbent.Client, sqlq sqlQuerier) *proxyRepository {
+func newProxyRepositoryWithSQL(client *dbent.Client, sqlq sqlExecutor) *proxyRepository {
 	return &proxyRepository{client: client, sql: sqlq}
 }
 
@@ -123,6 +124,7 @@ func (r *proxyRepository) Update(ctx context.Context, proxyIn *service.Proxy) er
 	updated, err := builder.Save(ctx)
 	if err == nil {
 		applyProxyEntityToService(proxyIn, updated)
+		r.notifySchedulerForProxy(ctx, proxyIn.ID)
 		return nil
 	}
 	if dbent.IsNotFound(err) {
@@ -132,8 +134,60 @@ func (r *proxyRepository) Update(ctx context.Context, proxyIn *service.Proxy) er
 }
 
 func (r *proxyRepository) Delete(ctx context.Context, id int64) error {
+	// 先通知调度器（删除后无法再查关联账号）
+	r.notifySchedulerForProxy(ctx, id)
 	_, err := r.client.Proxy.Delete().Where(proxy.IDEQ(id)).Exec(ctx)
 	return err
+}
+
+// proxyOutboxChunkSize 是每条 outbox 事件包含的最大账号数。
+// 将大批量拆分为多条事件，避免 outbox worker 长时间阻塞后续事件处理。
+const proxyOutboxChunkSize = 200
+
+// notifySchedulerForProxy 在代理状态变更或删除时，查询该代理关联的所有账号，
+// 通过 outbox 事件通知调度器刷新这些账号的快照缓存。
+// 当关联账号较多时，按 proxyOutboxChunkSize 分片写入多条事件。
+func (r *proxyRepository) notifySchedulerForProxy(ctx context.Context, proxyID int64) {
+	if r.sql == nil || proxyID <= 0 {
+		return
+	}
+	rows, err := r.sql.QueryContext(ctx, "SELECT id FROM accounts WHERE proxy_id = $1 AND deleted_at IS NULL", proxyID)
+	if err != nil {
+		logger.LegacyPrintf("repository.proxy", "[SchedulerOutbox] query accounts for proxy failed: proxy=%d err=%v", proxyID, err)
+		return
+	}
+	defer func() { _ = rows.Close() }()
+
+	var accountIDs []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			logger.LegacyPrintf("repository.proxy", "[SchedulerOutbox] scan account id failed: proxy=%d err=%v", proxyID, err)
+			return
+		}
+		accountIDs = append(accountIDs, id)
+	}
+	if err := rows.Err(); err != nil {
+		logger.LegacyPrintf("repository.proxy", "[SchedulerOutbox] rows error for proxy accounts: proxy=%d err=%v", proxyID, err)
+		return
+	}
+	if len(accountIDs) == 0 {
+		return
+	}
+
+	// 分片写入 outbox 事件，避免单条事件处理时间过长阻塞 worker
+	for start := 0; start < len(accountIDs); start += proxyOutboxChunkSize {
+		end := start + proxyOutboxChunkSize
+		if end > len(accountIDs) {
+			end = len(accountIDs)
+		}
+		chunk := accountIDs[start:end]
+		payload := map[string]any{"account_ids": chunk}
+		if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountBulkChanged, nil, nil, payload); err != nil {
+			logger.LegacyPrintf("repository.proxy", "[SchedulerOutbox] enqueue proxy change failed: proxy=%d chunk=%d/%d err=%v",
+				proxyID, start/proxyOutboxChunkSize+1, (len(accountIDs)+proxyOutboxChunkSize-1)/proxyOutboxChunkSize, err)
+		}
+	}
 }
 
 func (r *proxyRepository) List(ctx context.Context, params pagination.PaginationParams) ([]service.Proxy, *pagination.PaginationResult, error) {
