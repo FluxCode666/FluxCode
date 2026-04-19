@@ -29,6 +29,13 @@
       @change="$emit('change')"
     />
     <Select
+      :model-value="filters.privacy_mode"
+      class="w-40"
+      :options="privacyOptions"
+      @update:model-value="updatePrivacyMode"
+      @change="$emit('change')"
+    />
+    <Select
       :model-value="filters.schedulable_status"
       class="w-48"
       :options="schedulingStatusOptions"
@@ -47,6 +54,8 @@
         :model-value="filters.proxy_ids || []"
         :options="proxies || []"
         :placeholder="t('admin.accounts.allProxies')"
+        :show-no-proxy-option="true"
+        :no-proxy-label="t('admin.accounts.noProxy')"
         @update:model-value="updateProxyIDs"
         @change="$emit('change')"
       />
@@ -55,6 +64,7 @@
       <DateRangePicker
         :start-date="filters.created_start_date || ''"
         :end-date="filters.created_end_date || ''"
+        :placeholder="t('admin.accounts.createdTime')"
         @update:start-date="updateCreatedStartDate"
         @update:end-date="updateCreatedEndDate"
         @change="$emit('change')"
@@ -104,6 +114,10 @@ const updateStatus = (value: string | number | boolean | null) => {
   emitFilters({ status: value ?? '' })
 }
 
+const updatePrivacyMode = (value: string | number | boolean | null) => {
+  emitFilters({ privacy_mode: value ?? '' })
+}
+
 const updateSchedulingStatus = (value: string | number | boolean | null) => {
   emitFilters({ schedulable_status: (value ?? '') as '' | AccountSchedulingState })
 }
@@ -151,6 +165,14 @@ const statusOptions = computed(() => [
   { value: 'rate_limited', label: t('admin.accounts.status.rateLimited') },
   { value: 'temp_unschedulable', label: t('admin.accounts.status.tempUnschedulable') },
   { value: 'expired', label: t('admin.accounts.expiration.expired') }
+])
+
+const privacyOptions = computed(() => [
+  { value: '', label: t('admin.accounts.allPrivacyModes') },
+  { value: '__unset__', label: t('admin.accounts.privacyUnset') },
+  { value: 'training_off', label: 'Privacy' },
+  { value: 'training_set_cf_blocked', label: 'CF' },
+  { value: 'training_set_failed', label: 'Fail' }
 ])
 
 const schedulingStatusOptions = computed(() => [

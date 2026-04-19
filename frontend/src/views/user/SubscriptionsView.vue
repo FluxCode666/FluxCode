@@ -128,6 +128,7 @@
           :key="subscription.id"
           type="button"
           class="card card-hover flex h-full flex-col items-stretch justify-start overflow-hidden text-left"
+          :class="platformBorderClass(subscription.group?.platform || '')"
           @click="openSubscriptionDetail(subscription, $event)"
         >
           <!-- Header -->
@@ -135,38 +136,48 @@
             class="flex items-center justify-between border-b border-gray-100 p-4 dark:border-dark-700"
           >
             <div class="flex items-center gap-3">
-              <div
-                class="flex h-10 w-10 items-center justify-center rounded-xl bg-purple-100 dark:bg-purple-900/30"
-              >
-                <Icon name="creditCard" size="md" class="text-purple-600 dark:text-purple-400" />
-              </div>
+              <div :class="['h-1.5 w-1.5 shrink-0 rounded-full', platformAccentDotClass(subscription.group?.platform || '')]" />
               <div>
-                <h3 class="font-semibold text-gray-900 dark:text-white">
-                  {{ subscription.group?.name || `Group #${subscription.group_id}` }}
-                  <span
-                    v-if="(subscription.quota_multiplier ?? 1) > 1"
-                    class="ml-2 inline-flex items-center rounded-md bg-purple-100 px-1.5 py-0.5 text-xs font-semibold text-purple-700 dark:bg-purple-900/30 dark:text-purple-300"
-                  >
-                    ×{{ subscription.quota_multiplier }}
+                <div class="flex items-center gap-2">
+                  <h3 class="font-semibold text-gray-900 dark:text-white">
+                    {{ subscription.group?.name || `Group #${subscription.group_id}` }}
+                    <span
+                      v-if="(subscription.quota_multiplier ?? 1) > 1"
+                      class="ml-2 inline-flex items-center rounded-md bg-purple-100 px-1.5 py-0.5 text-xs font-semibold text-purple-700 dark:bg-purple-900/30 dark:text-purple-300"
+                    >
+                      ×{{ subscription.quota_multiplier }}
+                    </span>
+                  </h3>
+                  <span :class="['rounded-md border px-2 py-0.5 text-[11px] font-medium', platformBadgeClass(subscription.group?.platform || '')]">
+                    {{ platformLabel(subscription.group?.platform || '') }}
                   </span>
-                </h3>
-                <p class="text-xs text-gray-500 dark:text-dark-400">
-                  {{ subscription.group?.description || '' }}
+                </div>
+                <p v-if="subscription.group?.description" class="mt-0.5 text-xs text-gray-500 dark:text-dark-400">
+                  {{ subscription.group.description }}
                 </p>
               </div>
             </div>
-            <span
-              :class="[
-                'badge',
-                subscription.status === 'active'
-                  ? 'badge-success'
-                  : subscription.status === 'expired'
-                    ? 'badge-warning'
-                    : 'badge-danger'
-              ]"
-            >
-              {{ t(`userSubscriptions.status.${subscription.status}`) }}
-            </span>
+            <div class="flex items-center gap-2">
+              <span
+                :class="[
+                  'rounded-full px-2 py-0.5 text-xs font-medium',
+                  subscription.status === 'active'
+                    ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'
+                    : subscription.status === 'expired'
+                      ? 'bg-gray-100 text-gray-600 dark:bg-dark-700 dark:text-gray-400'
+                      : 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300'
+                ]"
+              >
+                {{ t(`userSubscriptions.status.${subscription.status}`) }}
+              </span>
+              <button
+                v-if="subscription.status === 'active'"
+                :class="['rounded-lg px-3 py-1.5 text-xs font-semibold text-white transition-colors', platformButtonClass(subscription.group?.platform || '')]"
+                @click="router.push({ path: '/purchase', query: { tab: 'subscription', group: String(subscription.group_id) } })"
+              >
+                {{ t('payment.renewNow') }}
+              </button>
+            </div>
           </div>
 
           <!-- Usage Progress -->
@@ -346,6 +357,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useRouter } from 'vue-router'
 import { useAppStore } from '@/stores/app'
 import subscriptionsAPI from '@/api/subscriptions'
 import type {
@@ -357,8 +369,20 @@ import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
 import SubscriptionQuotaTimeline from '@/components/common/SubscriptionQuotaTimeline.vue'
 import { formatCurrency, formatDateTime } from '@/utils/format'
+import { platformBorderClass, platformBadgeClass, platformButtonClass, platformLabel } from '@/utils/platformColors'
+
+function platformAccentDotClass(p: string): string {
+  switch (p) {
+    case 'anthropic': return 'bg-orange-500'
+    case 'openai': return 'bg-emerald-500'
+    case 'antigravity': return 'bg-purple-500'
+    case 'gemini': return 'bg-blue-500'
+    default: return 'bg-gray-400'
+  }
+}
 
 const { t } = useI18n()
+const router = useRouter()
 const appStore = useAppStore()
 
 const subscriptions = ref<UserSubscription[]>([])
@@ -807,10 +831,10 @@ function formatExpirationDate(expiresAt: string): string {
   const dateStr = formatDateTime(expires)
 
   if (days === 0) {
-    return `${dateStr} (Today)`
+    return `${dateStr} (${t('common.today')})`
   }
   if (days === 1) {
-    return `${dateStr} (Tomorrow)`
+    return `${dateStr} (${t('common.tomorrow')})`
   }
 
   return t('userSubscriptions.daysRemaining', { days }) + ` (${dateStr})`

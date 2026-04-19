@@ -57,7 +57,6 @@ func TestProvideCleanup_WithMinimalDependencies_NoPanic(t *testing.T) {
 		&service.OpsCleanupService{},
 		&service.OpsScheduledReportService{},
 		opsSystemLogSinkSvc,
-		&service.SoraMediaCleanupService{},
 		schedulerSnapshotSvc,
 		tokenRefreshSvc,
 		accountExpirySvc,
@@ -77,6 +76,7 @@ func TestProvideCleanup_WithMinimalDependencies_NoPanic(t *testing.T) {
 		nil, // openAIGateway
 		nil, // scheduledTestRunner
 		nil, // backupSvc
+		nil, // paymentOrderExpiry
 	)
 
 	require.NotPanics(t, func() {

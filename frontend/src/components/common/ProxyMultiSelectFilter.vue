@@ -31,6 +31,20 @@
         </div>
         <div class="max-h-64 overflow-auto">
           <label
+            v-if="showNoProxyOption"
+            class="flex cursor-pointer items-start gap-2 border-b border-gray-100 px-3 py-2 hover:bg-gray-50 dark:border-dark-600 dark:hover:bg-dark-700"
+          >
+            <input
+              type="checkbox"
+              class="mt-1 h-3.5 w-3.5 rounded border-gray-300 text-primary-500 focus:ring-primary-500 dark:border-dark-500"
+              :checked="modelValue.includes(NO_PROXY_ID)"
+              @change="toggleOption(NO_PROXY_ID, ($event.target as HTMLInputElement).checked)"
+            />
+            <div class="min-w-0 flex-1">
+              <span class="text-sm text-gray-900 dark:text-gray-100">{{ noProxyLabel }}</span>
+            </div>
+          </label>
+          <label
             v-for="proxy in filteredOptions"
             :key="proxy.id"
             class="flex cursor-pointer items-start gap-2 px-3 py-2 hover:bg-gray-50 dark:hover:bg-dark-700"
@@ -60,7 +74,7 @@
               </div>
             </div>
           </label>
-          <div v-if="filteredOptions.length === 0" class="px-3 py-4 text-center text-sm text-gray-500 dark:text-gray-400">
+          <div v-if="filteredOptions.length === 0 && !showNoProxyOption" class="px-3 py-4 text-center text-sm text-gray-500 dark:text-gray-400">
             {{ t('common.noOptionsFound') }}
           </div>
         </div>
@@ -75,10 +89,14 @@ import { useI18n } from 'vue-i18n'
 
 import type { Proxy } from '@/types'
 
+const NO_PROXY_ID = 0
+
 interface Props {
   modelValue: number[]
   options: Proxy[]
   placeholder: string
+  showNoProxyOption?: boolean
+  noProxyLabel?: string
 }
 
 const props = defineProps<Props>()
@@ -96,7 +114,11 @@ const containerRef = ref<HTMLElement | null>(null)
 
 const selectedLabel = computed(() => {
   if (props.modelValue.length === 0) return props.placeholder
-  return t('admin.accounts.selectedProxies', { count: props.modelValue.length })
+  const hasNoProxy = props.modelValue.includes(NO_PROXY_ID)
+  const proxyCount = props.modelValue.length - (hasNoProxy ? 1 : 0)
+  if (hasNoProxy && proxyCount === 0) return props.noProxyLabel || t('admin.accounts.noProxy')
+  if (hasNoProxy) return `${props.noProxyLabel || t('admin.accounts.noProxy')} + ${t('admin.accounts.selectedProxies', { count: proxyCount })}`
+  return t('admin.accounts.selectedProxies', { count: proxyCount })
 })
 
 const filteredOptions = computed(() => {

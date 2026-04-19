@@ -107,6 +107,33 @@ func normalizeDisabledProxyScheduleMode(mode string) string {
 	}
 }
 
+// DisabledProxyScheduleModeProvider exposes the pool-monitor scheduling mode
+// for disabled proxies. Implemented by *PoolMonitorService. Gateway services
+// depend on this narrow interface to apply filtering at scheduling time.
+type DisabledProxyScheduleModeProvider interface {
+	DisabledProxyScheduleMode(ctx context.Context) string
+}
+
+// isAccountExcludedByDisabledProxy checks whether a single account should be
+// excluded from scheduling because its assigned proxy is disabled (or deleted).
+// It applies the same rules as filterAccountsByDisabledProxyScheduleMode but
+// for an individual account, suitable for sticky-session and previous-response
+// code paths that bypass the list-level filter.
+func isAccountExcludedByDisabledProxy(account *Account, mode string) bool {
+	if account == nil {
+		return false
+	}
+	mode = normalizeDisabledProxyScheduleMode(mode)
+	if mode != DisabledProxyScheduleModeExcludeAccount {
+		return false
+	}
+	if account.ProxyID == nil {
+		return false
+	}
+	// ProxyID set but proxy is nil (deleted) or not active → exclude
+	return account.Proxy == nil || !account.Proxy.IsActive()
+}
+
 // filterAccountsByDisabledProxyScheduleMode filters out accounts whose assigned
 // proxy is disabled, according to the configured scheduling mode.
 //

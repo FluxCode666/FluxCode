@@ -92,12 +92,13 @@ apiClient.interceptors.response.use(
         response.data = apiResponse.data
       } else {
         // API error
+        const resp = apiResponse as unknown as Record<string, unknown>
         return Promise.reject({
           status: response.status,
           code: apiResponse.code,
           message: apiResponse.message || 'Unknown error',
-          reason: apiResponse.reason,
-          metadata: apiResponse.metadata
+          reason: resp.reason,
+          metadata: resp.metadata,
         })
       }
     }
@@ -271,10 +272,10 @@ apiClient.interceptors.response.use(
       return Promise.reject({
         status,
         code: apiData.code,
+        reason: apiData.reason,
         error: apiData.error,
         message: apiData.message || apiData.detail || error.message,
-        reason: apiData.reason,
-        metadata: apiData.metadata
+        metadata: apiData.metadata,
       })
     }
 

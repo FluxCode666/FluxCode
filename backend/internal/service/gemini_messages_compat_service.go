@@ -54,6 +54,7 @@ type GeminiMessagesCompatService struct {
 	antigravityGatewayService *AntigravityGatewayService
 	cfg                       *config.Config
 	responseHeaderFilter      *responseheaders.CompiledHeaderFilter
+	disabledProxyMode         DisabledProxyScheduleModeProvider
 }
 
 func NewGeminiMessagesCompatService(
@@ -79,6 +80,33 @@ func NewGeminiMessagesCompatService(
 		cfg:                       cfg,
 		responseHeaderFilter:      compileResponseHeaderFilter(cfg),
 	}
+}
+
+// SetDisabledProxyScheduleModeProvider injects the scheduling-mode provider used
+// to filter out accounts whose assigned proxy has been disabled.
+func (s *GeminiMessagesCompatService) SetDisabledProxyScheduleModeProvider(p DisabledProxyScheduleModeProvider) {
+	if s == nil {
+		return
+	}
+	s.disabledProxyMode = p
+}
+
+// applyDisabledProxyScheduleMode filters out accounts whose assigned proxy is
+// disabled when the operator has chosen "exclude_account" via pool-monitor settings.
+func (s *GeminiMessagesCompatService) applyDisabledProxyScheduleMode(ctx context.Context, accounts []Account) []Account {
+	if s == nil || s.disabledProxyMode == nil || len(accounts) == 0 {
+		return accounts
+	}
+	return filterAccountsByDisabledProxyScheduleMode(accounts, s.disabledProxyMode.DisabledProxyScheduleMode(ctx))
+}
+
+// isAccountBlockedByDisabledProxy checks if a single account should be excluded
+// from scheduling because its assigned proxy is disabled.
+func (s *GeminiMessagesCompatService) isAccountBlockedByDisabledProxy(ctx context.Context, account *Account) bool {
+	if s == nil || s.disabledProxyMode == nil || account == nil {
+		return false
+	}
+	return isAccountExcludedByDisabledProxy(account, s.disabledProxyMode.DisabledProxyScheduleMode(ctx))
 }
 
 // GetTokenProvider returns the token provider for OAuth accounts
@@ -137,7 +165,7 @@ func (s *GeminiMessagesCompatService) SelectAccountForModelWithExclusions(ctx co
 		_ = s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), cacheKey, selected.ID, geminiStickySessionTTL)
 	}
 
-	return selected, nil
+	return s.hydrateSelectedAccount(ctx, selected)
 }
 
 // resolvePlatformAndSchedulingMode 解析目标平台和调度模式。
@@ -205,6 +233,13 @@ func (s *GeminiMessagesCompatService) tryStickySessionHit(
 	// 检查账号是否需要清理粘性会话
 	// Check if sticky session should be cleared
 	if shouldClearStickySession(account, requestedModel) {
+		_ = s.cache.DeleteSessionAccountID(ctx, derefGroupID(groupID), cacheKey)
+		return nil
+	}
+
+	// 检查代理是否已禁用
+	// Check if account's proxy is disabled
+	if s.isAccountBlockedByDisabledProxy(ctx, account) {
 		_ = s.cache.DeleteSessionAccountID(ctx, derefGroupID(groupID), cacheKey)
 		return nil
 	}
@@ -416,10 +451,27 @@ func (s *GeminiMessagesCompatService) getSchedulableAccount(ctx context.Context,
 	return s.accountRepo.GetByID(ctx, accountID)
 }
 
+func (s *GeminiMessagesCompatService) hydrateSelectedAccount(ctx context.Context, account *Account) (*Account, error) {
+	if account == nil || s.schedulerSnapshot == nil {
+		return account, nil
+	}
+	hydrated, err := s.schedulerSnapshot.GetAccount(ctx, account.ID)
+	if err != nil {
+		return nil, err
+	}
+	if hydrated == nil {
+		return nil, fmt.Errorf("selected gemini account %d not found during hydration", account.ID)
+	}
+	return hydrated, nil
+}
+
 func (s *GeminiMessagesCompatService) listSchedulableAccountsOnce(ctx context.Context, groupID *int64, platform string, hasForcePlatform bool) ([]Account, error) {
 	if s.schedulerSnapshot != nil {
 		accounts, _, err := s.schedulerSnapshot.ListSchedulableAccounts(ctx, groupID, platform, hasForcePlatform)
-		return accounts, err
+		if err != nil {
+			return nil, err
+		}
+		return s.applyDisabledProxyScheduleMode(ctx, accounts), nil
 	}
 
 	useMixedScheduling := platform == PlatformGemini && !hasForcePlatform
@@ -428,13 +480,19 @@ func (s *GeminiMessagesCompatService) listSchedulableAccountsOnce(ctx context.Co
 		queryPlatforms = []string{platform, PlatformAntigravity}
 	}
 
+	var accounts []Account
+	var err error
 	if groupID != nil {
-		return s.accountRepo.ListSchedulableByGroupIDAndPlatforms(ctx, *groupID, queryPlatforms)
+		accounts, err = s.accountRepo.ListSchedulableByGroupIDAndPlatforms(ctx, *groupID, queryPlatforms)
+	} else if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple {
+		accounts, err = s.accountRepo.ListSchedulableByPlatforms(ctx, queryPlatforms)
+	} else {
+		accounts, err = s.accountRepo.ListSchedulableUngroupedByPlatforms(ctx, queryPlatforms)
 	}
-	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple {
-		return s.accountRepo.ListSchedulableByPlatforms(ctx, queryPlatforms)
+	if err != nil {
+		return nil, err
 	}
-	return s.accountRepo.ListSchedulableUngroupedByPlatforms(ctx, queryPlatforms)
+	return s.applyDisabledProxyScheduleMode(ctx, accounts), nil
 }
 
 func (s *GeminiMessagesCompatService) validateUpstreamBaseURL(raw string) (string, error) {
@@ -546,7 +604,7 @@ func (s *GeminiMessagesCompatService) SelectAccountForAIStudioEndpoints(ctx cont
 	if selected == nil {
 		return nil, errors.New("no available Gemini accounts")
 	}
-	return selected, nil
+	return s.hydrateSelectedAccount(ctx, selected)
 }
 
 func (s *GeminiMessagesCompatService) Forward(ctx context.Context, c *gin.Context, account *Account, body []byte) (*ForwardResult, error) {
@@ -612,7 +670,8 @@ func (s *GeminiMessagesCompatService) Forward(ctx context.Context, c *gin.Contex
 				fullURL += "?alt=sse"
 			}
 
-			upstreamReq, err := http.NewRequestWithContext(ctx, http.MethodPost, fullURL, bytes.NewReader(geminiReq))
+			restGeminiReq := normalizeGeminiRequestForAIStudio(geminiReq)
+			upstreamReq, err := http.NewRequestWithContext(ctx, http.MethodPost, fullURL, bytes.NewReader(restGeminiReq))
 			if err != nil {
 				return nil, "", err
 			}
@@ -685,7 +744,8 @@ func (s *GeminiMessagesCompatService) Forward(ctx context.Context, c *gin.Contex
 					fullURL += "?alt=sse"
 				}
 
-				upstreamReq, err := http.NewRequestWithContext(ctx, http.MethodPost, fullURL, bytes.NewReader(geminiReq))
+				restGeminiReq := normalizeGeminiRequestForAIStudio(geminiReq)
+				upstreamReq, err := http.NewRequestWithContext(ctx, http.MethodPost, fullURL, bytes.NewReader(restGeminiReq))
 				if err != nil {
 					return nil, "", err
 				}
@@ -2408,18 +2468,8 @@ func (s *GeminiMessagesCompatService) handleNativeNonStreamingResponse(c *gin.Co
 		logger.LegacyPrintf("service.gemini_messages_compat", "[GeminiAPI] ========================================")
 	}
 
-	maxBytes := resolveUpstreamResponseReadLimit(s.cfg)
-	respBody, err := readUpstreamResponseBodyLimited(resp.Body, maxBytes)
+	respBody, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, openAITooLargeError)
 	if err != nil {
-		if errors.Is(err, ErrUpstreamResponseBodyTooLarge) {
-			setOpsUpstreamError(c, http.StatusBadGateway, "upstream response too large", "")
-			c.JSON(http.StatusBadGateway, gin.H{
-				"error": gin.H{
-					"type":    "upstream_error",
-					"message": "Upstream response too large",
-				},
-			})
-		}
 		return nil, err
 	}
 
@@ -2692,12 +2742,27 @@ func extractGeminiUsage(data []byte) *ClaudeUsage {
 	cand := int(usage.Get("candidatesTokenCount").Int())
 	cached := int(usage.Get("cachedContentTokenCount").Int())
 	thoughts := int(usage.Get("thoughtsTokenCount").Int())
+
+	// 从 candidatesTokensDetails 提取 IMAGE 模态 token 数
+	imageTokens := 0
+	candidateDetails := usage.Get("candidatesTokensDetails")
+	if candidateDetails.Exists() {
+		candidateDetails.ForEach(func(_, detail gjson.Result) bool {
+			if detail.Get("modality").String() == "IMAGE" {
+				imageTokens = int(detail.Get("tokenCount").Int())
+				return false
+			}
+			return true
+		})
+	}
+
 	// 注意：Gemini 的 promptTokenCount 包含 cachedContentTokenCount，
 	// 但 Claude 的 input_tokens 不包含 cache_read_input_tokens，需要减去
 	return &ClaudeUsage{
 		InputTokens:          prompt - cached,
 		OutputTokens:         cand + thoughts,
 		CacheReadInputTokens: cached,
+		ImageOutputTokens:    imageTokens,
 	}
 }
 
@@ -3169,10 +3234,15 @@ func convertClaudeToolsToGeminiTools(tools any) []any {
 		return nil
 	}
 
+	hasWebSearch := false
 	funcDecls := make([]any, 0, len(arr))
 	for _, t := range arr {
 		tm, ok := t.(map[string]any)
 		if !ok {
+			continue
+		}
+		if isClaudeWebSearchToolMap(tm) {
+			hasWebSearch = true
 			continue
 		}
 
@@ -3218,13 +3288,75 @@ func convertClaudeToolsToGeminiTools(tools any) []any {
 		})
 	}
 
-	if len(funcDecls) == 0 {
+	out := make([]any, 0, 2)
+	if len(funcDecls) > 0 {
+		out = append(out, map[string]any{
+			"functionDeclarations": funcDecls,
+		})
+	}
+	if hasWebSearch {
+		out = append(out, map[string]any{
+			"googleSearch": map[string]any{},
+		})
+	}
+	if len(out) == 0 {
 		return nil
 	}
-	return []any{
-		map[string]any{
-			"functionDeclarations": funcDecls,
-		},
+	return out
+}
+
+func normalizeGeminiRequestForAIStudio(body []byte) []byte {
+	var payload map[string]any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return body
+	}
+
+	tools, ok := payload["tools"].([]any)
+	if !ok || len(tools) == 0 {
+		return body
+	}
+
+	modified := false
+	for _, rawTool := range tools {
+		tool, ok := rawTool.(map[string]any)
+		if !ok {
+			continue
+		}
+		googleSearch, ok := tool["googleSearch"]
+		if !ok {
+			continue
+		}
+		if _, exists := tool["google_search"]; exists {
+			continue
+		}
+		tool["google_search"] = googleSearch
+		delete(tool, "googleSearch")
+		modified = true
+	}
+
+	if !modified {
+		return body
+	}
+
+	normalized, err := json.Marshal(payload)
+	if err != nil {
+		return body
+	}
+	return normalized
+}
+
+func isClaudeWebSearchToolMap(tool map[string]any) bool {
+	toolType, _ := tool["type"].(string)
+	if strings.HasPrefix(toolType, "web_search") || toolType == "google_search" {
+		return true
+	}
+
+	name, _ := tool["name"].(string)
+	switch strings.TrimSpace(name) {
+	case "web_search", "google_search", "web_search_20250305":
+		return true
+	default:
+		return false
 	}
 }
 

@@ -25,6 +25,8 @@ type ProxyRepository interface {
 	ListWithFiltersAndAccountCount(ctx context.Context, params pagination.PaginationParams, protocol, status, search string) ([]ProxyWithAccountCount, *pagination.PaginationResult, error)
 	ListActive(ctx context.Context) ([]Proxy, error)
 	ListActiveWithAccountCount(ctx context.Context) ([]ProxyWithAccountCount, error)
+	ListAll(ctx context.Context) ([]Proxy, error)
+	ListAllWithAccountCount(ctx context.Context) ([]ProxyWithAccountCount, error)
 
 	GetProxyAccountCounts(ctx context.Context, proxyIDs []int64, states []ProxyAccountCountState) ([]ProxyAccountCountItem, error)
 

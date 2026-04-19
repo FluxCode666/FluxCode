@@ -19,18 +19,20 @@ type accountRepoStubForAdminList struct {
 	listWithFiltersType     string
 	listWithFiltersStatus   string
 	listWithFiltersSearch   string
+	listWithFiltersPrivacy  string
 	listWithFiltersAccounts []Account
 	listWithFiltersResult   *pagination.PaginationResult
 	listWithFiltersErr      error
 }
 
-func (s *accountRepoStubForAdminList) ListWithFilters(_ context.Context, params pagination.PaginationParams, platform, accountType, status, search string, groupID int64) ([]Account, *pagination.PaginationResult, error) {
+func (s *accountRepoStubForAdminList) ListWithFilters(_ context.Context, params pagination.PaginationParams, platform, accountType, status, search string, groupID int64, privacyMode string) ([]Account, *pagination.PaginationResult, error) {
 	s.listWithFiltersCalls++
 	s.listWithFiltersParams = params
 	s.listWithFiltersPlatform = platform
 	s.listWithFiltersType = accountType
 	s.listWithFiltersStatus = status
 	s.listWithFiltersSearch = search
+	s.listWithFiltersPrivacy = privacyMode
 
 	if s.listWithFiltersErr != nil {
 		return nil, nil, s.listWithFiltersErr
@@ -168,17 +170,33 @@ func TestAdminService_ListAccounts_WithSearch(t *testing.T) {
 		}
 		svc := &adminServiceImpl{accountRepo: repo}
 
-		accounts, total, err := svc.ListAccounts(context.Background(), 1, 20, PlatformGemini, AccountTypeOAuth, StatusActive, "acc", 0)
+		accounts, total, err := svc.ListAccounts(context.Background(), 1, 20, PlatformGemini, AccountTypeOAuth, StatusActive, "acc", 0, "", "name", "ASC")
 		require.NoError(t, err)
 		require.Equal(t, int64(10), total)
 		require.Equal(t, []Account{{ID: 1, Name: "acc"}}, accounts)
 
 		require.Equal(t, 1, repo.listWithFiltersCalls)
-		require.Equal(t, pagination.PaginationParams{Page: 1, PageSize: 20}, repo.listWithFiltersParams)
+		require.Equal(t, pagination.PaginationParams{Page: 1, PageSize: 20, SortBy: "name", SortOrder: "ASC"}, repo.listWithFiltersParams)
 		require.Equal(t, PlatformGemini, repo.listWithFiltersPlatform)
 		require.Equal(t, AccountTypeOAuth, repo.listWithFiltersType)
 		require.Equal(t, StatusActive, repo.listWithFiltersStatus)
 		require.Equal(t, "acc", repo.listWithFiltersSearch)
+	})
+}
+
+func TestAdminService_ListAccounts_WithPrivacyMode(t *testing.T) {
+	t.Run("privacy_mode 参数正常传递到 repository 层", func(t *testing.T) {
+		repo := &accountRepoStubForAdminList{
+			listWithFiltersAccounts: []Account{{ID: 2, Name: "acc2"}},
+			listWithFiltersResult:   &pagination.PaginationResult{Total: 1},
+		}
+		svc := &adminServiceImpl{accountRepo: repo}
+
+		accounts, total, err := svc.ListAccounts(context.Background(), 1, 20, PlatformOpenAI, AccountTypeOAuth, StatusActive, "acc2", 0, PrivacyModeCFBlocked, "", "")
+		require.NoError(t, err)
+		require.Equal(t, int64(1), total)
+		require.Equal(t, []Account{{ID: 2, Name: "acc2"}}, accounts)
+		require.Equal(t, PrivacyModeCFBlocked, repo.listWithFiltersPrivacy)
 	})
 }
 
@@ -190,13 +208,13 @@ func TestAdminService_ListProxies_WithSearch(t *testing.T) {
 		}
 		svc := &adminServiceImpl{proxyRepo: repo}
 
-		proxies, total, err := svc.ListProxies(context.Background(), 3, 50, "http", StatusActive, "p1")
+		proxies, total, err := svc.ListProxies(context.Background(), 3, 50, "http", StatusActive, "p1", "name", "ASC")
 		require.NoError(t, err)
 		require.Equal(t, int64(7), total)
 		require.Equal(t, []Proxy{{ID: 2, Name: "p1"}}, proxies)
 
 		require.Equal(t, 1, repo.listWithFiltersCalls)
-		require.Equal(t, pagination.PaginationParams{Page: 3, PageSize: 50}, repo.listWithFiltersParams)
+		require.Equal(t, pagination.PaginationParams{Page: 3, PageSize: 50, SortBy: "name", SortOrder: "ASC"}, repo.listWithFiltersParams)
 		require.Equal(t, "http", repo.listWithFiltersProtocol)
 		require.Equal(t, StatusActive, repo.listWithFiltersStatus)
 		require.Equal(t, "p1", repo.listWithFiltersSearch)
@@ -211,13 +229,13 @@ func TestAdminService_ListProxiesWithAccountCount_WithSearch(t *testing.T) {
 		}
 		svc := &adminServiceImpl{proxyRepo: repo}
 
-		proxies, total, err := svc.ListProxiesWithAccountCount(context.Background(), 2, 10, "socks5", StatusDisabled, "p2")
+		proxies, total, err := svc.ListProxiesWithAccountCount(context.Background(), 2, 10, "socks5", StatusDisabled, "p2", "account_count", "DESC")
 		require.NoError(t, err)
 		require.Equal(t, int64(9), total)
 		require.Equal(t, []ProxyWithAccountCount{{Proxy: Proxy{ID: 3, Name: "p2"}, AccountCount: 5}}, proxies)
 
 		require.Equal(t, 1, repo.listWithFiltersAndAccountCountCalls)
-		require.Equal(t, pagination.PaginationParams{Page: 2, PageSize: 10}, repo.listWithFiltersAndAccountCountParams)
+		require.Equal(t, pagination.PaginationParams{Page: 2, PageSize: 10, SortBy: "account_count", SortOrder: "DESC"}, repo.listWithFiltersAndAccountCountParams)
 		require.Equal(t, "socks5", repo.listWithFiltersAndAccountCountProtocol)
 		require.Equal(t, StatusDisabled, repo.listWithFiltersAndAccountCountStatus)
 		require.Equal(t, "p2", repo.listWithFiltersAndAccountCountSearch)
@@ -232,13 +250,13 @@ func TestAdminService_ListRedeemCodes_WithSearch(t *testing.T) {
 		}
 		svc := &adminServiceImpl{redeemCodeRepo: repo}
 
-		codes, total, err := svc.ListRedeemCodes(context.Background(), 1, 20, RedeemTypeBalance, StatusUnused, "ABC")
+		codes, total, err := svc.ListRedeemCodes(context.Background(), 1, 20, RedeemTypeBalance, StatusUnused, "ABC", "value", "ASC")
 		require.NoError(t, err)
 		require.Equal(t, int64(3), total)
 		require.Equal(t, []RedeemCode{{ID: 4, Code: "ABC"}}, codes)
 
 		require.Equal(t, 1, repo.listWithFiltersCalls)
-		require.Equal(t, pagination.PaginationParams{Page: 1, PageSize: 20}, repo.listWithFiltersParams)
+		require.Equal(t, pagination.PaginationParams{Page: 1, PageSize: 20, SortBy: "value", SortOrder: "ASC"}, repo.listWithFiltersParams)
 		require.Equal(t, RedeemTypeBalance, repo.listWithFiltersType)
 		require.Equal(t, StatusUnused, repo.listWithFiltersStatus)
 		require.Equal(t, "ABC", repo.listWithFiltersSearch)

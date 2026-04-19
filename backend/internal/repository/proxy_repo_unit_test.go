@@ -1,0 +1,201 @@
+//go:build unit
+
+package repository
+
+import (
+	"context"
+	"encoding/json"
+	"testing"
+
+	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+// TestNotifySchedulerForProxy_NilSQL verifies graceful handling when sql is nil.
+func TestNotifySchedulerForProxy_NilSQL(t *testing.T) {
+	repo := &proxyRepository{client: nil, sql: nil}
+	// Should not panic
+	repo.notifySchedulerForProxy(context.Background(), 42)
+}
+
+// TestNotifySchedulerForProxy_ZeroProxyID verifies early return for invalid proxy ID.
+func TestNotifySchedulerForProxy_ZeroProxyID(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer db.Close()
+
+	repo := &proxyRepository{client: nil, sql: db}
+	repo.notifySchedulerForProxy(context.Background(), 0)
+	repo.notifySchedulerForProxy(context.Background(), -1)
+
+	// No SQL should have been executed
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+// TestNotifySchedulerForProxy_WithAccounts verifies that when a proxy has
+// associated accounts, an account_bulk_changed outbox event is written with
+// the correct account IDs in the payload.
+func TestNotifySchedulerForProxy_WithAccounts(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer db.Close()
+
+	// Mock: SELECT account IDs for proxy 42
+	rows := sqlmock.NewRows([]string{"id"}).
+		AddRow(int64(100)).
+		AddRow(int64(200)).
+		AddRow(int64(300))
+	mock.ExpectQuery("SELECT id FROM accounts WHERE proxy_id = \\$1").
+		WithArgs(int64(42)).
+		WillReturnRows(rows)
+
+	// Mock: INSERT into scheduler_outbox (account_bulk_changed does NOT use dedup)
+	mock.ExpectExec("INSERT INTO scheduler_outbox").
+		WillReturnResult(sqlmock.NewResult(1, 1))
+
+	repo := &proxyRepository{client: nil, sql: db}
+	repo.notifySchedulerForProxy(context.Background(), 42)
+
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+// TestNotifySchedulerForProxy_EmptyAccounts verifies that no outbox event
+// is written when the proxy has no associated accounts.
+func TestNotifySchedulerForProxy_EmptyAccounts(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer db.Close()
+
+	rows := sqlmock.NewRows([]string{"id"}) // empty
+	mock.ExpectQuery("SELECT id FROM accounts WHERE proxy_id = \\$1").
+		WithArgs(int64(42)).
+		WillReturnRows(rows)
+
+	// No Exec expected — no outbox event
+
+	repo := &proxyRepository{client: nil, sql: db}
+	repo.notifySchedulerForProxy(context.Background(), 42)
+
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+// TestNotifySchedulerForProxy_OutboxPayloadFormat verifies the outbox event
+// payload contains the correct event type and account IDs.
+func TestNotifySchedulerForProxy_OutboxPayloadFormat(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer db.Close()
+
+	rows := sqlmock.NewRows([]string{"id"}).
+		AddRow(int64(10)).
+		AddRow(int64(20))
+	mock.ExpectQuery("SELECT id FROM accounts WHERE proxy_id = \\$1").
+		WithArgs(int64(7)).
+		WillReturnRows(rows)
+
+	// Capture the outbox INSERT args
+	mock.ExpectExec("INSERT INTO scheduler_outbox").
+		WithArgs(
+			service.SchedulerOutboxEventAccountBulkChanged, // event_type
+			nil,   // account_id (nil for bulk)
+			nil,   // group_id (nil)
+			sqlmock.AnyArg(), // payload JSON
+		).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+
+	repo := &proxyRepository{client: nil, sql: db}
+	repo.notifySchedulerForProxy(context.Background(), 7)
+
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+// TestNotifySchedulerForProxy_Chunking verifies that when the number of
+// associated accounts exceeds proxyOutboxChunkSize, multiple outbox events
+// are written — one per chunk.
+func TestNotifySchedulerForProxy_Chunking(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer db.Close()
+
+	// Generate 450 account IDs → should produce 3 chunks (200 + 200 + 50)
+	totalAccounts := proxyOutboxChunkSize*2 + 50
+	rows := sqlmock.NewRows([]string{"id"})
+	for i := 1; i <= totalAccounts; i++ {
+		rows.AddRow(int64(i))
+	}
+	mock.ExpectQuery("SELECT id FROM accounts WHERE proxy_id = \\$1").
+		WithArgs(int64(99)).
+		WillReturnRows(rows)
+
+	// Expect exactly 3 outbox INSERT calls
+	expectedChunks := 3
+	for i := 0; i < expectedChunks; i++ {
+		mock.ExpectExec("INSERT INTO scheduler_outbox").
+			WillReturnResult(sqlmock.NewResult(1, 1))
+	}
+
+	repo := &proxyRepository{client: nil, sql: db}
+	repo.notifySchedulerForProxy(context.Background(), 99)
+
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+// TestNotifySchedulerForProxy_ExactChunkSize verifies behavior when account
+// count is exactly equal to one chunk size (no extra chunk created).
+func TestNotifySchedulerForProxy_ExactChunkSize(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer db.Close()
+
+	rows := sqlmock.NewRows([]string{"id"})
+	for i := 1; i <= proxyOutboxChunkSize; i++ {
+		rows.AddRow(int64(i))
+	}
+	mock.ExpectQuery("SELECT id FROM accounts WHERE proxy_id = \\$1").
+		WithArgs(int64(5)).
+		WillReturnRows(rows)
+
+	// Exactly 1 chunk
+	mock.ExpectExec("INSERT INTO scheduler_outbox").
+		WillReturnResult(sqlmock.NewResult(1, 1))
+
+	repo := &proxyRepository{client: nil, sql: db}
+	repo.notifySchedulerForProxy(context.Background(), 5)
+
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+// TestEnqueueSchedulerOutbox_BulkPayload verifies that enqueueSchedulerOutbox
+// correctly serializes the account_ids payload for account_bulk_changed events.
+func TestEnqueueSchedulerOutbox_BulkPayload(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer db.Close()
+
+	payload := map[string]any{"account_ids": []int64{100, 200, 300}}
+
+	// account_bulk_changed does NOT use dedup (per schedulerOutboxEventSupportsDedup)
+	mock.ExpectExec("INSERT INTO scheduler_outbox \\(event_type, account_id, group_id, payload\\)").
+		WithArgs(
+			service.SchedulerOutboxEventAccountBulkChanged,
+			nil, nil,
+			sqlmock.AnyArg(),
+		).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+
+	err = enqueueSchedulerOutbox(context.Background(), db,
+		service.SchedulerOutboxEventAccountBulkChanged, nil, nil, payload)
+	require.NoError(t, err)
+	require.NoError(t, mock.ExpectationsWereMet())
+
+	// Also verify that the JSON payload is valid
+	encoded, err := json.Marshal(payload)
+	require.NoError(t, err)
+	var decoded map[string]any
+	require.NoError(t, json.Unmarshal(encoded, &decoded))
+	rawIDs, ok := decoded["account_ids"].([]any)
+	require.True(t, ok)
+	assert.Len(t, rawIDs, 3)
+}

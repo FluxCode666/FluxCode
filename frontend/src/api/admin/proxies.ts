@@ -31,6 +31,8 @@ export async function list(
     protocol?: string
     status?: 'active' | 'inactive'
     search?: string
+    sort_by?: string
+    sort_order?: 'asc' | 'desc'
   },
   options?: {
     signal?: AbortSignal
@@ -49,20 +51,29 @@ export async function list(
 
 /**
  * Get all active proxies (without pagination)
- * @returns List of all active proxies
+ * @param options.includeInactive - Include inactive proxies
+ * @returns List of proxies
  */
-export async function getAll(): Promise<Proxy[]> {
-  const { data } = await apiClient.get<Proxy[]>('/admin/proxies/all')
+export async function getAll(options?: { includeInactive?: boolean }): Promise<Proxy[]> {
+  const { data } = await apiClient.get<Proxy[]>('/admin/proxies/all', {
+    params: {
+      ...(options?.includeInactive ? { include_inactive: 'true' } : {})
+    }
+  })
   return data
 }
 
 /**
- * Get all active proxies with account count (sorted by creation time desc)
- * @returns List of all active proxies with account count
+ * Get all proxies with account count (sorted by creation time desc)
+ * @param options.includeInactive - Include inactive proxies
+ * @returns List of proxies with account count
  */
-export async function getAllWithCount(): Promise<Proxy[]> {
+export async function getAllWithCount(options?: { includeInactive?: boolean }): Promise<Proxy[]> {
   const { data } = await apiClient.get<Proxy[]>('/admin/proxies/all', {
-    params: { with_count: 'true' }
+    params: {
+      with_count: 'true',
+      ...(options?.includeInactive ? { include_inactive: 'true' } : {})
+    }
   })
   return data
 }
@@ -256,16 +267,20 @@ export async function exportData(options?: {
     protocol?: string
     status?: 'active' | 'inactive'
     search?: string
+    sort_by?: string
+    sort_order?: 'asc' | 'desc'
   }
 }): Promise<AdminDataPayload> {
   const params: Record<string, string> = {}
   if (options?.ids && options.ids.length > 0) {
     params.ids = options.ids.join(',')
   } else if (options?.filters) {
-    const { protocol, status, search } = options.filters
+    const { protocol, status, search, sort_by, sort_order } = options.filters
     if (protocol) params.protocol = protocol
     if (status) params.status = status
     if (search) params.search = search
+    if (sort_by) params.sort_by = sort_by
+    if (sort_order) params.sort_order = sort_order
   }
   const { data } = await apiClient.get<AdminDataPayload>('/admin/proxies/data', { params })
   return data

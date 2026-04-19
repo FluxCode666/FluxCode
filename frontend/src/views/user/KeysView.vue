@@ -2,24 +2,31 @@
   <AppLayout>
     <TablePageLayout>
       <template #filters>
-        <div class="flex flex-wrap items-center gap-3">
-          <SearchInput
-            v-model="filterSearch"
-            :placeholder="t('keys.searchPlaceholder')"
-            class="w-full sm:w-64"
-            @search="onFilterChange"
-          />
-          <Select
-            :model-value="filterGroupId"
-            class="w-40"
-            :options="groupFilterOptions"
-            @update:model-value="onGroupFilterChange"
-          />
-          <Select
-            :model-value="filterStatus"
-            class="w-40"
-            :options="statusFilterOptions"
-            @update:model-value="onStatusFilterChange"
+        <div class="flex flex-col gap-3">
+          <div class="flex flex-wrap items-center gap-3">
+            <SearchInput
+              v-model="filterSearch"
+              :placeholder="t('keys.searchPlaceholder')"
+              class="w-full sm:w-64"
+              @search="onFilterChange"
+            />
+            <Select
+              :model-value="filterGroupId"
+              class="w-40"
+              :options="groupFilterOptions"
+              @update:model-value="onGroupFilterChange"
+            />
+            <Select
+              :model-value="filterStatus"
+              class="w-40"
+              :options="statusFilterOptions"
+              @update:model-value="onStatusFilterChange"
+            />
+          </div>
+          <EndpointPopover
+            v-if="publicSettings?.api_base_url || (publicSettings?.custom_endpoints?.length ?? 0) > 0"
+            :api-base-url="publicSettings?.api_base_url || ''"
+            :custom-endpoints="publicSettings?.custom_endpoints || []"
           />
         </div>
       </template>
@@ -42,7 +49,15 @@
       </template>
 
       <template #table>
-        <DataTable :columns="columns" :data="apiKeys" :loading="loading">
+        <DataTable
+          :columns="columns"
+          :data="apiKeys"
+          :loading="loading"
+          :server-side-sort="true"
+          default-sort-key="created_at"
+          default-sort-order="desc"
+          @sort="handleSort"
+        >
           <template #cell-key="{ value, row }">
             <div class="flex items-center gap-2">
               <code class="code text-xs">
@@ -1050,6 +1065,7 @@ import TablePageLayout from '@/components/layout/TablePageLayout.vue'
 	import SearchInput from '@/components/common/SearchInput.vue'
 	import Icon from '@/components/icons/Icon.vue'
 	import UseKeyModal from '@/components/keys/UseKeyModal.vue'
+	import EndpointPopover from '@/components/keys/EndpointPopover.vue'
 	import GroupBadge from '@/components/common/GroupBadge.vue'
 	import GroupOptionItem from '@/components/common/GroupOptionItem.vue'
 	import type { ApiKey, Group, PublicSettings, SubscriptionType, GroupPlatform } from '@/types'
@@ -1105,6 +1121,10 @@ const pagination = ref({
   page_size: getPersistedPageSize(),
   total: 0,
   pages: 0
+})
+const sortState = ref({
+  sort_by: 'created_at',
+  sort_order: 'desc' as 'asc' | 'desc'
 })
 
 // Filter state
@@ -1269,10 +1289,18 @@ const loadApiKeys = async () => {
   loading.value = true
   try {
     // Build filters
-    const filters: { search?: string; status?: string; group_id?: number | string } = {}
+    const filters: {
+      search?: string
+      status?: string
+      group_id?: number | string
+      sort_by?: string
+      sort_order?: 'asc' | 'desc'
+    } = {}
     if (filterSearch.value) filters.search = filterSearch.value
     if (filterStatus.value) filters.status = filterStatus.value
     if (filterGroupId.value !== '') filters.group_id = filterGroupId.value
+    filters.sort_by = sortState.value.sort_by
+    filters.sort_order = sortState.value.sort_order
 
     const response = await keysAPI.list(pagination.value.page, pagination.value.page_size, filters, {
       signal
@@ -1348,6 +1376,13 @@ const handlePageChange = (page: number) => {
 
 const handlePageSizeChange = (pageSize: number) => {
   pagination.value.page_size = pageSize
+  pagination.value.page = 1
+  loadApiKeys()
+}
+
+const handleSort = (key: string, order: 'asc' | 'desc') => {
+  sortState.value.sort_by = key
+  sortState.value.sort_order = order
   pagination.value.page = 1
   loadApiKeys()
 }

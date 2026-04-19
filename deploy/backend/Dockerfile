@@ -16,7 +16,7 @@
 #   docker buildx build --platform linux/amd64,linux/arm64 ...
 # =============================================================================
 
-ARG GOLANG_IMAGE=golang:1.26.1-alpine
+ARG GOLANG_IMAGE=golang:1.26.2-alpine
 ARG ALPINE_IMAGE=alpine:3.21
 ARG POSTGRES_IMAGE=postgres:18-alpine
 ARG GOPROXY=https://goproxy.cn,direct

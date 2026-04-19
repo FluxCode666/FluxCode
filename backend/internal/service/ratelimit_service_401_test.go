@@ -15,10 +15,11 @@ import (
 
 type rateLimitAccountRepoStub struct {
 	mockAccountRepoForGemini
-	setErrorCalls  int
-	setBannedCalls int
-	tempCalls      int
-	lastErrorMsg   string
+	setErrorCalls          int
+	tempCalls              int
+	updateCredentialsCalls int
+	lastCredentials        map[string]any
+	lastErrorMsg           string
 }
 
 func (r *rateLimitAccountRepoStub) SetError(ctx context.Context, id int64, errorMsg string) error {
@@ -27,14 +28,14 @@ func (r *rateLimitAccountRepoStub) SetError(ctx context.Context, id int64, error
 	return nil
 }
 
-func (r *rateLimitAccountRepoStub) SetBanned(ctx context.Context, id int64, errorMsg string) error {
-	r.setBannedCalls++
-	r.lastErrorMsg = errorMsg
+func (r *rateLimitAccountRepoStub) SetTempUnschedulable(ctx context.Context, id int64, until time.Time, reason string) error {
+	r.tempCalls++
 	return nil
 }
 
-func (r *rateLimitAccountRepoStub) SetTempUnschedulable(ctx context.Context, id int64, until time.Time, reason string) error {
-	r.tempCalls++
+func (r *rateLimitAccountRepoStub) UpdateCredentials(ctx context.Context, id int64, credentials map[string]any) error {
+	r.updateCredentialsCalls++
+	r.lastCredentials = cloneCredentials(credentials)
 	return nil
 }
 
@@ -101,6 +102,8 @@ func TestRateLimitService_HandleUpstreamError_OAuth401SetsTempUnschedulable(t *t
 	})
 }
 
+// TestRateLimitService_HandleUpstreamError_OAuth401InvalidatorError
+// OpenAI OAuth 401 缓存失效出错时仍走 temp_unschedulable
 func TestRateLimitService_HandleUpstreamError_OAuth401InvalidatorError(t *testing.T) {
 	repo := &rateLimitAccountRepoStub{}
 	invalidator := &tokenCacheInvalidatorRecorder{err: errors.New("boom")}
@@ -108,7 +111,7 @@ func TestRateLimitService_HandleUpstreamError_OAuth401InvalidatorError(t *testin
 	service.SetTokenCacheInvalidator(invalidator)
 	account := &Account{
 		ID:       101,
-		Platform: PlatformGemini,
+		Platform: PlatformOpenAI,
 		Type:     AccountTypeOAuth,
 	}
 
@@ -117,43 +120,8 @@ func TestRateLimitService_HandleUpstreamError_OAuth401InvalidatorError(t *testin
 	require.True(t, shouldDisable)
 	require.Equal(t, 0, repo.setErrorCalls)
 	require.Equal(t, 1, repo.tempCalls)
+	require.Equal(t, 1, repo.updateCredentialsCalls)
 	require.Len(t, invalidator.accounts, 1)
-}
-
-func TestRateLimitService_HandleUpstreamError_OpenAI401Deactivated_SetsBanned(t *testing.T) {
-	repo := &rateLimitAccountRepoStub{}
-	svc := NewRateLimitService(repo, nil, &config.Config{}, nil, nil)
-	account := &Account{
-		ID:       200,
-		Platform: PlatformOpenAI,
-		Type:     AccountTypeAPIKey,
-	}
-	body := []byte(`{"error":{"message":"Your OpenAI account has been deactivated, please check your email for more information."}}`)
-
-	shouldDisable := svc.HandleUpstreamError(context.Background(), account, 401, http.Header{}, body)
-
-	require.True(t, shouldDisable)
-	require.Equal(t, 1, repo.setBannedCalls, "should call SetBanned")
-	require.Equal(t, 0, repo.setErrorCalls, "should NOT call SetError")
-	require.Contains(t, repo.lastErrorMsg, "deactivated")
-}
-
-func TestRateLimitService_HandleUpstreamError_NonOpenAI401Deactivated_NotBanned(t *testing.T) {
-	// Gemini 平台的 deactivated 响应不应触发 banned（仅限 OpenAI）
-	repo := &rateLimitAccountRepoStub{}
-	svc := NewRateLimitService(repo, nil, &config.Config{}, nil, nil)
-	svc.SetTokenCacheInvalidator(&tokenCacheInvalidatorRecorder{})
-	account := &Account{
-		ID:       201,
-		Platform: PlatformGemini,
-		Type:     AccountTypeOAuth,
-	}
-	body := []byte(`{"error":{"message":"Your account has been deactivated"}}`)
-
-	shouldDisable := svc.HandleUpstreamError(context.Background(), account, 401, http.Header{}, body)
-
-	require.True(t, shouldDisable)
-	require.Equal(t, 0, repo.setBannedCalls, "non-OpenAI should NOT trigger banned")
 }
 
 func TestRateLimitService_HandleUpstreamError_NonOAuth401(t *testing.T) {
@@ -172,4 +140,23 @@ func TestRateLimitService_HandleUpstreamError_NonOAuth401(t *testing.T) {
 	require.True(t, shouldDisable)
 	require.Equal(t, 1, repo.setErrorCalls)
 	require.Empty(t, invalidator.accounts)
+}
+
+func TestRateLimitService_HandleUpstreamError_OAuth401UsesCredentialsUpdater(t *testing.T) {
+	repo := &rateLimitAccountRepoStub{}
+	service := NewRateLimitService(repo, nil, &config.Config{}, nil, nil)
+	account := &Account{
+		ID:       103,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+		Credentials: map[string]any{
+			"access_token": "token",
+		},
+	}
+
+	shouldDisable := service.HandleUpstreamError(context.Background(), account, 401, http.Header{}, []byte("unauthorized"))
+
+	require.True(t, shouldDisable)
+	require.Equal(t, 1, repo.updateCredentialsCalls)
+	require.NotEmpty(t, repo.lastCredentials["expires_at"])
 }
