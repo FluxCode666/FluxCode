@@ -38,6 +38,30 @@ const (
 	OpsSkipPassthroughKey = "ops_skip_passthrough"
 )
 
+// opsUpstreamRequestBodyEarlyCap is the byte-level cap applied when copying the
+// upstream request body into each OpsUpstreamErrorEvent.  This matches the
+// final storage cap used by sanitizeOpsUpstreamEvents (10KB) so we avoid
+// allocating large intermediate strings during retries/failovers.
+const opsUpstreamRequestBodyEarlyCap = 10 * 1024
+
+// truncateStringBytes truncates s to at most maxBytes bytes without splitting
+// a multi-byte UTF-8 character.
+func truncateStringBytes(s string, maxBytes int) string {
+	if len(s) <= maxBytes {
+		return s
+	}
+	// Walk backwards from the cap to avoid splitting a multi-byte rune.
+	for maxBytes > 0 && maxBytes < len(s) {
+		// If the byte at maxBytes is a UTF-8 continuation byte, back up.
+		if s[maxBytes]&0xC0 == 0x80 {
+			maxBytes--
+		} else {
+			break
+		}
+	}
+	return s[:maxBytes]
+}
+
 func setOpsUpstreamRequestBody(c *gin.Context, body []byte) {
 	if c == nil || len(body) == 0 {
 		return
@@ -132,12 +156,23 @@ func appendOpsUpstreamError(c *gin.Context, ev OpsUpstreamErrorEvent) {
 
 	// If the caller didn't explicitly pass upstream request body but the gateway
 	// stored it on the context, attach it so ops can retry this specific attempt.
+	// Truncate early to opsUpstreamRequestBodyEarlyCap (matching the final storage
+	// cap in sanitizeOpsUpstreamEvents) to avoid allocating full multi-MB string
+	// copies on every retry/failover event.
 	if ev.UpstreamRequestBody == "" {
 		if v, ok := c.Get(OpsUpstreamRequestBodyKey); ok {
 			switch raw := v.(type) {
 			case string:
-				ev.UpstreamRequestBody = strings.TrimSpace(raw)
+				ev.UpstreamRequestBody = truncateStringBytes(strings.TrimSpace(raw), opsUpstreamRequestBodyEarlyCap)
 			case []byte:
+				if len(raw) > opsUpstreamRequestBodyEarlyCap {
+					// Truncate at a UTF-8 safe boundary to avoid splitting multi-byte characters.
+					n := opsUpstreamRequestBodyEarlyCap
+					for n > 0 && n < len(raw) && raw[n]&0xC0 == 0x80 {
+						n--
+					}
+					raw = raw[:n]
+				}
 				ev.UpstreamRequestBody = strings.TrimSpace(string(raw))
 			}
 		}

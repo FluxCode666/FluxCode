@@ -352,17 +352,35 @@ func (c *schedulerCache) mgetChunked(ctx context.Context, keys []string) ([]any,
 		return []any{}, nil
 	}
 
-	out := make([]any, 0, len(keys))
 	chunkSize := c.mgetChunkSize
 	if chunkSize <= 0 {
 		chunkSize = defaultSchedulerSnapshotMGetChunkSize
 	}
+
+	// 使用 Pipeline 将多个分块 MGET 合并为单次网络往返
+	// 原实现对 1万 key 需要 ~79 次顺序 RTT，Pipeline 只需 1 次
+	pipe := c.rdb.Pipeline()
+	type chunkCmd struct {
+		cmd  *redis.SliceCmd
+		size int
+	}
+	cmds := make([]chunkCmd, 0, (len(keys)+chunkSize-1)/chunkSize)
 	for start := 0; start < len(keys); start += chunkSize {
 		end := start + chunkSize
 		if end > len(keys) {
 			end = len(keys)
 		}
-		part, err := c.rdb.MGet(ctx, keys[start:end]...).Result()
+		cmd := pipe.MGet(ctx, keys[start:end]...)
+		cmds = append(cmds, chunkCmd{cmd: cmd, size: end - start})
+	}
+
+	if _, err := pipe.Exec(ctx); err != nil && err != redis.Nil {
+		return nil, err
+	}
+
+	out := make([]any, 0, len(keys))
+	for _, cc := range cmds {
+		part, err := cc.cmd.Result()
 		if err != nil {
 			return nil, err
 		}

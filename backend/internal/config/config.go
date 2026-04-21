@@ -685,6 +685,16 @@ type GatewaySchedulingConfig struct {
 	// 全量重建周期配置
 	// 全量重建周期（秒），0 表示禁用
 	FullRebuildIntervalSeconds int `mapstructure:"full_rebuild_interval_seconds"`
+
+	// 进程内 L1 快照缓存配置（避免每次请求从 Redis 加载全量账号池）
+	// SnapshotL1Size: L1 缓存最大条目数（0 表示禁用）
+	SnapshotL1Size int `mapstructure:"snapshot_l1_size"`
+	// SnapshotL1TTLSeconds: L1 缓存 TTL（秒），建议 2-5 秒
+	SnapshotL1TTLSeconds int `mapstructure:"snapshot_l1_ttl_seconds"`
+	// SnapshotAccountL1Size: 单账号 L1 缓存最大条目数（0 表示禁用）
+	SnapshotAccountL1Size int `mapstructure:"snapshot_account_l1_size"`
+	// SnapshotAccountL1TTLSeconds: 单账号 L1 缓存 TTL（秒）
+	SnapshotAccountL1TTLSeconds int `mapstructure:"snapshot_account_l1_ttl_seconds"`
 }
 
 func (s *ServerConfig) Address() string {
@@ -1440,6 +1450,10 @@ func setDefaults() {
 	viper.SetDefault("gateway.scheduling.outbox_lag_rebuild_failures", 3)
 	viper.SetDefault("gateway.scheduling.outbox_backlog_rebuild_rows", 10000)
 	viper.SetDefault("gateway.scheduling.full_rebuild_interval_seconds", 300)
+	viper.SetDefault("gateway.scheduling.snapshot_l1_size", 256)
+	viper.SetDefault("gateway.scheduling.snapshot_l1_ttl_seconds", 3)
+	viper.SetDefault("gateway.scheduling.snapshot_account_l1_size", 20000)
+	viper.SetDefault("gateway.scheduling.snapshot_account_l1_ttl_seconds", 5)
 	viper.SetDefault("gateway.usage_record.worker_count", 128)
 	viper.SetDefault("gateway.usage_record.queue_size", 16384)
 	viper.SetDefault("gateway.usage_record.task_timeout_seconds", 5)

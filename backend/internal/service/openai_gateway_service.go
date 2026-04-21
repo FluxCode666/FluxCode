@@ -1344,12 +1344,18 @@ func (s *OpenAIGatewayService) tryStickySessionHit(ctx context.Context, groupID 
 // selectBestAccount 从候选账号中选择最佳账号（优先级 + LRU）。
 // 返回 nil 表示无可用账号。
 //
+// 优化：分两阶段执行——
+// Phase 1: 使用缓存数据（L1/Redis）筛选并排序候选，不访问 DB。
+// Phase 2: 按排序结果逐一对候选做 DB 验证，首个通过即返回。
+// 将 DB 查询从 O(N) 降到通常 O(1)。
+//
 // selectBestAccount selects the best account from candidates (priority + LRU).
 // Returns nil if no available account.
 func (s *OpenAIGatewayService) selectBestAccount(ctx context.Context, groupID *int64, accounts []Account, requestedModel string, excludedIDs map[int64]struct{}) *Account {
-	var selected *Account
 	needsUpstreamCheck := s.needsUpstreamChannelRestrictionCheck(ctx, groupID)
 
+	// Phase 1: 使用缓存数据筛选候选（无 DB 查询）
+	candidates := make([]*Account, 0, len(accounts))
 	for i := range accounts {
 		acc := &accounts[i]
 
@@ -1363,27 +1369,25 @@ func (s *OpenAIGatewayService) selectBestAccount(ctx context.Context, groupID *i
 		if fresh == nil {
 			continue
 		}
-		fresh = s.recheckSelectedOpenAIAccountFromDB(ctx, fresh, requestedModel)
-		if fresh == nil {
-			continue
-		}
 		if needsUpstreamCheck && s.isUpstreamModelRestrictedByChannel(ctx, *groupID, fresh, requestedModel) {
 			continue
 		}
+		candidates = append(candidates, fresh)
+	}
 
-		// 选择优先级最高且最久未使用的账号
-		// Select highest priority and least recently used
-		if selected == nil {
-			selected = fresh
-			continue
-		}
+	// 按优先级 + LRU 排序（最优在前）
+	// Sort by priority + LRU (best first)
+	sortAccountsByPriorityAndLastUsed(candidates, false)
 
-		if s.isBetterAccount(fresh, selected) {
-			selected = fresh
+	// Phase 2: 逐一 DB 验证，首个通过即返回
+	for _, acc := range candidates {
+		verified := s.recheckSelectedOpenAIAccountFromDB(ctx, acc, requestedModel)
+		if verified != nil {
+			return verified
 		}
 	}
 
-	return selected
+	return nil
 }
 
 // isBetterAccount 判断 candidate 是否比 current 更优。
@@ -1851,8 +1855,7 @@ func (s *OpenAIGatewayService) shouldFailoverOpenAIUpstreamResponse(statusCode i
 	return isOpenAITransientProcessingError(statusCode, upstreamMsg, upstreamBody)
 }
 
-func (s *OpenAIGatewayService) handleFailoverSideEffects(ctx context.Context, resp *http.Response, account *Account) {
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+func (s *OpenAIGatewayService) handleFailoverSideEffects(ctx context.Context, resp *http.Response, account *Account, body []byte) {
 	s.rateLimitService.HandleUpstreamError(ctx, account, resp.StatusCode, resp.Header, body)
 }
 
@@ -2445,7 +2448,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 				})
 
 				s.recordProxyUsageMetric(ctx, account, proxyURL, false, startTime)
-				s.handleFailoverSideEffects(ctx, resp, account)
+				s.handleFailoverSideEffects(ctx, resp, account, respBody)
 				return nil, &UpstreamFailoverError{
 					StatusCode:             resp.StatusCode,
 					ResponseBody:           respBody,

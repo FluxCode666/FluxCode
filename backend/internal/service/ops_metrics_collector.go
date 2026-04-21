@@ -363,6 +363,8 @@ func (c *OpsMetricsCollector) collectAndPersist(ctx context.Context) error {
 	return c.opsRepo.InsertSystemMetrics(ctx, input)
 }
 
+const opsMaxConcurrencySampleSize = 500
+
 func (c *OpsMetricsCollector) collectConcurrencyQueueDepth(parentCtx context.Context) *int {
 	if c == nil || c.accountRepo == nil || c.concurrencyService == nil {
 		return nil
@@ -399,20 +401,35 @@ func (c *OpsMetricsCollector) collectConcurrencyQueueDepth(parentCtx context.Con
 		return &zero
 	}
 
+	// 采样优化：当账号数量过大时，只查询前 N 个账号，然后按比例推算总等待深度
+	// 避免对 Redis 产生 30K+ 的 pipeline 操作（1万账号 × 3 命令/账号）
+	totalAccounts := len(batch)
+	sampleSize := totalAccounts
+	if sampleSize > opsMaxConcurrencySampleSize {
+		sampleSize = opsMaxConcurrencySampleSize
+		batch = batch[:sampleSize]
+	}
+
 	loadMap, err := c.concurrencyService.GetAccountsLoadBatch(ctx, batch)
 	if err != nil {
 		return nil
 	}
 
-	var total int64
+	var sampleTotal int64
 	for _, info := range loadMap {
 		if info == nil || info.WaitingCount <= 0 {
 			continue
 		}
-		total += int64(info.WaitingCount)
+		sampleTotal += int64(info.WaitingCount)
 	}
-	if total < 0 {
-		total = 0
+	if sampleTotal < 0 {
+		sampleTotal = 0
+	}
+
+	// 按比例推算总等待深度
+	total := sampleTotal
+	if sampleSize < totalAccounts && sampleSize > 0 {
+		total = sampleTotal * int64(totalAccounts) / int64(sampleSize)
 	}
 
 	maxInt := int64(^uint(0) >> 1)

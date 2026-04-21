@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log"
 	"log/slog"
 	"strconv"
 	"sync"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/dgraph-io/ristretto"
 )
 
 var (
@@ -40,6 +42,12 @@ type SchedulerSnapshotService struct {
 	fallbackLimit *fallbackLimiter
 	lagMu         sync.Mutex
 	lagFailures   int
+
+	// L1 进程内缓存：避免每次请求从 Redis 加载全量账号池
+	snapshotL1    *ristretto.Cache // key: bucket.String() -> []Account
+	snapshotL1TTL time.Duration
+	accountL1     *ristretto.Cache // key: accountID (int64) -> *Account
+	accountL1TTL  time.Duration
 }
 
 func NewSchedulerSnapshotService(
@@ -53,7 +61,7 @@ func NewSchedulerSnapshotService(
 	if cfg != nil {
 		maxQPS = cfg.Gateway.Scheduling.DbFallbackMaxQPS
 	}
-	return &SchedulerSnapshotService{
+	svc := &SchedulerSnapshotService{
 		cache:         cache,
 		outboxRepo:    outboxRepo,
 		accountRepo:   accountRepo,
@@ -61,6 +69,46 @@ func NewSchedulerSnapshotService(
 		cfg:           cfg,
 		stopCh:        make(chan struct{}),
 		fallbackLimit: newFallbackLimiter(maxQPS),
+	}
+	svc.initL1Cache(cfg)
+	return svc
+}
+
+// initL1Cache 初始化进程内 L1 缓存
+func (s *SchedulerSnapshotService) initL1Cache(cfg *config.Config) {
+	if cfg == nil {
+		return
+	}
+	sc := cfg.Gateway.Scheduling
+
+	// 快照 L1 缓存
+	if sc.SnapshotL1Size > 0 && sc.SnapshotL1TTLSeconds > 0 {
+		cache, err := ristretto.NewCache(&ristretto.Config{
+			NumCounters: int64(sc.SnapshotL1Size) * 10,
+			MaxCost:     int64(sc.SnapshotL1Size),
+			BufferItems: 64,
+		})
+		if err != nil {
+			log.Printf("[SchedulerSnapshot] failed to create snapshot L1 cache: %v", err)
+		} else {
+			s.snapshotL1 = cache
+			s.snapshotL1TTL = time.Duration(sc.SnapshotL1TTLSeconds) * time.Second
+		}
+	}
+
+	// 单账号 L1 缓存
+	if sc.SnapshotAccountL1Size > 0 && sc.SnapshotAccountL1TTLSeconds > 0 {
+		cache, err := ristretto.NewCache(&ristretto.Config{
+			NumCounters: int64(sc.SnapshotAccountL1Size) * 10,
+			MaxCost:     int64(sc.SnapshotAccountL1Size),
+			BufferItems: 64,
+		})
+		if err != nil {
+			log.Printf("[SchedulerSnapshot] failed to create account L1 cache: %v", err)
+		} else {
+			s.accountL1 = cache
+			s.accountL1TTL = time.Duration(sc.SnapshotAccountL1TTLSeconds) * time.Second
+		}
 	}
 }
 
@@ -109,12 +157,28 @@ func (s *SchedulerSnapshotService) ListSchedulableAccounts(ctx context.Context, 
 	mode := s.resolveMode(platform, hasForcePlatform)
 	bucket := s.bucketFor(groupID, platform, mode)
 
+	// L1 进程内缓存命中
+	// 注意：必须返回切片的浅拷贝，因为调用方通过 &accounts[i] 获取指针后
+	// 会调用 GetModelMapping() 等方法写入 Account 结构体字段（modelMappingCache map）。
+	// 如果多个 goroutine 共享同一底层数组，会触发 concurrent map write panic。
+	if s.snapshotL1 != nil {
+		if val, ok := s.snapshotL1.Get(bucket.String()); ok {
+			if cached, ok := val.([]Account); ok {
+				result := make([]Account, len(cached))
+				copy(result, cached)
+				return result, useMixed, nil
+			}
+		}
+	}
+
 	if s.cache != nil {
 		cached, hit, err := s.cache.GetSnapshot(ctx, bucket)
 		if err != nil {
 			logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] cache read failed: bucket=%s err=%v", bucket.String(), err)
 		} else if hit {
-			return derefAccounts(cached), useMixed, nil
+			result := derefAccounts(cached)
+			s.setSnapshotL1(bucket.String(), result)
+			return result, useMixed, nil
 		}
 	}
 
@@ -136,6 +200,7 @@ func (s *SchedulerSnapshotService) ListSchedulableAccounts(ctx context.Context, 
 		}
 	}
 
+	s.setSnapshotL1(bucket.String(), accounts)
 	return accounts, useMixed, nil
 }
 
@@ -143,11 +208,24 @@ func (s *SchedulerSnapshotService) GetAccount(ctx context.Context, accountID int
 	if accountID <= 0 {
 		return nil, nil
 	}
+
+	// L1 进程内缓存命中
+	// 注意：必须返回结构体的拷贝，原因同 ListSchedulableAccounts。
+	if s.accountL1 != nil {
+		if val, ok := s.accountL1.Get(accountID); ok {
+			if cached, ok := val.(*Account); ok {
+				copyVal := *cached
+				return &copyVal, nil
+			}
+		}
+	}
+
 	if s.cache != nil {
 		account, err := s.cache.GetAccount(ctx, accountID)
 		if err != nil {
 			logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] account cache read failed: id=%d err=%v", accountID, err)
 		} else if account != nil {
+			s.setAccountL1(accountID, account)
 			return account, nil
 		}
 	}
@@ -170,7 +248,12 @@ func (s *SchedulerSnapshotService) GetGroupByID(ctx context.Context, groupID int
 
 // UpdateAccountInCache 立即更新 Redis 中单个账号的数据（用于模型限流后立即生效）
 func (s *SchedulerSnapshotService) UpdateAccountInCache(ctx context.Context, account *Account) error {
-	if s.cache == nil || account == nil {
+	if account == nil {
+		return nil
+	}
+	// 同时失效 L1 缓存
+	s.invalidateAccountL1(account.ID)
+	if s.cache == nil {
 		return nil
 	}
 	return s.cache.SetAccount(ctx, account)
@@ -327,6 +410,10 @@ func (s *SchedulerSnapshotService) handleLastUsedEvent(ctx context.Context, payl
 	if len(updates) == 0 {
 		return nil
 	}
+	// 失效 L1 account 缓存中对应条目，避免 LRU 调度使用陈旧的 LastUsedAt
+	for id := range updates {
+		s.invalidateAccountL1(id)
+	}
 	return s.cache.UpdateLastUsed(ctx, updates)
 }
 
@@ -378,6 +465,7 @@ func (s *SchedulerSnapshotService) handleBulkAccountEvent(ctx context.Context, p
 			continue
 		}
 		found[account.ID] = struct{}{}
+		s.invalidateAccountL1(account.ID)
 		if s.cache != nil {
 			if err := s.cache.SetAccount(ctx, account); err != nil {
 				return err
@@ -395,6 +483,7 @@ func (s *SchedulerSnapshotService) handleBulkAccountEvent(ctx context.Context, p
 			if _, ok := found[id]; ok {
 				continue
 			}
+			s.invalidateAccountL1(id)
 			if err := s.cache.DeleteAccount(ctx, id); err != nil {
 				return err
 			}
@@ -424,6 +513,7 @@ func (s *SchedulerSnapshotService) handleAccountEvent(ctx context.Context, accou
 	account, err := s.accountRepo.GetByID(ctx, *accountID)
 	if err != nil {
 		if errors.Is(err, ErrAccountNotFound) {
+			s.invalidateAccountL1(*accountID)
 			if s.cache != nil {
 				if err := s.cache.DeleteAccount(ctx, *accountID); err != nil {
 					return err
@@ -433,6 +523,7 @@ func (s *SchedulerSnapshotService) handleAccountEvent(ctx context.Context, accou
 		}
 		return err
 	}
+	s.invalidateAccountL1(*accountID)
 	if s.cache != nil {
 		if err := s.cache.SetAccount(ctx, account); err != nil {
 			return err
@@ -557,6 +648,8 @@ func (s *SchedulerSnapshotService) rebuildBucket(ctx context.Context, bucket Sch
 		logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] rebuild cache failed: bucket=%s reason=%s err=%v", bucket.String(), reason, err)
 		return err
 	}
+	// 重建后立即失效对应的 L1 快照缓存，下次请求将从 Redis 加载最新数据
+	s.invalidateSnapshotL1(bucket.String())
 	slog.Debug("[Scheduler] rebuild ok", "bucket", bucket.String(), "reason", reason, "size", len(accounts))
 	return nil
 }
@@ -902,4 +995,36 @@ func (l *fallbackLimiter) Allow() bool {
 	}
 	l.count++
 	return true
+}
+
+// =============================================
+// L1 进程内缓存辅助方法
+// =============================================
+
+func (s *SchedulerSnapshotService) setSnapshotL1(key string, accounts []Account) {
+	if s.snapshotL1 == nil || s.snapshotL1TTL <= 0 {
+		return
+	}
+	_ = s.snapshotL1.SetWithTTL(key, accounts, 1, s.snapshotL1TTL)
+}
+
+func (s *SchedulerSnapshotService) invalidateSnapshotL1(key string) {
+	if s.snapshotL1 == nil {
+		return
+	}
+	s.snapshotL1.Del(key)
+}
+
+func (s *SchedulerSnapshotService) setAccountL1(accountID int64, account *Account) {
+	if s.accountL1 == nil || s.accountL1TTL <= 0 || account == nil {
+		return
+	}
+	_ = s.accountL1.SetWithTTL(accountID, account, 1, s.accountL1TTL)
+}
+
+func (s *SchedulerSnapshotService) invalidateAccountL1(accountID int64) {
+	if s.accountL1 == nil {
+		return
+	}
+	s.accountL1.Del(accountID)
 }
