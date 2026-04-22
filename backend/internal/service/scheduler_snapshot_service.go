@@ -360,17 +360,24 @@ func (s *SchedulerSnapshotService) pollOutbox() {
 
 	watermarkForCheck := watermark
 	seen := make(map[batchSeenKey]struct{})
+	var handleErrors int
 	for _, event := range events {
 		eventCtx, cancel := context.WithTimeout(context.Background(), outboxEventTimeout)
 		err := s.handleOutboxEvent(eventCtx, event, seen)
 		cancel()
 		if err != nil {
+			handleErrors++
 			logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] outbox handle failed: id=%d type=%s err=%v", event.ID, event.EventType, err)
-			return
+			// 不再 return：跳过失败事件，继续处理后续事件，避免单个事件卡死整个 outbox 管道
 		}
 	}
 
+	// 无论是否有事件处理失败，都推进 watermark，避免反复重试同一批失败事件
+	// 导致 Redis 连接池和 DB 连接被持续占满
 	lastID := events[len(events)-1].ID
+	if handleErrors > 0 {
+		logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] outbox batch completed with %d/%d errors, advancing watermark to %d", handleErrors, len(events), lastID)
+	}
 	var wmErr error
 	for i := range 3 {
 		wmCtx, wmCancel := context.WithTimeout(context.Background(), 5*time.Second)
