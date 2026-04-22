@@ -483,6 +483,33 @@ func (c *concurrencyCache) CleanupExpiredAccountSlots(ctx context.Context, accou
 	return err
 }
 
+func (c *concurrencyCache) CleanupExpiredSlotsByScan(ctx context.Context) error {
+	// 使用 SCAN 扫描实际存在的 account slot 和 user slot 键，
+	// 只对有数据的键执行清理，避免对 10000 个空集合发起无效 Redis 调用。
+	patterns := []string{accountSlotKeyPrefix + "*", userSlotKeyPrefix + "*"}
+	for _, pattern := range patterns {
+		const scanCount = 200
+		var cursor uint64
+		for {
+			keys, nextCursor, err := c.rdb.Scan(ctx, cursor, pattern, scanCount).Result()
+			if err != nil {
+				return fmt.Errorf("scan %s: %w", pattern, err)
+			}
+			for _, key := range keys {
+				_, err := cleanupExpiredSlotsScript.Run(ctx, c.rdb, []string{key}, c.slotTTLSeconds).Result()
+				if err != nil {
+					return fmt.Errorf("cleanup %s: %w", key, err)
+				}
+			}
+			cursor = nextCursor
+			if cursor == 0 {
+				break
+			}
+		}
+	}
+	return nil
+}
+
 func (c *concurrencyCache) CleanupStaleProcessSlots(ctx context.Context, activeRequestPrefix string) error {
 	if activeRequestPrefix == "" {
 		return nil

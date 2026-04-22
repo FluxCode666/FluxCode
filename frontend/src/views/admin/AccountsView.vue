@@ -64,6 +64,17 @@
                 </div>
               </div>
 
+              <!-- Rebuild Scheduler Cache -->
+              <button
+                @click="handleRebuildSchedulerCache"
+                :disabled="schedulerRebuilding"
+                class="btn btn-secondary"
+                :title="t('admin.accounts.rebuildSchedulerCache')"
+              >
+                <Icon name="refresh" size="md" class="mr-1.5" :class="[schedulerRebuilding ? 'animate-spin' : '']" />
+                <span class="hidden md:inline">{{ schedulerRebuilding ? t('admin.accounts.rebuildSchedulerCacheRunning') : t('admin.accounts.rebuildSchedulerCache') }}</span>
+              </button>
+
               <!-- Error Passthrough Rules -->
               <button
                 @click="showErrorPassthrough = true"
@@ -419,6 +430,7 @@ const scheduleModelOptions = ref<SelectOption[]>([])
 const togglingSchedulable = ref<number | null>(null)
 const menu = reactive<{show:boolean, acc:Account|null, pos:{top:number, left:number}|null}>({ show: false, acc: null, pos: null })
 const exportingData = ref(false)
+const schedulerRebuilding = ref(false)
 
 // Column settings
 const showColumnDropdown = ref(false)
@@ -851,6 +863,20 @@ const handleManualRefresh = async () => {
   await load()
   // Force usage cells to refetch /usage on explicit user refresh.
   usageManualRefreshToken.value += 1
+}
+
+const handleRebuildSchedulerCache = async () => {
+  if (schedulerRebuilding.value) return
+  schedulerRebuilding.value = true
+  try {
+    const result = await adminAPI.accounts.rebuildSchedulerCache()
+    appStore.showSuccess(result.message || t('admin.accounts.rebuildSchedulerCacheSuccess'))
+  } catch (error: any) {
+    const msg = error?.response?.data?.message || error?.message || String(error)
+    appStore.showError(msg)
+  } finally {
+    schedulerRebuilding.value = false
+  }
 }
 
 const syncPendingListChanges = async () => {

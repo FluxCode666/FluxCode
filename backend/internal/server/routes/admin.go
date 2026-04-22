@@ -291,6 +291,10 @@ func registerAccountRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		accounts.POST("/batch-clear-error", h.Admin.Account.BatchClearError)
 		accounts.POST("/batch-refresh", h.Admin.Account.BatchRefresh)
 
+		// 调度缓存管理
+		accounts.POST("/rebuild-scheduler-cache", h.Admin.Account.RebuildSchedulerCache)
+		accounts.GET("/scheduler-cache-status", h.Admin.Account.GetSchedulerCacheStatus)
+
 		// Antigravity 默认模型映射
 		accounts.GET("/antigravity/default-model-mapping", h.Admin.Account.GetAntigravityDefaultModelMapping)
 

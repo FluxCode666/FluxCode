@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
@@ -30,6 +31,8 @@ type batchSeenKey struct {
 	platform string
 }
 
+var ErrSchedulerRebuildInProgress = errors.New("scheduler rebuild already in progress")
+
 type SchedulerSnapshotService struct {
 	cache         SchedulerCache
 	outboxRepo    SchedulerOutboxRepository
@@ -42,6 +45,7 @@ type SchedulerSnapshotService struct {
 	fallbackLimit *fallbackLimiter
 	lagMu         sync.Mutex
 	lagFailures   int
+	rebuilding    atomic.Bool // 防止手动重建重复触发
 
 	// L1 进程内缓存：避免每次请求从 Redis 加载全量账号池
 	snapshotL1    *ristretto.Cache // key: bucket.String() -> []Account
@@ -150,6 +154,26 @@ func (s *SchedulerSnapshotService) Stop() {
 		close(s.stopCh)
 	})
 	s.wg.Wait()
+}
+
+// TriggerManualRebuild 手动触发全量重建。如果已有重建在进行中，返回 ErrSchedulerRebuildInProgress。
+func (s *SchedulerSnapshotService) TriggerManualRebuild() error {
+	if s == nil || s.cache == nil {
+		return ErrSchedulerCacheNotReady
+	}
+	if !s.rebuilding.CompareAndSwap(false, true) {
+		return ErrSchedulerRebuildInProgress
+	}
+	defer s.rebuilding.Store(false)
+	return s.triggerFullRebuild("manual")
+}
+
+// IsRebuilding 返回当前是否正在执行重建。
+func (s *SchedulerSnapshotService) IsRebuilding() bool {
+	if s == nil {
+		return false
+	}
+	return s.rebuilding.Load()
 }
 
 func (s *SchedulerSnapshotService) ListSchedulableAccounts(ctx context.Context, groupID *int64, platform string, hasForcePlatform bool) ([]Account, bool, error) {
@@ -673,7 +697,69 @@ func (s *SchedulerSnapshotService) triggerFullRebuild(reason string) error {
 			return err
 		}
 	}
-	return s.rebuildBuckets(ctx, buckets, reason)
+	return s.rebuildBucketsDedup(ctx, buckets, reason)
+}
+
+// rebuildBucketsDedup 全量重建多个 bucket，先收集所有账号去重写入一次，再逐 bucket 仅更新索引。
+// 相比 rebuildBuckets 对每个 bucket 各写一次全量账号数据，Redis 命令数从 2N×B 降至 2N+索引。
+func (s *SchedulerSnapshotService) rebuildBucketsDedup(ctx context.Context, buckets []SchedulerBucket, reason string) error {
+	// 阶段 1：收集所有 bucket 的账号并去重
+	type bucketData struct {
+		bucket   SchedulerBucket
+		accounts []Account
+	}
+	var results []bucketData
+	allAccounts := make(map[int64]Account)
+
+	for _, bucket := range buckets {
+		ok, err := s.cache.TryLockBucket(ctx, bucket, 30*time.Second)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			continue
+		}
+		rebuildCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+		accounts, err := s.loadAccountsFromDB(rebuildCtx, bucket, bucket.Mode == SchedulerModeMixed)
+		cancel()
+		if err != nil {
+			logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] rebuild failed: bucket=%s reason=%s err=%v", bucket.String(), reason, err)
+			continue
+		}
+		results = append(results, bucketData{bucket: bucket, accounts: accounts})
+		for _, acc := range accounts {
+			allAccounts[acc.ID] = acc
+		}
+	}
+
+	if len(results) == 0 {
+		return nil
+	}
+
+	// 阶段 2：一次性写入去重后的全量账号数据
+	uniqueAccounts := make([]Account, 0, len(allAccounts))
+	for _, acc := range allAccounts {
+		uniqueAccounts = append(uniqueAccounts, acc)
+	}
+	if err := s.cache.WriteAccounts(ctx, uniqueAccounts); err != nil {
+		logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] full rebuild write accounts failed: reason=%s err=%v", reason, err)
+		return err
+	}
+
+	// 阶段 3：逐 bucket 仅更新索引（不再写账号数据）
+	var firstErr error
+	for _, bd := range results {
+		if err := s.cache.SetSnapshotIndex(ctx, bd.bucket, bd.accounts); err != nil {
+			logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] rebuild index failed: bucket=%s reason=%s err=%v", bd.bucket.String(), reason, err)
+			if firstErr == nil {
+				firstErr = err
+			}
+			continue
+		}
+		s.invalidateSnapshotL1(bd.bucket.String())
+		slog.Debug("[Scheduler] rebuild ok", "bucket", bd.bucket.String(), "reason", reason, "size", len(bd.accounts))
+	}
+	return firstErr
 }
 
 func (s *SchedulerSnapshotService) checkOutboxLag(ctx context.Context, oldest SchedulerOutboxEvent, watermark int64) {

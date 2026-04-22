@@ -639,6 +639,24 @@ export async function setPrivacy(id: number): Promise<Account> {
   return data
 }
 
+/**
+ * Trigger manual scheduler cache rebuild
+ * @returns Success message
+ */
+export async function rebuildSchedulerCache(): Promise<{ message: string }> {
+  const { data } = await apiClient.post<{ message: string }>('/admin/accounts/rebuild-scheduler-cache')
+  return data
+}
+
+/**
+ * Get scheduler cache rebuild status
+ * @returns Whether a rebuild is currently in progress
+ */
+export async function getSchedulerCacheStatus(): Promise<{ rebuilding: boolean }> {
+  const { data } = await apiClient.get<{ rebuilding: boolean }>('/admin/accounts/scheduler-cache-status')
+  return data
+}
+
 export const accountsAPI = {
   list,
   listWithEtag,
@@ -676,7 +694,9 @@ export const accountsAPI = {
   getAntigravityDefaultModelMapping,
   batchClearError,
   batchRefresh,
-  setPrivacy
+  setPrivacy,
+  rebuildSchedulerCache,
+  getSchedulerCacheStatus
 }
 
 export default accountsAPI

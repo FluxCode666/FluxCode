@@ -49,6 +49,11 @@ type SchedulerCache interface {
 	GetSnapshot(ctx context.Context, bucket SchedulerBucket) ([]*Account, bool, error)
 	// SetSnapshot 写入快照并切换激活版本。
 	SetSnapshot(ctx context.Context, bucket SchedulerBucket, accounts []Account) error
+	// SetSnapshotIndex 仅更新快照索引（ZAdd + 版本切换），跳过账号数据写入。
+	// 配合 WriteAccounts 使用，在全量重建时避免同一账号被重复写入多个 bucket。
+	SetSnapshotIndex(ctx context.Context, bucket SchedulerBucket, accounts []Account) error
+	// WriteAccounts 批量写入账号数据（account + meta）。
+	WriteAccounts(ctx context.Context, accounts []Account) error
 	// GetAccount 获取单账号快照。
 	GetAccount(ctx context.Context, accountID int64) (*Account, error)
 	// SetAccount 写入单账号快照（包含不可调度状态）。

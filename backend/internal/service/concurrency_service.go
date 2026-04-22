@@ -44,6 +44,10 @@ type ConcurrencyCache interface {
 	// 清理过期槽位（后台任务）
 	CleanupExpiredAccountSlots(ctx context.Context, accountID int64) error
 
+	// CleanupExpiredSlotsByScan 使用 SCAN 扫描实际存在的槽位键并批量清理过期条目。
+	// 相比逐账号遍历，只处理有活跃槽位的键，避免对空集合发起无效 Redis 调用。
+	CleanupExpiredSlotsByScan(ctx context.Context) error
+
 	// 启动时清理旧进程遗留槽位与等待计数
 	CleanupStaleProcessSlots(ctx context.Context, activeRequestPrefix string) error
 }
@@ -309,26 +313,22 @@ func (s *ConcurrencyService) CleanupExpiredAccountSlots(ctx context.Context, acc
 }
 
 // StartSlotCleanupWorker starts a background cleanup worker for expired account slots.
+//
+// 注意：此后台清理并非正确性所必需——acquireScript 在每次槽位获取时已原子清理过期条目，
+// Redis EXPIRE 会自动删除长期无活跃的 key。此 worker 仅用于加速回收无活跃请求的账号
+// 占用的少量内存。因此当 interval <= 0 时，可安全禁用。
+//
+// 使用 SCAN 只清理实际存在的槽位键，避免对全部账号（可能上万个）逐一发起 Redis EVAL。
 func (s *ConcurrencyService) StartSlotCleanupWorker(accountRepo AccountRepository, interval time.Duration) {
-	if s == nil || s.cache == nil || accountRepo == nil || interval <= 0 {
+	if s == nil || s.cache == nil || interval <= 0 {
 		return
 	}
 
 	runCleanup := func() {
-		listCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		accounts, err := accountRepo.ListSchedulable(listCtx)
-		cancel()
-		if err != nil {
-			logger.LegacyPrintf("service.concurrency", "Warning: list schedulable accounts failed: %v", err)
-			return
-		}
-		for _, account := range accounts {
-			accountCtx, accountCancel := context.WithTimeout(context.Background(), 2*time.Second)
-			err := s.cache.CleanupExpiredAccountSlots(accountCtx, account.ID)
-			accountCancel()
-			if err != nil {
-				logger.LegacyPrintf("service.concurrency", "Warning: cleanup expired slots failed for account %d: %v", account.ID, err)
-			}
+		cleanupCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if err := s.cache.CleanupExpiredSlotsByScan(cleanupCtx); err != nil {
+			logger.LegacyPrintf("service.concurrency", "Warning: cleanup expired slots by scan failed: %v", err)
 		}
 	}
 

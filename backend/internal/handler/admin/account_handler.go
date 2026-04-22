@@ -58,6 +58,7 @@ type AccountHandler struct {
 	sessionLimitCache       service.SessionLimitCache
 	rpmCache                service.RPMCache
 	tokenCacheInvalidator   service.TokenCacheInvalidator
+	schedulerSnapshot       *service.SchedulerSnapshotService
 }
 
 type accountListAdvancedAdminService interface {
@@ -91,6 +92,7 @@ func NewAccountHandler(
 	sessionLimitCache service.SessionLimitCache,
 	rpmCache service.RPMCache,
 	tokenCacheInvalidator service.TokenCacheInvalidator,
+	schedulerSnapshot *service.SchedulerSnapshotService,
 ) *AccountHandler {
 	return &AccountHandler{
 		adminService:            adminService,
@@ -106,6 +108,7 @@ func NewAccountHandler(
 		sessionLimitCache:       sessionLimitCache,
 		rpmCache:                rpmCache,
 		tokenCacheInvalidator:   tokenCacheInvalidator,
+		schedulerSnapshot:       schedulerSnapshot,
 	}
 }
 
@@ -2332,4 +2335,33 @@ func sanitizeExtraBaseRPM(extra map[string]any) {
 		v = 10000
 	}
 	extra["base_rpm"] = v
+}
+
+// RebuildSchedulerCache 手动触发调度缓存全量重建。
+// POST /api/v1/admin/accounts/rebuild-scheduler-cache
+func (h *AccountHandler) RebuildSchedulerCache(c *gin.Context) {
+	if h.schedulerSnapshot == nil {
+		response.ErrorFrom(c, infraerrors.BadRequest("SCHEDULER_NOT_AVAILABLE", "scheduler snapshot service not available"))
+		return
+	}
+	err := h.schedulerSnapshot.TriggerManualRebuild()
+	if err != nil {
+		if errors.Is(err, service.ErrSchedulerRebuildInProgress) {
+			response.ErrorFrom(c, infraerrors.BadRequest("REBUILD_IN_PROGRESS", "调度缓存重建正在进行中，请稍后再试"))
+			return
+		}
+		response.ErrorFrom(c, infraerrors.InternalServer("REBUILD_FAILED", fmt.Sprintf("rebuild failed: %v", err)))
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "调度缓存重建完成"})
+}
+
+// GetSchedulerCacheStatus 查询调度缓存重建状态。
+// GET /api/v1/admin/accounts/scheduler-cache-status
+func (h *AccountHandler) GetSchedulerCacheStatus(c *gin.Context) {
+	rebuilding := false
+	if h.schedulerSnapshot != nil {
+		rebuilding = h.schedulerSnapshot.IsRebuilding()
+	}
+	c.JSON(http.StatusOK, gin.H{"rebuilding": rebuilding})
 }

@@ -158,6 +158,59 @@ func (c *schedulerCache) SetSnapshot(ctx context.Context, bucket service.Schedul
 	return nil
 }
 
+// SetSnapshotIndex 仅更新快照索引（ZAdd + 版本切换），跳过账号数据写入。
+// 在全量重建场景下配合 WriteAccounts 使用，避免同一账号被重复写入多个 bucket。
+func (c *schedulerCache) SetSnapshotIndex(ctx context.Context, bucket service.SchedulerBucket, accounts []service.Account) error {
+	activeKey := schedulerBucketKey(schedulerActivePrefix, bucket)
+	oldActive, _ := c.rdb.Get(ctx, activeKey).Result()
+
+	versionKey := schedulerBucketKey(schedulerVersionPrefix, bucket)
+	version, err := c.rdb.Incr(ctx, versionKey).Result()
+	if err != nil {
+		return err
+	}
+
+	versionStr := strconv.FormatInt(version, 10)
+	snapshotKey := schedulerSnapshotKey(bucket, versionStr)
+
+	pipe := c.rdb.Pipeline()
+	if len(accounts) > 0 {
+		members := make([]redis.Z, 0, len(accounts))
+		for idx, account := range accounts {
+			members = append(members, redis.Z{
+				Score:  float64(idx),
+				Member: strconv.FormatInt(account.ID, 10),
+			})
+		}
+		for start := 0; start < len(members); start += c.writeChunkSize {
+			end := start + c.writeChunkSize
+			if end > len(members) {
+				end = len(members)
+			}
+			pipe.ZAdd(ctx, snapshotKey, members[start:end]...)
+		}
+	} else {
+		pipe.Del(ctx, snapshotKey)
+	}
+	pipe.Set(ctx, activeKey, versionStr, 0)
+	pipe.Set(ctx, schedulerBucketKey(schedulerReadyPrefix, bucket), "1", 0)
+	pipe.SAdd(ctx, schedulerBucketSetKey, bucket.String())
+	if _, err := pipe.Exec(ctx); err != nil {
+		return err
+	}
+
+	if oldActive != "" && oldActive != versionStr {
+		_ = c.rdb.Del(ctx, schedulerSnapshotKey(bucket, oldActive)).Err()
+	}
+
+	return nil
+}
+
+// WriteAccounts 批量写入账号数据（暴露 writeAccounts 供全量重建去重使用）。
+func (c *schedulerCache) WriteAccounts(ctx context.Context, accounts []service.Account) error {
+	return c.writeAccounts(ctx, accounts)
+}
+
 func (c *schedulerCache) GetAccount(ctx context.Context, accountID int64) (*service.Account, error) {
 	key := schedulerAccountKey(strconv.FormatInt(accountID, 10))
 	val, err := c.rdb.Get(ctx, key).Result()
