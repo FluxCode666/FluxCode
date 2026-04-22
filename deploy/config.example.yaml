@@ -313,13 +313,13 @@ gateway:
   # HTTP 上游连接池配置（HTTP/2 + 多代理场景默认值）
   # Max idle connections across all hosts
   # 所有主机的最大空闲连接数
-  max_idle_conns: 2560
+  max_idle_conns: 512
   # Max idle connections per host
   # 每个主机的最大空闲连接数
-  max_idle_conns_per_host: 120
+  max_idle_conns_per_host: 64
   # Max connections per host
   # 每个主机的最大连接数
-  max_conns_per_host: 1024
+  max_conns_per_host: 256
   # Idle connection timeout (seconds)
   # 空闲连接超时时间（秒）
   idle_conn_timeout_seconds: 90
@@ -327,7 +327,7 @@ gateway:
   # 上游连接池客户端缓存配置
   # max_upstream_clients: Max cached clients, evicts least recently used when exceeded
   # max_upstream_clients: 最大缓存客户端数量，超出后淘汰最久未使用的
-  max_upstream_clients: 5000
+  max_upstream_clients: 1000
   # client_idle_ttl_seconds: Client idle reclaim threshold (seconds), reclaimed when idle and no active requests
   # client_idle_ttl_seconds: 客户端空闲回收阈值（秒），超时且无活跃请求时回收
   client_idle_ttl_seconds: 900
@@ -583,7 +583,7 @@ token_refresh:
 api_key_auth_cache:
   # L1 cache size (entries), in-process LRU/TTL cache
   # L1 缓存容量（条目数），进程内 LRU/TTL 缓存
-  l1_size: 65535
+  l1_size: 8192
   # L1 cache TTL (seconds)
   # L1 缓存 TTL（秒）
   l1_ttl_seconds: 15
@@ -735,12 +735,12 @@ database:
   # SSL 模式：disable（禁用）, prefer（优先加密，默认）, require（要求）, verify-ca（验证CA）, verify-full（完全验证）
   # 默认值为 "prefer"，数据库支持 SSL 时自动使用加密连接，不支持时回退明文
   sslmode: "prefer"
-  # Max open connections (高并发场景建议 256+，需配合 PostgreSQL max_connections 调整)
+  # Max open connections (高并发场景可调大至 256+，需配合 PostgreSQL max_connections 调整)
   # 最大打开连接数
-  max_open_conns: 256
+  max_open_conns: 64
   # Max idle connections (建议为 max_open_conns 的 50%，减少频繁建连开销)
   # 最大空闲连接数
-  max_idle_conns: 128
+  max_idle_conns: 32
   # Connection max lifetime (minutes)
   # 连接最大存活时间（分钟）
   conn_max_lifetime_minutes: 30
@@ -765,12 +765,27 @@ redis:
   # Database number (0-15)
   # 数据库编号（0-15）
   db: 0
-  # Connection pool size (max concurrent connections)
+  # Dial timeout (seconds)
+  # 建立连接超时（秒）
+  dial_timeout_seconds: 5
+  # Read timeout (seconds), for remote Redis consider increasing to 10+
+  # 读取超时（秒），远程 Redis 建议调大至 10+
+  read_timeout_seconds: 5
+  # Write timeout (seconds)
+  # 写入超时（秒）
+  write_timeout_seconds: 5
+  # Connection pool size (max concurrent connections, 高并发场景可调大至 512+)
   # 连接池大小（最大并发连接数）
-  pool_size: 1024
-  # Minimum number of idle connections (高并发场景建议 128+，保持足够热连接)
+  pool_size: 128
+  # Minimum number of idle connections (高并发场景建议 32+，保持足够热连接)
   # 最小空闲连接数
-  min_idle_conns: 128
+  min_idle_conns: 16
+  # Pool timeout (seconds): max wait time to acquire a connection from pool
+  # 从连接池获取连接的超时时间（秒），0 使用 ReadTimeout+1s 默认值
+  pool_timeout_seconds: 10
+  # Connection max idle time (seconds): close idle connections to prevent stale/half-open connections
+  # 空闲连接最大存活时间（秒），防止半开连接导致 i/o timeout
+  conn_max_idle_time_seconds: 300
   # Enable TLS/SSL connection
   # 是否启用 TLS/SSL 连接
   enable_tls: false
