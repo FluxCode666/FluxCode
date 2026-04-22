@@ -11,15 +11,17 @@ import (
 func TestBuildRedisOptions(t *testing.T) {
 	cfg := &config.Config{
 		Redis: config.RedisConfig{
-			Host:                "localhost",
-			Port:                6379,
-			Password:            "secret",
-			DB:                  2,
-			DialTimeoutSeconds:  5,
-			ReadTimeoutSeconds:  3,
-			WriteTimeoutSeconds: 4,
-			PoolSize:            100,
-			MinIdleConns:        10,
+			Host:                   "localhost",
+			Port:                   6379,
+			Password:               "secret",
+			DB:                     2,
+			DialTimeoutSeconds:     5,
+			ReadTimeoutSeconds:     3,
+			WriteTimeoutSeconds:    4,
+			PoolSize:               100,
+			MinIdleConns:           10,
+			PoolTimeoutSeconds:     10,
+			ConnMaxIdleTimeSeconds: 300,
 		},
 	}
 
@@ -32,6 +34,8 @@ func TestBuildRedisOptions(t *testing.T) {
 	require.Equal(t, 4*time.Second, opts.WriteTimeout)
 	require.Equal(t, 100, opts.PoolSize)
 	require.Equal(t, 10, opts.MinIdleConns)
+	require.Equal(t, 10*time.Second, opts.PoolTimeout)
+	require.Equal(t, 300*time.Second, opts.ConnMaxIdleTime)
 	require.Nil(t, opts.TLSConfig)
 
 	// Test case with TLS enabled

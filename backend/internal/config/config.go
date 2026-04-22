@@ -777,6 +777,10 @@ type RedisConfig struct {
 	PoolSize int `mapstructure:"pool_size"`
 	// MinIdleConns: 最小空闲连接数，保持热连接减少冷启动延迟
 	MinIdleConns int `mapstructure:"min_idle_conns"`
+	// PoolTimeoutSeconds: 从连接池获取连接的超时时间（秒），防止池耗尽时无限等待
+	PoolTimeoutSeconds int `mapstructure:"pool_timeout_seconds"`
+	// ConnMaxIdleTimeSeconds: 空闲连接最大存活时间（秒），超时后关闭防止半开连接导致 i/o timeout
+	ConnMaxIdleTimeSeconds int `mapstructure:"conn_max_idle_time_seconds"`
 	// EnableTLS: 是否启用 TLS/SSL 连接
 	EnableTLS bool `mapstructure:"enable_tls"`
 }
@@ -1260,10 +1264,12 @@ func setDefaults() {
 	viper.SetDefault("redis.password", "")
 	viper.SetDefault("redis.db", 0)
 	viper.SetDefault("redis.dial_timeout_seconds", 5)
-	viper.SetDefault("redis.read_timeout_seconds", 3)
-	viper.SetDefault("redis.write_timeout_seconds", 3)
+	viper.SetDefault("redis.read_timeout_seconds", 5)
+	viper.SetDefault("redis.write_timeout_seconds", 5)
 	viper.SetDefault("redis.pool_size", 128)
 	viper.SetDefault("redis.min_idle_conns", 16)
+	viper.SetDefault("redis.pool_timeout_seconds", 10)
+	viper.SetDefault("redis.conn_max_idle_time_seconds", 300)
 	viper.SetDefault("redis.enable_tls", false)
 
 	// Ops (vNext)
@@ -1807,6 +1813,12 @@ func (c *Config) Validate() error {
 	}
 	if c.Redis.MinIdleConns > c.Redis.PoolSize {
 		return fmt.Errorf("redis.min_idle_conns cannot exceed redis.pool_size")
+	}
+	if c.Redis.PoolTimeoutSeconds < 0 {
+		return fmt.Errorf("redis.pool_timeout_seconds must be non-negative")
+	}
+	if c.Redis.ConnMaxIdleTimeSeconds < 0 {
+		return fmt.Errorf("redis.conn_max_idle_time_seconds must be non-negative")
 	}
 	if c.Dashboard.Enabled {
 		if c.Dashboard.StatsFreshTTLSeconds <= 0 {

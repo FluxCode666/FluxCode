@@ -28,14 +28,16 @@ func InitRedis(cfg *config.Config) *redis.Client {
 // 从配置文件读取连接池和超时参数，支持生产环境调优
 func buildRedisOptions(cfg *config.Config) *redis.Options {
 	opts := &redis.Options{
-		Addr:         cfg.Redis.Address(),
-		Password:     cfg.Redis.Password,
-		DB:           cfg.Redis.DB,
-		DialTimeout:  time.Duration(cfg.Redis.DialTimeoutSeconds) * time.Second,  // 建连超时
-		ReadTimeout:  time.Duration(cfg.Redis.ReadTimeoutSeconds) * time.Second,  // 读取超时
-		WriteTimeout: time.Duration(cfg.Redis.WriteTimeoutSeconds) * time.Second, // 写入超时
-		PoolSize:     cfg.Redis.PoolSize,                                         // 连接池大小
-		MinIdleConns: cfg.Redis.MinIdleConns,                                     // 最小空闲连接
+		Addr:            cfg.Redis.Address(),
+		Password:        cfg.Redis.Password,
+		DB:              cfg.Redis.DB,
+		DialTimeout:     time.Duration(cfg.Redis.DialTimeoutSeconds) * time.Second,     // 建连超时
+		ReadTimeout:     time.Duration(cfg.Redis.ReadTimeoutSeconds) * time.Second,      // 读取超时
+		WriteTimeout:    time.Duration(cfg.Redis.WriteTimeoutSeconds) * time.Second,     // 写入超时
+		PoolSize:        cfg.Redis.PoolSize,                                             // 连接池大小
+		MinIdleConns:    cfg.Redis.MinIdleConns,                                         // 最小空闲连接
+		PoolTimeout:     time.Duration(cfg.Redis.PoolTimeoutSeconds) * time.Second,      // 从池获取连接超时
+		ConnMaxIdleTime: time.Duration(cfg.Redis.ConnMaxIdleTimeSeconds) * time.Second,  // 空闲连接回收
 	}
 
 	if cfg.Redis.EnableTLS {
