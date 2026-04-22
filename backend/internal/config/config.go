@@ -686,6 +686,12 @@ type GatewaySchedulingConfig struct {
 	// 全量重建周期（秒），0 表示禁用
 	FullRebuildIntervalSeconds int `mapstructure:"full_rebuild_interval_seconds"`
 
+	// LoadBatchQueryCap: 单次负载查询的最大账号数（0 表示不限制）。
+	// 候选账号超过此阈值时，仅对前 N 个账号查询 Redis 负载，
+	// 其余账号假设为空闲（LoadRate=0）。acquireScript 仍原子校验并发上限，确保正确性。
+	// 推荐值 200~500，显著降低大号池场景下的 Redis QPS。
+	LoadBatchQueryCap int `mapstructure:"load_batch_query_cap"`
+
 	// 进程内 L1 快照缓存配置（避免每次请求从 Redis 加载全量账号池）
 	// SnapshotL1Size: L1 缓存最大条目数（0 表示禁用）
 	SnapshotL1Size int `mapstructure:"snapshot_l1_size"`
@@ -1438,6 +1444,7 @@ func setDefaults() {
 	viper.SetDefault("gateway.scheduling.fallback_max_waiting", 100)
 	viper.SetDefault("gateway.scheduling.fallback_selection_mode", "last_used")
 	viper.SetDefault("gateway.scheduling.load_batch_enabled", true)
+	viper.SetDefault("gateway.scheduling.load_batch_query_cap", 200)
 	viper.SetDefault("gateway.scheduling.snapshot_mget_chunk_size", 128)
 	viper.SetDefault("gateway.scheduling.snapshot_write_chunk_size", 256)
 	viper.SetDefault("gateway.scheduling.slot_cleanup_interval", 30*time.Second)

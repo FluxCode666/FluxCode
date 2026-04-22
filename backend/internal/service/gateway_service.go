@@ -1545,6 +1545,9 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 					MaxConcurrency: acc.EffectiveLoadFactor(),
 				})
 			}
+			if cap := s.schedulingConfig().LoadBatchQueryCap; cap > 0 && len(routingLoads) > cap {
+				routingLoads = routingLoads[:cap]
+			}
 			routingLoadMap, _ := s.concurrencyService.GetAccountsLoadBatch(ctx, routingLoads)
 
 			// 3. 按负载感知排序
@@ -1724,7 +1727,11 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 		})
 	}
 
-	loadMap, err := s.concurrencyService.GetAccountsLoadBatch(ctx, accountLoads)
+	queryLoads := accountLoads
+	if cap := s.schedulingConfig().LoadBatchQueryCap; cap > 0 && len(queryLoads) > cap {
+		queryLoads = queryLoads[:cap]
+	}
+	loadMap, err := s.concurrencyService.GetAccountsLoadBatch(ctx, queryLoads)
 	if err != nil {
 		if result, ok, legacyErr := s.tryAcquireByLegacyOrder(ctx, candidates, groupID, sessionHash, preferOAuth); legacyErr != nil {
 			return nil, legacyErr

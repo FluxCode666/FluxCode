@@ -620,9 +620,15 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 		return nil, 0, 0, 0, errors.New("no available OpenAI accounts")
 	}
 
+	// 大号池优化：仅对前 loadBatchQueryCap 个候选查询 Redis 负载，
+	// 未查询的账号默认 LoadRate=0（空闲）。acquireScript 仍原子校验并发上限。
 	loadMap := map[int64]*AccountLoadInfo{}
 	if s.service.concurrencyService != nil {
-		if batchLoad, loadErr := s.service.concurrencyService.GetAccountsLoadBatch(ctx, loadReq); loadErr == nil {
+		queryReq := loadReq
+		if cap := s.service.schedulingConfig().LoadBatchQueryCap; cap > 0 && len(queryReq) > cap {
+			queryReq = queryReq[:cap]
+		}
+		if batchLoad, loadErr := s.service.concurrencyService.GetAccountsLoadBatch(ctx, queryReq); loadErr == nil {
 			loadMap = batchLoad
 		}
 	}

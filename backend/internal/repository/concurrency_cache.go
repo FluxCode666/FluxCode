@@ -262,12 +262,7 @@ func (c *concurrencyCache) GetAccountConcurrencyBatch(ctx context.Context, accou
 		return map[int64]int{}, nil
 	}
 
-	now, err := c.rdb.Time(ctx).Result()
-	if err != nil {
-		return nil, fmt.Errorf("redis TIME: %w", err)
-	}
-	cutoffTime := now.Unix() - int64(c.slotTTLSeconds)
-
+	// 读路径不再执行 ZREMRANGEBYSCORE，理由同 GetAccountsLoadBatch。
 	pipe := c.rdb.Pipeline()
 	type accountCmd struct {
 		accountID int64
@@ -276,7 +271,6 @@ func (c *concurrencyCache) GetAccountConcurrencyBatch(ctx context.Context, accou
 	cmds := make([]accountCmd, 0, len(accountIDs))
 	for _, accountID := range accountIDs {
 		slotKey := accountSlotKeyPrefix + strconv.FormatInt(accountID, 10)
-		pipe.ZRemRangeByScore(ctx, slotKey, "-inf", strconv.FormatInt(cutoffTime, 10))
 		cmds = append(cmds, accountCmd{
 			accountID: accountID,
 			zcardCmd:  pipe.ZCard(ctx, slotKey),
@@ -373,13 +367,15 @@ func (c *concurrencyCache) GetAccountsLoadBatch(ctx context.Context, accounts []
 	}
 
 	// 使用 Pipeline 替代 Lua 脚本，兼容 Redis Cluster（Lua 内动态拼 key 会 CROSSSLOT）。
-	// 每个账号执行 3 个命令：ZREMRANGEBYSCORE（清理过期）、ZCARD（并发数）、GET（等待数）。
-	now, err := c.rdb.Time(ctx).Result()
-	if err != nil {
-		return nil, fmt.Errorf("redis TIME: %w", err)
-	}
-	cutoffTime := now.Unix() - int64(c.slotTTLSeconds)
-
+	// 每个账号执行 2 个命令：ZCARD（并发数）、GET（等待数）。
+	//
+	// 读路径不再执行 ZREMRANGEBYSCORE 清理过期槽位：
+	// 1. acquireScript 在获取槽位时已原子清理过期条目，保证并发上限准确
+	// 2. 后台 cleanupWorker 周期性清理，防止长期积累
+	// 3. ZCARD 可能略微高估（包含未清理的过期条目），但不影响负载均衡正确性——
+	//    高估只会使调度更保守，避免过载
+	// 4. 此优化将每批次 Redis 命令从 3N+1 降至 2N（N=账号数），
+	//    对于 1000 个账号从 3001 条命令降至 2000 条，显著降低 QPS
 	pipe := c.rdb.Pipeline()
 
 	type accountCmds struct {
@@ -392,7 +388,6 @@ func (c *concurrencyCache) GetAccountsLoadBatch(ctx context.Context, accounts []
 	for _, acc := range accounts {
 		slotKey := accountSlotKeyPrefix + strconv.FormatInt(acc.ID, 10)
 		waitKey := accountWaitKeyPrefix + strconv.FormatInt(acc.ID, 10)
-		pipe.ZRemRangeByScore(ctx, slotKey, "-inf", strconv.FormatInt(cutoffTime, 10))
 		ac := accountCmds{
 			id:             acc.ID,
 			maxConcurrency: acc.MaxConcurrency,
@@ -434,12 +429,7 @@ func (c *concurrencyCache) GetUsersLoadBatch(ctx context.Context, users []servic
 	}
 
 	// 使用 Pipeline 替代 Lua 脚本，兼容 Redis Cluster。
-	now, err := c.rdb.Time(ctx).Result()
-	if err != nil {
-		return nil, fmt.Errorf("redis TIME: %w", err)
-	}
-	cutoffTime := now.Unix() - int64(c.slotTTLSeconds)
-
+	// 读路径不再执行 ZREMRANGEBYSCORE，理由同 GetAccountsLoadBatch。
 	pipe := c.rdb.Pipeline()
 
 	type userCmds struct {
@@ -452,7 +442,6 @@ func (c *concurrencyCache) GetUsersLoadBatch(ctx context.Context, users []servic
 	for _, u := range users {
 		slotKey := userSlotKeyPrefix + strconv.FormatInt(u.ID, 10)
 		waitKey := waitQueueKeyPrefix + strconv.FormatInt(u.ID, 10)
-		pipe.ZRemRangeByScore(ctx, slotKey, "-inf", strconv.FormatInt(cutoffTime, 10))
 		uc := userCmds{
 			id:             u.ID,
 			maxConcurrency: u.MaxConcurrency,

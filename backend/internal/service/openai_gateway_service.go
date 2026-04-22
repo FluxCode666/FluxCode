@@ -1560,7 +1560,11 @@ func (s *OpenAIGatewayService) SelectAccountWithLoadAwareness(ctx context.Contex
 		})
 	}
 
-	loadMap, err := s.concurrencyService.GetAccountsLoadBatch(ctx, accountLoads)
+	queryLoads := accountLoads
+	if cap := s.schedulingConfig().LoadBatchQueryCap; cap > 0 && len(queryLoads) > cap {
+		queryLoads = queryLoads[:cap]
+	}
+	loadMap, err := s.concurrencyService.GetAccountsLoadBatch(ctx, queryLoads)
 	if err != nil {
 		ordered := append([]*Account(nil), candidates...)
 		sortAccountsByPriorityAndLastUsed(ordered, false)
@@ -2101,6 +2105,21 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 				delete(reqBody, unsupportedField)
 				bodyModified = true
 				markPatchDelete(unsupportedField)
+			}
+		}
+
+		// Normalize service_tier: only "priority" and "flex" are valid upstream values.
+		// Unrecognized values (e.g. "auto", "default") are removed to prevent upstream 400.
+		if rawTier, hasTier := reqBody["service_tier"].(string); hasTier {
+			normalized := normalizeOpenAIServiceTier(rawTier)
+			if normalized == nil {
+				delete(reqBody, "service_tier")
+				bodyModified = true
+				markPatchDelete("service_tier")
+			} else if *normalized != rawTier {
+				reqBody["service_tier"] = *normalized
+				bodyModified = true
+				markPatchSet("service_tier", *normalized)
 			}
 		}
 	}
