@@ -55,6 +55,7 @@ func init() {
 // initLogger configures the default slog handler based on gin.Mode().
 // In non-release mode, Debug level logs are enabled.
 func main() {
+	initMemoryLimit()
 	logger.InitBootstrap()
 	defer logger.Sync()
 

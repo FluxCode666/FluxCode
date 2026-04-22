@@ -1634,11 +1634,11 @@ func TestLoad_DefaultGatewayUsageRecordConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load() error: %v", err)
 	}
-	if cfg.Gateway.UsageRecord.WorkerCount != 128 {
-		t.Fatalf("worker_count = %d, want 128", cfg.Gateway.UsageRecord.WorkerCount)
+	if cfg.Gateway.UsageRecord.WorkerCount != 32 {
+		t.Fatalf("worker_count = %d, want 32", cfg.Gateway.UsageRecord.WorkerCount)
 	}
-	if cfg.Gateway.UsageRecord.QueueSize != 16384 {
-		t.Fatalf("queue_size = %d, want 16384", cfg.Gateway.UsageRecord.QueueSize)
+	if cfg.Gateway.UsageRecord.QueueSize != 4096 {
+		t.Fatalf("queue_size = %d, want 4096", cfg.Gateway.UsageRecord.QueueSize)
 	}
 	if cfg.Gateway.UsageRecord.TaskTimeoutSeconds != 5 {
 		t.Fatalf("task_timeout_seconds = %d, want 5", cfg.Gateway.UsageRecord.TaskTimeoutSeconds)
@@ -1652,11 +1652,11 @@ func TestLoad_DefaultGatewayUsageRecordConfig(t *testing.T) {
 	if !cfg.Gateway.UsageRecord.AutoScaleEnabled {
 		t.Fatalf("auto_scale_enabled = false, want true")
 	}
-	if cfg.Gateway.UsageRecord.AutoScaleMinWorkers != 128 {
-		t.Fatalf("auto_scale_min_workers = %d, want 128", cfg.Gateway.UsageRecord.AutoScaleMinWorkers)
+	if cfg.Gateway.UsageRecord.AutoScaleMinWorkers != 32 {
+		t.Fatalf("auto_scale_min_workers = %d, want 32", cfg.Gateway.UsageRecord.AutoScaleMinWorkers)
 	}
-	if cfg.Gateway.UsageRecord.AutoScaleMaxWorkers != 512 {
-		t.Fatalf("auto_scale_max_workers = %d, want 512", cfg.Gateway.UsageRecord.AutoScaleMaxWorkers)
+	if cfg.Gateway.UsageRecord.AutoScaleMaxWorkers != 128 {
+		t.Fatalf("auto_scale_max_workers = %d, want 128", cfg.Gateway.UsageRecord.AutoScaleMaxWorkers)
 	}
 	if cfg.Gateway.UsageRecord.AutoScaleUpQueuePercent != 70 {
 		t.Fatalf("auto_scale_up_queue_percent = %d, want 70", cfg.Gateway.UsageRecord.AutoScaleUpQueuePercent)

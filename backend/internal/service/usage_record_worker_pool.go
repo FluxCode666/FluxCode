@@ -15,14 +15,14 @@ import (
 )
 
 const (
-	defaultUsageRecordWorkerCount          = 128
-	defaultUsageRecordQueueSize            = 16384
+	defaultUsageRecordWorkerCount          = 32
+	defaultUsageRecordQueueSize            = 4096
 	defaultUsageRecordTaskTimeoutSeconds   = 5
 	defaultUsageRecordOverflowPolicy       = config.UsageRecordOverflowPolicySample
 	defaultUsageRecordOverflowSampleRatio  = 10
 	defaultUsageRecordAutoScaleEnabled     = true
-	defaultUsageRecordAutoScaleMinWorkers  = 128
-	defaultUsageRecordAutoScaleMaxWorkers  = 512
+	defaultUsageRecordAutoScaleMinWorkers  = 32
+	defaultUsageRecordAutoScaleMaxWorkers  = 128
 	defaultUsageRecordAutoScaleUpPercent   = 70
 	defaultUsageRecordAutoScaleDownPercent = 15
 	defaultUsageRecordAutoScaleUpStep      = 32

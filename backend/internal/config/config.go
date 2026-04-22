@@ -1249,8 +1249,8 @@ func setDefaults() {
 	viper.SetDefault("database.password", "postgres")
 	viper.SetDefault("database.dbname", "sub2api")
 	viper.SetDefault("database.sslmode", "prefer")
-	viper.SetDefault("database.max_open_conns", 256)
-	viper.SetDefault("database.max_idle_conns", 128)
+	viper.SetDefault("database.max_open_conns", 64)
+	viper.SetDefault("database.max_idle_conns", 32)
 	viper.SetDefault("database.conn_max_lifetime_minutes", 30)
 	viper.SetDefault("database.conn_max_idle_time_minutes", 5)
 
@@ -1262,8 +1262,8 @@ func setDefaults() {
 	viper.SetDefault("redis.dial_timeout_seconds", 5)
 	viper.SetDefault("redis.read_timeout_seconds", 3)
 	viper.SetDefault("redis.write_timeout_seconds", 3)
-	viper.SetDefault("redis.pool_size", 1024)
-	viper.SetDefault("redis.min_idle_conns", 128)
+	viper.SetDefault("redis.pool_size", 128)
+	viper.SetDefault("redis.min_idle_conns", 16)
 	viper.SetDefault("redis.enable_tls", false)
 
 	// Ops (vNext)
@@ -1316,7 +1316,7 @@ func setDefaults() {
 	viper.SetDefault("timezone", "Asia/Shanghai")
 
 	// API Key auth cache
-	viper.SetDefault("api_key_auth_cache.l1_size", 65535)
+	viper.SetDefault("api_key_auth_cache.l1_size", 8192)
 	viper.SetDefault("api_key_auth_cache.l1_ttl_seconds", 15)
 	viper.SetDefault("api_key_auth_cache.l2_ttl_seconds", 300)
 	viper.SetDefault("api_key_auth_cache.negative_ttl_seconds", 30)
@@ -1324,7 +1324,7 @@ func setDefaults() {
 	viper.SetDefault("api_key_auth_cache.singleflight", true)
 
 	// Subscription auth L1 cache
-	viper.SetDefault("subscription_cache.l1_size", 16384)
+	viper.SetDefault("subscription_cache.l1_size", 4096)
 	viper.SetDefault("subscription_cache.l1_ttl_seconds", 10)
 	viper.SetDefault("subscription_cache.jitter_percent", 10)
 
@@ -1428,11 +1428,11 @@ func setDefaults() {
 	viper.SetDefault("gateway.gemini_debug_response_headers", false)
 	viper.SetDefault("gateway.connection_pool_isolation", ConnectionPoolIsolationAccountProxy)
 	// HTTP 上游连接池配置（针对 5000+ 并发用户优化）
-	viper.SetDefault("gateway.max_idle_conns", 2560)          // 最大空闲连接总数（高并发场景可调大）
-	viper.SetDefault("gateway.max_idle_conns_per_host", 120)  // 每主机最大空闲连接（HTTP/2 场景默认）
-	viper.SetDefault("gateway.max_conns_per_host", 1024)      // 每主机最大连接数（含活跃；流式/HTTP1.1 场景可调大，如 2400+）
+	viper.SetDefault("gateway.max_idle_conns", 512)           // 最大空闲连接总数（高并发场景可调大）
+	viper.SetDefault("gateway.max_idle_conns_per_host", 64)   // 每主机最大空闲连接（HTTP/2 场景默认）
+	viper.SetDefault("gateway.max_conns_per_host", 256)       // 每主机最大连接数（含活跃；流式/HTTP1.1 场景可调大，如 2400+）
 	viper.SetDefault("gateway.idle_conn_timeout_seconds", 90) // 空闲连接超时（秒）
-	viper.SetDefault("gateway.max_upstream_clients", 5000)
+	viper.SetDefault("gateway.max_upstream_clients", 1000)
 	viper.SetDefault("gateway.client_idle_ttl_seconds", 900)
 	viper.SetDefault("gateway.concurrency_slot_ttl_minutes", 30) // 并发槽位过期时间（支持超长请求）
 	viper.SetDefault("gateway.stream_data_interval_timeout", 180)
@@ -1459,16 +1459,16 @@ func setDefaults() {
 	viper.SetDefault("gateway.scheduling.full_rebuild_interval_seconds", 0)
 	viper.SetDefault("gateway.scheduling.snapshot_l1_size", 256)
 	viper.SetDefault("gateway.scheduling.snapshot_l1_ttl_seconds", 3)
-	viper.SetDefault("gateway.scheduling.snapshot_account_l1_size", 20000)
+	viper.SetDefault("gateway.scheduling.snapshot_account_l1_size", 5000)
 	viper.SetDefault("gateway.scheduling.snapshot_account_l1_ttl_seconds", 5)
-	viper.SetDefault("gateway.usage_record.worker_count", 128)
-	viper.SetDefault("gateway.usage_record.queue_size", 16384)
+	viper.SetDefault("gateway.usage_record.worker_count", 32)
+	viper.SetDefault("gateway.usage_record.queue_size", 4096)
 	viper.SetDefault("gateway.usage_record.task_timeout_seconds", 5)
 	viper.SetDefault("gateway.usage_record.overflow_policy", UsageRecordOverflowPolicySample)
 	viper.SetDefault("gateway.usage_record.overflow_sample_percent", 10)
 	viper.SetDefault("gateway.usage_record.auto_scale_enabled", true)
-	viper.SetDefault("gateway.usage_record.auto_scale_min_workers", 128)
-	viper.SetDefault("gateway.usage_record.auto_scale_max_workers", 512)
+	viper.SetDefault("gateway.usage_record.auto_scale_min_workers", 32)
+	viper.SetDefault("gateway.usage_record.auto_scale_max_workers", 128)
 	viper.SetDefault("gateway.usage_record.auto_scale_up_queue_percent", 70)
 	viper.SetDefault("gateway.usage_record.auto_scale_down_queue_percent", 15)
 	viper.SetDefault("gateway.usage_record.auto_scale_up_step", 32)
