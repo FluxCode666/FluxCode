@@ -634,4 +634,33 @@ func TestGeminiMessagesCompatService_IsAccountBlockedByDisabledProxy_ExcludeMode
 	require.True(t, svc.isAccountBlockedByDisabledProxy(context.Background(), a))
 }
 
+// ---------------------------------------------------------------------------
+// Account.EffectiveProxyURL
+// ---------------------------------------------------------------------------
+
+func TestEffectiveProxyURL_NilProxy(t *testing.T) {
+	a := &Account{ID: 1, ProxyID: nil, Proxy: nil}
+	require.Equal(t, "", a.EffectiveProxyURL())
+}
+
+func TestEffectiveProxyURL_ActiveProxy(t *testing.T) {
+	a := &Account{ID: 1, ProxyID: ptrInt64(10), Proxy: &Proxy{ID: 10, Protocol: "http", Host: "127.0.0.1", Port: 8080, Status: StatusActive}}
+	require.Equal(t, "http://127.0.0.1:8080", a.EffectiveProxyURL())
+}
+
+func TestEffectiveProxyURL_DisabledProxy(t *testing.T) {
+	a := &Account{ID: 1, ProxyID: ptrInt64(10), Proxy: &Proxy{ID: 10, Protocol: "http", Host: "127.0.0.1", Port: 8080, Status: "disabled"}}
+	require.Equal(t, "", a.EffectiveProxyURL(), "disabled proxy should return empty string (direct connection)")
+}
+
+func TestEffectiveProxyURL_DanglingProxyID(t *testing.T) {
+	a := &Account{ID: 1, ProxyID: ptrInt64(10), Proxy: nil}
+	require.Equal(t, "", a.EffectiveProxyURL(), "dangling proxy reference should return empty string")
+}
+
+func TestEffectiveProxyURL_NilAccount(t *testing.T) {
+	var a *Account
+	require.Equal(t, "", a.EffectiveProxyURL())
+}
+
 func ptrInt64(i int64) *int64 { return &i }

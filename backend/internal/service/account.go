@@ -77,6 +77,22 @@ func (a *Account) IsActive() bool {
 	return a.Status == StatusActive
 }
 
+// EffectiveProxyURL returns the proxy URL that should be used for upstream
+// requests. It returns an empty string (direct connection) when:
+//   - no proxy is assigned (ProxyID == nil)
+//   - proxy record is missing (Proxy == nil, e.g. deleted)
+//   - proxy is not active (e.g. disabled)
+//
+// This ensures that accounts whose proxy has been disabled route traffic
+// directly when the pool-monitor DisabledProxyScheduleMode is
+// "direct_without_proxy", rather than attempting to use the disabled proxy.
+func (a *Account) EffectiveProxyURL() string {
+	if a == nil || a.Proxy == nil || !a.Proxy.IsActive() {
+		return ""
+	}
+	return a.Proxy.URL()
+}
+
 // BillingRateMultiplier 返回账号计费倍率。
 // - nil 表示未配置/旧缓存缺字段，按 1.0 处理
 // - 允许 0，表示该账号计费为 0

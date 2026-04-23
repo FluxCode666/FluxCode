@@ -2393,10 +2393,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		}
 
 		// Get proxy URL
-		proxyURL := ""
-		if account.ProxyID != nil && account.Proxy != nil {
-			proxyURL = account.Proxy.URL()
-		}
+		proxyURL := account.EffectiveProxyURL()
 
 		// Send request
 		upstreamStart := time.Now()
@@ -2614,10 +2611,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		return nil, err
 	}
 
-	proxyURL := ""
-	if account.ProxyID != nil && account.Proxy != nil {
-		proxyURL = account.Proxy.URL()
-	}
+	proxyURL := account.EffectiveProxyURL()
 
 	setOpsUpstreamRequestBody(c, body)
 	if c != nil {
