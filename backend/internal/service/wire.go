@@ -192,8 +192,8 @@ func ProvideAntigravityTokenProvider(
 }
 
 // ProvideDashboardAggregationService 创建并启动仪表盘聚合服务
-func ProvideDashboardAggregationService(repo DashboardAggregationRepository, timingWheel *TimingWheelService, cfg *config.Config) *DashboardAggregationService {
-	svc := NewDashboardAggregationService(repo, timingWheel, cfg)
+func ProvideDashboardAggregationService(repo DashboardAggregationRepository, timingWheel *TimingWheelService, redisClient *redis.Client, cfg *config.Config) *DashboardAggregationService {
+	svc := NewDashboardAggregationService(repo, timingWheel, redisClient, cfg)
 	svc.Start()
 	return svc
 }

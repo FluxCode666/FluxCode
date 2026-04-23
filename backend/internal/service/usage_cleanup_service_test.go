@@ -562,7 +562,7 @@ func TestUsageCleanupServiceExecuteTaskDashboardRecomputeError(t *testing.T) {
 			{deleted: 0},
 		},
 	}
-	dashboard := NewDashboardAggregationService(dashboardRepo, nil, &config.Config{
+	dashboard := NewDashboardAggregationService(dashboardRepo, nil, nil, &config.Config{
 		DashboardAgg: config.DashboardAggregationConfig{Enabled: true},
 	})
 	cfg := &config.Config{UsageCleanup: config.UsageCleanupConfig{Enabled: true, BatchSize: 2}}
@@ -590,7 +590,7 @@ func TestUsageCleanupServiceExecuteTaskDashboardRecomputeSuccess(t *testing.T) {
 			{deleted: 0},
 		},
 	}
-	dashboard := NewDashboardAggregationService(dashboardRepo, nil, &config.Config{
+	dashboard := NewDashboardAggregationService(dashboardRepo, nil, nil, &config.Config{
 		DashboardAgg: config.DashboardAggregationConfig{Enabled: true},
 	})
 	cfg := &config.Config{UsageCleanup: config.UsageCleanupConfig{Enabled: true, BatchSize: 2}}

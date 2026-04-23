@@ -9,12 +9,21 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/redis/go-redis/v9"
 )
 
 const (
 	defaultDashboardAggregationTimeout         = 2 * time.Minute
 	defaultDashboardAggregationBackfillTimeout = 30 * time.Minute
 	dashboardAggregationRetentionInterval      = 6 * time.Hour
+
+	// 分布式锁：防止多实例同时执行聚合/回填/重算
+	dashboardAggLockKeyAggregation = "sub2api:dashboard_agg:lock:aggregation"
+	dashboardAggLockKeyRecompute   = "sub2api:dashboard_agg:lock:recompute"
+	dashboardAggLockKeyBackfill    = "sub2api:dashboard_agg:lock:backfill"
+	dashboardAggLockTTLAggregation = 3 * time.Minute
+	dashboardAggLockTTLRecompute   = 35 * time.Minute
+	dashboardAggLockTTLBackfill    = 35 * time.Minute
 )
 
 var (
@@ -43,13 +52,14 @@ type DashboardAggregationRepository interface {
 type DashboardAggregationService struct {
 	repo                 DashboardAggregationRepository
 	timingWheel          *TimingWheelService
+	redisClient          *redis.Client
 	cfg                  config.DashboardAggregationConfig
 	running              int32
 	lastRetentionCleanup atomic.Value // time.Time
 }
 
 // NewDashboardAggregationService 创建聚合服务。
-func NewDashboardAggregationService(repo DashboardAggregationRepository, timingWheel *TimingWheelService, cfg *config.Config) *DashboardAggregationService {
+func NewDashboardAggregationService(repo DashboardAggregationRepository, timingWheel *TimingWheelService, redisClient *redis.Client, cfg *config.Config) *DashboardAggregationService {
 	var aggCfg config.DashboardAggregationConfig
 	if cfg != nil {
 		aggCfg = cfg.DashboardAgg
@@ -57,6 +67,7 @@ func NewDashboardAggregationService(repo DashboardAggregationRepository, timingW
 	return &DashboardAggregationService{
 		repo:        repo,
 		timingWheel: timingWheel,
+		redisClient: redisClient,
 		cfg:         aggCfg,
 	}
 }
@@ -158,6 +169,15 @@ func (s *DashboardAggregationService) recomputeRecentDays() {
 	if days <= 0 {
 		return
 	}
+
+	lockCtx, lockCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	release, ok := s.tryAcquireAggLock(lockCtx, dashboardAggLockKeyRecompute, dashboardAggLockTTLRecompute)
+	lockCancel()
+	if !ok {
+		return
+	}
+	defer release()
+
 	now := time.Now().UTC()
 	start := now.AddDate(0, 0, -days)
 
@@ -192,6 +212,14 @@ func (s *DashboardAggregationService) runScheduledAggregation() {
 		return
 	}
 	defer atomic.StoreInt32(&s.running, 0)
+
+	lockCtx, lockCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	release, ok := s.tryAcquireAggLock(lockCtx, dashboardAggLockKeyAggregation, dashboardAggLockTTLAggregation)
+	lockCancel()
+	if !ok {
+		return
+	}
+	defer release()
 
 	jobStart := time.Now().UTC()
 	ctx, cancel := context.WithTimeout(context.Background(), defaultDashboardAggregationTimeout)
@@ -241,6 +269,15 @@ func (s *DashboardAggregationService) backfillRange(ctx context.Context, start, 
 		return errDashboardAggregationRunning
 	}
 	defer atomic.StoreInt32(&s.running, 0)
+
+	lockCtx, lockCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	release, ok := s.tryAcquireAggLock(lockCtx, dashboardAggLockKeyBackfill, dashboardAggLockTTLBackfill)
+	lockCancel()
+	if !ok {
+		logger.LegacyPrintf("service.dashboard_aggregation", "[DashboardAggregation] 回填跳过: 已有其他实例在执行")
+		return nil
+	}
+	defer release()
 
 	jobStart := time.Now().UTC()
 	startUTC := start.UTC()
@@ -319,4 +356,26 @@ func (s *DashboardAggregationService) maybeCleanupRetention(ctx context.Context,
 func truncateToDayUTC(t time.Time) time.Time {
 	t = t.UTC()
 	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.UTC)
+}
+
+// tryAcquireAggLock 尝试获取分布式锁，防止多实例同时执行同一聚合任务。
+// 返回释放函数和是否获取成功。如果 Redis 不可用，退回到单机模式（允许执行）。
+func (s *DashboardAggregationService) tryAcquireAggLock(ctx context.Context, key string, ttl time.Duration) (release func(), ok bool) {
+	if s.redisClient == nil {
+		return func() {}, true
+	}
+	acquired, err := s.redisClient.SetNX(ctx, key, time.Now().UnixNano(), ttl).Result()
+	if err != nil {
+		logger.LegacyPrintf("service.dashboard_aggregation", "[DashboardAggregation] 分布式锁获取失败 (key=%s): %v, 退回到单机模式", key, err)
+		return func() {}, true
+	}
+	if !acquired {
+		logger.LegacyPrintf("service.dashboard_aggregation", "[DashboardAggregation] 已有其他实例持锁，跳过 (key=%s)", key)
+		return nil, false
+	}
+	return func() {
+		releaseCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = s.redisClient.Del(releaseCtx, key).Err()
+	}, true
 }

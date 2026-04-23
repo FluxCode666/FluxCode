@@ -121,10 +121,15 @@ func (s *SchedulerSnapshotService) Start() {
 		return
 	}
 
+	// initialDone 用于让 outbox/fullRebuild worker 等初始化重建完成后再启动，
+	// 避免启动时多个 goroutine 同时密集查询 DB 导致连接池耗尽。
+	initialDone := make(chan struct{})
+
 	s.wg.Add(1)
 	go func() {
 		defer s.wg.Done()
 		s.runInitialRebuild()
+		close(initialDone)
 	}()
 
 	interval := s.outboxPollInterval()
@@ -132,6 +137,11 @@ func (s *SchedulerSnapshotService) Start() {
 		s.wg.Add(1)
 		go func() {
 			defer s.wg.Done()
+			select {
+			case <-initialDone:
+			case <-s.stopCh:
+				return
+			}
 			s.runOutboxWorker(interval)
 		}()
 	}
@@ -141,6 +151,11 @@ func (s *SchedulerSnapshotService) Start() {
 		s.wg.Add(1)
 		go func() {
 			defer s.wg.Done()
+			select {
+			case <-initialDone:
+			case <-s.stopCh:
+				return
+			}
 			s.runFullRebuildWorker(fullInterval)
 		}()
 	}
@@ -300,7 +315,7 @@ func (s *SchedulerSnapshotService) runInitialRebuild() {
 			return
 		}
 	}
-	if err := s.rebuildBuckets(ctx, buckets, "startup"); err != nil {
+	if err := s.rebuildBucketsDedup(ctx, buckets, "startup"); err != nil {
 		logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] rebuild startup failed: %v", err)
 	}
 }
