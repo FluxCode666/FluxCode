@@ -57,9 +57,12 @@ func InitEnt(cfg *config.Config) (*ent.Client, *sql.DB, error) {
 	// 确保数据库 schema 已准备就绪。
 	// SQL 迁移文件是 schema 的权威来源（source of truth）。
 	// 这种方式比 Ent 的自动迁移更可控，支持复杂的迁移场景。
+	// 扩容实例可通过 skip_startup_init=true 跳过迁移，直接复用已有 schema。
 	migrationCtx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
-	if err := applyMigrationsFS(migrationCtx, drv.DB(), migrations.FS); err != nil {
+	if cfg.SkipStartupInit {
+		fmt.Println("[InitEnt] skip_startup_init=true, skipping database migrations")
+	} else if err := applyMigrationsFS(migrationCtx, drv.DB(), migrations.FS); err != nil {
 		_ = drv.Close() // 迁移失败时关闭驱动，避免资源泄露
 		return nil, nil, err
 	}
@@ -82,7 +85,8 @@ func InitEnt(cfg *config.Config) (*ent.Client, *sql.DB, error) {
 	// SIMPLE 模式：启动时补齐各平台默认分组。
 	// - anthropic/openai/gemini: 确保存在 <platform>-default
 	// - antigravity: 仅要求存在 >=2 个未软删除分组（用于 claude/gemini 混合调度场景）
-	if cfg.RunMode == config.RunModeSimple {
+	// 扩容实例跳过种子数据写入，主实例已完成初始化。
+	if cfg.RunMode == config.RunModeSimple && !cfg.SkipStartupInit {
 		seedCtx, seedCancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer seedCancel()
 		if err := ensureSimpleModeDefaultGroups(seedCtx, client); err != nil {

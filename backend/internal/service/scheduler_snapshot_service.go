@@ -123,14 +123,20 @@ func (s *SchedulerSnapshotService) Start() {
 
 	// initialDone 用于让 outbox/fullRebuild worker 等初始化重建完成后再启动，
 	// 避免启动时多个 goroutine 同时密集查询 DB 导致连接池耗尽。
+	// 扩容实例（skip_startup_init=true）跳过全量重建，直接复用已有 Redis 缓存。
 	initialDone := make(chan struct{})
 
-	s.wg.Add(1)
-	go func() {
-		defer s.wg.Done()
-		s.runInitialRebuild()
+	if s.cfg != nil && s.cfg.SkipStartupInit {
+		logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] skip_startup_init=true, skipping initial cache rebuild")
 		close(initialDone)
-	}()
+	} else {
+		s.wg.Add(1)
+		go func() {
+			defer s.wg.Done()
+			s.runInitialRebuild()
+			close(initialDone)
+		}()
+	}
 
 	interval := s.outboxPollInterval()
 	if s.outboxRepo != nil && interval > 0 {
