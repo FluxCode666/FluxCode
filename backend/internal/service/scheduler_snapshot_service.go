@@ -313,7 +313,7 @@ func (s *SchedulerSnapshotService) runInitialRebuild() {
 	if s.cache == nil {
 		return
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 	buckets, err := s.cache.ListBuckets(ctx)
 	if err != nil {
