@@ -1011,6 +1011,9 @@ func load(allowMissingJWTSecret bool) (*Config, error) {
 		return nil, fmt.Errorf("unmarshal config error: %w", err)
 	}
 
+	fmt.Printf("[Config] skip_startup_init: viper.Get=%v env=%s unmarshal=%v\n",
+		viper.Get("skip_startup_init"), os.Getenv("SKIP_STARTUP_INIT"), cfg.SkipStartupInit)
+
 	cfg.RunMode = NormalizeRunMode(cfg.RunMode)
 	cfg.Server.Mode = strings.ToLower(strings.TrimSpace(cfg.Server.Mode))
 	if cfg.Server.Mode == "" {
