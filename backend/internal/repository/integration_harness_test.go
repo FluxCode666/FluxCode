@@ -358,6 +358,42 @@ func (h prefixHook) prefixCmd(cmd redisclient.Cmder) {
 				break
 			}
 		}
+	case "xadd", "xlen", "xrange", "xrevrange", "xtrim":
+		prefixOne(1)
+	case "xread":
+		// XREAD [COUNT n] [BLOCK ms] STREAMS key [key ...] id [id ...]
+		for i := 1; i < len(args); i++ {
+			if strings.EqualFold(fmt.Sprint(args[i]), "streams") {
+				// keys follow STREAMS until the ids start (equal count of keys and ids)
+				remaining := args[i+1:]
+				nKeys := len(remaining) / 2
+				for j := 0; j < nKeys; j++ {
+					prefixOne(i + 1 + j)
+				}
+				break
+			}
+		}
+	case "xreadgroup":
+		// XREADGROUP GROUP g c [COUNT n] [BLOCK ms] [NOACK] STREAMS key [key ...] id [id ...]
+		for i := 1; i < len(args); i++ {
+			if strings.EqualFold(fmt.Sprint(args[i]), "streams") {
+				remaining := args[i+1:]
+				nKeys := len(remaining) / 2
+				for j := 0; j < nKeys; j++ {
+					prefixOne(i + 1 + j)
+				}
+				break
+			}
+		}
+	case "xgroup":
+		// XGROUP CREATE key group id [MKSTREAM] — subcommand at args[1], key at args[2]
+		prefixOne(2)
+	case "xack":
+		// XACK key group id [id ...]
+		prefixOne(1)
+	case "xinfo":
+		// XINFO GROUPS key | XINFO STREAM key ...
+		prefixOne(2)
 	}
 }
 

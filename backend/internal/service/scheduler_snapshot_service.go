@@ -34,14 +34,15 @@ type batchSeenKey struct {
 var ErrSchedulerRebuildInProgress = errors.New("scheduler rebuild already in progress")
 
 type SchedulerSnapshotService struct {
-	cache         SchedulerCache
-	outboxRepo    SchedulerOutboxRepository
-	accountRepo   AccountRepository
-	groupRepo     GroupRepository
-	cfg           *config.Config
-	stopCh        chan struct{}
-	stopOnce      sync.Once
-	wg            sync.WaitGroup
+	cache       SchedulerCache
+	outboxQueue SchedulerOutboxQueue
+	accountRepo AccountRepository
+	groupRepo   GroupRepository
+	cfg         *config.Config
+	stopCh      chan struct{}
+	stopOnce    sync.Once
+	stopCancel  context.CancelFunc // 用于中断 BLOCK 读取
+	wg          sync.WaitGroup
 	fallbackLimit *fallbackLimiter
 	lagMu         sync.Mutex
 	lagFailures   int
@@ -56,7 +57,7 @@ type SchedulerSnapshotService struct {
 
 func NewSchedulerSnapshotService(
 	cache SchedulerCache,
-	outboxRepo SchedulerOutboxRepository,
+	outboxQueue SchedulerOutboxQueue,
 	accountRepo AccountRepository,
 	groupRepo GroupRepository,
 	cfg *config.Config,
@@ -67,11 +68,12 @@ func NewSchedulerSnapshotService(
 	}
 	svc := &SchedulerSnapshotService{
 		cache:         cache,
-		outboxRepo:    outboxRepo,
+		outboxQueue:   outboxQueue,
 		accountRepo:   accountRepo,
 		groupRepo:     groupRepo,
 		cfg:           cfg,
 		stopCh:        make(chan struct{}),
+		stopCancel:    func() {}, // 初始为空操作，Start 时覆盖
 		fallbackLimit: newFallbackLimiter(maxQPS),
 	}
 	svc.initL1Cache(cfg)
@@ -139,7 +141,9 @@ func (s *SchedulerSnapshotService) Start() {
 	}
 
 	interval := s.outboxPollInterval()
-	if s.outboxRepo != nil && interval > 0 {
+	if s.outboxQueue != nil && interval > 0 {
+		workerCtx, workerCancel := context.WithCancel(context.Background())
+		s.stopCancel = workerCancel
 		s.wg.Add(1)
 		go func() {
 			defer s.wg.Done()
@@ -148,7 +152,7 @@ func (s *SchedulerSnapshotService) Start() {
 			case <-s.stopCh:
 				return
 			}
-			s.runOutboxWorker(interval)
+			s.runOutboxWorker(workerCtx, interval)
 		}()
 	}
 
@@ -173,6 +177,7 @@ func (s *SchedulerSnapshotService) Stop() {
 	}
 	s.stopOnce.Do(func() {
 		close(s.stopCh)
+		s.stopCancel() // 中断 BLOCK 读取
 	})
 	s.wg.Wait()
 }
@@ -326,18 +331,14 @@ func (s *SchedulerSnapshotService) runInitialRebuild() {
 	}
 }
 
-func (s *SchedulerSnapshotService) runOutboxWorker(interval time.Duration) {
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-
-	s.pollOutbox()
+func (s *SchedulerSnapshotService) runOutboxWorker(ctx context.Context, interval time.Duration) {
 	for {
 		select {
-		case <-ticker.C:
-			s.pollOutbox()
-		case <-s.stopCh:
+		case <-ctx.Done():
 			return
+		default:
 		}
+		s.pollOutbox(ctx, interval)
 	}
 }
 
@@ -357,20 +358,16 @@ func (s *SchedulerSnapshotService) runFullRebuildWorker(interval time.Duration) 
 	}
 }
 
-func (s *SchedulerSnapshotService) pollOutbox() {
-	if s.outboxRepo == nil || s.cache == nil {
+func (s *SchedulerSnapshotService) pollOutbox(parentCtx context.Context, blockTimeout time.Duration) {
+	if s.outboxQueue == nil || s.cache == nil {
 		return
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
+	// Read 会在 Redis 侧阻塞等待 blockTimeout，有新消息立即返回；
+	// parentCtx 被 cancel 时 BLOCK 读取会立即中断。
+	readCtx, readCancel := context.WithTimeout(parentCtx, blockTimeout+5*time.Second)
+	defer readCancel()
 
-	watermark, err := s.cache.GetOutboxWatermark(ctx)
-	if err != nil {
-		logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] outbox watermark read failed: %v", err)
-		return
-	}
-
-	events, err := s.outboxRepo.ListAfter(ctx, watermark, 200)
+	events, err := s.outboxQueue.Read(readCtx, 200, blockTimeout)
 	if err != nil {
 		logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] outbox poll failed: %v", err)
 		return
@@ -379,45 +376,53 @@ func (s *SchedulerSnapshotService) pollOutbox() {
 		return
 	}
 
-	watermarkForCheck := watermark
-	seen := make(map[batchSeenKey]struct{})
-	var handleErrors int
-	for _, event := range events {
-		eventCtx, cancel := context.WithTimeout(context.Background(), outboxEventTimeout)
-		err := s.handleOutboxEvent(eventCtx, event, seen)
-		cancel()
-		if err != nil {
-			handleErrors++
-			logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] outbox handle failed: id=%d type=%s err=%v", event.ID, event.EventType, err)
-			// 不再 return：跳过失败事件，继续处理后续事件，避免单个事件卡死整个 outbox 管道
-		}
+	coalesced := coalesceOutboxEvents(events)
+	if skipped := len(events) - len(coalesced); skipped > 0 {
+		slog.Debug("[Scheduler] outbox coalesced", "original", len(events), "after", len(coalesced), "skipped", skipped)
 	}
 
-	// 无论是否有事件处理失败，都推进 watermark，避免反复重试同一批失败事件
-	// 导致 Redis 连接池和 DB 连接被持续占满
-	lastID := events[len(events)-1].ID
-	if handleErrors > 0 {
-		logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] outbox batch completed with %d/%d errors, advancing watermark to %d", handleErrors, len(events), lastID)
-	}
-	var wmErr error
-	for i := range 3 {
-		wmCtx, wmCancel := context.WithTimeout(context.Background(), 5*time.Second)
-		wmErr = s.cache.SetOutboxWatermark(wmCtx, lastID)
-		wmCancel()
-		if wmErr == nil {
+	// 优化：如果 batch 中包含 full_rebuild，跳过其它事件处理
+	hasFullRebuild := false
+	for _, event := range coalesced {
+		if event.EventType == SchedulerOutboxEventFullRebuild {
+			hasFullRebuild = true
 			break
 		}
-		if i < 2 {
-			time.Sleep(200 * time.Millisecond)
-		}
-	}
-	if wmErr != nil {
-		logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] outbox watermark write failed: %v", wmErr)
-	} else {
-		watermarkForCheck = lastID
 	}
 
-	s.checkOutboxLag(ctx, events[0], watermarkForCheck)
+	seen := make(map[batchSeenKey]struct{})
+	var handleErrors int
+	for _, event := range coalesced {
+		if hasFullRebuild && event.EventType != SchedulerOutboxEventFullRebuild {
+			continue // full_rebuild 会重建所有 bucket，跳过其它事件
+		}
+		eventCtx, eventCancel := context.WithTimeout(context.Background(), outboxEventTimeout)
+		err := s.handleOutboxEvent(eventCtx, event, seen)
+		eventCancel()
+		if err != nil {
+			handleErrors++
+			logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] outbox handle failed: id=%s type=%s err=%v", event.StreamID, event.EventType, err)
+		}
+	}
+
+	// ACK 所有事件（包括失败的），避免反复重试同一批失败事件
+	streamIDs := make([]string, len(events))
+	for i, event := range events {
+		streamIDs[i] = event.StreamID
+	}
+	if handleErrors > 0 {
+		logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] outbox batch completed with %d/%d errors", handleErrors, len(events))
+	}
+	ackCtx, ackCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	if err := s.outboxQueue.Ack(ackCtx, streamIDs...); err != nil {
+		logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] outbox ack failed: %v", err)
+	}
+	ackCancel()
+
+	// 检查 lag 并在必要时触发全量重建
+	lagCtx, lagCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer lagCancel()
+	s.checkOutboxLag(lagCtx, events[0])
 }
 
 func (s *SchedulerSnapshotService) handleOutboxEvent(ctx context.Context, event SchedulerOutboxEvent, seen map[batchSeenKey]struct{}) error {
@@ -790,7 +795,7 @@ func (s *SchedulerSnapshotService) rebuildBucketsDedup(ctx context.Context, buck
 	return firstErr
 }
 
-func (s *SchedulerSnapshotService) checkOutboxLag(ctx context.Context, oldest SchedulerOutboxEvent, watermark int64) {
+func (s *SchedulerSnapshotService) checkOutboxLag(ctx context.Context, oldest SchedulerOutboxEvent) {
 	if oldest.CreatedAt.IsZero() || s.cfg == nil {
 		return
 	}
@@ -822,15 +827,15 @@ func (s *SchedulerSnapshotService) checkOutboxLag(ctx context.Context, oldest Sc
 	}
 
 	threshold := s.cfg.Gateway.Scheduling.OutboxBacklogRebuildRows
-	if threshold <= 0 || s.outboxRepo == nil {
+	if threshold <= 0 || s.outboxQueue == nil {
 		return
 	}
-	maxID, err := s.outboxRepo.MaxID(ctx)
+	pending, err := s.outboxQueue.Pending(ctx)
 	if err != nil {
 		return
 	}
-	if maxID-watermark >= int64(threshold) {
-		logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] outbox backlog rebuild triggered: backlog=%d", maxID-watermark)
+	if pending >= int64(threshold) {
+		logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] outbox backlog rebuild triggered: pending=%d", pending)
 		if err := s.triggerFullRebuild("outbox_backlog"); err != nil {
 			logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] outbox backlog rebuild failed: %v", err)
 		}
@@ -1141,4 +1146,101 @@ func (s *SchedulerSnapshotService) invalidateAccountL1(accountID int64) {
 		return
 	}
 	s.accountL1.Del(accountID)
+}
+
+// coalesceOutboxEvents 合并同一批次内的冗余事件，减少 DB/Redis 操作次数。
+//   - 同 accountID 的 account_changed / account_groups_changed：仅保留最后一条，
+//     但合并所有事件的 group_ids，确保所有关联 bucket 都被重建。
+//   - 同 groupID 的 group_changed：仅保留最后一条。
+//   - 多条 full_rebuild：仅保留一条。
+//   - account_last_used / account_bulk_changed：全部保留（不合并）。
+func coalesceOutboxEvents(events []SchedulerOutboxEvent) []SchedulerOutboxEvent {
+	if len(events) <= 1 {
+		return events
+	}
+
+	type accountEntry struct {
+		resultIdx int
+		groupIDs  map[int64]struct{}
+	}
+
+	accountMap := make(map[int64]*accountEntry)
+	groupMap := make(map[int64]int) // groupID -> resultIdx
+	seenFullRebuild := false
+
+	result := make([]SchedulerOutboxEvent, 0, len(events))
+
+	for _, event := range events {
+		switch event.EventType {
+		case SchedulerOutboxEventAccountChanged, SchedulerOutboxEventAccountGroupsChanged:
+			if event.AccountID == nil || *event.AccountID <= 0 {
+				result = append(result, event)
+				continue
+			}
+			aid := *event.AccountID
+			gids := extractGroupIDs(event.Payload)
+
+			if entry, exists := accountMap[aid]; exists {
+				// 合并 group_ids 并替换为最新事件
+				for _, gid := range gids {
+					entry.groupIDs[gid] = struct{}{}
+				}
+				result[entry.resultIdx] = event
+			} else {
+				gidSet := make(map[int64]struct{}, len(gids))
+				for _, gid := range gids {
+					gidSet[gid] = struct{}{}
+				}
+				accountMap[aid] = &accountEntry{resultIdx: len(result), groupIDs: gidSet}
+				result = append(result, event)
+			}
+
+		case SchedulerOutboxEventGroupChanged:
+			if event.GroupID == nil || *event.GroupID <= 0 {
+				result = append(result, event)
+				continue
+			}
+			gid := *event.GroupID
+			if idx, exists := groupMap[gid]; exists {
+				result[idx] = event
+			} else {
+				groupMap[gid] = len(result)
+				result = append(result, event)
+			}
+
+		case SchedulerOutboxEventFullRebuild:
+			if !seenFullRebuild {
+				seenFullRebuild = true
+				result = append(result, event)
+			}
+
+		default:
+			result = append(result, event)
+		}
+	}
+
+	// 将合并后的 group_ids 回写到保留的事件中
+	for _, entry := range accountMap {
+		if len(entry.groupIDs) == 0 {
+			continue
+		}
+		ev := &result[entry.resultIdx]
+		if ev.Payload == nil {
+			ev.Payload = make(map[string]any)
+		}
+		merged := make([]any, 0, len(entry.groupIDs))
+		for gid := range entry.groupIDs {
+			merged = append(merged, float64(gid))
+		}
+		ev.Payload["group_ids"] = merged
+	}
+
+	return result
+}
+
+func extractGroupIDs(payload map[string]any) []int64 {
+	if payload == nil {
+		return nil
+	}
+	return parseInt64Slice(payload["group_ids"])
 }

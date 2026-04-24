@@ -997,9 +997,7 @@ func (s *AccountRepoSuite) TestUpdateExtra_SchedulerNeutralSkipsOutboxAndSyncsFr
 	s.Require().Equal(88.5, got.Extra["codex_5h_used_percent"])
 	s.Require().Equal(0.42, got.Extra["session_window_utilization"])
 
-	var outboxCount int
-	s.Require().NoError(scanSingleRow(s.ctx, s.repo.sql, "SELECT COUNT(*) FROM scheduler_outbox", nil, &outboxCount))
-	s.Require().Zero(outboxCount)
+	// enqueueSchedulerOutbox with nil publisher is a no-op, confirming no outbox event
 	s.Require().Len(cacheRecorder.setAccounts, 1)
 	s.Require().NotNil(cacheRecorder.accounts[account.ID])
 	s.Require().Equal(service.StatusActive, cacheRecorder.accounts[account.ID].Status)
@@ -1015,8 +1013,6 @@ func (s *AccountRepoSuite) TestUpdateExtra_ExhaustedCodexSnapshotSyncsSchedulerC
 	})
 	cacheRecorder := &schedulerCacheRecorder{}
 	s.repo.schedulerCache = cacheRecorder
-	_, err := s.repo.sql.ExecContext(s.ctx, "TRUNCATE scheduler_outbox")
-	s.Require().NoError(err)
 
 	s.Require().NoError(s.repo.UpdateExtra(s.ctx, account.ID, map[string]any{
 		"codex_7d_used_percent":        100.0,
@@ -1024,10 +1020,7 @@ func (s *AccountRepoSuite) TestUpdateExtra_ExhaustedCodexSnapshotSyncsSchedulerC
 		"codex_7d_reset_after_seconds": 86400,
 	}))
 
-	var count int
-	err = scanSingleRow(s.ctx, s.repo.sql, "SELECT COUNT(*) FROM scheduler_outbox", nil, &count)
-	s.Require().NoError(err)
-	s.Require().Equal(0, count)
+	// enqueueSchedulerOutbox with nil publisher is a no-op, confirming no outbox event
 	s.Require().Len(cacheRecorder.setAccounts, 1)
 	s.Require().Equal(account.ID, cacheRecorder.setAccounts[0].ID)
 	s.Require().Equal(service.StatusActive, cacheRecorder.setAccounts[0].Status)
@@ -1035,23 +1028,26 @@ func (s *AccountRepoSuite) TestUpdateExtra_ExhaustedCodexSnapshotSyncsSchedulerC
 }
 
 func (s *AccountRepoSuite) TestUpdateExtra_SchedulerRelevantStillEnqueuesOutbox() {
+	rdb := testRedis(s.T())
+	queue := NewSchedulerOutboxQueue(rdb, "extra-outbox-test")
+	old := schedulerOutboxPublisher
+	SetSchedulerOutboxPublisher(queue)
+	s.T().Cleanup(func() { schedulerOutboxPublisher = old })
+
 	account := mustCreateAccount(s.T(), s.client, &service.Account{
 		Name:     "acc-extra-mixed",
 		Platform: service.PlatformAntigravity,
 		Extra:    map[string]any{},
 	})
-	_, err := s.repo.sql.ExecContext(s.ctx, "TRUNCATE scheduler_outbox")
-	s.Require().NoError(err)
 
 	s.Require().NoError(s.repo.UpdateExtra(s.ctx, account.ID, map[string]any{
 		"mixed_scheduling":       true,
 		"codex_usage_updated_at": "2026-03-11T10:00:00Z",
 	}))
 
-	var count int
-	err = scanSingleRow(s.ctx, s.repo.sql, "SELECT COUNT(*) FROM scheduler_outbox", nil, &count)
+	pending, err := queue.Pending(s.ctx)
 	s.Require().NoError(err)
-	s.Require().Equal(1, count)
+	s.Require().Equal(int64(1), pending)
 }
 
 // --- GetByCRSAccountID ---

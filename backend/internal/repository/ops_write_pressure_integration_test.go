@@ -47,33 +47,43 @@ func TestOpsRepositoryBatchInsertErrorLogs(t *testing.T) {
 
 func TestEnqueueSchedulerOutbox_DeduplicatesIdempotentEvents(t *testing.T) {
 	ctx := context.Background()
-	_, _ = integrationDB.ExecContext(ctx, "TRUNCATE scheduler_outbox RESTART IDENTITY")
+	rdb := testRedis(t)
+
+	queue := NewSchedulerOutboxQueue(rdb, "dedup-test")
+	SetSchedulerOutboxPublisher(queue)
+	t.Cleanup(func() { SetSchedulerOutboxPublisher(nil) })
 
 	accountID := int64(12345)
-	require.NoError(t, enqueueSchedulerOutbox(ctx, integrationDB, service.SchedulerOutboxEventAccountChanged, &accountID, nil, nil))
-	require.NoError(t, enqueueSchedulerOutbox(ctx, integrationDB, service.SchedulerOutboxEventAccountChanged, &accountID, nil, nil))
+	require.NoError(t, enqueueSchedulerOutbox(ctx, service.SchedulerOutboxEventAccountChanged, &accountID, nil, nil))
+	require.NoError(t, enqueueSchedulerOutbox(ctx, service.SchedulerOutboxEventAccountChanged, &accountID, nil, nil))
 
-	var count int
-	require.NoError(t, integrationDB.QueryRowContext(ctx, "SELECT COUNT(*) FROM scheduler_outbox WHERE event_type = $1", service.SchedulerOutboxEventAccountChanged).Scan(&count))
-	require.Equal(t, 1, count)
+	streamLen, err := queue.Pending(ctx)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), streamLen, "second publish should be deduped")
 
-	time.Sleep(schedulerOutboxDedupWindow + 150*time.Millisecond)
-	require.NoError(t, enqueueSchedulerOutbox(ctx, integrationDB, service.SchedulerOutboxEventAccountChanged, &accountID, nil, nil))
-	require.NoError(t, integrationDB.QueryRowContext(ctx, "SELECT COUNT(*) FROM scheduler_outbox WHERE event_type = $1", service.SchedulerOutboxEventAccountChanged).Scan(&count))
-	require.Equal(t, 2, count)
+	// 等待去重窗口过期后再次发布
+	time.Sleep(schedulerDedupTTL + 150*time.Millisecond)
+	require.NoError(t, enqueueSchedulerOutbox(ctx, service.SchedulerOutboxEventAccountChanged, &accountID, nil, nil))
+	streamLen, err = queue.Pending(ctx)
+	require.NoError(t, err)
+	require.Equal(t, int64(2), streamLen, "publish after dedup window should succeed")
 }
 
 func TestEnqueueSchedulerOutbox_DoesNotDeduplicateLastUsed(t *testing.T) {
 	ctx := context.Background()
-	_, _ = integrationDB.ExecContext(ctx, "TRUNCATE scheduler_outbox RESTART IDENTITY")
+	rdb := testRedis(t)
+
+	queue := NewSchedulerOutboxQueue(rdb, "nodedup-test")
+	SetSchedulerOutboxPublisher(queue)
+	t.Cleanup(func() { SetSchedulerOutboxPublisher(nil) })
 
 	accountID := int64(67890)
 	payload1 := map[string]any{"last_used": map[string]int64{"67890": 100}}
 	payload2 := map[string]any{"last_used": map[string]int64{"67890": 200}}
-	require.NoError(t, enqueueSchedulerOutbox(ctx, integrationDB, service.SchedulerOutboxEventAccountLastUsed, &accountID, nil, payload1))
-	require.NoError(t, enqueueSchedulerOutbox(ctx, integrationDB, service.SchedulerOutboxEventAccountLastUsed, &accountID, nil, payload2))
+	require.NoError(t, enqueueSchedulerOutbox(ctx, service.SchedulerOutboxEventAccountLastUsed, &accountID, nil, payload1))
+	require.NoError(t, enqueueSchedulerOutbox(ctx, service.SchedulerOutboxEventAccountLastUsed, &accountID, nil, payload2))
 
-	var count int
-	require.NoError(t, integrationDB.QueryRowContext(ctx, "SELECT COUNT(*) FROM scheduler_outbox WHERE event_type = $1", service.SchedulerOutboxEventAccountLastUsed).Scan(&count))
-	require.Equal(t, 2, count)
+	streamLen, err := queue.Pending(ctx)
+	require.NoError(t, err)
+	require.Equal(t, int64(2), streamLen, "last_used events should not be deduped")
 }

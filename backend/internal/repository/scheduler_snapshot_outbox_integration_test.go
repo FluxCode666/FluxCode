@@ -17,10 +17,9 @@ func TestSchedulerSnapshotOutboxReplay(t *testing.T) {
 	rdb := testRedis(t)
 	client := testEntClient(t)
 
-	_, _ = integrationDB.ExecContext(ctx, "TRUNCATE scheduler_outbox")
-
 	accountRepo := newAccountRepositoryWithSQL(client, integrationDB, nil)
-	outboxRepo := NewSchedulerOutboxRepository(integrationDB)
+	outboxQueue := NewSchedulerOutboxQueue(rdb, "test")
+	SetSchedulerOutboxPublisher(outboxQueue)
 	cache := NewSchedulerCache(rdb)
 
 	cfg := &config.Config{
@@ -48,7 +47,7 @@ func TestSchedulerSnapshotOutboxReplay(t *testing.T) {
 	require.NoError(t, accountRepo.Create(ctx, account))
 	require.NoError(t, cache.SetAccount(ctx, account))
 
-	svc := service.NewSchedulerSnapshotService(cache, outboxRepo, accountRepo, nil, cfg)
+	svc := service.NewSchedulerSnapshotService(cache, outboxQueue, accountRepo, nil, cfg)
 	svc.Start()
 	t.Cleanup(svc.Stop)
 

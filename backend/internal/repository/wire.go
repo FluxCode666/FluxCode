@@ -3,6 +3,9 @@ package repository
 import (
 	"database/sql"
 	"errors"
+	"os"
+	"strconv"
+	"time"
 
 	entsql "entgo.io/ent/dialect/sql"
 	"github.com/Wei-Shaw/sub2api/ent"
@@ -45,6 +48,18 @@ func ProvideSessionLimitCache(rdb *redis.Client, cfg *config.Config) service.Ses
 		defaultIdleTimeoutMinutes = cfg.Gateway.SessionIdleTimeoutMinutes
 	}
 	return NewSessionLimitCache(rdb, defaultIdleTimeoutMinutes)
+}
+
+// ProvideSchedulerOutboxQueue 创建基于 Redis Streams 的调度事件队列，
+// 并注入全局发布器供 enqueueSchedulerOutbox 使用。
+func ProvideSchedulerOutboxQueue(rdb *redis.Client) service.SchedulerOutboxQueue {
+	hostname, _ := os.Hostname()
+	if hostname == "" {
+		hostname = "worker-" + strconv.FormatInt(time.Now().UnixNano()%10000, 10)
+	}
+	q := NewSchedulerOutboxQueue(rdb, hostname)
+	SetSchedulerOutboxPublisher(q)
+	return q
 }
 
 // ProvideSchedulerCache 创建调度快照缓存，并注入快照分块参数。
@@ -116,7 +131,7 @@ var ProviderSet = wire.NewSet(
 	NewUpdateCache,
 	NewGeminiTokenCache,
 	ProvideSchedulerCache,
-	NewSchedulerOutboxRepository,
+	ProvideSchedulerOutboxQueue,
 	NewProxyLatencyCache,
 	NewTotpCache,
 	NewRefreshTokenCache,

@@ -138,9 +138,10 @@ func (r *accountRepository) Create(ctx context.Context, account *service.Account
 	account.ID = created.ID
 	account.CreatedAt = created.CreatedAt
 	account.UpdatedAt = created.UpdatedAt
-	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &account.ID, nil, buildSchedulerGroupPayload(account.GroupIDs)); err != nil {
+	if err := enqueueSchedulerOutbox(ctx, service.SchedulerOutboxEventAccountChanged, &account.ID, nil, buildSchedulerGroupPayload(account.GroupIDs)); err != nil {
 		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue account create failed: account=%d err=%v", account.ID, err)
 	}
+	r.syncSchedulerAccountSnapshot(ctx, account.ID)
 	return nil
 }
 
@@ -395,7 +396,7 @@ func (r *accountRepository) Update(ctx context.Context, account *service.Account
 		return translatePersistenceError(err, service.ErrAccountNotFound, nil)
 	}
 	account.UpdatedAt = updated.UpdatedAt
-	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &account.ID, nil, buildSchedulerGroupPayload(account.GroupIDs)); err != nil {
+	if err := enqueueSchedulerOutbox(ctx, service.SchedulerOutboxEventAccountChanged, &account.ID, nil, buildSchedulerGroupPayload(account.GroupIDs)); err != nil {
 		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue account update failed: account=%d err=%v", account.ID, err)
 	}
 	// 普通账号编辑（如 model_mapping / credentials）也需要立即刷新单账号快照，
@@ -447,8 +448,14 @@ func (r *accountRepository) Delete(ctx context.Context, id int64) error {
 			return err
 		}
 	}
-	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, buildSchedulerGroupPayload(groupIDs)); err != nil {
+	if err := enqueueSchedulerOutbox(ctx, service.SchedulerOutboxEventAccountChanged, &id, nil, buildSchedulerGroupPayload(groupIDs)); err != nil {
 		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue account delete failed: account=%d err=%v", id, err)
+	}
+	// 账号已删除，直接从缓存中移除（sync 无法读到已删除账号）
+	if r.schedulerCache != nil {
+		if err := r.schedulerCache.DeleteAccount(ctx, id); err != nil {
+			logger.LegacyPrintf("repository.account", "[Scheduler] delete account cache failed: id=%d err=%v", id, err)
+		}
 	}
 	return nil
 }
@@ -876,18 +883,9 @@ func (r *accountRepository) UpdateLastUsed(ctx context.Context, id int64) error 
 		Where(dbaccount.IDEQ(id)).
 		SetLastUsedAt(now).
 		Save(ctx)
-	if err != nil {
-		return err
-	}
-	payload := map[string]any{
-		"last_used": map[string]int64{
-			strconv.FormatInt(id, 10): now.Unix(),
-		},
-	}
-	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountLastUsed, &id, nil, payload); err != nil {
-		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue last used failed: account=%d err=%v", id, err)
-	}
-	return nil
+	// 不发 outbox 事件：DeferredService.BatchUpdateLastUsed 已负责聚合并批量发布，
+	// 此处逐条发布在高并发下产生大量冗余 stream 消息。
+	return err
 }
 
 func (r *accountRepository) BatchUpdateLastUsed(ctx context.Context, updates map[int64]time.Time) error {
@@ -919,7 +917,7 @@ func (r *accountRepository) BatchUpdateLastUsed(ctx context.Context, updates map
 		lastUsedPayload[strconv.FormatInt(id, 10)] = ts.Unix()
 	}
 	payload := map[string]any{"last_used": lastUsedPayload}
-	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountLastUsed, nil, nil, payload); err != nil {
+	if err := enqueueSchedulerOutbox(ctx, service.SchedulerOutboxEventAccountLastUsed, nil, nil, payload); err != nil {
 		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue batch last used failed: err=%v", err)
 	}
 	return nil
@@ -934,9 +932,6 @@ func (r *accountRepository) SetError(ctx context.Context, id int64, errorMsg str
 	if err != nil {
 		return err
 	}
-	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
-		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue set error failed: account=%d err=%v", id, err)
-	}
 	r.syncSchedulerAccountSnapshot(ctx, id)
 	return nil
 }
@@ -949,9 +944,6 @@ func (r *accountRepository) SetBanned(ctx context.Context, id int64, errorMsg st
 		Save(ctx)
 	if err != nil {
 		return err
-	}
-	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
-		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue set banned failed: account=%d err=%v", id, err)
 	}
 	r.syncSchedulerAccountSnapshot(ctx, id)
 	return nil
@@ -1025,9 +1017,6 @@ func (r *accountRepository) ClearError(ctx context.Context, id int64) error {
 	if err != nil {
 		return err
 	}
-	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
-		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue clear error failed: account=%d err=%v", id, err)
-	}
 	r.syncSchedulerAccountSnapshot(ctx, id)
 	return nil
 }
@@ -1042,9 +1031,10 @@ func (r *accountRepository) AddToGroup(ctx context.Context, accountID, groupID i
 		return err
 	}
 	payload := buildSchedulerGroupPayload([]int64{groupID})
-	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountGroupsChanged, &accountID, nil, payload); err != nil {
+	if err := enqueueSchedulerOutbox(ctx, service.SchedulerOutboxEventAccountGroupsChanged, &accountID, nil, payload); err != nil {
 		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue add to group failed: account=%d group=%d err=%v", accountID, groupID, err)
 	}
+	r.syncSchedulerAccountSnapshot(ctx, accountID)
 	return nil
 }
 
@@ -1059,9 +1049,10 @@ func (r *accountRepository) RemoveFromGroup(ctx context.Context, accountID, grou
 		return err
 	}
 	payload := buildSchedulerGroupPayload([]int64{groupID})
-	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountGroupsChanged, &accountID, nil, payload); err != nil {
+	if err := enqueueSchedulerOutbox(ctx, service.SchedulerOutboxEventAccountGroupsChanged, &accountID, nil, payload); err != nil {
 		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue remove from group failed: account=%d group=%d err=%v", accountID, groupID, err)
 	}
+	r.syncSchedulerAccountSnapshot(ctx, accountID)
 	return nil
 }
 
@@ -1132,9 +1123,10 @@ func (r *accountRepository) BindGroups(ctx context.Context, accountID int64, gro
 		}
 	}
 	payload := buildSchedulerGroupPayload(mergeGroupIDs(existingGroupIDs, groupIDs))
-	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountGroupsChanged, &accountID, nil, payload); err != nil {
+	if err := enqueueSchedulerOutbox(ctx, service.SchedulerOutboxEventAccountGroupsChanged, &accountID, nil, payload); err != nil {
 		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue bind groups failed: account=%d err=%v", accountID, err)
 	}
+	r.syncSchedulerAccountSnapshot(ctx, accountID)
 	return nil
 }
 
@@ -1285,9 +1277,6 @@ func (r *accountRepository) SetRateLimited(ctx context.Context, id int64, resetA
 	if err != nil {
 		return err
 	}
-	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
-		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue rate limit failed: account=%d err=%v", id, err)
-	}
 	r.syncSchedulerAccountSnapshot(ctx, id)
 	return nil
 }
@@ -1333,9 +1322,7 @@ func (r *accountRepository) SetModelRateLimit(ctx context.Context, id int64, sco
 	if affected == 0 {
 		return service.ErrAccountNotFound
 	}
-	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
-		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue model rate limit failed: account=%d err=%v", id, err)
-	}
+	r.syncSchedulerAccountSnapshot(ctx, id)
 	return nil
 }
 
@@ -1347,9 +1334,7 @@ func (r *accountRepository) SetOverloaded(ctx context.Context, id int64, until t
 	if err != nil {
 		return err
 	}
-	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
-		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue overload failed: account=%d err=%v", id, err)
-	}
+	r.syncSchedulerAccountSnapshot(ctx, id)
 	return nil
 }
 
@@ -1365,9 +1350,6 @@ func (r *accountRepository) SetTempUnschedulable(ctx context.Context, id int64, 
 	`, until, reason, id)
 	if err != nil {
 		return err
-	}
-	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
-		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue temp unschedulable failed: account=%d err=%v", id, err)
 	}
 	r.syncSchedulerAccountSnapshot(ctx, id)
 	return nil
@@ -1385,9 +1367,7 @@ func (r *accountRepository) ClearTempUnschedulable(ctx context.Context, id int64
 	if err != nil {
 		return err
 	}
-	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
-		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue clear temp unschedulable failed: account=%d err=%v", id, err)
-	}
+	r.syncSchedulerAccountSnapshot(ctx, id)
 	return nil
 }
 
@@ -1400,9 +1380,6 @@ func (r *accountRepository) ClearRateLimit(ctx context.Context, id int64) error 
 		Save(ctx)
 	if err != nil {
 		return err
-	}
-	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
-		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue clear rate limit failed: account=%d err=%v", id, err)
 	}
 	r.syncSchedulerAccountSnapshot(ctx, id)
 	return nil
@@ -1426,9 +1403,7 @@ func (r *accountRepository) ClearAntigravityQuotaScopes(ctx context.Context, id 
 	if affected == 0 {
 		return service.ErrAccountNotFound
 	}
-	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
-		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue clear quota scopes failed: account=%d err=%v", id, err)
-	}
+	r.syncSchedulerAccountSnapshot(ctx, id)
 	return nil
 }
 
@@ -1450,9 +1425,7 @@ func (r *accountRepository) ClearModelRateLimits(ctx context.Context, id int64) 
 	if affected == 0 {
 		return service.ErrAccountNotFound
 	}
-	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
-		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue clear model rate limit failed: account=%d err=%v", id, err)
-	}
+	r.syncSchedulerAccountSnapshot(ctx, id)
 	return nil
 }
 
@@ -1472,9 +1445,10 @@ func (r *accountRepository) UpdateSessionWindow(ctx context.Context, id int64, s
 	}
 	// 触发调度器缓存更新（仅当窗口时间有变化时）
 	if start != nil || end != nil {
-		if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
+		if err := enqueueSchedulerOutbox(ctx, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
 			logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue session window update failed: account=%d err=%v", id, err)
 		}
+		r.syncSchedulerAccountSnapshot(ctx, id)
 	}
 	return nil
 }
@@ -1487,12 +1461,10 @@ func (r *accountRepository) SetSchedulable(ctx context.Context, id int64, schedu
 	if err != nil {
 		return err
 	}
-	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
+	if err := enqueueSchedulerOutbox(ctx, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
 		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue schedulable change failed: account=%d err=%v", id, err)
 	}
-	if !schedulable {
-		r.syncSchedulerAccountSnapshot(ctx, id)
-	}
+	r.syncSchedulerAccountSnapshot(ctx, id)
 	return nil
 }
 
@@ -1515,7 +1487,7 @@ func (r *accountRepository) AutoPauseExpiredAccounts(ctx context.Context, now ti
 		return 0, err
 	}
 	if rows > 0 {
-		if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventFullRebuild, nil, nil, nil); err != nil {
+		if err := enqueueSchedulerOutbox(ctx, service.SchedulerOutboxEventFullRebuild, nil, nil, nil); err != nil {
 			logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue auto pause rebuild failed: err=%v", err)
 		}
 	}
@@ -1552,15 +1524,13 @@ func (r *accountRepository) UpdateExtra(ctx context.Context, id int64, updates m
 		return service.ErrAccountNotFound
 	}
 	if shouldEnqueueSchedulerOutboxForExtraUpdates(updates) {
-		if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
+		if err := enqueueSchedulerOutbox(ctx, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
 			logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue extra update failed: account=%d err=%v", id, err)
 		}
-	} else {
-		// 观测型 extra 字段不需要触发 bucket 重建，但仍同步单账号快照，
-		// 让 sticky session / GetAccount 命中缓存时也能读到最新数据，
-		// 同时避免缓存局部 patch 覆盖掉并发写入的其它账号字段。
-		r.syncSchedulerAccountSnapshot(ctx, id)
 	}
+	// 无论是否触发 bucket 重建，均同步单账号快照，
+	// 让 sticky session / GetAccount 命中缓存时也能读到最新数据。
+	r.syncSchedulerAccountSnapshot(ctx, id)
 	return nil
 }
 
@@ -1690,19 +1660,10 @@ func (r *accountRepository) BulkUpdate(ctx context.Context, ids []int64, updates
 	}
 	if rows > 0 {
 		payload := map[string]any{"account_ids": ids}
-		if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountBulkChanged, nil, nil, payload); err != nil {
+		if err := enqueueSchedulerOutbox(ctx, service.SchedulerOutboxEventAccountBulkChanged, nil, nil, payload); err != nil {
 			logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue bulk update failed: err=%v", err)
 		}
-		shouldSync := false
-		if updates.Status != nil && (*updates.Status == service.StatusError || *updates.Status == service.StatusDisabled) {
-			shouldSync = true
-		}
-		if updates.Schedulable != nil && !*updates.Schedulable {
-			shouldSync = true
-		}
-		if shouldSync {
-			r.syncSchedulerAccountSnapshots(ctx, ids)
-		}
+		r.syncSchedulerAccountSnapshots(ctx, ids)
 	}
 	return rows, nil
 }
@@ -2224,11 +2185,9 @@ func (r *accountRepository) IncrementQuotaUsed(ctx context.Context, id int64, am
 		return err
 	}
 
-	// 任一维度配额刚超限时触发调度快照刷新
+	// 任一维度配额刚超限时同步刷新调度缓存，让网关及时感知配额状态
 	if limit > 0 && newUsed >= limit && (newUsed-amount) < limit {
-		if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
-			logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue quota exceeded failed: account=%d err=%v", id, err)
-		}
+		r.syncSchedulerAccountSnapshot(ctx, id)
 	}
 	return nil
 }
@@ -2246,9 +2205,7 @@ func (r *accountRepository) ResetQuotaUsed(ctx context.Context, id int64) error 
 	if err != nil {
 		return err
 	}
-	// 重置配额后触发调度快照刷新，使账号重新参与调度
-	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
-		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue quota reset failed: account=%d err=%v", id, err)
-	}
+	// 重置配额后同步刷新调度缓存，使账号重新参与调度
+	r.syncSchedulerAccountSnapshot(ctx, id)
 	return nil
 }

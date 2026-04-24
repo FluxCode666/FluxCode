@@ -183,7 +183,7 @@ func (r *proxyRepository) notifySchedulerForProxy(ctx context.Context, proxyID i
 		}
 		chunk := accountIDs[start:end]
 		payload := map[string]any{"account_ids": chunk}
-		if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountBulkChanged, nil, nil, payload); err != nil {
+		if err := enqueueSchedulerOutbox(ctx, service.SchedulerOutboxEventAccountBulkChanged, nil, nil, payload); err != nil {
 			logger.LegacyPrintf("repository.proxy", "[SchedulerOutbox] enqueue proxy change failed: proxy=%d chunk=%d/%d err=%v",
 				proxyID, start/proxyOutboxChunkSize+1, (len(accountIDs)+proxyOutboxChunkSize-1)/proxyOutboxChunkSize, err)
 		}
