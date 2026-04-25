@@ -80,6 +80,7 @@ export const PROVIDER_CONFIG_FIELDS: Record<string, ConfigFieldDef[]> = {
     { key: 'appId', label: 'App ID', sensitive: false },
     { key: 'privateKey', label: '', sensitive: true },
     { key: 'publicKey', label: '', sensitive: true },
+    { key: 'gateway', label: '', sensitive: false, optional: true },
   ],
   wxpay: [
     { key: 'appId', label: 'App ID', sensitive: false },

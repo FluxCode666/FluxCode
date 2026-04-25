@@ -29,7 +29,8 @@ const (
 // Alipay implements payment.Provider and payment.CancelableProvider using the smartwalle/alipay SDK.
 type Alipay struct {
 	instanceID string
-	config     map[string]string // appId, privateKey, publicKey (or alipayPublicKey), notifyUrl, returnUrl
+	config     map[string]string // appId, privateKey, publicKey, gateway, notifyUrl, returnUrl
+	production bool
 
 	mu     sync.Mutex
 	client *alipay.Client
@@ -37,6 +38,8 @@ type Alipay struct {
 
 // NewAlipay creates a new Alipay provider instance.
 func NewAlipay(instanceID string, config map[string]string) (*Alipay, error) {
+	rawConfig := config
+	config = NormalizeConfig(payment.TypeAlipay, config)
 	required := []string{"appId", "privateKey"}
 	for _, k := range required {
 		if config[k] == "" {
@@ -46,6 +49,7 @@ func NewAlipay(instanceID string, config map[string]string) (*Alipay, error) {
 	return &Alipay{
 		instanceID: instanceID,
 		config:     config,
+		production: detectAlipayProduction(rawConfig, config),
 	}, nil
 }
 
@@ -55,7 +59,17 @@ func (a *Alipay) getClient() (*alipay.Client, error) {
 	if a.client != nil {
 		return a.client, nil
 	}
-	client, err := alipay.New(a.config["appId"], a.config["privateKey"], true)
+
+	var opts []alipay.OptionFunc
+	if gateway := strings.TrimSpace(a.config["gateway"]); gateway != "" {
+		if a.production {
+			opts = append(opts, alipay.WithProductionGateway(gateway))
+		} else {
+			opts = append(opts, alipay.WithSandboxGateway(gateway))
+		}
+	}
+
+	client, err := alipay.New(a.config["appId"], a.config["privateKey"], a.production, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("alipay init client: %w", err)
 	}
@@ -71,6 +85,33 @@ func (a *Alipay) getClient() (*alipay.Client, error) {
 	}
 	a.client = client
 	return a.client, nil
+}
+
+func detectAlipayProduction(rawConfig, normalizedConfig map[string]string) bool {
+	if rawConfig == nil && normalizedConfig == nil {
+		return true
+	}
+	if gateway := strings.ToLower(strings.TrimSpace(normalizedConfig["gateway"])); strings.Contains(gateway, "sandbox") {
+		return false
+	}
+	for _, key := range []string{"sandbox_app_id", "sandbox_app_private_key", "sandbox_alipay_public_key", "sandbox_gateway"} {
+		if strings.TrimSpace(rawConfig[key]) != "" {
+			return false
+		}
+	}
+	switch strings.ToLower(strings.TrimSpace(rawConfig["environment"])) {
+	case "sandbox", "test":
+		return false
+	case "production", "prod":
+		return true
+	}
+	switch strings.ToLower(strings.TrimSpace(rawConfig["mode"])) {
+	case "sandbox", "test":
+		return false
+	case "production", "prod":
+		return true
+	}
+	return true
 }
 
 func (a *Alipay) Name() string        { return "Alipay" }

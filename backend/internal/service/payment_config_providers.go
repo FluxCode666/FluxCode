@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strconv"
 	"strings"
 
@@ -11,6 +12,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
 	"github.com/Wei-Shaw/sub2api/ent/paymentproviderinstance"
 	"github.com/Wei-Shaw/sub2api/internal/payment"
+	paymentprovider "github.com/Wei-Shaw/sub2api/internal/payment/provider"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 )
 
@@ -26,6 +28,7 @@ type ProviderInstanceResponse struct {
 	ProviderKey     string            `json:"provider_key"`
 	Name            string            `json:"name"`
 	Config          map[string]string `json:"config"`
+	ConfigError     string            `json:"config_error,omitempty"`
 	SupportedTypes  []string          `json:"supported_types"`
 	Limits          string            `json:"limits"`
 	Enabled         bool              `json:"enabled"`
@@ -51,17 +54,29 @@ func (s *PaymentConfigService) ListProviderInstancesWithConfig(ctx context.Conte
 			AllowUserRefund: inst.AllowUserRefund,
 			SortOrder:       inst.SortOrder, PaymentMode: inst.PaymentMode,
 		}
-		resp.Config, err = s.decryptAndMaskConfig(inst.Config)
+		resp.Config, err = s.decryptAndMaskConfig(inst.ProviderKey, inst.Config)
 		if err != nil {
-			return nil, fmt.Errorf("decrypt config for instance %d: %w", inst.ID, err)
+			slog.Warn("failed to decrypt payment provider config",
+				"instanceID", inst.ID,
+				"providerKey", inst.ProviderKey,
+				"error", err,
+			)
+			resp.Config = map[string]string{}
+			resp.ConfigError = "CONFIG_DECRYPT_FAILED"
+			result = append(result, resp)
+			continue
 		}
 		result = append(result, resp)
 	}
 	return result, nil
 }
 
-func (s *PaymentConfigService) decryptAndMaskConfig(encrypted string) (map[string]string, error) {
-	return s.decryptConfig(encrypted)
+func (s *PaymentConfigService) decryptAndMaskConfig(providerKey, encrypted string) (map[string]string, error) {
+	cfg, err := s.decryptConfig(encrypted)
+	if err != nil {
+		return nil, err
+	}
+	return paymentprovider.NormalizeConfig(providerKey, cfg), nil
 }
 
 // pendingOrderStatuses are order statuses considered "in progress".
@@ -108,7 +123,8 @@ func (s *PaymentConfigService) CreateProviderInstance(ctx context.Context, req C
 	if err := validateProviderRequest(req.ProviderKey, req.Name, typesStr); err != nil {
 		return nil, err
 	}
-	enc, err := s.encryptConfig(req.Config)
+	normalizedConfig := paymentprovider.NormalizeConfig(req.ProviderKey, req.Config)
+	enc, err := s.encryptConfig(normalizedConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -277,10 +293,20 @@ func (s *PaymentConfigService) mergeConfig(ctx context.Context, id int64, newCon
 	if err != nil {
 		return nil, fmt.Errorf("load existing provider: %w", err)
 	}
+	newConfig = paymentprovider.NormalizeConfig(inst.ProviderKey, newConfig)
 	existing, err := s.decryptConfig(inst.Config)
 	if err != nil {
+		if canReplaceProviderConfig(inst.ProviderKey, newConfig) {
+			slog.Warn("replacing undecryptable payment provider config",
+				"instanceID", id,
+				"providerKey", inst.ProviderKey,
+				"error", err,
+			)
+			return newConfig, nil
+		}
 		return nil, fmt.Errorf("decrypt existing config for instance %d: %w", id, err)
 	}
+	existing = paymentprovider.NormalizeConfig(inst.ProviderKey, existing)
 	if existing == nil {
 		return newConfig, nil
 	}
@@ -327,4 +353,32 @@ func (s *PaymentConfigService) encryptConfig(cfg map[string]string) (string, err
 		return "", fmt.Errorf("encrypt config: %w", err)
 	}
 	return enc, nil
+}
+
+func canReplaceProviderConfig(providerKey string, cfg map[string]string) bool {
+	if len(cfg) == 0 {
+		return false
+	}
+
+	hasAll := func(keys ...string) bool {
+		for _, key := range keys {
+			if strings.TrimSpace(cfg[key]) == "" {
+				return false
+			}
+		}
+		return true
+	}
+
+	switch providerKey {
+	case payment.TypeEasyPay:
+		return hasAll("pid", "pkey", "apiBase", "notifyUrl", "returnUrl")
+	case payment.TypeAlipay:
+		return hasAll("appId", "privateKey", "publicKey")
+	case payment.TypeWxpay:
+		return hasAll("appId", "mchId", "privateKey", "apiV3Key", "publicKey", "publicKeyId", "certSerial")
+	case payment.TypeStripe:
+		return hasAll("secretKey")
+	default:
+		return false
+	}
 }

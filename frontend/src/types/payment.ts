@@ -138,6 +138,7 @@ export interface ProviderInstance {
   provider_key: string
   name: string
   config: Record<string, string>
+  config_error?: string
   supported_types: string[]
   enabled: boolean
   payment_mode: string

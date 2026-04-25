@@ -22,7 +22,12 @@
             :class="provider.enabled && enabled ? 'text-green-600 dark:text-green-400' : 'text-gray-400'"
           />
         </div>
-        <span class="text-sm font-medium text-gray-900 dark:text-white">{{ provider.name }}</span>
+        <div class="flex flex-col gap-0.5">
+          <span class="text-sm font-medium text-gray-900 dark:text-white">{{ provider.name }}</span>
+          <span v-if="provider.config_error" class="text-xs text-amber-600 dark:text-amber-400">
+            {{ t('admin.settings.payment.configRepairRequired') }}
+          </span>
+        </div>
         <span class="text-xs text-gray-400 dark:text-gray-500">{{ keyLabel }}</span>
         <span v-if="provider.payment_mode" class="text-xs text-gray-400 dark:text-gray-500">· {{ modeLabel }}</span>
         <span v-if="enabled && availableTypes.length" class="text-xs text-gray-300 dark:text-gray-600">|</span>

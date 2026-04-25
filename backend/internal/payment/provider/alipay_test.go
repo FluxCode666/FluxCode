@@ -3,7 +3,12 @@
 package provider
 
 import (
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
+	"encoding/pem"
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -57,9 +62,11 @@ func TestIsTradeNotExist(t *testing.T) {
 func TestNewAlipay(t *testing.T) {
 	t.Parallel()
 
+	privateKey, publicKey := mustGenerateAlipayTestKeys(t)
 	validConfig := map[string]string{
 		"appId":      "2021001234567890",
-		"privateKey": "MIIEvQIBADANBgkqhkiG9w0BAQEFAASC...",
+		"privateKey": privateKey,
+		"publicKey":  publicKey,
 	}
 
 	// helper to clone and override config fields
@@ -129,4 +136,85 @@ func TestNewAlipay(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestNewAlipayAcceptsSandboxAliases(t *testing.T) {
+	t.Parallel()
+
+	privateKey, publicKey := mustGenerateAlipayTestKeys(t)
+	got, err := NewAlipay("test-instance", map[string]string{
+		"sandbox_app_id":            "9021000136698392",
+		"sandbox_app_private_key":   privateKey,
+		"sandbox_alipay_public_key": publicKey,
+		"sandbox_gateway":           "https://openapi-sandbox.dl.alipaydev.com/gateway.do",
+	})
+	if err != nil {
+		t.Fatalf("NewAlipay returned error: %v", err)
+	}
+	if got.config["appId"] != "9021000136698392" {
+		t.Fatalf("appId = %q, want sandbox appId", got.config["appId"])
+	}
+	if got.config["gateway"] != "https://openapi-sandbox.dl.alipaydev.com/gateway.do" {
+		t.Fatalf("gateway = %q, want sandbox gateway", got.config["gateway"])
+	}
+	if got.production {
+		t.Fatal("expected sandbox config to mark provider as non-production")
+	}
+}
+
+func TestAlipayGetClientUsesConfiguredGateway(t *testing.T) {
+	t.Parallel()
+
+	privateKey, publicKey := mustGenerateAlipayTestKeys(t)
+	got, err := NewAlipay("test-instance", map[string]string{
+		"appId":      "9021000136698392",
+		"privateKey": privateKey,
+		"publicKey":  publicKey,
+		"gateway":    "https://openapi-sandbox.dl.alipaydev.com/gateway.do",
+	})
+	if err != nil {
+		t.Fatalf("NewAlipay returned error: %v", err)
+	}
+
+	client, err := got.getClient()
+	if err != nil {
+		t.Fatalf("getClient returned error: %v", err)
+	}
+	if client == nil {
+		t.Fatal("expected non-nil client")
+	}
+	if host := reflect.ValueOf(client).Elem().FieldByName("host").String(); host != "https://openapi-sandbox.dl.alipaydev.com/gateway.do" {
+		t.Fatalf("client host = %q, want sandbox gateway", host)
+	}
+	if client.Production() {
+		t.Fatal("expected sandbox gateway to create non-production client")
+	}
+}
+
+func mustGenerateAlipayTestKeys(t *testing.T) (string, string) {
+	t.Helper()
+
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("generate test private key: %v", err)
+	}
+
+	privateKeyDER, err := x509.MarshalPKCS8PrivateKey(privateKey)
+	if err != nil {
+		t.Fatalf("marshal test private key: %v", err)
+	}
+	privateKeyPEM := pem.EncodeToMemory(&pem.Block{
+		Type:  "PRIVATE KEY",
+		Bytes: privateKeyDER,
+	})
+	publicKeyDER, err := x509.MarshalPKIXPublicKey(&privateKey.PublicKey)
+	if err != nil {
+		t.Fatalf("marshal test public key: %v", err)
+	}
+	publicKeyPEM := pem.EncodeToMemory(&pem.Block{
+		Type:  "PUBLIC KEY",
+		Bytes: publicKeyDER,
+	})
+
+	return string(privateKeyPEM), string(publicKeyPEM)
 }
