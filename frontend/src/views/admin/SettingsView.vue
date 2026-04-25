@@ -2624,9 +2624,9 @@
           </div>
         </div>
 
-        <!-- Provider Management -->
+        <!-- Keep provider management visible so existing providers can be inspected
+             or repaired before the global payment switch is re-enabled. -->
         <PaymentProviderList
-          v-if="form.payment_enabled"
           :providers="providers"
           :loading="providersLoading"
           :can-create="hasAnyPaymentTypeEnabled"
