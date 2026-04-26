@@ -4260,9 +4260,29 @@ const paymentErrorMap = computed(() => ({
   PENDING_ORDERS: t('payment.errors.PENDING_ORDERS'),
 }))
 
+function normalizeProvider(provider: Partial<ProviderInstance>): ProviderInstance {
+  return {
+    id: Number(provider.id) || 0,
+    provider_key: typeof provider.provider_key === 'string' ? provider.provider_key : '',
+    name: typeof provider.name === 'string' ? provider.name : '',
+    config: provider.config && typeof provider.config === 'object' ? provider.config as Record<string, string> : {},
+    config_error: typeof provider.config_error === 'string' ? provider.config_error : undefined,
+    supported_types: Array.isArray(provider.supported_types) ? provider.supported_types : [],
+    enabled: Boolean(provider.enabled),
+    payment_mode: typeof provider.payment_mode === 'string' ? provider.payment_mode : '',
+    refund_enabled: Boolean(provider.refund_enabled),
+    allow_user_refund: Boolean(provider.allow_user_refund),
+    limits: typeof provider.limits === 'string' ? provider.limits : '',
+    sort_order: typeof provider.sort_order === 'number' ? provider.sort_order : 0,
+  }
+}
+
 async function loadProviders() {
   providersLoading.value = true
-  try { const res = await adminAPI.payment.getProviders(); providers.value = res.data || [] }
+  try {
+    const res = await adminAPI.payment.getProviders()
+    providers.value = Array.isArray(res.data) ? res.data.map(p => normalizeProvider(p)) : []
+  }
   catch (err: unknown) { appStore.showError(extractApiErrorMessage(err, t('common.error'))) }
   finally { providersLoading.value = false }
 }
@@ -4323,9 +4343,10 @@ async function handleToggleField(provider: ProviderInstance, field: 'enabled' | 
 }
 
 async function handleToggleType(provider: ProviderInstance, type: string) {
-  const updated = provider.supported_types.includes(type)
-    ? provider.supported_types.filter(t => t !== type)
-    : [...provider.supported_types, type]
+  const currentTypes = Array.isArray(provider.supported_types) ? provider.supported_types : []
+  const updated = currentTypes.includes(type)
+    ? currentTypes.filter(t => t !== type)
+    : [...currentTypes, type]
   try {
     await adminAPI.payment.updateProvider(provider.id, { supported_types: updated } as any)
     provider.supported_types = updated
