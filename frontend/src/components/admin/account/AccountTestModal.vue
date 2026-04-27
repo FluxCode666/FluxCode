@@ -55,7 +55,7 @@
         />
       </div>
 
-      <div v-if="supportsGeminiImageTest" class="space-y-1.5">
+      <div v-if="supportsImageTest" class="space-y-1.5">
         <TextArea
           v-model="testPrompt"
           :label="t('admin.accounts.geminiImagePromptLabel')"
@@ -152,10 +152,10 @@
         <span class="flex items-center gap-1">
           <Icon name="chat" size="sm" :stroke-width="2" />
           {{
-            supportsGeminiImageTest
+            supportsImageTest
               ? t('admin.accounts.geminiImageTestMode')
               : t('admin.accounts.testPrompt')
-          }}
+            }}
         </span>
       </div>
     </div>
@@ -257,6 +257,13 @@ const supportsGeminiImageTest = computed(() => {
 
   return props.account?.platform === 'gemini' || (props.account?.platform === 'antigravity' && props.account?.type === 'apikey')
 })
+const supportsOpenAIImageTest = computed(() => {
+  const modelID = selectedModelId.value.toLowerCase()
+  if (!modelID.startsWith('gpt-image-')) return false
+
+  return props.account?.platform === 'openai'
+})
+const supportsImageTest = computed(() => supportsGeminiImageTest.value || supportsOpenAIImageTest.value)
 
 const sortTestModels = (models: ClaudeModel[]) => {
   const priorityMap = new Map(prioritizedGeminiModels.map((id, index) => [id, index]))
@@ -284,7 +291,7 @@ watch(
 )
 
 watch(selectedModelId, () => {
-  if (supportsGeminiImageTest.value && !testPrompt.value.trim()) {
+  if (supportsImageTest.value && !testPrompt.value.trim()) {
     testPrompt.value = t('admin.accounts.geminiImagePromptDefault')
   }
 })
@@ -375,9 +382,9 @@ const startTest = async () => {
         Authorization: `Bearer ${localStorage.getItem('auth_token')}`,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({
+        body: JSON.stringify({
               model_id: selectedModelId.value,
-              prompt: supportsGeminiImageTest.value ? testPrompt.value.trim() : ''
+              prompt: supportsImageTest.value ? testPrompt.value.trim() : ''
             }),
       signal: abortController.signal
     })
@@ -444,7 +451,7 @@ const handleEvent = (event: {
         addLine(t('admin.accounts.usingModel', { model: event.model }), 'text-cyan-400')
       }
       addLine(
-        supportsGeminiImageTest.value
+        supportsImageTest.value
             ? t('admin.accounts.sendingGeminiImageRequest')
             : t('admin.accounts.sendingTestMessage'),
         'text-gray-400'
