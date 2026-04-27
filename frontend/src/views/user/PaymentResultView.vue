@@ -1,31 +1,43 @@
 <template>
   <div class="flex min-h-screen items-center justify-center bg-gray-50 px-4 dark:bg-dark-900">
     <div class="w-full max-w-md space-y-6">
-      <!-- Loading -->
       <div v-if="loading" class="flex items-center justify-center py-20">
         <div class="h-8 w-8 animate-spin rounded-full border-4 border-primary-500 border-t-transparent"></div>
       </div>
       <template v-else>
-        <!-- Status Icon -->
         <div class="text-center">
-          <div v-if="isSuccess"
-            class="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/30">
-            <svg class="h-10 w-10 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"
-              stroke-width="2">
+          <div
+            v-if="isSuccess"
+            class="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/30"
+          >
+            <svg class="h-10 w-10 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
               <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
             </svg>
           </div>
-          <div v-else
-            class="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-red-100 dark:bg-red-900/30">
+          <div
+            v-else-if="isProcessing"
+            class="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-blue-100 dark:bg-blue-900/30"
+          >
+            <svg class="h-10 w-10 animate-spin text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 3a9 9 0 109 9" />
+            </svg>
+          </div>
+          <div
+            v-else
+            class="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-red-100 dark:bg-red-900/30"
+          >
             <svg class="h-10 w-10 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
               <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
             </svg>
           </div>
           <h2 class="mt-4 text-2xl font-bold text-gray-900 dark:text-white">
-            {{ isSuccess ? t('payment.result.success') : t('payment.result.failed') }}
+            {{ isSuccess ? t('payment.result.success') : isProcessing ? t('common.processing') : t('payment.result.failed') }}
           </h2>
+          <p v-if="isProcessing" class="mt-2 text-sm text-gray-500 dark:text-gray-400">
+            {{ t('payment.qr.waitingPayment') }}
+          </p>
         </div>
-        <!-- Order Info -->
+
         <div v-if="order" class="rounded-xl bg-white p-5 shadow-sm dark:bg-dark-800">
           <div class="space-y-3 text-sm">
             <div class="flex justify-between">
@@ -62,7 +74,7 @@
             </div>
           </div>
         </div>
-        <!-- EasyPay return info (when no order loaded) -->
+
         <div v-else-if="returnInfo" class="rounded-xl bg-white p-5 shadow-sm dark:bg-dark-800">
           <div class="space-y-3 text-sm">
             <div v-if="returnInfo.outTradeNo" class="flex justify-between">
@@ -79,7 +91,7 @@
             </div>
           </div>
         </div>
-        <!-- Actions -->
+
         <div class="flex gap-3">
           <button class="btn btn-secondary flex-1" @click="router.push('/purchase')">{{ t('payment.result.backToRecharge') }}</button>
           <button class="btn btn-primary flex-1" @click="router.push('/orders')">{{ t('payment.result.viewOrders') }}</button>
@@ -90,12 +102,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import OrderStatusBadge from '@/components/payment/OrderStatusBadge.vue'
 import { usePaymentStore } from '@/stores/payment'
 import { paymentAPI } from '@/api/payment'
+import { isOrderCredited, isOrderFailed, isOrderProcessing } from '@/utils/paymentOrderStatus'
 import type { PaymentOrder } from '@/types/payment'
 
 const { t } = useI18n()
@@ -105,6 +118,8 @@ const paymentStore = usePaymentStore()
 
 const order = ref<PaymentOrder | null>(null)
 const loading = ref(true)
+const returnInfo = ref<ReturnInfo | null>(null)
+let pollTimer: ReturnType<typeof setInterval> | null = null
 
 interface ReturnInfo {
   outTradeNo: string
@@ -112,48 +127,44 @@ interface ReturnInfo {
   type: string
   tradeStatus: string
 }
-const returnInfo = ref<ReturnInfo | null>(null)
 
-const SUCCESS_STATUSES = new Set(['COMPLETED', 'PAID', 'RECHARGING'])
-
-/** 充值金额 = pay_amount / (1 + fee_rate/100)，fee_rate=0 时等于 pay_amount */
 const baseAmount = computed(() => {
   if (!order.value || order.value.fee_rate <= 0) return order.value?.pay_amount ?? 0
   return Math.round((order.value.pay_amount / (1 + order.value.fee_rate / 100)) * 100) / 100
 })
 
-/** 手续费 = pay_amount - baseAmount */
 const feeAmount = computed(() => {
   if (!order.value || order.value.fee_rate <= 0) return 0
   return Math.round((order.value.pay_amount - baseAmount.value) * 100) / 100
 })
 
 const isSuccess = computed(() => {
-  // Always prioritize actual order status from backend
   if (order.value) {
-    return SUCCESS_STATUSES.has(order.value.status)
+    return isOrderCredited(order.value.status)
   }
-  // Fallback only when order not loaded
-  if (route.query.status === 'success') return true
-  if (route.query.trade_status === 'TRADE_SUCCESS') return true
   return false
 })
 
-/** Extract numeric order ID from out_trade_no like "sub2_46" → 46 */
+const isProcessing = computed(() => {
+  if (order.value) {
+    return isOrderProcessing(order.value.status)
+  }
+  return route.query.status === 'success' || route.query.status === 'processing' || route.query.trade_status === 'TRADE_SUCCESS'
+})
+
 function parseOutTradeNo(outTradeNo: string): number {
   const match = outTradeNo.match(/_(\d+)$/)
   return match ? Number(match[1]) : 0
 }
 
-onMounted(async () => {
-  // Try order_id first (internal navigation from QRCode/Stripe pages)
+async function refreshOrderStatus() {
+  order.value = null
+
   let orderId = Number(route.query.order_id) || 0
   const outTradeNo = String(route.query.out_trade_no || '')
 
-  // Fallback: EasyPay return URL with out_trade_no
   if (!orderId && outTradeNo) {
     orderId = parseOutTradeNo(outTradeNo)
-    // Store return info for display when order lookup fails
     returnInfo.value = {
       outTradeNo,
       money: String(route.query.money || ''),
@@ -162,21 +173,20 @@ onMounted(async () => {
     }
   }
 
-  // Verify payment via public endpoint (works without login)
   if (outTradeNo) {
     try {
       const result = await paymentAPI.verifyOrderPublic(outTradeNo)
       order.value = result.data
     } catch (_err: unknown) {
-      // Public verify failed, try authenticated endpoint if logged in
       try {
         const result = await paymentAPI.verifyOrder(outTradeNo)
         order.value = result.data
-      } catch (_e: unknown) { /* fall through */ }
+      } catch (_e: unknown) {
+        // fall through
+      }
     }
   }
 
-  // Normal order lookup by ID (if verify didn't load the order)
   if (!order.value && orderId) {
     try {
       order.value = await paymentStore.pollOrderStatus(orderId)
@@ -184,6 +194,33 @@ onMounted(async () => {
       // Order lookup failed, will show returnInfo fallback
     }
   }
+}
+
+function stopPolling() {
+  if (pollTimer) {
+    clearInterval(pollTimer)
+    pollTimer = null
+  }
+}
+
+function startPolling() {
+  if (pollTimer) return
+  pollTimer = setInterval(async () => {
+    await refreshOrderStatus()
+    if (order.value && (isOrderCredited(order.value.status) || isOrderFailed(order.value.status))) {
+      stopPolling()
+    }
+  }, 3000)
+}
+
+onMounted(async () => {
+  await refreshOrderStatus()
   loading.value = false
+
+  if ((route.query.out_trade_no || route.query.order_id) && (!order.value || isOrderProcessing(order.value.status))) {
+    startPolling()
+  }
 })
+
+onUnmounted(() => stopPolling())
 </script>

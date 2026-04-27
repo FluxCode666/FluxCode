@@ -58,6 +58,7 @@ import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import { isMobileDevice } from '@/utils/device'
+import { isOrderCredited, isOrderFailed } from '@/utils/paymentOrderStatus'
 
 interface StripeWithWechatPay {
   confirmWechatPayPayment(clientSecret: string, options: Record<string, unknown>): Promise<{ error?: { message?: string }; paymentIntent?: { status: string } }>
@@ -120,7 +121,7 @@ async function initStripe(clientSecret: string, publishableKey: string) {
     const stripe = await loadStripe(publishableKey)
     if (!stripe) { error.value = t('payment.stripeLoadFailed'); return }
 
-    const returnUrl = window.location.origin + '/payment/result?order_id=' + orderId + '&status=success'
+    const returnUrl = window.location.origin + '/payment/result?order_id=' + orderId + '&status=processing'
 
     if (method === 'alipay') {
       // Alipay: redirect this popup to Alipay payment page
@@ -135,8 +136,7 @@ async function initStripe(clientSecret: string, publishableKey: string) {
       if (result.error) {
         error.value = result.error.message || t('payment.result.failed')
       } else if (result.paymentIntent?.status === 'succeeded') {
-        success.value = true
-        setTimeout(closeWindow, 2000)
+        startPolling()
       } else {
         // Payment not completed (user closed QR dialog)
         startPolling()
@@ -159,10 +159,13 @@ function startPolling() {
       if (!res.ok) return
       const data = await res.json()
       const status = data?.data?.status
-      if (status === 'COMPLETED' || status === 'PAID') {
+      if (isOrderCredited(status)) {
         if (pollTimer) { clearInterval(pollTimer); pollTimer = null }
         success.value = true
         setTimeout(closeWindow, 2000)
+      } else if (isOrderFailed(status)) {
+        if (pollTimer) { clearInterval(pollTimer); pollTimer = null }
+        error.value = t('payment.result.failed')
       }
     } catch { /* ignore */ }
   }, 3000)

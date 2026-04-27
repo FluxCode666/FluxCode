@@ -80,6 +80,7 @@ import { useAppStore } from '@/stores'
 import { paymentAPI } from '@/api/payment'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import { POPUP_WINDOW_FEATURES } from '@/components/payment/providerConfig'
+import { isOrderCredited, isOrderFailed } from '@/utils/paymentOrderStatus'
 import type { PaymentOrder } from '@/types/payment'
 import QRCode from 'qrcode'
 import alipayIcon from '@/assets/icons/alipay.svg'
@@ -188,12 +189,12 @@ async function pollStatus() {
   if (!props.orderId) return
   const order = await paymentStore.pollOrderStatus(props.orderId)
   if (!order) return
-  if (order.status === 'COMPLETED' || order.status === 'PAID') {
+  if (isOrderCredited(order.status)) {
     cleanup()
     paidOrder.value = order
     success.value = true
     emit('success')
-  } else if (order.status === 'EXPIRED' || order.status === 'CANCELLED' || order.status === 'FAILED') {
+  } else if (isOrderFailed(order.status)) {
     cleanup()
     expired.value = true
   }

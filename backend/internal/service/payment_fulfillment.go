@@ -125,18 +125,24 @@ func (s *PaymentService) alreadyProcessed(ctx context.Context, o *dbent.PaymentO
 }
 
 func (s *PaymentService) executeFulfillment(ctx context.Context, oid int64) error {
-	o, err := s.entClient.PaymentOrder.Get(ctx, oid)
+	execCtx, cancel := paymentDetachedContext(ctx, paymentFulfillmentTimeout)
+	defer cancel()
+
+	o, err := s.entClient.PaymentOrder.Get(execCtx, oid)
 	if err != nil {
 		return fmt.Errorf("get order: %w", err)
 	}
 	if o.OrderType == payment.OrderTypeSubscription {
-		return s.ExecuteSubscriptionFulfillment(ctx, oid)
+		return s.ExecuteSubscriptionFulfillment(execCtx, oid)
 	}
-	return s.ExecuteBalanceFulfillment(ctx, oid)
+	return s.ExecuteBalanceFulfillment(execCtx, oid)
 }
 
 func (s *PaymentService) ExecuteBalanceFulfillment(ctx context.Context, oid int64) error {
-	o, err := s.entClient.PaymentOrder.Get(ctx, oid)
+	fulfillCtx, cancel := paymentDetachedContext(ctx, paymentFulfillmentTimeout)
+	defer cancel()
+
+	o, err := s.entClient.PaymentOrder.Get(fulfillCtx, oid)
 	if err != nil {
 		return infraerrors.NotFound("NOT_FOUND", "order not found")
 	}
@@ -149,15 +155,15 @@ func (s *PaymentService) ExecuteBalanceFulfillment(ctx context.Context, oid int6
 	if o.Status != OrderStatusPaid && o.Status != OrderStatusFailed {
 		return infraerrors.BadRequest("INVALID_STATUS", "order cannot fulfill in status "+o.Status)
 	}
-	c, err := s.entClient.PaymentOrder.Update().Where(paymentorder.IDEQ(oid), paymentorder.StatusIn(OrderStatusPaid, OrderStatusFailed)).SetStatus(OrderStatusRecharging).Save(ctx)
+	c, err := s.entClient.PaymentOrder.Update().Where(paymentorder.IDEQ(oid), paymentorder.StatusIn(OrderStatusPaid, OrderStatusFailed)).SetStatus(OrderStatusRecharging).Save(fulfillCtx)
 	if err != nil {
 		return fmt.Errorf("lock: %w", err)
 	}
 	if c == 0 {
 		return nil
 	}
-	if err := s.doBalance(ctx, o); err != nil {
-		s.markFailed(ctx, oid, err)
+	if err := s.doBalance(fulfillCtx, o); err != nil {
+		s.markFailed(fulfillCtx, oid, err)
 		return err
 	}
 	return nil
@@ -225,7 +231,10 @@ func (s *PaymentService) markCompleted(ctx context.Context, o *dbent.PaymentOrde
 }
 
 func (s *PaymentService) ExecuteSubscriptionFulfillment(ctx context.Context, oid int64) error {
-	o, err := s.entClient.PaymentOrder.Get(ctx, oid)
+	fulfillCtx, cancel := paymentDetachedContext(ctx, paymentFulfillmentTimeout)
+	defer cancel()
+
+	o, err := s.entClient.PaymentOrder.Get(fulfillCtx, oid)
 	if err != nil {
 		return infraerrors.NotFound("NOT_FOUND", "order not found")
 	}
@@ -241,15 +250,15 @@ func (s *PaymentService) ExecuteSubscriptionFulfillment(ctx context.Context, oid
 	if o.SubscriptionGroupID == nil || o.SubscriptionDays == nil {
 		return infraerrors.BadRequest("INVALID_STATUS", "missing subscription info")
 	}
-	c, err := s.entClient.PaymentOrder.Update().Where(paymentorder.IDEQ(oid), paymentorder.StatusIn(OrderStatusPaid, OrderStatusFailed)).SetStatus(OrderStatusRecharging).Save(ctx)
+	c, err := s.entClient.PaymentOrder.Update().Where(paymentorder.IDEQ(oid), paymentorder.StatusIn(OrderStatusPaid, OrderStatusFailed)).SetStatus(OrderStatusRecharging).Save(fulfillCtx)
 	if err != nil {
 		return fmt.Errorf("lock: %w", err)
 	}
 	if c == 0 {
 		return nil
 	}
-	if err := s.doSub(ctx, o); err != nil {
-		s.markFailed(ctx, oid, err)
+	if err := s.doSub(fulfillCtx, o); err != nil {
+		s.markFailed(fulfillCtx, oid, err)
 		return err
 	}
 	return nil
@@ -285,18 +294,21 @@ func (s *PaymentService) hasAuditLog(ctx context.Context, orderID int64, action 
 }
 
 func (s *PaymentService) markFailed(ctx context.Context, oid int64, cause error) {
+	failCtx, cancel := paymentDetachedContext(ctx, paymentStateUpdateTimeout)
+	defer cancel()
+
 	now := time.Now()
 	r := psErrMsg(cause)
 	// Only mark FAILED if still in RECHARGING state — prevents overwriting
 	// a COMPLETED order when markCompleted failed but fulfillment succeeded.
 	c, e := s.entClient.PaymentOrder.Update().
 		Where(paymentorder.IDEQ(oid), paymentorder.StatusEQ(OrderStatusRecharging)).
-		SetStatus(OrderStatusFailed).SetFailedAt(now).SetFailedReason(r).Save(ctx)
+		SetStatus(OrderStatusFailed).SetFailedAt(now).SetFailedReason(r).Save(failCtx)
 	if e != nil {
 		slog.Error("mark FAILED", "orderID", oid, "error", e)
 	}
 	if c > 0 {
-		s.writeAuditLog(ctx, oid, "FULFILLMENT_FAILED", "system", map[string]any{"reason": r})
+		s.writeAuditLog(failCtx, oid, "FULFILLMENT_FAILED", "system", map[string]any{"reason": r})
 	}
 }
 

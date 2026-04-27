@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math/rand/v2"
+	"strconv"
 	"sync"
 	"time"
 
@@ -43,6 +44,9 @@ const (
 	amountToleranceCNY = 0.01
 
 	orderIDPrefix = "sub2_"
+
+	paymentFulfillmentTimeout = 30 * time.Second
+	paymentStateUpdateTimeout = 10 * time.Second
 )
 
 // --- Types ---
@@ -238,6 +242,59 @@ func (s *PaymentService) GetWebhookProvider(ctx context.Context, providerKey, ou
 	return s.registry.GetProviderByKey(providerKey)
 }
 
+// GetWebhookProviderCandidates returns all providers that may verify the webhook.
+// The original order's provider instance is tried first when outTradeNo is known,
+// then all enabled instances of the provider key are tried as a fallback.
+func (s *PaymentService) GetWebhookProviderCandidates(ctx context.Context, providerKey, outTradeNo string) ([]payment.Provider, error) {
+	candidates := make([]payment.Provider, 0, 4)
+
+	if outTradeNo != "" {
+		order, err := s.entClient.PaymentOrder.Query().Where(paymentorder.OutTradeNo(outTradeNo)).Only(ctx)
+		if err == nil {
+			if p, pErr := s.getOrderProvider(ctx, order); pErr == nil {
+				candidates = append(candidates, p)
+			} else {
+				slog.Warn("[Webhook] failed to load order provider candidate", "outTradeNo", outTradeNo, "error", pErr)
+			}
+		}
+	}
+
+	instances, err := s.entClient.PaymentProviderInstance.Query().
+		Where(
+			paymentproviderinstance.ProviderKeyEQ(providerKey),
+			paymentproviderinstance.EnabledEQ(true),
+		).
+		Order(dbent.Asc(paymentproviderinstance.FieldSortOrder), dbent.Asc(paymentproviderinstance.FieldID)).
+		All(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("query provider instances: %w", err)
+	}
+	for _, inst := range instances {
+		cfg, cfgErr := s.loadBalancer.GetInstanceConfig(ctx, int64(inst.ID))
+		if cfgErr != nil {
+			slog.Warn("[Webhook] failed to load provider config", "provider", providerKey, "instanceID", inst.ID, "error", cfgErr)
+			continue
+		}
+		p, createErr := createProviderForInstance(inst, cfg)
+		if createErr != nil {
+			slog.Warn("[Webhook] failed to create provider candidate", "provider", providerKey, "instanceID", inst.ID, "error", createErr)
+			continue
+		}
+		candidates = append(candidates, p)
+	}
+
+	if len(candidates) > 0 {
+		return candidates, nil
+	}
+
+	s.EnsureProviders(ctx)
+	p, err := s.registry.GetProviderByKey(providerKey)
+	if err != nil {
+		return nil, err
+	}
+	return []payment.Provider{p}, nil
+}
+
 // --- Helpers ---
 
 func psIsRefundStatus(s string) bool {
@@ -269,6 +326,28 @@ func psSliceContains(sl []string, s string) bool {
 		}
 	}
 	return false
+}
+
+func paymentDetachedContext(ctx context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
+	base := context.Background()
+	if ctx != nil {
+		base = context.WithoutCancel(ctx)
+	}
+	return context.WithTimeout(base, timeout)
+}
+
+func createProviderForInstance(inst *dbent.PaymentProviderInstance, cfg map[string]string) (payment.Provider, error) {
+	if inst == nil {
+		return nil, fmt.Errorf("provider instance is nil")
+	}
+	copied := make(map[string]string, len(cfg)+1)
+	for k, v := range cfg {
+		copied[k] = v
+	}
+	if inst.PaymentMode != "" {
+		copied["paymentMode"] = inst.PaymentMode
+	}
+	return provider.CreateProvider(inst.ProviderKey, strconv.FormatInt(inst.ID, 10), copied)
 }
 
 // Subscription validity period unit constants.

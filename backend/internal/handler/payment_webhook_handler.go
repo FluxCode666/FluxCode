@@ -1,6 +1,10 @@
 package handler
 
 import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -77,7 +81,7 @@ func (h *PaymentWebhookHandler) handleNotify(c *gin.Context, providerKey string)
 	// This is needed when multiple instances of the same provider exist (e.g. multiple EasyPay accounts).
 	outTradeNo := extractOutTradeNo(rawBody, providerKey)
 
-	provider, err := h.paymentService.GetWebhookProvider(c.Request.Context(), providerKey, outTradeNo)
+	providers, err := h.paymentService.GetWebhookProviderCandidates(c.Request.Context(), providerKey, outTradeNo)
 	if err != nil {
 		slog.Warn("[Payment Webhook] provider not found", "provider", providerKey, "outTradeNo", outTradeNo, "error", err)
 		writeSuccessResponse(c, providerKey)
@@ -89,20 +93,20 @@ func (h *PaymentWebhookHandler) handleNotify(c *gin.Context, providerKey string)
 		headers[strings.ToLower(k)] = c.GetHeader(k)
 	}
 
-	notification, err := provider.VerifyNotification(c.Request.Context(), rawBody, headers)
+	notification, ignore, err := verifyNotificationWithProviders(c.Request.Context(), providers, rawBody, headers)
 	if err != nil {
 		truncatedBody := rawBody
 		if len(truncatedBody) > webhookLogTruncateLen {
 			truncatedBody = truncatedBody[:webhookLogTruncateLen] + "...(truncated)"
 		}
-		slog.Error("[Payment Webhook] verify failed", "provider", providerKey, "error", err, "method", c.Request.Method, "bodyLen", len(rawBody))
+		slog.Error("[Payment Webhook] verify failed", "provider", providerKey, "error", err, "method", c.Request.Method, "bodyLen", len(rawBody), "candidates", len(providers))
 		slog.Debug("[Payment Webhook] verify failed body", "provider", providerKey, "rawBody", truncatedBody)
 		c.String(http.StatusBadRequest, "verify failed")
 		return
 	}
 
 	// nil notification means irrelevant event (e.g. Stripe non-payment event); return success.
-	if notification == nil {
+	if ignore || notification == nil {
 		writeSuccessResponse(c, providerKey)
 		return
 	}
@@ -120,15 +124,46 @@ func (h *PaymentWebhookHandler) handleNotify(c *gin.Context, providerKey string)
 // This allows looking up the correct provider instance before verification.
 func extractOutTradeNo(rawBody, providerKey string) string {
 	switch providerKey {
-	case payment.TypeEasyPay:
+	case payment.TypeEasyPay, payment.TypeAlipay:
 		values, err := url.ParseQuery(rawBody)
 		if err == nil {
 			return values.Get("out_trade_no")
 		}
+	case payment.TypeStripe:
+		var payload struct {
+			Data struct {
+				Object struct {
+					Metadata map[string]string `json:"metadata"`
+				} `json:"object"`
+			} `json:"data"`
+		}
+		if err := json.Unmarshal([]byte(rawBody), &payload); err == nil {
+			return strings.TrimSpace(payload.Data.Object.Metadata["orderId"])
+		}
 	}
-	// For other providers (Stripe, Alipay direct, WxPay direct), the registry
-	// typically has only one instance, so no instance lookup is needed.
+	// WxPay notifications need instance-specific keys for decryption, so the
+	// handler falls back to trying all configured candidates when extraction is
+	// not possible here.
 	return ""
+}
+
+func verifyNotificationWithProviders(ctx context.Context, providers []payment.Provider, rawBody string, headers map[string]string) (*payment.PaymentNotification, bool, error) {
+	var errs []string
+	for _, p := range providers {
+		notification, err := p.VerifyNotification(ctx, rawBody, headers)
+		if err != nil {
+			errs = append(errs, fmt.Sprintf("%s: %v", p.ProviderKey(), err))
+			continue
+		}
+		if notification == nil {
+			return nil, true, nil
+		}
+		return notification, false, nil
+	}
+	if len(errs) == 0 {
+		return nil, false, fmt.Errorf("no webhook provider candidates")
+	}
+	return nil, false, errors.New(strings.Join(errs, "; "))
 }
 
 // wxpaySuccessResponse is the JSON response expected by WeChat Pay webhook.

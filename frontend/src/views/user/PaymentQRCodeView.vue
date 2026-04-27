@@ -40,6 +40,7 @@ import AppLayout from '@/components/layout/AppLayout.vue'
 import { usePaymentStore } from '@/stores/payment'
 import { paymentAPI } from '@/api/payment'
 import { extractApiErrorMessage } from '@/utils/apiError'
+import { isOrderCredited, isOrderFailed } from '@/utils/paymentOrderStatus'
 import { useAppStore } from '@/stores'
 import QRCode from 'qrcode'
 import alipayIcon from '@/assets/icons/alipay.svg'
@@ -135,10 +136,10 @@ async function pollStatus() {
   if (!orderId.value) return
   const order = await paymentStore.pollOrderStatus(orderId.value)
   if (!order) return
-  if (order.status === 'COMPLETED' || order.status === 'PAID') {
+  if (isOrderCredited(order.status)) {
     cleanup()
     router.push({ path: '/payment/result', query: { order_id: String(orderId.value), status: 'success' } })
-  } else if (order.status === 'EXPIRED' || order.status === 'CANCELLED' || order.status === 'FAILED') {
+  } else if (isOrderFailed(order.status)) {
     cleanup()
     expired.value = true
   }

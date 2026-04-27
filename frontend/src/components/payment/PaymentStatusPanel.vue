@@ -126,6 +126,7 @@ import { useAppStore } from '@/stores'
 import { paymentAPI } from '@/api/payment'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import { POPUP_WINDOW_FEATURES } from '@/components/payment/providerConfig'
+import { isOrderCredited, isOrderFailed } from '@/utils/paymentOrderStatus'
 import type { PaymentOrder } from '@/types/payment'
 import Icon from '@/components/icons/Icon.vue'
 import QRCode from 'qrcode'
@@ -211,7 +212,7 @@ async function pollStatus() {
   if (!props.orderId || outcome.value) return
   const order = await paymentStore.pollOrderStatus(props.orderId)
   if (!order) return
-  if (order.status === 'COMPLETED' || order.status === 'PAID') {
+  if (isOrderCredited(order.status)) {
     cleanup()
     paidOrder.value = order
     outcome.value = 'success'
@@ -219,7 +220,7 @@ async function pollStatus() {
   } else if (order.status === 'CANCELLED') {
     cleanup()
     outcome.value = 'cancelled'
-  } else if (order.status === 'EXPIRED' || order.status === 'FAILED') {
+  } else if (isOrderFailed(order.status)) {
     cleanup()
     outcome.value = 'expired'
   }

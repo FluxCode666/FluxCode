@@ -11,7 +11,6 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/paymentauditlog"
 	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
 	"github.com/Wei-Shaw/sub2api/internal/payment"
-	"github.com/Wei-Shaw/sub2api/internal/payment/provider"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 )
 
@@ -239,15 +238,14 @@ func (s *PaymentService) getOrderProvider(ctx context.Context, o *dbent.PaymentO
 	if o.ProviderInstanceID != nil && *o.ProviderInstanceID != "" {
 		instID, err := strconv.ParseInt(*o.ProviderInstanceID, 10, 64)
 		if err == nil {
-			cfg, err := s.loadBalancer.GetInstanceConfig(ctx, instID)
+			inst, err := s.entClient.PaymentProviderInstance.Get(ctx, instID)
 			if err == nil {
-				providerKey := s.registry.GetProviderKey(o.PaymentType)
-				if providerKey == "" {
-					providerKey = o.PaymentType
-				}
-				p, err := provider.CreateProvider(providerKey, *o.ProviderInstanceID, cfg)
+				cfg, err := s.loadBalancer.GetInstanceConfig(ctx, instID)
 				if err == nil {
-					return p, nil
+					p, err := createProviderForInstance(inst, cfg)
+					if err == nil {
+						return p, nil
+					}
 				}
 			}
 		}

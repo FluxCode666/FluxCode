@@ -52,15 +52,26 @@
           </div>
         </template>
 
-        <!-- Success state -->
+        <!-- Payment confirmation / processing state -->
         <template v-else-if="stripeSuccess">
           <div class="card p-6 text-center">
             <div class="flex flex-col items-center gap-3 py-4">
-              <div class="flex h-16 w-16 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/30">
-                <Icon name="check" size="lg" class="text-green-500" />
+              <div
+                class="flex h-16 w-16 items-center justify-center rounded-full"
+                :class="fulfillmentCompleted ? 'bg-green-100 dark:bg-green-900/30' : 'bg-blue-100 dark:bg-blue-900/30'"
+              >
+                <Icon
+                  :name="fulfillmentCompleted ? 'check' : 'clock'"
+                  size="lg"
+                  :class="fulfillmentCompleted ? 'text-green-500' : 'text-blue-500'"
+                />
               </div>
-              <p class="text-lg font-bold text-gray-900 dark:text-white">{{ t('payment.result.success') }}</p>
-              <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('payment.stripeSuccessProcessing') }}</p>
+              <p class="text-lg font-bold text-gray-900 dark:text-white">
+                {{ fulfillmentCompleted ? t('payment.result.success') : t('common.processing') }}
+              </p>
+              <p class="text-sm text-gray-500 dark:text-gray-400">
+                {{ fulfillmentCompleted ? t('payment.status.completed') : t('payment.qr.waitingPayment') }}
+              </p>
             </div>
           </div>
         </template>
@@ -101,6 +112,7 @@ import { usePaymentStore } from '@/stores/payment'
 import { paymentAPI } from '@/api/payment'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import { isMobileDevice } from '@/utils/device'
+import { isOrderCredited, isOrderFailed } from '@/utils/paymentOrderStatus'
 import type { PaymentOrder } from '@/types/payment'
 import type { Stripe, StripeElements } from '@stripe/stripe-js'
 import AppLayout from '@/components/layout/AppLayout.vue'
@@ -120,6 +132,7 @@ const stripeError = ref('')
 const stripeSubmitting = ref(false)
 const stripeSuccess = ref(false)
 const stripeReady = ref(false)
+const fulfillmentCompleted = ref(false)
 const order = ref<PaymentOrder | null>(null)
 const wechatQrUrl = ref('')
 const redirecting = ref(false)
@@ -128,6 +141,19 @@ const showPaymentElement = ref(false)
 let stripeInstance: Stripe | null = null
 let elementsInstance: StripeElements | null = null
 let redirectTimer: ReturnType<typeof setTimeout> | null = null
+
+function buildResultUrl(status: 'processing' | 'success'): string {
+  const url = new URL(window.location.origin + '/payment/result')
+  const orderId = String(route.query.order_id || '')
+  if (orderId) {
+    url.searchParams.set('order_id', orderId)
+  }
+  if (order.value?.out_trade_no) {
+    url.searchParams.set('out_trade_no', order.value.out_trade_no)
+  }
+  url.searchParams.set('status', status)
+  return url.toString()
+}
 
 onMounted(async () => {
   const orderId = Number(route.query.order_id)
@@ -157,7 +183,7 @@ onMounted(async () => {
 
     // Direct confirm for specific methods (no Payment Element needed)
     if (method === 'alipay') {
-      await confirmAlipay(stripe, clientSecret, orderId)
+      await confirmAlipay(stripe, clientSecret)
     } else if (method === 'wechat_pay') {
       await confirmWechatPay(stripe, clientSecret)
     } else {
@@ -177,9 +203,9 @@ onUnmounted(() => {
   if (redirectTimer) clearTimeout(redirectTimer)
 })
 
-async function confirmAlipay(stripe: Stripe, clientSecret: string, orderId: number) {
+async function confirmAlipay(stripe: Stripe, clientSecret: string) {
   redirecting.value = true
-  const returnUrl = window.location.origin + '/payment/result?order_id=' + orderId + '&status=success'
+  const returnUrl = buildResultUrl('processing')
   const { error } = await stripe.confirmAlipayPayment(clientSecret, { return_url: returnUrl })
   if (error) {
     redirecting.value = false
@@ -208,7 +234,7 @@ async function confirmWechatPay(stripe: Stripe, clientSecret: string) {
     startPolling()
   } else if (paymentIntent?.status === 'succeeded') {
     stripeSuccess.value = true
-    scheduleClose()
+    startPolling()
   } else {
     stripeError.value = t('payment.result.failed')
   }
@@ -237,7 +263,7 @@ async function handleGenericPay() {
     const { error } = await stripeInstance.confirmPayment({
       elements: elementsInstance,
       confirmParams: {
-        return_url: window.location.origin + '/payment/result?order_id=' + route.query.order_id + '&status=success',
+        return_url: buildResultUrl('processing'),
       },
       redirect: 'if_required',
     })
@@ -245,7 +271,7 @@ async function handleGenericPay() {
       stripeError.value = error.message || t('payment.result.failed')
     } else {
       stripeSuccess.value = true
-      scheduleClose()
+      startPolling()
     }
   } catch (err: unknown) {
     stripeError.value = extractApiErrorMessage(err, t('payment.result.failed'))
@@ -257,16 +283,24 @@ async function handleGenericPay() {
 let pollTimer: ReturnType<typeof setInterval> | null = null
 
 function startPolling() {
+  if (pollTimer) return
   const orderId = Number(route.query.order_id)
   if (!orderId) return
   pollTimer = setInterval(async () => {
     const o = await paymentStore.pollOrderStatus(orderId)
     if (!o) return
-    if (o.status === 'COMPLETED' || o.status === 'PAID') {
+    order.value = o
+    if (isOrderCredited(o.status)) {
       if (pollTimer) { clearInterval(pollTimer); pollTimer = null }
       stripeSuccess.value = true
+      fulfillmentCompleted.value = true
       wechatQrUrl.value = ''
       scheduleClose()
+    } else if (isOrderFailed(o.status)) {
+      if (pollTimer) { clearInterval(pollTimer); pollTimer = null }
+      stripeSuccess.value = false
+      fulfillmentCompleted.value = false
+      stripeError.value = t('payment.result.failed')
     }
   }, 3000)
 }
@@ -276,7 +310,14 @@ function scheduleClose() {
     redirectTimer = setTimeout(() => { window.close() }, 2000)
   } else {
     redirectTimer = setTimeout(() => {
-      router.push({ path: '/payment/result', query: { order_id: String(route.query.order_id || ''), status: 'success' } })
+      router.push({
+        path: '/payment/result',
+        query: {
+          order_id: String(route.query.order_id || ''),
+          out_trade_no: order.value?.out_trade_no || '',
+          status: 'success',
+        },
+      })
     }, 2000)
   }
 }
