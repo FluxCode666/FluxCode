@@ -36,6 +36,10 @@ type dashboardStatsRangeFetcher interface {
 	GetDashboardStatsWithRange(ctx context.Context, start, end time.Time) (*usagestats.DashboardStats, error)
 }
 
+type subscriptionExhaustionTrendReader interface {
+	GetSubscriptionExhaustionTrend(ctx context.Context, startTime, endTime time.Time) ([]usagestats.SubscriptionExhaustionTrendPoint, error)
+}
+
 type dashboardStatsCacheEntry struct {
 	Stats     *usagestats.DashboardStats `json:"stats"`
 	UpdatedAt int64                      `json:"updated_at"`
@@ -364,6 +368,18 @@ func (s *DashboardService) GetUserUsageTrend(ctx context.Context, startTime, end
 	trend, err := s.usageRepo.GetUserUsageTrend(ctx, startTime, endTime, granularity, limit)
 	if err != nil {
 		return nil, fmt.Errorf("get user usage trend: %w", err)
+	}
+	return trend, nil
+}
+
+func (s *DashboardService) GetSubscriptionExhaustionTrend(ctx context.Context, startTime, endTime time.Time) ([]usagestats.SubscriptionExhaustionTrendPoint, error) {
+	repo, ok := s.usageRepo.(subscriptionExhaustionTrendReader)
+	if !ok {
+		return nil, fmt.Errorf("subscription exhaustion trend is not supported")
+	}
+	trend, err := repo.GetSubscriptionExhaustionTrend(ctx, startTime, endTime)
+	if err != nil {
+		return nil, fmt.Errorf("get subscription exhaustion trend: %w", err)
 	}
 	return trend, nil
 }

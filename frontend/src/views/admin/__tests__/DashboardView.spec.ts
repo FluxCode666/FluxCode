@@ -4,9 +4,16 @@ import { flushPromises, mount } from '@vue/test-utils'
 import type { DashboardStats } from '@/types'
 import DashboardView from '../DashboardView.vue'
 
-const { getSnapshotV2, getUserUsageTrend, getUserSpendingRanking, getProxyUsageSummary } = vi.hoisted(() => ({
+const {
+  getSnapshotV2,
+  getUserUsageTrend,
+  getSubscriptionExhaustionTrend,
+  getUserSpendingRanking,
+  getProxyUsageSummary
+} = vi.hoisted(() => ({
   getSnapshotV2: vi.fn(),
   getUserUsageTrend: vi.fn(),
+  getSubscriptionExhaustionTrend: vi.fn(),
   getUserSpendingRanking: vi.fn(),
   getProxyUsageSummary: vi.fn()
 }))
@@ -16,6 +23,7 @@ vi.mock('@/api/admin', () => ({
     dashboard: {
       getSnapshotV2,
       getUserUsageTrend,
+      getSubscriptionExhaustionTrend,
       getUserSpendingRanking,
       getProxyUsageSummary
     }
@@ -93,6 +101,7 @@ describe('admin DashboardView', () => {
   beforeEach(() => {
     getSnapshotV2.mockReset()
     getUserUsageTrend.mockReset()
+    getSubscriptionExhaustionTrend.mockReset()
     getUserSpendingRanking.mockReset()
     getProxyUsageSummary.mockReset()
 
@@ -106,6 +115,12 @@ describe('admin DashboardView', () => {
       start_date: '',
       end_date: '',
       granularity: 'hour'
+    })
+    getSubscriptionExhaustionTrend.mockResolvedValue({
+      trend: [],
+      start_date: '',
+      end_date: '',
+      granularity: 'day'
     })
     getUserSpendingRanking.mockResolvedValue({
       ranking: [],
@@ -135,6 +150,7 @@ describe('admin DashboardView', () => {
           ModelDistributionChart: true,
           TokenUsageTrend: true,
           RequestCountTrend: true,
+          SubscriptionExhaustionTrend: true,
           ProxyUsageSummaryChart: true,
           Line: true
         }
@@ -152,6 +168,7 @@ describe('admin DashboardView', () => {
       end_date: formatLocalDate(now),
       granularity: 'hour'
     }))
+    expect(getSubscriptionExhaustionTrend).not.toHaveBeenCalled()
   })
 
   it('renders request count and proxy usage charts and loads proxy summary data', async () => {
@@ -170,6 +187,9 @@ describe('admin DashboardView', () => {
           RequestCountTrend: {
             template: '<div data-test="request-count-trend" />'
           },
+          SubscriptionExhaustionTrend: {
+            template: '<div data-test="subscription-exhaustion-trend" />'
+          },
           ProxyUsageSummaryChart: {
             template: '<div data-test="proxy-usage-summary-chart" />'
           },
@@ -182,6 +202,7 @@ describe('admin DashboardView', () => {
 
     expect(wrapper.find('[data-test="token-usage-trend"]').exists()).toBe(true)
     expect(wrapper.find('[data-test="request-count-trend"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="subscription-exhaustion-trend"]').exists()).toBe(false)
     expect(wrapper.find('[data-test="proxy-usage-summary-chart"]').exists()).toBe(true)
     expect(getProxyUsageSummary).toHaveBeenCalledTimes(1)
   })
@@ -204,6 +225,7 @@ describe('admin DashboardView', () => {
           RequestCountTrend: {
             template: '<div data-test="request-count-trend" />'
           },
+          SubscriptionExhaustionTrend: true,
           ProxyUsageSummaryChart: {
             template: '<div data-test="proxy-usage-summary-chart" />'
           },
@@ -219,5 +241,45 @@ describe('admin DashboardView', () => {
     expect(wrapper.find('[data-test="token-usage-trend"]').exists()).toBe(true)
     expect(wrapper.find('[data-test="request-count-trend"]').exists()).toBe(true)
     expect(wrapper.find('[data-test="proxy-usage-summary-chart"]').exists()).toBe(true)
+  })
+
+  it('loads and renders subscription exhaustion trend only for day granularity', async () => {
+    const wrapper = mount(DashboardView, {
+      global: {
+        stubs: {
+          AppLayout: { template: '<div><slot /></div>' },
+          LoadingSpinner: true,
+          Icon: true,
+          DateRangePicker: {
+            template:
+              '<button data-test="range-day" @click="$emit(\'update:startDate\', \'2026-03-01\'); $emit(\'update:endDate\', \'2026-03-07\'); $emit(\'change\', { startDate: \'2026-03-01\', endDate: \'2026-03-07\', preset: null })" />'
+          },
+          Select: true,
+          ModelDistributionChart: true,
+          TokenUsageTrend: true,
+          RequestCountTrend: true,
+          SubscriptionExhaustionTrend: {
+            template: '<div data-test="subscription-exhaustion-trend" />',
+            props: ['trendData', 'loading']
+          },
+          ProxyUsageSummaryChart: true,
+          Line: true
+        }
+      }
+    })
+
+    await flushPromises()
+    expect(getSubscriptionExhaustionTrend).not.toHaveBeenCalled()
+    expect(wrapper.find('[data-test="subscription-exhaustion-trend"]').exists()).toBe(false)
+
+    await wrapper.find('[data-test="range-day"]').trigger('click')
+    await flushPromises()
+
+    expect(getSubscriptionExhaustionTrend).toHaveBeenCalledTimes(1)
+    expect(getSubscriptionExhaustionTrend).toHaveBeenCalledWith({
+      start_date: '2026-03-01',
+      end_date: '2026-03-07'
+    })
+    expect(wrapper.find('[data-test="subscription-exhaustion-trend"]').exists()).toBe(true)
   })
 })

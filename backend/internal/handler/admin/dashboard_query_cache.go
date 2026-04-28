@@ -10,11 +10,12 @@ import (
 )
 
 var (
-	dashboardTrendCache        = newSnapshotCache(30 * time.Second)
-	dashboardModelStatsCache   = newSnapshotCache(30 * time.Second)
-	dashboardGroupStatsCache   = newSnapshotCache(30 * time.Second)
-	dashboardUsersTrendCache   = newSnapshotCache(30 * time.Second)
-	dashboardAPIKeysTrendCache = newSnapshotCache(30 * time.Second)
+	dashboardTrendCache                       = newSnapshotCache(30 * time.Second)
+	dashboardModelStatsCache                  = newSnapshotCache(30 * time.Second)
+	dashboardGroupStatsCache                  = newSnapshotCache(30 * time.Second)
+	dashboardUsersTrendCache                  = newSnapshotCache(30 * time.Second)
+	dashboardAPIKeysTrendCache                = newSnapshotCache(30 * time.Second)
+	dashboardSubscriptionExhaustionTrendCache = newSnapshotCache(30 * time.Second)
 )
 
 type dashboardTrendCacheKey struct {
@@ -49,6 +50,11 @@ type dashboardEntityTrendCacheKey struct {
 	EndTime     string `json:"end_time"`
 	Granularity string `json:"granularity"`
 	Limit       int    `json:"limit"`
+}
+
+type dashboardDateRangeCacheKey struct {
+	StartTime string `json:"start_time"`
+	EndTime   string `json:"end_time"`
 }
 
 func cacheStatusValue(hit bool) string {
@@ -199,5 +205,20 @@ func (h *DashboardHandler) getUserUsageTrendCached(ctx context.Context, startTim
 		return nil, hit, err
 	}
 	trend, err := snapshotPayloadAs[[]usagestats.UserUsageTrendPoint](entry.Payload)
+	return trend, hit, err
+}
+
+func (h *DashboardHandler) getSubscriptionExhaustionTrendCached(ctx context.Context, startTime, endTime time.Time) ([]usagestats.SubscriptionExhaustionTrendPoint, bool, error) {
+	key := mustMarshalDashboardCacheKey(dashboardDateRangeCacheKey{
+		StartTime: startTime.UTC().Format(time.RFC3339),
+		EndTime:   endTime.UTC().Format(time.RFC3339),
+	})
+	entry, hit, err := dashboardSubscriptionExhaustionTrendCache.GetOrLoad(key, func() (any, error) {
+		return h.dashboardService.GetSubscriptionExhaustionTrend(ctx, startTime, endTime)
+	})
+	if err != nil {
+		return nil, hit, err
+	}
+	trend, err := snapshotPayloadAs[[]usagestats.SubscriptionExhaustionTrendPoint](entry.Payload)
 	return trend, hit, err
 }

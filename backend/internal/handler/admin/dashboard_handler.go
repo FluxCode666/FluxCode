@@ -470,6 +470,32 @@ func (h *DashboardHandler) GetUserUsageTrend(c *gin.Context) {
 	})
 }
 
+// GetSubscriptionExhaustionTrend handles getting daily subscription grant exhaustion trend data.
+// GET /api/v1/admin/dashboard/subscription-exhaustion-trend
+// Query params: start_date, end_date (YYYY-MM-DD), granularity=day
+func (h *DashboardHandler) GetSubscriptionExhaustionTrend(c *gin.Context) {
+	startTime, endTime := parseTimeRange(c)
+	granularity := strings.TrimSpace(c.DefaultQuery("granularity", "day"))
+	if granularity != "day" {
+		response.BadRequest(c, "Subscription exhaustion trend only supports day granularity")
+		return
+	}
+
+	trend, hit, err := h.getSubscriptionExhaustionTrendCached(c.Request.Context(), startTime, endTime)
+	if err != nil {
+		response.Error(c, 500, "Failed to get subscription exhaustion trend")
+		return
+	}
+	c.Header("X-Snapshot-Cache", cacheStatusValue(hit))
+
+	response.Success(c, gin.H{
+		"trend":       trend,
+		"start_date":  startTime.Format("2006-01-02"),
+		"end_date":    endTime.Add(-24 * time.Hour).Format("2006-01-02"),
+		"granularity": "day",
+	})
+}
+
 // GetProxyUsageSummary handles getting proxy usage timeline data
 // GET /api/v1/admin/dashboard/proxies-usage
 // Query params: start_date, end_date (YYYY-MM-DD), granularity (day/hour), hours

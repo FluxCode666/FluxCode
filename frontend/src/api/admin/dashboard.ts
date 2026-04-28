@@ -11,6 +11,7 @@ import type {
   GroupStat,
   ApiKeyUsageTrendPoint,
   UserUsageTrendPoint,
+  SubscriptionExhaustionTrendPoint,
   UserSpendingRankingResponse,
   ProxyUsageSummaryItem,
   UserBreakdownItem,
@@ -236,6 +237,13 @@ export interface UserTrendResponse {
   granularity: string
 }
 
+export interface SubscriptionExhaustionTrendResponse {
+  trend: SubscriptionExhaustionTrendPoint[]
+  start_date: string
+  end_date: string
+  granularity: 'day'
+}
+
 export interface ProxyUsageSummaryResponse {
   items: ProxyUsageSummaryItem[]
   start_date: string
@@ -257,6 +265,26 @@ export async function getUserUsageTrend(params?: UserTrendParams): Promise<UserT
   const { data } = await apiClient.get<UserTrendResponse>('/admin/dashboard/users-trend', {
     params
   })
+  return data
+}
+
+/**
+ * Get daily subscription exhaustion trend data
+ * @param params - Date range query parameters
+ * @returns Daily subscription exhaustion trend
+ */
+export async function getSubscriptionExhaustionTrend(
+  params?: Pick<TrendParams, 'start_date' | 'end_date'>
+): Promise<SubscriptionExhaustionTrendResponse> {
+  const { data } = await apiClient.get<SubscriptionExhaustionTrendResponse>(
+    '/admin/dashboard/subscription-exhaustion-trend',
+    {
+      params: {
+        ...params,
+        granularity: 'day'
+      }
+    }
+  )
   return data
 }
 
@@ -346,6 +374,7 @@ export const dashboardAPI = {
   getSnapshotV2,
   getApiKeyUsageTrend,
   getUserUsageTrend,
+  getSubscriptionExhaustionTrend,
   getUserSpendingRanking,
   getProxyUsageSummary,
   getBatchUsersUsage,

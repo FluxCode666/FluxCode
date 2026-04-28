@@ -2156,6 +2156,9 @@ type UserSpendingRankingResponse = usagestats.UserSpendingRankingResponse
 // APIKeyUsageTrendPoint represents API key usage trend data point
 type APIKeyUsageTrendPoint = usagestats.APIKeyUsageTrendPoint
 
+// SubscriptionExhaustionTrendPoint represents daily subscription grant exhaustion counts.
+type SubscriptionExhaustionTrendPoint = usagestats.SubscriptionExhaustionTrendPoint
+
 // GetAPIKeyUsageTrend returns usage trend data grouped by API key and date
 func (r *usageLogRepository) GetAPIKeyUsageTrend(ctx context.Context, startTime, endTime time.Time, granularity string, limit int) (results []APIKeyUsageTrendPoint, err error) {
 	dateFormat := safeDateFormat(granularity)
@@ -2266,6 +2269,116 @@ func (r *usageLogRepository) GetUserUsageTrend(ctx context.Context, startTime, e
 		return nil, err
 	}
 
+	return results, nil
+}
+
+func buildSubscriptionExhaustionDayBuckets(startTime, endTime time.Time) (starts []time.Time, ends []time.Time, labels []string) {
+	if !endTime.After(startTime) {
+		return nil, nil, nil
+	}
+
+	loc := startTime.Location()
+	if loc == nil {
+		loc = time.Local
+	}
+	startLocal := startTime.In(loc)
+	endLocal := endTime.In(loc)
+	current := time.Date(startLocal.Year(), startLocal.Month(), startLocal.Day(), 0, 0, 0, 0, loc)
+
+	for current.Before(endLocal) {
+		next := current.AddDate(0, 0, 1)
+		starts = append(starts, current)
+		ends = append(ends, next)
+		labels = append(labels, current.Format("2006-01-02"))
+		current = next
+	}
+	return starts, ends, labels
+}
+
+// GetSubscriptionExhaustionTrend returns daily subscription grant exhaustion counts.
+func (r *usageLogRepository) GetSubscriptionExhaustionTrend(ctx context.Context, startTime, endTime time.Time) (results []SubscriptionExhaustionTrendPoint, err error) {
+	dayStarts, dayEnds, dayLabels := buildSubscriptionExhaustionDayBuckets(startTime, endTime)
+	if len(dayStarts) == 0 {
+		return []SubscriptionExhaustionTrendPoint{}, nil
+	}
+
+	query := `
+		WITH days AS (
+			SELECT *
+			FROM unnest($1::timestamptz[], $2::timestamptz[], $3::text[]) AS d(day_start, day_end, day_label)
+		),
+		counts AS (
+			SELECT
+				d.day_start,
+				d.day_label,
+				COUNT(sg.id) FILTER (
+					WHERE us.id IS NOT NULL AND g.id IS NOT NULL
+				) AS total_subscriptions,
+				COUNT(sg.id) FILTER (
+					WHERE us.id IS NOT NULL
+					  AND g.id IS NOT NULL
+					  AND (
+						(g.daily_limit_usd IS NOT NULL AND g.daily_limit_usd > 0 AND sg.daily_usage_usd >= g.daily_limit_usd)
+						OR (g.weekly_limit_usd IS NOT NULL AND g.weekly_limit_usd > 0 AND sg.weekly_usage_usd >= g.weekly_limit_usd)
+						OR (g.monthly_limit_usd IS NOT NULL AND g.monthly_limit_usd > 0 AND sg.monthly_usage_usd >= g.monthly_limit_usd)
+					  )
+				) AS exhausted_subscriptions
+			FROM days d
+			LEFT JOIN subscription_grants sg
+				ON sg.deleted_at IS NULL
+			   AND sg.starts_at < d.day_end
+			   AND sg.expires_at > d.day_start
+			LEFT JOIN user_subscriptions us
+				ON us.id = sg.subscription_id
+			   AND us.deleted_at IS NULL
+			   AND us.status = 'active'
+			   AND us.starts_at < d.day_end
+			   AND us.expires_at > d.day_start
+			LEFT JOIN groups g
+				ON g.id = us.group_id
+			   AND g.deleted_at IS NULL
+			   AND g.status = 'active'
+			GROUP BY d.day_start, d.day_label
+		)
+		SELECT
+			day_label,
+			total_subscriptions,
+			exhausted_subscriptions,
+			CASE
+				WHEN total_subscriptions > 0 THEN exhausted_subscriptions::float8 / total_subscriptions::float8 * 100
+				ELSE 0
+			END AS exhaustion_rate
+		FROM counts
+		ORDER BY day_start ASC
+	`
+
+	rows, err := r.sql.QueryContext(ctx, query, pq.Array(dayStarts), pq.Array(dayEnds), pq.Array(dayLabels))
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil && err == nil {
+			err = closeErr
+			results = nil
+		}
+	}()
+
+	results = make([]SubscriptionExhaustionTrendPoint, 0, len(dayLabels))
+	for rows.Next() {
+		var row SubscriptionExhaustionTrendPoint
+		if err = rows.Scan(
+			&row.Date,
+			&row.TotalSubscriptions,
+			&row.ExhaustedSubscriptions,
+			&row.ExhaustionRate,
+		); err != nil {
+			return nil, err
+		}
+		results = append(results, row)
+	}
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
 	return results, nil
 }
 

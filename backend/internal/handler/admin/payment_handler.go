@@ -1,9 +1,13 @@
 package admin
 
 import (
+	"fmt"
 	"strconv"
+	"strings"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -28,18 +32,74 @@ func NewPaymentHandler(paymentService *service.PaymentService, configService *se
 // GetDashboard returns payment dashboard statistics.
 // GET /api/v1/admin/payment/dashboard
 func (h *PaymentHandler) GetDashboard(c *gin.Context) {
-	days := 30
+	startDate := strings.TrimSpace(c.Query("start_date"))
+	endDate := strings.TrimSpace(c.Query("end_date"))
+	if startDate != "" || endDate != "" {
+		startTime, endTime, err := parsePaymentDashboardRange(c, startDate, endDate)
+		if err != nil {
+			response.BadRequest(c, err.Error())
+			return
+		}
+		stats, err := h.paymentService.GetDashboardStatsForRange(c.Request.Context(), startTime, endTime)
+		if err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
+		response.Success(c, stats)
+		return
+	}
+
 	if d := c.Query("days"); d != "" {
+		days := 30
 		if v, err := strconv.Atoi(d); err == nil && v > 0 {
 			days = v
 		}
+		stats, err := h.paymentService.GetDashboardStats(c.Request.Context(), days)
+		if err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
+		response.Success(c, stats)
+		return
 	}
-	stats, err := h.paymentService.GetDashboardStats(c.Request.Context(), days)
+
+	startTime, endTime, err := parsePaymentDashboardRange(c, "", "")
+	if err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	stats, err := h.paymentService.GetDashboardStatsForRange(c.Request.Context(), startTime, endTime)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
 	response.Success(c, stats)
+}
+
+func parsePaymentDashboardRange(c *gin.Context, startDate, endDate string) (time.Time, time.Time, error) {
+	userTZ := c.Query("timezone")
+	now := timezone.NowInUserLocation(userTZ)
+	startTime := timezone.StartOfDayInUserLocation(time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location()), userTZ)
+	endTime := timezone.StartOfDayInUserLocation(now, userTZ).AddDate(0, 0, 1)
+
+	if startDate != "" {
+		parsed, err := timezone.ParseInUserLocation("2006-01-02", startDate, userTZ)
+		if err != nil {
+			return time.Time{}, time.Time{}, fmt.Errorf("Invalid start_date")
+		}
+		startTime = parsed
+	}
+	if endDate != "" {
+		parsed, err := timezone.ParseInUserLocation("2006-01-02", endDate, userTZ)
+		if err != nil {
+			return time.Time{}, time.Time{}, fmt.Errorf("Invalid end_date")
+		}
+		endTime = parsed.AddDate(0, 0, 1)
+	}
+	if !endTime.After(startTime) {
+		return time.Time{}, time.Time{}, fmt.Errorf("end_date must be on or after start_date")
+	}
+	return startTime, endTime, nil
 }
 
 // --- Orders ---
