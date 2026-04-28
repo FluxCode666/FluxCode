@@ -1753,6 +1753,7 @@ export default {
         anthropic: 'Anthropic',
         kiro: 'Kiro',
         openai: 'OpenAI',
+        codex2api: 'Codex2api',
         gemini: 'Gemini',
         antigravity: 'Antigravity',
         sora: 'Sora',
@@ -2273,6 +2274,7 @@ export default {
         claude: 'Claude',
         kiro: 'Kiro',
         openai: 'OpenAI',
+        codex2api: 'Codex2api',
         gemini: 'Gemini',
         antigravity: 'Antigravity',
         sora: 'Sora',
@@ -2559,6 +2561,11 @@ export default {
         codexCLIOnlyDesc:
           'Only applies to OpenAI OAuth. When enabled, only Codex official client families are allowed; when disabled, the gateway bypasses this restriction and keeps existing behavior.',
         modelRestrictionDisabledByPassthrough: 'Automatic passthrough is enabled: model whitelist/mapping will not take effect.',
+      },
+      codex2api: {
+        baseUrlHint: 'Codex2api endpoint Base URL is required, e.g. https://xxx',
+        apiKeyHint: 'Your Codex2api API Key',
+        pleaseEnterBaseUrl: 'Please enter Codex2api Base URL'
       },
       anthropic: {
         apiKeyPassthrough: 'Auto passthrough (auth only)',

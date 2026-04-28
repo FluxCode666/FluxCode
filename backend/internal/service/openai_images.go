@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"mime"
@@ -642,6 +643,9 @@ func (s *OpenAIGatewayService) buildOpenAIImagesRequest(
 		targetURL = openAIImagesEditsURL
 	}
 	baseURL := account.GetOpenAIBaseURL()
+	if baseURL == "" && account.Platform == PlatformCodex2API {
+		return nil, errors.New("base_url is required for codex2api accounts")
+	}
 	if baseURL != "" {
 		validatedURL, err := s.validateUpstreamBaseURL(baseURL)
 		if err != nil {

@@ -261,7 +261,7 @@ const supportsOpenAIImageTest = computed(() => {
   const modelID = selectedModelId.value.toLowerCase()
   if (!modelID.startsWith('gpt-image-')) return false
 
-  return props.account?.platform === 'openai'
+  return props.account?.platform === 'openai' || props.account?.platform === 'codex2api'
 })
 const supportsImageTest = computed(() => supportsGeminiImageTest.value || supportsOpenAIImageTest.value)
 

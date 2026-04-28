@@ -37,11 +37,13 @@
             :placeholder="
               account.platform === 'openai'
                 ? 'https://api.openai.com'
-                : account.platform === 'gemini'
-                  ? 'https://generativelanguage.googleapis.com'
-                  : account.platform === 'antigravity'
-                    ? 'https://cloudcode-pa.googleapis.com'
-                    : 'https://api.anthropic.com'
+                : account.platform === 'codex2api'
+                  ? 'https://xxx'
+                  : account.platform === 'gemini'
+                    ? 'https://generativelanguage.googleapis.com'
+                    : account.platform === 'antigravity'
+                      ? 'https://cloudcode-pa.googleapis.com'
+                      : 'https://api.anthropic.com'
             "
           />
           <p class="input-hint">{{ baseUrlHint }}</p>
@@ -55,11 +57,13 @@
             :placeholder="
               account.platform === 'openai'
                 ? 'sk-proj-...'
-                : account.platform === 'gemini'
-                  ? 'AIza...'
-                  : account.platform === 'antigravity'
-                    ? 'sk-...'
-                    : 'sk-ant-...'
+                : account.platform === 'codex2api'
+                  ? '<token>'
+                  : account.platform === 'gemini'
+                    ? 'AIza...'
+                    : account.platform === 'antigravity'
+                      ? 'sk-...'
+                      : 'sk-ant-...'
             "
           />
           <p class="input-hint">{{ t('admin.accounts.leaveEmptyToKeep') }}</p>
@@ -1894,6 +1898,7 @@ const authStore = useAuthStore()
 const baseUrlHint = computed(() => {
   if (!props.account) return t('admin.accounts.baseUrlHint')
   if (props.account.platform === 'openai') return t('admin.accounts.openai.baseUrlHint')
+  if (props.account.platform === 'codex2api') return t('admin.accounts.codex2api.baseUrlHint')
   if (props.account.platform === 'gemini') return t('admin.accounts.gemini.baseUrlHint')
   return t('admin.accounts.baseUrlHint')
 })
@@ -2080,6 +2085,7 @@ const tempUnschedPresets = computed(() => [
 // Computed: default base URL based on platform
 const defaultBaseUrl = computed(() => {
   if (props.account?.platform === 'openai') return 'https://api.openai.com'
+  if (props.account?.platform === 'codex2api') return ''
   if (props.account?.platform === 'gemini') return 'https://generativelanguage.googleapis.com'
   return 'https://api.anthropic.com'
 })
@@ -2282,9 +2288,11 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     const platformDefaultUrl =
       newAccount.platform === 'openai'
         ? 'https://api.openai.com'
-        : newAccount.platform === 'gemini'
-          ? 'https://generativelanguage.googleapis.com'
-          : 'https://api.anthropic.com'
+        : newAccount.platform === 'codex2api'
+          ? ''
+          : newAccount.platform === 'gemini'
+            ? 'https://generativelanguage.googleapis.com'
+            : 'https://api.anthropic.com'
     editBaseUrl.value = (credentials.base_url as string) || platformDefaultUrl
 
     // Load model mappings and detect mode
@@ -2380,9 +2388,11 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     const platformDefaultUrl =
       newAccount.platform === 'openai'
         ? 'https://api.openai.com'
-        : newAccount.platform === 'gemini'
-          ? 'https://generativelanguage.googleapis.com'
-          : 'https://api.anthropic.com'
+        : newAccount.platform === 'codex2api'
+          ? ''
+          : newAccount.platform === 'gemini'
+            ? 'https://generativelanguage.googleapis.com'
+            : 'https://api.anthropic.com'
     editBaseUrl.value = platformDefaultUrl
 
     // Load model mappings for OpenAI OAuth accounts
@@ -2875,6 +2885,10 @@ const handleSubmit = async () => {
     // For apikey type, handle credentials update
     if (props.account.type === 'apikey') {
       const currentCredentials = (props.account.credentials as Record<string, unknown>) || {}
+      if (props.account.platform === 'codex2api' && !editBaseUrl.value.trim()) {
+        appStore.showError(t('admin.accounts.codex2api.pleaseEnterBaseUrl'))
+        return
+      }
       const newBaseUrl = editBaseUrl.value.trim() || defaultBaseUrl.value
       const shouldApplyModelMapping = !(props.account.platform === 'openai' && openaiPassthroughEnabled.value)
 

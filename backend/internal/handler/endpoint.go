@@ -68,7 +68,7 @@ func DeriveUpstreamEndpoint(inbound, rawRequestPath, platform string) string {
 	inbound = strings.TrimSpace(inbound)
 
 	switch platform {
-	case service.PlatformOpenAI:
+	case service.PlatformOpenAI, service.PlatformCodex2API:
 		// OpenAI forwards everything to the Responses API.
 		// Preserve subresource suffix (e.g. /v1/responses/compact).
 		if suffix := responsesSubpathSuffix(rawRequestPath); suffix != "" {

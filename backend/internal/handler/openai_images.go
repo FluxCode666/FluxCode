@@ -120,11 +120,13 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 	failedAccountIDs := make(map[int64]struct{})
 	sameAccountRetryCount := make(map[int64]int)
 	var lastFailoverErr *service.UpstreamFailoverError
+	platform := resolveOpenAICompatibleGroupPlatform(apiKey)
 
 	for {
 		reqLog.Debug("openai.images.account_selecting", zap.Int("excluded_account_count", len(failedAccountIDs)))
-		selection, scheduleDecision, err := h.gatewayService.SelectAccountWithSchedulerForImages(
+		selection, scheduleDecision, err := h.gatewayService.SelectAccountWithSchedulerForImagesForPlatform(
 			c.Request.Context(),
+			platform,
 			apiKey.GroupID,
 			sessionHash,
 			parsed.Model,

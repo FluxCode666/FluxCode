@@ -114,12 +114,14 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 	failedAccountIDs := make(map[int64]struct{})
 	sameAccountRetryCount := make(map[int64]int)
 	var lastFailoverErr *service.UpstreamFailoverError
+	platform := resolveOpenAICompatibleGroupPlatform(apiKey)
 
 	for {
 		c.Set("openai_chat_completions_fallback_model", "")
 		reqLog.Debug("openai_chat_completions.account_selecting", zap.Int("excluded_account_count", len(failedAccountIDs)))
-		selection, scheduleDecision, err := h.gatewayService.SelectAccountWithScheduler(
+		selection, scheduleDecision, err := h.gatewayService.SelectAccountWithSchedulerForPlatform(
 			c.Request.Context(),
+			platform,
 			apiKey.GroupID,
 			"",
 			sessionHash,
@@ -141,8 +143,9 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 					reqLog.Info("openai_chat_completions.fallback_to_default_model",
 						zap.String("default_mapped_model", defaultModel),
 					)
-					selection, scheduleDecision, err = h.gatewayService.SelectAccountWithScheduler(
+					selection, scheduleDecision, err = h.gatewayService.SelectAccountWithSchedulerForPlatform(
 						c.Request.Context(),
+						platform,
 						apiKey.GroupID,
 						"",
 						sessionHash,

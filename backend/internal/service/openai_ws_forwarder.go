@@ -1076,6 +1076,9 @@ func (s *OpenAIGatewayService) buildOpenAIResponsesWSURL(account *Account) (stri
 	case AccountTypeAPIKey:
 		baseURL := account.GetOpenAIBaseURL()
 		if baseURL == "" {
+			if account.Platform == PlatformCodex2API {
+				return "", errors.New("base_url is required for codex2api accounts")
+			}
 			targetURL = openaiPlatformAPIURL
 		} else {
 			validatedURL, err := s.validateUpstreamBaseURL(baseURL)
@@ -3776,9 +3779,21 @@ func (s *OpenAIGatewayService) SelectAccountByPreviousResponseID(
 	requestedModel string,
 	excludedIDs map[int64]struct{},
 ) (*AccountSelectionResult, error) {
+	return s.SelectAccountByPreviousResponseIDForPlatform(ctx, PlatformOpenAI, groupID, previousResponseID, requestedModel, excludedIDs)
+}
+
+func (s *OpenAIGatewayService) SelectAccountByPreviousResponseIDForPlatform(
+	ctx context.Context,
+	platform string,
+	groupID *int64,
+	previousResponseID string,
+	requestedModel string,
+	excludedIDs map[int64]struct{},
+) (*AccountSelectionResult, error) {
 	if s == nil {
 		return nil, nil
 	}
+	platform = normalizeOpenAICompatibleSchedulerPlatform(platform)
 	responseID := strings.TrimSpace(previousResponseID)
 	if responseID == "" {
 		return nil, nil
@@ -3808,7 +3823,7 @@ func (s *OpenAIGatewayService) SelectAccountByPreviousResponseID(
 	if s.getOpenAIWSProtocolResolver().Resolve(account).Transport != OpenAIUpstreamTransportResponsesWebsocketV2 {
 		return nil, nil
 	}
-	if shouldClearStickySession(account, requestedModel) || !account.IsOpenAI() || !account.IsSchedulable() {
+	if shouldClearStickySession(account, requestedModel) || !isOpenAICompatibleAccountForPlatform(account, platform) || !account.IsSchedulable() {
 		_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
 		return nil, nil
 	}
@@ -3819,7 +3834,7 @@ func (s *OpenAIGatewayService) SelectAccountByPreviousResponseID(
 	if requestedModel != "" && !account.IsModelSupported(requestedModel) {
 		return nil, nil
 	}
-	account = s.recheckSelectedOpenAIAccountFromDB(ctx, account, requestedModel)
+	account = s.recheckSelectedOpenAIAccountFromDBForPlatform(ctx, account, requestedModel, platform)
 	if account == nil {
 		_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
 		return nil, nil

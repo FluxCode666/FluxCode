@@ -1065,6 +1065,7 @@ const platformFilterOptions = computed(() => [
   { value: '', label: t('admin.subscriptions.allPlatforms') },
   { value: 'anthropic', label: t('admin.groups.platforms.anthropic') },
   { value: 'openai', label: t('admin.groups.platforms.openai') },
+  { value: 'codex2api', label: t('admin.groups.platforms.codex2api') },
   { value: 'gemini', label: t('admin.groups.platforms.gemini') },
   { value: 'antigravity', label: t('admin.groups.platforms.antigravity') },
   { value: 'sora', label: t('admin.groups.platforms.sora') }

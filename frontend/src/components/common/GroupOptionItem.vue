@@ -89,6 +89,8 @@ const ratePillClass = computed(() => {
       return 'bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400'
     case 'openai':
       return 'bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400'
+    case 'codex2api':
+      return 'bg-cyan-50 text-cyan-700 dark:bg-cyan-900/20 dark:text-cyan-400'
     case 'gemini':
       return 'bg-sky-50 text-sky-700 dark:bg-sky-900/20 dark:text-sky-400'
     default: // antigravity and others

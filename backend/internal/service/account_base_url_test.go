@@ -158,3 +158,61 @@ func TestGetGeminiBaseURL(t *testing.T) {
 		})
 	}
 }
+
+func TestGetOpenAIBaseURL_Codex2API(t *testing.T) {
+	tests := []struct {
+		name             string
+		account          Account
+		wantBaseURL      string
+		wantOpenAIApiKey bool
+		wantOpenAICompat bool
+	}{
+		{
+			name: "apikey with explicit base_url",
+			account: Account{
+				Type:        AccountTypeAPIKey,
+				Platform:    PlatformCodex2API,
+				Credentials: map[string]any{"base_url": "https://codex2api.example.com"},
+			},
+			wantBaseURL:      "https://codex2api.example.com",
+			wantOpenAIApiKey: true,
+			wantOpenAICompat: true,
+		},
+		{
+			name: "apikey without base_url does not fallback to official openai",
+			account: Account{
+				Type:        AccountTypeAPIKey,
+				Platform:    PlatformCodex2API,
+				Credentials: map[string]any{},
+			},
+			wantBaseURL:      "",
+			wantOpenAIApiKey: true,
+			wantOpenAICompat: true,
+		},
+		{
+			name: "oauth is not a valid codex2api openai apikey account",
+			account: Account{
+				Type:        AccountTypeOAuth,
+				Platform:    PlatformCodex2API,
+				Credentials: map[string]any{"base_url": "https://codex2api.example.com"},
+			},
+			wantBaseURL:      "",
+			wantOpenAIApiKey: false,
+			wantOpenAICompat: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.account.GetOpenAIBaseURL(); got != tt.wantBaseURL {
+				t.Errorf("GetOpenAIBaseURL() = %q, want %q", got, tt.wantBaseURL)
+			}
+			if got := tt.account.IsOpenAIApiKey(); got != tt.wantOpenAIApiKey {
+				t.Errorf("IsOpenAIApiKey() = %v, want %v", got, tt.wantOpenAIApiKey)
+			}
+			if got := tt.account.IsOpenAICompatible(); got != tt.wantOpenAICompat {
+				t.Errorf("IsOpenAICompatible() = %v, want %v", got, tt.wantOpenAICompat)
+			}
+		})
+	}
+}

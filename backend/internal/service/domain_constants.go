@@ -23,9 +23,14 @@ const (
 const (
 	PlatformAnthropic   = domain.PlatformAnthropic
 	PlatformOpenAI      = domain.PlatformOpenAI
+	PlatformCodex2API   = domain.PlatformCodex2API
 	PlatformGemini      = domain.PlatformGemini
 	PlatformAntigravity = domain.PlatformAntigravity
 )
+
+func IsOpenAICompatiblePlatform(platform string) bool {
+	return platform == PlatformOpenAI || platform == PlatformCodex2API
+}
 
 // Account type constants
 const (

@@ -180,6 +180,7 @@ const activeClientTab = ref<string>('claude')
 const defaultClientTab = computed(() => {
   switch (props.platform) {
     case 'openai':
+    case 'codex2api':
       return 'codex'
     case 'gemini':
       return 'gemini'
@@ -277,6 +278,11 @@ const clientTabs = computed((): TabConfig[] => {
       tabs.push({ id: 'opencode', label: t('keys.useKeyModal.cliTabs.opencode'), icon: TerminalIcon })
       return tabs
     }
+    case 'codex2api':
+      return [
+        { id: 'codex', label: t('keys.useKeyModal.cliTabs.codexCli'), icon: TerminalIcon },
+        { id: 'opencode', label: t('keys.useKeyModal.cliTabs.opencode'), icon: TerminalIcon }
+      ]
     case 'gemini':
       return [
         { id: 'gemini', label: t('keys.useKeyModal.cliTabs.geminiCli'), icon: SparkleIcon },
@@ -322,6 +328,7 @@ const currentTabs = computed(() => {
 const platformDescription = computed(() => {
   switch (props.platform) {
     case 'openai':
+    case 'codex2api':
       if (activeClientTab.value === 'claude') {
         return t('keys.useKeyModal.description')
       }
@@ -338,6 +345,7 @@ const platformDescription = computed(() => {
 const platformNote = computed(() => {
   switch (props.platform) {
     case 'openai':
+    case 'codex2api':
       if (activeClientTab.value === 'claude') {
         return t('keys.useKeyModal.note')
       }
@@ -399,6 +407,7 @@ const currentFiles = computed((): FileConfig[] => {
       case 'anthropic':
         return [generateOpenCodeConfig('anthropic', apiBase, apiKey)]
       case 'openai':
+      case 'codex2api':
         return [generateOpenCodeConfig('openai', apiBase, apiKey)]
       case 'gemini':
         return [generateOpenCodeConfig('gemini', geminiBase, apiKey)]
@@ -414,6 +423,7 @@ const currentFiles = computed((): FileConfig[] => {
 
   switch (props.platform) {
     case 'openai':
+    case 'codex2api':
       if (activeClientTab.value === 'claude') {
         return generateAnthropicFiles(baseUrl, apiKey)
       }

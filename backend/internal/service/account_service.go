@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
@@ -16,6 +17,22 @@ var (
 
 const AccountListGroupUngrouped int64 = -1
 const AccountPrivacyModeUnsetFilter = "__unset__"
+
+func validateCodex2APIAccount(account *Account) error {
+	if account == nil || account.Platform != PlatformCodex2API {
+		return nil
+	}
+	if account.Type != AccountTypeAPIKey {
+		return fmt.Errorf("codex2api accounts only support apikey type")
+	}
+	if strings.TrimSpace(account.GetCredential("api_key")) == "" {
+		return fmt.Errorf("codex2api api_key is required")
+	}
+	if strings.TrimSpace(account.GetCredential("base_url")) == "" {
+		return fmt.Errorf("codex2api base_url is required")
+	}
+	return nil
+}
 
 type AccountRepository interface {
 	Create(ctx context.Context, account *Account) error
@@ -169,6 +186,9 @@ func (s *AccountService) Create(ctx context.Context, req CreateAccountRequest) (
 	} else {
 		account.AutoPauseOnExpired = true
 	}
+	if err := validateCodex2APIAccount(account); err != nil {
+		return nil, err
+	}
 
 	if err := s.accountRepo.Create(ctx, account); err != nil {
 		return nil, fmt.Errorf("create account: %w", err)
@@ -286,6 +306,10 @@ func (s *AccountService) Update(ctx context.Context, id int64, req UpdateAccount
 	}
 
 	// 执行更新
+	if err := validateCodex2APIAccount(account); err != nil {
+		return nil, err
+	}
+
 	if err := s.accountRepo.Update(ctx, account); err != nil {
 		return nil, fmt.Errorf("update account: %w", err)
 	}
@@ -414,7 +438,7 @@ func (s *AccountService) TestCredentials(ctx context.Context, id int64) error {
 	case PlatformAnthropic:
 		// TODO: 测试Anthropic API凭证
 		return nil
-	case PlatformOpenAI:
+	case PlatformOpenAI, PlatformCodex2API:
 		// TODO: 测试OpenAI API凭证
 		return nil
 	case PlatformGemini:

@@ -175,7 +175,7 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 	}
 
 	// Route to platform-specific test method
-	if account.IsOpenAI() {
+	if account.IsOpenAICompatible() {
 		return s.testOpenAIAccountConnection(c, account, modelID, prompt)
 	}
 
@@ -458,6 +458,9 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 
 		baseURL := account.GetOpenAIBaseURL()
 		if baseURL == "" {
+			if account.Platform == PlatformCodex2API {
+				return s.sendErrorAndEnd(c, "Base URL is required for Codex2api accounts")
+			}
 			baseURL = "https://api.openai.com"
 		}
 		normalizedBaseURL, err := s.validateUpstreamBaseURL(baseURL)
@@ -1054,6 +1057,9 @@ func (s *AccountTestService) testOpenAIImageAPIKey(c *gin.Context, ctx context.C
 
 	baseURL := account.GetOpenAIBaseURL()
 	if baseURL == "" {
+		if account.Platform == PlatformCodex2API {
+			return s.sendErrorAndEnd(c, "Base URL is required for Codex2api accounts")
+		}
 		baseURL = "https://api.openai.com"
 	}
 	normalizedBaseURL, err := s.validateUpstreamBaseURL(baseURL)

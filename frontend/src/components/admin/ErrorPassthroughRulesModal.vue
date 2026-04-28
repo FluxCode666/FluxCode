@@ -488,6 +488,7 @@ const matchModeOptions = computed(() => [
 const platformOptions = computed(() => [
   { value: 'anthropic', label: t('admin.accounts.platforms.anthropic') },
   { value: 'openai', label: t('admin.accounts.platforms.openai') },
+  { value: 'codex2api', label: t('admin.accounts.platforms.codex2api') },
   { value: 'gemini', label: t('admin.accounts.platforms.gemini') },
   { value: 'antigravity', label: t('admin.accounts.platforms.antigravity') }
 ])

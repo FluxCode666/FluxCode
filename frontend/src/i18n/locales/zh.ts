@@ -1779,6 +1779,7 @@ export default {
         anthropic: 'Anthropic',
         kiro: 'Kiro',
         openai: 'OpenAI',
+        codex2api: 'Codex2api',
         gemini: 'Gemini',
         antigravity: 'Antigravity',
         sora: 'Sora',
@@ -2450,6 +2451,7 @@ export default {
         openai: 'OpenAI',
         anthropic: 'Anthropic',
         kiro: 'Kiro',
+        codex2api: 'Codex2api',
         gemini: 'Gemini',
         antigravity: 'Antigravity',
         sora: 'Sora',
@@ -2695,6 +2697,11 @@ export default {
         codexCLIOnly: '仅允许 Codex 官方客户端',
         codexCLIOnlyDesc: '仅对 OpenAI OAuth 生效。开启后仅允许 Codex 官方客户端家族访问；关闭后完全绕过并保持原逻辑。',
         modelRestrictionDisabledByPassthrough: '已开启自动透传：模型白名单/映射不会生效。',
+      },
+      codex2api: {
+        baseUrlHint: 'Codex2api 接入地址必填，例如：https://xxx',
+        apiKeyHint: '您的 Codex2api API Key',
+        pleaseEnterBaseUrl: '请输入 Codex2api Base URL'
       },
       anthropic: {
         apiKeyPassthrough: '自动透传（仅替换认证）',

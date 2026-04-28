@@ -109,6 +109,7 @@ const groups = ref<Array<{ id: number; name: string; platform: string }>>([])
 const platformOptions = computed(() => [
   { value: '', label: t('common.all') },
   { value: 'openai', label: t('admin.accounts.platforms.openai') },
+  { value: 'codex2api', label: t('admin.accounts.platforms.codex2api') },
   { value: 'anthropic', label: t('admin.accounts.platforms.anthropic') },
   { value: 'gemini', label: t('admin.accounts.platforms.gemini') },
   { value: 'antigravity', label: t('admin.accounts.platforms.antigravity') }

@@ -16,8 +16,29 @@ func (s *OpenAIGatewayService) SelectAccountWithSchedulerForImages(
 	excludedIDs map[int64]struct{},
 	_ OpenAIImagesCapability,
 ) (*AccountSelectionResult, OpenAIAccountScheduleDecision, error) {
-	return s.SelectAccountWithScheduler(
+	return s.SelectAccountWithSchedulerForImagesForPlatform(
 		ctx,
+		PlatformOpenAI,
+		groupID,
+		sessionHash,
+		requestedModel,
+		excludedIDs,
+		OpenAIImagesCapabilityBasic,
+	)
+}
+
+func (s *OpenAIGatewayService) SelectAccountWithSchedulerForImagesForPlatform(
+	ctx context.Context,
+	platform string,
+	groupID *int64,
+	sessionHash string,
+	requestedModel string,
+	excludedIDs map[int64]struct{},
+	_ OpenAIImagesCapability,
+) (*AccountSelectionResult, OpenAIAccountScheduleDecision, error) {
+	return s.SelectAccountWithSchedulerForPlatform(
+		ctx,
+		platform,
 		groupID,
 		"",
 		sessionHash,

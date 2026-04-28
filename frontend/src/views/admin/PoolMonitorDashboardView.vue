@@ -116,7 +116,7 @@ const emptyCounts: AccountSummaryCounts = {
   overloaded: 0
 }
 
-const knownPlatforms = ['anthropic', 'kiro', 'openai', 'gemini', 'antigravity'] as const
+const knownPlatforms = ['anthropic', 'kiro', 'openai', 'codex2api', 'gemini', 'antigravity'] as const
 
 const platformLabel = (platform: string) => {
   if (platform === '__all__') return t('admin.poolMonitorDashboard.allPlatforms')

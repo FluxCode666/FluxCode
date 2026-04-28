@@ -70,7 +70,7 @@
       <!-- Platform Selection - Segmented Control Style -->
       <div>
         <label class="input-label">{{ t('admin.accounts.platform') }}</label>
-        <div class="mt-2 flex rounded-lg bg-gray-100 p-1 dark:bg-dark-700" data-tour="account-form-platform">
+        <div class="mt-2 grid grid-cols-2 gap-1 rounded-lg bg-gray-100 p-1 dark:bg-dark-700 sm:grid-cols-5" data-tour="account-form-platform">
           <button
             type="button"
             @click="form.platform = 'anthropic'"
@@ -108,6 +108,31 @@
               />
             </svg>
             OpenAI
+          </button>
+          <button
+            type="button"
+            @click="form.platform = 'codex2api'"
+            :class="[
+              'flex flex-1 items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-medium transition-all',
+              form.platform === 'codex2api'
+                ? 'bg-white text-cyan-600 shadow-sm dark:bg-dark-600 dark:text-cyan-400'
+                : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
+            ]"
+          >
+            <svg
+              class="h-4 w-4"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              stroke-width="1.5"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                d="M4 7.5h16M4 12h16M4 16.5h16"
+              />
+            </svg>
+            Codex2api
           </button>
           <button
             type="button"
@@ -858,9 +883,11 @@
             :placeholder="
               form.platform === 'openai'
                 ? 'https://api.openai.com'
-                : form.platform === 'gemini'
-                  ? 'https://generativelanguage.googleapis.com'
-                  : 'https://api.anthropic.com'
+                : form.platform === 'codex2api'
+                  ? 'https://xxx'
+                  : form.platform === 'gemini'
+                    ? 'https://generativelanguage.googleapis.com'
+                    : 'https://api.anthropic.com'
             "
           />
           <p class="input-hint">{{ baseUrlHint }}</p>
@@ -875,9 +902,11 @@
             :placeholder="
               form.platform === 'openai'
                 ? 'sk-proj-...'
-                : form.platform === 'gemini'
-                  ? 'AIza...'
-                  : 'sk-ant-...'
+                : form.platform === 'codex2api'
+                  ? '<token>'
+                  : form.platform === 'gemini'
+                    ? 'AIza...'
+                    : 'sk-ant-...'
             "
           />
           <p class="input-hint">{{ apiKeyHint }}</p>
@@ -2967,12 +2996,14 @@ const oauthStepTitle = computed(() => {
 // Platform-specific hints for API Key type
 const baseUrlHint = computed(() => {
   if (form.platform === 'openai') return t('admin.accounts.openai.baseUrlHint')
+  if (form.platform === 'codex2api') return t('admin.accounts.codex2api.baseUrlHint')
   if (form.platform === 'gemini') return t('admin.accounts.gemini.baseUrlHint')
   return t('admin.accounts.baseUrlHint')
 })
 
 const apiKeyHint = computed(() => {
   if (form.platform === 'openai') return t('admin.accounts.openai.apiKeyHint')
+  if (form.platform === 'codex2api') return t('admin.accounts.codex2api.apiKeyHint')
   if (form.platform === 'gemini') return t('admin.accounts.gemini.apiKeyHint')
   return t('admin.accounts.apiKeyHint')
 })
@@ -3354,6 +3385,11 @@ watch(
       return
     }
     // Bedrock 类型
+    if (form.platform === 'codex2api') {
+      form.type = 'apikey'
+      if (accountCategory.value !== 'apikey') accountCategory.value = 'apikey'
+      return
+    }
     if (form.platform === 'anthropic' && category === 'bedrock') {
       form.type = 'bedrock' as AccountType
       return
@@ -3375,6 +3411,8 @@ watch(
     apiKeyBaseUrl.value =
       (newPlatform === 'openai')
         ? 'https://api.openai.com'
+        : newPlatform === 'codex2api'
+          ? ''
         : newPlatform === 'gemini'
           ? 'https://generativelanguage.googleapis.com'
           : 'https://api.anthropic.com'
@@ -3395,6 +3433,10 @@ watch(
       antigravityWhitelistModels.value = []
       antigravityModelMappings.value = []
       antigravityModelRestrictionMode.value = 'mapping'
+    }
+    if (newPlatform === 'codex2api') {
+      accountCategory.value = 'apikey'
+      form.type = 'apikey'
     }
     // Reset Bedrock fields when switching platforms
     bedrockAccessKeyId.value = ''
@@ -4061,14 +4103,20 @@ const handleSubmit = async () => {
     appStore.showError(t('admin.accounts.pleaseEnterApiKey'))
     return
   }
+  if (form.platform === 'codex2api' && !apiKeyBaseUrl.value.trim()) {
+    appStore.showError(t('admin.accounts.codex2api.pleaseEnterBaseUrl'))
+    return
+  }
 
   // Determine default base URL based on platform
   const defaultBaseUrl =
     form.platform === 'openai'
       ? 'https://api.openai.com'
-      : form.platform === 'gemini'
-        ? 'https://generativelanguage.googleapis.com'
-        : 'https://api.anthropic.com'
+      : form.platform === 'codex2api'
+        ? ''
+        : form.platform === 'gemini'
+          ? 'https://generativelanguage.googleapis.com'
+          : 'https://api.anthropic.com'
 
   // Build credentials with optional model mapping
   const credentials: Record<string, unknown> = {
