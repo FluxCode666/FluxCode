@@ -1212,6 +1212,13 @@ export interface TrendDataPoint {
   actual_cost: number // 实际扣除
 }
 
+export interface SubscriptionExhaustionTrendPoint {
+  date: string
+  total_subscriptions: number
+  exhausted_subscriptions: number
+  exhaustion_rate: number
+}
+
 export interface ModelStat {
   model: string
   requests: number

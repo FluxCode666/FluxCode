@@ -49,6 +49,12 @@ export interface UpdatePaymentConfigRequest {
   help_text?: string
 }
 
+export interface PaymentDashboardParams {
+  days?: number
+  start_date?: string
+  end_date?: string
+}
+
 export const adminPaymentAPI = {
   // ==================== Config ====================
 
@@ -65,9 +71,10 @@ export const adminPaymentAPI = {
   // ==================== Dashboard ====================
 
   /** Get payment dashboard statistics */
-  getDashboard(days?: number) {
+  getDashboard(params?: number | PaymentDashboardParams) {
+    const queryParams = typeof params === 'number' ? { days: params } : params
     return apiClient.get<DashboardStats>('/admin/payment/dashboard', {
-      params: days ? { days } : undefined
+      params: queryParams
     })
   },
 

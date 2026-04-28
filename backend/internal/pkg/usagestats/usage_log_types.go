@@ -198,6 +198,14 @@ type APIKeyUsageTrendPoint struct {
 	Tokens   int64  `json:"tokens"`
 }
 
+// SubscriptionExhaustionTrendPoint represents daily subscription grant exhaustion counts.
+type SubscriptionExhaustionTrendPoint struct {
+	Date                   string  `json:"date"`
+	TotalSubscriptions     int64   `json:"total_subscriptions"`
+	ExhaustedSubscriptions int64   `json:"exhausted_subscriptions"`
+	ExhaustionRate         float64 `json:"exhaustion_rate"`
+}
+
 // UserDashboardStats 用户仪表盘统计
 type UserDashboardStats struct {
 	// API Key 统计

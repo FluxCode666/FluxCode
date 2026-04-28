@@ -282,6 +282,11 @@
             :title="t('admin.dashboard.requestCountTrend')"
             :series-label="t('admin.dashboard.requests')"
           />
+          <SubscriptionExhaustionTrend
+            v-if="granularity === 'day'"
+            :trend-data="subscriptionExhaustionTrend"
+            :loading="subscriptionExhaustionLoading"
+          />
           <ProxyUsageSummaryChart
             :items="proxyUsageSummary"
             :loading="chartsLoading"
@@ -340,6 +345,7 @@ import type {
   ModelStat,
   UserUsageTrendPoint,
   UserSpendingRankingItem,
+  SubscriptionExhaustionTrendPoint,
   ProxyUsageSummaryItem
 } from '@/types'
 import AppLayout from '@/components/layout/AppLayout.vue'
@@ -350,6 +356,7 @@ import Select from '@/components/common/Select.vue'
 import ModelDistributionChart from '@/components/charts/ModelDistributionChart.vue'
 import TokenUsageTrend from '@/components/charts/TokenUsageTrend.vue'
 import RequestCountTrend from '@/components/charts/RequestCountTrend.vue'
+import SubscriptionExhaustionTrend from '@/components/charts/SubscriptionExhaustionTrend.vue'
 import ProxyUsageSummaryChart from '@/components/charts/ProxyUsageSummaryChart.vue'
 import { fillTrendDataGaps } from '@/utils/trendFill'
 
@@ -382,6 +389,7 @@ const stats = ref<DashboardStats | null>(null)
 const loading = ref(false)
 const chartsLoading = ref(false)
 const userTrendLoading = ref(false)
+const subscriptionExhaustionLoading = ref(false)
 const rankingLoading = ref(false)
 const rankingError = ref(false)
 const loadError = ref('')
@@ -390,6 +398,7 @@ const loadError = ref('')
 const trendData = ref<TrendDataPoint[]>([])
 const modelStats = ref<ModelStat[]>([])
 const userTrend = ref<UserUsageTrendPoint[]>([])
+const subscriptionExhaustionTrend = ref<SubscriptionExhaustionTrendPoint[]>([])
 const proxyUsageSummary = ref<ProxyUsageSummaryItem[]>([])
 const rankingItems = ref<UserSpendingRankingItem[]>([])
 const rankingTotalActualCost = ref(0)
@@ -401,6 +410,7 @@ const proxyTimelineLabels = computed(() => {
 })
 let chartLoadSeq = 0
 let usersTrendLoadSeq = 0
+let subscriptionExhaustionLoadSeq = 0
 let rankingLoadSeq = 0
 const rankingLimit = 12
 
@@ -713,6 +723,33 @@ const loadUsersTrend = async () => {
   }
 }
 
+const loadSubscriptionExhaustionTrend = async () => {
+  const currentSeq = ++subscriptionExhaustionLoadSeq
+  if (granularity.value !== 'day') {
+    subscriptionExhaustionTrend.value = []
+    subscriptionExhaustionLoading.value = false
+    return
+  }
+
+  subscriptionExhaustionLoading.value = true
+  try {
+    const response = await adminAPI.dashboard.getSubscriptionExhaustionTrend({
+      start_date: startDate.value,
+      end_date: endDate.value
+    })
+    if (currentSeq !== subscriptionExhaustionLoadSeq) return
+    subscriptionExhaustionTrend.value = response.trend || []
+  } catch (error) {
+    if (currentSeq !== subscriptionExhaustionLoadSeq) return
+    console.error('Error loading subscription exhaustion trend:', error)
+    subscriptionExhaustionTrend.value = []
+  } finally {
+    if (currentSeq === subscriptionExhaustionLoadSeq) {
+      subscriptionExhaustionLoading.value = false
+    }
+  }
+}
+
 const loadUserSpendingRanking = async () => {
   const currentSeq = ++rankingLoadSeq
   rankingLoading.value = true
@@ -747,6 +784,7 @@ const loadDashboardStats = async () => {
   await Promise.all([
     loadDashboardSnapshot(true),
     loadUsersTrend(),
+    loadSubscriptionExhaustionTrend(),
     loadUserSpendingRanking()
   ])
 }
@@ -755,6 +793,7 @@ const loadChartData = async () => {
   await Promise.all([
     loadDashboardSnapshot(false),
     loadUsersTrend(),
+    loadSubscriptionExhaustionTrend(),
     loadUserSpendingRanking()
   ])
 }

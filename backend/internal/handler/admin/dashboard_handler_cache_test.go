@@ -16,8 +16,9 @@ import (
 
 type dashboardUsageRepoCacheProbe struct {
 	service.UsageLogRepository
-	trendCalls      atomic.Int32
-	usersTrendCalls atomic.Int32
+	trendCalls                  atomic.Int32
+	usersTrendCalls             atomic.Int32
+	subscriptionExhaustionCalls atomic.Int32
 }
 
 func (r *dashboardUsageRepoCacheProbe) GetUsageTrendWithFilters(
@@ -58,12 +59,26 @@ func (r *dashboardUsageRepoCacheProbe) GetUserUsageTrend(
 	}}, nil
 }
 
+func (r *dashboardUsageRepoCacheProbe) GetSubscriptionExhaustionTrend(
+	ctx context.Context,
+	startTime, endTime time.Time,
+) ([]usagestats.SubscriptionExhaustionTrendPoint, error) {
+	r.subscriptionExhaustionCalls.Add(1)
+	return []usagestats.SubscriptionExhaustionTrendPoint{{
+		Date:                   "2026-03-11",
+		TotalSubscriptions:     10,
+		ExhaustedSubscriptions: 2,
+		ExhaustionRate:         20,
+	}}, nil
+}
+
 func resetDashboardReadCachesForTest() {
 	dashboardTrendCache = newSnapshotCache(30 * time.Second)
 	dashboardUsersTrendCache = newSnapshotCache(30 * time.Second)
 	dashboardAPIKeysTrendCache = newSnapshotCache(30 * time.Second)
 	dashboardModelStatsCache = newSnapshotCache(30 * time.Second)
 	dashboardGroupStatsCache = newSnapshotCache(30 * time.Second)
+	dashboardSubscriptionExhaustionTrendCache = newSnapshotCache(30 * time.Second)
 	dashboardSnapshotV2Cache = newSnapshotCache(30 * time.Second)
 }
 
@@ -115,4 +130,47 @@ func TestDashboardHandler_GetUserUsageTrend_UsesCache(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec2.Code)
 	require.Equal(t, "hit", rec2.Header().Get("X-Snapshot-Cache"))
 	require.Equal(t, int32(1), repo.usersTrendCalls.Load())
+}
+
+func TestDashboardHandler_GetSubscriptionExhaustionTrend_UsesCache(t *testing.T) {
+	t.Cleanup(resetDashboardReadCachesForTest)
+	resetDashboardReadCachesForTest()
+
+	gin.SetMode(gin.TestMode)
+	repo := &dashboardUsageRepoCacheProbe{}
+	dashboardSvc := service.NewDashboardService(repo, nil, nil, nil)
+	handler := NewDashboardHandler(dashboardSvc, nil)
+	router := gin.New()
+	router.GET("/admin/dashboard/subscription-exhaustion-trend", handler.GetSubscriptionExhaustionTrend)
+
+	req1 := httptest.NewRequest(http.MethodGet, "/admin/dashboard/subscription-exhaustion-trend?start_date=2026-03-01&end_date=2026-03-07&granularity=day", nil)
+	rec1 := httptest.NewRecorder()
+	router.ServeHTTP(rec1, req1)
+	require.Equal(t, http.StatusOK, rec1.Code)
+	require.Equal(t, "miss", rec1.Header().Get("X-Snapshot-Cache"))
+
+	req2 := httptest.NewRequest(http.MethodGet, "/admin/dashboard/subscription-exhaustion-trend?start_date=2026-03-01&end_date=2026-03-07&granularity=day", nil)
+	rec2 := httptest.NewRecorder()
+	router.ServeHTTP(rec2, req2)
+	require.Equal(t, http.StatusOK, rec2.Code)
+	require.Equal(t, "hit", rec2.Header().Get("X-Snapshot-Cache"))
+	require.Equal(t, int32(1), repo.subscriptionExhaustionCalls.Load())
+}
+
+func TestDashboardHandler_GetSubscriptionExhaustionTrend_RejectsNonDayGranularity(t *testing.T) {
+	t.Cleanup(resetDashboardReadCachesForTest)
+	resetDashboardReadCachesForTest()
+
+	gin.SetMode(gin.TestMode)
+	repo := &dashboardUsageRepoCacheProbe{}
+	dashboardSvc := service.NewDashboardService(repo, nil, nil, nil)
+	handler := NewDashboardHandler(dashboardSvc, nil)
+	router := gin.New()
+	router.GET("/admin/dashboard/subscription-exhaustion-trend", handler.GetSubscriptionExhaustionTrend)
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/dashboard/subscription-exhaustion-trend?granularity=hour", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	require.Equal(t, int32(0), repo.subscriptionExhaustionCalls.Load())
 }

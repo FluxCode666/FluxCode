@@ -16,15 +16,20 @@ import (
 
 type usageRepoStub struct {
 	UsageLogRepository
-	stats      *usagestats.DashboardStats
-	rangeStats *usagestats.DashboardStats
-	err        error
-	rangeErr   error
-	calls      int32
-	rangeCalls int32
-	rangeStart time.Time
-	rangeEnd   time.Time
-	onCall     chan struct{}
+	stats                          *usagestats.DashboardStats
+	rangeStats                     *usagestats.DashboardStats
+	subscriptionExhaustionTrend    []usagestats.SubscriptionExhaustionTrendPoint
+	err                            error
+	rangeErr                       error
+	subscriptionExhaustionTrendErr error
+	calls                          int32
+	rangeCalls                     int32
+	subscriptionExhaustionCalls    int32
+	rangeStart                     time.Time
+	rangeEnd                       time.Time
+	subscriptionExhaustionStart    time.Time
+	subscriptionExhaustionEnd      time.Time
+	onCall                         chan struct{}
 }
 
 func (s *usageRepoStub) GetDashboardStats(ctx context.Context) (*usagestats.DashboardStats, error) {
@@ -52,6 +57,20 @@ func (s *usageRepoStub) GetDashboardStatsWithRange(ctx context.Context, start, e
 		return s.rangeStats, nil
 	}
 	return s.stats, nil
+}
+
+func (s *usageRepoStub) GetSubscriptionExhaustionTrend(ctx context.Context, startTime, endTime time.Time) ([]usagestats.SubscriptionExhaustionTrendPoint, error) {
+	atomic.AddInt32(&s.subscriptionExhaustionCalls, 1)
+	s.subscriptionExhaustionStart = startTime
+	s.subscriptionExhaustionEnd = endTime
+	if s.subscriptionExhaustionTrendErr != nil {
+		return nil, s.subscriptionExhaustionTrendErr
+	}
+	return s.subscriptionExhaustionTrend, nil
+}
+
+type usageRepoWithoutSubscriptionExhaustionStub struct {
+	UsageLogRepository
 }
 
 type dashboardCacheStub struct {
@@ -392,4 +411,31 @@ func TestDashboardService_AggDisabled_UsesUsageLogsFallback(t *testing.T) {
 	require.Equal(t, int32(1), atomic.LoadInt32(&repo.rangeCalls))
 	require.False(t, repo.rangeEnd.IsZero())
 	require.Equal(t, truncateToDayUTC(repo.rangeEnd.AddDate(0, 0, -7)), repo.rangeStart)
+}
+
+func TestDashboardService_GetSubscriptionExhaustionTrend(t *testing.T) {
+	start := time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC)
+	end := start.AddDate(0, 0, 7)
+	expected := []usagestats.SubscriptionExhaustionTrendPoint{{
+		Date:                   "2026-03-01",
+		TotalSubscriptions:     12,
+		ExhaustedSubscriptions: 3,
+		ExhaustionRate:         25,
+	}}
+	repo := &usageRepoStub{subscriptionExhaustionTrend: expected}
+	svc := NewDashboardService(repo, nil, nil, nil)
+
+	got, err := svc.GetSubscriptionExhaustionTrend(context.Background(), start, end)
+	require.NoError(t, err)
+	require.Equal(t, expected, got)
+	require.Equal(t, int32(1), atomic.LoadInt32(&repo.subscriptionExhaustionCalls))
+	require.Equal(t, start, repo.subscriptionExhaustionStart)
+	require.Equal(t, end, repo.subscriptionExhaustionEnd)
+}
+
+func TestDashboardService_GetSubscriptionExhaustionTrendUnsupported(t *testing.T) {
+	svc := NewDashboardService(&usageRepoWithoutSubscriptionExhaustionStub{}, nil, nil, nil)
+
+	_, err := svc.GetSubscriptionExhaustionTrend(context.Background(), time.Now(), time.Now())
+	require.ErrorContains(t, err, "subscription exhaustion trend is not supported")
 }
