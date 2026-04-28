@@ -34,15 +34,15 @@ type batchSeenKey struct {
 var ErrSchedulerRebuildInProgress = errors.New("scheduler rebuild already in progress")
 
 type SchedulerSnapshotService struct {
-	cache       SchedulerCache
-	outboxQueue SchedulerOutboxQueue
-	accountRepo AccountRepository
-	groupRepo   GroupRepository
-	cfg         *config.Config
-	stopCh      chan struct{}
-	stopOnce    sync.Once
-	stopCancel  context.CancelFunc // 用于中断 BLOCK 读取
-	wg          sync.WaitGroup
+	cache         SchedulerCache
+	outboxQueue   SchedulerOutboxQueue
+	accountRepo   AccountRepository
+	groupRepo     GroupRepository
+	cfg           *config.Config
+	stopCh        chan struct{}
+	stopOnce      sync.Once
+	stopCancel    context.CancelFunc // 用于中断 BLOCK 读取
+	wg            sync.WaitGroup
 	fallbackLimit *fallbackLimiter
 	lagMu         sync.Mutex
 	lagFailures   int
@@ -875,13 +875,23 @@ func (s *SchedulerSnapshotService) loadAccountsFromDB(ctx context.Context, bucke
 		return filtered, nil
 	}
 
+	accountPlatforms := openAICompatibleSchedulerAccountPlatforms(bucket.Platform)
 	if groupID > 0 {
-		return s.accountRepo.ListSchedulableByGroupIDAndPlatform(ctx, groupID, bucket.Platform)
+		if len(accountPlatforms) == 1 {
+			return s.accountRepo.ListSchedulableByGroupIDAndPlatform(ctx, groupID, accountPlatforms[0])
+		}
+		return s.accountRepo.ListSchedulableByGroupIDAndPlatforms(ctx, groupID, accountPlatforms)
 	}
 	if s.isRunModeSimple() {
-		return s.accountRepo.ListSchedulableByPlatform(ctx, bucket.Platform)
+		if len(accountPlatforms) == 1 {
+			return s.accountRepo.ListSchedulableByPlatform(ctx, accountPlatforms[0])
+		}
+		return s.accountRepo.ListSchedulableByPlatforms(ctx, accountPlatforms)
 	}
-	return s.accountRepo.ListSchedulableUngroupedByPlatform(ctx, bucket.Platform)
+	if len(accountPlatforms) == 1 {
+		return s.accountRepo.ListSchedulableUngroupedByPlatform(ctx, accountPlatforms[0])
+	}
+	return s.accountRepo.ListSchedulableUngroupedByPlatforms(ctx, accountPlatforms)
 }
 
 func (s *SchedulerSnapshotService) bucketFor(groupID *int64, platform string, mode string) SchedulerBucket {

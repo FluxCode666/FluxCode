@@ -64,6 +64,10 @@ func (r stubOpenAIAccountRepo) ListSchedulableByGroupIDAndPlatform(ctx context.C
 	return result, nil
 }
 
+func (r stubOpenAIAccountRepo) ListSchedulableByGroupIDAndPlatforms(ctx context.Context, groupID int64, platforms []string) ([]Account, error) {
+	return r.listByPlatforms(platforms)
+}
+
 func (r stubOpenAIAccountRepo) ListSchedulableByPlatform(ctx context.Context, platform string) ([]Account, error) {
 	var result []Account
 	for _, acc := range r.accounts {
@@ -74,8 +78,30 @@ func (r stubOpenAIAccountRepo) ListSchedulableByPlatform(ctx context.Context, pl
 	return result, nil
 }
 
+func (r stubOpenAIAccountRepo) ListSchedulableByPlatforms(ctx context.Context, platforms []string) ([]Account, error) {
+	return r.listByPlatforms(platforms)
+}
+
 func (r stubOpenAIAccountRepo) ListSchedulableUngroupedByPlatform(ctx context.Context, platform string) ([]Account, error) {
 	return r.ListSchedulableByPlatform(ctx, platform)
+}
+
+func (r stubOpenAIAccountRepo) ListSchedulableUngroupedByPlatforms(ctx context.Context, platforms []string) ([]Account, error) {
+	return r.listByPlatforms(platforms)
+}
+
+func (r stubOpenAIAccountRepo) listByPlatforms(platforms []string) ([]Account, error) {
+	platformSet := make(map[string]struct{}, len(platforms))
+	for _, platform := range platforms {
+		platformSet[platform] = struct{}{}
+	}
+	var result []Account
+	for _, acc := range r.accounts {
+		if _, ok := platformSet[acc.Platform]; ok {
+			result = append(result, acc)
+		}
+	}
+	return result, nil
 }
 
 type stubConcurrencyCache struct {
@@ -547,6 +573,37 @@ func TestOpenAISelectAccountWithLoadAwarenessForPlatform_SelectsCodex2APIOnly(t 
 	selection, err := svc.SelectAccountWithLoadAwarenessForPlatform(
 		context.Background(),
 		PlatformCodex2API,
+		&groupID,
+		"",
+		"gpt-5.1",
+		nil,
+	)
+	require.NoError(t, err)
+	require.NotNil(t, selection)
+	require.NotNil(t, selection.Account)
+	require.Equal(t, int64(2), selection.Account.ID)
+	if selection.ReleaseFunc != nil {
+		selection.ReleaseFunc()
+	}
+}
+
+func TestOpenAISelectAccountWithLoadAwarenessForPlatform_OpenAIGroupCanSelectCodex2API(t *testing.T) {
+	groupID := int64(1)
+	repo := stubOpenAIAccountRepo{
+		accounts: []Account{
+			{ID: 1, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusDisabled, Schedulable: true, Concurrency: 1},
+			{ID: 2, Platform: PlatformCodex2API, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1},
+		},
+	}
+
+	svc := &OpenAIGatewayService{
+		accountRepo:        repo,
+		concurrencyService: NewConcurrencyService(stubConcurrencyCache{}),
+	}
+
+	selection, err := svc.SelectAccountWithLoadAwarenessForPlatform(
+		context.Background(),
+		PlatformOpenAI,
 		&groupID,
 		"",
 		"gpt-5.1",

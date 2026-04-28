@@ -1566,10 +1566,11 @@ func (s *adminServiceImpl) GetAccountsByIDs(ctx context.Context, ids []int64) ([
 func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccountInput) (*Account, error) {
 	// 绑定分组
 	groupIDs := input.GroupIDs
+	groupPlatform := AccountPlatformGroupPlatform(input.Platform)
 	// 如果没有指定分组,自动绑定对应平台的默认分组
 	if len(groupIDs) == 0 && !input.SkipDefaultGroupBind {
-		defaultGroupName := input.Platform + "-default"
-		groups, err := s.groupRepo.ListActiveByPlatform(ctx, input.Platform)
+		defaultGroupName := groupPlatform + "-default"
+		groups, err := s.groupRepo.ListActiveByPlatform(ctx, groupPlatform)
 		if err == nil {
 			for _, g := range groups {
 				if g.Name == defaultGroupName {
@@ -1578,6 +1579,9 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 				}
 			}
 		}
+	}
+	if err := validateAccountGroupBindings(ctx, s.groupRepo, input.Platform, input.Type, groupIDs); err != nil {
+		return nil, err
 	}
 
 	// 检查混合渠道风险（除非用户已确认）
@@ -1627,6 +1631,9 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 			return nil, errors.New("load_factor must be <= 10000")
 		}
 		account.LoadFactor = input.LoadFactor
+	}
+	if err := validateCodex2APIAccount(account); err != nil {
+		return nil, err
 	}
 	if err := s.accountRepo.Create(ctx, account); err != nil {
 		return nil, err
@@ -1760,9 +1767,13 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 		account.AutoPauseOnExpired = *input.AutoPauseOnExpired
 	}
 
+	if err := validateCodex2APIAccount(account); err != nil {
+		return nil, err
+	}
+
 	// 先验证分组是否存在（在任何写操作之前）
 	if input.GroupIDs != nil {
-		if err := s.validateGroupIDsExist(ctx, *input.GroupIDs); err != nil {
+		if err := validateAccountGroupBindings(ctx, s.groupRepo, account.Platform, account.Type, *input.GroupIDs); err != nil {
 			return nil, err
 		}
 
@@ -1813,9 +1824,9 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 
 	needMixedChannelCheck := input.GroupIDs != nil && !input.SkipMixedChannelCheck
 
-	// 预加载账号平台信息（混合渠道检查需要）。
+	// 预加载账号平台信息（分组平台校验和混合渠道检查需要）。
 	platformByID := map[int64]string{}
-	if needMixedChannelCheck {
+	if input.GroupIDs != nil {
 		accounts, err := s.accountRepo.GetByIDs(ctx, input.AccountIDs)
 		if err != nil {
 			return nil, err
@@ -1823,6 +1834,9 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 		for _, account := range accounts {
 			if account != nil {
 				platformByID[account.ID] = account.Platform
+				if err := validateAccountGroupBindings(ctx, s.groupRepo, account.Platform, account.Type, *input.GroupIDs); err != nil {
+					return nil, err
+				}
 			}
 		}
 	}

@@ -32,6 +32,20 @@ func IsOpenAICompatiblePlatform(platform string) bool {
 	return platform == PlatformOpenAI || platform == PlatformCodex2API
 }
 
+func AccountPlatformGroupPlatform(platform string) string {
+	if platform == PlatformCodex2API {
+		return PlatformOpenAI
+	}
+	return platform
+}
+
+func AccountCanBelongToGroupPlatform(accountPlatform, groupPlatform string) bool {
+	if accountPlatform == PlatformAntigravity && (groupPlatform == PlatformAnthropic || groupPlatform == PlatformGemini) {
+		return true
+	}
+	return AccountPlatformGroupPlatform(accountPlatform) == groupPlatform
+}
+
 // Account type constants
 const (
 	AccountTypeOAuth      = domain.AccountTypeOAuth      // OAuth类型账号（full scope: profile + inference）

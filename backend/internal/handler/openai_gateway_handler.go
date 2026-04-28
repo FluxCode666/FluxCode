@@ -56,7 +56,7 @@ func resolveOpenAIMessagesDispatchMappedModel(apiKey *service.APIKey, requestedM
 
 func resolveOpenAICompatibleGroupPlatform(apiKey *service.APIKey) string {
 	if apiKey != nil && apiKey.Group != nil && service.IsOpenAICompatiblePlatform(apiKey.Group.Platform) {
-		return apiKey.Group.Platform
+		return service.AccountPlatformGroupPlatform(apiKey.Group.Platform)
 	}
 	return service.PlatformOpenAI
 }

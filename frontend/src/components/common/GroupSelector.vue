@@ -43,14 +43,14 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import GroupBadge from './GroupBadge.vue'
-import type { AdminGroup, GroupPlatform } from '@/types'
+import type { AccountPlatform, AdminGroup, GroupPlatform } from '@/types'
 
 const { t } = useI18n()
 
 interface Props {
   modelValue: number[]
   groups: AdminGroup[]
-  platform?: GroupPlatform // Optional platform filter
+  platform?: AccountPlatform // Optional platform filter
   mixedScheduling?: boolean // For antigravity accounts: allow anthropic/gemini groups
 }
 
@@ -59,19 +59,26 @@ const emit = defineEmits<{
   'update:modelValue': [value: number[]]
 }>()
 
+const groupPlatform = computed<GroupPlatform | undefined>(() => {
+  if (!props.platform) {
+    return undefined
+  }
+  return props.platform === 'codex2api' ? 'openai' : props.platform
+})
+
 // Filter groups by platform if specified
 const filteredGroups = computed(() => {
-  if (!props.platform) {
+  if (!groupPlatform.value) {
     return props.groups
   }
   // antigravity 账户启用混合调度后，可选择 anthropic/gemini 分组
-  if (props.platform === 'antigravity' && props.mixedScheduling) {
+  if (groupPlatform.value === 'antigravity' && props.mixedScheduling) {
     return props.groups.filter(
       (g) => g.platform === 'antigravity' || g.platform === 'anthropic' || g.platform === 'gemini'
     )
   }
   // 默认：只能选择同 platform 的分组
-  return props.groups.filter((g) => g.platform === props.platform)
+  return props.groups.filter((g) => g.platform === groupPlatform.value)
 })
 
 const handleChange = (groupId: number, checked: boolean) => {

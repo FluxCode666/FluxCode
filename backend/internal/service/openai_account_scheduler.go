@@ -39,18 +39,30 @@ func normalizeOpenAICompatibleSchedulerPlatform(platform string) string {
 	return PlatformOpenAI
 }
 
+func openAICompatibleSchedulerAccountPlatforms(platform string) []string {
+	platform = normalizeOpenAICompatibleSchedulerPlatform(platform)
+	if platform == PlatformOpenAI {
+		return []string{PlatformOpenAI, PlatformCodex2API}
+	}
+	return []string{platform}
+}
+
 func isOpenAICompatibleAccountForPlatform(account *Account, platform string) bool {
 	if account == nil {
 		return false
 	}
 	platform = normalizeOpenAICompatibleSchedulerPlatform(platform)
-	if account.Platform != platform {
+	switch platform {
+	case PlatformOpenAI:
+		if account.Platform == PlatformOpenAI {
+			return true
+		}
+		return account.Platform == PlatformCodex2API && account.Type == AccountTypeAPIKey
+	case PlatformCodex2API:
+		return account.Platform == PlatformCodex2API && account.Type == AccountTypeAPIKey
+	default:
 		return false
 	}
-	if platform == PlatformCodex2API && account.Type != AccountTypeAPIKey {
-		return false
-	}
-	return true
 }
 
 type OpenAIAccountScheduleDecision struct {

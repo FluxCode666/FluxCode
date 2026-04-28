@@ -34,6 +34,51 @@ func validateCodex2APIAccount(account *Account) error {
 	return nil
 }
 
+func requireOAuthOnlyAppliesToGroup(platform string) bool {
+	switch platform {
+	case PlatformOpenAI, PlatformAntigravity, PlatformAnthropic, PlatformGemini:
+		return true
+	default:
+		return false
+	}
+}
+
+func validateAccountGroupBinding(group *Group, accountPlatform, accountType string) error {
+	if group == nil {
+		return fmt.Errorf("get group: %w", ErrGroupNotFound)
+	}
+	if !AccountCanBelongToGroupPlatform(accountPlatform, group.Platform) {
+		return fmt.Errorf("账号平台 [%s] 只能加入 [%s] 分组，不能加入分组 [%s](%s)",
+			accountPlatform, AccountPlatformGroupPlatform(accountPlatform), group.Name, group.Platform)
+	}
+	if accountType == AccountTypeAPIKey && group.RequireOAuthOnly && requireOAuthOnlyAppliesToGroup(group.Platform) {
+		return fmt.Errorf("分组 [%s] 仅允许 OAuth 账号，apikey 类型账号无法加入", group.Name)
+	}
+	return nil
+}
+
+func validateAccountGroupBindings(ctx context.Context, groupRepo GroupRepository, accountPlatform, accountType string, groupIDs []int64) error {
+	if len(groupIDs) == 0 {
+		return nil
+	}
+	if groupRepo == nil {
+		return fmt.Errorf("group repository not configured")
+	}
+	for _, groupID := range groupIDs {
+		if groupID <= 0 {
+			return fmt.Errorf("get group: %w", ErrGroupNotFound)
+		}
+		group, err := groupRepo.GetByID(ctx, groupID)
+		if err != nil {
+			return fmt.Errorf("get group: %w", err)
+		}
+		if err := validateAccountGroupBinding(group, accountPlatform, accountType); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 type AccountRepository interface {
 	Create(ctx context.Context, account *Account) error
 	GetByID(ctx context.Context, id int64) (*Account, error)
@@ -160,13 +205,6 @@ func NewAccountService(accountRepo AccountRepository, groupRepo GroupRepository)
 
 // Create 创建账号
 func (s *AccountService) Create(ctx context.Context, req CreateAccountRequest) (*Account, error) {
-	// 验证分组是否存在（如果指定了分组）
-	if len(req.GroupIDs) > 0 {
-		if err := s.validateGroupIDsExist(ctx, req.GroupIDs); err != nil {
-			return nil, err
-		}
-	}
-
 	// 创建账号
 	account := &Account{
 		Name:        req.Name,
@@ -189,22 +227,12 @@ func (s *AccountService) Create(ctx context.Context, req CreateAccountRequest) (
 	if err := validateCodex2APIAccount(account); err != nil {
 		return nil, err
 	}
+	if err := validateAccountGroupBindings(ctx, s.groupRepo, account.Platform, account.Type, req.GroupIDs); err != nil {
+		return nil, err
+	}
 
 	if err := s.accountRepo.Create(ctx, account); err != nil {
 		return nil, fmt.Errorf("create account: %w", err)
-	}
-
-	// require_oauth_only 检查：apikey 类型账号不可加入限制分组
-	if account.Type == AccountTypeAPIKey && len(req.GroupIDs) > 0 {
-		for _, gid := range req.GroupIDs {
-			g, err := s.groupRepo.GetByID(ctx, gid)
-			if err != nil {
-				return nil, err
-			}
-			if g.RequireOAuthOnly && (g.Platform == PlatformOpenAI || g.Platform == PlatformAntigravity || g.Platform == PlatformAnthropic || g.Platform == PlatformGemini) {
-				return nil, fmt.Errorf("分组 [%s] 仅允许 OAuth 账号，apikey 类型账号无法加入", g.Name)
-			}
-		}
 	}
 
 	// 绑定分组
@@ -298,33 +326,18 @@ func (s *AccountService) Update(ctx context.Context, id int64, req UpdateAccount
 		account.AutoPauseOnExpired = *req.AutoPauseOnExpired
 	}
 
-	// 先验证分组是否存在（在任何写操作之前）
-	if req.GroupIDs != nil {
-		if err := s.validateGroupIDsExist(ctx, *req.GroupIDs); err != nil {
-			return nil, err
-		}
-	}
-
 	// 执行更新
 	if err := validateCodex2APIAccount(account); err != nil {
 		return nil, err
 	}
+	if req.GroupIDs != nil {
+		if err := validateAccountGroupBindings(ctx, s.groupRepo, account.Platform, account.Type, *req.GroupIDs); err != nil {
+			return nil, err
+		}
+	}
 
 	if err := s.accountRepo.Update(ctx, account); err != nil {
 		return nil, fmt.Errorf("update account: %w", err)
-	}
-
-	// require_oauth_only 检查
-	if account.Type == AccountTypeAPIKey && req.GroupIDs != nil {
-		for _, gid := range *req.GroupIDs {
-			g, err := s.groupRepo.GetByID(ctx, gid)
-			if err != nil {
-				return nil, err
-			}
-			if g.RequireOAuthOnly && (g.Platform == PlatformOpenAI || g.Platform == PlatformAntigravity || g.Platform == PlatformAnthropic || g.Platform == PlatformGemini) {
-				return nil, fmt.Errorf("分组 [%s] 仅允许 OAuth 账号，apikey 类型账号无法加入", g.Name)
-			}
-		}
 	}
 
 	// 绑定分组
