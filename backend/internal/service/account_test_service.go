@@ -1176,10 +1176,10 @@ func (s *AccountTestService) testOpenAIImageOAuth(c *gin.Context, ctx context.Co
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "text/event-stream")
 	req.Header.Set("OpenAI-Beta", "responses=experimental")
-	req.Header.Set("originator", "opencode")
+	req.Header.Set("originator", resolveOpenAIUpstreamOriginator(c, false))
 	req.Header.Set("User-Agent", codexCLIUserAgent)
-	sessionID := parsed.StickySessionSeed()
-	if sessionID != "" {
+	if sessionSeed := strings.TrimSpace(parsed.StickySessionSeed()); sessionSeed != "" {
+		sessionID := isolateOpenAISessionID(getAPIKeyIDFromContext(c), sessionSeed)
 		req.Header.Set("session_id", sessionID)
 		req.Header.Set("conversation_id", sessionID)
 	}
@@ -1188,7 +1188,7 @@ func (s *AccountTestService) testOpenAIImageOAuth(c *gin.Context, ctx context.Co
 	}
 
 	proxyURL := account.EffectiveProxyURL()
-	resp, err := s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
+	resp, err := s.httpUpstream.Do(req, proxyURL, account.ID, account.Concurrency)
 	if err != nil {
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Responses API request failed: %s", err.Error()))
 	}
