@@ -1,5 +1,5 @@
 <template>
-  <div class="relative" ref="containerRef">
+  <div class="relative max-w-full" ref="containerRef">
     <button
       type="button"
       @click="toggle"
@@ -21,7 +21,13 @@
     </button>
 
     <Transition name="date-picker-dropdown">
-      <div v-if="isOpen" class="date-picker-dropdown">
+      <div
+        v-if="isOpen"
+        :class="[
+          'date-picker-dropdown',
+          props.dropdownAlign === 'right' && 'date-picker-dropdown-right'
+        ]"
+      >
         <!-- Quick presets -->
         <div class="date-picker-presets">
           <button
@@ -90,6 +96,7 @@ interface Props {
   startDate: string
   endDate: string
   placeholder?: string
+  dropdownAlign?: 'left' | 'right'
 }
 
 interface Emits {
@@ -98,7 +105,9 @@ interface Emits {
   (e: 'change', range: { startDate: string; endDate: string; preset: string | null }): void
 }
 
-const props = defineProps<Props>()
+const props = withDefaults(defineProps<Props>(), {
+  dropdownAlign: 'left'
+})
 const emit = defineEmits<Emits>()
 
 const { t, locale } = useI18n()
@@ -324,6 +333,7 @@ onUnmounted(() => {
 <style scoped>
 .date-picker-trigger {
   @apply flex items-center gap-2;
+  @apply max-w-full;
   @apply rounded-lg px-3 py-2 text-sm;
   @apply bg-white dark:bg-dark-800;
   @apply border border-gray-200 dark:border-dark-600;
@@ -343,7 +353,7 @@ onUnmounted(() => {
 }
 
 .date-picker-value {
-  @apply font-medium;
+  @apply min-w-0 truncate font-medium;
 }
 
 .date-picker-chevron {
@@ -357,7 +367,13 @@ onUnmounted(() => {
   @apply border border-gray-200 dark:border-dark-700;
   @apply shadow-lg shadow-black/10 dark:shadow-black/30;
   @apply overflow-hidden;
-  @apply min-w-[320px];
+  width: min(20rem, calc(100vw - 2rem));
+  min-width: min(20rem, calc(100vw - 2rem));
+  max-width: calc(100vw - 2rem);
+}
+
+.date-picker-dropdown-right {
+  @apply left-auto right-0;
 }
 
 .date-picker-presets {
@@ -381,11 +397,12 @@ onUnmounted(() => {
 }
 
 .date-picker-custom {
-  @apply flex items-end gap-2 p-3;
+  @apply flex flex-wrap items-end gap-2 p-3;
 }
 
 .date-picker-field {
-  @apply flex-1;
+  @apply min-w-0 flex-1;
+  min-width: 8rem;
 }
 
 .date-picker-label {
@@ -394,6 +411,7 @@ onUnmounted(() => {
 
 .date-picker-input {
   @apply w-full rounded-md px-2 py-1.5 text-sm;
+  @apply min-w-0;
   @apply bg-gray-50 dark:bg-dark-700;
   @apply border border-gray-200 dark:border-dark-600;
   @apply text-gray-900 dark:text-gray-100;
@@ -434,5 +452,19 @@ onUnmounted(() => {
 .date-picker-dropdown-leave-to {
   opacity: 0;
   transform: translateY(-8px);
+}
+
+@media (max-width: 360px) {
+  .date-picker-custom {
+    @apply flex-col items-stretch;
+  }
+
+  .date-picker-field {
+    min-width: 0;
+  }
+
+  .date-picker-separator {
+    @apply hidden;
+  }
 }
 </style>

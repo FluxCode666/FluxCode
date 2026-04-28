@@ -3,13 +3,14 @@
     <div class="space-y-6">
       <!-- Header with Date Range -->
       <div class="flex flex-wrap items-center justify-end gap-3">
-        <div class="flex items-center gap-2">
+        <div class="flex flex-wrap items-center justify-end gap-2">
           <span class="text-sm font-medium text-gray-700 dark:text-gray-300">
             {{ t('payment.admin.dateRange') }}:
           </span>
           <DateRangePicker
             v-model:start-date="startDate"
             v-model:end-date="endDate"
+            dropdown-align="right"
             @change="onDateRangeChange"
           />
           <button @click="loadDashboard" :disabled="loading" class="btn btn-secondary" :title="t('common.refresh')">
