@@ -116,7 +116,7 @@ const isOpen = ref(false)
 const containerRef = ref<HTMLElement | null>(null)
 const localStartDate = ref(props.startDate)
 const localEndDate = ref(props.endDate)
-const activePreset = ref<string | null>('last24Hours')
+const activePreset = ref<string | null>(null)
 
 const today = computed(() => {
   // Use local timezone to avoid UTC timezone issues
@@ -145,36 +145,6 @@ const formatDateToString = (date: Date): string => {
 
 const presets: DatePreset[] = [
   {
-    labelKey: 'dates.today',
-    value: 'today',
-    getRange: () => {
-      const t = today.value
-      return { start: t, end: t }
-    }
-  },
-  {
-    labelKey: 'dates.yesterday',
-    value: 'yesterday',
-    getRange: () => {
-      const d = new Date()
-      d.setDate(d.getDate() - 1)
-      const yesterday = formatDateToString(d)
-      return { start: yesterday, end: yesterday }
-    }
-  },
-  {
-    labelKey: 'dates.last24Hours',
-    value: 'last24Hours',
-    getRange: () => {
-      const end = new Date()
-      const start = new Date(end.getTime() - 24 * 60 * 60 * 1000)
-      return {
-        start: formatDateToString(start),
-        end: formatDateToString(end)
-      }
-    }
-  },
-  {
     labelKey: 'dates.last7Days',
     value: '7days',
     getRange: () => {
@@ -186,25 +156,15 @@ const presets: DatePreset[] = [
     }
   },
   {
-    labelKey: 'dates.last14Days',
-    value: '14days',
+    labelKey: 'dates.thisWeek',
+    value: 'thisWeek',
     getRange: () => {
-      const end = today.value
-      const d = new Date()
-      d.setDate(d.getDate() - 13)
-      const start = formatDateToString(d)
-      return { start, end }
-    }
-  },
-  {
-    labelKey: 'dates.last30Days',
-    value: '30days',
-    getRange: () => {
-      const end = today.value
-      const d = new Date()
-      d.setDate(d.getDate() - 29)
-      const start = formatDateToString(d)
-      return { start, end }
+      const now = new Date()
+      const day = now.getDay()
+      const daysFromMonday = day === 0 ? 6 : day - 1
+      const startDate = new Date(now)
+      startDate.setDate(now.getDate() - daysFromMonday)
+      return { start: formatDateToString(startDate), end: today.value }
     }
   },
   {
@@ -224,6 +184,25 @@ const presets: DatePreset[] = [
       const start = formatDateToString(new Date(now.getFullYear(), now.getMonth() - 1, 1))
       const end = formatDateToString(new Date(now.getFullYear(), now.getMonth(), 0))
       return { start, end }
+    }
+  },
+  {
+    labelKey: 'dates.thisQuarter',
+    value: 'thisQuarter',
+    getRange: () => {
+      const now = new Date()
+      const quarterStartMonth = Math.floor(now.getMonth() / 3) * 3
+      const start = formatDateToString(new Date(now.getFullYear(), quarterStartMonth, 1))
+      return { start, end: today.value }
+    }
+  },
+  {
+    labelKey: 'dates.thisYear',
+    value: 'thisYear',
+    getRange: () => {
+      const now = new Date()
+      const start = formatDateToString(new Date(now.getFullYear(), 0, 1))
+      return { start, end: today.value }
     }
   }
 ]
