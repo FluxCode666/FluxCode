@@ -696,6 +696,15 @@ router.beforeEach((to, _from, next) => {
     }
   }
 
+  // Check referral requirement
+  if (to.meta.requiresReferral) {
+    const referralEnabled = appStore.cachedPublicSettings?.referral_enabled
+    if (!referralEnabled) {
+      next(authStore.isAdmin ? '/admin/dashboard' : '/dashboard')
+      return
+    }
+  }
+
   // 简易模式下限制访问某些页面
   if (authStore.isSimpleMode) {
     const restrictedPaths = [

@@ -206,6 +206,7 @@ type PublicSettings struct {
 	AccountQuotaNotifyEnabled        bool             `json:"account_quota_notify_enabled"`
 	BalanceLowNotifyThreshold        float64          `json:"balance_low_notify_threshold"`
 	BalanceLowNotifyRechargeURL      string           `json:"balance_low_notify_recharge_url"`
+	ReferralEnabled                  bool             `json:"referral_enabled"`
 }
 
 // OverloadCooldownSettings 529过载冷却配置 DTO
