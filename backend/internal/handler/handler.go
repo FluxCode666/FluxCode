@@ -34,6 +34,7 @@ type AdminHandlers struct {
 	PoolMonitor           *admin.PoolMonitorHandler
 	Channel               *admin.ChannelHandler
 	Payment               *admin.PaymentHandler
+	Referral              *admin.ReferralHandler
 }
 
 // Handlers contains all HTTP handlers
@@ -53,6 +54,7 @@ type Handlers struct {
 	PricingPlan    *PricingPlanHandler
 	Payment        *PaymentHandler
 	PaymentWebhook *PaymentWebhookHandler
+	Referral       *ReferralHandler
 }
 
 // BuildInfo contains build-time information

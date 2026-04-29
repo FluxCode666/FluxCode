@@ -294,6 +294,21 @@ const (
 
 	// Web Search Emulation
 	SettingKeyWebSearchEmulationConfig = "web_search_emulation_config" // JSON 配置
+
+	// =========================
+	// 推广奖励系统 (Referral Reward)
+	// =========================
+
+	SettingKeyReferralEnabled                   = "referral_enabled"                      // 是否启用推广奖励功能
+	SettingKeyReferralInviteeReward             = "referral_invitee_reward"               // 被邀请人注册奖励金额
+	SettingKeyReferralInviterReward             = "referral_inviter_reward"               // 推广人首充奖励金额
+	SettingKeyReferralMaxInvites                = "referral_max_invites"                  // 每人最大邀请数（0=无限）
+	SettingKeyReferralRewardExpiryDays          = "referral_reward_expiry_days"           // 赠送余额过期天数（0=永不过期）
+	SettingKeyReferralOngoingRewardEnabled      = "referral_ongoing_reward_enabled"       // 是否启用持续奖励
+	SettingKeyReferralOngoingRewardAmount       = "referral_ongoing_reward_amount"        // 持续奖励固定金额
+	SettingKeyReferralOngoingRewardPercent      = "referral_ongoing_reward_percent"       // 持续奖励百分比（0-100）
+	SettingKeyReferralOngoingRewardMaxCount     = "referral_ongoing_reward_max_count"     // 每条推广关系最多触发持续奖励次数（0=不限）
+	SettingKeyReferralOngoingRewardDurationDays = "referral_ongoing_reward_duration_days" // 持续奖励有效期：注册后N天内充值才触发（0=永久有效）
 )
 
 // AdminAPIKeyPrefix is the prefix for admin API keys (distinct from user "sk-" keys).

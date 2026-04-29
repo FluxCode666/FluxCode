@@ -112,6 +112,9 @@ var ProviderSet = wire.NewSet(
 	NewProxyConnectivitySnapshotStore,
 	NewTLSFingerprintProfileRepository,
 	NewChannelRepository,
+	NewReferralRepository,
+	NewGiftBalanceRepository,
+	NewUserReferralConfigRepository,
 
 	// Cache implementations
 	NewGatewayCache,

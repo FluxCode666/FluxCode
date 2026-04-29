@@ -656,6 +656,9 @@ var ProviderSet = wire.NewSet(
 	NewPaymentService,
 	ProvidePaymentOrderExpiryService,
 	ProvideBalanceNotifyService,
+	NewReferralConfigResolver,
+	NewReferralService,
+	ProvideGiftBalanceExpiryService,
 )
 
 // ProvidePaymentConfigService wraps NewPaymentConfigService to accept the named
@@ -672,6 +675,14 @@ func ProvideBalanceNotifyService(emailService *EmailService, settingRepo Setting
 // ProvidePaymentOrderExpiryService creates and starts PaymentOrderExpiryService.
 func ProvidePaymentOrderExpiryService(paymentSvc *PaymentService) *PaymentOrderExpiryService {
 	svc := NewPaymentOrderExpiryService(paymentSvc, 60*time.Second)
+	svc.Start()
+	return svc
+}
+
+// ProvideGiftBalanceExpiryService creates and starts GiftBalanceExpiryService.
+// 每小时清理一次过期的赠送余额记录
+func ProvideGiftBalanceExpiryService(referralService *ReferralService) *GiftBalanceExpiryService {
+	svc := NewGiftBalanceExpiryService(referralService, time.Hour)
 	svc.Start()
 	return svc
 }

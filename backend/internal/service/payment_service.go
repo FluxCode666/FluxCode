@@ -169,6 +169,12 @@ type PaymentService struct {
 	configService   *PaymentConfigService
 	userRepo        UserRepository
 	groupRepo       GroupRepository
+	referralService *ReferralService
+}
+
+// SetReferralService 注入推广奖励服务（避免循环依赖）
+func (s *PaymentService) SetReferralService(svc *ReferralService) {
+	s.referralService = svc
 }
 
 func NewPaymentService(entClient *dbent.Client, registry *payment.Registry, loadBalancer payment.LoadBalancer, redeemService *RedeemService, subscriptionSvc *SubscriptionService, configService *PaymentConfigService, userRepo UserRepository, groupRepo GroupRepository) *PaymentService {

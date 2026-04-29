@@ -1,5 +1,11 @@
 # Sub2API CI/CD 流水线配置说明
 
+## 手动登录GHCR
+```shell
+docker login ghcr.io -u YOUR_GITHUB_USERNAME
+# 提示输入密码时，输入你的 PAT，不是 GitHub 密码
+```
+
 ## 概览
 
 本项目使用 GitHub Actions 实现完整的 CI/CD 流水线，共包含 **8 条工作流**（含 1 条备用），覆盖持续集成、安全扫描、镜像构建和生产/测试部署。

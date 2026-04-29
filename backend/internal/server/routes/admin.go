@@ -94,6 +94,9 @@ func RegisterAdminRoutes(
 
 		// 渠道管理
 		registerChannelRoutes(admin, h)
+
+		// 推广管理
+		registerReferralRoutes(admin, h)
 	}
 }
 
@@ -603,5 +606,23 @@ func registerChannelRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		channels.POST("", h.Admin.Channel.Create)
 		channels.PUT("/:id", h.Admin.Channel.Update)
 		channels.DELETE("/:id", h.Admin.Channel.Delete)
+	}
+}
+
+func registerReferralRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	if h.Admin.Referral == nil {
+		return
+	}
+	referral := admin.Group("/referral")
+	{
+		referral.GET("/stats", h.Admin.Referral.GetStats)
+		referral.GET("/config", h.Admin.Referral.GetConfig)
+		referral.PUT("/config", h.Admin.Referral.UpdateConfig)
+		referral.GET("/list", h.Admin.Referral.ListReferrals)
+		referral.GET("/leaderboard", h.Admin.Referral.GetLeaderboard)
+		referral.POST("/grant-gift-balance", h.Admin.Referral.GrantGiftBalance)
+		referral.GET("/user-config/:userId", h.Admin.Referral.GetUserConfig)
+		referral.PUT("/user-config/:userId", h.Admin.Referral.UpsertUserConfig)
+		referral.DELETE("/user-config/:userId", h.Admin.Referral.DeleteUserConfig)
 	}
 }

@@ -352,6 +352,7 @@ type OpenAIGatewayService struct {
 	openaiWSRetryMetrics  openAIWSRetryMetrics
 	responseHeaderFilter  *responseheaders.CompiledHeaderFilter
 	codexSnapshotThrottle *accountWriteThrottle
+	giftBalanceRepo       GiftBalanceRepository
 }
 
 // NewOpenAIGatewayService creates a new OpenAIGatewayService
@@ -505,6 +506,11 @@ func (s *OpenAIGatewayService) getCodexSnapshotThrottle() *accountWriteThrottle 
 	return defaultOpenAICodexSnapshotPersistThrottle
 }
 
+// SetGiftBalanceRepo 注入赠送余额仓储（避免循环依赖）
+func (s *OpenAIGatewayService) SetGiftBalanceRepo(repo GiftBalanceRepository) {
+	s.giftBalanceRepo = repo
+}
+
 func (s *OpenAIGatewayService) billingDeps() *billingDeps {
 	return &billingDeps{
 		accountRepo:          s.accountRepo,
@@ -513,6 +519,7 @@ func (s *OpenAIGatewayService) billingDeps() *billingDeps {
 		billingCacheService:  s.billingCacheService,
 		deferredService:      s.deferredService,
 		balanceNotifyService: s.balanceNotifyService,
+		giftBalanceRepo:      s.giftBalanceRepo,
 	}
 }
 

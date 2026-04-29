@@ -1,0 +1,40 @@
+services:
+  dd-agent:
+    image: gcr.io/datadoghq/agent:7
+    container_name: dd-agent
+    restart: unless-stopped
+    environment:
+      DD_API_KEY: "${DD_API_KEY}"
+      DD_SITE: "ap1.datadoghq.com"
+      DD_DOGSTATSD_NON_LOCAL_TRAFFIC: "true"
+      DD_ENV: "prod"
+      DD_LOGS_ENABLED: "true"
+      DD_LOGS_CONFIG_AUTO_MULTI_LINE_DETECTION: "true"
+      DD_LOGS_CONFIG_CONTAINER_COLLECT_ALL: "true"
+      DD_CONTAINER_EXCLUDE_LOGS: "name:dd-agent"
+      DD_HOSTNAME: "${DD_HOSTNAME:-hk-2}"
+      DD_IGNORE_AUTOCONF: "redisdb"
+
+      # 给 conf.yaml 用的连接参数（来自 .env）
+      PG_MONITOR_HOST: "${PG_MONITOR_HOST}"
+      PG_MONITOR_PORT: "${PG_MONITOR_PORT:-5432}"
+      PG_MONITOR_USER: "${PG_MONITOR_USER}"
+      PG_MONITOR_PASSWORD: "${PG_MONITOR_PASSWORD}"
+      PG_MONITOR_DB: "${PG_MONITOR_DB:-fluxcode}"
+
+      REDIS_MONITOR_HOST: "${REDIS_MONITOR_HOST}"
+      REDIS_MONITOR_PORT: "${REDIS_MONITOR_PORT:-6379}"
+      REDIS_MONITOR_PASSWORD: "${REDIS_MONITOR_PASSWORD}"
+      # Redis ACL 场景才需要
+      REDIS_MONITOR_USERNAME: "${REDIS_MONITOR_USERNAME:-}"
+
+    volumes:
+      - /opt/datadog-agent/run:/opt/datadog-agent/run:rw
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /proc/:/host/proc/:ro
+      - /sys/fs/cgroup/:/host/sys/fs/cgroup:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+
+      # 挂载集成配置
+      - ./conf.d/postgres.d/conf.yaml:/conf.d/postgres.d/conf.yaml:ro
+      - ./conf.d/redisdb.d/conf.yaml:/conf.d/redisdb.d/conf.yaml:ro

@@ -210,10 +210,28 @@ func (s *PaymentService) doBalance(ctx context.Context, o *dbent.PaymentOrder) e
 	case redeemActionRedeem:
 		// Code exists but unused — skip creation, proceed to redeem
 	}
+	// 在 Redeem（会增加 TotalRecharged）之前判断是否首充
+	var isFirstRecharge bool
+	if s.referralService != nil {
+		isFirstRecharge, _ = s.userRepo.IsFirstRecharge(ctx, o.UserID)
+	}
+
 	if _, err := s.redeemService.Redeem(ctx, o.UserID, o.RechargeCode, ""); err != nil {
 		return fmt.Errorf("redeem balance: %w", err)
 	}
-	return s.markCompleted(ctx, o, "RECHARGE_SUCCESS")
+	if err := s.markCompleted(ctx, o, "RECHARGE_SUCCESS"); err != nil {
+		return err
+	}
+
+	// 充值完成后触发推广奖励
+	if s.referralService != nil {
+		if isFirstRecharge {
+			s.referralService.HandleInviterRewardOnFirstRecharge(ctx, o.UserID, o.Amount)
+		}
+		s.referralService.HandleOngoingRewardOnRecharge(ctx, o.UserID, o.Amount)
+	}
+
+	return nil
 }
 
 func (s *PaymentService) markCompleted(ctx context.Context, o *dbent.PaymentOrder, auditAction string) error {

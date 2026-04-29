@@ -11,6 +11,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/announcementread"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
 	"github.com/Wei-Shaw/sub2api/ent/errorpassthroughrule"
+	"github.com/Wei-Shaw/sub2api/ent/giftbalancerecord"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/idempotencyrecord"
 	"github.com/Wei-Shaw/sub2api/ent/paymentauditlog"
@@ -20,6 +21,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/promocodeusage"
 	"github.com/Wei-Shaw/sub2api/ent/proxy"
 	"github.com/Wei-Shaw/sub2api/ent/redeemcode"
+	"github.com/Wei-Shaw/sub2api/ent/referral"
 	"github.com/Wei-Shaw/sub2api/ent/schema"
 	"github.com/Wei-Shaw/sub2api/ent/securitysecret"
 	"github.com/Wei-Shaw/sub2api/ent/setting"
@@ -32,6 +34,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/userallowedgroup"
 	"github.com/Wei-Shaw/sub2api/ent/userattributedefinition"
 	"github.com/Wei-Shaw/sub2api/ent/userattributevalue"
+	"github.com/Wei-Shaw/sub2api/ent/userreferralconfig"
 	"github.com/Wei-Shaw/sub2api/ent/usersubscription"
 	"github.com/Wei-Shaw/sub2api/internal/domain"
 )
@@ -369,6 +372,36 @@ func init() {
 	errorpassthroughruleDescSkipMonitoring := errorpassthroughruleFields[11].Descriptor()
 	// errorpassthroughrule.DefaultSkipMonitoring holds the default value on creation for the skip_monitoring field.
 	errorpassthroughrule.DefaultSkipMonitoring = errorpassthroughruleDescSkipMonitoring.Default.(bool)
+	giftbalancerecordFields := schema.GiftBalanceRecord{}.Fields()
+	_ = giftbalancerecordFields
+	// giftbalancerecordDescAmount is the schema descriptor for amount field.
+	giftbalancerecordDescAmount := giftbalancerecordFields[1].Descriptor()
+	// giftbalancerecord.DefaultAmount holds the default value on creation for the amount field.
+	giftbalancerecord.DefaultAmount = giftbalancerecordDescAmount.Default.(float64)
+	// giftbalancerecordDescRemaining is the schema descriptor for remaining field.
+	giftbalancerecordDescRemaining := giftbalancerecordFields[2].Descriptor()
+	// giftbalancerecord.DefaultRemaining holds the default value on creation for the remaining field.
+	giftbalancerecord.DefaultRemaining = giftbalancerecordDescRemaining.Default.(float64)
+	// giftbalancerecordDescSource is the schema descriptor for source field.
+	giftbalancerecordDescSource := giftbalancerecordFields[3].Descriptor()
+	// giftbalancerecord.DefaultSource holds the default value on creation for the source field.
+	giftbalancerecord.DefaultSource = giftbalancerecordDescSource.Default.(string)
+	// giftbalancerecord.SourceValidator is a validator for the "source" field. It is called by the builders before save.
+	giftbalancerecord.SourceValidator = giftbalancerecordDescSource.Validators[0].(func(string) error)
+	// giftbalancerecordDescNote is the schema descriptor for note field.
+	giftbalancerecordDescNote := giftbalancerecordFields[5].Descriptor()
+	// giftbalancerecord.DefaultNote holds the default value on creation for the note field.
+	giftbalancerecord.DefaultNote = giftbalancerecordDescNote.Default.(string)
+	// giftbalancerecordDescCreatedAt is the schema descriptor for created_at field.
+	giftbalancerecordDescCreatedAt := giftbalancerecordFields[7].Descriptor()
+	// giftbalancerecord.DefaultCreatedAt holds the default value on creation for the created_at field.
+	giftbalancerecord.DefaultCreatedAt = giftbalancerecordDescCreatedAt.Default.(func() time.Time)
+	// giftbalancerecordDescUpdatedAt is the schema descriptor for updated_at field.
+	giftbalancerecordDescUpdatedAt := giftbalancerecordFields[8].Descriptor()
+	// giftbalancerecord.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	giftbalancerecord.DefaultUpdatedAt = giftbalancerecordDescUpdatedAt.Default.(func() time.Time)
+	// giftbalancerecord.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	giftbalancerecord.UpdateDefaultUpdatedAt = giftbalancerecordDescUpdatedAt.UpdateDefault.(func() time.Time)
 	groupMixin := schema.Group{}.Mixin()
 	groupMixinHooks1 := groupMixin[1].Hooks()
 	group.Hooks[0] = groupMixinHooks1[0]
@@ -876,6 +909,46 @@ func init() {
 	redeemcodeDescSubscriptionMode := redeemcodeFields[11].Descriptor()
 	// redeemcode.SubscriptionModeValidator is a validator for the "subscription_mode" field. It is called by the builders before save.
 	redeemcode.SubscriptionModeValidator = redeemcodeDescSubscriptionMode.Validators[0].(func(string) error)
+	referralFields := schema.Referral{}.Fields()
+	_ = referralFields
+	// referralDescReferralCode is the schema descriptor for referral_code field.
+	referralDescReferralCode := referralFields[2].Descriptor()
+	// referral.DefaultReferralCode holds the default value on creation for the referral_code field.
+	referral.DefaultReferralCode = referralDescReferralCode.Default.(string)
+	// referral.ReferralCodeValidator is a validator for the "referral_code" field. It is called by the builders before save.
+	referral.ReferralCodeValidator = referralDescReferralCode.Validators[0].(func(string) error)
+	// referralDescStatus is the schema descriptor for status field.
+	referralDescStatus := referralFields[3].Descriptor()
+	// referral.DefaultStatus holds the default value on creation for the status field.
+	referral.DefaultStatus = referralDescStatus.Default.(string)
+	// referral.StatusValidator is a validator for the "status" field. It is called by the builders before save.
+	referral.StatusValidator = referralDescStatus.Validators[0].(func(string) error)
+	// referralDescInviteeRewardAmount is the schema descriptor for invitee_reward_amount field.
+	referralDescInviteeRewardAmount := referralFields[4].Descriptor()
+	// referral.DefaultInviteeRewardAmount holds the default value on creation for the invitee_reward_amount field.
+	referral.DefaultInviteeRewardAmount = referralDescInviteeRewardAmount.Default.(float64)
+	// referralDescInviterRewardAmount is the schema descriptor for inviter_reward_amount field.
+	referralDescInviterRewardAmount := referralFields[5].Descriptor()
+	// referral.DefaultInviterRewardAmount holds the default value on creation for the inviter_reward_amount field.
+	referral.DefaultInviterRewardAmount = referralDescInviterRewardAmount.Default.(float64)
+	// referralDescOngoingRewardCount is the schema descriptor for ongoing_reward_count field.
+	referralDescOngoingRewardCount := referralFields[8].Descriptor()
+	// referral.DefaultOngoingRewardCount holds the default value on creation for the ongoing_reward_count field.
+	referral.DefaultOngoingRewardCount = referralDescOngoingRewardCount.Default.(int)
+	// referralDescOngoingRewardTotal is the schema descriptor for ongoing_reward_total field.
+	referralDescOngoingRewardTotal := referralFields[9].Descriptor()
+	// referral.DefaultOngoingRewardTotal holds the default value on creation for the ongoing_reward_total field.
+	referral.DefaultOngoingRewardTotal = referralDescOngoingRewardTotal.Default.(float64)
+	// referralDescCreatedAt is the schema descriptor for created_at field.
+	referralDescCreatedAt := referralFields[10].Descriptor()
+	// referral.DefaultCreatedAt holds the default value on creation for the created_at field.
+	referral.DefaultCreatedAt = referralDescCreatedAt.Default.(func() time.Time)
+	// referralDescUpdatedAt is the schema descriptor for updated_at field.
+	referralDescUpdatedAt := referralFields[11].Descriptor()
+	// referral.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	referral.DefaultUpdatedAt = referralDescUpdatedAt.Default.(func() time.Time)
+	// referral.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	referral.UpdateDefaultUpdatedAt = referralDescUpdatedAt.UpdateDefault.(func() time.Time)
 	securitysecretMixin := schema.SecuritySecret{}.Mixin()
 	securitysecretMixinFields0 := securitysecretMixin[0].Fields()
 	_ = securitysecretMixinFields0
@@ -1357,6 +1430,12 @@ func init() {
 	userDescTotalRecharged := userFields[15].Descriptor()
 	// user.DefaultTotalRecharged holds the default value on creation for the total_recharged field.
 	user.DefaultTotalRecharged = userDescTotalRecharged.Default.(float64)
+	// userDescReferralCode is the schema descriptor for referral_code field.
+	userDescReferralCode := userFields[16].Descriptor()
+	// user.DefaultReferralCode holds the default value on creation for the referral_code field.
+	user.DefaultReferralCode = userDescReferralCode.Default.(string)
+	// user.ReferralCodeValidator is a validator for the "referral_code" field. It is called by the builders before save.
+	user.ReferralCodeValidator = userDescReferralCode.Validators[0].(func(string) error)
 	userallowedgroupFields := schema.UserAllowedGroup{}.Fields()
 	_ = userallowedgroupFields
 	// userallowedgroupDescCreatedAt is the schema descriptor for created_at field.
@@ -1485,6 +1564,22 @@ func init() {
 	userattributevalueDescValue := userattributevalueFields[2].Descriptor()
 	// userattributevalue.DefaultValue holds the default value on creation for the value field.
 	userattributevalue.DefaultValue = userattributevalueDescValue.Default.(string)
+	userreferralconfigFields := schema.UserReferralConfig{}.Fields()
+	_ = userreferralconfigFields
+	// userreferralconfigDescNotes is the schema descriptor for notes field.
+	userreferralconfigDescNotes := userreferralconfigFields[10].Descriptor()
+	// userreferralconfig.DefaultNotes holds the default value on creation for the notes field.
+	userreferralconfig.DefaultNotes = userreferralconfigDescNotes.Default.(string)
+	// userreferralconfigDescCreatedAt is the schema descriptor for created_at field.
+	userreferralconfigDescCreatedAt := userreferralconfigFields[11].Descriptor()
+	// userreferralconfig.DefaultCreatedAt holds the default value on creation for the created_at field.
+	userreferralconfig.DefaultCreatedAt = userreferralconfigDescCreatedAt.Default.(func() time.Time)
+	// userreferralconfigDescUpdatedAt is the schema descriptor for updated_at field.
+	userreferralconfigDescUpdatedAt := userreferralconfigFields[12].Descriptor()
+	// userreferralconfig.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	userreferralconfig.DefaultUpdatedAt = userreferralconfigDescUpdatedAt.Default.(func() time.Time)
+	// userreferralconfig.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	userreferralconfig.UpdateDefaultUpdatedAt = userreferralconfigDescUpdatedAt.UpdateDefault.(func() time.Time)
 	usersubscriptionMixin := schema.UserSubscription{}.Mixin()
 	usersubscriptionMixinHooks1 := usersubscriptionMixin[1].Hooks()
 	usersubscription.Hooks[0] = usersubscriptionMixinHooks1[0]

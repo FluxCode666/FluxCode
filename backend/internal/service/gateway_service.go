@@ -602,6 +602,7 @@ type GatewayService struct {
 	tlsFPProfileService   *TLSFingerprintProfileService
 	balanceNotifyService  *BalanceNotifyService
 	disabledProxyMode     DisabledProxyScheduleModeProvider
+	giftBalanceRepo       GiftBalanceRepository
 }
 
 // NewGatewayService creates a new GatewayService
@@ -7370,8 +7371,21 @@ func postUsageBilling(ctx context.Context, p *postUsageBillingParams, deps *bill
 		}
 	} else {
 		if cost.ActualCost > 0 {
-			if err := deps.userRepo.DeductBalance(billingCtx, p.User.ID, cost.ActualCost); err != nil {
-				slog.Error("deduct balance failed", "user_id", p.User.ID, "error", err)
+			remainingCost := cost.ActualCost
+			// 优先从赠送余额扣减
+			if deps.giftBalanceRepo != nil {
+				giftDeducted, giftErr := deps.giftBalanceRepo.DeductFIFO(billingCtx, p.User.ID, remainingCost)
+				if giftErr != nil {
+					slog.Error("deduct gift balance failed", "user_id", p.User.ID, "error", giftErr)
+				} else {
+					remainingCost -= giftDeducted
+				}
+			}
+			// 不足部分从正常余额扣减
+			if remainingCost > 0.0001 {
+				if err := deps.userRepo.DeductBalance(billingCtx, p.User.ID, remainingCost); err != nil {
+					slog.Error("deduct balance failed", "user_id", p.User.ID, "error", err)
+				}
 			}
 		}
 	}
@@ -7642,6 +7656,12 @@ type billingDeps struct {
 	billingCacheService  *BillingCacheService
 	deferredService      *DeferredService
 	balanceNotifyService *BalanceNotifyService
+	giftBalanceRepo      GiftBalanceRepository
+}
+
+// SetGiftBalanceRepo 注入赠送余额仓储（避免循环依赖）
+func (s *GatewayService) SetGiftBalanceRepo(repo GiftBalanceRepository) {
+	s.giftBalanceRepo = repo
 }
 
 func (s *GatewayService) billingDeps() *billingDeps {
@@ -7652,6 +7672,7 @@ func (s *GatewayService) billingDeps() *billingDeps {
 		billingCacheService:  s.billingCacheService,
 		deferredService:      s.deferredService,
 		balanceNotifyService: s.balanceNotifyService,
+		giftBalanceRepo:      s.giftBalanceRepo,
 	}
 }
 

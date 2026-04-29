@@ -375,6 +375,42 @@ var (
 			},
 		},
 	}
+	// GiftBalanceRecordsColumns holds the columns for the "gift_balance_records" table.
+	GiftBalanceRecordsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "user_id", Type: field.TypeInt64},
+		{Name: "amount", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(20,8)"}},
+		{Name: "remaining", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(20,8)"}},
+		{Name: "source", Type: field.TypeString, Size: 50, Default: ""},
+		{Name: "source_ref_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "note", Type: field.TypeString, Default: "", SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "expires_at", Type: field.TypeTime, Nullable: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+	}
+	// GiftBalanceRecordsTable holds the schema information for the "gift_balance_records" table.
+	GiftBalanceRecordsTable = &schema.Table{
+		Name:       "gift_balance_records",
+		Columns:    GiftBalanceRecordsColumns,
+		PrimaryKey: []*schema.Column{GiftBalanceRecordsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "giftbalancerecord_user_id_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{GiftBalanceRecordsColumns[1], GiftBalanceRecordsColumns[8]},
+			},
+			{
+				Name:    "giftbalancerecord_expires_at",
+				Unique:  false,
+				Columns: []*schema.Column{GiftBalanceRecordsColumns[7]},
+			},
+			{
+				Name:    "giftbalancerecord_source_source_ref_id",
+				Unique:  false,
+				Columns: []*schema.Column{GiftBalanceRecordsColumns[4], GiftBalanceRecordsColumns[5]},
+			},
+		},
+	}
 	// GroupsColumns holds the columns for the "groups" table.
 	GroupsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt64, Increment: true},
@@ -804,6 +840,45 @@ var (
 			},
 		},
 	}
+	// ReferralsColumns holds the columns for the "referrals" table.
+	ReferralsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "referrer_id", Type: field.TypeInt64},
+		{Name: "referee_id", Type: field.TypeInt64},
+		{Name: "referral_code", Type: field.TypeString, Size: 20, Default: ""},
+		{Name: "status", Type: field.TypeString, Size: 20, Default: "pending"},
+		{Name: "invitee_reward_amount", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(20,8)"}},
+		{Name: "inviter_reward_amount", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(20,8)"}},
+		{Name: "invitee_rewarded_at", Type: field.TypeTime, Nullable: true},
+		{Name: "inviter_rewarded_at", Type: field.TypeTime, Nullable: true},
+		{Name: "ongoing_reward_count", Type: field.TypeInt, Default: 0},
+		{Name: "ongoing_reward_total", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(20,8)"}},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+	}
+	// ReferralsTable holds the schema information for the "referrals" table.
+	ReferralsTable = &schema.Table{
+		Name:       "referrals",
+		Columns:    ReferralsColumns,
+		PrimaryKey: []*schema.Column{ReferralsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "referral_referee_id",
+				Unique:  true,
+				Columns: []*schema.Column{ReferralsColumns[2]},
+			},
+			{
+				Name:    "referral_referrer_id_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{ReferralsColumns[1], ReferralsColumns[11]},
+			},
+			{
+				Name:    "referral_status",
+				Unique:  false,
+				Columns: []*schema.Column{ReferralsColumns[4]},
+			},
+		},
+	}
 	// SecuritySecretsColumns holds the columns for the "security_secrets" table.
 	SecuritySecretsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt64, Increment: true},
@@ -1140,6 +1215,8 @@ var (
 		{Name: "balance_notify_threshold", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "decimal(20,8)"}},
 		{Name: "balance_notify_extra_emails", Type: field.TypeString, Default: "[]", SchemaType: map[string]string{"postgres": "text"}},
 		{Name: "total_recharged", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(20,8)"}},
+		{Name: "referral_code", Type: field.TypeString, Size: 20, Default: ""},
+		{Name: "referred_by", Type: field.TypeInt64, Nullable: true},
 	}
 	// UsersTable holds the schema information for the "users" table.
 	UsersTable = &schema.Table{
@@ -1278,6 +1355,36 @@ var (
 			},
 		},
 	}
+	// UserReferralConfigsColumns holds the columns for the "user_referral_configs" table.
+	UserReferralConfigsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "user_id", Type: field.TypeInt64},
+		{Name: "invitee_reward_amount", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "decimal(20,8)"}},
+		{Name: "inviter_reward_amount", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "decimal(20,8)"}},
+		{Name: "max_invites", Type: field.TypeInt, Nullable: true},
+		{Name: "reward_expiry_days", Type: field.TypeInt, Nullable: true},
+		{Name: "ongoing_reward_enabled", Type: field.TypeBool, Nullable: true},
+		{Name: "ongoing_reward_amount", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "decimal(20,8)"}},
+		{Name: "ongoing_reward_percent", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "decimal(10,4)"}},
+		{Name: "ongoing_reward_max_count", Type: field.TypeInt, Nullable: true},
+		{Name: "ongoing_reward_duration_days", Type: field.TypeInt, Nullable: true},
+		{Name: "notes", Type: field.TypeString, Default: "", SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+	}
+	// UserReferralConfigsTable holds the schema information for the "user_referral_configs" table.
+	UserReferralConfigsTable = &schema.Table{
+		Name:       "user_referral_configs",
+		Columns:    UserReferralConfigsColumns,
+		PrimaryKey: []*schema.Column{UserReferralConfigsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "userreferralconfig_user_id",
+				Unique:  true,
+				Columns: []*schema.Column{UserReferralConfigsColumns[1]},
+			},
+		},
+	}
 	// UserSubscriptionsColumns holds the columns for the "user_subscriptions" table.
 	UserSubscriptionsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt64, Increment: true},
@@ -1375,6 +1482,7 @@ var (
 		AnnouncementsTable,
 		AnnouncementReadsTable,
 		ErrorPassthroughRulesTable,
+		GiftBalanceRecordsTable,
 		GroupsTable,
 		IdempotencyRecordsTable,
 		PaymentAuditLogsTable,
@@ -1384,6 +1492,7 @@ var (
 		PromoCodeUsagesTable,
 		ProxiesTable,
 		RedeemCodesTable,
+		ReferralsTable,
 		SecuritySecretsTable,
 		SettingsTable,
 		SubscriptionGrantsTable,
@@ -1395,6 +1504,7 @@ var (
 		UserAllowedGroupsTable,
 		UserAttributeDefinitionsTable,
 		UserAttributeValuesTable,
+		UserReferralConfigsTable,
 		UserSubscriptionsTable,
 	}
 )
@@ -1424,6 +1534,9 @@ func init() {
 	}
 	ErrorPassthroughRulesTable.Annotation = &entsql.Annotation{
 		Table: "error_passthrough_rules",
+	}
+	GiftBalanceRecordsTable.Annotation = &entsql.Annotation{
+		Table: "gift_balance_records",
 	}
 	GroupsTable.Annotation = &entsql.Annotation{
 		Table: "groups",
@@ -1456,6 +1569,9 @@ func init() {
 	RedeemCodesTable.ForeignKeys[1].RefTable = UsersTable
 	RedeemCodesTable.Annotation = &entsql.Annotation{
 		Table: "redeem_codes",
+	}
+	ReferralsTable.Annotation = &entsql.Annotation{
+		Table: "referrals",
 	}
 	SecuritySecretsTable.Annotation = &entsql.Annotation{
 		Table: "security_secrets",
@@ -1499,6 +1615,9 @@ func init() {
 	UserAttributeValuesTable.ForeignKeys[1].RefTable = UserAttributeDefinitionsTable
 	UserAttributeValuesTable.Annotation = &entsql.Annotation{
 		Table: "user_attribute_values",
+	}
+	UserReferralConfigsTable.Annotation = &entsql.Annotation{
+		Table: "user_referral_configs",
 	}
 	UserSubscriptionsTable.ForeignKeys[0].RefTable = GroupsTable
 	UserSubscriptionsTable.ForeignKeys[1].RefTable = UsersTable
