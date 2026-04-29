@@ -145,6 +145,16 @@ func TestMigrationsRunner_IsIdempotent_AndSchemaIsUpToDate(t *testing.T) {
 	requireIndex(t, tx, "subscription_grants", "idx_subscription_grants_subscription_id_active")
 	requireIndex(t, tx, "subscription_grants", "idx_subscription_grants_active_lookup")
 	requireIndex(t, tx, "subscription_grants", "idx_subscription_grants_expires_at_active")
+
+	// subscription_exhaustion_daily_stats: dashboard daily exhaustion snapshots (108)
+	var subscriptionExhaustionStatsRegclass sql.NullString
+	require.NoError(t, tx.QueryRowContext(context.Background(), "SELECT to_regclass('public.subscription_exhaustion_daily_stats')").Scan(&subscriptionExhaustionStatsRegclass))
+	require.True(t, subscriptionExhaustionStatsRegclass.Valid, "expected subscription_exhaustion_daily_stats table to exist")
+	requireColumn(t, tx, "subscription_exhaustion_daily_stats", "bucket_date", "date", 0, false)
+	requireColumn(t, tx, "subscription_exhaustion_daily_stats", "total_subscriptions", "bigint", 0, false)
+	requireColumn(t, tx, "subscription_exhaustion_daily_stats", "exhausted_subscriptions", "bigint", 0, false)
+	requireColumn(t, tx, "subscription_exhaustion_daily_stats", "exhaustion_rate", "double precision", 0, false)
+	requireIndex(t, tx, "subscription_exhaustion_daily_stats", "idx_subscription_exhaustion_daily_stats_bucket_date")
 }
 
 func requireIndex(t *testing.T, tx *sql.Tx, table, index string) {
