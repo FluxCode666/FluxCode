@@ -116,7 +116,9 @@ async function loadDashboard() {
   }
 }
 
-function onDateRangeChange() {
+function onDateRangeChange(range: { startDate: string; endDate: string }) {
+  startDate.value = range.startDate
+  endDate.value = range.endDate
   loadDashboard()
 }
 

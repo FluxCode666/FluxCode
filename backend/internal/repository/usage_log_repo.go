@@ -2297,62 +2297,28 @@ func buildSubscriptionExhaustionDayBuckets(startTime, endTime time.Time) (starts
 
 // GetSubscriptionExhaustionTrend returns daily subscription grant exhaustion counts.
 func (r *usageLogRepository) GetSubscriptionExhaustionTrend(ctx context.Context, startTime, endTime time.Time) (results []SubscriptionExhaustionTrendPoint, err error) {
-	dayStarts, dayEnds, dayLabels := buildSubscriptionExhaustionDayBuckets(startTime, endTime)
-	if len(dayStarts) == 0 {
+	_, _, dayLabels := buildSubscriptionExhaustionDayBuckets(startTime, endTime)
+	if len(dayLabels) == 0 {
 		return []SubscriptionExhaustionTrendPoint{}, nil
 	}
 
 	query := `
 		WITH days AS (
 			SELECT *
-			FROM unnest($1::timestamptz[], $2::timestamptz[], $3::text[]) AS d(day_start, day_end, day_label)
-		),
-		counts AS (
-			SELECT
-				d.day_start,
-				d.day_label,
-				COUNT(sg.id) FILTER (
-					WHERE us.id IS NOT NULL AND g.id IS NOT NULL
-				) AS total_subscriptions,
-				COUNT(sg.id) FILTER (
-					WHERE us.id IS NOT NULL
-					  AND g.id IS NOT NULL
-					  AND (
-						(g.daily_limit_usd IS NOT NULL AND g.daily_limit_usd > 0 AND sg.daily_usage_usd >= g.daily_limit_usd)
-						OR (g.weekly_limit_usd IS NOT NULL AND g.weekly_limit_usd > 0 AND sg.weekly_usage_usd >= g.weekly_limit_usd)
-						OR (g.monthly_limit_usd IS NOT NULL AND g.monthly_limit_usd > 0 AND sg.monthly_usage_usd >= g.monthly_limit_usd)
-					  )
-				) AS exhausted_subscriptions
-			FROM days d
-			LEFT JOIN subscription_grants sg
-				ON sg.deleted_at IS NULL
-			   AND sg.starts_at < d.day_end
-			   AND sg.expires_at > d.day_start
-			LEFT JOIN user_subscriptions us
-				ON us.id = sg.subscription_id
-			   AND us.deleted_at IS NULL
-			   AND us.status = 'active'
-			   AND us.starts_at < d.day_end
-			   AND us.expires_at > d.day_start
-			LEFT JOIN groups g
-				ON g.id = us.group_id
-			   AND g.deleted_at IS NULL
-			   AND g.status = 'active'
-			GROUP BY d.day_start, d.day_label
+			FROM unnest($1::date[], $2::text[]) AS d(bucket_date, day_label)
 		)
 		SELECT
-			day_label,
-			total_subscriptions,
-			exhausted_subscriptions,
-			CASE
-				WHEN total_subscriptions > 0 THEN exhausted_subscriptions::float8 / total_subscriptions::float8 * 100
-				ELSE 0
-			END AS exhaustion_rate
-		FROM counts
-		ORDER BY day_start ASC
+			d.day_label,
+			COALESCE(s.total_subscriptions, 0) AS total_subscriptions,
+			COALESCE(s.exhausted_subscriptions, 0) AS exhausted_subscriptions,
+			COALESCE(s.exhaustion_rate, 0) AS exhaustion_rate
+		FROM days d
+		LEFT JOIN subscription_exhaustion_daily_stats s
+			ON s.bucket_date = d.bucket_date
+		ORDER BY d.bucket_date ASC
 	`
 
-	rows, err := r.sql.QueryContext(ctx, query, pq.Array(dayStarts), pq.Array(dayEnds), pq.Array(dayLabels))
+	rows, err := r.sql.QueryContext(ctx, query, pq.Array(dayLabels), pq.Array(dayLabels))
 	if err != nil {
 		return nil, err
 	}

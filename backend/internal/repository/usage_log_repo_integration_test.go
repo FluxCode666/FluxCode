@@ -1061,6 +1061,88 @@ func (s *UsageLogRepoSuite) TestDashboardAggregationConsistency() {
 	s.Require().Equal(int64(2), daily.activeUsers)
 }
 
+func (s *UsageLogRepoSuite) TestSubscriptionExhaustionDailySnapshotBackfillAndTrend() {
+	dayStart := timezone.StartOfDay(time.Now().AddDate(0, 0, -3))
+	dayEnd := dayStart.AddDate(0, 0, 1)
+	dailyLimit := 1.0
+
+	user := mustCreateUser(s.T(), s.client, &service.User{
+		Email: uniqueTestValue(s.T(), "sub-exhaustion") + "@example.com",
+	})
+	group := mustCreateGroup(s.T(), s.client, &service.Group{
+		Name:             uniqueTestValue(s.T(), "sub-exhaustion-group"),
+		Status:           service.StatusActive,
+		SubscriptionType: service.SubscriptionTypeSubscription,
+		DailyLimitUSD:    &dailyLimit,
+	})
+	sub := mustCreateSubscription(s.T(), s.client, &service.UserSubscription{
+		UserID:     user.ID,
+		GroupID:    group.ID,
+		StartsAt:   dayStart.Add(-1 * time.Hour),
+		ExpiresAt:  dayStart.AddDate(0, 0, 10),
+		Status:     service.SubscriptionStatusActive,
+		AssignedAt: dayStart,
+	})
+	grantRepo := NewSubscriptionGrantRepository(s.client)
+	grant := &service.SubscriptionGrant{
+		SubscriptionID: sub.ID,
+		StartsAt:       sub.StartsAt,
+		ExpiresAt:      sub.ExpiresAt,
+	}
+	s.Require().NoError(grantRepo.Create(s.ctx, grant))
+
+	groupID := group.ID
+	apiKey := mustCreateApiKey(s.T(), s.client, &service.APIKey{
+		UserID:  user.ID,
+		Key:     "sk-sub-exhaustion-" + uuid.NewString(),
+		Name:    "sub-exhaustion",
+		GroupID: &groupID,
+	})
+	account := mustCreateAccount(s.T(), s.client, &service.Account{Name: "acc-sub-exhaustion-" + uuid.NewString()})
+	_, err := s.repo.Create(s.ctx, &service.UsageLog{
+		UserID:         user.ID,
+		APIKeyID:       apiKey.ID,
+		AccountID:      account.ID,
+		RequestID:      uuid.NewString(),
+		Model:          "claude-3",
+		GroupID:        &groupID,
+		SubscriptionID: &sub.ID,
+		InputTokens:    10,
+		OutputTokens:   20,
+		TotalCost:      1.25,
+		ActualCost:     1.25,
+		CreatedAt:      dayStart.Add(2 * time.Hour),
+	})
+	s.Require().NoError(err)
+
+	aggRepo := newDashboardAggregationRepositoryWithSQL(s.tx)
+	s.Require().NoError(aggRepo.AggregateRange(s.ctx, dayStart, dayEnd))
+
+	var total, exhausted int64
+	var rate float64
+	err = scanSingleRow(s.ctx, s.tx, `
+		SELECT total_subscriptions, exhausted_subscriptions, exhaustion_rate
+		FROM subscription_exhaustion_daily_stats
+		WHERE bucket_date = $1::date
+	`, []any{dayStart}, &total, &exhausted, &rate)
+	s.Require().NoError(err)
+	s.Require().Equal(int64(1), total)
+	s.Require().Equal(int64(1), exhausted)
+	s.Require().InDelta(100, rate, 0.0001)
+
+	trend, err := s.repo.GetSubscriptionExhaustionTrend(s.ctx, dayStart, dayStart.AddDate(0, 0, 2))
+	s.Require().NoError(err)
+	s.Require().Len(trend, 2)
+	s.Require().Equal(dayStart.Format("2006-01-02"), trend[0].Date)
+	s.Require().Equal(int64(1), trend[0].TotalSubscriptions)
+	s.Require().Equal(int64(1), trend[0].ExhaustedSubscriptions)
+	s.Require().InDelta(100, trend[0].ExhaustionRate, 0.0001)
+	s.Require().Equal(dayStart.AddDate(0, 0, 1).Format("2006-01-02"), trend[1].Date)
+	s.Require().Zero(trend[1].TotalSubscriptions)
+	s.Require().Zero(trend[1].ExhaustedSubscriptions)
+	s.Require().Zero(trend[1].ExhaustionRate)
+}
+
 // --- GetBatchUserUsageStats ---
 
 func (s *UsageLogRepoSuite) TestGetBatchUserUsageStats() {

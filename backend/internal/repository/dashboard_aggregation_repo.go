@@ -96,6 +96,9 @@ func (r *dashboardAggregationRepository) aggregateRangeInTx(ctx context.Context,
 	if err := r.upsertDailyAggregates(ctx, dayStart, dayEnd); err != nil {
 		return err
 	}
+	if err := r.upsertSubscriptionExhaustionDaily(ctx, dayStart, dayEnd); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -152,6 +155,9 @@ func (r *dashboardAggregationRepository) recomputeRangeInTx(ctx context.Context,
 	if _, err := r.sql.ExecContext(ctx, "DELETE FROM usage_dashboard_daily_users WHERE bucket_date >= $1::date AND bucket_date < $2::date", dayStart, dayEnd); err != nil {
 		return err
 	}
+	if _, err := r.sql.ExecContext(ctx, "DELETE FROM subscription_exhaustion_daily_stats WHERE bucket_date >= $1::date AND bucket_date < $2::date", dayStart, dayEnd); err != nil {
+		return err
+	}
 
 	if err := r.insertHourlyActiveUsers(ctx, hourStart, hourEnd); err != nil {
 		return err
@@ -163,6 +169,9 @@ func (r *dashboardAggregationRepository) recomputeRangeInTx(ctx context.Context,
 		return err
 	}
 	if err := r.upsertDailyAggregates(ctx, dayStart, dayEnd); err != nil {
+		return err
+	}
+	if err := r.upsertSubscriptionExhaustionDaily(ctx, dayStart, dayEnd); err != nil {
 		return err
 	}
 	return nil
@@ -204,6 +213,9 @@ func (r *dashboardAggregationRepository) CleanupAggregates(ctx context.Context, 
 		return err
 	}
 	if _, err := r.sql.ExecContext(ctx, "DELETE FROM usage_dashboard_daily_users WHERE bucket_date < $1::date", dailyCutoffUTC); err != nil {
+		return err
+	}
+	if _, err := r.sql.ExecContext(ctx, "DELETE FROM subscription_exhaustion_daily_stats WHERE bucket_date < $1::date", dailyCutoffUTC); err != nil {
 		return err
 	}
 	return nil
@@ -459,6 +471,201 @@ func (r *dashboardAggregationRepository) upsertDailyAggregates(ctx context.Conte
 			computed_at = EXCLUDED.computed_at
 	`
 	_, err := r.sql.ExecContext(ctx, query, start, end, start, end, tzName)
+	return err
+}
+
+func (r *dashboardAggregationRepository) upsertSubscriptionExhaustionDaily(ctx context.Context, start, end time.Time) error {
+	if !end.After(start) {
+		return nil
+	}
+
+	tzName := timezone.Name()
+	startDate := start.In(timezone.Location()).Format("2006-01-02")
+	endDate := end.In(timezone.Location()).Format("2006-01-02")
+	query := `
+		WITH days AS (
+			SELECT
+				gs::date AS bucket_date,
+				gs::timestamp AT TIME ZONE $3 AS day_start,
+				(gs + INTERVAL '1 day')::timestamp AT TIME ZONE $3 AS day_end
+			FROM generate_series($1::date, ($2::date - INTERVAL '1 day')::date, INTERVAL '1 day') AS gs
+		),
+		grant_limits AS (
+			SELECT
+				d.bucket_date,
+				d.day_start,
+				d.day_end,
+				sg.id AS grant_id,
+				sg.subscription_id,
+				sg.expires_at,
+				CASE WHEN g.daily_limit_usd IS NOT NULL AND g.daily_limit_usd > 0 THEN g.daily_limit_usd ELSE NULL END AS daily_limit_usd,
+				CASE WHEN g.weekly_limit_usd IS NOT NULL AND g.weekly_limit_usd > 0 THEN g.weekly_limit_usd ELSE NULL END AS weekly_limit_usd,
+				CASE WHEN g.monthly_limit_usd IS NOT NULL AND g.monthly_limit_usd > 0 THEN g.monthly_limit_usd ELSE NULL END AS monthly_limit_usd
+			FROM days d
+			JOIN subscription_grants sg
+				ON sg.deleted_at IS NULL
+			   AND sg.starts_at < d.day_end
+			   AND sg.expires_at > d.day_start
+			JOIN user_subscriptions us
+				ON us.id = sg.subscription_id
+			   AND us.deleted_at IS NULL
+			   AND us.starts_at < d.day_end
+			   AND us.expires_at > d.day_start
+			   AND (
+					us.status = 'active'
+					OR (us.status = 'expired' AND us.expires_at <= NOW())
+			   )
+			JOIN groups g
+				ON g.id = us.group_id
+			   AND g.deleted_at IS NULL
+			   AND g.status = 'active'
+		),
+		grant_order AS (
+			SELECT
+				gl.*,
+				COALESCE(SUM(COALESCE(gl.daily_limit_usd, 0)) OVER (
+					PARTITION BY gl.bucket_date, gl.subscription_id
+					ORDER BY gl.expires_at ASC, gl.grant_id ASC
+					ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
+				), 0) AS daily_capacity_before,
+				COALESCE(SUM(COALESCE(gl.weekly_limit_usd, 0)) OVER (
+					PARTITION BY gl.bucket_date, gl.subscription_id
+					ORDER BY gl.expires_at ASC, gl.grant_id ASC
+					ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
+				), 0) AS weekly_capacity_before,
+				COALESCE(SUM(COALESCE(gl.monthly_limit_usd, 0)) OVER (
+					PARTITION BY gl.bucket_date, gl.subscription_id
+					ORDER BY gl.expires_at ASC, gl.grant_id ASC
+					ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
+				), 0) AS monthly_capacity_before
+			FROM grant_limits gl
+		),
+		subscription_days AS (
+			SELECT DISTINCT bucket_date, subscription_id, day_start, day_end
+			FROM grant_limits
+		),
+		subscription_usage AS (
+			SELECT
+				sd.bucket_date,
+				sd.subscription_id,
+				COALESCE(SUM(CASE
+					WHEN ul.created_at >= sd.day_start AND ul.created_at < sd.day_end
+					THEN COALESCE(NULLIF(ul.total_cost, 0), ul.actual_cost, 0)
+					ELSE 0
+				END), 0) AS daily_usage_usd,
+				COALESCE(SUM(CASE
+					WHEN ul.created_at >= sd.day_end - INTERVAL '7 days' AND ul.created_at < sd.day_end
+					THEN COALESCE(NULLIF(ul.total_cost, 0), ul.actual_cost, 0)
+					ELSE 0
+				END), 0) AS weekly_usage_usd,
+				COALESCE(SUM(CASE
+					WHEN ul.created_at >= sd.day_end - INTERVAL '30 days' AND ul.created_at < sd.day_end
+					THEN COALESCE(NULLIF(ul.total_cost, 0), ul.actual_cost, 0)
+					ELSE 0
+				END), 0) AS monthly_usage_usd
+			FROM subscription_days sd
+			LEFT JOIN usage_logs ul
+				ON ul.subscription_id = sd.subscription_id
+			   AND ul.created_at >= sd.day_end - INTERVAL '30 days'
+			   AND ul.created_at < sd.day_end
+			GROUP BY sd.bucket_date, sd.subscription_id
+		),
+		replay_counts AS (
+			SELECT
+				go.bucket_date,
+				COUNT(go.grant_id) AS total_subscriptions,
+				COUNT(go.grant_id) FILTER (
+					WHERE (
+						go.daily_limit_usd IS NOT NULL
+						AND su.daily_usage_usd >= go.daily_capacity_before + go.daily_limit_usd
+					) OR (
+						go.weekly_limit_usd IS NOT NULL
+						AND su.weekly_usage_usd >= go.weekly_capacity_before + go.weekly_limit_usd
+					) OR (
+						go.monthly_limit_usd IS NOT NULL
+						AND su.monthly_usage_usd >= go.monthly_capacity_before + go.monthly_limit_usd
+					)
+				) AS exhausted_subscriptions
+			FROM grant_order go
+			JOIN subscription_usage su
+				ON su.bucket_date = go.bucket_date
+			   AND su.subscription_id = go.subscription_id
+			GROUP BY go.bucket_date
+		),
+		live_current_counts AS (
+			SELECT
+				d.bucket_date,
+				COUNT(sg.id) FILTER (
+					WHERE us.id IS NOT NULL AND g.id IS NOT NULL
+				) AS total_subscriptions,
+				COUNT(sg.id) FILTER (
+					WHERE us.id IS NOT NULL
+					  AND g.id IS NOT NULL
+					  AND (
+						(g.daily_limit_usd IS NOT NULL AND g.daily_limit_usd > 0 AND sg.daily_usage_usd >= g.daily_limit_usd)
+						OR (g.weekly_limit_usd IS NOT NULL AND g.weekly_limit_usd > 0 AND sg.weekly_usage_usd >= g.weekly_limit_usd)
+						OR (g.monthly_limit_usd IS NOT NULL AND g.monthly_limit_usd > 0 AND sg.monthly_usage_usd >= g.monthly_limit_usd)
+					  )
+				) AS exhausted_subscriptions
+			FROM days d
+			LEFT JOIN subscription_grants sg
+				ON sg.deleted_at IS NULL
+			   AND sg.starts_at < d.day_end
+			   AND sg.expires_at > d.day_start
+			LEFT JOIN user_subscriptions us
+				ON us.id = sg.subscription_id
+			   AND us.deleted_at IS NULL
+			   AND us.starts_at < d.day_end
+			   AND us.expires_at > d.day_start
+			   AND us.status = 'active'
+			LEFT JOIN groups g
+				ON g.id = us.group_id
+			   AND g.deleted_at IS NULL
+			   AND g.status = 'active'
+			WHERE d.bucket_date = (NOW() AT TIME ZONE $3)::date
+			GROUP BY d.bucket_date
+		),
+		stats AS (
+			SELECT
+				d.bucket_date,
+				CASE
+					WHEN d.bucket_date = (NOW() AT TIME ZONE $3)::date THEN COALESCE(live.total_subscriptions, 0)
+					ELSE COALESCE(replay.total_subscriptions, 0)
+				END AS total_subscriptions,
+				CASE
+					WHEN d.bucket_date = (NOW() AT TIME ZONE $3)::date THEN COALESCE(live.exhausted_subscriptions, 0)
+					ELSE COALESCE(replay.exhausted_subscriptions, 0)
+				END AS exhausted_subscriptions
+			FROM days d
+			LEFT JOIN replay_counts replay ON replay.bucket_date = d.bucket_date
+			LEFT JOIN live_current_counts live ON live.bucket_date = d.bucket_date
+		)
+		INSERT INTO subscription_exhaustion_daily_stats (
+			bucket_date,
+			total_subscriptions,
+			exhausted_subscriptions,
+			exhaustion_rate,
+			computed_at
+		)
+		SELECT
+			bucket_date,
+			total_subscriptions,
+			exhausted_subscriptions,
+			CASE
+				WHEN total_subscriptions > 0 THEN exhausted_subscriptions::float8 / total_subscriptions::float8 * 100
+				ELSE 0
+			END AS exhaustion_rate,
+			NOW()
+		FROM stats
+		ON CONFLICT (bucket_date)
+		DO UPDATE SET
+			total_subscriptions = EXCLUDED.total_subscriptions,
+			exhausted_subscriptions = EXCLUDED.exhausted_subscriptions,
+			exhaustion_rate = EXCLUDED.exhaustion_rate,
+			computed_at = EXCLUDED.computed_at
+		WHERE subscription_exhaustion_daily_stats.bucket_date = (NOW() AT TIME ZONE $3)::date
+	`
+	_, err := r.sql.ExecContext(ctx, query, startDate, endDate, tzName)
 	return err
 }
 

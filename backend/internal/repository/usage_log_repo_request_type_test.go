@@ -290,6 +290,44 @@ func TestUsageLogRepositoryGetUsageTrendWithFiltersRequestTypePriority(t *testin
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
+func TestUsageLogRepositoryGetSubscriptionExhaustionTrendReadsSnapshots(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := &usageLogRepository{sql: db}
+
+	start := time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC)
+	end := start.AddDate(0, 0, 2)
+	rows := sqlmock.NewRows([]string{
+		"date",
+		"total_subscriptions",
+		"exhausted_subscriptions",
+		"exhaustion_rate",
+	}).
+		AddRow("2026-03-01", int64(10), int64(2), 20.0).
+		AddRow("2026-03-02", int64(0), int64(0), 0.0)
+
+	mock.ExpectQuery("subscription_exhaustion_daily_stats").
+		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg()).
+		WillReturnRows(rows)
+
+	got, err := repo.GetSubscriptionExhaustionTrend(context.Background(), start, end)
+	require.NoError(t, err)
+	require.Equal(t, []SubscriptionExhaustionTrendPoint{
+		{
+			Date:                   "2026-03-01",
+			TotalSubscriptions:     10,
+			ExhaustedSubscriptions: 2,
+			ExhaustionRate:         20,
+		},
+		{
+			Date:                   "2026-03-02",
+			TotalSubscriptions:     0,
+			ExhaustedSubscriptions: 0,
+			ExhaustionRate:         0,
+		},
+	}, got)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 func TestUsageLogRepositoryGetModelStatsWithFiltersRequestTypePriority(t *testing.T) {
 	db, mock := newSQLMock(t)
 	repo := &usageLogRepository{sql: db}
