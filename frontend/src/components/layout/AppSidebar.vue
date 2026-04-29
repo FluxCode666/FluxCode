@@ -728,9 +728,7 @@ const adminNavItems = computed((): NavItem[] => {
     { path: '/admin/proxies', label: t('nav.proxies'), icon: GlobeIcon },
     { path: '/admin/redeem', label: t('nav.redeemCodes'), icon: TicketIcon, hideInSimpleMode: true },
     { path: '/admin/promo-codes', label: t('nav.promoCodes'), icon: GiftIcon, hideInSimpleMode: true },
-    ...(appStore.cachedPublicSettings?.referral_enabled
-      ? [{ path: '/admin/referral', label: t('nav.referralManagement'), icon: ShareIcon, hideInSimpleMode: true }]
-      : []),
+    { path: '/admin/referral', label: t('nav.referralManagement'), icon: ShareIcon, hideInSimpleMode: true },
     ...(adminSettingsStore.paymentEnabled
       ? [
           {
