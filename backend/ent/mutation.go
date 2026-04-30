@@ -36176,10 +36176,9 @@ type UserReferralConfigMutation struct {
 	reward_expiry_days              *int
 	addreward_expiry_days           *int
 	ongoing_reward_enabled          *bool
-	ongoing_reward_amount           *float64
-	addongoing_reward_amount        *float64
-	ongoing_reward_percent          *float64
-	addongoing_reward_percent       *float64
+	ongoing_reward_type             *string
+	ongoing_reward_value            *float64
+	addongoing_reward_value         *float64
 	ongoing_reward_max_count        *int
 	addongoing_reward_max_count     *int
 	ongoing_reward_duration_days    *int
@@ -36676,144 +36675,123 @@ func (m *UserReferralConfigMutation) ResetOngoingRewardEnabled() {
 	delete(m.clearedFields, userreferralconfig.FieldOngoingRewardEnabled)
 }
 
-// SetOngoingRewardAmount sets the "ongoing_reward_amount" field.
-func (m *UserReferralConfigMutation) SetOngoingRewardAmount(f float64) {
-	m.ongoing_reward_amount = &f
-	m.addongoing_reward_amount = nil
+// SetOngoingRewardType sets the "ongoing_reward_type" field.
+func (m *UserReferralConfigMutation) SetOngoingRewardType(s string) {
+	m.ongoing_reward_type = &s
 }
 
-// OngoingRewardAmount returns the value of the "ongoing_reward_amount" field in the mutation.
-func (m *UserReferralConfigMutation) OngoingRewardAmount() (r float64, exists bool) {
-	v := m.ongoing_reward_amount
+// OngoingRewardType returns the value of the "ongoing_reward_type" field in the mutation.
+func (m *UserReferralConfigMutation) OngoingRewardType() (r string, exists bool) {
+	v := m.ongoing_reward_type
 	if v == nil {
 		return
 	}
 	return *v, true
 }
 
-// OldOngoingRewardAmount returns the old "ongoing_reward_amount" field's value of the UserReferralConfig entity.
+// OldOngoingRewardType returns the old "ongoing_reward_type" field's value of the UserReferralConfig entity.
 // If the UserReferralConfig object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *UserReferralConfigMutation) OldOngoingRewardAmount(ctx context.Context) (v *float64, err error) {
+func (m *UserReferralConfigMutation) OldOngoingRewardType(ctx context.Context) (v *string, err error) {
 	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldOngoingRewardAmount is only allowed on UpdateOne operations")
+		return v, errors.New("OldOngoingRewardType is only allowed on UpdateOne operations")
 	}
 	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldOngoingRewardAmount requires an ID field in the mutation")
+		return v, errors.New("OldOngoingRewardType requires an ID field in the mutation")
 	}
 	oldValue, err := m.oldValue(ctx)
 	if err != nil {
-		return v, fmt.Errorf("querying old value for OldOngoingRewardAmount: %w", err)
+		return v, fmt.Errorf("querying old value for OldOngoingRewardType: %w", err)
 	}
-	return oldValue.OngoingRewardAmount, nil
+	return oldValue.OngoingRewardType, nil
 }
 
-// AddOngoingRewardAmount adds f to the "ongoing_reward_amount" field.
-func (m *UserReferralConfigMutation) AddOngoingRewardAmount(f float64) {
-	if m.addongoing_reward_amount != nil {
-		*m.addongoing_reward_amount += f
-	} else {
-		m.addongoing_reward_amount = &f
-	}
+// ClearOngoingRewardType clears the value of the "ongoing_reward_type" field.
+func (m *UserReferralConfigMutation) ClearOngoingRewardType() {
+	m.ongoing_reward_type = nil
+	m.clearedFields[userreferralconfig.FieldOngoingRewardType] = struct{}{}
 }
 
-// AddedOngoingRewardAmount returns the value that was added to the "ongoing_reward_amount" field in this mutation.
-func (m *UserReferralConfigMutation) AddedOngoingRewardAmount() (r float64, exists bool) {
-	v := m.addongoing_reward_amount
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// ClearOngoingRewardAmount clears the value of the "ongoing_reward_amount" field.
-func (m *UserReferralConfigMutation) ClearOngoingRewardAmount() {
-	m.ongoing_reward_amount = nil
-	m.addongoing_reward_amount = nil
-	m.clearedFields[userreferralconfig.FieldOngoingRewardAmount] = struct{}{}
-}
-
-// OngoingRewardAmountCleared returns if the "ongoing_reward_amount" field was cleared in this mutation.
-func (m *UserReferralConfigMutation) OngoingRewardAmountCleared() bool {
-	_, ok := m.clearedFields[userreferralconfig.FieldOngoingRewardAmount]
+// OngoingRewardTypeCleared returns if the "ongoing_reward_type" field was cleared in this mutation.
+func (m *UserReferralConfigMutation) OngoingRewardTypeCleared() bool {
+	_, ok := m.clearedFields[userreferralconfig.FieldOngoingRewardType]
 	return ok
 }
 
-// ResetOngoingRewardAmount resets all changes to the "ongoing_reward_amount" field.
-func (m *UserReferralConfigMutation) ResetOngoingRewardAmount() {
-	m.ongoing_reward_amount = nil
-	m.addongoing_reward_amount = nil
-	delete(m.clearedFields, userreferralconfig.FieldOngoingRewardAmount)
+// ResetOngoingRewardType resets all changes to the "ongoing_reward_type" field.
+func (m *UserReferralConfigMutation) ResetOngoingRewardType() {
+	m.ongoing_reward_type = nil
+	delete(m.clearedFields, userreferralconfig.FieldOngoingRewardType)
 }
 
-// SetOngoingRewardPercent sets the "ongoing_reward_percent" field.
-func (m *UserReferralConfigMutation) SetOngoingRewardPercent(f float64) {
-	m.ongoing_reward_percent = &f
-	m.addongoing_reward_percent = nil
+// SetOngoingRewardValue sets the "ongoing_reward_value" field.
+func (m *UserReferralConfigMutation) SetOngoingRewardValue(f float64) {
+	m.ongoing_reward_value = &f
+	m.addongoing_reward_value = nil
 }
 
-// OngoingRewardPercent returns the value of the "ongoing_reward_percent" field in the mutation.
-func (m *UserReferralConfigMutation) OngoingRewardPercent() (r float64, exists bool) {
-	v := m.ongoing_reward_percent
+// OngoingRewardValue returns the value of the "ongoing_reward_value" field in the mutation.
+func (m *UserReferralConfigMutation) OngoingRewardValue() (r float64, exists bool) {
+	v := m.ongoing_reward_value
 	if v == nil {
 		return
 	}
 	return *v, true
 }
 
-// OldOngoingRewardPercent returns the old "ongoing_reward_percent" field's value of the UserReferralConfig entity.
+// OldOngoingRewardValue returns the old "ongoing_reward_value" field's value of the UserReferralConfig entity.
 // If the UserReferralConfig object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *UserReferralConfigMutation) OldOngoingRewardPercent(ctx context.Context) (v *float64, err error) {
+func (m *UserReferralConfigMutation) OldOngoingRewardValue(ctx context.Context) (v *float64, err error) {
 	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldOngoingRewardPercent is only allowed on UpdateOne operations")
+		return v, errors.New("OldOngoingRewardValue is only allowed on UpdateOne operations")
 	}
 	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldOngoingRewardPercent requires an ID field in the mutation")
+		return v, errors.New("OldOngoingRewardValue requires an ID field in the mutation")
 	}
 	oldValue, err := m.oldValue(ctx)
 	if err != nil {
-		return v, fmt.Errorf("querying old value for OldOngoingRewardPercent: %w", err)
+		return v, fmt.Errorf("querying old value for OldOngoingRewardValue: %w", err)
 	}
-	return oldValue.OngoingRewardPercent, nil
+	return oldValue.OngoingRewardValue, nil
 }
 
-// AddOngoingRewardPercent adds f to the "ongoing_reward_percent" field.
-func (m *UserReferralConfigMutation) AddOngoingRewardPercent(f float64) {
-	if m.addongoing_reward_percent != nil {
-		*m.addongoing_reward_percent += f
+// AddOngoingRewardValue adds f to the "ongoing_reward_value" field.
+func (m *UserReferralConfigMutation) AddOngoingRewardValue(f float64) {
+	if m.addongoing_reward_value != nil {
+		*m.addongoing_reward_value += f
 	} else {
-		m.addongoing_reward_percent = &f
+		m.addongoing_reward_value = &f
 	}
 }
 
-// AddedOngoingRewardPercent returns the value that was added to the "ongoing_reward_percent" field in this mutation.
-func (m *UserReferralConfigMutation) AddedOngoingRewardPercent() (r float64, exists bool) {
-	v := m.addongoing_reward_percent
+// AddedOngoingRewardValue returns the value that was added to the "ongoing_reward_value" field in this mutation.
+func (m *UserReferralConfigMutation) AddedOngoingRewardValue() (r float64, exists bool) {
+	v := m.addongoing_reward_value
 	if v == nil {
 		return
 	}
 	return *v, true
 }
 
-// ClearOngoingRewardPercent clears the value of the "ongoing_reward_percent" field.
-func (m *UserReferralConfigMutation) ClearOngoingRewardPercent() {
-	m.ongoing_reward_percent = nil
-	m.addongoing_reward_percent = nil
-	m.clearedFields[userreferralconfig.FieldOngoingRewardPercent] = struct{}{}
+// ClearOngoingRewardValue clears the value of the "ongoing_reward_value" field.
+func (m *UserReferralConfigMutation) ClearOngoingRewardValue() {
+	m.ongoing_reward_value = nil
+	m.addongoing_reward_value = nil
+	m.clearedFields[userreferralconfig.FieldOngoingRewardValue] = struct{}{}
 }
 
-// OngoingRewardPercentCleared returns if the "ongoing_reward_percent" field was cleared in this mutation.
-func (m *UserReferralConfigMutation) OngoingRewardPercentCleared() bool {
-	_, ok := m.clearedFields[userreferralconfig.FieldOngoingRewardPercent]
+// OngoingRewardValueCleared returns if the "ongoing_reward_value" field was cleared in this mutation.
+func (m *UserReferralConfigMutation) OngoingRewardValueCleared() bool {
+	_, ok := m.clearedFields[userreferralconfig.FieldOngoingRewardValue]
 	return ok
 }
 
-// ResetOngoingRewardPercent resets all changes to the "ongoing_reward_percent" field.
-func (m *UserReferralConfigMutation) ResetOngoingRewardPercent() {
-	m.ongoing_reward_percent = nil
-	m.addongoing_reward_percent = nil
-	delete(m.clearedFields, userreferralconfig.FieldOngoingRewardPercent)
+// ResetOngoingRewardValue resets all changes to the "ongoing_reward_value" field.
+func (m *UserReferralConfigMutation) ResetOngoingRewardValue() {
+	m.ongoing_reward_value = nil
+	m.addongoing_reward_value = nil
+	delete(m.clearedFields, userreferralconfig.FieldOngoingRewardValue)
 }
 
 // SetOngoingRewardMaxCount sets the "ongoing_reward_max_count" field.
@@ -37117,11 +37095,11 @@ func (m *UserReferralConfigMutation) Fields() []string {
 	if m.ongoing_reward_enabled != nil {
 		fields = append(fields, userreferralconfig.FieldOngoingRewardEnabled)
 	}
-	if m.ongoing_reward_amount != nil {
-		fields = append(fields, userreferralconfig.FieldOngoingRewardAmount)
+	if m.ongoing_reward_type != nil {
+		fields = append(fields, userreferralconfig.FieldOngoingRewardType)
 	}
-	if m.ongoing_reward_percent != nil {
-		fields = append(fields, userreferralconfig.FieldOngoingRewardPercent)
+	if m.ongoing_reward_value != nil {
+		fields = append(fields, userreferralconfig.FieldOngoingRewardValue)
 	}
 	if m.ongoing_reward_max_count != nil {
 		fields = append(fields, userreferralconfig.FieldOngoingRewardMaxCount)
@@ -37158,10 +37136,10 @@ func (m *UserReferralConfigMutation) Field(name string) (ent.Value, bool) {
 		return m.RewardExpiryDays()
 	case userreferralconfig.FieldOngoingRewardEnabled:
 		return m.OngoingRewardEnabled()
-	case userreferralconfig.FieldOngoingRewardAmount:
-		return m.OngoingRewardAmount()
-	case userreferralconfig.FieldOngoingRewardPercent:
-		return m.OngoingRewardPercent()
+	case userreferralconfig.FieldOngoingRewardType:
+		return m.OngoingRewardType()
+	case userreferralconfig.FieldOngoingRewardValue:
+		return m.OngoingRewardValue()
 	case userreferralconfig.FieldOngoingRewardMaxCount:
 		return m.OngoingRewardMaxCount()
 	case userreferralconfig.FieldOngoingRewardDurationDays:
@@ -37193,10 +37171,10 @@ func (m *UserReferralConfigMutation) OldField(ctx context.Context, name string) 
 		return m.OldRewardExpiryDays(ctx)
 	case userreferralconfig.FieldOngoingRewardEnabled:
 		return m.OldOngoingRewardEnabled(ctx)
-	case userreferralconfig.FieldOngoingRewardAmount:
-		return m.OldOngoingRewardAmount(ctx)
-	case userreferralconfig.FieldOngoingRewardPercent:
-		return m.OldOngoingRewardPercent(ctx)
+	case userreferralconfig.FieldOngoingRewardType:
+		return m.OldOngoingRewardType(ctx)
+	case userreferralconfig.FieldOngoingRewardValue:
+		return m.OldOngoingRewardValue(ctx)
 	case userreferralconfig.FieldOngoingRewardMaxCount:
 		return m.OldOngoingRewardMaxCount(ctx)
 	case userreferralconfig.FieldOngoingRewardDurationDays:
@@ -37258,19 +37236,19 @@ func (m *UserReferralConfigMutation) SetField(name string, value ent.Value) erro
 		}
 		m.SetOngoingRewardEnabled(v)
 		return nil
-	case userreferralconfig.FieldOngoingRewardAmount:
-		v, ok := value.(float64)
+	case userreferralconfig.FieldOngoingRewardType:
+		v, ok := value.(string)
 		if !ok {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
-		m.SetOngoingRewardAmount(v)
+		m.SetOngoingRewardType(v)
 		return nil
-	case userreferralconfig.FieldOngoingRewardPercent:
+	case userreferralconfig.FieldOngoingRewardValue:
 		v, ok := value.(float64)
 		if !ok {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
-		m.SetOngoingRewardPercent(v)
+		m.SetOngoingRewardValue(v)
 		return nil
 	case userreferralconfig.FieldOngoingRewardMaxCount:
 		v, ok := value.(int)
@@ -37330,11 +37308,8 @@ func (m *UserReferralConfigMutation) AddedFields() []string {
 	if m.addreward_expiry_days != nil {
 		fields = append(fields, userreferralconfig.FieldRewardExpiryDays)
 	}
-	if m.addongoing_reward_amount != nil {
-		fields = append(fields, userreferralconfig.FieldOngoingRewardAmount)
-	}
-	if m.addongoing_reward_percent != nil {
-		fields = append(fields, userreferralconfig.FieldOngoingRewardPercent)
+	if m.addongoing_reward_value != nil {
+		fields = append(fields, userreferralconfig.FieldOngoingRewardValue)
 	}
 	if m.addongoing_reward_max_count != nil {
 		fields = append(fields, userreferralconfig.FieldOngoingRewardMaxCount)
@@ -37360,10 +37335,8 @@ func (m *UserReferralConfigMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedMaxInvites()
 	case userreferralconfig.FieldRewardExpiryDays:
 		return m.AddedRewardExpiryDays()
-	case userreferralconfig.FieldOngoingRewardAmount:
-		return m.AddedOngoingRewardAmount()
-	case userreferralconfig.FieldOngoingRewardPercent:
-		return m.AddedOngoingRewardPercent()
+	case userreferralconfig.FieldOngoingRewardValue:
+		return m.AddedOngoingRewardValue()
 	case userreferralconfig.FieldOngoingRewardMaxCount:
 		return m.AddedOngoingRewardMaxCount()
 	case userreferralconfig.FieldOngoingRewardDurationDays:
@@ -37412,19 +37385,12 @@ func (m *UserReferralConfigMutation) AddField(name string, value ent.Value) erro
 		}
 		m.AddRewardExpiryDays(v)
 		return nil
-	case userreferralconfig.FieldOngoingRewardAmount:
+	case userreferralconfig.FieldOngoingRewardValue:
 		v, ok := value.(float64)
 		if !ok {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
-		m.AddOngoingRewardAmount(v)
-		return nil
-	case userreferralconfig.FieldOngoingRewardPercent:
-		v, ok := value.(float64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.AddOngoingRewardPercent(v)
+		m.AddOngoingRewardValue(v)
 		return nil
 	case userreferralconfig.FieldOngoingRewardMaxCount:
 		v, ok := value.(int)
@@ -37463,11 +37429,11 @@ func (m *UserReferralConfigMutation) ClearedFields() []string {
 	if m.FieldCleared(userreferralconfig.FieldOngoingRewardEnabled) {
 		fields = append(fields, userreferralconfig.FieldOngoingRewardEnabled)
 	}
-	if m.FieldCleared(userreferralconfig.FieldOngoingRewardAmount) {
-		fields = append(fields, userreferralconfig.FieldOngoingRewardAmount)
+	if m.FieldCleared(userreferralconfig.FieldOngoingRewardType) {
+		fields = append(fields, userreferralconfig.FieldOngoingRewardType)
 	}
-	if m.FieldCleared(userreferralconfig.FieldOngoingRewardPercent) {
-		fields = append(fields, userreferralconfig.FieldOngoingRewardPercent)
+	if m.FieldCleared(userreferralconfig.FieldOngoingRewardValue) {
+		fields = append(fields, userreferralconfig.FieldOngoingRewardValue)
 	}
 	if m.FieldCleared(userreferralconfig.FieldOngoingRewardMaxCount) {
 		fields = append(fields, userreferralconfig.FieldOngoingRewardMaxCount)
@@ -37504,11 +37470,11 @@ func (m *UserReferralConfigMutation) ClearField(name string) error {
 	case userreferralconfig.FieldOngoingRewardEnabled:
 		m.ClearOngoingRewardEnabled()
 		return nil
-	case userreferralconfig.FieldOngoingRewardAmount:
-		m.ClearOngoingRewardAmount()
+	case userreferralconfig.FieldOngoingRewardType:
+		m.ClearOngoingRewardType()
 		return nil
-	case userreferralconfig.FieldOngoingRewardPercent:
-		m.ClearOngoingRewardPercent()
+	case userreferralconfig.FieldOngoingRewardValue:
+		m.ClearOngoingRewardValue()
 		return nil
 	case userreferralconfig.FieldOngoingRewardMaxCount:
 		m.ClearOngoingRewardMaxCount()
@@ -37542,11 +37508,11 @@ func (m *UserReferralConfigMutation) ResetField(name string) error {
 	case userreferralconfig.FieldOngoingRewardEnabled:
 		m.ResetOngoingRewardEnabled()
 		return nil
-	case userreferralconfig.FieldOngoingRewardAmount:
-		m.ResetOngoingRewardAmount()
+	case userreferralconfig.FieldOngoingRewardType:
+		m.ResetOngoingRewardType()
 		return nil
-	case userreferralconfig.FieldOngoingRewardPercent:
-		m.ResetOngoingRewardPercent()
+	case userreferralconfig.FieldOngoingRewardValue:
+		m.ResetOngoingRewardValue()
 		return nil
 	case userreferralconfig.FieldOngoingRewardMaxCount:
 		m.ResetOngoingRewardMaxCount()

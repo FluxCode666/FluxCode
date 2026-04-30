@@ -25,10 +25,10 @@ const (
 	FieldRewardExpiryDays = "reward_expiry_days"
 	// FieldOngoingRewardEnabled holds the string denoting the ongoing_reward_enabled field in the database.
 	FieldOngoingRewardEnabled = "ongoing_reward_enabled"
-	// FieldOngoingRewardAmount holds the string denoting the ongoing_reward_amount field in the database.
-	FieldOngoingRewardAmount = "ongoing_reward_amount"
-	// FieldOngoingRewardPercent holds the string denoting the ongoing_reward_percent field in the database.
-	FieldOngoingRewardPercent = "ongoing_reward_percent"
+	// FieldOngoingRewardType holds the string denoting the ongoing_reward_type field in the database.
+	FieldOngoingRewardType = "ongoing_reward_type"
+	// FieldOngoingRewardValue holds the string denoting the ongoing_reward_value field in the database.
+	FieldOngoingRewardValue = "ongoing_reward_value"
 	// FieldOngoingRewardMaxCount holds the string denoting the ongoing_reward_max_count field in the database.
 	FieldOngoingRewardMaxCount = "ongoing_reward_max_count"
 	// FieldOngoingRewardDurationDays holds the string denoting the ongoing_reward_duration_days field in the database.
@@ -52,8 +52,8 @@ var Columns = []string{
 	FieldMaxInvites,
 	FieldRewardExpiryDays,
 	FieldOngoingRewardEnabled,
-	FieldOngoingRewardAmount,
-	FieldOngoingRewardPercent,
+	FieldOngoingRewardType,
+	FieldOngoingRewardValue,
 	FieldOngoingRewardMaxCount,
 	FieldOngoingRewardDurationDays,
 	FieldNotes,
@@ -120,14 +120,14 @@ func ByOngoingRewardEnabled(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldOngoingRewardEnabled, opts...).ToFunc()
 }
 
-// ByOngoingRewardAmount orders the results by the ongoing_reward_amount field.
-func ByOngoingRewardAmount(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldOngoingRewardAmount, opts...).ToFunc()
+// ByOngoingRewardType orders the results by the ongoing_reward_type field.
+func ByOngoingRewardType(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldOngoingRewardType, opts...).ToFunc()
 }
 
-// ByOngoingRewardPercent orders the results by the ongoing_reward_percent field.
-func ByOngoingRewardPercent(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldOngoingRewardPercent, opts...).ToFunc()
+// ByOngoingRewardValue orders the results by the ongoing_reward_value field.
+func ByOngoingRewardValue(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldOngoingRewardValue, opts...).ToFunc()
 }
 
 // ByOngoingRewardMaxCount orders the results by the ongoing_reward_max_count field.

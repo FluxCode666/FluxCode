@@ -305,8 +305,8 @@ const (
 	SettingKeyReferralMaxInvites                = "referral_max_invites"                  // 每人最大邀请数（0=无限）
 	SettingKeyReferralRewardExpiryDays          = "referral_reward_expiry_days"           // 赠送余额过期天数（0=永不过期）
 	SettingKeyReferralOngoingRewardEnabled      = "referral_ongoing_reward_enabled"       // 是否启用持续奖励
-	SettingKeyReferralOngoingRewardAmount       = "referral_ongoing_reward_amount"        // 持续奖励固定金额
-	SettingKeyReferralOngoingRewardPercent      = "referral_ongoing_reward_percent"       // 持续奖励百分比（0-100）
+	SettingKeyReferralOngoingRewardType         = "referral_ongoing_reward_type"          // 持续奖励类型：fixed=固定金额，percentage=按充值百分比
+	SettingKeyReferralOngoingRewardValue        = "referral_ongoing_reward_value"         // 持续奖励数值：fixed 时单位为美元，percentage 时单位为百分点（0-100）
 	SettingKeyReferralOngoingRewardMaxCount     = "referral_ongoing_reward_max_count"     // 每条推广关系最多触发持续奖励次数（0=不限）
 	SettingKeyReferralOngoingRewardDurationDays = "referral_ongoing_reward_duration_days" // 持续奖励有效期：注册后N天内充值才触发（0=永久有效）
 )

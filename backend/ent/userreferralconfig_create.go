@@ -98,30 +98,30 @@ func (_c *UserReferralConfigCreate) SetNillableOngoingRewardEnabled(v *bool) *Us
 	return _c
 }
 
-// SetOngoingRewardAmount sets the "ongoing_reward_amount" field.
-func (_c *UserReferralConfigCreate) SetOngoingRewardAmount(v float64) *UserReferralConfigCreate {
-	_c.mutation.SetOngoingRewardAmount(v)
+// SetOngoingRewardType sets the "ongoing_reward_type" field.
+func (_c *UserReferralConfigCreate) SetOngoingRewardType(v string) *UserReferralConfigCreate {
+	_c.mutation.SetOngoingRewardType(v)
 	return _c
 }
 
-// SetNillableOngoingRewardAmount sets the "ongoing_reward_amount" field if the given value is not nil.
-func (_c *UserReferralConfigCreate) SetNillableOngoingRewardAmount(v *float64) *UserReferralConfigCreate {
+// SetNillableOngoingRewardType sets the "ongoing_reward_type" field if the given value is not nil.
+func (_c *UserReferralConfigCreate) SetNillableOngoingRewardType(v *string) *UserReferralConfigCreate {
 	if v != nil {
-		_c.SetOngoingRewardAmount(*v)
+		_c.SetOngoingRewardType(*v)
 	}
 	return _c
 }
 
-// SetOngoingRewardPercent sets the "ongoing_reward_percent" field.
-func (_c *UserReferralConfigCreate) SetOngoingRewardPercent(v float64) *UserReferralConfigCreate {
-	_c.mutation.SetOngoingRewardPercent(v)
+// SetOngoingRewardValue sets the "ongoing_reward_value" field.
+func (_c *UserReferralConfigCreate) SetOngoingRewardValue(v float64) *UserReferralConfigCreate {
+	_c.mutation.SetOngoingRewardValue(v)
 	return _c
 }
 
-// SetNillableOngoingRewardPercent sets the "ongoing_reward_percent" field if the given value is not nil.
-func (_c *UserReferralConfigCreate) SetNillableOngoingRewardPercent(v *float64) *UserReferralConfigCreate {
+// SetNillableOngoingRewardValue sets the "ongoing_reward_value" field if the given value is not nil.
+func (_c *UserReferralConfigCreate) SetNillableOngoingRewardValue(v *float64) *UserReferralConfigCreate {
 	if v != nil {
-		_c.SetOngoingRewardPercent(*v)
+		_c.SetOngoingRewardValue(*v)
 	}
 	return _c
 }
@@ -310,13 +310,13 @@ func (_c *UserReferralConfigCreate) createSpec() (*UserReferralConfig, *sqlgraph
 		_spec.SetField(userreferralconfig.FieldOngoingRewardEnabled, field.TypeBool, value)
 		_node.OngoingRewardEnabled = &value
 	}
-	if value, ok := _c.mutation.OngoingRewardAmount(); ok {
-		_spec.SetField(userreferralconfig.FieldOngoingRewardAmount, field.TypeFloat64, value)
-		_node.OngoingRewardAmount = &value
+	if value, ok := _c.mutation.OngoingRewardType(); ok {
+		_spec.SetField(userreferralconfig.FieldOngoingRewardType, field.TypeString, value)
+		_node.OngoingRewardType = &value
 	}
-	if value, ok := _c.mutation.OngoingRewardPercent(); ok {
-		_spec.SetField(userreferralconfig.FieldOngoingRewardPercent, field.TypeFloat64, value)
-		_node.OngoingRewardPercent = &value
+	if value, ok := _c.mutation.OngoingRewardValue(); ok {
+		_spec.SetField(userreferralconfig.FieldOngoingRewardValue, field.TypeFloat64, value)
+		_node.OngoingRewardValue = &value
 	}
 	if value, ok := _c.mutation.OngoingRewardMaxCount(); ok {
 		_spec.SetField(userreferralconfig.FieldOngoingRewardMaxCount, field.TypeInt, value)
@@ -522,51 +522,45 @@ func (u *UserReferralConfigUpsert) ClearOngoingRewardEnabled() *UserReferralConf
 	return u
 }
 
-// SetOngoingRewardAmount sets the "ongoing_reward_amount" field.
-func (u *UserReferralConfigUpsert) SetOngoingRewardAmount(v float64) *UserReferralConfigUpsert {
-	u.Set(userreferralconfig.FieldOngoingRewardAmount, v)
+// SetOngoingRewardType sets the "ongoing_reward_type" field.
+func (u *UserReferralConfigUpsert) SetOngoingRewardType(v string) *UserReferralConfigUpsert {
+	u.Set(userreferralconfig.FieldOngoingRewardType, v)
 	return u
 }
 
-// UpdateOngoingRewardAmount sets the "ongoing_reward_amount" field to the value that was provided on create.
-func (u *UserReferralConfigUpsert) UpdateOngoingRewardAmount() *UserReferralConfigUpsert {
-	u.SetExcluded(userreferralconfig.FieldOngoingRewardAmount)
+// UpdateOngoingRewardType sets the "ongoing_reward_type" field to the value that was provided on create.
+func (u *UserReferralConfigUpsert) UpdateOngoingRewardType() *UserReferralConfigUpsert {
+	u.SetExcluded(userreferralconfig.FieldOngoingRewardType)
 	return u
 }
 
-// AddOngoingRewardAmount adds v to the "ongoing_reward_amount" field.
-func (u *UserReferralConfigUpsert) AddOngoingRewardAmount(v float64) *UserReferralConfigUpsert {
-	u.Add(userreferralconfig.FieldOngoingRewardAmount, v)
+// ClearOngoingRewardType clears the value of the "ongoing_reward_type" field.
+func (u *UserReferralConfigUpsert) ClearOngoingRewardType() *UserReferralConfigUpsert {
+	u.SetNull(userreferralconfig.FieldOngoingRewardType)
 	return u
 }
 
-// ClearOngoingRewardAmount clears the value of the "ongoing_reward_amount" field.
-func (u *UserReferralConfigUpsert) ClearOngoingRewardAmount() *UserReferralConfigUpsert {
-	u.SetNull(userreferralconfig.FieldOngoingRewardAmount)
+// SetOngoingRewardValue sets the "ongoing_reward_value" field.
+func (u *UserReferralConfigUpsert) SetOngoingRewardValue(v float64) *UserReferralConfigUpsert {
+	u.Set(userreferralconfig.FieldOngoingRewardValue, v)
 	return u
 }
 
-// SetOngoingRewardPercent sets the "ongoing_reward_percent" field.
-func (u *UserReferralConfigUpsert) SetOngoingRewardPercent(v float64) *UserReferralConfigUpsert {
-	u.Set(userreferralconfig.FieldOngoingRewardPercent, v)
+// UpdateOngoingRewardValue sets the "ongoing_reward_value" field to the value that was provided on create.
+func (u *UserReferralConfigUpsert) UpdateOngoingRewardValue() *UserReferralConfigUpsert {
+	u.SetExcluded(userreferralconfig.FieldOngoingRewardValue)
 	return u
 }
 
-// UpdateOngoingRewardPercent sets the "ongoing_reward_percent" field to the value that was provided on create.
-func (u *UserReferralConfigUpsert) UpdateOngoingRewardPercent() *UserReferralConfigUpsert {
-	u.SetExcluded(userreferralconfig.FieldOngoingRewardPercent)
+// AddOngoingRewardValue adds v to the "ongoing_reward_value" field.
+func (u *UserReferralConfigUpsert) AddOngoingRewardValue(v float64) *UserReferralConfigUpsert {
+	u.Add(userreferralconfig.FieldOngoingRewardValue, v)
 	return u
 }
 
-// AddOngoingRewardPercent adds v to the "ongoing_reward_percent" field.
-func (u *UserReferralConfigUpsert) AddOngoingRewardPercent(v float64) *UserReferralConfigUpsert {
-	u.Add(userreferralconfig.FieldOngoingRewardPercent, v)
-	return u
-}
-
-// ClearOngoingRewardPercent clears the value of the "ongoing_reward_percent" field.
-func (u *UserReferralConfigUpsert) ClearOngoingRewardPercent() *UserReferralConfigUpsert {
-	u.SetNull(userreferralconfig.FieldOngoingRewardPercent)
+// ClearOngoingRewardValue clears the value of the "ongoing_reward_value" field.
+func (u *UserReferralConfigUpsert) ClearOngoingRewardValue() *UserReferralConfigUpsert {
+	u.SetNull(userreferralconfig.FieldOngoingRewardValue)
 	return u
 }
 
@@ -841,59 +835,52 @@ func (u *UserReferralConfigUpsertOne) ClearOngoingRewardEnabled() *UserReferralC
 	})
 }
 
-// SetOngoingRewardAmount sets the "ongoing_reward_amount" field.
-func (u *UserReferralConfigUpsertOne) SetOngoingRewardAmount(v float64) *UserReferralConfigUpsertOne {
+// SetOngoingRewardType sets the "ongoing_reward_type" field.
+func (u *UserReferralConfigUpsertOne) SetOngoingRewardType(v string) *UserReferralConfigUpsertOne {
 	return u.Update(func(s *UserReferralConfigUpsert) {
-		s.SetOngoingRewardAmount(v)
+		s.SetOngoingRewardType(v)
 	})
 }
 
-// AddOngoingRewardAmount adds v to the "ongoing_reward_amount" field.
-func (u *UserReferralConfigUpsertOne) AddOngoingRewardAmount(v float64) *UserReferralConfigUpsertOne {
+// UpdateOngoingRewardType sets the "ongoing_reward_type" field to the value that was provided on create.
+func (u *UserReferralConfigUpsertOne) UpdateOngoingRewardType() *UserReferralConfigUpsertOne {
 	return u.Update(func(s *UserReferralConfigUpsert) {
-		s.AddOngoingRewardAmount(v)
+		s.UpdateOngoingRewardType()
 	})
 }
 
-// UpdateOngoingRewardAmount sets the "ongoing_reward_amount" field to the value that was provided on create.
-func (u *UserReferralConfigUpsertOne) UpdateOngoingRewardAmount() *UserReferralConfigUpsertOne {
+// ClearOngoingRewardType clears the value of the "ongoing_reward_type" field.
+func (u *UserReferralConfigUpsertOne) ClearOngoingRewardType() *UserReferralConfigUpsertOne {
 	return u.Update(func(s *UserReferralConfigUpsert) {
-		s.UpdateOngoingRewardAmount()
+		s.ClearOngoingRewardType()
 	})
 }
 
-// ClearOngoingRewardAmount clears the value of the "ongoing_reward_amount" field.
-func (u *UserReferralConfigUpsertOne) ClearOngoingRewardAmount() *UserReferralConfigUpsertOne {
+// SetOngoingRewardValue sets the "ongoing_reward_value" field.
+func (u *UserReferralConfigUpsertOne) SetOngoingRewardValue(v float64) *UserReferralConfigUpsertOne {
 	return u.Update(func(s *UserReferralConfigUpsert) {
-		s.ClearOngoingRewardAmount()
+		s.SetOngoingRewardValue(v)
 	})
 }
 
-// SetOngoingRewardPercent sets the "ongoing_reward_percent" field.
-func (u *UserReferralConfigUpsertOne) SetOngoingRewardPercent(v float64) *UserReferralConfigUpsertOne {
+// AddOngoingRewardValue adds v to the "ongoing_reward_value" field.
+func (u *UserReferralConfigUpsertOne) AddOngoingRewardValue(v float64) *UserReferralConfigUpsertOne {
 	return u.Update(func(s *UserReferralConfigUpsert) {
-		s.SetOngoingRewardPercent(v)
+		s.AddOngoingRewardValue(v)
 	})
 }
 
-// AddOngoingRewardPercent adds v to the "ongoing_reward_percent" field.
-func (u *UserReferralConfigUpsertOne) AddOngoingRewardPercent(v float64) *UserReferralConfigUpsertOne {
+// UpdateOngoingRewardValue sets the "ongoing_reward_value" field to the value that was provided on create.
+func (u *UserReferralConfigUpsertOne) UpdateOngoingRewardValue() *UserReferralConfigUpsertOne {
 	return u.Update(func(s *UserReferralConfigUpsert) {
-		s.AddOngoingRewardPercent(v)
+		s.UpdateOngoingRewardValue()
 	})
 }
 
-// UpdateOngoingRewardPercent sets the "ongoing_reward_percent" field to the value that was provided on create.
-func (u *UserReferralConfigUpsertOne) UpdateOngoingRewardPercent() *UserReferralConfigUpsertOne {
+// ClearOngoingRewardValue clears the value of the "ongoing_reward_value" field.
+func (u *UserReferralConfigUpsertOne) ClearOngoingRewardValue() *UserReferralConfigUpsertOne {
 	return u.Update(func(s *UserReferralConfigUpsert) {
-		s.UpdateOngoingRewardPercent()
-	})
-}
-
-// ClearOngoingRewardPercent clears the value of the "ongoing_reward_percent" field.
-func (u *UserReferralConfigUpsertOne) ClearOngoingRewardPercent() *UserReferralConfigUpsertOne {
-	return u.Update(func(s *UserReferralConfigUpsert) {
-		s.ClearOngoingRewardPercent()
+		s.ClearOngoingRewardValue()
 	})
 }
 
@@ -1346,59 +1333,52 @@ func (u *UserReferralConfigUpsertBulk) ClearOngoingRewardEnabled() *UserReferral
 	})
 }
 
-// SetOngoingRewardAmount sets the "ongoing_reward_amount" field.
-func (u *UserReferralConfigUpsertBulk) SetOngoingRewardAmount(v float64) *UserReferralConfigUpsertBulk {
+// SetOngoingRewardType sets the "ongoing_reward_type" field.
+func (u *UserReferralConfigUpsertBulk) SetOngoingRewardType(v string) *UserReferralConfigUpsertBulk {
 	return u.Update(func(s *UserReferralConfigUpsert) {
-		s.SetOngoingRewardAmount(v)
+		s.SetOngoingRewardType(v)
 	})
 }
 
-// AddOngoingRewardAmount adds v to the "ongoing_reward_amount" field.
-func (u *UserReferralConfigUpsertBulk) AddOngoingRewardAmount(v float64) *UserReferralConfigUpsertBulk {
+// UpdateOngoingRewardType sets the "ongoing_reward_type" field to the value that was provided on create.
+func (u *UserReferralConfigUpsertBulk) UpdateOngoingRewardType() *UserReferralConfigUpsertBulk {
 	return u.Update(func(s *UserReferralConfigUpsert) {
-		s.AddOngoingRewardAmount(v)
+		s.UpdateOngoingRewardType()
 	})
 }
 
-// UpdateOngoingRewardAmount sets the "ongoing_reward_amount" field to the value that was provided on create.
-func (u *UserReferralConfigUpsertBulk) UpdateOngoingRewardAmount() *UserReferralConfigUpsertBulk {
+// ClearOngoingRewardType clears the value of the "ongoing_reward_type" field.
+func (u *UserReferralConfigUpsertBulk) ClearOngoingRewardType() *UserReferralConfigUpsertBulk {
 	return u.Update(func(s *UserReferralConfigUpsert) {
-		s.UpdateOngoingRewardAmount()
+		s.ClearOngoingRewardType()
 	})
 }
 
-// ClearOngoingRewardAmount clears the value of the "ongoing_reward_amount" field.
-func (u *UserReferralConfigUpsertBulk) ClearOngoingRewardAmount() *UserReferralConfigUpsertBulk {
+// SetOngoingRewardValue sets the "ongoing_reward_value" field.
+func (u *UserReferralConfigUpsertBulk) SetOngoingRewardValue(v float64) *UserReferralConfigUpsertBulk {
 	return u.Update(func(s *UserReferralConfigUpsert) {
-		s.ClearOngoingRewardAmount()
+		s.SetOngoingRewardValue(v)
 	})
 }
 
-// SetOngoingRewardPercent sets the "ongoing_reward_percent" field.
-func (u *UserReferralConfigUpsertBulk) SetOngoingRewardPercent(v float64) *UserReferralConfigUpsertBulk {
+// AddOngoingRewardValue adds v to the "ongoing_reward_value" field.
+func (u *UserReferralConfigUpsertBulk) AddOngoingRewardValue(v float64) *UserReferralConfigUpsertBulk {
 	return u.Update(func(s *UserReferralConfigUpsert) {
-		s.SetOngoingRewardPercent(v)
+		s.AddOngoingRewardValue(v)
 	})
 }
 
-// AddOngoingRewardPercent adds v to the "ongoing_reward_percent" field.
-func (u *UserReferralConfigUpsertBulk) AddOngoingRewardPercent(v float64) *UserReferralConfigUpsertBulk {
+// UpdateOngoingRewardValue sets the "ongoing_reward_value" field to the value that was provided on create.
+func (u *UserReferralConfigUpsertBulk) UpdateOngoingRewardValue() *UserReferralConfigUpsertBulk {
 	return u.Update(func(s *UserReferralConfigUpsert) {
-		s.AddOngoingRewardPercent(v)
+		s.UpdateOngoingRewardValue()
 	})
 }
 
-// UpdateOngoingRewardPercent sets the "ongoing_reward_percent" field to the value that was provided on create.
-func (u *UserReferralConfigUpsertBulk) UpdateOngoingRewardPercent() *UserReferralConfigUpsertBulk {
+// ClearOngoingRewardValue clears the value of the "ongoing_reward_value" field.
+func (u *UserReferralConfigUpsertBulk) ClearOngoingRewardValue() *UserReferralConfigUpsertBulk {
 	return u.Update(func(s *UserReferralConfigUpsert) {
-		s.UpdateOngoingRewardPercent()
-	})
-}
-
-// ClearOngoingRewardPercent clears the value of the "ongoing_reward_percent" field.
-func (u *UserReferralConfigUpsertBulk) ClearOngoingRewardPercent() *UserReferralConfigUpsertBulk {
-	return u.Update(func(s *UserReferralConfigUpsert) {
-		s.ClearOngoingRewardPercent()
+		s.ClearOngoingRewardValue()
 	})
 }
 

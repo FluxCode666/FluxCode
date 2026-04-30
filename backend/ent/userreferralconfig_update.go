@@ -177,57 +177,50 @@ func (_u *UserReferralConfigUpdate) ClearOngoingRewardEnabled() *UserReferralCon
 	return _u
 }
 
-// SetOngoingRewardAmount sets the "ongoing_reward_amount" field.
-func (_u *UserReferralConfigUpdate) SetOngoingRewardAmount(v float64) *UserReferralConfigUpdate {
-	_u.mutation.ResetOngoingRewardAmount()
-	_u.mutation.SetOngoingRewardAmount(v)
+// SetOngoingRewardType sets the "ongoing_reward_type" field.
+func (_u *UserReferralConfigUpdate) SetOngoingRewardType(v string) *UserReferralConfigUpdate {
+	_u.mutation.SetOngoingRewardType(v)
 	return _u
 }
 
-// SetNillableOngoingRewardAmount sets the "ongoing_reward_amount" field if the given value is not nil.
-func (_u *UserReferralConfigUpdate) SetNillableOngoingRewardAmount(v *float64) *UserReferralConfigUpdate {
+// SetNillableOngoingRewardType sets the "ongoing_reward_type" field if the given value is not nil.
+func (_u *UserReferralConfigUpdate) SetNillableOngoingRewardType(v *string) *UserReferralConfigUpdate {
 	if v != nil {
-		_u.SetOngoingRewardAmount(*v)
+		_u.SetOngoingRewardType(*v)
 	}
 	return _u
 }
 
-// AddOngoingRewardAmount adds value to the "ongoing_reward_amount" field.
-func (_u *UserReferralConfigUpdate) AddOngoingRewardAmount(v float64) *UserReferralConfigUpdate {
-	_u.mutation.AddOngoingRewardAmount(v)
+// ClearOngoingRewardType clears the value of the "ongoing_reward_type" field.
+func (_u *UserReferralConfigUpdate) ClearOngoingRewardType() *UserReferralConfigUpdate {
+	_u.mutation.ClearOngoingRewardType()
 	return _u
 }
 
-// ClearOngoingRewardAmount clears the value of the "ongoing_reward_amount" field.
-func (_u *UserReferralConfigUpdate) ClearOngoingRewardAmount() *UserReferralConfigUpdate {
-	_u.mutation.ClearOngoingRewardAmount()
+// SetOngoingRewardValue sets the "ongoing_reward_value" field.
+func (_u *UserReferralConfigUpdate) SetOngoingRewardValue(v float64) *UserReferralConfigUpdate {
+	_u.mutation.ResetOngoingRewardValue()
+	_u.mutation.SetOngoingRewardValue(v)
 	return _u
 }
 
-// SetOngoingRewardPercent sets the "ongoing_reward_percent" field.
-func (_u *UserReferralConfigUpdate) SetOngoingRewardPercent(v float64) *UserReferralConfigUpdate {
-	_u.mutation.ResetOngoingRewardPercent()
-	_u.mutation.SetOngoingRewardPercent(v)
-	return _u
-}
-
-// SetNillableOngoingRewardPercent sets the "ongoing_reward_percent" field if the given value is not nil.
-func (_u *UserReferralConfigUpdate) SetNillableOngoingRewardPercent(v *float64) *UserReferralConfigUpdate {
+// SetNillableOngoingRewardValue sets the "ongoing_reward_value" field if the given value is not nil.
+func (_u *UserReferralConfigUpdate) SetNillableOngoingRewardValue(v *float64) *UserReferralConfigUpdate {
 	if v != nil {
-		_u.SetOngoingRewardPercent(*v)
+		_u.SetOngoingRewardValue(*v)
 	}
 	return _u
 }
 
-// AddOngoingRewardPercent adds value to the "ongoing_reward_percent" field.
-func (_u *UserReferralConfigUpdate) AddOngoingRewardPercent(v float64) *UserReferralConfigUpdate {
-	_u.mutation.AddOngoingRewardPercent(v)
+// AddOngoingRewardValue adds value to the "ongoing_reward_value" field.
+func (_u *UserReferralConfigUpdate) AddOngoingRewardValue(v float64) *UserReferralConfigUpdate {
+	_u.mutation.AddOngoingRewardValue(v)
 	return _u
 }
 
-// ClearOngoingRewardPercent clears the value of the "ongoing_reward_percent" field.
-func (_u *UserReferralConfigUpdate) ClearOngoingRewardPercent() *UserReferralConfigUpdate {
-	_u.mutation.ClearOngoingRewardPercent()
+// ClearOngoingRewardValue clears the value of the "ongoing_reward_value" field.
+func (_u *UserReferralConfigUpdate) ClearOngoingRewardValue() *UserReferralConfigUpdate {
+	_u.mutation.ClearOngoingRewardValue()
 	return _u
 }
 
@@ -403,23 +396,20 @@ func (_u *UserReferralConfigUpdate) sqlSave(ctx context.Context) (_node int, err
 	if _u.mutation.OngoingRewardEnabledCleared() {
 		_spec.ClearField(userreferralconfig.FieldOngoingRewardEnabled, field.TypeBool)
 	}
-	if value, ok := _u.mutation.OngoingRewardAmount(); ok {
-		_spec.SetField(userreferralconfig.FieldOngoingRewardAmount, field.TypeFloat64, value)
+	if value, ok := _u.mutation.OngoingRewardType(); ok {
+		_spec.SetField(userreferralconfig.FieldOngoingRewardType, field.TypeString, value)
 	}
-	if value, ok := _u.mutation.AddedOngoingRewardAmount(); ok {
-		_spec.AddField(userreferralconfig.FieldOngoingRewardAmount, field.TypeFloat64, value)
+	if _u.mutation.OngoingRewardTypeCleared() {
+		_spec.ClearField(userreferralconfig.FieldOngoingRewardType, field.TypeString)
 	}
-	if _u.mutation.OngoingRewardAmountCleared() {
-		_spec.ClearField(userreferralconfig.FieldOngoingRewardAmount, field.TypeFloat64)
+	if value, ok := _u.mutation.OngoingRewardValue(); ok {
+		_spec.SetField(userreferralconfig.FieldOngoingRewardValue, field.TypeFloat64, value)
 	}
-	if value, ok := _u.mutation.OngoingRewardPercent(); ok {
-		_spec.SetField(userreferralconfig.FieldOngoingRewardPercent, field.TypeFloat64, value)
+	if value, ok := _u.mutation.AddedOngoingRewardValue(); ok {
+		_spec.AddField(userreferralconfig.FieldOngoingRewardValue, field.TypeFloat64, value)
 	}
-	if value, ok := _u.mutation.AddedOngoingRewardPercent(); ok {
-		_spec.AddField(userreferralconfig.FieldOngoingRewardPercent, field.TypeFloat64, value)
-	}
-	if _u.mutation.OngoingRewardPercentCleared() {
-		_spec.ClearField(userreferralconfig.FieldOngoingRewardPercent, field.TypeFloat64)
+	if _u.mutation.OngoingRewardValueCleared() {
+		_spec.ClearField(userreferralconfig.FieldOngoingRewardValue, field.TypeFloat64)
 	}
 	if value, ok := _u.mutation.OngoingRewardMaxCount(); ok {
 		_spec.SetField(userreferralconfig.FieldOngoingRewardMaxCount, field.TypeInt, value)
@@ -614,57 +604,50 @@ func (_u *UserReferralConfigUpdateOne) ClearOngoingRewardEnabled() *UserReferral
 	return _u
 }
 
-// SetOngoingRewardAmount sets the "ongoing_reward_amount" field.
-func (_u *UserReferralConfigUpdateOne) SetOngoingRewardAmount(v float64) *UserReferralConfigUpdateOne {
-	_u.mutation.ResetOngoingRewardAmount()
-	_u.mutation.SetOngoingRewardAmount(v)
+// SetOngoingRewardType sets the "ongoing_reward_type" field.
+func (_u *UserReferralConfigUpdateOne) SetOngoingRewardType(v string) *UserReferralConfigUpdateOne {
+	_u.mutation.SetOngoingRewardType(v)
 	return _u
 }
 
-// SetNillableOngoingRewardAmount sets the "ongoing_reward_amount" field if the given value is not nil.
-func (_u *UserReferralConfigUpdateOne) SetNillableOngoingRewardAmount(v *float64) *UserReferralConfigUpdateOne {
+// SetNillableOngoingRewardType sets the "ongoing_reward_type" field if the given value is not nil.
+func (_u *UserReferralConfigUpdateOne) SetNillableOngoingRewardType(v *string) *UserReferralConfigUpdateOne {
 	if v != nil {
-		_u.SetOngoingRewardAmount(*v)
+		_u.SetOngoingRewardType(*v)
 	}
 	return _u
 }
 
-// AddOngoingRewardAmount adds value to the "ongoing_reward_amount" field.
-func (_u *UserReferralConfigUpdateOne) AddOngoingRewardAmount(v float64) *UserReferralConfigUpdateOne {
-	_u.mutation.AddOngoingRewardAmount(v)
+// ClearOngoingRewardType clears the value of the "ongoing_reward_type" field.
+func (_u *UserReferralConfigUpdateOne) ClearOngoingRewardType() *UserReferralConfigUpdateOne {
+	_u.mutation.ClearOngoingRewardType()
 	return _u
 }
 
-// ClearOngoingRewardAmount clears the value of the "ongoing_reward_amount" field.
-func (_u *UserReferralConfigUpdateOne) ClearOngoingRewardAmount() *UserReferralConfigUpdateOne {
-	_u.mutation.ClearOngoingRewardAmount()
+// SetOngoingRewardValue sets the "ongoing_reward_value" field.
+func (_u *UserReferralConfigUpdateOne) SetOngoingRewardValue(v float64) *UserReferralConfigUpdateOne {
+	_u.mutation.ResetOngoingRewardValue()
+	_u.mutation.SetOngoingRewardValue(v)
 	return _u
 }
 
-// SetOngoingRewardPercent sets the "ongoing_reward_percent" field.
-func (_u *UserReferralConfigUpdateOne) SetOngoingRewardPercent(v float64) *UserReferralConfigUpdateOne {
-	_u.mutation.ResetOngoingRewardPercent()
-	_u.mutation.SetOngoingRewardPercent(v)
-	return _u
-}
-
-// SetNillableOngoingRewardPercent sets the "ongoing_reward_percent" field if the given value is not nil.
-func (_u *UserReferralConfigUpdateOne) SetNillableOngoingRewardPercent(v *float64) *UserReferralConfigUpdateOne {
+// SetNillableOngoingRewardValue sets the "ongoing_reward_value" field if the given value is not nil.
+func (_u *UserReferralConfigUpdateOne) SetNillableOngoingRewardValue(v *float64) *UserReferralConfigUpdateOne {
 	if v != nil {
-		_u.SetOngoingRewardPercent(*v)
+		_u.SetOngoingRewardValue(*v)
 	}
 	return _u
 }
 
-// AddOngoingRewardPercent adds value to the "ongoing_reward_percent" field.
-func (_u *UserReferralConfigUpdateOne) AddOngoingRewardPercent(v float64) *UserReferralConfigUpdateOne {
-	_u.mutation.AddOngoingRewardPercent(v)
+// AddOngoingRewardValue adds value to the "ongoing_reward_value" field.
+func (_u *UserReferralConfigUpdateOne) AddOngoingRewardValue(v float64) *UserReferralConfigUpdateOne {
+	_u.mutation.AddOngoingRewardValue(v)
 	return _u
 }
 
-// ClearOngoingRewardPercent clears the value of the "ongoing_reward_percent" field.
-func (_u *UserReferralConfigUpdateOne) ClearOngoingRewardPercent() *UserReferralConfigUpdateOne {
-	_u.mutation.ClearOngoingRewardPercent()
+// ClearOngoingRewardValue clears the value of the "ongoing_reward_value" field.
+func (_u *UserReferralConfigUpdateOne) ClearOngoingRewardValue() *UserReferralConfigUpdateOne {
+	_u.mutation.ClearOngoingRewardValue()
 	return _u
 }
 
@@ -870,23 +853,20 @@ func (_u *UserReferralConfigUpdateOne) sqlSave(ctx context.Context) (_node *User
 	if _u.mutation.OngoingRewardEnabledCleared() {
 		_spec.ClearField(userreferralconfig.FieldOngoingRewardEnabled, field.TypeBool)
 	}
-	if value, ok := _u.mutation.OngoingRewardAmount(); ok {
-		_spec.SetField(userreferralconfig.FieldOngoingRewardAmount, field.TypeFloat64, value)
+	if value, ok := _u.mutation.OngoingRewardType(); ok {
+		_spec.SetField(userreferralconfig.FieldOngoingRewardType, field.TypeString, value)
 	}
-	if value, ok := _u.mutation.AddedOngoingRewardAmount(); ok {
-		_spec.AddField(userreferralconfig.FieldOngoingRewardAmount, field.TypeFloat64, value)
+	if _u.mutation.OngoingRewardTypeCleared() {
+		_spec.ClearField(userreferralconfig.FieldOngoingRewardType, field.TypeString)
 	}
-	if _u.mutation.OngoingRewardAmountCleared() {
-		_spec.ClearField(userreferralconfig.FieldOngoingRewardAmount, field.TypeFloat64)
+	if value, ok := _u.mutation.OngoingRewardValue(); ok {
+		_spec.SetField(userreferralconfig.FieldOngoingRewardValue, field.TypeFloat64, value)
 	}
-	if value, ok := _u.mutation.OngoingRewardPercent(); ok {
-		_spec.SetField(userreferralconfig.FieldOngoingRewardPercent, field.TypeFloat64, value)
+	if value, ok := _u.mutation.AddedOngoingRewardValue(); ok {
+		_spec.AddField(userreferralconfig.FieldOngoingRewardValue, field.TypeFloat64, value)
 	}
-	if value, ok := _u.mutation.AddedOngoingRewardPercent(); ok {
-		_spec.AddField(userreferralconfig.FieldOngoingRewardPercent, field.TypeFloat64, value)
-	}
-	if _u.mutation.OngoingRewardPercentCleared() {
-		_spec.ClearField(userreferralconfig.FieldOngoingRewardPercent, field.TypeFloat64)
+	if _u.mutation.OngoingRewardValueCleared() {
+		_spec.ClearField(userreferralconfig.FieldOngoingRewardValue, field.TypeFloat64)
 	}
 	if value, ok := _u.mutation.OngoingRewardMaxCount(); ok {
 		_spec.SetField(userreferralconfig.FieldOngoingRewardMaxCount, field.TypeInt, value)

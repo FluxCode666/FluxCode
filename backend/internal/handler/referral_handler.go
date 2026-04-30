@@ -92,7 +92,7 @@ func (h *ReferralHandler) GetMyGiftBalanceRecords(c *gin.Context) {
 }
 
 // GetGiftBalanceRemaining 获取赠送余额剩余
-// GET /api/v1/user/referral/gift-balance/remaining
+// GET /api/v1/referral/gift-balance/remaining
 func (h *ReferralHandler) GetGiftBalanceRemaining(c *gin.Context) {
 	userID := c.GetInt64("user_id")
 	remaining, err := h.referralService.GetGiftBalanceRemaining(c.Request.Context(), userID)
@@ -101,6 +101,37 @@ func (h *ReferralHandler) GetGiftBalanceRemaining(c *gin.Context) {
 		return
 	}
 	response.Success(c, gin.H{"remaining": remaining})
+}
+
+// GetMyGiftBalanceSummary 获取赠送余额汇总（已发/已用/剩余/已过期）
+// GET /api/v1/referral/gift-balance/summary
+func (h *ReferralHandler) GetMyGiftBalanceSummary(c *gin.Context) {
+	userID := c.GetInt64("user_id")
+	summary, err := h.referralService.GetGiftBalanceSummary(c.Request.Context(), userID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, summary)
+}
+
+// GetMyStats 获取我的推广趋势数据
+// GET /api/v1/referral/stats
+func (h *ReferralHandler) GetMyStats(c *gin.Context) {
+	userID := c.GetInt64("user_id")
+	days, _ := strconv.Atoi(c.DefaultQuery("days", "30"))
+	if days <= 0 || days > 365 {
+		days = 30
+	}
+	trend, err := h.referralService.GetMyTrend(c.Request.Context(), userID, days)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{
+		"period": "daily",
+		"data":   trend,
+	})
 }
 
 // ValidateReferralCode 验证推广码

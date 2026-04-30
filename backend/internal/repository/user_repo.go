@@ -655,3 +655,19 @@ func (r *userRepository) IsFirstRecharge(ctx context.Context, userID int64) (boo
 	}
 	return u.TotalRecharged == 0, nil
 }
+
+// ListActiveUserIDs 列出全部未删除用户 ID（用于批量发放赠送余额）
+func (r *userRepository) ListActiveUserIDs(ctx context.Context) ([]int64, error) {
+	users, err := r.client.User.Query().
+		Where(dbuser.DeletedAtIsNil()).
+		Select(dbuser.FieldID).
+		Ints(ctx)
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]int64, 0, len(users))
+	for _, id := range users {
+		ids = append(ids, int64(id))
+	}
+	return ids, nil
+}

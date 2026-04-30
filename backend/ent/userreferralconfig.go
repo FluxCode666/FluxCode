@@ -29,10 +29,10 @@ type UserReferralConfig struct {
 	RewardExpiryDays *int `json:"reward_expiry_days,omitempty"`
 	// OngoingRewardEnabled holds the value of the "ongoing_reward_enabled" field.
 	OngoingRewardEnabled *bool `json:"ongoing_reward_enabled,omitempty"`
-	// OngoingRewardAmount holds the value of the "ongoing_reward_amount" field.
-	OngoingRewardAmount *float64 `json:"ongoing_reward_amount,omitempty"`
-	// OngoingRewardPercent holds the value of the "ongoing_reward_percent" field.
-	OngoingRewardPercent *float64 `json:"ongoing_reward_percent,omitempty"`
+	// OngoingRewardType holds the value of the "ongoing_reward_type" field.
+	OngoingRewardType *string `json:"ongoing_reward_type,omitempty"`
+	// OngoingRewardValue holds the value of the "ongoing_reward_value" field.
+	OngoingRewardValue *float64 `json:"ongoing_reward_value,omitempty"`
 	// OngoingRewardMaxCount holds the value of the "ongoing_reward_max_count" field.
 	OngoingRewardMaxCount *int `json:"ongoing_reward_max_count,omitempty"`
 	// OngoingRewardDurationDays holds the value of the "ongoing_reward_duration_days" field.
@@ -53,11 +53,11 @@ func (*UserReferralConfig) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case userreferralconfig.FieldOngoingRewardEnabled:
 			values[i] = new(sql.NullBool)
-		case userreferralconfig.FieldInviteeRewardAmount, userreferralconfig.FieldInviterRewardAmount, userreferralconfig.FieldOngoingRewardAmount, userreferralconfig.FieldOngoingRewardPercent:
+		case userreferralconfig.FieldInviteeRewardAmount, userreferralconfig.FieldInviterRewardAmount, userreferralconfig.FieldOngoingRewardValue:
 			values[i] = new(sql.NullFloat64)
 		case userreferralconfig.FieldID, userreferralconfig.FieldUserID, userreferralconfig.FieldMaxInvites, userreferralconfig.FieldRewardExpiryDays, userreferralconfig.FieldOngoingRewardMaxCount, userreferralconfig.FieldOngoingRewardDurationDays:
 			values[i] = new(sql.NullInt64)
-		case userreferralconfig.FieldNotes:
+		case userreferralconfig.FieldOngoingRewardType, userreferralconfig.FieldNotes:
 			values[i] = new(sql.NullString)
 		case userreferralconfig.FieldCreatedAt, userreferralconfig.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
@@ -123,19 +123,19 @@ func (_m *UserReferralConfig) assignValues(columns []string, values []any) error
 				_m.OngoingRewardEnabled = new(bool)
 				*_m.OngoingRewardEnabled = value.Bool
 			}
-		case userreferralconfig.FieldOngoingRewardAmount:
-			if value, ok := values[i].(*sql.NullFloat64); !ok {
-				return fmt.Errorf("unexpected type %T for field ongoing_reward_amount", values[i])
+		case userreferralconfig.FieldOngoingRewardType:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field ongoing_reward_type", values[i])
 			} else if value.Valid {
-				_m.OngoingRewardAmount = new(float64)
-				*_m.OngoingRewardAmount = value.Float64
+				_m.OngoingRewardType = new(string)
+				*_m.OngoingRewardType = value.String
 			}
-		case userreferralconfig.FieldOngoingRewardPercent:
+		case userreferralconfig.FieldOngoingRewardValue:
 			if value, ok := values[i].(*sql.NullFloat64); !ok {
-				return fmt.Errorf("unexpected type %T for field ongoing_reward_percent", values[i])
+				return fmt.Errorf("unexpected type %T for field ongoing_reward_value", values[i])
 			} else if value.Valid {
-				_m.OngoingRewardPercent = new(float64)
-				*_m.OngoingRewardPercent = value.Float64
+				_m.OngoingRewardValue = new(float64)
+				*_m.OngoingRewardValue = value.Float64
 			}
 		case userreferralconfig.FieldOngoingRewardMaxCount:
 			if value, ok := values[i].(*sql.NullInt64); !ok {
@@ -233,13 +233,13 @@ func (_m *UserReferralConfig) String() string {
 		builder.WriteString(fmt.Sprintf("%v", *v))
 	}
 	builder.WriteString(", ")
-	if v := _m.OngoingRewardAmount; v != nil {
-		builder.WriteString("ongoing_reward_amount=")
-		builder.WriteString(fmt.Sprintf("%v", *v))
+	if v := _m.OngoingRewardType; v != nil {
+		builder.WriteString("ongoing_reward_type=")
+		builder.WriteString(*v)
 	}
 	builder.WriteString(", ")
-	if v := _m.OngoingRewardPercent; v != nil {
-		builder.WriteString("ongoing_reward_percent=")
+	if v := _m.OngoingRewardValue; v != nil {
+		builder.WriteString("ongoing_reward_value=")
 		builder.WriteString(fmt.Sprintf("%v", *v))
 	}
 	builder.WriteString(", ")

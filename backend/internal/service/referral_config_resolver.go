@@ -142,8 +142,8 @@ func (r *ReferralConfigResolver) loadGlobalConfigFromDB(ctx context.Context) *Re
 		SettingKeyReferralMaxInvites,
 		SettingKeyReferralRewardExpiryDays,
 		SettingKeyReferralOngoingRewardEnabled,
-		SettingKeyReferralOngoingRewardAmount,
-		SettingKeyReferralOngoingRewardPercent,
+		SettingKeyReferralOngoingRewardType,
+		SettingKeyReferralOngoingRewardValue,
 		SettingKeyReferralOngoingRewardMaxCount,
 		SettingKeyReferralOngoingRewardDurationDays,
 	}
@@ -161,10 +161,14 @@ func (r *ReferralConfigResolver) loadGlobalConfigFromDB(ctx context.Context) *Re
 		MaxInvites:                parseInt(values[SettingKeyReferralMaxInvites]),
 		RewardExpiryDays:          parseInt(values[SettingKeyReferralRewardExpiryDays]),
 		OngoingRewardEnabled:      parseBool(values[SettingKeyReferralOngoingRewardEnabled]),
-		OngoingRewardAmount:       parseFloat(values[SettingKeyReferralOngoingRewardAmount]),
-		OngoingRewardPercent:      parseFloat(values[SettingKeyReferralOngoingRewardPercent]),
+		OngoingRewardType:         values[SettingKeyReferralOngoingRewardType],
+		OngoingRewardValue:        parseFloat(values[SettingKeyReferralOngoingRewardValue]),
 		OngoingRewardMaxCount:     parseInt(values[SettingKeyReferralOngoingRewardMaxCount]),
 		OngoingRewardDurationDays: parseInt(values[SettingKeyReferralOngoingRewardDurationDays]),
+	}
+	// 默认 type 为 fixed（空字符串、未设置时）
+	if cfg.OngoingRewardType == "" {
+		cfg.OngoingRewardType = "fixed"
 	}
 	return cfg
 }
@@ -178,8 +182,8 @@ func mergeConfig(global *ReferralGlobalConfig, user *UserReferralConfig) *Effect
 		MaxInvites:                global.MaxInvites,
 		RewardExpiryDays:          global.RewardExpiryDays,
 		OngoingRewardEnabled:      global.OngoingRewardEnabled,
-		OngoingRewardAmount:       global.OngoingRewardAmount,
-		OngoingRewardPercent:      global.OngoingRewardPercent,
+		OngoingRewardType:         global.OngoingRewardType,
+		OngoingRewardValue:        global.OngoingRewardValue,
 		OngoingRewardMaxCount:     global.OngoingRewardMaxCount,
 		OngoingRewardDurationDays: global.OngoingRewardDurationDays,
 	}
@@ -201,11 +205,11 @@ func mergeConfig(global *ReferralGlobalConfig, user *UserReferralConfig) *Effect
 	if user.OngoingRewardEnabled != nil {
 		eff.OngoingRewardEnabled = *user.OngoingRewardEnabled
 	}
-	if user.OngoingRewardAmount != nil {
-		eff.OngoingRewardAmount = *user.OngoingRewardAmount
+	if user.OngoingRewardType != nil && *user.OngoingRewardType != "" {
+		eff.OngoingRewardType = *user.OngoingRewardType
 	}
-	if user.OngoingRewardPercent != nil {
-		eff.OngoingRewardPercent = *user.OngoingRewardPercent
+	if user.OngoingRewardValue != nil {
+		eff.OngoingRewardValue = *user.OngoingRewardValue
 	}
 	if user.OngoingRewardMaxCount != nil {
 		eff.OngoingRewardMaxCount = *user.OngoingRewardMaxCount

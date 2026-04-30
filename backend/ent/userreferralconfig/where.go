@@ -84,14 +84,14 @@ func OngoingRewardEnabled(v bool) predicate.UserReferralConfig {
 	return predicate.UserReferralConfig(sql.FieldEQ(FieldOngoingRewardEnabled, v))
 }
 
-// OngoingRewardAmount applies equality check predicate on the "ongoing_reward_amount" field. It's identical to OngoingRewardAmountEQ.
-func OngoingRewardAmount(v float64) predicate.UserReferralConfig {
-	return predicate.UserReferralConfig(sql.FieldEQ(FieldOngoingRewardAmount, v))
+// OngoingRewardType applies equality check predicate on the "ongoing_reward_type" field. It's identical to OngoingRewardTypeEQ.
+func OngoingRewardType(v string) predicate.UserReferralConfig {
+	return predicate.UserReferralConfig(sql.FieldEQ(FieldOngoingRewardType, v))
 }
 
-// OngoingRewardPercent applies equality check predicate on the "ongoing_reward_percent" field. It's identical to OngoingRewardPercentEQ.
-func OngoingRewardPercent(v float64) predicate.UserReferralConfig {
-	return predicate.UserReferralConfig(sql.FieldEQ(FieldOngoingRewardPercent, v))
+// OngoingRewardValue applies equality check predicate on the "ongoing_reward_value" field. It's identical to OngoingRewardValueEQ.
+func OngoingRewardValue(v float64) predicate.UserReferralConfig {
+	return predicate.UserReferralConfig(sql.FieldEQ(FieldOngoingRewardValue, v))
 }
 
 // OngoingRewardMaxCount applies equality check predicate on the "ongoing_reward_max_count" field. It's identical to OngoingRewardMaxCountEQ.
@@ -379,104 +379,129 @@ func OngoingRewardEnabledNotNil() predicate.UserReferralConfig {
 	return predicate.UserReferralConfig(sql.FieldNotNull(FieldOngoingRewardEnabled))
 }
 
-// OngoingRewardAmountEQ applies the EQ predicate on the "ongoing_reward_amount" field.
-func OngoingRewardAmountEQ(v float64) predicate.UserReferralConfig {
-	return predicate.UserReferralConfig(sql.FieldEQ(FieldOngoingRewardAmount, v))
+// OngoingRewardTypeEQ applies the EQ predicate on the "ongoing_reward_type" field.
+func OngoingRewardTypeEQ(v string) predicate.UserReferralConfig {
+	return predicate.UserReferralConfig(sql.FieldEQ(FieldOngoingRewardType, v))
 }
 
-// OngoingRewardAmountNEQ applies the NEQ predicate on the "ongoing_reward_amount" field.
-func OngoingRewardAmountNEQ(v float64) predicate.UserReferralConfig {
-	return predicate.UserReferralConfig(sql.FieldNEQ(FieldOngoingRewardAmount, v))
+// OngoingRewardTypeNEQ applies the NEQ predicate on the "ongoing_reward_type" field.
+func OngoingRewardTypeNEQ(v string) predicate.UserReferralConfig {
+	return predicate.UserReferralConfig(sql.FieldNEQ(FieldOngoingRewardType, v))
 }
 
-// OngoingRewardAmountIn applies the In predicate on the "ongoing_reward_amount" field.
-func OngoingRewardAmountIn(vs ...float64) predicate.UserReferralConfig {
-	return predicate.UserReferralConfig(sql.FieldIn(FieldOngoingRewardAmount, vs...))
+// OngoingRewardTypeIn applies the In predicate on the "ongoing_reward_type" field.
+func OngoingRewardTypeIn(vs ...string) predicate.UserReferralConfig {
+	return predicate.UserReferralConfig(sql.FieldIn(FieldOngoingRewardType, vs...))
 }
 
-// OngoingRewardAmountNotIn applies the NotIn predicate on the "ongoing_reward_amount" field.
-func OngoingRewardAmountNotIn(vs ...float64) predicate.UserReferralConfig {
-	return predicate.UserReferralConfig(sql.FieldNotIn(FieldOngoingRewardAmount, vs...))
+// OngoingRewardTypeNotIn applies the NotIn predicate on the "ongoing_reward_type" field.
+func OngoingRewardTypeNotIn(vs ...string) predicate.UserReferralConfig {
+	return predicate.UserReferralConfig(sql.FieldNotIn(FieldOngoingRewardType, vs...))
 }
 
-// OngoingRewardAmountGT applies the GT predicate on the "ongoing_reward_amount" field.
-func OngoingRewardAmountGT(v float64) predicate.UserReferralConfig {
-	return predicate.UserReferralConfig(sql.FieldGT(FieldOngoingRewardAmount, v))
+// OngoingRewardTypeGT applies the GT predicate on the "ongoing_reward_type" field.
+func OngoingRewardTypeGT(v string) predicate.UserReferralConfig {
+	return predicate.UserReferralConfig(sql.FieldGT(FieldOngoingRewardType, v))
 }
 
-// OngoingRewardAmountGTE applies the GTE predicate on the "ongoing_reward_amount" field.
-func OngoingRewardAmountGTE(v float64) predicate.UserReferralConfig {
-	return predicate.UserReferralConfig(sql.FieldGTE(FieldOngoingRewardAmount, v))
+// OngoingRewardTypeGTE applies the GTE predicate on the "ongoing_reward_type" field.
+func OngoingRewardTypeGTE(v string) predicate.UserReferralConfig {
+	return predicate.UserReferralConfig(sql.FieldGTE(FieldOngoingRewardType, v))
 }
 
-// OngoingRewardAmountLT applies the LT predicate on the "ongoing_reward_amount" field.
-func OngoingRewardAmountLT(v float64) predicate.UserReferralConfig {
-	return predicate.UserReferralConfig(sql.FieldLT(FieldOngoingRewardAmount, v))
+// OngoingRewardTypeLT applies the LT predicate on the "ongoing_reward_type" field.
+func OngoingRewardTypeLT(v string) predicate.UserReferralConfig {
+	return predicate.UserReferralConfig(sql.FieldLT(FieldOngoingRewardType, v))
 }
 
-// OngoingRewardAmountLTE applies the LTE predicate on the "ongoing_reward_amount" field.
-func OngoingRewardAmountLTE(v float64) predicate.UserReferralConfig {
-	return predicate.UserReferralConfig(sql.FieldLTE(FieldOngoingRewardAmount, v))
+// OngoingRewardTypeLTE applies the LTE predicate on the "ongoing_reward_type" field.
+func OngoingRewardTypeLTE(v string) predicate.UserReferralConfig {
+	return predicate.UserReferralConfig(sql.FieldLTE(FieldOngoingRewardType, v))
 }
 
-// OngoingRewardAmountIsNil applies the IsNil predicate on the "ongoing_reward_amount" field.
-func OngoingRewardAmountIsNil() predicate.UserReferralConfig {
-	return predicate.UserReferralConfig(sql.FieldIsNull(FieldOngoingRewardAmount))
+// OngoingRewardTypeContains applies the Contains predicate on the "ongoing_reward_type" field.
+func OngoingRewardTypeContains(v string) predicate.UserReferralConfig {
+	return predicate.UserReferralConfig(sql.FieldContains(FieldOngoingRewardType, v))
 }
 
-// OngoingRewardAmountNotNil applies the NotNil predicate on the "ongoing_reward_amount" field.
-func OngoingRewardAmountNotNil() predicate.UserReferralConfig {
-	return predicate.UserReferralConfig(sql.FieldNotNull(FieldOngoingRewardAmount))
+// OngoingRewardTypeHasPrefix applies the HasPrefix predicate on the "ongoing_reward_type" field.
+func OngoingRewardTypeHasPrefix(v string) predicate.UserReferralConfig {
+	return predicate.UserReferralConfig(sql.FieldHasPrefix(FieldOngoingRewardType, v))
 }
 
-// OngoingRewardPercentEQ applies the EQ predicate on the "ongoing_reward_percent" field.
-func OngoingRewardPercentEQ(v float64) predicate.UserReferralConfig {
-	return predicate.UserReferralConfig(sql.FieldEQ(FieldOngoingRewardPercent, v))
+// OngoingRewardTypeHasSuffix applies the HasSuffix predicate on the "ongoing_reward_type" field.
+func OngoingRewardTypeHasSuffix(v string) predicate.UserReferralConfig {
+	return predicate.UserReferralConfig(sql.FieldHasSuffix(FieldOngoingRewardType, v))
 }
 
-// OngoingRewardPercentNEQ applies the NEQ predicate on the "ongoing_reward_percent" field.
-func OngoingRewardPercentNEQ(v float64) predicate.UserReferralConfig {
-	return predicate.UserReferralConfig(sql.FieldNEQ(FieldOngoingRewardPercent, v))
+// OngoingRewardTypeIsNil applies the IsNil predicate on the "ongoing_reward_type" field.
+func OngoingRewardTypeIsNil() predicate.UserReferralConfig {
+	return predicate.UserReferralConfig(sql.FieldIsNull(FieldOngoingRewardType))
 }
 
-// OngoingRewardPercentIn applies the In predicate on the "ongoing_reward_percent" field.
-func OngoingRewardPercentIn(vs ...float64) predicate.UserReferralConfig {
-	return predicate.UserReferralConfig(sql.FieldIn(FieldOngoingRewardPercent, vs...))
+// OngoingRewardTypeNotNil applies the NotNil predicate on the "ongoing_reward_type" field.
+func OngoingRewardTypeNotNil() predicate.UserReferralConfig {
+	return predicate.UserReferralConfig(sql.FieldNotNull(FieldOngoingRewardType))
 }
 
-// OngoingRewardPercentNotIn applies the NotIn predicate on the "ongoing_reward_percent" field.
-func OngoingRewardPercentNotIn(vs ...float64) predicate.UserReferralConfig {
-	return predicate.UserReferralConfig(sql.FieldNotIn(FieldOngoingRewardPercent, vs...))
+// OngoingRewardTypeEqualFold applies the EqualFold predicate on the "ongoing_reward_type" field.
+func OngoingRewardTypeEqualFold(v string) predicate.UserReferralConfig {
+	return predicate.UserReferralConfig(sql.FieldEqualFold(FieldOngoingRewardType, v))
 }
 
-// OngoingRewardPercentGT applies the GT predicate on the "ongoing_reward_percent" field.
-func OngoingRewardPercentGT(v float64) predicate.UserReferralConfig {
-	return predicate.UserReferralConfig(sql.FieldGT(FieldOngoingRewardPercent, v))
+// OngoingRewardTypeContainsFold applies the ContainsFold predicate on the "ongoing_reward_type" field.
+func OngoingRewardTypeContainsFold(v string) predicate.UserReferralConfig {
+	return predicate.UserReferralConfig(sql.FieldContainsFold(FieldOngoingRewardType, v))
 }
 
-// OngoingRewardPercentGTE applies the GTE predicate on the "ongoing_reward_percent" field.
-func OngoingRewardPercentGTE(v float64) predicate.UserReferralConfig {
-	return predicate.UserReferralConfig(sql.FieldGTE(FieldOngoingRewardPercent, v))
+// OngoingRewardValueEQ applies the EQ predicate on the "ongoing_reward_value" field.
+func OngoingRewardValueEQ(v float64) predicate.UserReferralConfig {
+	return predicate.UserReferralConfig(sql.FieldEQ(FieldOngoingRewardValue, v))
 }
 
-// OngoingRewardPercentLT applies the LT predicate on the "ongoing_reward_percent" field.
-func OngoingRewardPercentLT(v float64) predicate.UserReferralConfig {
-	return predicate.UserReferralConfig(sql.FieldLT(FieldOngoingRewardPercent, v))
+// OngoingRewardValueNEQ applies the NEQ predicate on the "ongoing_reward_value" field.
+func OngoingRewardValueNEQ(v float64) predicate.UserReferralConfig {
+	return predicate.UserReferralConfig(sql.FieldNEQ(FieldOngoingRewardValue, v))
 }
 
-// OngoingRewardPercentLTE applies the LTE predicate on the "ongoing_reward_percent" field.
-func OngoingRewardPercentLTE(v float64) predicate.UserReferralConfig {
-	return predicate.UserReferralConfig(sql.FieldLTE(FieldOngoingRewardPercent, v))
+// OngoingRewardValueIn applies the In predicate on the "ongoing_reward_value" field.
+func OngoingRewardValueIn(vs ...float64) predicate.UserReferralConfig {
+	return predicate.UserReferralConfig(sql.FieldIn(FieldOngoingRewardValue, vs...))
 }
 
-// OngoingRewardPercentIsNil applies the IsNil predicate on the "ongoing_reward_percent" field.
-func OngoingRewardPercentIsNil() predicate.UserReferralConfig {
-	return predicate.UserReferralConfig(sql.FieldIsNull(FieldOngoingRewardPercent))
+// OngoingRewardValueNotIn applies the NotIn predicate on the "ongoing_reward_value" field.
+func OngoingRewardValueNotIn(vs ...float64) predicate.UserReferralConfig {
+	return predicate.UserReferralConfig(sql.FieldNotIn(FieldOngoingRewardValue, vs...))
 }
 
-// OngoingRewardPercentNotNil applies the NotNil predicate on the "ongoing_reward_percent" field.
-func OngoingRewardPercentNotNil() predicate.UserReferralConfig {
-	return predicate.UserReferralConfig(sql.FieldNotNull(FieldOngoingRewardPercent))
+// OngoingRewardValueGT applies the GT predicate on the "ongoing_reward_value" field.
+func OngoingRewardValueGT(v float64) predicate.UserReferralConfig {
+	return predicate.UserReferralConfig(sql.FieldGT(FieldOngoingRewardValue, v))
+}
+
+// OngoingRewardValueGTE applies the GTE predicate on the "ongoing_reward_value" field.
+func OngoingRewardValueGTE(v float64) predicate.UserReferralConfig {
+	return predicate.UserReferralConfig(sql.FieldGTE(FieldOngoingRewardValue, v))
+}
+
+// OngoingRewardValueLT applies the LT predicate on the "ongoing_reward_value" field.
+func OngoingRewardValueLT(v float64) predicate.UserReferralConfig {
+	return predicate.UserReferralConfig(sql.FieldLT(FieldOngoingRewardValue, v))
+}
+
+// OngoingRewardValueLTE applies the LTE predicate on the "ongoing_reward_value" field.
+func OngoingRewardValueLTE(v float64) predicate.UserReferralConfig {
+	return predicate.UserReferralConfig(sql.FieldLTE(FieldOngoingRewardValue, v))
+}
+
+// OngoingRewardValueIsNil applies the IsNil predicate on the "ongoing_reward_value" field.
+func OngoingRewardValueIsNil() predicate.UserReferralConfig {
+	return predicate.UserReferralConfig(sql.FieldIsNull(FieldOngoingRewardValue))
+}
+
+// OngoingRewardValueNotNil applies the NotNil predicate on the "ongoing_reward_value" field.
+func OngoingRewardValueNotNil() predicate.UserReferralConfig {
+	return predicate.UserReferralConfig(sql.FieldNotNull(FieldOngoingRewardValue))
 }
 
 // OngoingRewardMaxCountEQ applies the EQ predicate on the "ongoing_reward_max_count" field.

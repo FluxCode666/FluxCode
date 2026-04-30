@@ -55,6 +55,9 @@ type Referral struct {
 }
 
 // UserReferralConfig 用户级推广配置覆盖
+//
+// OngoingRewardType: "fixed" | "percentage"
+// OngoingRewardValue: 当 type=fixed 时单位为美元，type=percentage 时单位为百分点（0-100）
 type UserReferralConfig struct {
 	ID                        int64
 	UserID                    int64
@@ -63,8 +66,8 @@ type UserReferralConfig struct {
 	MaxInvites                *int
 	RewardExpiryDays          *int
 	OngoingRewardEnabled      *bool
-	OngoingRewardAmount       *float64
-	OngoingRewardPercent      *float64
+	OngoingRewardType         *string
+	OngoingRewardValue        *float64
 	OngoingRewardMaxCount     *int
 	OngoingRewardDurationDays *int
 	Notes                     string
@@ -73,6 +76,9 @@ type UserReferralConfig struct {
 }
 
 // ReferralGlobalConfig 全局推广配置（从 Settings 表读取）
+//
+// OngoingRewardType: "fixed" | "percentage"（空字符串视为 fixed）
+// OngoingRewardValue: 当 type=fixed 时单位为美元，type=percentage 时单位为百分点（0-100）
 type ReferralGlobalConfig struct {
 	Enabled                   bool
 	InviteeRewardAmount       float64
@@ -80,8 +86,8 @@ type ReferralGlobalConfig struct {
 	MaxInvites                int
 	RewardExpiryDays          int
 	OngoingRewardEnabled      bool
-	OngoingRewardAmount       float64
-	OngoingRewardPercent      float64
+	OngoingRewardType         string
+	OngoingRewardValue        float64
 	OngoingRewardMaxCount     int
 	OngoingRewardDurationDays int
 }
@@ -94,8 +100,8 @@ type EffectiveReferralConfig struct {
 	MaxInvites                int
 	RewardExpiryDays          int
 	OngoingRewardEnabled      bool
-	OngoingRewardAmount       float64
-	OngoingRewardPercent      float64
+	OngoingRewardType         string
+	OngoingRewardValue        float64
 	OngoingRewardMaxCount     int
 	OngoingRewardDurationDays int
 }
@@ -106,6 +112,51 @@ type ReferralStats struct {
 	CompletedInvited int     `json:"completed_invited"`
 	TotalReward      float64 `json:"total_reward"`
 	OngoingReward    float64 `json:"ongoing_reward"`
+}
+
+// ReferralUserInfo 用户推广中心概览（前后端契约）
+type ReferralUserInfo struct {
+	ReferralCode              string  `json:"referral_code"`
+	Enabled                   bool    `json:"enabled"`
+	TotalInvites              int     `json:"total_invites"`
+	CompletedInvites          int     `json:"completed_invites"`
+	TotalEarned               float64 `json:"total_earned"`
+	GiftBalanceRemaining      float64 `json:"gift_balance_remaining"`
+	GiftBalanceTotalGranted   float64 `json:"gift_balance_total_granted"`
+	GiftBalanceTotalUsed      float64 `json:"gift_balance_total_used"`
+	GiftBalanceTotalExpired   float64 `json:"gift_balance_total_expired"`
+	InviteeReward             float64 `json:"invitee_reward"`
+	InviterReward             float64 `json:"inviter_reward"`
+	MaxInvites                int     `json:"max_invites"`
+	OngoingRewardEnabled      bool    `json:"ongoing_reward_enabled"`
+	OngoingRewardType         string  `json:"ongoing_reward_type"`
+	OngoingRewardValue        float64 `json:"ongoing_reward_value"`
+	OngoingRewardMaxCount     int     `json:"ongoing_reward_max_count"`
+	OngoingRewardDurationDays int     `json:"ongoing_reward_duration_days"`
+	RewardExpiryDays          int     `json:"reward_expiry_days"`
+}
+
+// ReferralTrendPoint 趋势图单点数据
+type ReferralTrendPoint struct {
+	Date         string  `json:"date"`
+	Invitations  int     `json:"invitations"`
+	Completions  int     `json:"completions"`
+	RewardsTotal float64 `json:"rewards_total"`
+}
+
+// ReferralFunnel 转化漏斗
+type ReferralFunnel struct {
+	TotalReferrals int     `json:"total_referrals"`
+	Registrations  int     `json:"registrations"`
+	FirstRecharges int     `json:"first_recharges"`
+	ConversionRate float64 `json:"conversion_rate"`
+}
+
+// AdminReferralDashboard 管理端推广数据看板
+type AdminReferralDashboard struct {
+	Funnel  ReferralFunnel       `json:"funnel"`
+	Trend   []ReferralTrendPoint `json:"trend"`
+	Summary AdminReferralStats   `json:"summary"`
 }
 
 // GiftBalanceSummary 赠送余额汇总
@@ -182,8 +233,16 @@ type ReferralRepository interface {
 	GetStatsByReferrerID(ctx context.Context, referrerID int64) (*ReferralStats, error)
 	// ListAll 管理端列表（分页，支持筛选）
 	ListAll(ctx context.Context, status string, offset, limit int) ([]Referral, int, error)
-	// GetLeaderboard 推广排行榜
-	GetLeaderboard(ctx context.Context, limit int) ([]ReferralLeaderboardEntry, error)
+	// GetLeaderboard 推广排行榜（period: all_time / this_month / this_week）
+	GetLeaderboard(ctx context.Context, period string, limit int) ([]ReferralLeaderboardEntry, error)
+	// GetTrendByReferrerID 用户级趋势数据（按日，最近 N 天）
+	GetTrendByReferrerID(ctx context.Context, referrerID int64, days int) ([]ReferralTrendPoint, error)
+	// GetGlobalTrend 全站趋势数据
+	GetGlobalTrend(ctx context.Context, days int) ([]ReferralTrendPoint, error)
+	// CountFirstRecharges 统计已完成（已首充）的推广关系数量
+	CountFirstRecharges(ctx context.Context) (int, error)
+	// CountAll 统计推广关系总数
+	CountAll(ctx context.Context) (int, error)
 }
 
 // UserReferralConfigRepository 用户推广配置仓储接口

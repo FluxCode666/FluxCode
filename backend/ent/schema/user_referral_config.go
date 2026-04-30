@@ -42,12 +42,12 @@ func (UserReferralConfig) Fields() []ent.Field {
 		field.Bool("ongoing_reward_enabled").
 			Optional().
 			Nillable(),
-		field.Float("ongoing_reward_amount").
-			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"}).
+		field.String("ongoing_reward_type").
+			SchemaType(map[string]string{dialect.Postgres: "varchar(20)"}).
 			Optional().
 			Nillable(),
-		field.Float("ongoing_reward_percent").
-			SchemaType(map[string]string{dialect.Postgres: "decimal(10,4)"}).
+		field.Float("ongoing_reward_value").
+			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"}).
 			Optional().
 			Nillable(),
 		field.Int("ongoing_reward_max_count").

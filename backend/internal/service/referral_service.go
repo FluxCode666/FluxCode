@@ -194,12 +194,13 @@ func (s *ReferralService) HandleOngoingRewardOnRecharge(ctx context.Context, use
 		}
 	}
 
-	// 计算持续奖励金额：优先使用固定金额，其次百分比
+	// 计算持续奖励金额：根据 type 判断单位
 	var rewardAmount float64
-	if cfg.OngoingRewardAmount > 0 {
-		rewardAmount = cfg.OngoingRewardAmount
-	} else if cfg.OngoingRewardPercent > 0 {
-		rewardAmount = rechargeAmount * cfg.OngoingRewardPercent / 100
+	switch cfg.OngoingRewardType {
+	case "percentage":
+		rewardAmount = rechargeAmount * cfg.OngoingRewardValue / 100
+	default: // "fixed" 或未设置
+		rewardAmount = cfg.OngoingRewardValue
 	}
 	if rewardAmount <= 0 {
 		return
@@ -223,15 +224,22 @@ func (s *ReferralService) AdminGrantGiftBalance(ctx context.Context, userID int6
 	return nil
 }
 
-// GetUserReferralInfo 获取用户推广信息（推广中心页面数据）
-func (s *ReferralService) GetUserReferralInfo(ctx context.Context, userID int64) (map[string]any, error) {
+// GetUserReferralInfo 获取用户推广信息（推广中心页面数据，强类型）
+func (s *ReferralService) GetUserReferralInfo(ctx context.Context, userID int64) (*ReferralUserInfo, error) {
 	user, err := s.userRepo.GetByID(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
 
 	globalCfg := s.configResolver.GetGlobalConfig(ctx)
-	cfg := s.configResolver.Resolve(ctx, userID)
+
+	// 即使全局未启用，也读取配置以便 admin/UI 展示（Resolve 在 disabled 时返回空，故直接合并）
+	var cfg *EffectiveReferralConfig
+	if globalCfg.Enabled {
+		cfg = s.configResolver.Resolve(ctx, userID)
+	} else {
+		cfg = mergeConfig(globalCfg, nil)
+	}
 
 	stats, _ := s.referralRepo.GetStatsByReferrerID(ctx, userID)
 	if stats == nil {
@@ -243,19 +251,48 @@ func (s *ReferralService) GetUserReferralInfo(ctx context.Context, userID int64)
 		giftSummary = &GiftBalanceSummary{}
 	}
 
-	return map[string]any{
-		"referral_code":        user.ReferralCode,
-		"enabled":              globalCfg.Enabled,
-		"invitee_reward":       cfg.InviteeRewardAmount,
-		"inviter_reward":       cfg.InviterRewardAmount,
-		"max_invites":          cfg.MaxInvites,
-		"ongoing_enabled":      cfg.OngoingRewardEnabled,
-		"ongoing_amount":       cfg.OngoingRewardAmount,
-		"ongoing_percent":      cfg.OngoingRewardPercent,
-		"reward_expiry_days":   cfg.RewardExpiryDays,
-		"stats":                stats,
-		"gift_balance_summary": giftSummary,
+	rewardType := cfg.OngoingRewardType
+	if rewardType == "" {
+		rewardType = "fixed"
+	}
+
+	return &ReferralUserInfo{
+		ReferralCode:              user.ReferralCode,
+		Enabled:                   globalCfg.Enabled,
+		TotalInvites:              stats.TotalInvited,
+		CompletedInvites:          stats.CompletedInvited,
+		TotalEarned:               stats.TotalReward + stats.OngoingReward,
+		GiftBalanceRemaining:      giftSummary.TotalRemaining,
+		GiftBalanceTotalGranted:   giftSummary.TotalGranted,
+		GiftBalanceTotalUsed:      giftSummary.TotalUsed,
+		GiftBalanceTotalExpired:   giftSummary.TotalExpired,
+		InviteeReward:             cfg.InviteeRewardAmount,
+		InviterReward:             cfg.InviterRewardAmount,
+		MaxInvites:                cfg.MaxInvites,
+		OngoingRewardEnabled:      cfg.OngoingRewardEnabled,
+		OngoingRewardType:         rewardType,
+		OngoingRewardValue:        cfg.OngoingRewardValue,
+		OngoingRewardMaxCount:     cfg.OngoingRewardMaxCount,
+		OngoingRewardDurationDays: cfg.OngoingRewardDurationDays,
+		RewardExpiryDays:          cfg.RewardExpiryDays,
 	}, nil
+}
+
+// GetMyTrend 用户级邀请趋势数据
+func (s *ReferralService) GetMyTrend(ctx context.Context, userID int64, days int) ([]ReferralTrendPoint, error) {
+	return s.referralRepo.GetTrendByReferrerID(ctx, userID, days)
+}
+
+// GetGiftBalanceSummary 用户赠送余额汇总
+func (s *ReferralService) GetGiftBalanceSummary(ctx context.Context, userID int64) (*GiftBalanceSummary, error) {
+	summary, err := s.giftBalanceRepo.GetSummaryByUserID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	if summary == nil {
+		summary = &GiftBalanceSummary{}
+	}
+	return summary, nil
 }
 
 // GetMyReferrals 获取用户的邀请列表
@@ -310,11 +347,84 @@ func (s *ReferralService) AdminListReferrals(ctx context.Context, status string,
 }
 
 // AdminGetLeaderboard 管理端获取推广排行榜
-func (s *ReferralService) AdminGetLeaderboard(ctx context.Context, limit int) ([]ReferralLeaderboardEntry, error) {
+// period: all_time / this_month / this_week
+func (s *ReferralService) AdminGetLeaderboard(ctx context.Context, period string, limit int) ([]ReferralLeaderboardEntry, error) {
 	if limit <= 0 {
 		limit = 20
 	}
-	return s.referralRepo.GetLeaderboard(ctx, limit)
+	return s.referralRepo.GetLeaderboard(ctx, period, limit)
+}
+
+// AdminGetDashboard 管理端推广数据看板：转化漏斗 + 趋势 + 概览
+func (s *ReferralService) AdminGetDashboard(ctx context.Context, days int) (*AdminReferralDashboard, error) {
+	if days <= 0 {
+		days = 30
+	}
+
+	totalReferrals, err := s.referralRepo.CountAll(ctx)
+	if err != nil {
+		return nil, err
+	}
+	firstRecharges, err := s.referralRepo.CountFirstRecharges(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	var conversionRate float64
+	if totalReferrals > 0 {
+		conversionRate = float64(firstRecharges) / float64(totalReferrals) * 100
+	}
+
+	trend, err := s.referralRepo.GetGlobalTrend(ctx, days)
+	if err != nil {
+		return nil, err
+	}
+
+	summary, err := s.giftBalanceRepo.GetAdminStats(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return &AdminReferralDashboard{
+		Funnel: ReferralFunnel{
+			TotalReferrals: totalReferrals,
+			Registrations:  totalReferrals, // 当前实现：referral 关系即为注册
+			FirstRecharges: firstRecharges,
+			ConversionRate: conversionRate,
+		},
+		Trend:   trend,
+		Summary: *summary,
+	}, nil
+}
+
+// AdminBatchGrantGiftBalance 批量发放赠送余额
+// target: "all" - 全站活跃用户, "selected" - 指定 user_ids
+// 返回成功发放的数量
+func (s *ReferralService) AdminBatchGrantGiftBalance(ctx context.Context, target string, userIDs []int64, amount float64, expiryDays int, note string) (int, error) {
+	if amount <= 0 {
+		return 0, infraerrors.BadRequest("INVALID_AMOUNT", "amount must be positive")
+	}
+
+	var targetIDs []int64
+	switch target {
+	case "all":
+		ids, err := s.userRepo.ListActiveUserIDs(ctx)
+		if err != nil {
+			return 0, err
+		}
+		targetIDs = ids
+	case "selected":
+		targetIDs = userIDs
+	default:
+		return 0, infraerrors.BadRequest("INVALID_TARGET", "target must be 'all' or 'selected'")
+	}
+
+	count := 0
+	for _, uid := range targetIDs {
+		s.grantGiftBalance(ctx, uid, amount, GiftBalanceSourceAdminGrant, 0, expiryDays, note)
+		count++
+	}
+	return count, nil
 }
 
 // --- Internal helpers ---

@@ -616,11 +616,13 @@ func registerReferralRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	referral := admin.Group("/referral")
 	{
 		referral.GET("/stats", h.Admin.Referral.GetStats)
+		referral.GET("/dashboard", h.Admin.Referral.GetDashboard)
 		referral.GET("/config", h.Admin.Referral.GetConfig)
 		referral.PUT("/config", h.Admin.Referral.UpdateConfig)
 		referral.GET("/list", h.Admin.Referral.ListReferrals)
 		referral.GET("/leaderboard", h.Admin.Referral.GetLeaderboard)
 		referral.POST("/grant-gift-balance", h.Admin.Referral.GrantGiftBalance)
+		referral.POST("/grant-batch", h.Admin.Referral.BatchGrantGiftBalance)
 		referral.GET("/user-config/:userId", h.Admin.Referral.GetUserConfig)
 		referral.PUT("/user-config/:userId", h.Admin.Referral.UpsertUserConfig)
 		referral.DELETE("/user-config/:userId", h.Admin.Referral.DeleteUserConfig)

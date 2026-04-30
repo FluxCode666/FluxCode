@@ -172,14 +172,25 @@ func (r *referralRepository) ListAll(ctx context.Context, status string, offset,
 	return refs, total, rows.Err()
 }
 
-func (r *referralRepository) GetLeaderboard(ctx context.Context, limit int) ([]service.ReferralLeaderboardEntry, error) {
-	rows, err := r.db.QueryContext(ctx,
+func (r *referralRepository) GetLeaderboard(ctx context.Context, period string, limit int) ([]service.ReferralLeaderboardEntry, error) {
+	whereClause := ""
+	switch period {
+	case "this_month":
+		whereClause = "WHERE r.created_at >= date_trunc('month', NOW())"
+	case "this_week":
+		whereClause = "WHERE r.created_at >= date_trunc('week', NOW())"
+	}
+
+	query := fmt.Sprintf(
 		`SELECT r.referrer_id, COALESCE(u.email, ''), COALESCE(u.username, ''), COALESCE(u.referral_code, ''),
 		        COUNT(*) as invite_count,
 		        COALESCE(SUM(r.inviter_reward_amount + r.ongoing_reward_total), 0) as total_reward
 		 FROM referrals r LEFT JOIN users u ON r.referrer_id = u.id
+		 %s
 		 GROUP BY r.referrer_id, u.email, u.username, u.referral_code
-		 ORDER BY invite_count DESC LIMIT $1`, limit)
+		 ORDER BY invite_count DESC LIMIT $1`, whereClause)
+
+	rows, err := r.db.QueryContext(ctx, query, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -193,4 +204,94 @@ func (r *referralRepository) GetLeaderboard(ctx context.Context, limit int) ([]s
 		entries = append(entries, e)
 	}
 	return entries, rows.Err()
+}
+
+// GetTrendByReferrerID 用户级趋势：邀请数 / 完成数 / 奖励总额（含持续奖励）按日聚合
+func (r *referralRepository) GetTrendByReferrerID(ctx context.Context, referrerID int64, days int) ([]service.ReferralTrendPoint, error) {
+	if days <= 0 {
+		days = 30
+	}
+	rows, err := r.db.QueryContext(ctx,
+		`WITH days AS (
+			SELECT generate_series(
+				date_trunc('day', NOW() - ($1 || ' days')::interval)::date,
+				date_trunc('day', NOW())::date,
+				INTERVAL '1 day'
+			)::date AS d
+		)
+		SELECT
+			TO_CHAR(d.d, 'YYYY-MM-DD') AS date,
+			COALESCE(COUNT(r.id), 0) AS invitations,
+			COALESCE(SUM(CASE WHEN r.status = 'completed' THEN 1 ELSE 0 END), 0) AS completions,
+			COALESCE(SUM(r.inviter_reward_amount + r.ongoing_reward_total), 0) AS rewards_total
+		FROM days d
+		LEFT JOIN referrals r ON DATE(r.created_at) = d.d AND r.referrer_id = $2
+		GROUP BY d.d
+		ORDER BY d.d`,
+		days, referrerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var points []service.ReferralTrendPoint
+	for rows.Next() {
+		var p service.ReferralTrendPoint
+		if err := rows.Scan(&p.Date, &p.Invitations, &p.Completions, &p.RewardsTotal); err != nil {
+			return nil, err
+		}
+		points = append(points, p)
+	}
+	return points, rows.Err()
+}
+
+// GetGlobalTrend 全站趋势数据
+func (r *referralRepository) GetGlobalTrend(ctx context.Context, days int) ([]service.ReferralTrendPoint, error) {
+	if days <= 0 {
+		days = 30
+	}
+	rows, err := r.db.QueryContext(ctx,
+		`WITH days AS (
+			SELECT generate_series(
+				date_trunc('day', NOW() - ($1 || ' days')::interval)::date,
+				date_trunc('day', NOW())::date,
+				INTERVAL '1 day'
+			)::date AS d
+		)
+		SELECT
+			TO_CHAR(d.d, 'YYYY-MM-DD') AS date,
+			COALESCE(COUNT(r.id), 0) AS invitations,
+			COALESCE(SUM(CASE WHEN r.status = 'completed' THEN 1 ELSE 0 END), 0) AS completions,
+			COALESCE(SUM(r.inviter_reward_amount + r.ongoing_reward_total), 0) AS rewards_total
+		FROM days d
+		LEFT JOIN referrals r ON DATE(r.created_at) = d.d
+		GROUP BY d.d
+		ORDER BY d.d`,
+		days)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var points []service.ReferralTrendPoint
+	for rows.Next() {
+		var p service.ReferralTrendPoint
+		if err := rows.Scan(&p.Date, &p.Invitations, &p.Completions, &p.RewardsTotal); err != nil {
+			return nil, err
+		}
+		points = append(points, p)
+	}
+	return points, rows.Err()
+}
+
+// CountFirstRecharges 已完成的推广（即被邀请人已首充）
+func (r *referralRepository) CountFirstRecharges(ctx context.Context) (int, error) {
+	var n int
+	err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM referrals WHERE status = 'completed'`).Scan(&n)
+	return n, err
+}
+
+// CountAll 推广关系总数
+func (r *referralRepository) CountAll(ctx context.Context) (int, error) {
+	var n int
+	err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM referrals`).Scan(&n)
+	return n, err
 }

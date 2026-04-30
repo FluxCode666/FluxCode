@@ -71,6 +71,8 @@ type UserRepository interface {
 	UpdateReferralCode(ctx context.Context, userID int64, code string) error
 	UpdateReferredBy(ctx context.Context, userID int64, referrerID int64) error
 	IsFirstRecharge(ctx context.Context, userID int64) (bool, error)
+	// ListActiveUserIDs 列出全部活跃（未删除）用户 ID（批量发放赠送余额用）
+	ListActiveUserIDs(ctx context.Context) ([]int64, error)
 }
 
 // UpdateProfileRequest 更新用户资料请求
