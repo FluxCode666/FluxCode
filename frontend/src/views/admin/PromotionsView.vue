@@ -90,7 +90,7 @@
                     {{ t('admin.promotions.bonusCredit') }}
                   </span>
                   <span v-if="row.recharge_bonus_rate != null" class="ml-1">
-                    +{{ (row.recharge_bonus_rate * 100).toFixed(0) }}%
+                    +{{ ((row.recharge_bonus_rate - 1) * 100).toFixed(0) }}%
                   </span>
                 </template>
               </template>
@@ -765,7 +765,7 @@ const handleEdit = (promotion: Promotion) => {
   formData.promotion_type = promotion.promotion_type
   formData.discount_mode = promotion.discount_mode || 'reduce_pay'
   formData.recharge_rate = promotion.recharge_rate
-  formData.recharge_bonus_rate = promotion.recharge_bonus_rate
+  formData.recharge_bonus_rate = promotion.recharge_bonus_rate != null ? promotion.recharge_bonus_rate - 1 : 0.2
   formData.max_uses_per_user = promotion.max_uses_per_user
   formData.starts_at_str = promotion.starts_at ? new Date(promotion.starts_at).toISOString().slice(0, 16) : ''
   formData.ends_at_str = promotion.ends_at ? new Date(promotion.ends_at).toISOString().slice(0, 16) : ''
@@ -825,7 +825,7 @@ const handleSubmit = async () => {
         description: formData.description,
         discount_mode: formData.discount_mode,
         recharge_rate: formData.discount_mode === 'reduce_pay' ? formData.recharge_rate : undefined,
-        recharge_bonus_rate: formData.discount_mode === 'bonus_credit' ? formData.recharge_bonus_rate : undefined,
+        recharge_bonus_rate: formData.discount_mode === 'bonus_credit' && formData.recharge_bonus_rate != null ? formData.recharge_bonus_rate + 1 : undefined,
         max_uses_per_user: formData.max_uses_per_user,
         starts_at: formData.starts_at_str ? Math.floor(new Date(formData.starts_at_str).getTime() / 1000) : undefined,
         clear_starts_at: !formData.starts_at_str && !!editingPromotion.value.starts_at,
@@ -844,7 +844,7 @@ const handleSubmit = async () => {
         promotion_type: formData.promotion_type,
         discount_mode: formData.promotion_type === 'recharge' ? formData.discount_mode : undefined,
         recharge_rate: formData.discount_mode === 'reduce_pay' ? formData.recharge_rate : undefined,
-        recharge_bonus_rate: formData.discount_mode === 'bonus_credit' ? formData.recharge_bonus_rate : undefined,
+        recharge_bonus_rate: formData.discount_mode === 'bonus_credit' && formData.recharge_bonus_rate != null ? formData.recharge_bonus_rate + 1 : undefined,
         max_uses_per_user: formData.max_uses_per_user,
         starts_at: formData.starts_at_str ? Math.floor(new Date(formData.starts_at_str).getTime() / 1000) : undefined,
         ends_at: formData.ends_at_str ? Math.floor(new Date(formData.ends_at_str).getTime() / 1000) : undefined,
