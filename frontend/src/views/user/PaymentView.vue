@@ -104,15 +104,6 @@
                         </span>
                       </div>
                       <p v-if="promo.description" class="mt-1 text-xs leading-relaxed text-gray-500 dark:text-gray-400">{{ promo.description }}</p>
-                      <div v-if="promo.max_uses > 0" class="mt-2 flex items-center gap-2">
-                        <div class="h-1.5 flex-1 overflow-hidden rounded-full bg-gray-200 dark:bg-dark-600">
-                          <div class="h-full rounded-full transition-all duration-500"
-                            :class="(promo.max_uses - promo.used_count) <= 2 ? 'bg-red-400 dark:bg-red-500' : 'bg-green-400 dark:bg-green-500'"
-                            :style="{ width: Math.max(4, ((promo.max_uses - promo.used_count) / promo.max_uses) * 100) + '%' }"
-                          />
-                        </div>
-                        <span class="flex-shrink-0 text-[10px] tabular-nums" :class="(promo.max_uses - promo.used_count) <= 2 ? 'font-medium text-red-500 dark:text-red-400' : 'text-gray-400 dark:text-gray-500'">{{ t('payment.promoRemaining', { n: promo.max_uses - promo.used_count }) }}</span>
-                      </div>
                     </div>
                   </div>
                 </div>
@@ -267,15 +258,6 @@
                           </span>
                         </div>
                         <p v-if="promo.description" class="mt-1 text-xs leading-relaxed text-gray-500 dark:text-gray-400">{{ promo.description }}</p>
-                        <div v-if="promo.max_uses > 0" class="mt-2 flex items-center gap-2">
-                          <div class="h-1.5 flex-1 overflow-hidden rounded-full bg-gray-200 dark:bg-dark-600">
-                            <div class="h-full rounded-full transition-all duration-500"
-                              :class="(promo.max_uses - promo.used_count) <= 2 ? 'bg-red-400 dark:bg-red-500' : 'bg-green-400 dark:bg-green-500'"
-                              :style="{ width: Math.max(4, ((promo.max_uses - promo.used_count) / promo.max_uses) * 100) + '%' }"
-                            />
-                          </div>
-                          <span class="flex-shrink-0 text-[10px] tabular-nums" :class="(promo.max_uses - promo.used_count) <= 2 ? 'font-medium text-red-500 dark:text-red-400' : 'text-gray-400 dark:text-gray-500'">{{ t('payment.promoRemaining', { n: promo.max_uses - promo.used_count }) }}</span>
-                        </div>
                       </div>
                     </div>
                   </div>
