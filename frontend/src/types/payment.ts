@@ -93,6 +93,8 @@ export interface PaymentOrder {
   refund_request_reason?: string
   plan_id?: number
   provider_instance_id?: string
+  promotion_id?: number | null
+  promotion_name?: string
 }
 
 // ==================== Plans & Channels ====================

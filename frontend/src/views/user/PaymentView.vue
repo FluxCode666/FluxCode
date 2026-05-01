@@ -69,6 +69,18 @@
                 @select="selectedMethod = $event"
               />
             </div>
+            <!-- Promotion opt-in -->
+            <div v-if="validAmount > 0 && promoPreview && promoPreview.hit" class="card p-4">
+              <label class="flex cursor-pointer items-center gap-3">
+                <input v-model="usePromotion" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-green-600 focus:ring-green-500 dark:border-dark-500 dark:bg-dark-700" />
+                <div class="flex-1">
+                  <span class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('payment.usePromotion') }}</span>
+                  <span class="ml-1.5 inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-green-900/30 dark:text-green-400">
+                    {{ promoPreview.promotion_name }}
+                  </span>
+                </div>
+              </label>
+            </div>
             <div v-if="validAmount > 0" class="card p-6">
               <div class="space-y-2 text-sm">
                 <div class="flex justify-between">
@@ -83,8 +95,8 @@
                   <span class="font-medium text-gray-700 dark:text-gray-300">{{ t('payment.actualPay') }}</span>
                   <span class="text-lg font-bold text-primary-600 dark:text-primary-400">¥{{ totalAmount.toFixed(2) }}</span>
                 </div>
-                <!-- Promotion Preview -->
-                <template v-if="promoPreview && promoPreview.hit">
+                <!-- Promotion Preview (only when opted in) -->
+                <template v-if="usePromotion && promoPreview && promoPreview.hit">
                   <div class="border-t border-green-200 pt-2 dark:border-green-800/40">
                     <div class="flex items-center gap-1.5 mb-1">
                       <span class="inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-green-900/30 dark:text-green-400">
@@ -106,7 +118,7 @@
                     <p v-if="promoPreview.description" class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ promoPreview.description }}</p>
                   </div>
                 </template>
-                <template v-else-if="!promoPreview || !promoPreview.hit">
+                <template v-else-if="!usePromotion || !promoPreview || !promoPreview.hit">
                 <div v-if="balanceRechargeMultiplier !== 1" class="flex justify-between" :class="{ 'border-t border-gray-200 pt-2 dark:border-dark-600': feeRate <= 0 }">
                   <span class="text-gray-500 dark:text-gray-400">{{ t('payment.creditedBalance') }}</span>
                   <span class="text-gray-900 dark:text-white">${{ creditedAmount.toFixed(2) }}</span>
@@ -356,6 +368,7 @@ const previewImage = ref('')
 // Promotion preview state
 const promoPreview = ref<PromotionPreview | null>(null)
 const subPromoPreview = ref<PromotionPreview | null>(null)
+const usePromotion = ref(true)
 
 // Payment phase: 'select' → 'paying' (QR/redirect) or 'stripe' (inline Stripe)
 const paymentPhase = ref<'select' | 'paying' | 'stripe'>('select')
