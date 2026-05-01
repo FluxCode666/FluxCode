@@ -105,5 +105,12 @@ export function fillTrendDataGaps(
     dataMap.set(point.date, point)
   }
 
+  // Defensive: if backend returned data but none matches generated labels,
+  // there is likely a timezone mismatch between server and browser.
+  // Return backend data as-is to avoid silently replacing real data with zeros.
+  if (data.length > 0 && !allLabels.some((label) => dataMap.has(label))) {
+    return data
+  }
+
   return allLabels.map((label) => dataMap.get(label) ?? { date: label, ...ZERO_POINT })
 }

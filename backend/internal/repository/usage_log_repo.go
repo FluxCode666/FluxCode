@@ -1934,6 +1934,18 @@ func (r *usageLogRepository) GetDailyStatsAggregated(ctx context.Context, userID
 	return result, nil
 }
 
+// resolveTZFromTime 从 time.Time 的 Location 提取时区名称（IANA 格式）。
+// 如果 Location 无效或为 "Local"，则回退到 resolveUsageStatsTimezone。
+func resolveTZFromTime(t time.Time) string {
+	if loc := t.Location(); loc != nil {
+		name := loc.String()
+		if name != "" && name != "Local" {
+			return name
+		}
+	}
+	return resolveUsageStatsTimezone()
+}
+
 // resolveUsageStatsTimezone 获取用于 SQL 分组的时区名称。
 // 优先使用应用初始化的时区，其次尝试读取 TZ 环境变量，最后回落为 UTC。
 func resolveUsageStatsTimezone() string {
@@ -2931,8 +2943,9 @@ func (r *usageLogRepository) GetBatchAPIKeyUsageStats(ctx context.Context, apiKe
 
 // GetUsageTrendWithFilters returns usage trend data with optional filters
 func (r *usageLogRepository) GetUsageTrendWithFilters(ctx context.Context, startTime, endTime time.Time, granularity string, userID, apiKeyID, accountID, groupID int64, model string, requestType *int16, stream *bool, billingType *int8) (results []TrendDataPoint, err error) {
+	tzName := resolveTZFromTime(startTime)
 	if shouldUsePreaggregatedTrend(granularity, userID, apiKeyID, accountID, groupID, model, requestType, stream, billingType) {
-		aggregated, aggregatedErr := r.getUsageTrendFromAggregates(ctx, startTime, endTime, granularity)
+		aggregated, aggregatedErr := r.getUsageTrendFromAggregates(ctx, startTime, endTime, granularity, tzName)
 		if aggregatedErr == nil && len(aggregated) > 0 {
 			return aggregated, nil
 		}
@@ -2942,7 +2955,7 @@ func (r *usageLogRepository) GetUsageTrendWithFilters(ctx context.Context, start
 
 	query := fmt.Sprintf(`
 		SELECT
-			TO_CHAR(created_at, '%s') as date,
+			TO_CHAR(created_at AT TIME ZONE $3, '%s') as date,
 			COUNT(*) as requests,
 			COALESCE(SUM(input_tokens), 0) as input_tokens,
 			COALESCE(SUM(output_tokens), 0) as output_tokens,
@@ -2955,7 +2968,7 @@ func (r *usageLogRepository) GetUsageTrendWithFilters(ctx context.Context, start
 		WHERE created_at >= $1 AND created_at < $2
 	`, dateFormat)
 
-	args := []any{startTime, endTime}
+	args := []any{startTime, endTime, tzName}
 	if userID > 0 {
 		query += fmt.Sprintf(" AND user_id = $%d", len(args)+1)
 		args = append(args, userID)
@@ -3014,16 +3027,17 @@ func shouldUsePreaggregatedTrend(granularity string, userID, apiKeyID, accountID
 		billingType == nil
 }
 
-func (r *usageLogRepository) getUsageTrendFromAggregates(ctx context.Context, startTime, endTime time.Time, granularity string) (results []TrendDataPoint, err error) {
+func (r *usageLogRepository) getUsageTrendFromAggregates(ctx context.Context, startTime, endTime time.Time, granularity string, tzName string) (results []TrendDataPoint, err error) {
 	dateFormat := safeDateFormat(granularity)
 	query := ""
 	args := []any{startTime, endTime}
 
 	switch granularity {
 	case "hour":
+		args = append(args, tzName)
 		query = fmt.Sprintf(`
 			SELECT
-				TO_CHAR(bucket_start, '%s') as date,
+				TO_CHAR(bucket_start AT TIME ZONE $3, '%s') as date,
 				total_requests as requests,
 				input_tokens,
 				output_tokens,

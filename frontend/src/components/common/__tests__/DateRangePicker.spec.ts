@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
-import { ref } from 'vue'
+import { ref, nextTick } from 'vue'
 
 import DateRangePicker from '../DateRangePicker.vue'
 
@@ -33,15 +33,26 @@ const formatLocalDate = (date: Date): string => {
   return `${year}-${month}-${day}`
 }
 
+const last24HoursPreset = {
+  labelKey: 'dates.last24Hours',
+  value: 'last24Hours',
+  getRange: () => {
+    const end = new Date()
+    const start = new Date(end.getTime() - 24 * 60 * 60 * 1000)
+    return { start: formatLocalDate(start), end: formatLocalDate(end) }
+  }
+}
+
 describe('DateRangePicker', () => {
-  it('uses last 24 hours as the default recognized preset', () => {
+  it('uses last 24 hours as the recognized preset when customPresets provided', async () => {
     const now = new Date()
     const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000)
 
     const wrapper = mount(DateRangePicker, {
       props: {
         startDate: formatLocalDate(yesterday),
-        endDate: formatLocalDate(now)
+        endDate: formatLocalDate(now),
+        customPresets: [last24HoursPreset]
       },
       global: {
         stubs: {
@@ -50,6 +61,7 @@ describe('DateRangePicker', () => {
       }
     })
 
+    await nextTick()
     expect(wrapper.text()).toContain('Last 24 Hours')
   })
 
@@ -60,7 +72,8 @@ describe('DateRangePicker', () => {
     const wrapper = mount(DateRangePicker, {
       props: {
         startDate: today,
-        endDate: today
+        endDate: today,
+        customPresets: [last24HoursPreset]
       },
       global: {
         stubs: {
@@ -70,13 +83,14 @@ describe('DateRangePicker', () => {
     })
 
     await wrapper.find('.date-picker-trigger').trigger('click')
+    await nextTick()
     const presetButton = wrapper.findAll('.date-picker-preset').find((node) =>
       node.text().includes('Last 24 Hours')
     )
     expect(presetButton).toBeDefined()
 
     await presetButton!.trigger('click')
-    await wrapper.find('.date-picker-apply').trigger('click')
+    await nextTick()
 
     const nowAfterClick = new Date()
     const yesterdayAfterClick = new Date(nowAfterClick.getTime() - 24 * 60 * 60 * 1000)

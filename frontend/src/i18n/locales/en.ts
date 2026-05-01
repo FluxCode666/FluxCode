@@ -1069,6 +1069,7 @@ export default {
     thisQuarter: 'This Quarter',
     thisYear: 'This Year',
     last24Hours: 'Last 24 Hours',
+    last48Hours: 'Last 48 Hours',
     last7Days: 'Last 7 Days',
     last14Days: 'Last 14 Days',
     last30Days: 'Last 30 Days',
