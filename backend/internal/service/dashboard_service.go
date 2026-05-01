@@ -252,7 +252,14 @@ func (s *DashboardService) refreshDashboardStatsAsync() {
 }
 
 func (s *DashboardService) fetchDashboardStats(ctx context.Context) (*usagestats.DashboardStats, error) {
-	if !s.aggEnabled {
+	useRawLogs := !s.aggEnabled
+	if s.aggEnabled {
+		updatedAt := s.fetchAggregationUpdatedAt(ctx)
+		if s.isAggregationStale(updatedAt, time.Now().UTC()) {
+			useRawLogs = true
+		}
+	}
+	if useRawLogs {
 		if fetcher, ok := s.usageRepo.(dashboardStatsRangeFetcher); ok {
 			now := time.Now().UTC()
 			start := truncateToDayUTC(now.AddDate(0, 0, -s.aggUsageDays))

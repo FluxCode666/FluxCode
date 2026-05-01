@@ -2941,10 +2941,25 @@ func (r *usageLogRepository) GetBatchAPIKeyUsageStats(ctx context.Context, apiKe
 	return result, nil
 }
 
+// isAggregationFreshForRange 检查聚合水位是否覆盖查询范围的结束时间。
+// 当聚合服务停止或严重滞后时返回 false，调用方应回退到原始日志。
+func (r *usageLogRepository) isAggregationFreshForRange(ctx context.Context, endTime time.Time) bool {
+	const staleness = 5 * time.Minute
+	var watermark time.Time
+	err := scanSingleRow(ctx, r.sql,
+		"SELECT last_aggregated_at FROM usage_dashboard_aggregation_watermark WHERE id = 1",
+		nil, &watermark)
+	if err != nil {
+		return false
+	}
+	return !endTime.After(watermark.Add(staleness))
+}
+
 // GetUsageTrendWithFilters returns usage trend data with optional filters
 func (r *usageLogRepository) GetUsageTrendWithFilters(ctx context.Context, startTime, endTime time.Time, granularity string, userID, apiKeyID, accountID, groupID int64, model string, requestType *int16, stream *bool, billingType *int8) (results []TrendDataPoint, err error) {
 	tzName := resolveTZFromTime(startTime)
-	if shouldUsePreaggregatedTrend(granularity, userID, apiKeyID, accountID, groupID, model, requestType, stream, billingType) {
+	if shouldUsePreaggregatedTrend(granularity, userID, apiKeyID, accountID, groupID, model, requestType, stream, billingType) &&
+		r.isAggregationFreshForRange(ctx, endTime) {
 		aggregated, aggregatedErr := r.getUsageTrendFromAggregates(ctx, startTime, endTime, granularity, tzName)
 		if aggregatedErr == nil && len(aggregated) > 0 {
 			return aggregated, nil
