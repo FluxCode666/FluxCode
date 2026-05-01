@@ -482,6 +482,7 @@ function onPaymentDone() {
   if (wasSubscription) {
     subscriptionStore.fetchActiveSubscriptions(true).catch(() => {})
   }
+  refreshAfterPayment()
 }
 
 function onPaymentSuccess() {
@@ -489,6 +490,7 @@ function onPaymentSuccess() {
   if (paymentState.value.orderType === 'subscription') {
     subscriptionStore.fetchActiveSubscriptions(true).catch(() => {})
   }
+  refreshAfterPayment()
 }
 
 function onStripeDone() {
@@ -498,11 +500,26 @@ function onStripeDone() {
   if (wasSubscription) {
     subscriptionStore.fetchActiveSubscriptions(true).catch(() => {})
   }
+  refreshAfterPayment()
 }
 
 function onStripeRedirect(orderId: number, payUrl: string) {
   paymentState.value = { ...paymentState.value, orderId, payUrl, qrCode: '' }
   paymentPhase.value = 'paying'
+}
+
+// Refresh checkout config + promotion lists after payment completes
+async function refreshAfterPayment() {
+  try {
+    const res = await paymentAPI.getCheckoutInfo()
+    checkout.value = res.data
+  } catch { /* ignore */ }
+  fetchAvailablePromotions()
+  selectedPromotionId.value = null
+  promoPreview.value = null
+  subSelectedPromotionId.value = null
+  subPromoPreview.value = null
+  subAvailablePromotions.value = []
 }
 
 // All checkout data from single API call
