@@ -31,6 +31,8 @@ func RegisterPaymentRoutes(
 		authenticated.GET("/channels", paymentHandler.GetChannels)
 		authenticated.GET("/limits", paymentHandler.GetLimits)
 
+		authenticated.GET("/promotions/available", paymentHandler.ListAvailablePromotions)
+
 		orders := authenticated.Group("/orders")
 		{
 			orders.POST("", paymentHandler.CreateOrder)

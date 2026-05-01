@@ -11,13 +11,13 @@ import (
 
 // RechargeDiscount 描述充值订单命中的活动结果
 type RechargeDiscount struct {
-	Promotion       Promotion
-	Mode            string  // domain.PromotionDiscountModeReducePay / BonusCredit
-	OriginalAmount  float64 // 用户输入的充值金额
-	CreditedAmount  float64 // 实际到账金额（bonus_credit 模式 = original * bonus_rate；reduce_pay 模式 = original，由全局 multiplier 决定，这里仅描述活动产生的覆盖）
-	PaymentAmount   float64 // 用户实际需要支付（不含手续费的金额，下游再乘 1+feeRate）
-	DiscountAmount  float64 // 节省金额（reduce_pay 模式：original - paymentAmount；bonus_credit 模式：0）
-	BonusAmount     float64 // 加送金额（bonus_credit 模式：creditedAmount - originalAmount；reduce_pay 模式：0）
+	Promotion      Promotion
+	Mode           string  // domain.PromotionDiscountModeReducePay / BonusCredit
+	OriginalAmount float64 // 用户输入的充值金额
+	CreditedAmount float64 // 实际到账金额（bonus_credit 模式 = original * bonus_rate；reduce_pay 模式 = original，由全局 multiplier 决定，这里仅描述活动产生的覆盖）
+	PaymentAmount  float64 // 用户实际需要支付（不含手续费的金额，下游再乘 1+feeRate）
+	DiscountAmount float64 // 节省金额（reduce_pay 模式：original - paymentAmount；bonus_credit 模式：0）
+	BonusAmount    float64 // 加送金额（bonus_credit 模式：creditedAmount - originalAmount；reduce_pay 模式：0）
 }
 
 // SubscriptionDiscount 描述订阅订单命中的活动结果
@@ -39,12 +39,17 @@ func NewPromotionResolver(repo PromotionRepository) *PromotionResolver {
 	return &PromotionResolver{repo: repo}
 }
 
-// ResolveRechargeDiscount 为充值订单挑选最优活动；未命中返回 (nil, nil)
+// ResolveRechargeDiscount 为充值订单解析指定活动或挑选最优活动；未命中返回 (nil, nil)
 //
-// userAmount 为用户输入的充值金额（即原始 limit_amount），>0
-func (r *PromotionResolver) ResolveRechargeDiscount(ctx context.Context, userID int64, userAmount float64) (*RechargeDiscount, error) {
+// promotionID > 0 时使用指定活动（需通过可用性和限次检查）；
+// promotionID == 0 时自动挑选最优活动。
+func (r *PromotionResolver) ResolveRechargeDiscount(ctx context.Context, userID int64, userAmount float64, promotionID ...int64) (*RechargeDiscount, error) {
 	if r == nil || r.repo == nil || userAmount <= 0 {
 		return nil, nil
+	}
+	// 指定活动 ID 模式
+	if len(promotionID) > 0 && promotionID[0] > 0 {
+		return r.resolveRechargeByID(ctx, userID, userAmount, promotionID[0])
 	}
 	promotions, err := r.repo.ListActiveByType(ctx, domain.PromotionTypeRecharge)
 	if err != nil {
@@ -78,12 +83,37 @@ func (r *PromotionResolver) ResolveRechargeDiscount(ctx context.Context, userID 
 	return best, nil
 }
 
-// ResolveSubscriptionDiscount 为订阅订单挑选最优活动；未命中返回 (nil, nil)
+// resolveRechargeByID 按指定 promotion ID 解析充值折扣
+func (r *PromotionResolver) resolveRechargeByID(ctx context.Context, userID int64, userAmount float64, pid int64) (*RechargeDiscount, error) {
+	p, err := r.repo.GetByID(ctx, pid)
+	if err != nil || p == nil {
+		return nil, nil
+	}
+	if !p.IsActive(time.Now()) || p.PromotionType != domain.PromotionTypeRecharge {
+		return nil, nil
+	}
+	if p.MaxUsesPerUser > 0 {
+		used, err := r.repo.CountUsageByUser(ctx, p.ID, nil, userID)
+		if err != nil {
+			return nil, err
+		}
+		if used >= p.MaxUsesPerUser {
+			return nil, nil
+		}
+	}
+	return buildRechargeCandidate(p, userAmount), nil
+}
+
+// ResolveSubscriptionDiscount 为订阅订单解析指定活动或挑选最优活动；未命中返回 (nil, nil)
 //
-// planPrice 为 subscription_plans.price
-func (r *PromotionResolver) ResolveSubscriptionDiscount(ctx context.Context, userID, planID int64, planPrice float64) (*SubscriptionDiscount, error) {
+// promotionID > 0 时使用指定活动；promotionID == 0 时自动挑选。
+func (r *PromotionResolver) ResolveSubscriptionDiscount(ctx context.Context, userID, planID int64, planPrice float64, promotionID ...int64) (*SubscriptionDiscount, error) {
 	if r == nil || r.repo == nil || planPrice <= 0 {
 		return nil, nil
+	}
+	// 指定活动 ID 模式
+	if len(promotionID) > 0 && promotionID[0] > 0 {
+		return r.resolveSubscriptionByID(ctx, userID, planID, planPrice, promotionID[0])
 	}
 	promotions, err := r.repo.ListActiveByPlanID(ctx, planID)
 	if err != nil {
@@ -121,6 +151,128 @@ func (r *PromotionResolver) ResolveSubscriptionDiscount(ctx context.Context, use
 		}
 	}
 	return best, nil
+}
+
+// resolveSubscriptionByID 按指定 promotion ID 解析订阅折扣
+func (r *PromotionResolver) resolveSubscriptionByID(ctx context.Context, userID, planID int64, planPrice float64, pid int64) (*SubscriptionDiscount, error) {
+	p, err := r.repo.GetByID(ctx, pid)
+	if err != nil || p == nil {
+		return nil, nil
+	}
+	if !p.IsActive(time.Now()) || p.PromotionType != domain.PromotionTypeSubscription {
+		return nil, nil
+	}
+	rule := findPlanRule(p, planID)
+	if rule == nil {
+		return nil, nil
+	}
+	maxUses := p.EffectiveMaxUses(rule)
+	if maxUses > 0 {
+		pid := planID
+		used, err := r.repo.CountUsageByUser(ctx, p.ID, &pid, userID)
+		if err != nil {
+			return nil, err
+		}
+		if used >= maxUses {
+			return nil, nil
+		}
+	}
+	return buildSubscriptionCandidate(p, rule, planPrice), nil
+}
+
+// AvailablePromotion 用户可选的促销活动摘要
+type AvailablePromotion struct {
+	ID            int64  `json:"id"`
+	Name          string `json:"name"`
+	Description   string `json:"description"`
+	PromotionType string `json:"promotion_type"`
+	DiscountMode  string `json:"discount_mode"`
+	UsedCount     int    `json:"used_count"`
+	MaxUses       int    `json:"max_uses"`
+}
+
+// ListAvailableForRecharge 列出用户当前可用的充值促销活动
+func (r *PromotionResolver) ListAvailableForRecharge(ctx context.Context, userID int64) ([]AvailablePromotion, error) {
+	if r == nil || r.repo == nil {
+		return nil, nil
+	}
+	promotions, err := r.repo.ListActiveByType(ctx, domain.PromotionTypeRecharge)
+	if err != nil {
+		return nil, err
+	}
+	now := time.Now()
+	var result []AvailablePromotion
+	for i := range promotions {
+		p := promotions[i]
+		if !p.IsActive(now) {
+			continue
+		}
+		var used int
+		if p.MaxUsesPerUser > 0 {
+			used, err = r.repo.CountUsageByUser(ctx, p.ID, nil, userID)
+			if err != nil {
+				return nil, err
+			}
+			if used >= p.MaxUsesPerUser {
+				continue
+			}
+		}
+		result = append(result, AvailablePromotion{
+			ID:            p.ID,
+			Name:          p.Name,
+			Description:   p.Description,
+			PromotionType: p.PromotionType,
+			DiscountMode:  p.DiscountMode,
+			UsedCount:     used,
+			MaxUses:       p.MaxUsesPerUser,
+		})
+	}
+	return result, nil
+}
+
+// ListAvailableForSubscription 列出用户当前可用的订阅促销活动（指定 plan）
+func (r *PromotionResolver) ListAvailableForSubscription(ctx context.Context, userID, planID int64) ([]AvailablePromotion, error) {
+	if r == nil || r.repo == nil {
+		return nil, nil
+	}
+	promotions, err := r.repo.ListActiveByPlanID(ctx, planID)
+	if err != nil {
+		return nil, err
+	}
+	now := time.Now()
+	var result []AvailablePromotion
+	for i := range promotions {
+		p := promotions[i]
+		if !p.IsActive(now) {
+			continue
+		}
+		rule := findPlanRule(&p, planID)
+		if rule == nil {
+			continue
+		}
+		maxUses := p.EffectiveMaxUses(rule)
+		var used int
+		if maxUses > 0 {
+			pid := planID
+			used, err = r.repo.CountUsageByUser(ctx, p.ID, &pid, userID)
+			if err != nil {
+				return nil, err
+			}
+			if used >= maxUses {
+				continue
+			}
+		}
+		result = append(result, AvailablePromotion{
+			ID:            p.ID,
+			Name:          p.Name,
+			Description:   p.Description,
+			PromotionType: p.PromotionType,
+			DiscountMode:  rule.DiscountMode,
+			UsedCount:     used,
+			MaxUses:       maxUses,
+		})
+	}
+	return result, nil
 }
 
 // VerifyAndCount 在事务内复查限次（防并发超卖）。已在事务上下文里调用，
@@ -270,7 +422,9 @@ func buildSubscriptionCandidate(p *Promotion, rule *PromotionPlanRule, planPrice
 // rechargeBetter 比较两个充值候选：
 //
 // 用户视角"省钱量"=  reduce_pay 模式的 DiscountAmount；
-//                   bonus_credit 模式的 BonusAmount；
+//
+//	bonus_credit 模式的 BonusAmount；
+//
 // 两者数值都是"用户多得到的价值"，可直接比较。
 //
 // 若节省一致，则比较 promotion.Priority 高的优先。

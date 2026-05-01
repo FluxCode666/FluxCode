@@ -21,10 +21,18 @@
         <div v-if="row.amount !== row.pay_amount" class="text-xs text-gray-500">
           {{ t('payment.orders.creditedAmount') }}: {{ row.order_type === 'balance' ? '$' : '¥' }}{{ row.amount.toFixed(2) }}
         </div>
-        <span v-if="row.promotion_id" class="inline-flex items-center gap-0.5 rounded-full bg-green-100 px-1.5 py-0.5 text-xs font-medium text-green-700 dark:bg-green-900/30 dark:text-green-400" :title="row.promotion_name || ''">
-          <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A2 2 0 013 12V7a4 4 0 014-4z" /></svg>
-          {{ t('payment.orders.promoUsed') }}
-        </span>
+        <div v-if="row.promotion_id" class="mt-0.5 flex flex-wrap items-center gap-1">
+          <span class="inline-flex items-center gap-0.5 rounded-full bg-green-100 px-1.5 py-0.5 text-xs font-medium text-green-700 dark:bg-green-900/30 dark:text-green-400" :title="row.promotion_name || ''">
+            <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A2 2 0 013 12V7a4 4 0 014-4z" /></svg>
+            {{ t('payment.orders.promoUsed') }}
+          </span>
+          <span v-if="row.discount_amount > 0" class="inline-flex items-center rounded-full bg-orange-100 px-1.5 py-0.5 text-xs font-medium text-orange-700 dark:bg-orange-900/30 dark:text-orange-400">
+            {{ t('payment.orders.promoSaved') }} ¥{{ row.discount_amount.toFixed(2) }}
+          </span>
+          <span v-if="row.bonus_amount > 0" class="inline-flex items-center rounded-full bg-blue-100 px-1.5 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">
+            {{ t('payment.orders.promoGifted') }} ${{ row.bonus_amount.toFixed(2) }}
+          </span>
+        </div>
       </div>
     </template>
     <template #cell-payment_type="{ value }">

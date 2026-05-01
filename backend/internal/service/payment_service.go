@@ -78,6 +78,7 @@ type CreateOrderRequest struct {
 	SrcURL      string
 	OrderType   string
 	PlanID      int64
+	PromotionID int64 // 用户选择的促销活动 ID（0 表示不使用）
 }
 
 type CreateOrderResponse struct {
@@ -204,6 +205,19 @@ func NewPaymentService(
 		groupRepo:         groupRepo,
 		promotionRepo:     promotionRepo,
 		promotionResolver: promotionResolver,
+	}
+}
+
+// ListAvailablePromotions 列出用户当前可用的促销活动
+func (s *PaymentService) ListAvailablePromotions(ctx context.Context, userID int64, orderType string, planID int64) ([]AvailablePromotion, error) {
+	if s.promotionResolver == nil {
+		return nil, nil
+	}
+	switch orderType {
+	case payment.OrderTypeSubscription:
+		return s.promotionResolver.ListAvailableForSubscription(ctx, userID, planID)
+	default:
+		return s.promotionResolver.ListAvailableForRecharge(ctx, userID)
 	}
 }
 

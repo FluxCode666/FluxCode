@@ -69,17 +69,27 @@
                 @select="selectedMethod = $event"
               />
             </div>
-            <!-- Promotion opt-in -->
-            <div v-if="validAmount > 0 && promoPreview && promoPreview.hit" class="card p-4">
-              <label class="flex cursor-pointer items-center gap-3">
-                <input v-model="usePromotion" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-green-600 focus:ring-green-500 dark:border-dark-500 dark:bg-dark-700" />
-                <div class="flex-1">
-                  <span class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('payment.usePromotion') }}</span>
-                  <span class="ml-1.5 inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-green-900/30 dark:text-green-400">
-                    {{ promoPreview.promotion_name }}
-                  </span>
-                </div>
-              </label>
+            <!-- Promotion selector (single select) -->
+            <div v-if="validAmount > 0 && availablePromotions.length > 0" class="card p-4">
+              <p class="mb-2 text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('payment.selectPromotion') }}</p>
+              <div class="space-y-2">
+                <label
+                  v-for="promo in availablePromotions"
+                  :key="promo.id"
+                  class="flex cursor-pointer items-center gap-3 rounded-lg border p-3 transition-colors"
+                  :class="selectedPromotionId === promo.id
+                    ? 'border-green-400 bg-green-50 dark:border-green-600 dark:bg-green-900/20'
+                    : 'border-gray-200 hover:border-green-300 dark:border-dark-500 dark:hover:border-green-700'"
+                  @click="selectPromotion(promo.id)"
+                >
+                  <input type="radio" :checked="selectedPromotionId === promo.id" class="h-4 w-4 text-green-600 focus:ring-green-500 dark:bg-dark-700" />
+                  <div class="flex-1 min-w-0">
+                    <span class="text-sm font-medium text-gray-800 dark:text-gray-200">{{ promo.name }}</span>
+                    <p v-if="promo.description" class="mt-0.5 truncate text-xs text-gray-500 dark:text-gray-400">{{ promo.description }}</p>
+                  </div>
+                  <span v-if="promo.max_uses > 0" class="text-xs text-gray-400 dark:text-gray-500">{{ promo.used_count }}/{{ promo.max_uses }}</span>
+                </label>
+              </div>
             </div>
             <div v-if="validAmount > 0" class="card p-6">
               <div class="space-y-2 text-sm">
@@ -95,8 +105,8 @@
                   <span class="font-medium text-gray-700 dark:text-gray-300">{{ t('payment.actualPay') }}</span>
                   <span class="text-lg font-bold text-primary-600 dark:text-primary-400">¥{{ totalAmount.toFixed(2) }}</span>
                 </div>
-                <!-- Promotion Preview (only when opted in) -->
-                <template v-if="usePromotion && promoPreview && promoPreview.hit">
+                <!-- Promotion Preview (only when a promotion is selected) -->
+                <template v-if="selectedPromotionId && promoPreview && promoPreview.hit">
                   <div class="border-t border-green-200 pt-2 dark:border-green-800/40">
                     <div class="flex items-center gap-1.5 mb-1">
                       <span class="inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-green-900/30 dark:text-green-400">
@@ -118,7 +128,7 @@
                     <p v-if="promoPreview.description" class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ promoPreview.description }}</p>
                   </div>
                 </template>
-                <template v-else-if="!usePromotion || !promoPreview || !promoPreview.hit">
+                <template v-else-if="!selectedPromotionId || !promoPreview || !promoPreview.hit">
                 <div v-if="balanceRechargeMultiplier !== 1" class="flex justify-between" :class="{ 'border-t border-gray-200 pt-2 dark:border-dark-600': feeRate <= 0 }">
                   <span class="text-gray-500 dark:text-gray-400">{{ t('payment.creditedBalance') }}</span>
                   <span class="text-gray-900 dark:text-white">${{ creditedAmount.toFixed(2) }}</span>
@@ -198,6 +208,28 @@
                   @select="selectedMethod = $event"
                 />
               </div>
+              <!-- Subscription Promotion selector -->
+              <div v-if="subAvailablePromotions.length > 0" class="card p-4">
+                <p class="mb-2 text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('payment.selectPromotion') }}</p>
+                <div class="space-y-2">
+                  <label
+                    v-for="promo in subAvailablePromotions"
+                    :key="promo.id"
+                    class="flex cursor-pointer items-center gap-3 rounded-lg border p-3 transition-colors"
+                    :class="subSelectedPromotionId === promo.id
+                      ? 'border-green-400 bg-green-50 dark:border-green-600 dark:bg-green-900/20'
+                      : 'border-gray-200 hover:border-green-300 dark:border-dark-500 dark:hover:border-green-700'"
+                    @click="selectSubPromotion(promo.id)"
+                  >
+                    <input type="radio" :checked="subSelectedPromotionId === promo.id" class="h-4 w-4 text-green-600 focus:ring-green-500 dark:bg-dark-700" />
+                    <div class="flex-1 min-w-0">
+                      <span class="text-sm font-medium text-gray-800 dark:text-gray-200">{{ promo.name }}</span>
+                      <p v-if="promo.description" class="mt-0.5 truncate text-xs text-gray-500 dark:text-gray-400">{{ promo.description }}</p>
+                    </div>
+                    <span v-if="promo.max_uses > 0" class="text-xs text-gray-400 dark:text-gray-500">{{ promo.used_count }}/{{ promo.max_uses }}</span>
+                  </label>
+                </div>
+              </div>
               <div v-if="selectedPlan.price > 0" class="card p-6">
                 <div class="space-y-2 text-sm">
                   <div class="flex justify-between">
@@ -213,7 +245,7 @@
                     <span class="text-lg font-bold text-primary-600 dark:text-primary-400">¥{{ subTotalAmount.toFixed(2) }}</span>
                   </div>
                   <!-- Subscription Promotion Preview -->
-                  <template v-if="subPromoPreview && subPromoPreview.hit">
+                  <template v-if="subSelectedPromotionId && subPromoPreview && subPromoPreview.hit">
                     <div class="border-t border-green-200 pt-2 dark:border-green-800/40">
                       <div class="flex items-center gap-1.5 mb-1">
                         <span class="inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-green-900/30 dark:text-green-400">
@@ -329,7 +361,7 @@ import { useAppStore } from '@/stores'
 import { paymentAPI } from '@/api/payment'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import { isMobileDevice } from '@/utils/device'
-import type { SubscriptionPlan, CheckoutInfoResponse, OrderType, PromotionPreview } from '@/types/payment'
+import type { SubscriptionPlan, CheckoutInfoResponse, OrderType, PromotionPreview, AvailablePromotion } from '@/types/payment'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import AmountInput from '@/components/payment/AmountInput.vue'
 import PaymentMethodSelector from '@/components/payment/PaymentMethodSelector.vue'
@@ -365,10 +397,13 @@ const selectedMethod = ref('')
 const selectedPlan = ref<SubscriptionPlan | null>(null)
 const previewImage = ref('')
 
-// Promotion preview state
+// Promotion state
+const availablePromotions = ref<AvailablePromotion[]>([])
+const subAvailablePromotions = ref<AvailablePromotion[]>([])
+const selectedPromotionId = ref<number | null>(null)
+const subSelectedPromotionId = ref<number | null>(null)
 const promoPreview = ref<PromotionPreview | null>(null)
 const subPromoPreview = ref<PromotionPreview | null>(null)
-const usePromotion = ref(true)
 
 // Payment phase: 'select' → 'paying' (QR/redirect) or 'stripe' (inline Stripe)
 const paymentPhase = ref<'select' | 'paying' | 'stripe'>('select')
@@ -546,52 +581,100 @@ watch(() => [validAmount.value, selectedMethod.value] as const, ([amt, method]) 
   if (available) selectedMethod.value = available
 })
 
-// ==================== Promotion Preview ====================
+// ==================== Promotion Selection ====================
+async function fetchAvailablePromotions() {
+  try {
+    const resp = await paymentAPI.getAvailablePromotions({ order_type: 'balance' })
+    availablePromotions.value = resp.data || []
+  } catch {
+    availablePromotions.value = []
+  }
+}
+
+async function fetchSubAvailablePromotions(planId: number) {
+  try {
+    const resp = await paymentAPI.getAvailablePromotions({ order_type: 'subscription', plan_id: planId })
+    subAvailablePromotions.value = resp.data || []
+  } catch {
+    subAvailablePromotions.value = []
+  }
+}
+
 let promoDebounceTimer: ReturnType<typeof setTimeout> | null = null
 
-async function fetchRechargePromoPreview(amt: number) {
-  if (amt <= 0) {
+async function fetchRechargePromoPreview(amt: number, promotionId: number | null) {
+  if (amt <= 0 || !promotionId) {
     promoPreview.value = null
     return
   }
   try {
-    const resp = await paymentAPI.previewOrder({ amount: amt, order_type: 'balance' })
+    const resp = await paymentAPI.previewOrder({ amount: amt, order_type: 'balance', promotion_id: promotionId })
     promoPreview.value = resp.data
   } catch {
     promoPreview.value = null
   }
 }
 
-async function fetchSubPromoPreview(planId: number, planPrice: number) {
-  if (planPrice <= 0) {
+async function fetchSubPromoPreview(planId: number, planPrice: number, promotionId: number | null) {
+  if (planPrice <= 0 || !promotionId) {
     subPromoPreview.value = null
     return
   }
   try {
-    const resp = await paymentAPI.previewOrder({ amount: planPrice, order_type: 'subscription', plan_id: planId })
+    const resp = await paymentAPI.previewOrder({ amount: planPrice, order_type: 'subscription', plan_id: planId, promotion_id: promotionId })
     subPromoPreview.value = resp.data
   } catch {
     subPromoPreview.value = null
   }
 }
 
-// Debounced watch for recharge amount changes
+function selectPromotion(id: number | null) {
+  selectedPromotionId.value = selectedPromotionId.value === id ? null : id
+}
+
+function selectSubPromotion(id: number | null) {
+  subSelectedPromotionId.value = subSelectedPromotionId.value === id ? null : id
+}
+
+// Watch recharge amount → refresh preview when promotion selected
 watch(amount, (newAmt) => {
   if (promoDebounceTimer) clearTimeout(promoDebounceTimer)
   if (!newAmt || newAmt <= 0) {
     promoPreview.value = null
     return
   }
-  promoDebounceTimer = setTimeout(() => fetchRechargePromoPreview(newAmt), 400)
+  promoDebounceTimer = setTimeout(() => fetchRechargePromoPreview(newAmt, selectedPromotionId.value), 400)
+})
+
+// Watch promotion selection changes → fetch preview
+watch(selectedPromotionId, (id) => {
+  const amt = validAmount.value
+  if (amt > 0) {
+    fetchRechargePromoPreview(amt, id)
+  } else {
+    promoPreview.value = null
+  }
 })
 
 // Watch for plan selection changes (subscription)
 watch(selectedPlan, (plan) => {
+  subSelectedPromotionId.value = null
+  subPromoPreview.value = null
   if (!plan) {
-    subPromoPreview.value = null
+    subAvailablePromotions.value = []
     return
   }
-  fetchSubPromoPreview(plan.id, plan.price)
+  fetchSubAvailablePromotions(plan.id)
+})
+
+// Watch subscription promotion selection
+watch(subSelectedPromotionId, (id) => {
+  const plan = selectedPlan.value
+  if (plan) {
+    fetchSubPromoPreview(plan.id, plan.price, id)
+  } else {
+    subPromoPreview.value = null
+  }
 })
 
 // Payment button class: follows selected payment method color
@@ -655,11 +738,13 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
   submitting.value = true
   errorMessage.value = ''
   try {
+    const promotionId = orderType === 'subscription' ? subSelectedPromotionId.value : selectedPromotionId.value
     const result = await paymentStore.createOrder({
       amount: orderAmount,
       payment_type: selectedMethod.value,
       order_type: orderType,
       plan_id: planId,
+      promotion_id: promotionId || undefined,
     })
     const openWindow = (url: string) => {
       const win = window.open(url, 'paymentPopup', POPUP_WINDOW_FEATURES)
@@ -758,6 +843,8 @@ onMounted(async () => {
     }
   } catch (err: unknown) { appStore.showError(extractApiErrorMessage(err, t('common.error'))) }
   finally { loading.value = false }
+  // Fetch available promotions for recharge (non-blocking)
+  fetchAvailablePromotions()
   // Fetch active subscriptions (uses cache, non-blocking)
   subscriptionStore.fetchActiveSubscriptions().catch(() => {})
 })

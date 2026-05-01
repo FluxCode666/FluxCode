@@ -93,7 +93,7 @@ func (s *PaymentService) computeOrderAmounts(ctx context.Context, req CreateOrde
 		comp.LimitAmount = plan.Price
 		comp.PaymentBase = plan.Price
 		if s.promotionResolver != nil {
-			hit, err := s.promotionResolver.ResolveSubscriptionDiscount(ctx, req.UserID, plan.ID, plan.Price)
+			hit, err := s.promotionResolver.ResolveSubscriptionDiscount(ctx, req.UserID, plan.ID, plan.Price, req.PromotionID)
 			if err != nil {
 				return nil, fmt.Errorf("resolve subscription promotion: %w", err)
 			}
@@ -115,7 +115,7 @@ func (s *PaymentService) computeOrderAmounts(ctx context.Context, req CreateOrde
 		comp.PaymentBase = req.Amount
 		comp.OrderAmount = calculateCreditedBalance(req.Amount, cfg.BalanceRechargeMultiplier)
 		if s.promotionResolver != nil {
-			hit, err := s.promotionResolver.ResolveRechargeDiscount(ctx, req.UserID, req.Amount)
+			hit, err := s.promotionResolver.ResolveRechargeDiscount(ctx, req.UserID, req.Amount, req.PromotionID)
 			if err != nil {
 				return nil, fmt.Errorf("resolve recharge promotion: %w", err)
 			}

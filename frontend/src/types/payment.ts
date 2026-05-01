@@ -95,6 +95,8 @@ export interface PaymentOrder {
   provider_instance_id?: string
   promotion_id?: number | null
   promotion_name?: string
+  discount_amount?: number
+  bonus_amount?: number
 }
 
 // ==================== Plans & Channels ====================
@@ -157,6 +159,7 @@ export interface CreateOrderRequest {
   payment_type: string
   order_type: string
   plan_id?: number
+  promotion_id?: number
 }
 
 export interface CreateOrderResult {
@@ -196,6 +199,17 @@ export interface PreviewOrderRequest {
   amount: number
   order_type: 'balance' | 'subscription'
   plan_id?: number
+  promotion_id?: number
+}
+
+export interface AvailablePromotion {
+  id: number
+  name: string
+  description: string
+  promotion_type: string
+  discount_mode: string
+  used_count: number
+  max_uses: number
 }
 
 export interface DashboardStats {
