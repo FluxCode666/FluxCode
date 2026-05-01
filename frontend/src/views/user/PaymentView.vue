@@ -83,6 +83,30 @@
                   <span class="font-medium text-gray-700 dark:text-gray-300">{{ t('payment.actualPay') }}</span>
                   <span class="text-lg font-bold text-primary-600 dark:text-primary-400">¥{{ totalAmount.toFixed(2) }}</span>
                 </div>
+                <!-- Promotion Preview -->
+                <template v-if="promoPreview && promoPreview.hit">
+                  <div class="border-t border-green-200 pt-2 dark:border-green-800/40">
+                    <div class="flex items-center gap-1.5 mb-1">
+                      <span class="inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-green-900/30 dark:text-green-400">
+                        🎉 {{ promoPreview.promotion_name }}
+                      </span>
+                    </div>
+                    <div v-if="promoPreview.discount_amount > 0" class="flex justify-between">
+                      <span class="text-green-600 dark:text-green-400">{{ t('payment.promoDiscount') }}</span>
+                      <span class="font-medium text-green-600 dark:text-green-400">-¥{{ promoPreview.discount_amount.toFixed(2) }}</span>
+                    </div>
+                    <div v-if="promoPreview.bonus_amount > 0" class="flex justify-between">
+                      <span class="text-blue-600 dark:text-blue-400">{{ t('payment.promoBonus') }}</span>
+                      <span class="font-medium text-blue-600 dark:text-blue-400">+${{ promoPreview.bonus_amount.toFixed(2) }}</span>
+                    </div>
+                    <div class="flex justify-between mt-1">
+                      <span class="font-medium text-gray-700 dark:text-gray-300">{{ t('payment.promoCredited') }}</span>
+                      <span class="text-lg font-bold text-green-600 dark:text-green-400">${{ promoPreview.credited_amount.toFixed(2) }}</span>
+                    </div>
+                    <p v-if="promoPreview.description" class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ promoPreview.description }}</p>
+                  </div>
+                </template>
+                <template v-else-if="!promoPreview || !promoPreview.hit">
                 <div v-if="balanceRechargeMultiplier !== 1" class="flex justify-between" :class="{ 'border-t border-gray-200 pt-2 dark:border-dark-600': feeRate <= 0 }">
                   <span class="text-gray-500 dark:text-gray-400">{{ t('payment.creditedBalance') }}</span>
                   <span class="text-gray-900 dark:text-white">${{ creditedAmount.toFixed(2) }}</span>
@@ -90,6 +114,7 @@
                 <p v-if="balanceRechargeMultiplier !== 1" class="border-t border-gray-200 pt-2 text-xs text-gray-500 dark:border-dark-600 dark:text-gray-400">
                   {{ t('payment.rechargeRatePreview', { usd: balanceRechargeMultiplier.toFixed(2) }) }}
                 </p>
+                </template>
               </div>
             </div>
             <button :class="['btn w-full py-3 text-base font-medium', paymentButtonClass]" :disabled="!canSubmit || submitting" @click="handleSubmitRecharge">
@@ -161,20 +186,39 @@
                   @select="selectedMethod = $event"
                 />
               </div>
-              <div v-if="feeRate > 0 && selectedPlan.price > 0" class="card p-6">
+              <div v-if="selectedPlan.price > 0" class="card p-6">
                 <div class="space-y-2 text-sm">
                   <div class="flex justify-between">
                     <span class="text-gray-500 dark:text-gray-400">{{ t('payment.amountLabel') }}</span>
                     <span class="text-gray-900 dark:text-white">¥{{ selectedPlan.price.toFixed(2) }}</span>
                   </div>
-                  <div class="flex justify-between">
+                  <div v-if="feeRate > 0" class="flex justify-between">
                     <span class="text-gray-500 dark:text-gray-400">{{ t('payment.fee') }} ({{ feeRate }}%)</span>
                     <span class="text-gray-900 dark:text-white">¥{{ subFeeAmount.toFixed(2) }}</span>
                   </div>
-                  <div class="flex justify-between border-t border-gray-200 pt-2 dark:border-dark-600">
+                  <div v-if="feeRate > 0" class="flex justify-between border-t border-gray-200 pt-2 dark:border-dark-600">
                     <span class="font-medium text-gray-700 dark:text-gray-300">{{ t('payment.actualPay') }}</span>
                     <span class="text-lg font-bold text-primary-600 dark:text-primary-400">¥{{ subTotalAmount.toFixed(2) }}</span>
                   </div>
+                  <!-- Subscription Promotion Preview -->
+                  <template v-if="subPromoPreview && subPromoPreview.hit">
+                    <div class="border-t border-green-200 pt-2 dark:border-green-800/40">
+                      <div class="flex items-center gap-1.5 mb-1">
+                        <span class="inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-green-900/30 dark:text-green-400">
+                          🎉 {{ subPromoPreview.promotion_name }}
+                        </span>
+                      </div>
+                      <div v-if="subPromoPreview.discount_amount > 0" class="flex justify-between">
+                        <span class="text-green-600 dark:text-green-400">{{ t('payment.promoDiscount') }}</span>
+                        <span class="font-medium text-green-600 dark:text-green-400">-¥{{ subPromoPreview.discount_amount.toFixed(2) }}</span>
+                      </div>
+                      <div class="flex justify-between mt-1">
+                        <span class="font-medium text-gray-700 dark:text-gray-300">{{ t('payment.promoActualPay') }}</span>
+                        <span class="text-lg font-bold text-green-600 dark:text-green-400">¥{{ subPromoPreview.payment_amount.toFixed(2) }}</span>
+                      </div>
+                      <p v-if="subPromoPreview.description" class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ subPromoPreview.description }}</p>
+                    </div>
+                  </template>
                 </div>
               </div>
               <button :class="['btn w-full py-3 text-base font-medium', paymentButtonClass]" :disabled="!canSubmitSubscription || submitting" @click="confirmSubscribe">
@@ -273,7 +317,7 @@ import { useAppStore } from '@/stores'
 import { paymentAPI } from '@/api/payment'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import { isMobileDevice } from '@/utils/device'
-import type { SubscriptionPlan, CheckoutInfoResponse, OrderType } from '@/types/payment'
+import type { SubscriptionPlan, CheckoutInfoResponse, OrderType, PromotionPreview } from '@/types/payment'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import AmountInput from '@/components/payment/AmountInput.vue'
 import PaymentMethodSelector from '@/components/payment/PaymentMethodSelector.vue'
@@ -308,6 +352,10 @@ const amount = ref<number | null>(null)
 const selectedMethod = ref('')
 const selectedPlan = ref<SubscriptionPlan | null>(null)
 const previewImage = ref('')
+
+// Promotion preview state
+const promoPreview = ref<PromotionPreview | null>(null)
+const subPromoPreview = ref<PromotionPreview | null>(null)
 
 // Payment phase: 'select' → 'paying' (QR/redirect) or 'stripe' (inline Stripe)
 const paymentPhase = ref<'select' | 'paying' | 'stripe'>('select')
@@ -483,6 +531,54 @@ watch(() => [validAmount.value, selectedMethod.value] as const, ([amt, method]) 
   if (amt <= 0 || amountFitsMethod(amt, method)) return
   const available = enabledMethods.value.find((m) => amountFitsMethod(amt, m))
   if (available) selectedMethod.value = available
+})
+
+// ==================== Promotion Preview ====================
+let promoDebounceTimer: ReturnType<typeof setTimeout> | null = null
+
+async function fetchRechargePromoPreview(amt: number) {
+  if (amt <= 0) {
+    promoPreview.value = null
+    return
+  }
+  try {
+    const resp = await paymentAPI.previewOrder({ amount: amt, order_type: 'balance' })
+    promoPreview.value = resp.data
+  } catch {
+    promoPreview.value = null
+  }
+}
+
+async function fetchSubPromoPreview(planId: number, planPrice: number) {
+  if (planPrice <= 0) {
+    subPromoPreview.value = null
+    return
+  }
+  try {
+    const resp = await paymentAPI.previewOrder({ amount: planPrice, order_type: 'subscription', plan_id: planId })
+    subPromoPreview.value = resp.data
+  } catch {
+    subPromoPreview.value = null
+  }
+}
+
+// Debounced watch for recharge amount changes
+watch(amount, (newAmt) => {
+  if (promoDebounceTimer) clearTimeout(promoDebounceTimer)
+  if (!newAmt || newAmt <= 0) {
+    promoPreview.value = null
+    return
+  }
+  promoDebounceTimer = setTimeout(() => fetchRechargePromoPreview(newAmt), 400)
+})
+
+// Watch for plan selection changes (subscription)
+watch(selectedPlan, (plan) => {
+  if (!plan) {
+    subPromoPreview.value = null
+    return
+  }
+  fetchSubPromoPreview(plan.id, plan.price)
 })
 
 // Payment button class: follows selected payment method color

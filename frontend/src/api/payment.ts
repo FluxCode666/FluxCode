@@ -12,7 +12,9 @@ import type {
   CheckoutInfoResponse,
   CreateOrderRequest,
   CreateOrderResult,
-  PaymentOrder
+  PaymentOrder,
+  PromotionPreview,
+  PreviewOrderRequest
 } from '@/types/payment'
 import type { BasePaginationResponse } from '@/types'
 
@@ -45,6 +47,11 @@ export const paymentAPI = {
   /** Create a new payment order */
   createOrder(data: CreateOrderRequest) {
     return apiClient.post<CreateOrderResult>('/payment/orders', data)
+  },
+
+  /** Preview promotion discount for an upcoming order */
+  previewOrder(data: PreviewOrderRequest) {
+    return apiClient.post<PromotionPreview>('/payment/orders/preview', data)
   },
 
   /** Get current user's orders */

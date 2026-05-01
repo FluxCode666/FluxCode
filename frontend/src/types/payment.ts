@@ -167,6 +167,33 @@ export interface CreateOrderResult {
   fee_rate: number
   expires_at: string
   payment_mode?: string
+  // 命中促销活动时填充
+  original_amount?: number
+  discount_amount?: number
+  bonus_amount?: number
+  promotion_id?: number | null
+  promotion_name?: string
+  promotion_mode?: string
+}
+
+export interface PromotionPreview {
+  hit: boolean
+  promotion_id?: number | null
+  promotion_name?: string
+  promotion_mode?: string
+  original_amount: number
+  payment_amount: number
+  credited_amount: number
+  discount_amount: number
+  bonus_amount: number
+  rule_id?: number | null
+  description?: string
+}
+
+export interface PreviewOrderRequest {
+  amount: number
+  order_type: 'balance' | 'subscription'
+  plan_id?: number
 }
 
 export interface DashboardStats {

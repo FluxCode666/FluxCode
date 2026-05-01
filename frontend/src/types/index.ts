@@ -1598,6 +1598,97 @@ export interface UpdatePromoCodeRequest {
   notes?: string
 }
 
+// ==================== Promotion Types ====================
+
+export type PromotionType = 'recharge' | 'subscription'
+export type PromotionStatus = 'active' | 'disabled'
+export type RechargeDiscountMode = 'reduce_pay' | 'bonus_credit'
+export type PlanDiscountMode = 'rate' | 'amount'
+
+export interface PromotionPlanRule {
+  id: number
+  promotion_id: number
+  plan_id: number
+  discount_mode: PlanDiscountMode
+  discount_rate: number | null
+  discount_amount: number | null
+  min_price_floor: number
+  max_uses_per_user: number
+  created_at: string
+  updated_at: string
+}
+
+export interface Promotion {
+  id: number
+  name: string
+  description: string
+  promotion_type: PromotionType
+  discount_mode: RechargeDiscountMode | ''
+  recharge_rate: number | null
+  recharge_bonus_rate: number | null
+  max_uses_per_user: number
+  starts_at: string | null
+  ends_at: string | null
+  status: PromotionStatus
+  priority: number
+  plan_rules?: PromotionPlanRule[]
+  created_at: string
+  updated_at: string
+}
+
+export interface PromotionUsage {
+  id: number
+  promotion_id: number
+  user_id: number
+  order_id: number
+  plan_id: number | null
+  discount_amount: number
+  bonus_amount: number
+  used_at: string
+}
+
+export interface CreatePromotionPlanRuleRequest {
+  plan_id: number
+  discount_mode: PlanDiscountMode
+  discount_rate?: number | null
+  discount_amount?: number | null
+  min_price_floor?: number
+  max_uses_per_user?: number
+}
+
+export interface CreatePromotionRequest {
+  name: string
+  description?: string
+  promotion_type: PromotionType
+  discount_mode?: string
+  recharge_rate?: number | null
+  recharge_bonus_rate?: number | null
+  max_uses_per_user?: number
+  starts_at?: number | null
+  ends_at?: number | null
+  status?: PromotionStatus
+  priority?: number
+  plan_rules?: CreatePromotionPlanRuleRequest[]
+}
+
+export interface UpdatePromotionRequest {
+  name?: string
+  description?: string
+  discount_mode?: string
+  recharge_rate?: number | null
+  clear_recharge_rate?: boolean
+  recharge_bonus_rate?: number | null
+  clear_recharge_bonus_rate?: boolean
+  max_uses_per_user?: number
+  starts_at?: number | null
+  clear_starts_at?: boolean
+  ends_at?: number | null
+  clear_ends_at?: boolean
+  status?: PromotionStatus
+  priority?: number
+  plan_rules?: CreatePromotionPlanRuleRequest[]
+}
+
 // ==================== TOTP (2FA) Types ====================
 
 export interface TotpStatus {

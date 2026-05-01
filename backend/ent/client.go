@@ -28,6 +28,9 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/paymentproviderinstance"
 	"github.com/Wei-Shaw/sub2api/ent/promocode"
 	"github.com/Wei-Shaw/sub2api/ent/promocodeusage"
+	"github.com/Wei-Shaw/sub2api/ent/promotion"
+	"github.com/Wei-Shaw/sub2api/ent/promotionplanrule"
+	"github.com/Wei-Shaw/sub2api/ent/promotionusage"
 	"github.com/Wei-Shaw/sub2api/ent/proxy"
 	"github.com/Wei-Shaw/sub2api/ent/redeemcode"
 	"github.com/Wei-Shaw/sub2api/ent/securitysecret"
@@ -77,6 +80,12 @@ type Client struct {
 	PromoCode *PromoCodeClient
 	// PromoCodeUsage is the client for interacting with the PromoCodeUsage builders.
 	PromoCodeUsage *PromoCodeUsageClient
+	// Promotion is the client for interacting with the Promotion builders.
+	Promotion *PromotionClient
+	// PromotionPlanRule is the client for interacting with the PromotionPlanRule builders.
+	PromotionPlanRule *PromotionPlanRuleClient
+	// PromotionUsage is the client for interacting with the PromotionUsage builders.
+	PromotionUsage *PromotionUsageClient
 	// Proxy is the client for interacting with the Proxy builders.
 	Proxy *ProxyClient
 	// RedeemCode is the client for interacting with the RedeemCode builders.
@@ -129,6 +138,9 @@ func (c *Client) init() {
 	c.PaymentProviderInstance = NewPaymentProviderInstanceClient(c.config)
 	c.PromoCode = NewPromoCodeClient(c.config)
 	c.PromoCodeUsage = NewPromoCodeUsageClient(c.config)
+	c.Promotion = NewPromotionClient(c.config)
+	c.PromotionPlanRule = NewPromotionPlanRuleClient(c.config)
+	c.PromotionUsage = NewPromotionUsageClient(c.config)
 	c.Proxy = NewProxyClient(c.config)
 	c.RedeemCode = NewRedeemCodeClient(c.config)
 	c.SecuritySecret = NewSecuritySecretClient(c.config)
@@ -248,6 +260,9 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		PaymentProviderInstance: NewPaymentProviderInstanceClient(cfg),
 		PromoCode:               NewPromoCodeClient(cfg),
 		PromoCodeUsage:          NewPromoCodeUsageClient(cfg),
+		Promotion:               NewPromotionClient(cfg),
+		PromotionPlanRule:       NewPromotionPlanRuleClient(cfg),
+		PromotionUsage:          NewPromotionUsageClient(cfg),
 		Proxy:                   NewProxyClient(cfg),
 		RedeemCode:              NewRedeemCodeClient(cfg),
 		SecuritySecret:          NewSecuritySecretClient(cfg),
@@ -294,6 +309,9 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		PaymentProviderInstance: NewPaymentProviderInstanceClient(cfg),
 		PromoCode:               NewPromoCodeClient(cfg),
 		PromoCodeUsage:          NewPromoCodeUsageClient(cfg),
+		Promotion:               NewPromotionClient(cfg),
+		PromotionPlanRule:       NewPromotionPlanRuleClient(cfg),
+		PromotionUsage:          NewPromotionUsageClient(cfg),
 		Proxy:                   NewProxyClient(cfg),
 		RedeemCode:              NewRedeemCodeClient(cfg),
 		SecuritySecret:          NewSecuritySecretClient(cfg),
@@ -340,9 +358,10 @@ func (c *Client) Use(hooks ...Hook) {
 		c.APIKey, c.Account, c.AccountGroup, c.Announcement, c.AnnouncementRead,
 		c.ErrorPassthroughRule, c.Group, c.IdempotencyRecord, c.PaymentAuditLog,
 		c.PaymentOrder, c.PaymentProviderInstance, c.PromoCode, c.PromoCodeUsage,
-		c.Proxy, c.RedeemCode, c.SecuritySecret, c.Setting, c.SubscriptionGrant,
-		c.SubscriptionPlan, c.TLSFingerprintProfile, c.UsageCleanupTask, c.UsageLog,
-		c.User, c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
+		c.Promotion, c.PromotionPlanRule, c.PromotionUsage, c.Proxy, c.RedeemCode,
+		c.SecuritySecret, c.Setting, c.SubscriptionGrant, c.SubscriptionPlan,
+		c.TLSFingerprintProfile, c.UsageCleanupTask, c.UsageLog, c.User,
+		c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
 		c.UserSubscription,
 	} {
 		n.Use(hooks...)
@@ -356,9 +375,10 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 		c.APIKey, c.Account, c.AccountGroup, c.Announcement, c.AnnouncementRead,
 		c.ErrorPassthroughRule, c.Group, c.IdempotencyRecord, c.PaymentAuditLog,
 		c.PaymentOrder, c.PaymentProviderInstance, c.PromoCode, c.PromoCodeUsage,
-		c.Proxy, c.RedeemCode, c.SecuritySecret, c.Setting, c.SubscriptionGrant,
-		c.SubscriptionPlan, c.TLSFingerprintProfile, c.UsageCleanupTask, c.UsageLog,
-		c.User, c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
+		c.Promotion, c.PromotionPlanRule, c.PromotionUsage, c.Proxy, c.RedeemCode,
+		c.SecuritySecret, c.Setting, c.SubscriptionGrant, c.SubscriptionPlan,
+		c.TLSFingerprintProfile, c.UsageCleanupTask, c.UsageLog, c.User,
+		c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
 		c.UserSubscription,
 	} {
 		n.Intercept(interceptors...)
@@ -394,6 +414,12 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.PromoCode.mutate(ctx, m)
 	case *PromoCodeUsageMutation:
 		return c.PromoCodeUsage.mutate(ctx, m)
+	case *PromotionMutation:
+		return c.Promotion.mutate(ctx, m)
+	case *PromotionPlanRuleMutation:
+		return c.PromotionPlanRule.mutate(ctx, m)
+	case *PromotionUsageMutation:
+		return c.PromotionUsage.mutate(ctx, m)
 	case *ProxyMutation:
 		return c.Proxy.mutate(ctx, m)
 	case *RedeemCodeMutation:
@@ -2494,6 +2520,469 @@ func (c *PromoCodeUsageClient) mutate(ctx context.Context, m *PromoCodeUsageMuta
 		return (&PromoCodeUsageDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown PromoCodeUsage mutation op: %q", m.Op())
+	}
+}
+
+// PromotionClient is a client for the Promotion schema.
+type PromotionClient struct {
+	config
+}
+
+// NewPromotionClient returns a client for the Promotion from the given config.
+func NewPromotionClient(c config) *PromotionClient {
+	return &PromotionClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `promotion.Hooks(f(g(h())))`.
+func (c *PromotionClient) Use(hooks ...Hook) {
+	c.hooks.Promotion = append(c.hooks.Promotion, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `promotion.Intercept(f(g(h())))`.
+func (c *PromotionClient) Intercept(interceptors ...Interceptor) {
+	c.inters.Promotion = append(c.inters.Promotion, interceptors...)
+}
+
+// Create returns a builder for creating a Promotion entity.
+func (c *PromotionClient) Create() *PromotionCreate {
+	mutation := newPromotionMutation(c.config, OpCreate)
+	return &PromotionCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of Promotion entities.
+func (c *PromotionClient) CreateBulk(builders ...*PromotionCreate) *PromotionCreateBulk {
+	return &PromotionCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *PromotionClient) MapCreateBulk(slice any, setFunc func(*PromotionCreate, int)) *PromotionCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &PromotionCreateBulk{err: fmt.Errorf("calling to PromotionClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*PromotionCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &PromotionCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for Promotion.
+func (c *PromotionClient) Update() *PromotionUpdate {
+	mutation := newPromotionMutation(c.config, OpUpdate)
+	return &PromotionUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *PromotionClient) UpdateOne(_m *Promotion) *PromotionUpdateOne {
+	mutation := newPromotionMutation(c.config, OpUpdateOne, withPromotion(_m))
+	return &PromotionUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *PromotionClient) UpdateOneID(id int64) *PromotionUpdateOne {
+	mutation := newPromotionMutation(c.config, OpUpdateOne, withPromotionID(id))
+	return &PromotionUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for Promotion.
+func (c *PromotionClient) Delete() *PromotionDelete {
+	mutation := newPromotionMutation(c.config, OpDelete)
+	return &PromotionDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *PromotionClient) DeleteOne(_m *Promotion) *PromotionDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *PromotionClient) DeleteOneID(id int64) *PromotionDeleteOne {
+	builder := c.Delete().Where(promotion.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &PromotionDeleteOne{builder}
+}
+
+// Query returns a query builder for Promotion.
+func (c *PromotionClient) Query() *PromotionQuery {
+	return &PromotionQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypePromotion},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a Promotion entity by its id.
+func (c *PromotionClient) Get(ctx context.Context, id int64) (*Promotion, error) {
+	return c.Query().Where(promotion.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *PromotionClient) GetX(ctx context.Context, id int64) *Promotion {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryPlanRules queries the plan_rules edge of a Promotion.
+func (c *PromotionClient) QueryPlanRules(_m *Promotion) *PromotionPlanRuleQuery {
+	query := (&PromotionPlanRuleClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(promotion.Table, promotion.FieldID, id),
+			sqlgraph.To(promotionplanrule.Table, promotionplanrule.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, promotion.PlanRulesTable, promotion.PlanRulesColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryUsages queries the usages edge of a Promotion.
+func (c *PromotionClient) QueryUsages(_m *Promotion) *PromotionUsageQuery {
+	query := (&PromotionUsageClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(promotion.Table, promotion.FieldID, id),
+			sqlgraph.To(promotionusage.Table, promotionusage.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, promotion.UsagesTable, promotion.UsagesColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *PromotionClient) Hooks() []Hook {
+	return c.hooks.Promotion
+}
+
+// Interceptors returns the client interceptors.
+func (c *PromotionClient) Interceptors() []Interceptor {
+	return c.inters.Promotion
+}
+
+func (c *PromotionClient) mutate(ctx context.Context, m *PromotionMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&PromotionCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&PromotionUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&PromotionUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&PromotionDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown Promotion mutation op: %q", m.Op())
+	}
+}
+
+// PromotionPlanRuleClient is a client for the PromotionPlanRule schema.
+type PromotionPlanRuleClient struct {
+	config
+}
+
+// NewPromotionPlanRuleClient returns a client for the PromotionPlanRule from the given config.
+func NewPromotionPlanRuleClient(c config) *PromotionPlanRuleClient {
+	return &PromotionPlanRuleClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `promotionplanrule.Hooks(f(g(h())))`.
+func (c *PromotionPlanRuleClient) Use(hooks ...Hook) {
+	c.hooks.PromotionPlanRule = append(c.hooks.PromotionPlanRule, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `promotionplanrule.Intercept(f(g(h())))`.
+func (c *PromotionPlanRuleClient) Intercept(interceptors ...Interceptor) {
+	c.inters.PromotionPlanRule = append(c.inters.PromotionPlanRule, interceptors...)
+}
+
+// Create returns a builder for creating a PromotionPlanRule entity.
+func (c *PromotionPlanRuleClient) Create() *PromotionPlanRuleCreate {
+	mutation := newPromotionPlanRuleMutation(c.config, OpCreate)
+	return &PromotionPlanRuleCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of PromotionPlanRule entities.
+func (c *PromotionPlanRuleClient) CreateBulk(builders ...*PromotionPlanRuleCreate) *PromotionPlanRuleCreateBulk {
+	return &PromotionPlanRuleCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *PromotionPlanRuleClient) MapCreateBulk(slice any, setFunc func(*PromotionPlanRuleCreate, int)) *PromotionPlanRuleCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &PromotionPlanRuleCreateBulk{err: fmt.Errorf("calling to PromotionPlanRuleClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*PromotionPlanRuleCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &PromotionPlanRuleCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for PromotionPlanRule.
+func (c *PromotionPlanRuleClient) Update() *PromotionPlanRuleUpdate {
+	mutation := newPromotionPlanRuleMutation(c.config, OpUpdate)
+	return &PromotionPlanRuleUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *PromotionPlanRuleClient) UpdateOne(_m *PromotionPlanRule) *PromotionPlanRuleUpdateOne {
+	mutation := newPromotionPlanRuleMutation(c.config, OpUpdateOne, withPromotionPlanRule(_m))
+	return &PromotionPlanRuleUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *PromotionPlanRuleClient) UpdateOneID(id int64) *PromotionPlanRuleUpdateOne {
+	mutation := newPromotionPlanRuleMutation(c.config, OpUpdateOne, withPromotionPlanRuleID(id))
+	return &PromotionPlanRuleUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for PromotionPlanRule.
+func (c *PromotionPlanRuleClient) Delete() *PromotionPlanRuleDelete {
+	mutation := newPromotionPlanRuleMutation(c.config, OpDelete)
+	return &PromotionPlanRuleDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *PromotionPlanRuleClient) DeleteOne(_m *PromotionPlanRule) *PromotionPlanRuleDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *PromotionPlanRuleClient) DeleteOneID(id int64) *PromotionPlanRuleDeleteOne {
+	builder := c.Delete().Where(promotionplanrule.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &PromotionPlanRuleDeleteOne{builder}
+}
+
+// Query returns a query builder for PromotionPlanRule.
+func (c *PromotionPlanRuleClient) Query() *PromotionPlanRuleQuery {
+	return &PromotionPlanRuleQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypePromotionPlanRule},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a PromotionPlanRule entity by its id.
+func (c *PromotionPlanRuleClient) Get(ctx context.Context, id int64) (*PromotionPlanRule, error) {
+	return c.Query().Where(promotionplanrule.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *PromotionPlanRuleClient) GetX(ctx context.Context, id int64) *PromotionPlanRule {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryPromotion queries the promotion edge of a PromotionPlanRule.
+func (c *PromotionPlanRuleClient) QueryPromotion(_m *PromotionPlanRule) *PromotionQuery {
+	query := (&PromotionClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(promotionplanrule.Table, promotionplanrule.FieldID, id),
+			sqlgraph.To(promotion.Table, promotion.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, promotionplanrule.PromotionTable, promotionplanrule.PromotionColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *PromotionPlanRuleClient) Hooks() []Hook {
+	return c.hooks.PromotionPlanRule
+}
+
+// Interceptors returns the client interceptors.
+func (c *PromotionPlanRuleClient) Interceptors() []Interceptor {
+	return c.inters.PromotionPlanRule
+}
+
+func (c *PromotionPlanRuleClient) mutate(ctx context.Context, m *PromotionPlanRuleMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&PromotionPlanRuleCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&PromotionPlanRuleUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&PromotionPlanRuleUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&PromotionPlanRuleDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown PromotionPlanRule mutation op: %q", m.Op())
+	}
+}
+
+// PromotionUsageClient is a client for the PromotionUsage schema.
+type PromotionUsageClient struct {
+	config
+}
+
+// NewPromotionUsageClient returns a client for the PromotionUsage from the given config.
+func NewPromotionUsageClient(c config) *PromotionUsageClient {
+	return &PromotionUsageClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `promotionusage.Hooks(f(g(h())))`.
+func (c *PromotionUsageClient) Use(hooks ...Hook) {
+	c.hooks.PromotionUsage = append(c.hooks.PromotionUsage, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `promotionusage.Intercept(f(g(h())))`.
+func (c *PromotionUsageClient) Intercept(interceptors ...Interceptor) {
+	c.inters.PromotionUsage = append(c.inters.PromotionUsage, interceptors...)
+}
+
+// Create returns a builder for creating a PromotionUsage entity.
+func (c *PromotionUsageClient) Create() *PromotionUsageCreate {
+	mutation := newPromotionUsageMutation(c.config, OpCreate)
+	return &PromotionUsageCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of PromotionUsage entities.
+func (c *PromotionUsageClient) CreateBulk(builders ...*PromotionUsageCreate) *PromotionUsageCreateBulk {
+	return &PromotionUsageCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *PromotionUsageClient) MapCreateBulk(slice any, setFunc func(*PromotionUsageCreate, int)) *PromotionUsageCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &PromotionUsageCreateBulk{err: fmt.Errorf("calling to PromotionUsageClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*PromotionUsageCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &PromotionUsageCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for PromotionUsage.
+func (c *PromotionUsageClient) Update() *PromotionUsageUpdate {
+	mutation := newPromotionUsageMutation(c.config, OpUpdate)
+	return &PromotionUsageUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *PromotionUsageClient) UpdateOne(_m *PromotionUsage) *PromotionUsageUpdateOne {
+	mutation := newPromotionUsageMutation(c.config, OpUpdateOne, withPromotionUsage(_m))
+	return &PromotionUsageUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *PromotionUsageClient) UpdateOneID(id int64) *PromotionUsageUpdateOne {
+	mutation := newPromotionUsageMutation(c.config, OpUpdateOne, withPromotionUsageID(id))
+	return &PromotionUsageUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for PromotionUsage.
+func (c *PromotionUsageClient) Delete() *PromotionUsageDelete {
+	mutation := newPromotionUsageMutation(c.config, OpDelete)
+	return &PromotionUsageDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *PromotionUsageClient) DeleteOne(_m *PromotionUsage) *PromotionUsageDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *PromotionUsageClient) DeleteOneID(id int64) *PromotionUsageDeleteOne {
+	builder := c.Delete().Where(promotionusage.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &PromotionUsageDeleteOne{builder}
+}
+
+// Query returns a query builder for PromotionUsage.
+func (c *PromotionUsageClient) Query() *PromotionUsageQuery {
+	return &PromotionUsageQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypePromotionUsage},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a PromotionUsage entity by its id.
+func (c *PromotionUsageClient) Get(ctx context.Context, id int64) (*PromotionUsage, error) {
+	return c.Query().Where(promotionusage.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *PromotionUsageClient) GetX(ctx context.Context, id int64) *PromotionUsage {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryPromotion queries the promotion edge of a PromotionUsage.
+func (c *PromotionUsageClient) QueryPromotion(_m *PromotionUsage) *PromotionQuery {
+	query := (&PromotionClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(promotionusage.Table, promotionusage.FieldID, id),
+			sqlgraph.To(promotion.Table, promotion.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, promotionusage.PromotionTable, promotionusage.PromotionColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *PromotionUsageClient) Hooks() []Hook {
+	return c.hooks.PromotionUsage
+}
+
+// Interceptors returns the client interceptors.
+func (c *PromotionUsageClient) Interceptors() []Interceptor {
+	return c.inters.PromotionUsage
+}
+
+func (c *PromotionUsageClient) mutate(ctx context.Context, m *PromotionUsageMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&PromotionUsageCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&PromotionUsageUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&PromotionUsageUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&PromotionUsageDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown PromotionUsage mutation op: %q", m.Op())
 	}
 }
 
@@ -4805,18 +5294,20 @@ type (
 	hooks struct {
 		APIKey, Account, AccountGroup, Announcement, AnnouncementRead,
 		ErrorPassthroughRule, Group, IdempotencyRecord, PaymentAuditLog, PaymentOrder,
-		PaymentProviderInstance, PromoCode, PromoCodeUsage, Proxy, RedeemCode,
-		SecuritySecret, Setting, SubscriptionGrant, SubscriptionPlan,
-		TLSFingerprintProfile, UsageCleanupTask, UsageLog, User, UserAllowedGroup,
-		UserAttributeDefinition, UserAttributeValue, UserSubscription []ent.Hook
+		PaymentProviderInstance, PromoCode, PromoCodeUsage, Promotion,
+		PromotionPlanRule, PromotionUsage, Proxy, RedeemCode, SecuritySecret, Setting,
+		SubscriptionGrant, SubscriptionPlan, TLSFingerprintProfile, UsageCleanupTask,
+		UsageLog, User, UserAllowedGroup, UserAttributeDefinition, UserAttributeValue,
+		UserSubscription []ent.Hook
 	}
 	inters struct {
 		APIKey, Account, AccountGroup, Announcement, AnnouncementRead,
 		ErrorPassthroughRule, Group, IdempotencyRecord, PaymentAuditLog, PaymentOrder,
-		PaymentProviderInstance, PromoCode, PromoCodeUsage, Proxy, RedeemCode,
-		SecuritySecret, Setting, SubscriptionGrant, SubscriptionPlan,
-		TLSFingerprintProfile, UsageCleanupTask, UsageLog, User, UserAllowedGroup,
-		UserAttributeDefinition, UserAttributeValue, UserSubscription []ent.Interceptor
+		PaymentProviderInstance, PromoCode, PromoCodeUsage, Promotion,
+		PromotionPlanRule, PromotionUsage, Proxy, RedeemCode, SecuritySecret, Setting,
+		SubscriptionGrant, SubscriptionPlan, TLSFingerprintProfile, UsageCleanupTask,
+		UsageLog, User, UserAllowedGroup, UserAttributeDefinition, UserAttributeValue,
+		UserSubscription []ent.Interceptor
 	}
 )
 

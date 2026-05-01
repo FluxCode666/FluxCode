@@ -92,6 +92,14 @@ type CreateOrderResponse struct {
 	ClientSecret string    `json:"client_secret,omitempty"`
 	ExpiresAt    time.Time `json:"expires_at"`
 	PaymentMode  string    `json:"payment_mode,omitempty"`
+
+	// 促销活动信息（命中时填充）
+	OriginalAmount float64 `json:"original_amount"`
+	DiscountAmount float64 `json:"discount_amount"`
+	BonusAmount    float64 `json:"bonus_amount"`
+	PromotionID    *int64  `json:"promotion_id,omitempty"`
+	PromotionName  string  `json:"promotion_name,omitempty"`
+	PromotionMode  string  `json:"promotion_mode,omitempty"`
 }
 
 type OrderListParams struct {
@@ -159,20 +167,44 @@ type TopUserStat struct {
 // --- Service ---
 
 type PaymentService struct {
-	providerMu      sync.Mutex
-	providersLoaded bool
-	entClient       *dbent.Client
-	registry        *payment.Registry
-	loadBalancer    payment.LoadBalancer
-	redeemService   *RedeemService
-	subscriptionSvc *SubscriptionService
-	configService   *PaymentConfigService
-	userRepo        UserRepository
-	groupRepo       GroupRepository
+	providerMu        sync.Mutex
+	providersLoaded   bool
+	entClient         *dbent.Client
+	registry          *payment.Registry
+	loadBalancer      payment.LoadBalancer
+	redeemService     *RedeemService
+	subscriptionSvc   *SubscriptionService
+	configService     *PaymentConfigService
+	userRepo          UserRepository
+	groupRepo         GroupRepository
+	promotionRepo     PromotionRepository
+	promotionResolver *PromotionResolver
 }
 
-func NewPaymentService(entClient *dbent.Client, registry *payment.Registry, loadBalancer payment.LoadBalancer, redeemService *RedeemService, subscriptionSvc *SubscriptionService, configService *PaymentConfigService, userRepo UserRepository, groupRepo GroupRepository) *PaymentService {
-	return &PaymentService{entClient: entClient, registry: registry, loadBalancer: loadBalancer, redeemService: redeemService, subscriptionSvc: subscriptionSvc, configService: configService, userRepo: userRepo, groupRepo: groupRepo}
+func NewPaymentService(
+	entClient *dbent.Client,
+	registry *payment.Registry,
+	loadBalancer payment.LoadBalancer,
+	redeemService *RedeemService,
+	subscriptionSvc *SubscriptionService,
+	configService *PaymentConfigService,
+	userRepo UserRepository,
+	groupRepo GroupRepository,
+	promotionRepo PromotionRepository,
+	promotionResolver *PromotionResolver,
+) *PaymentService {
+	return &PaymentService{
+		entClient:         entClient,
+		registry:          registry,
+		loadBalancer:      loadBalancer,
+		redeemService:     redeemService,
+		subscriptionSvc:   subscriptionSvc,
+		configService:     configService,
+		userRepo:          userRepo,
+		groupRepo:         groupRepo,
+		promotionRepo:     promotionRepo,
+		promotionResolver: promotionResolver,
+	}
 }
 
 // --- Provider Registry ---

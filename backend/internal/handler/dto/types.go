@@ -583,6 +583,66 @@ type PromoCodeUsage struct {
 	User *User `json:"user,omitempty"`
 }
 
+// Promotion 促销活动
+type Promotion struct {
+	ID                int64               `json:"id"`
+	Name              string              `json:"name"`
+	Description       string              `json:"description"`
+	PromotionType     string              `json:"promotion_type"`
+	DiscountMode      string              `json:"discount_mode"`
+	RechargeRate      *float64            `json:"recharge_rate"`
+	RechargeBonusRate *float64            `json:"recharge_bonus_rate"`
+	MaxUsesPerUser    int                 `json:"max_uses_per_user"`
+	StartsAt          *time.Time          `json:"starts_at"`
+	EndsAt            *time.Time          `json:"ends_at"`
+	Status            string              `json:"status"`
+	Priority          int                 `json:"priority"`
+	PlanRules         []PromotionPlanRule `json:"plan_rules,omitempty"`
+	CreatedAt         time.Time           `json:"created_at"`
+	UpdatedAt         time.Time           `json:"updated_at"`
+}
+
+// PromotionPlanRule 订阅活动针对单个套餐的规则
+type PromotionPlanRule struct {
+	ID             int64     `json:"id"`
+	PromotionID    int64     `json:"promotion_id"`
+	PlanID         int64     `json:"plan_id"`
+	DiscountMode   string    `json:"discount_mode"`
+	DiscountRate   *float64  `json:"discount_rate"`
+	DiscountAmount *float64  `json:"discount_amount"`
+	MinPriceFloor  float64   `json:"min_price_floor"`
+	MaxUsesPerUser int       `json:"max_uses_per_user"`
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
+}
+
+// PromotionUsage 促销活动使用记录
+type PromotionUsage struct {
+	ID             int64     `json:"id"`
+	PromotionID    int64     `json:"promotion_id"`
+	UserID         int64     `json:"user_id"`
+	OrderID        int64     `json:"order_id"`
+	PlanID         *int64    `json:"plan_id"`
+	DiscountAmount float64   `json:"discount_amount"`
+	BonusAmount    float64   `json:"bonus_amount"`
+	UsedAt         time.Time `json:"used_at"`
+}
+
+// PromotionPreview 用户端下单前获取的折扣预览
+type PromotionPreview struct {
+	Hit            bool    `json:"hit"`
+	PromotionID    *int64  `json:"promotion_id,omitempty"`
+	PromotionName  string  `json:"promotion_name,omitempty"`
+	PromotionMode  string  `json:"promotion_mode,omitempty"`
+	OriginalAmount float64 `json:"original_amount"`
+	PaymentAmount  float64 `json:"payment_amount"`
+	CreditedAmount float64 `json:"credited_amount"`
+	DiscountAmount float64 `json:"discount_amount"`
+	BonusAmount    float64 `json:"bonus_amount"`
+	RuleID         *int64  `json:"rule_id,omitempty"`
+	Description    string  `json:"description,omitempty"`
+}
+
 // PricingPlanGroup represents a pricing plan group for the public pricing page
 type PricingPlanGroup struct {
 	ID          int64   `json:"id"`

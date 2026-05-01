@@ -239,6 +239,76 @@ func (_c *PaymentOrderCreate) SetNillableStatus(v *string) *PaymentOrderCreate {
 	return _c
 }
 
+// SetPromotionID sets the "promotion_id" field.
+func (_c *PaymentOrderCreate) SetPromotionID(v int64) *PaymentOrderCreate {
+	_c.mutation.SetPromotionID(v)
+	return _c
+}
+
+// SetNillablePromotionID sets the "promotion_id" field if the given value is not nil.
+func (_c *PaymentOrderCreate) SetNillablePromotionID(v *int64) *PaymentOrderCreate {
+	if v != nil {
+		_c.SetPromotionID(*v)
+	}
+	return _c
+}
+
+// SetPromotionRuleID sets the "promotion_rule_id" field.
+func (_c *PaymentOrderCreate) SetPromotionRuleID(v int64) *PaymentOrderCreate {
+	_c.mutation.SetPromotionRuleID(v)
+	return _c
+}
+
+// SetNillablePromotionRuleID sets the "promotion_rule_id" field if the given value is not nil.
+func (_c *PaymentOrderCreate) SetNillablePromotionRuleID(v *int64) *PaymentOrderCreate {
+	if v != nil {
+		_c.SetPromotionRuleID(*v)
+	}
+	return _c
+}
+
+// SetOriginalAmount sets the "original_amount" field.
+func (_c *PaymentOrderCreate) SetOriginalAmount(v float64) *PaymentOrderCreate {
+	_c.mutation.SetOriginalAmount(v)
+	return _c
+}
+
+// SetNillableOriginalAmount sets the "original_amount" field if the given value is not nil.
+func (_c *PaymentOrderCreate) SetNillableOriginalAmount(v *float64) *PaymentOrderCreate {
+	if v != nil {
+		_c.SetOriginalAmount(*v)
+	}
+	return _c
+}
+
+// SetDiscountAmount sets the "discount_amount" field.
+func (_c *PaymentOrderCreate) SetDiscountAmount(v float64) *PaymentOrderCreate {
+	_c.mutation.SetDiscountAmount(v)
+	return _c
+}
+
+// SetNillableDiscountAmount sets the "discount_amount" field if the given value is not nil.
+func (_c *PaymentOrderCreate) SetNillableDiscountAmount(v *float64) *PaymentOrderCreate {
+	if v != nil {
+		_c.SetDiscountAmount(*v)
+	}
+	return _c
+}
+
+// SetBonusAmount sets the "bonus_amount" field.
+func (_c *PaymentOrderCreate) SetBonusAmount(v float64) *PaymentOrderCreate {
+	_c.mutation.SetBonusAmount(v)
+	return _c
+}
+
+// SetNillableBonusAmount sets the "bonus_amount" field if the given value is not nil.
+func (_c *PaymentOrderCreate) SetNillableBonusAmount(v *float64) *PaymentOrderCreate {
+	if v != nil {
+		_c.SetBonusAmount(*v)
+	}
+	return _c
+}
+
 // SetRefundAmount sets the "refund_amount" field.
 func (_c *PaymentOrderCreate) SetRefundAmount(v float64) *PaymentOrderCreate {
 	_c.mutation.SetRefundAmount(v)
@@ -509,6 +579,14 @@ func (_c *PaymentOrderCreate) defaults() {
 		v := paymentorder.DefaultStatus
 		_c.mutation.SetStatus(v)
 	}
+	if _, ok := _c.mutation.DiscountAmount(); !ok {
+		v := paymentorder.DefaultDiscountAmount
+		_c.mutation.SetDiscountAmount(v)
+	}
+	if _, ok := _c.mutation.BonusAmount(); !ok {
+		v := paymentorder.DefaultBonusAmount
+		_c.mutation.SetBonusAmount(v)
+	}
 	if _, ok := _c.mutation.RefundAmount(); !ok {
 		v := paymentorder.DefaultRefundAmount
 		_c.mutation.SetRefundAmount(v)
@@ -609,6 +687,12 @@ func (_c *PaymentOrderCreate) check() error {
 		if err := paymentorder.StatusValidator(v); err != nil {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "PaymentOrder.status": %w`, err)}
 		}
+	}
+	if _, ok := _c.mutation.DiscountAmount(); !ok {
+		return &ValidationError{Name: "discount_amount", err: errors.New(`ent: missing required field "PaymentOrder.discount_amount"`)}
+	}
+	if _, ok := _c.mutation.BonusAmount(); !ok {
+		return &ValidationError{Name: "bonus_amount", err: errors.New(`ent: missing required field "PaymentOrder.bonus_amount"`)}
 	}
 	if _, ok := _c.mutation.RefundAmount(); !ok {
 		return &ValidationError{Name: "refund_amount", err: errors.New(`ent: missing required field "PaymentOrder.refund_amount"`)}
@@ -751,6 +835,26 @@ func (_c *PaymentOrderCreate) createSpec() (*PaymentOrder, *sqlgraph.CreateSpec)
 	if value, ok := _c.mutation.Status(); ok {
 		_spec.SetField(paymentorder.FieldStatus, field.TypeString, value)
 		_node.Status = value
+	}
+	if value, ok := _c.mutation.PromotionID(); ok {
+		_spec.SetField(paymentorder.FieldPromotionID, field.TypeInt64, value)
+		_node.PromotionID = &value
+	}
+	if value, ok := _c.mutation.PromotionRuleID(); ok {
+		_spec.SetField(paymentorder.FieldPromotionRuleID, field.TypeInt64, value)
+		_node.PromotionRuleID = &value
+	}
+	if value, ok := _c.mutation.OriginalAmount(); ok {
+		_spec.SetField(paymentorder.FieldOriginalAmount, field.TypeFloat64, value)
+		_node.OriginalAmount = &value
+	}
+	if value, ok := _c.mutation.DiscountAmount(); ok {
+		_spec.SetField(paymentorder.FieldDiscountAmount, field.TypeFloat64, value)
+		_node.DiscountAmount = value
+	}
+	if value, ok := _c.mutation.BonusAmount(); ok {
+		_spec.SetField(paymentorder.FieldBonusAmount, field.TypeFloat64, value)
+		_node.BonusAmount = value
 	}
 	if value, ok := _c.mutation.RefundAmount(); ok {
 		_spec.SetField(paymentorder.FieldRefundAmount, field.TypeFloat64, value)
@@ -1210,6 +1314,114 @@ func (u *PaymentOrderUpsert) SetStatus(v string) *PaymentOrderUpsert {
 // UpdateStatus sets the "status" field to the value that was provided on create.
 func (u *PaymentOrderUpsert) UpdateStatus() *PaymentOrderUpsert {
 	u.SetExcluded(paymentorder.FieldStatus)
+	return u
+}
+
+// SetPromotionID sets the "promotion_id" field.
+func (u *PaymentOrderUpsert) SetPromotionID(v int64) *PaymentOrderUpsert {
+	u.Set(paymentorder.FieldPromotionID, v)
+	return u
+}
+
+// UpdatePromotionID sets the "promotion_id" field to the value that was provided on create.
+func (u *PaymentOrderUpsert) UpdatePromotionID() *PaymentOrderUpsert {
+	u.SetExcluded(paymentorder.FieldPromotionID)
+	return u
+}
+
+// AddPromotionID adds v to the "promotion_id" field.
+func (u *PaymentOrderUpsert) AddPromotionID(v int64) *PaymentOrderUpsert {
+	u.Add(paymentorder.FieldPromotionID, v)
+	return u
+}
+
+// ClearPromotionID clears the value of the "promotion_id" field.
+func (u *PaymentOrderUpsert) ClearPromotionID() *PaymentOrderUpsert {
+	u.SetNull(paymentorder.FieldPromotionID)
+	return u
+}
+
+// SetPromotionRuleID sets the "promotion_rule_id" field.
+func (u *PaymentOrderUpsert) SetPromotionRuleID(v int64) *PaymentOrderUpsert {
+	u.Set(paymentorder.FieldPromotionRuleID, v)
+	return u
+}
+
+// UpdatePromotionRuleID sets the "promotion_rule_id" field to the value that was provided on create.
+func (u *PaymentOrderUpsert) UpdatePromotionRuleID() *PaymentOrderUpsert {
+	u.SetExcluded(paymentorder.FieldPromotionRuleID)
+	return u
+}
+
+// AddPromotionRuleID adds v to the "promotion_rule_id" field.
+func (u *PaymentOrderUpsert) AddPromotionRuleID(v int64) *PaymentOrderUpsert {
+	u.Add(paymentorder.FieldPromotionRuleID, v)
+	return u
+}
+
+// ClearPromotionRuleID clears the value of the "promotion_rule_id" field.
+func (u *PaymentOrderUpsert) ClearPromotionRuleID() *PaymentOrderUpsert {
+	u.SetNull(paymentorder.FieldPromotionRuleID)
+	return u
+}
+
+// SetOriginalAmount sets the "original_amount" field.
+func (u *PaymentOrderUpsert) SetOriginalAmount(v float64) *PaymentOrderUpsert {
+	u.Set(paymentorder.FieldOriginalAmount, v)
+	return u
+}
+
+// UpdateOriginalAmount sets the "original_amount" field to the value that was provided on create.
+func (u *PaymentOrderUpsert) UpdateOriginalAmount() *PaymentOrderUpsert {
+	u.SetExcluded(paymentorder.FieldOriginalAmount)
+	return u
+}
+
+// AddOriginalAmount adds v to the "original_amount" field.
+func (u *PaymentOrderUpsert) AddOriginalAmount(v float64) *PaymentOrderUpsert {
+	u.Add(paymentorder.FieldOriginalAmount, v)
+	return u
+}
+
+// ClearOriginalAmount clears the value of the "original_amount" field.
+func (u *PaymentOrderUpsert) ClearOriginalAmount() *PaymentOrderUpsert {
+	u.SetNull(paymentorder.FieldOriginalAmount)
+	return u
+}
+
+// SetDiscountAmount sets the "discount_amount" field.
+func (u *PaymentOrderUpsert) SetDiscountAmount(v float64) *PaymentOrderUpsert {
+	u.Set(paymentorder.FieldDiscountAmount, v)
+	return u
+}
+
+// UpdateDiscountAmount sets the "discount_amount" field to the value that was provided on create.
+func (u *PaymentOrderUpsert) UpdateDiscountAmount() *PaymentOrderUpsert {
+	u.SetExcluded(paymentorder.FieldDiscountAmount)
+	return u
+}
+
+// AddDiscountAmount adds v to the "discount_amount" field.
+func (u *PaymentOrderUpsert) AddDiscountAmount(v float64) *PaymentOrderUpsert {
+	u.Add(paymentorder.FieldDiscountAmount, v)
+	return u
+}
+
+// SetBonusAmount sets the "bonus_amount" field.
+func (u *PaymentOrderUpsert) SetBonusAmount(v float64) *PaymentOrderUpsert {
+	u.Set(paymentorder.FieldBonusAmount, v)
+	return u
+}
+
+// UpdateBonusAmount sets the "bonus_amount" field to the value that was provided on create.
+func (u *PaymentOrderUpsert) UpdateBonusAmount() *PaymentOrderUpsert {
+	u.SetExcluded(paymentorder.FieldBonusAmount)
+	return u
+}
+
+// AddBonusAmount adds v to the "bonus_amount" field.
+func (u *PaymentOrderUpsert) AddBonusAmount(v float64) *PaymentOrderUpsert {
+	u.Add(paymentorder.FieldBonusAmount, v)
 	return u
 }
 
@@ -1891,6 +2103,132 @@ func (u *PaymentOrderUpsertOne) SetStatus(v string) *PaymentOrderUpsertOne {
 func (u *PaymentOrderUpsertOne) UpdateStatus() *PaymentOrderUpsertOne {
 	return u.Update(func(s *PaymentOrderUpsert) {
 		s.UpdateStatus()
+	})
+}
+
+// SetPromotionID sets the "promotion_id" field.
+func (u *PaymentOrderUpsertOne) SetPromotionID(v int64) *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.SetPromotionID(v)
+	})
+}
+
+// AddPromotionID adds v to the "promotion_id" field.
+func (u *PaymentOrderUpsertOne) AddPromotionID(v int64) *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.AddPromotionID(v)
+	})
+}
+
+// UpdatePromotionID sets the "promotion_id" field to the value that was provided on create.
+func (u *PaymentOrderUpsertOne) UpdatePromotionID() *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.UpdatePromotionID()
+	})
+}
+
+// ClearPromotionID clears the value of the "promotion_id" field.
+func (u *PaymentOrderUpsertOne) ClearPromotionID() *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.ClearPromotionID()
+	})
+}
+
+// SetPromotionRuleID sets the "promotion_rule_id" field.
+func (u *PaymentOrderUpsertOne) SetPromotionRuleID(v int64) *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.SetPromotionRuleID(v)
+	})
+}
+
+// AddPromotionRuleID adds v to the "promotion_rule_id" field.
+func (u *PaymentOrderUpsertOne) AddPromotionRuleID(v int64) *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.AddPromotionRuleID(v)
+	})
+}
+
+// UpdatePromotionRuleID sets the "promotion_rule_id" field to the value that was provided on create.
+func (u *PaymentOrderUpsertOne) UpdatePromotionRuleID() *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.UpdatePromotionRuleID()
+	})
+}
+
+// ClearPromotionRuleID clears the value of the "promotion_rule_id" field.
+func (u *PaymentOrderUpsertOne) ClearPromotionRuleID() *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.ClearPromotionRuleID()
+	})
+}
+
+// SetOriginalAmount sets the "original_amount" field.
+func (u *PaymentOrderUpsertOne) SetOriginalAmount(v float64) *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.SetOriginalAmount(v)
+	})
+}
+
+// AddOriginalAmount adds v to the "original_amount" field.
+func (u *PaymentOrderUpsertOne) AddOriginalAmount(v float64) *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.AddOriginalAmount(v)
+	})
+}
+
+// UpdateOriginalAmount sets the "original_amount" field to the value that was provided on create.
+func (u *PaymentOrderUpsertOne) UpdateOriginalAmount() *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.UpdateOriginalAmount()
+	})
+}
+
+// ClearOriginalAmount clears the value of the "original_amount" field.
+func (u *PaymentOrderUpsertOne) ClearOriginalAmount() *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.ClearOriginalAmount()
+	})
+}
+
+// SetDiscountAmount sets the "discount_amount" field.
+func (u *PaymentOrderUpsertOne) SetDiscountAmount(v float64) *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.SetDiscountAmount(v)
+	})
+}
+
+// AddDiscountAmount adds v to the "discount_amount" field.
+func (u *PaymentOrderUpsertOne) AddDiscountAmount(v float64) *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.AddDiscountAmount(v)
+	})
+}
+
+// UpdateDiscountAmount sets the "discount_amount" field to the value that was provided on create.
+func (u *PaymentOrderUpsertOne) UpdateDiscountAmount() *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.UpdateDiscountAmount()
+	})
+}
+
+// SetBonusAmount sets the "bonus_amount" field.
+func (u *PaymentOrderUpsertOne) SetBonusAmount(v float64) *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.SetBonusAmount(v)
+	})
+}
+
+// AddBonusAmount adds v to the "bonus_amount" field.
+func (u *PaymentOrderUpsertOne) AddBonusAmount(v float64) *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.AddBonusAmount(v)
+	})
+}
+
+// UpdateBonusAmount sets the "bonus_amount" field to the value that was provided on create.
+func (u *PaymentOrderUpsertOne) UpdateBonusAmount() *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.UpdateBonusAmount()
 	})
 }
 
@@ -2781,6 +3119,132 @@ func (u *PaymentOrderUpsertBulk) SetStatus(v string) *PaymentOrderUpsertBulk {
 func (u *PaymentOrderUpsertBulk) UpdateStatus() *PaymentOrderUpsertBulk {
 	return u.Update(func(s *PaymentOrderUpsert) {
 		s.UpdateStatus()
+	})
+}
+
+// SetPromotionID sets the "promotion_id" field.
+func (u *PaymentOrderUpsertBulk) SetPromotionID(v int64) *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.SetPromotionID(v)
+	})
+}
+
+// AddPromotionID adds v to the "promotion_id" field.
+func (u *PaymentOrderUpsertBulk) AddPromotionID(v int64) *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.AddPromotionID(v)
+	})
+}
+
+// UpdatePromotionID sets the "promotion_id" field to the value that was provided on create.
+func (u *PaymentOrderUpsertBulk) UpdatePromotionID() *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.UpdatePromotionID()
+	})
+}
+
+// ClearPromotionID clears the value of the "promotion_id" field.
+func (u *PaymentOrderUpsertBulk) ClearPromotionID() *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.ClearPromotionID()
+	})
+}
+
+// SetPromotionRuleID sets the "promotion_rule_id" field.
+func (u *PaymentOrderUpsertBulk) SetPromotionRuleID(v int64) *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.SetPromotionRuleID(v)
+	})
+}
+
+// AddPromotionRuleID adds v to the "promotion_rule_id" field.
+func (u *PaymentOrderUpsertBulk) AddPromotionRuleID(v int64) *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.AddPromotionRuleID(v)
+	})
+}
+
+// UpdatePromotionRuleID sets the "promotion_rule_id" field to the value that was provided on create.
+func (u *PaymentOrderUpsertBulk) UpdatePromotionRuleID() *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.UpdatePromotionRuleID()
+	})
+}
+
+// ClearPromotionRuleID clears the value of the "promotion_rule_id" field.
+func (u *PaymentOrderUpsertBulk) ClearPromotionRuleID() *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.ClearPromotionRuleID()
+	})
+}
+
+// SetOriginalAmount sets the "original_amount" field.
+func (u *PaymentOrderUpsertBulk) SetOriginalAmount(v float64) *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.SetOriginalAmount(v)
+	})
+}
+
+// AddOriginalAmount adds v to the "original_amount" field.
+func (u *PaymentOrderUpsertBulk) AddOriginalAmount(v float64) *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.AddOriginalAmount(v)
+	})
+}
+
+// UpdateOriginalAmount sets the "original_amount" field to the value that was provided on create.
+func (u *PaymentOrderUpsertBulk) UpdateOriginalAmount() *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.UpdateOriginalAmount()
+	})
+}
+
+// ClearOriginalAmount clears the value of the "original_amount" field.
+func (u *PaymentOrderUpsertBulk) ClearOriginalAmount() *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.ClearOriginalAmount()
+	})
+}
+
+// SetDiscountAmount sets the "discount_amount" field.
+func (u *PaymentOrderUpsertBulk) SetDiscountAmount(v float64) *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.SetDiscountAmount(v)
+	})
+}
+
+// AddDiscountAmount adds v to the "discount_amount" field.
+func (u *PaymentOrderUpsertBulk) AddDiscountAmount(v float64) *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.AddDiscountAmount(v)
+	})
+}
+
+// UpdateDiscountAmount sets the "discount_amount" field to the value that was provided on create.
+func (u *PaymentOrderUpsertBulk) UpdateDiscountAmount() *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.UpdateDiscountAmount()
+	})
+}
+
+// SetBonusAmount sets the "bonus_amount" field.
+func (u *PaymentOrderUpsertBulk) SetBonusAmount(v float64) *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.SetBonusAmount(v)
+	})
+}
+
+// AddBonusAmount adds v to the "bonus_amount" field.
+func (u *PaymentOrderUpsertBulk) AddBonusAmount(v float64) *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.AddBonusAmount(v)
+	})
+}
+
+// UpdateBonusAmount sets the "bonus_amount" field to the value that was provided on create.
+func (u *PaymentOrderUpsertBulk) UpdateBonusAmount() *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.UpdateBonusAmount()
 	})
 }
 

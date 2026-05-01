@@ -97,6 +97,24 @@ func (PaymentOrder) Fields() []ent.Field {
 			MaxLen(30).
 			Default("PENDING"),
 
+		// 促销活动信息（migration 110 添加）
+		field.Int64("promotion_id").
+			Optional().
+			Nillable(),
+		field.Int64("promotion_rule_id").
+			Optional().
+			Nillable(),
+		field.Float("original_amount").
+			SchemaType(map[string]string{dialect.Postgres: "decimal(20,2)"}).
+			Optional().
+			Nillable(),
+		field.Float("discount_amount").
+			SchemaType(map[string]string{dialect.Postgres: "decimal(20,2)"}).
+			Default(0),
+		field.Float("bonus_amount").
+			SchemaType(map[string]string{dialect.Postgres: "decimal(20,2)"}).
+			Default(0),
+
 		// 退款信息
 		field.Float("refund_amount").
 			SchemaType(map[string]string{dialect.Postgres: "decimal(20,2)"}).
@@ -186,5 +204,6 @@ func (PaymentOrder) Indexes() []ent.Index {
 		index.Fields("paid_at"),
 		index.Fields("payment_type", "paid_at"),
 		index.Fields("order_type"),
+		index.Fields("promotion_id"),
 	}
 }
