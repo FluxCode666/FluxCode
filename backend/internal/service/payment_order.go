@@ -11,6 +11,7 @@ import (
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/payment"
 	"github.com/Wei-Shaw/sub2api/internal/payment/provider"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
@@ -43,22 +44,16 @@ func (s *PaymentService) CreateOrder(ctx context.Context, req CreateOrderRequest
 	if user.Status != payment.EntityStatusActive {
 		return nil, infraerrors.Forbidden("USER_INACTIVE", "user account is disabled")
 	}
-	orderAmount := req.Amount
-	limitAmount := req.Amount
-	if plan != nil {
-		orderAmount = plan.Price
-		limitAmount = plan.Price
-	} else if req.OrderType == payment.OrderTypeBalance {
-		orderAmount = calculateCreditedBalance(req.Amount, cfg.BalanceRechargeMultiplier)
-	}
-	feeRate := cfg.RechargeFeeRate
-	payAmountStr := payment.CalculatePayAmount(limitAmount, feeRate)
-	payAmount, _ := strconv.ParseFloat(payAmountStr, 64)
-	order, err := s.createOrderInTx(ctx, req, user, plan, cfg, orderAmount, limitAmount, feeRate, payAmount)
+
+	comp, err := s.computeOrderAmounts(ctx, req, plan, cfg)
 	if err != nil {
 		return nil, err
 	}
-	resp, err := s.invokeProvider(ctx, order, req, cfg, limitAmount, payAmountStr, payAmount, plan)
+	order, err := s.createOrderInTx(ctx, req, user, plan, cfg, comp)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := s.invokeProvider(ctx, order, req, cfg, comp, plan)
 	if err != nil {
 		_, _ = s.entClient.PaymentOrder.UpdateOneID(order.ID).
 			SetStatus(OrderStatusFailed).
@@ -66,6 +61,88 @@ func (s *PaymentService) CreateOrder(ctx context.Context, req CreateOrderRequest
 		return nil, err
 	}
 	return resp, nil
+}
+
+// orderAmountComputation 是 CreateOrder 内部的金额聚合，避免参数过多。
+type orderAmountComputation struct {
+	OriginalAmount  float64               // 折前金额：plan.Price 或用户输入
+	OrderAmount     float64               // 订单到账金额（充值=到账余额；订阅=plan 折后价）
+	LimitAmount     float64               // 用于 daily limit 检查 / Subject 显示
+	PaymentBase     float64               // 用户实际需要支付的金额（手续费前）
+	PayAmount       float64               // PaymentBase 加上手续费后的实付（2 位小数）
+	PayAmountStr    string                // PayAmount 的 2 位小数字符串
+	FeeRate         float64               // 手续费率
+	DiscountAmount  float64               // 节省金额
+	BonusAmount     float64               // 加送金额
+	PromotionID     *int64                // 命中活动
+	PromotionRuleID *int64                // 订阅子规则
+	RechargeHit     *RechargeDiscount     // 仅命中充值活动时非 nil
+	SubscriptionHit *SubscriptionDiscount // 仅命中订阅活动时非 nil
+}
+
+// computeOrderAmounts 计算订单的所有金额字段，并尝试匹配最优促销活动。
+func (s *PaymentService) computeOrderAmounts(ctx context.Context, req CreateOrderRequest, plan *dbent.SubscriptionPlan, cfg *PaymentConfig) (*orderAmountComputation, error) {
+	comp := &orderAmountComputation{
+		FeeRate: cfg.RechargeFeeRate,
+	}
+
+	switch {
+	case plan != nil:
+		comp.OriginalAmount = plan.Price
+		comp.OrderAmount = plan.Price
+		comp.LimitAmount = plan.Price
+		comp.PaymentBase = plan.Price
+		if s.promotionResolver != nil {
+			hit, err := s.promotionResolver.ResolveSubscriptionDiscount(ctx, req.UserID, plan.ID, plan.Price, req.PromotionID)
+			if err != nil {
+				return nil, fmt.Errorf("resolve subscription promotion: %w", err)
+			}
+			if hit != nil {
+				comp.OrderAmount = hit.FinalPrice
+				comp.LimitAmount = hit.FinalPrice
+				comp.PaymentBase = hit.FinalPrice
+				comp.DiscountAmount = hit.DiscountAmount
+				id := hit.Promotion.ID
+				rid := hit.Rule.ID
+				comp.PromotionID = &id
+				comp.PromotionRuleID = &rid
+				comp.SubscriptionHit = hit
+			}
+		}
+	case req.OrderType == payment.OrderTypeBalance:
+		comp.OriginalAmount = req.Amount
+		comp.LimitAmount = req.Amount
+		comp.PaymentBase = req.Amount
+		comp.OrderAmount = calculateCreditedBalance(req.Amount, cfg.BalanceRechargeMultiplier)
+		if s.promotionResolver != nil {
+			hit, err := s.promotionResolver.ResolveRechargeDiscount(ctx, req.UserID, req.Amount, req.PromotionID)
+			if err != nil {
+				return nil, fmt.Errorf("resolve recharge promotion: %w", err)
+			}
+			if hit != nil {
+				switch hit.Mode {
+				case domain.PromotionDiscountModeReducePay:
+					comp.PaymentBase = hit.PaymentAmount
+					comp.DiscountAmount = hit.DiscountAmount
+				case domain.PromotionDiscountModeBonusCredit:
+					comp.OrderAmount = hit.CreditedAmount
+					comp.BonusAmount = hit.BonusAmount
+				}
+				id := hit.Promotion.ID
+				comp.PromotionID = &id
+				comp.RechargeHit = hit
+			}
+		}
+	default:
+		comp.OriginalAmount = req.Amount
+		comp.OrderAmount = req.Amount
+		comp.LimitAmount = req.Amount
+		comp.PaymentBase = req.Amount
+	}
+
+	comp.PayAmountStr = payment.CalculatePayAmount(comp.PaymentBase, comp.FeeRate)
+	comp.PayAmount, _ = strconv.ParseFloat(comp.PayAmountStr, 64)
+	return comp, nil
 }
 
 func (s *PaymentService) validateOrderInput(ctx context.Context, req CreateOrderRequest, cfg *PaymentConfig) (*dbent.SubscriptionPlan, error) {
@@ -103,7 +180,7 @@ func (s *PaymentService) validateSubOrder(ctx context.Context, req CreateOrderRe
 	return plan, nil
 }
 
-func (s *PaymentService) createOrderInTx(ctx context.Context, req CreateOrderRequest, user *User, plan *dbent.SubscriptionPlan, cfg *PaymentConfig, orderAmount, limitAmount, feeRate, payAmount float64) (*dbent.PaymentOrder, error) {
+func (s *PaymentService) createOrderInTx(ctx context.Context, req CreateOrderRequest, user *User, plan *dbent.SubscriptionPlan, cfg *PaymentConfig, comp *orderAmountComputation) (*dbent.PaymentOrder, error) {
 	tx, err := s.entClient.Tx(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("begin transaction: %w", err)
@@ -112,7 +189,7 @@ func (s *PaymentService) createOrderInTx(ctx context.Context, req CreateOrderReq
 	if err := s.checkPendingLimit(ctx, tx, req.UserID, cfg.MaxPendingOrders); err != nil {
 		return nil, err
 	}
-	if err := s.checkDailyLimit(ctx, tx, req.UserID, limitAmount, cfg.DailyLimit); err != nil {
+	if err := s.checkDailyLimit(ctx, tx, req.UserID, comp.LimitAmount, cfg.DailyLimit); err != nil {
 		return nil, err
 	}
 	tm := cfg.OrderTimeoutMin
@@ -125,9 +202,9 @@ func (s *PaymentService) createOrderInTx(ctx context.Context, req CreateOrderReq
 		SetUserEmail(user.Email).
 		SetUserName(user.Username).
 		SetNillableUserNotes(psNilIfEmpty(user.Notes)).
-		SetAmount(orderAmount).
-		SetPayAmount(payAmount).
-		SetFeeRate(feeRate).
+		SetAmount(comp.OrderAmount).
+		SetPayAmount(comp.PayAmount).
+		SetFeeRate(comp.FeeRate).
 		SetRechargeCode("").
 		SetOutTradeNo(generateOutTradeNo()).
 		SetPaymentType(req.PaymentType).
@@ -136,7 +213,12 @@ func (s *PaymentService) createOrderInTx(ctx context.Context, req CreateOrderReq
 		SetStatus(OrderStatusPending).
 		SetExpiresAt(exp).
 		SetClientIP(req.ClientIP).
-		SetSrcHost(req.SrcHost)
+		SetSrcHost(req.SrcHost).
+		SetOriginalAmount(comp.OriginalAmount).
+		SetDiscountAmount(comp.DiscountAmount).
+		SetBonusAmount(comp.BonusAmount).
+		SetNillablePromotionID(comp.PromotionID).
+		SetNillablePromotionRuleID(comp.PromotionRuleID)
 	if req.SrcURL != "" {
 		b.SetSrcURL(req.SrcURL)
 	}
@@ -196,10 +278,10 @@ func (s *PaymentService) checkDailyLimit(ctx context.Context, tx *dbent.Tx, user
 	return nil
 }
 
-func (s *PaymentService) invokeProvider(ctx context.Context, order *dbent.PaymentOrder, req CreateOrderRequest, cfg *PaymentConfig, limitAmount float64, payAmountStr string, payAmount float64, plan *dbent.SubscriptionPlan) (*CreateOrderResponse, error) {
+func (s *PaymentService) invokeProvider(ctx context.Context, order *dbent.PaymentOrder, req CreateOrderRequest, cfg *PaymentConfig, comp *orderAmountComputation, plan *dbent.SubscriptionPlan) (*CreateOrderResponse, error) {
 	// Select an instance across all providers that support the requested payment type.
 	// This enables cross-provider load balancing (e.g. EasyPay + Alipay direct for "alipay").
-	sel, err := s.loadBalancer.SelectInstance(ctx, "", req.PaymentType, payment.Strategy(cfg.LoadBalanceStrategy), payAmount)
+	sel, err := s.loadBalancer.SelectInstance(ctx, "", req.PaymentType, payment.Strategy(cfg.LoadBalanceStrategy), comp.PayAmount)
 	if err != nil {
 		return nil, infraerrors.ServiceUnavailable("PAYMENT_GATEWAY_ERROR", fmt.Sprintf("payment method (%s) is not configured", req.PaymentType))
 	}
@@ -210,9 +292,9 @@ func (s *PaymentService) invokeProvider(ctx context.Context, order *dbent.Paymen
 	if err != nil {
 		return nil, infraerrors.ServiceUnavailable("PAYMENT_GATEWAY_ERROR", "payment method is temporarily unavailable")
 	}
-	subject := s.buildPaymentSubject(plan, limitAmount, cfg)
+	subject := s.buildPaymentSubject(plan, comp.LimitAmount, cfg)
 	outTradeNo := order.OutTradeNo
-	pr, err := prov.CreatePayment(ctx, payment.CreatePaymentRequest{OrderID: outTradeNo, Amount: payAmountStr, PaymentType: req.PaymentType, Subject: subject, ClientIP: req.ClientIP, IsMobile: req.IsMobile, InstanceSubMethods: sel.SupportedTypes})
+	pr, err := prov.CreatePayment(ctx, payment.CreatePaymentRequest{OrderID: outTradeNo, Amount: comp.PayAmountStr, PaymentType: req.PaymentType, Subject: subject, ClientIP: req.ClientIP, IsMobile: req.IsMobile, InstanceSubMethods: sel.SupportedTypes})
 	if err != nil {
 		slog.Error("[PaymentService] CreatePayment failed", "provider", sel.ProviderKey, "instance", sel.InstanceID, "error", err)
 		return nil, infraerrors.ServiceUnavailable("PAYMENT_GATEWAY_ERROR", fmt.Sprintf("payment gateway error: %s", err.Error()))
@@ -221,14 +303,38 @@ func (s *PaymentService) invokeProvider(ctx context.Context, order *dbent.Paymen
 	if err != nil {
 		return nil, fmt.Errorf("update order with payment details: %w", err)
 	}
-	s.writeAuditLog(ctx, order.ID, "ORDER_CREATED", fmt.Sprintf("user:%d", req.UserID), map[string]any{
+	auditDetail := map[string]any{
 		"paymentAmount":  req.Amount,
 		"creditedAmount": order.Amount,
 		"payAmount":      order.PayAmount,
 		"paymentType":    req.PaymentType,
 		"orderType":      req.OrderType,
-	})
-	return &CreateOrderResponse{OrderID: order.ID, Amount: order.Amount, PayAmount: payAmount, FeeRate: order.FeeRate, Status: OrderStatusPending, PaymentType: req.PaymentType, PayURL: pr.PayURL, QRCode: pr.QRCode, ClientSecret: pr.ClientSecret, ExpiresAt: order.ExpiresAt, PaymentMode: sel.PaymentMode}, nil
+		"originalAmount": comp.OriginalAmount,
+		"discountAmount": comp.DiscountAmount,
+		"bonusAmount":    comp.BonusAmount,
+	}
+	if comp.PromotionID != nil {
+		auditDetail["promotionId"] = *comp.PromotionID
+	}
+	if comp.PromotionRuleID != nil {
+		auditDetail["promotionRuleId"] = *comp.PromotionRuleID
+	}
+	s.writeAuditLog(ctx, order.ID, "ORDER_CREATED", fmt.Sprintf("user:%d", req.UserID), auditDetail)
+	resp := &CreateOrderResponse{OrderID: order.ID, Amount: order.Amount, PayAmount: comp.PayAmount, FeeRate: order.FeeRate, Status: OrderStatusPending, PaymentType: req.PaymentType, PayURL: pr.PayURL, QRCode: pr.QRCode, ClientSecret: pr.ClientSecret, ExpiresAt: order.ExpiresAt, PaymentMode: sel.PaymentMode}
+	resp.OriginalAmount = comp.OriginalAmount
+	resp.DiscountAmount = comp.DiscountAmount
+	resp.BonusAmount = comp.BonusAmount
+	if comp.PromotionID != nil {
+		resp.PromotionID = comp.PromotionID
+	}
+	if comp.SubscriptionHit != nil {
+		resp.PromotionName = comp.SubscriptionHit.Promotion.Name
+		resp.PromotionMode = comp.SubscriptionHit.Rule.DiscountMode
+	} else if comp.RechargeHit != nil {
+		resp.PromotionName = comp.RechargeHit.Promotion.Name
+		resp.PromotionMode = comp.RechargeHit.Mode
+	}
+	return resp, nil
 }
 
 func (s *PaymentService) buildPaymentSubject(plan *dbent.SubscriptionPlan, limitAmount float64, cfg *PaymentConfig) string {
@@ -245,6 +351,83 @@ func (s *PaymentService) buildPaymentSubject(plan *dbent.SubscriptionPlan, limit
 		return strings.TrimSpace(pf + " " + amountStr + " " + sf)
 	}
 	return "Sub2API " + amountStr + " CNY"
+}
+
+// PromotionPreview 下单前折扣预览结果（不写入任何状态）。
+type PromotionPreview struct {
+	Hit            bool
+	PromotionID    *int64
+	PromotionRule  *int64
+	PromotionName  string
+	PromotionMode  string // 充值：reduce_pay / bonus_credit；订阅：rate / amount
+	OriginalAmount float64
+	PaymentAmount  float64 // 用户实际需要支付（不含手续费）
+	CreditedAmount float64 // 到账金额
+	DiscountAmount float64
+	BonusAmount    float64
+}
+
+// PreviewPromotion 在用户下单前按当前参数计算折扣预览。不做 daily-limit 等事务性校验。
+//
+// 对充值订单：req.Amount 必须 > 0；对订阅订单：req.PlanID 必须有效。
+func (s *PaymentService) PreviewPromotion(ctx context.Context, req CreateOrderRequest) (*PromotionPreview, error) {
+	if req.OrderType == "" {
+		req.OrderType = payment.OrderTypeBalance
+	}
+	cfg, err := s.configService.GetPaymentConfig(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("get payment config: %w", err)
+	}
+	if !cfg.Enabled {
+		return nil, infraerrors.Forbidden("PAYMENT_DISABLED", "payment system is disabled")
+	}
+
+	var plan *dbent.SubscriptionPlan
+	switch req.OrderType {
+	case payment.OrderTypeSubscription:
+		if req.PlanID == 0 {
+			return nil, infraerrors.BadRequest("INVALID_INPUT", "subscription preview requires plan_id")
+		}
+		p, err := s.configService.GetPlan(ctx, req.PlanID)
+		if err != nil || !p.ForSale {
+			return nil, infraerrors.NotFound("PLAN_NOT_AVAILABLE", "plan not found or not for sale")
+		}
+		plan = p
+	case payment.OrderTypeBalance:
+		if math.IsNaN(req.Amount) || math.IsInf(req.Amount, 0) || req.Amount <= 0 {
+			return nil, infraerrors.BadRequest("INVALID_AMOUNT", "amount must be a positive number")
+		}
+	default:
+		return nil, infraerrors.BadRequest("INVALID_ORDER_TYPE", "unsupported order_type")
+	}
+
+	comp, err := s.computeOrderAmounts(ctx, req, plan, cfg)
+	if err != nil {
+		return nil, err
+	}
+
+	preview := &PromotionPreview{
+		OriginalAmount: comp.OriginalAmount,
+		PaymentAmount:  comp.PaymentBase,
+		CreditedAmount: comp.OrderAmount,
+		DiscountAmount: comp.DiscountAmount,
+		BonusAmount:    comp.BonusAmount,
+	}
+	if comp.PromotionID != nil {
+		preview.Hit = true
+		preview.PromotionID = comp.PromotionID
+	}
+	if comp.PromotionRuleID != nil {
+		preview.PromotionRule = comp.PromotionRuleID
+	}
+	if comp.SubscriptionHit != nil {
+		preview.PromotionName = comp.SubscriptionHit.Promotion.Name
+		preview.PromotionMode = comp.SubscriptionHit.Rule.DiscountMode
+	} else if comp.RechargeHit != nil {
+		preview.PromotionName = comp.RechargeHit.Promotion.Name
+		preview.PromotionMode = comp.RechargeHit.Mode
+	}
+	return preview, nil
 }
 
 // --- Order Queries ---

@@ -34,6 +34,7 @@ type AdminHandlers struct {
 	PoolMonitor           *admin.PoolMonitorHandler
 	Channel               *admin.ChannelHandler
 	Payment               *admin.PaymentHandler
+	Promotion             *admin.PromotionHandler
 }
 
 // Handlers contains all HTTP handlers

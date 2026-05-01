@@ -54,6 +54,16 @@ const (
 	FieldProviderInstanceID = "provider_instance_id"
 	// FieldStatus holds the string denoting the status field in the database.
 	FieldStatus = "status"
+	// FieldPromotionID holds the string denoting the promotion_id field in the database.
+	FieldPromotionID = "promotion_id"
+	// FieldPromotionRuleID holds the string denoting the promotion_rule_id field in the database.
+	FieldPromotionRuleID = "promotion_rule_id"
+	// FieldOriginalAmount holds the string denoting the original_amount field in the database.
+	FieldOriginalAmount = "original_amount"
+	// FieldDiscountAmount holds the string denoting the discount_amount field in the database.
+	FieldDiscountAmount = "discount_amount"
+	// FieldBonusAmount holds the string denoting the bonus_amount field in the database.
+	FieldBonusAmount = "bonus_amount"
 	// FieldRefundAmount holds the string denoting the refund_amount field in the database.
 	FieldRefundAmount = "refund_amount"
 	// FieldRefundReason holds the string denoting the refund_reason field in the database.
@@ -124,6 +134,11 @@ var Columns = []string{
 	FieldSubscriptionDays,
 	FieldProviderInstanceID,
 	FieldStatus,
+	FieldPromotionID,
+	FieldPromotionRuleID,
+	FieldOriginalAmount,
+	FieldDiscountAmount,
+	FieldBonusAmount,
 	FieldRefundAmount,
 	FieldRefundReason,
 	FieldRefundAt,
@@ -180,6 +195,10 @@ var (
 	DefaultStatus string
 	// StatusValidator is a validator for the "status" field. It is called by the builders before save.
 	StatusValidator func(string) error
+	// DefaultDiscountAmount holds the default value on creation for the "discount_amount" field.
+	DefaultDiscountAmount float64
+	// DefaultBonusAmount holds the default value on creation for the "bonus_amount" field.
+	DefaultBonusAmount float64
 	// DefaultRefundAmount holds the default value on creation for the "refund_amount" field.
 	DefaultRefundAmount float64
 	// DefaultForceRefund holds the default value on creation for the "force_refund" field.
@@ -304,6 +323,31 @@ func ByProviderInstanceID(opts ...sql.OrderTermOption) OrderOption {
 // ByStatus orders the results by the status field.
 func ByStatus(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldStatus, opts...).ToFunc()
+}
+
+// ByPromotionID orders the results by the promotion_id field.
+func ByPromotionID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldPromotionID, opts...).ToFunc()
+}
+
+// ByPromotionRuleID orders the results by the promotion_rule_id field.
+func ByPromotionRuleID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldPromotionRuleID, opts...).ToFunc()
+}
+
+// ByOriginalAmount orders the results by the original_amount field.
+func ByOriginalAmount(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldOriginalAmount, opts...).ToFunc()
+}
+
+// ByDiscountAmount orders the results by the discount_amount field.
+func ByDiscountAmount(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldDiscountAmount, opts...).ToFunc()
+}
+
+// ByBonusAmount orders the results by the bonus_amount field.
+func ByBonusAmount(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldBonusAmount, opts...).ToFunc()
 }
 
 // ByRefundAmount orders the results by the refund_amount field.

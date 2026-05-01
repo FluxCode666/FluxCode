@@ -4,6 +4,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
@@ -206,6 +207,43 @@ type CreateOrderRequest struct {
 	PaymentType string  `json:"payment_type" binding:"required"`
 	OrderType   string  `json:"order_type"`
 	PlanID      int64   `json:"plan_id"`
+	PromotionID int64   `json:"promotion_id"`
+}
+
+// PreviewOrderRequest 用户端下单前预览促销折扣的请求体
+type PreviewOrderRequest struct {
+	Amount      float64 `json:"amount"`
+	OrderType   string  `json:"order_type"`
+	PlanID      int64   `json:"plan_id"`
+	PromotionID int64   `json:"promotion_id"`
+}
+
+// PreviewOrder 预览当前金额 / 套餐对应的活动折扣。
+// POST /api/v1/payment/orders/preview
+func (h *PaymentHandler) PreviewOrder(c *gin.Context) {
+	subject, ok := requireAuth(c)
+	if !ok {
+		return
+	}
+
+	var req PreviewOrderRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+
+	preview, err := h.paymentService.PreviewPromotion(c.Request.Context(), service.CreateOrderRequest{
+		UserID:      subject.UserID,
+		Amount:      req.Amount,
+		OrderType:   req.OrderType,
+		PlanID:      req.PlanID,
+		PromotionID: req.PromotionID,
+	})
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, dto.PromotionPreviewFromService(preview))
 }
 
 // CreateOrder creates a new payment order.
@@ -232,6 +270,7 @@ func (h *PaymentHandler) CreateOrder(c *gin.Context) {
 		SrcURL:      c.Request.Referer(),
 		OrderType:   req.OrderType,
 		PlanID:      req.PlanID,
+		PromotionID: req.PromotionID,
 	})
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -412,6 +451,26 @@ func (h *PaymentHandler) VerifyOrderPublic(c *gin.Context) {
 		OrderType:   order.OrderType,
 		Status:      order.Status,
 	})
+}
+
+// ListAvailablePromotions 列出当前用户可用的促销活动
+// GET /api/v1/payment/promotions/available?order_type=balance&plan_id=0
+func (h *PaymentHandler) ListAvailablePromotions(c *gin.Context) {
+	subject, ok := requireAuth(c)
+	if !ok {
+		return
+	}
+	orderType := c.DefaultQuery("order_type", "balance")
+	planID, _ := strconv.ParseInt(c.Query("plan_id"), 10, 64)
+	list, err := h.paymentService.ListAvailablePromotions(c.Request.Context(), subject.UserID, orderType, planID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	if list == nil {
+		list = []service.AvailablePromotion{}
+	}
+	response.Success(c, list)
 }
 
 // requireAuth extracts the authenticated subject from the context.

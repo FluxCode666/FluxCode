@@ -823,6 +823,91 @@ func PromoCodeFromService(pc *service.PromoCode) *PromoCode {
 	}
 }
 
+// PromotionFromService converts service.Promotion to DTO Promotion
+func PromotionFromService(p *service.Promotion) *Promotion {
+	if p == nil {
+		return nil
+	}
+	out := &Promotion{
+		ID:                p.ID,
+		Name:              p.Name,
+		Description:       p.Description,
+		PromotionType:     p.PromotionType,
+		DiscountMode:      p.DiscountMode,
+		RechargeRate:      p.RechargeRate,
+		RechargeBonusRate: p.RechargeBonusRate,
+		MaxUsesPerUser:    p.MaxUsesPerUser,
+		StartsAt:          p.StartsAt,
+		EndsAt:            p.EndsAt,
+		Status:            p.Status,
+		Priority:          p.Priority,
+		CreatedAt:         p.CreatedAt,
+		UpdatedAt:         p.UpdatedAt,
+	}
+	if len(p.PlanRules) > 0 {
+		out.PlanRules = make([]PromotionPlanRule, 0, len(p.PlanRules))
+		for i := range p.PlanRules {
+			out.PlanRules = append(out.PlanRules, *PromotionPlanRuleFromService(&p.PlanRules[i]))
+		}
+	}
+	return out
+}
+
+// PromotionPlanRuleFromService converts service.PromotionPlanRule to DTO
+func PromotionPlanRuleFromService(r *service.PromotionPlanRule) *PromotionPlanRule {
+	if r == nil {
+		return nil
+	}
+	return &PromotionPlanRule{
+		ID:             r.ID,
+		PromotionID:    r.PromotionID,
+		PlanID:         r.PlanID,
+		DiscountMode:   r.DiscountMode,
+		DiscountRate:   r.DiscountRate,
+		DiscountAmount: r.DiscountAmount,
+		MinPriceFloor:  r.MinPriceFloor,
+		MaxUsesPerUser: r.MaxUsesPerUser,
+		CreatedAt:      r.CreatedAt,
+		UpdatedAt:      r.UpdatedAt,
+	}
+}
+
+// PromotionPreviewFromService converts service.PromotionPreview to DTO
+func PromotionPreviewFromService(p *service.PromotionPreview) *PromotionPreview {
+	if p == nil {
+		return nil
+	}
+	return &PromotionPreview{
+		Hit:            p.Hit,
+		PromotionID:    p.PromotionID,
+		PromotionName:  p.PromotionName,
+		PromotionMode:  p.PromotionMode,
+		OriginalAmount: p.OriginalAmount,
+		PaymentAmount:  p.PaymentAmount,
+		CreditedAmount: p.CreditedAmount,
+		DiscountAmount: p.DiscountAmount,
+		BonusAmount:    p.BonusAmount,
+		RuleID:         p.PromotionRule,
+	}
+}
+
+// PromotionUsageFromService converts service.PromotionUsage to DTO
+func PromotionUsageFromService(u *service.PromotionUsage) *PromotionUsage {
+	if u == nil {
+		return nil
+	}
+	return &PromotionUsage{
+		ID:             u.ID,
+		PromotionID:    u.PromotionID,
+		UserID:         u.UserID,
+		OrderID:        u.OrderID,
+		PlanID:         u.PlanID,
+		DiscountAmount: u.DiscountAmount,
+		BonusAmount:    u.BonusAmount,
+		UsedAt:         u.UsedAt,
+	}
+}
+
 func PromoCodeUsageFromService(u *service.PromoCodeUsage) *PromoCodeUsage {
 	if u == nil {
 		return nil

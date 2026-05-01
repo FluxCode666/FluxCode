@@ -12,7 +12,10 @@ import type {
   CheckoutInfoResponse,
   CreateOrderRequest,
   CreateOrderResult,
-  PaymentOrder
+  PaymentOrder,
+  PromotionPreview,
+  PreviewOrderRequest,
+  AvailablePromotion
 } from '@/types/payment'
 import type { BasePaginationResponse } from '@/types'
 
@@ -45,6 +48,11 @@ export const paymentAPI = {
   /** Create a new payment order */
   createOrder(data: CreateOrderRequest) {
     return apiClient.post<CreateOrderResult>('/payment/orders', data)
+  },
+
+  /** Preview promotion discount for an upcoming order */
+  previewOrder(data: PreviewOrderRequest) {
+    return apiClient.post<PromotionPreview>('/payment/orders/preview', data)
   },
 
   /** Get current user's orders */
@@ -80,5 +88,10 @@ export const paymentAPI = {
   /** Get provider instance IDs that allow user refund */
   getRefundEligibleProviders() {
     return apiClient.get<{ provider_instance_ids: string[] }>('/payment/orders/refund-eligible-providers')
+  },
+
+  /** List available promotions for the current user */
+  getAvailablePromotions(params?: { order_type?: string; plan_id?: number }) {
+    return apiClient.get<AvailablePromotion[]>('/payment/promotions/available', { params })
   }
 }

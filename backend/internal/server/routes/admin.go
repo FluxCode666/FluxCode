@@ -50,6 +50,9 @@ func RegisterAdminRoutes(
 		// 优惠码管理
 		registerPromoCodeRoutes(admin, h)
 
+		// 促销活动管理
+		registerPromotionRoutes(admin, h)
+
 		// 系统设置
 		registerSettingsRoutes(admin, h)
 
@@ -395,6 +398,19 @@ func registerPromoCodeRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		promoCodes.PUT("/:id", h.Admin.Promo.Update)
 		promoCodes.DELETE("/:id", h.Admin.Promo.Delete)
 		promoCodes.GET("/:id/usages", h.Admin.Promo.GetUsages)
+	}
+}
+
+func registerPromotionRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	promotions := admin.Group("/promotions")
+	{
+		promotions.GET("", h.Admin.Promotion.List)
+		promotions.POST("", h.Admin.Promotion.Create)
+		promotions.GET("/:id", h.Admin.Promotion.GetByID)
+		promotions.PUT("/:id", h.Admin.Promotion.Update)
+		promotions.DELETE("/:id", h.Admin.Promotion.Delete)
+		promotions.POST("/:id/status", h.Admin.Promotion.SetStatus)
+		promotions.GET("/:id/usages", h.Admin.Promotion.Usages)
 	}
 }
 

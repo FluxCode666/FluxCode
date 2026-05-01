@@ -438,6 +438,18 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/admin/promotions',
+    name: 'AdminPromotions',
+    component: () => import('@/views/admin/PromotionsView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Promotion Management',
+      titleKey: 'admin.promotions.title',
+      descriptionKey: 'admin.promotions.description'
+    }
+  },
+  {
     path: '/admin/pricing-plans',
     name: 'AdminPricingPlans',
     component: () => import('@/views/admin/PricingPlansView.vue'),

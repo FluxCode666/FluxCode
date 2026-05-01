@@ -8,7 +8,25 @@
         <canvas ref="qrCanvas" class="mx-auto"></canvas>
       </div>
       <!-- Scan prompt for QR code -->
-      <p v-if="qrUrl && !expired && scanHint" class="text-center text-sm text-gray-500 dark:text-gray-400">
+      <div v-if="qrUrl && !expired && isAlipay" class="w-full rounded-xl border border-blue-200 bg-blue-50 p-4 dark:border-blue-800/50 dark:bg-blue-900/20">
+        <div class="flex items-start gap-3">
+          <img :src="alipayIcon" alt="Alipay" class="mt-0.5 h-6 w-6 flex-shrink-0" />
+          <div>
+            <p class="text-sm font-medium text-blue-800 dark:text-blue-300">{{ t('payment.qr.alipayAlertTitle') }}</p>
+            <p class="mt-1 text-xs text-blue-600 dark:text-blue-400">{{ scanHint }}</p>
+          </div>
+        </div>
+      </div>
+      <div v-else-if="qrUrl && !expired && isWxpay" class="w-full rounded-xl border border-green-200 bg-green-50 p-4 dark:border-green-800/50 dark:bg-green-900/20">
+        <div class="flex items-start gap-3">
+          <img :src="wxpayIcon" alt="WeChat Pay" class="mt-0.5 h-6 w-6 flex-shrink-0" />
+          <div>
+            <p class="text-sm font-medium text-green-800 dark:text-green-300">{{ t('payment.qr.wxpayAlertTitle') }}</p>
+            <p class="mt-1 text-xs text-green-600 dark:text-green-400">{{ scanHint }}</p>
+          </div>
+        </div>
+      </div>
+      <p v-else-if="qrUrl && !expired && scanHint" class="text-center text-sm text-gray-500 dark:text-gray-400">
         {{ scanHint }}
       </p>
       <div v-if="expired" class="text-center">
