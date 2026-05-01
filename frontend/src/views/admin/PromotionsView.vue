@@ -820,12 +820,15 @@ const handleSubmit = async () => {
   submitting.value = true
   try {
     if (editingPromotion.value) {
+      const isRecharge = formData.promotion_type === 'recharge'
       const payload: UpdatePromotionRequest = {
         name: formData.name,
         description: formData.description,
-        discount_mode: formData.discount_mode,
-        recharge_rate: formData.discount_mode === 'reduce_pay' ? formData.recharge_rate : undefined,
-        recharge_bonus_rate: formData.discount_mode === 'bonus_credit' && formData.recharge_bonus_rate != null ? formData.recharge_bonus_rate + 1 : undefined,
+        discount_mode: isRecharge ? formData.discount_mode : undefined,
+        recharge_rate: isRecharge && formData.discount_mode === 'reduce_pay' ? formData.recharge_rate : undefined,
+        clear_recharge_rate: isRecharge && formData.discount_mode !== 'reduce_pay',
+        recharge_bonus_rate: isRecharge && formData.discount_mode === 'bonus_credit' && formData.recharge_bonus_rate != null ? formData.recharge_bonus_rate + 1 : undefined,
+        clear_recharge_bonus_rate: isRecharge && formData.discount_mode !== 'bonus_credit',
         max_uses_per_user: formData.max_uses_per_user,
         starts_at: formData.starts_at_str ? Math.floor(new Date(formData.starts_at_str).getTime() / 1000) : undefined,
         clear_starts_at: !formData.starts_at_str && !!editingPromotion.value.starts_at,
@@ -833,24 +836,25 @@ const handleSubmit = async () => {
         clear_ends_at: !formData.ends_at_str && !!editingPromotion.value.ends_at,
         status: formData.status,
         priority: formData.priority,
-        plan_rules: formData.promotion_type === 'subscription' ? buildPlanRules() : undefined
+        plan_rules: !isRecharge ? buildPlanRules() : undefined
       }
       await adminAPI.promotions.update(editingPromotion.value.id, payload)
       appStore.showSuccess(t('admin.promotions.updated'))
     } else {
+      const isRechargeCreate = formData.promotion_type === 'recharge'
       const payload: CreatePromotionRequest = {
         name: formData.name,
         description: formData.description || undefined,
         promotion_type: formData.promotion_type,
-        discount_mode: formData.promotion_type === 'recharge' ? formData.discount_mode : undefined,
-        recharge_rate: formData.discount_mode === 'reduce_pay' ? formData.recharge_rate : undefined,
-        recharge_bonus_rate: formData.discount_mode === 'bonus_credit' && formData.recharge_bonus_rate != null ? formData.recharge_bonus_rate + 1 : undefined,
+        discount_mode: isRechargeCreate ? formData.discount_mode : undefined,
+        recharge_rate: isRechargeCreate && formData.discount_mode === 'reduce_pay' ? formData.recharge_rate : undefined,
+        recharge_bonus_rate: isRechargeCreate && formData.discount_mode === 'bonus_credit' && formData.recharge_bonus_rate != null ? formData.recharge_bonus_rate + 1 : undefined,
         max_uses_per_user: formData.max_uses_per_user,
         starts_at: formData.starts_at_str ? Math.floor(new Date(formData.starts_at_str).getTime() / 1000) : undefined,
         ends_at: formData.ends_at_str ? Math.floor(new Date(formData.ends_at_str).getTime() / 1000) : undefined,
         status: formData.status,
         priority: formData.priority,
-        plan_rules: formData.promotion_type === 'subscription' ? buildPlanRules() : undefined
+        plan_rules: !isRechargeCreate ? buildPlanRules() : undefined
       }
       await adminAPI.promotions.create(payload)
       appStore.showSuccess(t('admin.promotions.created'))

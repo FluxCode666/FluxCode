@@ -70,25 +70,52 @@
               />
             </div>
             <!-- Promotion selector (single select) -->
-            <div v-if="validAmount > 0 && availablePromotions.length > 0" class="card p-4">
-              <p class="mb-2 text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('payment.selectPromotion') }}</p>
-              <div class="space-y-2">
-                <label
+            <div v-if="validAmount > 0 && availablePromotions.length > 0" class="card overflow-hidden">
+              <div class="flex items-center gap-2 border-b border-gray-100 px-5 py-3 dark:border-dark-700/50">
+                <svg class="h-4 w-4 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 00-2.455 2.456z" /></svg>
+                <span class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('payment.selectPromotion') }}</span>
+              </div>
+              <div class="p-3 space-y-2">
+                <div
                   v-for="promo in availablePromotions"
                   :key="promo.id"
-                  class="flex cursor-pointer items-center gap-3 rounded-lg border p-3 transition-colors"
+                  class="group relative cursor-pointer rounded-xl border p-3.5 transition-all duration-200"
                   :class="selectedPromotionId === promo.id
-                    ? 'border-green-400 bg-green-50 dark:border-green-600 dark:bg-green-900/20'
-                    : 'border-gray-200 hover:border-green-300 dark:border-dark-500 dark:hover:border-green-700'"
+                    ? 'border-green-400 bg-gradient-to-r from-green-50 to-emerald-50/50 shadow-sm dark:border-green-500/60 dark:from-green-900/20 dark:to-emerald-900/10'
+                    : 'border-gray-150 bg-gray-50/50 hover:border-gray-300 hover:bg-gray-50 dark:border-dark-600 dark:bg-dark-700/30 dark:hover:border-dark-500 dark:hover:bg-dark-700/50'"
                   @click="selectPromotion(promo.id)"
                 >
-                  <input type="radio" :checked="selectedPromotionId === promo.id" class="h-4 w-4 text-green-600 focus:ring-green-500 dark:bg-dark-700" />
-                  <div class="flex-1 min-w-0">
-                    <span class="text-sm font-medium text-gray-800 dark:text-gray-200">{{ promo.name }}</span>
-                    <p v-if="promo.description" class="mt-0.5 truncate text-xs text-gray-500 dark:text-gray-400">{{ promo.description }}</p>
+                  <div class="flex items-start gap-3">
+                    <div class="mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full border-2 transition-colors duration-200"
+                      :class="selectedPromotionId === promo.id
+                        ? 'border-green-500 bg-green-500 dark:border-green-400 dark:bg-green-400'
+                        : 'border-gray-300 bg-white dark:border-dark-500 dark:bg-dark-700'"
+                    >
+                      <svg v-if="selectedPromotionId === promo.id" class="h-3 w-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                      <div class="flex items-center gap-2">
+                        <span class="text-sm font-semibold text-gray-800 dark:text-gray-100">{{ promo.name }}</span>
+                        <span v-if="promo.discount_mode === 'reduce_pay' || promo.discount_mode === 'rate' || promo.discount_mode === 'amount'" class="inline-flex items-center rounded-md bg-orange-100 px-1.5 py-0.5 text-[10px] font-medium text-orange-700 ring-1 ring-inset ring-orange-200 dark:bg-orange-900/30 dark:text-orange-400 dark:ring-orange-800/50">
+                          {{ t('payment.promoModeDiscount') }}
+                        </span>
+                        <span v-else-if="promo.discount_mode === 'bonus_credit'" class="inline-flex items-center rounded-md bg-blue-100 px-1.5 py-0.5 text-[10px] font-medium text-blue-700 ring-1 ring-inset ring-blue-200 dark:bg-blue-900/30 dark:text-blue-400 dark:ring-blue-800/50">
+                          {{ t('payment.promoModeBonus') }}
+                        </span>
+                      </div>
+                      <p v-if="promo.description" class="mt-1 text-xs leading-relaxed text-gray-500 dark:text-gray-400">{{ promo.description }}</p>
+                      <div v-if="promo.max_uses > 0" class="mt-2 flex items-center gap-2">
+                        <div class="h-1.5 flex-1 overflow-hidden rounded-full bg-gray-200 dark:bg-dark-600">
+                          <div class="h-full rounded-full transition-all duration-500"
+                            :class="(promo.max_uses - promo.used_count) <= 2 ? 'bg-red-400 dark:bg-red-500' : 'bg-green-400 dark:bg-green-500'"
+                            :style="{ width: Math.max(4, ((promo.max_uses - promo.used_count) / promo.max_uses) * 100) + '%' }"
+                          />
+                        </div>
+                        <span class="flex-shrink-0 text-[10px] tabular-nums" :class="(promo.max_uses - promo.used_count) <= 2 ? 'font-medium text-red-500 dark:text-red-400' : 'text-gray-400 dark:text-gray-500'">{{ t('payment.promoRemaining', { n: promo.max_uses - promo.used_count }) }}</span>
+                      </div>
+                    </div>
                   </div>
-                  <span v-if="promo.max_uses > 0" class="text-xs text-gray-400 dark:text-gray-500">{{ promo.used_count }}/{{ promo.max_uses }}</span>
-                </label>
+                </div>
               </div>
             </div>
             <div v-if="validAmount > 0" class="card p-6">
@@ -209,25 +236,49 @@
                 />
               </div>
               <!-- Subscription Promotion selector -->
-              <div v-if="subAvailablePromotions.length > 0" class="card p-4">
-                <p class="mb-2 text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('payment.selectPromotion') }}</p>
-                <div class="space-y-2">
-                  <label
+              <div v-if="subAvailablePromotions.length > 0" class="card overflow-hidden">
+                <div class="flex items-center gap-2 border-b border-gray-100 px-5 py-3 dark:border-dark-700/50">
+                  <svg class="h-4 w-4 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 00-2.455 2.456z" /></svg>
+                  <span class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('payment.selectPromotion') }}</span>
+                </div>
+                <div class="p-3 space-y-2">
+                  <div
                     v-for="promo in subAvailablePromotions"
                     :key="promo.id"
-                    class="flex cursor-pointer items-center gap-3 rounded-lg border p-3 transition-colors"
+                    class="group relative cursor-pointer rounded-xl border p-3.5 transition-all duration-200"
                     :class="subSelectedPromotionId === promo.id
-                      ? 'border-green-400 bg-green-50 dark:border-green-600 dark:bg-green-900/20'
-                      : 'border-gray-200 hover:border-green-300 dark:border-dark-500 dark:hover:border-green-700'"
+                      ? 'border-green-400 bg-gradient-to-r from-green-50 to-emerald-50/50 shadow-sm dark:border-green-500/60 dark:from-green-900/20 dark:to-emerald-900/10'
+                      : 'border-gray-150 bg-gray-50/50 hover:border-gray-300 hover:bg-gray-50 dark:border-dark-600 dark:bg-dark-700/30 dark:hover:border-dark-500 dark:hover:bg-dark-700/50'"
                     @click="selectSubPromotion(promo.id)"
                   >
-                    <input type="radio" :checked="subSelectedPromotionId === promo.id" class="h-4 w-4 text-green-600 focus:ring-green-500 dark:bg-dark-700" />
-                    <div class="flex-1 min-w-0">
-                      <span class="text-sm font-medium text-gray-800 dark:text-gray-200">{{ promo.name }}</span>
-                      <p v-if="promo.description" class="mt-0.5 truncate text-xs text-gray-500 dark:text-gray-400">{{ promo.description }}</p>
+                    <div class="flex items-start gap-3">
+                      <div class="mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full border-2 transition-colors duration-200"
+                        :class="subSelectedPromotionId === promo.id
+                          ? 'border-green-500 bg-green-500 dark:border-green-400 dark:bg-green-400'
+                          : 'border-gray-300 bg-white dark:border-dark-500 dark:bg-dark-700'"
+                      >
+                        <svg v-if="subSelectedPromotionId === promo.id" class="h-3 w-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg>
+                      </div>
+                      <div class="flex-1 min-w-0">
+                        <div class="flex items-center gap-2">
+                          <span class="text-sm font-semibold text-gray-800 dark:text-gray-100">{{ promo.name }}</span>
+                          <span v-if="promo.discount_mode === 'rate' || promo.discount_mode === 'amount'" class="inline-flex items-center rounded-md bg-orange-100 px-1.5 py-0.5 text-[10px] font-medium text-orange-700 ring-1 ring-inset ring-orange-200 dark:bg-orange-900/30 dark:text-orange-400 dark:ring-orange-800/50">
+                            {{ t('payment.promoModeDiscount') }}
+                          </span>
+                        </div>
+                        <p v-if="promo.description" class="mt-1 text-xs leading-relaxed text-gray-500 dark:text-gray-400">{{ promo.description }}</p>
+                        <div v-if="promo.max_uses > 0" class="mt-2 flex items-center gap-2">
+                          <div class="h-1.5 flex-1 overflow-hidden rounded-full bg-gray-200 dark:bg-dark-600">
+                            <div class="h-full rounded-full transition-all duration-500"
+                              :class="(promo.max_uses - promo.used_count) <= 2 ? 'bg-red-400 dark:bg-red-500' : 'bg-green-400 dark:bg-green-500'"
+                              :style="{ width: Math.max(4, ((promo.max_uses - promo.used_count) / promo.max_uses) * 100) + '%' }"
+                            />
+                          </div>
+                          <span class="flex-shrink-0 text-[10px] tabular-nums" :class="(promo.max_uses - promo.used_count) <= 2 ? 'font-medium text-red-500 dark:text-red-400' : 'text-gray-400 dark:text-gray-500'">{{ t('payment.promoRemaining', { n: promo.max_uses - promo.used_count }) }}</span>
+                        </div>
+                      </div>
                     </div>
-                    <span v-if="promo.max_uses > 0" class="text-xs text-gray-400 dark:text-gray-500">{{ promo.used_count }}/{{ promo.max_uses }}</span>
-                  </label>
+                  </div>
                 </div>
               </div>
               <div v-if="selectedPlan.price > 0" class="card p-6">
