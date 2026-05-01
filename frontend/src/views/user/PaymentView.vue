@@ -171,7 +171,7 @@
                 <span class="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span>
                 {{ t('common.processing') }}
               </span>
-              <span v-else>{{ t('payment.createOrder') }} ¥{{ totalAmount.toFixed(2) }}</span>
+              <span v-else>{{ t('payment.createOrder') }} ¥{{ rechargeButtonAmount.toFixed(2) }}</span>
             </button>
             <div v-if="errorMessage" class="rounded-xl border border-red-200 bg-red-50 p-4 dark:border-red-800/50 dark:bg-red-900/20">
               <p class="text-sm text-red-700 dark:text-red-400">{{ errorMessage }}</p>
@@ -321,7 +321,7 @@
                   <span class="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span>
                   {{ t('common.processing') }}
                 </span>
-                <span v-else>{{ t('payment.createOrder') }} ¥{{ (feeRate > 0 ? subTotalAmount : selectedPlan.price).toFixed(2) }}</span>
+                <span v-else>{{ t('payment.createOrder') }} ¥{{ subButtonAmount.toFixed(2) }}</span>
               </button>
               <button class="btn btn-secondary w-full" @click="selectedPlan = null">{{ t('common.cancel') }}</button>
               <div v-if="errorMessage" class="rounded-xl border border-red-200 bg-red-50 p-4 dark:border-red-800/50 dark:bg-red-900/20">
@@ -617,6 +617,25 @@ const subTotalAmount = computed(() => {
   const price = selectedPlan.value?.price ?? 0
   if (feeRate.value <= 0 || price <= 0) return price
   return Math.round((price + subFeeAmount.value) * 100) / 100
+})
+
+// Actual button amount: considers promotion discount
+const rechargeButtonAmount = computed(() => {
+  if (promoPreview.value?.hit && promoPreview.value.discount_amount > 0) {
+    const base = promoPreview.value.payment_amount
+    const fee = feeRate.value > 0 ? Math.ceil(((base * feeRate.value) / 100) * 100) / 100 : 0
+    return Math.round((base + fee) * 100) / 100
+  }
+  return totalAmount.value
+})
+
+const subButtonAmount = computed(() => {
+  if (subPromoPreview.value?.hit && subPromoPreview.value.discount_amount > 0) {
+    const base = subPromoPreview.value.payment_amount
+    const fee = feeRate.value > 0 ? Math.ceil(((base * feeRate.value) / 100) * 100) / 100 : 0
+    return Math.round((base + fee) * 100) / 100
+  }
+  return feeRate.value > 0 ? subTotalAmount.value : (selectedPlan.value?.price ?? 0)
 })
 
 const canSubmitSubscription = computed(() =>
