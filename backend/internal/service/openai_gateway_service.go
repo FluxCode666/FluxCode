@@ -38,9 +38,9 @@ const (
 	// ChatGPT internal API for OAuth accounts
 	chatgptCodexURL = "https://chatgpt.com/backend-api/codex/responses"
 	// OpenAI Platform API for API Key accounts (fallback)
-	openaiPlatformAPIURL   = "https://api.openai.com/v1/responses"
-	openaiStickySessionTTL = time.Hour // 粘性会话TTL
-	codexCLIUserAgent      = "codex_cli_rs/1.0.0"
+	openaiPlatformAPIURL     = "https://api.openai.com/v1/responses"
+	openaiStickySessionTTL   = time.Hour // 粘性会话TTL
+	codexCLIUserAgentDefault = "codex_cli_rs/1.0.0"
 	// codex_cli_only 拒绝时单个请求头日志长度上限（字符）
 	codexCLIOnlyHeaderValueMaxBytes = 256
 
@@ -54,10 +54,10 @@ const (
 	openAIWSRetryBackoffMaxDefault     = 2 * time.Second
 	openAIWSRetryJitterRatioDefault    = 0.2
 	openAICompactSessionSeedKey        = "openai_compact_session_seed"
-	// codexCLIVersion 仅用于 compact 端点（/v1/responses/compact）的 Version 请求头，
+	// codexCLIVersionDefault 仅用于 compact 端点（/v1/responses/compact）的 Version 请求头，
 	// 正常模型请求（/v1/responses）只发 User-Agent，不发 Version 头。
-	// 更新时需与 codexCLIUserAgent 版本保持一致。
-	codexCLIVersion = "1.0.0"
+	// 更新时需与 CodexCLIUserAgent 配置版本保持一致。
+	codexCLIVersionDefault = "1.0.0"
 	// Codex 限额快照仅用于后台展示/诊断，不需要每个成功请求都立即落库。
 	openAICodexSnapshotPersistMinInterval = 30 * time.Second
 )
@@ -115,6 +115,24 @@ type OpenAICodexUsageSnapshot struct {
 	SecondaryWindowMinutes      *int     `json:"secondary_window_minutes,omitempty"`
 	PrimaryOverSecondaryPercent *float64 `json:"primary_over_secondary_percent,omitempty"`
 	UpdatedAt                   string   `json:"updated_at,omitempty"`
+}
+
+// resolveCodexCLIUserAgent 从 DB 缓存获取 Codex CLI User-Agent，
+// 缓存为空时回退到默认值。缓存由启动预热 + UpdateSettings 维护。
+func resolveCodexCLIUserAgent() string {
+	if cached, ok := codexCLICfgCache.Load().(*cachedCodexCLIConfig); ok && cached != nil && cached.userAgent != "" {
+		return cached.userAgent
+	}
+	return codexCLIUserAgentDefault
+}
+
+// resolveCodexCLIVersion 从 DB 缓存获取 Codex CLI Version，
+// 缓存为空时回退到默认值。缓存由启动预热 + UpdateSettings 维护。
+func resolveCodexCLIVersion() string {
+	if cached, ok := codexCLICfgCache.Load().(*cachedCodexCLIConfig); ok && cached != nil && cached.version != "" {
+		return cached.version
+	}
+	return codexCLIVersionDefault
 }
 
 // NormalizedCodexLimits contains normalized 5h/7d rate limit data
@@ -2925,7 +2943,7 @@ func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthrough(
 		if isOpenAIResponsesCompactPath(c) {
 			req.Header.Set("accept", "application/json")
 			if req.Header.Get("version") == "" {
-				req.Header.Set("version", codexCLIVersion)
+				req.Header.Set("version", resolveCodexCLIVersion())
 			}
 			if clientSessionID == "" {
 				clientSessionID = resolveOpenAICompactSessionID(c)
@@ -2955,7 +2973,7 @@ func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthrough(
 	}
 
 	// 发往 OpenAI 上游统一强制覆写 UA，不信任账号自定义 user_agent。
-	req.Header.Set("user-agent", codexCLIUserAgent)
+	req.Header.Set("user-agent", resolveCodexCLIUserAgent())
 
 	if req.Header.Get("content-type") == "" {
 		req.Header.Set("content-type", "application/json")
@@ -3422,7 +3440,7 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 		if isOpenAIResponsesCompactPath(c) {
 			req.Header.Set("accept", "application/json")
 			if req.Header.Get("version") == "" {
-				req.Header.Set("version", codexCLIVersion)
+				req.Header.Set("version", resolveCodexCLIVersion())
 			}
 			compactSession := resolveOpenAICompactSessionID(c)
 			req.Header.Set("session_id", isolateOpenAISessionID(apiKeyID, compactSession))
@@ -3437,7 +3455,7 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 	}
 
 	// 发往 OpenAI 上游统一强制覆写 UA，不信任账号自定义 user_agent。
-	req.Header.Set("user-agent", codexCLIUserAgent)
+	req.Header.Set("user-agent", resolveCodexCLIUserAgent())
 
 	// Ensure required headers exist
 	if req.Header.Get("content-type") == "" {

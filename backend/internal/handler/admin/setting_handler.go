@@ -177,6 +177,8 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		EnableFingerprintUnification:         settings.EnableFingerprintUnification,
 		EnableMetadataPassthrough:            settings.EnableMetadataPassthrough,
 		EnableCCHSigning:                     settings.EnableCCHSigning,
+		CodexCLIUserAgent:                    settings.CodexCLIUserAgent,
+		CodexCLIVersion:                      settings.CodexCLIVersion,
 		WebSearchEmulationEnabled:            settings.WebSearchEmulationEnabled,
 		BalanceLowNotifyEnabled:              settings.BalanceLowNotifyEnabled,
 		BalanceLowNotifyThreshold:            settings.BalanceLowNotifyThreshold,
@@ -318,6 +320,10 @@ type UpdateSettingsRequest struct {
 	EnableFingerprintUnification *bool `json:"enable_fingerprint_unification"`
 	EnableMetadataPassthrough    *bool `json:"enable_metadata_passthrough"`
 	EnableCCHSigning             *bool `json:"enable_cch_signing"`
+
+	// Codex CLI User-Agent
+	CodexCLIUserAgent *string `json:"codex_cli_user_agent"`
+	CodexCLIVersion   *string `json:"codex_cli_version"`
 
 	// Balance low notification
 	BalanceLowNotifyEnabled     *bool                   `json:"balance_low_notify_enabled"`
@@ -907,6 +913,18 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 				return *req.EnableCCHSigning
 			}
 			return previousSettings.EnableCCHSigning
+		}(),
+		CodexCLIUserAgent: func() string {
+			if req.CodexCLIUserAgent != nil {
+				return strings.TrimSpace(*req.CodexCLIUserAgent)
+			}
+			return previousSettings.CodexCLIUserAgent
+		}(),
+		CodexCLIVersion: func() string {
+			if req.CodexCLIVersion != nil {
+				return strings.TrimSpace(*req.CodexCLIVersion)
+			}
+			return previousSettings.CodexCLIVersion
 		}(),
 		BalanceLowNotifyEnabled: func() bool {
 			if req.BalanceLowNotifyEnabled != nil {

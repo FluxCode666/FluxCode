@@ -268,7 +268,7 @@ type AccountUsageService struct {
 	tlsFPProfileService     *TLSFingerprintProfileService
 }
 
-// NewAccountUsageService 创建AccountUsageService实例
+// NewAccountUsageService 创建 AccountUsageService 实例
 func NewAccountUsageService(
 	accountRepo AccountRepository,
 	usageLogRepo UsageLogRepository,
@@ -619,7 +619,7 @@ func (s *AccountUsageService) probeOpenAICodexSnapshot(ctx context.Context, acco
 	req.Header.Set("Originator", "codex_cli_rs")
 	req.Header.Set("Version", openAICodexProbeVersion)
 	// 发往 OpenAI 上游统一强制覆写 UA，不信任账号自定义 user_agent。
-	req.Header.Set("User-Agent", codexCLIUserAgent)
+	req.Header.Set("User-Agent", resolveCodexCLIUserAgent())
 	if chatgptAccountID := account.GetChatGPTAccountID(); chatgptAccountID != "" {
 		req.Header.Set("chatgpt-account-id", chatgptAccountID)
 	}

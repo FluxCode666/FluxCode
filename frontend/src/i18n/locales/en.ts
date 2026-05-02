@@ -4830,6 +4830,16 @@ export default {
         allowUngroupedKey: 'Allow Ungrouped Key Scheduling',
         allowUngroupedKeyHint: 'When disabled, API Keys not assigned to any group cannot make requests (403 Forbidden). Keep disabled to ensure all Keys belong to a specific group.'
       },
+      codexCLIUA: {
+        title: 'Codex CLI User-Agent',
+        description: 'Configure the User-Agent and Version headers sent to OpenAI upstream',
+        userAgent: 'User-Agent',
+        userAgentPlaceholder: 'e.g. codex_cli_rs/1.0.0',
+        userAgentHint: 'User-Agent header sent to OpenAI upstream. Leave empty to use default codex_cli_rs/1.0.0.',
+        version: 'Version',
+        versionPlaceholder: 'e.g. 1.0.0',
+        versionHint: 'Version header sent to OpenAI compact endpoint. Leave empty to use default 1.0.0. Should match the version in User-Agent.',
+      },
       gatewayForwarding: {
         title: 'Request Forwarding',
         description: 'Control how requests are forwarded to upstream OAuth accounts',

@@ -82,10 +82,10 @@ type Config struct {
 	Timezone                string                        `mapstructure:"timezone"` // e.g. "Asia/Shanghai", "UTC"
 	// SkipStartupInit 为 true 时跳过启动阶段的数据库迁移和调度器缓存全量重建。
 	// 适用于扩容场景：新实例可直接复用已有 schema 和 Redis 缓存，无需重复初始化。
-	SkipStartupInit         bool                          `mapstructure:"skip_startup_init"`
-	Gemini                  GeminiConfig                  `mapstructure:"gemini"`
-	Update                  UpdateConfig                  `mapstructure:"update"`
-	Idempotency             IdempotencyConfig             `mapstructure:"idempotency"`
+	SkipStartupInit bool              `mapstructure:"skip_startup_init"`
+	Gemini          GeminiConfig      `mapstructure:"gemini"`
+	Update          UpdateConfig      `mapstructure:"update"`
+	Idempotency     IdempotencyConfig `mapstructure:"idempotency"`
 }
 
 type LogConfig struct {

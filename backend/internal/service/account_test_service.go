@@ -495,7 +495,7 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+authToken)
 	// 发往 OpenAI 上游统一强制覆写 UA，与线上转发行为保持一致。
-	req.Header.Set("User-Agent", codexCLIUserAgent)
+	req.Header.Set("User-Agent", resolveCodexCLIUserAgent())
 
 	// Set OAuth-specific headers for ChatGPT internal API
 	if isOAuth {
@@ -1183,7 +1183,7 @@ func (s *AccountTestService) testOpenAIImageOAuth(c *gin.Context, ctx context.Co
 	req.Header.Set("Accept", "text/event-stream")
 	req.Header.Set("OpenAI-Beta", "responses=experimental")
 	req.Header.Set("originator", resolveOpenAIUpstreamOriginator(c, false))
-	req.Header.Set("User-Agent", codexCLIUserAgent)
+	req.Header.Set("User-Agent", resolveCodexCLIUserAgent())
 	if sessionSeed := strings.TrimSpace(parsed.StickySessionSeed()); sessionSeed != "" {
 		sessionID := isolateOpenAISessionID(getAPIKeyIDFromContext(c), sessionSeed)
 		req.Header.Set("session_id", sessionID)

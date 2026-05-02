@@ -1165,7 +1165,7 @@ func (s *OpenAIGatewayService) buildOpenAIWSHeaders(
 	headers.Set("OpenAI-Beta", betaValue)
 
 	// 发往 OpenAI 上游统一强制覆写 UA，不信任账号自定义 user_agent。
-	headers.Set("user-agent", codexCLIUserAgent)
+	headers.Set("user-agent", resolveCodexCLIUserAgent())
 
 	return headers, sessionResolution
 }

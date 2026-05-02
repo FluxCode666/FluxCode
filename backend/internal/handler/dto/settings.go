@@ -129,6 +129,10 @@ type SystemSettings struct {
 	EnableMetadataPassthrough    bool `json:"enable_metadata_passthrough"`
 	EnableCCHSigning             bool `json:"enable_cch_signing"`
 
+	// Codex CLI User-Agent
+	CodexCLIUserAgent string `json:"codex_cli_user_agent"`
+	CodexCLIVersion   string `json:"codex_cli_version"`
+
 	// Web Search Emulation
 	WebSearchEmulationEnabled bool `json:"web_search_emulation_enabled"`
 

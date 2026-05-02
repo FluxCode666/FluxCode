@@ -4960,6 +4960,16 @@ export default {
         allowUngroupedKey: '允许未分组 Key 调度',
         allowUngroupedKeyHint: '关闭后，未分配到任何分组的 API Key 将无法发起请求（返回 403）。建议保持关闭以确保所有 Key 都归属明确的分组。'
       },
+      codexCLIUA: {
+        title: 'Codex CLI User-Agent',
+        description: '配置发往 OpenAI 上游的 User-Agent 和 Version 请求头',
+        userAgent: 'User-Agent',
+        userAgentPlaceholder: '例如 codex_cli_rs/1.0.0',
+        userAgentHint: '发往 OpenAI 上游的 User-Agent 请求头。留空则使用默认值 codex_cli_rs/1.0.0。',
+        version: 'Version',
+        versionPlaceholder: '例如 1.0.0',
+        versionHint: '发往 OpenAI compact 端点的 Version 请求头。留空则使用默认值 1.0.0。需与 User-Agent 中的版本保持一致。',
+      },
       gatewayForwarding: {
         title: '请求转发行为',
         description: '控制请求转发到上游 OAuth 账号时的行为',

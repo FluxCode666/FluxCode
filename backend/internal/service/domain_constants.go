@@ -294,6 +294,12 @@ const (
 
 	// Web Search Emulation
 	SettingKeyWebSearchEmulationConfig = "web_search_emulation_config" // JSON 配置
+
+	// Codex CLI User-Agent 配置
+	// SettingKeyCodexCLIUserAgent 发往 OpenAI 上游的 User-Agent 头（默认 "codex_cli_rs/1.0.0"）
+	SettingKeyCodexCLIUserAgent = "codex_cli_user_agent"
+	// SettingKeyCodexCLIVersion 发往 OpenAI compact 端点的 Version 头（默认 "1.0.0"）
+	SettingKeyCodexCLIVersion = "codex_cli_version"
 )
 
 // AdminAPIKeyPrefix is the prefix for admin API keys (distinct from user "sk-" keys).
