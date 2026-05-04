@@ -206,6 +206,17 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/sales-commissions',
+    name: 'SalesCommissions',
+    component: () => import('@/views/user/SalesCommissionsView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Sales Commissions',
+      titleKey: 'nav.salesCommissions'
+    }
+  },
+  {
     path: '/profile',
     name: 'Profile',
     component: () => import('@/views/user/ProfileView.vue'),
@@ -447,6 +458,17 @@ const routes: RouteRecordRaw[] = [
       requiresAdmin: true,
       title: 'Referral Management',
       titleKey: 'nav.referralManagement',
+    }
+  },
+  {
+    path: '/admin/sales-commissions',
+    name: 'AdminSalesCommissions',
+    component: () => import('@/views/admin/SalesCommissionsView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Sales Commissions',
+      titleKey: 'nav.salesCommissions'
     }
   },
   {

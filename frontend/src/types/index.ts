@@ -1319,6 +1319,56 @@ export interface UpdateUserRequest {
   group_rates?: Record<number, number | null>
 }
 
+// ==================== Sales Commission Types ====================
+
+export interface SalesCommissionSummary {
+  sales_user_id: number
+  sales_email: string
+  sales_username: string
+  total_commission_cny: number
+  frozen_cny: number
+  unlocked_cny: number
+  settleable_cny: number
+  settled_cny: number
+  records_count: number
+}
+
+export interface SalesCommissionRecord {
+  id: number
+  sales_user_id: number
+  sales_email: string
+  sales_username: string
+  referee_user_id: number
+  referee_email: string
+  referee_username: string
+  referral_id: number
+  payment_order_id: number
+  payment_order_status: string
+  order_pay_amount_cny: number
+  order_credited_amount: number
+  commission_rate: number
+  commission_total_cny: number
+  credited_used_amount: number
+  frozen_cny: number
+  unlocked_cny: number
+  settled_cny: number
+  settleable_cny: number
+  status: string
+  note: string
+  created_at: string
+  updated_at: string
+}
+
+export interface SalesCommissionSettlement {
+  id: number
+  sales_user_id: number
+  sales_email: string
+  amount_cny: number
+  note: string
+  created_by?: number
+  created_at: string
+}
+
 export interface ChangePasswordRequest {
   old_password: string
   new_password: string

@@ -378,6 +378,7 @@ export default {
     paymentConfig: 'Payment Config',
     paymentPlans: 'Plans',
     referralManagement: 'Referral',
+    salesCommissions: 'Sales Commissions',
   },
 
   // Auth
@@ -979,6 +980,33 @@ export default {
     invitations: 'Invitations',
     completions: 'Completions',
     noTrendData: 'No trend data',
+  },
+
+  salesCommissions: {
+    title: 'Sales Commissions',
+    adminDescription: 'Review frozen, unlocked, and manually settled sales commissions',
+    userDescription: 'Track your invited-user recharge commissions and unlock progress',
+    frozen: 'Frozen',
+    unlocked: 'Unlocked',
+    settleable: 'Settleable',
+    settled: 'Settled',
+    totalCommission: 'Total Commission',
+    records: 'Commission Records',
+    summaries: 'Sales Summary',
+    settlements: 'Settlements',
+    createSettlement: 'Create Settlement',
+    amount: 'Amount',
+    note: 'Note',
+    status: 'Status',
+    salesUser: 'Sales User',
+    refereeUser: 'Invited User',
+    paymentOrder: 'Order',
+    createdAt: 'Created At',
+    searchSales: 'Search sales email or username',
+    invalidSettlement: 'Enter a valid sales user and settlement amount',
+    settlementCreated: 'Settlement created',
+    settlementFailed: 'Failed to create settlement',
+    loadFailed: 'Failed to load sales commission data'
   },
 
   // Referral Management (Admin)

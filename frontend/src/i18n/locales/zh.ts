@@ -376,6 +376,7 @@ export default {
     paymentConfig: '支付配置',
     paymentPlans: '订阅套餐',
     referralManagement: '推广管理',
+    salesCommissions: '销售佣金',
   },
 
   // Auth
@@ -974,6 +975,33 @@ export default {
     invitations: '邀请数',
     completions: '完成数',
     noTrendData: '暂无趋势数据',
+  },
+
+  salesCommissions: {
+    title: '销售佣金',
+    adminDescription: '查看销售佣金冻结、解冻与手动结算状态',
+    userDescription: '查看您的邀请充值佣金与解冻进度',
+    frozen: '冻结金额',
+    unlocked: '已解冻',
+    settleable: '可结算',
+    settled: '已结算',
+    totalCommission: '总佣金',
+    records: '佣金明细',
+    summaries: '销售汇总',
+    settlements: '结算记录',
+    createSettlement: '手动结算',
+    amount: '金额',
+    note: '备注',
+    status: '状态',
+    salesUser: '销售用户',
+    refereeUser: '被邀请用户',
+    paymentOrder: '订单',
+    createdAt: '创建时间',
+    searchSales: '搜索销售邮箱或用户名',
+    invalidSettlement: '请输入有效的销售用户和结算金额',
+    settlementCreated: '结算记录已创建',
+    settlementFailed: '创建结算失败',
+    loadFailed: '加载销售佣金数据失败'
   },
 
   // Referral Management (Admin)

@@ -31,6 +31,7 @@ import tlsFingerprintProfileAPI from './tlsFingerprintProfile'
 import channelsAPI from './channels'
 import adminPaymentAPI from './payment'
 import adminReferralAPI from './referral'
+import adminSalesCommissionsAPI from './salesCommissions'
 
 /**
  * Unified admin API object for convenient access
@@ -63,7 +64,8 @@ export const adminAPI = {
   tlsFingerprintProfiles: tlsFingerprintProfileAPI,
   channels: channelsAPI,
   payment: adminPaymentAPI,
-  referral: adminReferralAPI
+  referral: adminReferralAPI,
+  salesCommissions: adminSalesCommissionsAPI
 }
 
 export {
@@ -94,7 +96,8 @@ export {
   tlsFingerprintProfileAPI,
   channelsAPI,
   adminPaymentAPI,
-  adminReferralAPI
+  adminReferralAPI,
+  adminSalesCommissionsAPI
 }
 
 export default adminAPI

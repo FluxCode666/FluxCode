@@ -655,6 +655,9 @@ const userNavItems = computed((): NavItem[] => {
     ...(appStore.cachedPublicSettings?.referral_enabled
       ? [{ path: '/referral', label: t('nav.referral'), icon: ShareIcon, hideInSimpleMode: true }]
       : []),
+    ...(authStore.user?.is_sales
+      ? [{ path: '/sales-commissions', label: t('nav.salesCommissions'), icon: CurrencyYenIcon, hideInSimpleMode: true }]
+      : []),
     { path: '/profile', label: t('nav.profile'), icon: UserIcon },
     ...customMenuItemsForUser.value.map((item): NavItem => ({
       path: `/custom/${item.id}`,
@@ -695,6 +698,9 @@ const personalNavItems = computed((): NavItem[] => {
     { path: '/redeem', label: t('nav.redeem'), icon: GiftIcon, hideInSimpleMode: true },
     ...(appStore.cachedPublicSettings?.referral_enabled
       ? [{ path: '/referral', label: t('nav.referral'), icon: ShareIcon, hideInSimpleMode: true }]
+      : []),
+    ...(authStore.user?.is_sales
+      ? [{ path: '/sales-commissions', label: t('nav.salesCommissions'), icon: CurrencyYenIcon, hideInSimpleMode: true }]
       : []),
     { path: '/profile', label: t('nav.profile'), icon: UserIcon },
     ...customMenuItemsForUser.value.map((item): NavItem => ({
@@ -744,6 +750,7 @@ const adminNavItems = computed((): NavItem[] => {
     { path: '/admin/redeem', label: t('nav.redeemCodes'), icon: TicketIcon, hideInSimpleMode: true },
     { path: '/admin/promo-codes', label: t('nav.promoCodes'), icon: GiftIcon, hideInSimpleMode: true },
     { path: '/admin/referral', label: t('nav.referralManagement'), icon: ShareIcon, hideInSimpleMode: true },
+    { path: '/admin/sales-commissions', label: t('nav.salesCommissions'), icon: CurrencyYenIcon, hideInSimpleMode: true },
     { path: '/admin/promotions', label: t('nav.promotions'), icon: MegaphoneIcon, hideInSimpleMode: true },
     ...(adminSettingsStore.paymentEnabled
       ? [
