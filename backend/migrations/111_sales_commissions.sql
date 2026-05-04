@@ -10,19 +10,6 @@ ALTER TABLE users
     ADD COLUMN IF NOT EXISTS is_sales BOOLEAN NOT NULL DEFAULT FALSE,
     ADD COLUMN IF NOT EXISTS sales_commission_rate DECIMAL(8,4) NOT NULL DEFAULT 0;
 
-DO $$
-BEGIN
-    IF NOT EXISTS (
-        SELECT 1 FROM pg_constraint
-        WHERE conname = 'chk_users_sales_commission_rate'
-          AND conrelid = 'users'::regclass
-    ) THEN
-        ALTER TABLE users
-            ADD CONSTRAINT chk_users_sales_commission_rate
-            CHECK (sales_commission_rate >= 0 AND sales_commission_rate <= 100);
-    END IF;
-END $$;
-
 COMMENT ON COLUMN users.is_sales IS '是否为销售用户';
 COMMENT ON COLUMN users.sales_commission_rate IS '销售佣金比例，单位为百分比';
 
@@ -45,31 +32,7 @@ CREATE TABLE IF NOT EXISTS sales_commission_records (
     status VARCHAR(32) NOT NULL DEFAULT 'frozen',
     note TEXT NOT NULL DEFAULT '',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CONSTRAINT fk_sales_commission_records_sales_user
-        FOREIGN KEY (sales_user_id) REFERENCES users(id),
-    CONSTRAINT fk_sales_commission_records_referee_user
-        FOREIGN KEY (referee_user_id) REFERENCES users(id),
-    CONSTRAINT fk_sales_commission_records_referral
-        FOREIGN KEY (referral_id) REFERENCES referrals(id),
-    CONSTRAINT fk_sales_commission_records_payment_order
-        FOREIGN KEY (payment_order_id) REFERENCES payment_orders(id),
-    CONSTRAINT chk_sales_commission_records_amounts CHECK (
-        order_pay_amount_cny > 0
-        AND order_credited_amount > 0
-        AND commission_rate >= 0
-        AND commission_rate <= 100
-        AND commission_total_cny >= 0
-        AND credited_used_amount >= 0
-        AND credited_used_amount <= order_credited_amount
-        AND unlocked_cny >= 0
-        AND unlocked_cny <= commission_total_cny
-        AND settled_cny >= 0
-        AND settled_cny <= unlocked_cny
-    ),
-    CONSTRAINT chk_sales_commission_records_status CHECK (
-        status IN ('frozen', 'partial_unlocked', 'unlocked', 'settled', 'settlement_blocked')
-    )
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS sales_commission_records_payment_order_id_key
@@ -96,12 +59,7 @@ CREATE TABLE IF NOT EXISTS sales_commission_settlements (
     amount_cny DECIMAL(20,2) NOT NULL,
     note TEXT NOT NULL DEFAULT '',
     created_by BIGINT DEFAULT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CONSTRAINT fk_sales_commission_settlements_sales_user
-        FOREIGN KEY (sales_user_id) REFERENCES users(id),
-    CONSTRAINT fk_sales_commission_settlements_created_by
-        FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
-    CONSTRAINT chk_sales_commission_settlements_amount CHECK (amount_cny > 0)
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS idx_sales_commission_settlements_sales_user
@@ -115,18 +73,10 @@ CREATE TABLE IF NOT EXISTS sales_commission_settlement_items (
     settlement_id BIGINT NOT NULL,
     commission_record_id BIGINT NOT NULL,
     amount_cny DECIMAL(20,2) NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CONSTRAINT fk_sales_commission_settlement_items_settlement
-        FOREIGN KEY (settlement_id) REFERENCES sales_commission_settlements(id) ON DELETE CASCADE,
-    CONSTRAINT fk_sales_commission_settlement_items_record
-        FOREIGN KEY (commission_record_id) REFERENCES sales_commission_records(id),
-    CONSTRAINT chk_sales_commission_settlement_items_amount CHECK (amount_cny > 0)
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS idx_sales_commission_settlement_items_record
     ON sales_commission_settlement_items (commission_record_id);
-
-CREATE INDEX IF NOT EXISTS idx_sales_commission_settlement_items_settlement
-    ON sales_commission_settlement_items (settlement_id);
 
 COMMIT;
