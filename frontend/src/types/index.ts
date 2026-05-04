@@ -43,6 +43,8 @@ export interface User {
   concurrency: number // Allowed concurrent requests
   status: 'active' | 'disabled' // Account status
   allowed_groups: number[] | null // Allowed group IDs (null = all non-exclusive groups)
+  is_sales: boolean
+  sales_commission_rate: number
   balance_notify_enabled: boolean
   balance_notify_threshold: number | null
   balance_notify_extra_emails: NotifyEmailEntry[]
@@ -1310,6 +1312,8 @@ export interface UpdateUserRequest {
   concurrency?: number
   status?: 'active' | 'disabled'
   allowed_groups?: number[] | null
+  is_sales?: boolean
+  sales_commission_rate?: number
   // 用户专属分组倍率配置 (group_id -> rate_multiplier | null)
   // null 表示删除该分组的专属倍率
   group_rates?: Record<number, number | null>

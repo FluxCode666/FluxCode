@@ -1736,6 +1736,11 @@ export default {
       failedToAdjust: '调整失败',
       emailRequired: '请输入邮箱',
       concurrencyMin: '并发数不能小于1',
+      sales: {
+        isSales: '销售人员',
+        commissionRate: '提成比例（%）',
+        invalidRate: '销售提成比例必须大于 0 且不超过 100'
+      },
       soraStorageQuota: 'Sora 存储配额',
       soraStorageQuotaHint: '单位 GB，0 表示使用分组或系统默认配额',
       amountRequired: '请输入有效金额',
