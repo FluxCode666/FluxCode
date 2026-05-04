@@ -88,7 +88,9 @@ func (r *salesCommissionRepository) ListSummaries(ctx context.Context, params se
 	}
 
 	queryArgs := append([]any{}, args...)
-	queryArgs = append(queryArgs, pageSize, offset)
+	completedStatusArg := len(queryArgs) + 1
+	blockedStatusArg := len(queryArgs) + 2
+	queryArgs = append(queryArgs, payment.OrderStatusCompleted, service.SalesCommissionStatusSettlementBlocked, pageSize, offset)
 	query := fmt.Sprintf(`
 		SELECT
 			scr.sales_user_id,
@@ -97,16 +99,17 @@ func (r *salesCommissionRepository) ListSummaries(ctx context.Context, params se
 			COALESCE(SUM(scr.commission_total_cny), 0),
 			COALESCE(SUM(scr.commission_total_cny - scr.unlocked_cny), 0),
 			COALESCE(SUM(scr.unlocked_cny), 0),
-			COALESCE(SUM(scr.unlocked_cny - scr.settled_cny), 0),
+			COALESCE(SUM(CASE WHEN po.status = $%d AND scr.status <> $%d THEN scr.unlocked_cny - scr.settled_cny ELSE 0 END), 0),
 			COALESCE(SUM(scr.settled_cny), 0),
 			COUNT(*)
 		FROM sales_commission_records scr
 		JOIN users u ON u.id = scr.sales_user_id
+		JOIN payment_orders po ON po.id = scr.payment_order_id
 		%s
 		GROUP BY scr.sales_user_id, u.email, u.username
 		ORDER BY scr.sales_user_id ASC
 		LIMIT $%d OFFSET $%d
-	`, where, len(queryArgs)-1, len(queryArgs))
+	`, completedStatusArg, blockedStatusArg, where, len(queryArgs)-1, len(queryArgs))
 
 	rows, err := r.db.QueryContext(ctx, query, queryArgs...)
 	if err != nil {
@@ -145,14 +148,15 @@ func (r *salesCommissionRepository) GetSummaryBySalesUser(ctx context.Context, s
 			COALESCE(SUM(scr.commission_total_cny), 0),
 			COALESCE(SUM(scr.commission_total_cny - scr.unlocked_cny), 0),
 			COALESCE(SUM(scr.unlocked_cny), 0),
-			COALESCE(SUM(scr.unlocked_cny - scr.settled_cny), 0),
+			COALESCE(SUM(CASE WHEN po.status = $2 AND scr.status <> $3 THEN scr.unlocked_cny - scr.settled_cny ELSE 0 END), 0),
 			COALESCE(SUM(scr.settled_cny), 0),
 			COUNT(scr.id)
 		FROM users u
 		LEFT JOIN sales_commission_records scr ON scr.sales_user_id = u.id
+		LEFT JOIN payment_orders po ON po.id = scr.payment_order_id
 		WHERE u.id = $1
 		GROUP BY u.id, u.email, u.username
-	`, salesUserID).Scan(&s.SalesUserID, &s.SalesEmail, &s.SalesUsername, &totalCNY, &frozenCNY, &unlockedCNY, &settleableCNY, &settledCNY, &s.RecordsCount)
+	`, salesUserID, payment.OrderStatusCompleted, service.SalesCommissionStatusSettlementBlocked).Scan(&s.SalesUserID, &s.SalesEmail, &s.SalesUsername, &totalCNY, &frozenCNY, &unlockedCNY, &settleableCNY, &settledCNY, &s.RecordsCount)
 	if err != nil {
 		return nil, err
 	}
@@ -183,7 +187,9 @@ func (r *salesCommissionRepository) ListRecords(ctx context.Context, params serv
 	}
 
 	queryArgs := append([]any{}, args...)
-	queryArgs = append(queryArgs, pageSize, offset)
+	completedStatusArg := len(queryArgs) + 1
+	blockedStatusArg := len(queryArgs) + 2
+	queryArgs = append(queryArgs, payment.OrderStatusCompleted, service.SalesCommissionStatusSettlementBlocked, pageSize, offset)
 	query := fmt.Sprintf(`
 		SELECT
 			scr.id,
@@ -204,7 +210,7 @@ func (r *salesCommissionRepository) ListRecords(ctx context.Context, params serv
 			scr.commission_total_cny - scr.unlocked_cny,
 			scr.unlocked_cny,
 			scr.settled_cny,
-			scr.unlocked_cny - scr.settled_cny,
+			CASE WHEN po.status = $%d AND scr.status <> $%d THEN scr.unlocked_cny - scr.settled_cny ELSE 0 END,
 			scr.status,
 			scr.note,
 			scr.created_at,
@@ -216,7 +222,7 @@ func (r *salesCommissionRepository) ListRecords(ctx context.Context, params serv
 		%s
 		ORDER BY scr.id ASC
 		LIMIT $%d OFFSET $%d
-	`, where, len(queryArgs)-1, len(queryArgs))
+	`, completedStatusArg, blockedStatusArg, where, len(queryArgs)-1, len(queryArgs))
 
 	rows, err := r.db.QueryContext(ctx, query, queryArgs...)
 	if err != nil {
