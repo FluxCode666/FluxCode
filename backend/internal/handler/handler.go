@@ -35,27 +35,29 @@ type AdminHandlers struct {
 	Channel               *admin.ChannelHandler
 	Payment               *admin.PaymentHandler
 	Referral              *admin.ReferralHandler
+	SalesCommission       *admin.SalesCommissionHandler
 	Promotion             *admin.PromotionHandler
 }
 
 // Handlers contains all HTTP handlers
 type Handlers struct {
-	Auth           *AuthHandler
-	User           *UserHandler
-	APIKey         *APIKeyHandler
-	Usage          *UsageHandler
-	Redeem         *RedeemHandler
-	Subscription   *SubscriptionHandler
-	Announcement   *AnnouncementHandler
-	Admin          *AdminHandlers
-	Gateway        *GatewayHandler
-	OpenAIGateway  *OpenAIGatewayHandler
-	Setting        *SettingHandler
-	Totp           *TotpHandler
-	PricingPlan    *PricingPlanHandler
-	Payment        *PaymentHandler
-	PaymentWebhook *PaymentWebhookHandler
-	Referral       *ReferralHandler
+	Auth            *AuthHandler
+	User            *UserHandler
+	APIKey          *APIKeyHandler
+	Usage           *UsageHandler
+	Redeem          *RedeemHandler
+	Subscription    *SubscriptionHandler
+	Announcement    *AnnouncementHandler
+	Admin           *AdminHandlers
+	Gateway         *GatewayHandler
+	OpenAIGateway   *OpenAIGatewayHandler
+	Setting         *SettingHandler
+	Totp            *TotpHandler
+	PricingPlan     *PricingPlanHandler
+	Payment         *PaymentHandler
+	PaymentWebhook  *PaymentWebhookHandler
+	Referral        *ReferralHandler
+	SalesCommission *SalesCommissionHandler
 }
 
 // BuildInfo contains build-time information

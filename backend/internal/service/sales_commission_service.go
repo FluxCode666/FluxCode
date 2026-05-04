@@ -72,8 +72,12 @@ func (s *SalesCommissionService) ListSummaries(ctx context.Context, params Sales
 	return s.repo.ListSummaries(ctx, params)
 }
 
-func (s *SalesCommissionService) GetSummary(ctx context.Context, salesUserID int64) (*SalesCommissionSummary, error) {
+func (s *SalesCommissionService) GetSummaryBySalesUser(ctx context.Context, salesUserID int64) (*SalesCommissionSummary, error) {
 	return s.repo.GetSummaryBySalesUser(ctx, salesUserID)
+}
+
+func (s *SalesCommissionService) GetSummary(ctx context.Context, salesUserID int64) (*SalesCommissionSummary, error) {
+	return s.GetSummaryBySalesUser(ctx, salesUserID)
 }
 
 func (s *SalesCommissionService) ListRecords(ctx context.Context, params SalesCommissionRecordListParams) ([]SalesCommissionRecord, int, error) {
