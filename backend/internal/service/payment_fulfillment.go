@@ -202,7 +202,11 @@ func (s *PaymentService) doBalance(ctx context.Context, o *dbent.PaymentOrder) e
 	switch action {
 	case redeemActionSkipCompleted:
 		// Code already created and redeemed — just mark completed
-		return s.markCompleted(ctx, o, "RECHARGE_SUCCESS")
+		if err := s.markCompleted(ctx, o, "RECHARGE_SUCCESS"); err != nil {
+			return err
+		}
+		s.handleSalesCommissionAfterBalanceCompleted(ctx, o)
+		return nil
 	case redeemActionCreate:
 		rc := &RedeemCode{Code: o.RechargeCode, Type: RedeemTypeBalance, Value: o.Amount, Status: StatusUnused}
 		if err := s.redeemService.CreateCode(ctx, rc); err != nil {
@@ -231,6 +235,12 @@ func (s *PaymentService) doBalance(ctx context.Context, o *dbent.PaymentOrder) e
 		}
 		s.referralService.HandleOngoingRewardOnRecharge(ctx, o.UserID, o.Amount)
 	}
+	s.handleSalesCommissionAfterBalanceCompleted(ctx, o)
+
+	return nil
+}
+
+func (s *PaymentService) handleSalesCommissionAfterBalanceCompleted(ctx context.Context, o *dbent.PaymentOrder) {
 	if s.salesCommissionService != nil {
 		completedOrder := *o
 		completedOrder.Status = OrderStatusCompleted
@@ -238,8 +248,6 @@ func (s *PaymentService) doBalance(ctx context.Context, o *dbent.PaymentOrder) e
 			slog.Warn("[PaymentService] create sales commission failed", "orderID", o.ID, "error", err)
 		}
 	}
-
-	return nil
 }
 
 func (s *PaymentService) markCompleted(ctx context.Context, o *dbent.PaymentOrder, auditAction string) error {
