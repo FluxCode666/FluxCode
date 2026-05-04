@@ -1711,6 +1711,48 @@
             </div>
           </div>
         </div>
+        <!-- Codex CLI User-Agent -->
+        <div class="card">
+          <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+              {{ t('admin.settings.codexCLIUA.title') }}
+            </h2>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              {{ t('admin.settings.codexCLIUA.description') }}
+            </p>
+          </div>
+          <div class="p-6 space-y-4">
+            <div>
+              <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                {{ t('admin.settings.codexCLIUA.userAgent') }}
+              </label>
+              <input
+                v-model="form.codex_cli_user_agent"
+                type="text"
+                class="input max-w-md font-mono text-sm"
+                :placeholder="t('admin.settings.codexCLIUA.userAgentPlaceholder')"
+              />
+              <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.settings.codexCLIUA.userAgentHint') }}
+              </p>
+            </div>
+            <div>
+              <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                {{ t('admin.settings.codexCLIUA.version') }}
+              </label>
+              <input
+                v-model="form.codex_cli_version"
+                type="text"
+                class="input max-w-xs font-mono text-sm"
+                :placeholder="t('admin.settings.codexCLIUA.versionPlaceholder')"
+              />
+              <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.settings.codexCLIUA.versionHint') }}
+              </p>
+            </div>
+          </div>
+        </div>
+
         <!-- Web Search Emulation -->
         <div class="card">
           <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
@@ -3223,6 +3265,9 @@ const form = reactive<SettingsForm>({
   enable_fingerprint_unification: true,
   enable_metadata_passthrough: false,
   enable_cch_signing: false,
+  // Codex CLI User-Agent
+  codex_cli_user_agent: '',
+  codex_cli_version: '',
   // Balance & quota notification
   balance_low_notify_enabled: false,
   balance_low_notify_threshold: 0,
@@ -3805,6 +3850,8 @@ async function saveSettings() {
       enable_fingerprint_unification: form.enable_fingerprint_unification,
       enable_metadata_passthrough: form.enable_metadata_passthrough,
       enable_cch_signing: form.enable_cch_signing,
+      codex_cli_user_agent: form.codex_cli_user_agent,
+      codex_cli_version: form.codex_cli_version,
       // Payment configuration
       payment_enabled: form.payment_enabled,
       payment_min_amount: Number(form.payment_min_amount) || 0,

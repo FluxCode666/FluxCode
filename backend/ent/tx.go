@@ -42,6 +42,12 @@ type Tx struct {
 	PromoCode *PromoCodeClient
 	// PromoCodeUsage is the client for interacting with the PromoCodeUsage builders.
 	PromoCodeUsage *PromoCodeUsageClient
+	// Promotion is the client for interacting with the Promotion builders.
+	Promotion *PromotionClient
+	// PromotionPlanRule is the client for interacting with the PromotionPlanRule builders.
+	PromotionPlanRule *PromotionPlanRuleClient
+	// PromotionUsage is the client for interacting with the PromotionUsage builders.
+	PromotionUsage *PromotionUsageClient
 	// Proxy is the client for interacting with the Proxy builders.
 	Proxy *ProxyClient
 	// RedeemCode is the client for interacting with the RedeemCode builders.
@@ -219,6 +225,9 @@ func (tx *Tx) init() {
 	tx.PaymentProviderInstance = NewPaymentProviderInstanceClient(tx.config)
 	tx.PromoCode = NewPromoCodeClient(tx.config)
 	tx.PromoCodeUsage = NewPromoCodeUsageClient(tx.config)
+	tx.Promotion = NewPromotionClient(tx.config)
+	tx.PromotionPlanRule = NewPromotionPlanRuleClient(tx.config)
+	tx.PromotionUsage = NewPromotionUsageClient(tx.config)
 	tx.Proxy = NewProxyClient(tx.config)
 	tx.RedeemCode = NewRedeemCodeClient(tx.config)
 	tx.Referral = NewReferralClient(tx.config)

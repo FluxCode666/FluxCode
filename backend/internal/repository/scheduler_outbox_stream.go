@@ -35,19 +35,45 @@ func NewSchedulerOutboxQueue(rdb *redis.Client, consumerName string) service.Sch
 		consumerName = "default"
 	}
 	q := &schedulerOutboxStream{rdb: rdb, consumerName: consumerName}
-	q.ensureGroup()
+	if err := q.ensureGroup(); err != nil {
+		log.Printf("[SchedulerOutboxQueue] create consumer group: %v", err)
+	}
 	return q
 }
 
-// ensureGroup 确保 consumer group 存在。
+// ensureGroup 确保 stream 与 consumer group 存在；group 已存在 (BUSYGROUP) 视为成功。
 // 使用 $ 作为起始 ID，表示只消费 group 创建之后的新消息。
-func (q *schedulerOutboxStream) ensureGroup() {
+func (q *schedulerOutboxStream) ensureGroup() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	err := q.rdb.XGroupCreateMkStream(ctx, schedulerStreamKey, schedulerGroupName, "$").Err()
-	if err != nil && !strings.Contains(err.Error(), "BUSYGROUP") {
-		log.Printf("[SchedulerOutboxQueue] create consumer group: %v", err)
+	if err == nil || strings.Contains(err.Error(), "BUSYGROUP") {
+		return nil
 	}
+	return err
+}
+
+// isMissingStreamOrGroup 识别 Redis 在 stream/group 不存在时返回的 NOGROUP 错误。
+// 触发场景：Redis 重启未持久化、运维 FLUSHDB/DEL、stream 被 maxmemory eviction 等。
+func isMissingStreamOrGroup(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(err.Error(), "NOGROUP")
+}
+
+// xReadGroup 在底层 XREADGROUP 报 NOGROUP 时自动重建 group 并重试一次，
+// 避免上层 worker 因 stream 被外部清理而陷入持续报错的 hot loop。
+func (q *schedulerOutboxStream) xReadGroup(ctx context.Context, args *redis.XReadGroupArgs) ([]redis.XStream, error) {
+	streams, err := q.rdb.XReadGroup(ctx, args).Result()
+	if !isMissingStreamOrGroup(err) {
+		return streams, err
+	}
+	if recreateErr := q.ensureGroup(); recreateErr != nil {
+		return nil, recreateErr
+	}
+	log.Printf("[SchedulerOutboxQueue] consumer group recreated after NOGROUP, retrying XREADGROUP")
+	return q.rdb.XReadGroup(ctx, args).Result()
 }
 
 func (q *schedulerOutboxStream) Publish(ctx context.Context, eventType string, accountID *int64, groupID *int64, payload map[string]any) error {
@@ -92,12 +118,12 @@ func (q *schedulerOutboxStream) Publish(ctx context.Context, eventType string, a
 
 func (q *schedulerOutboxStream) Read(ctx context.Context, count int64, blockTimeout time.Duration) ([]service.SchedulerOutboxEvent, error) {
 	// Phase 1: 优先处理 pending 消息（崩溃恢复）
-	pending, err := q.rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
+	pending, err := q.xReadGroup(ctx, &redis.XReadGroupArgs{
 		Group:    schedulerGroupName,
 		Consumer: q.consumerName,
 		Streams:  []string{schedulerStreamKey, "0"},
 		Count:    count,
-	}).Result()
+	})
 	if err != nil && err != redis.Nil {
 		return nil, err
 	}
@@ -117,7 +143,7 @@ func (q *schedulerOutboxStream) Read(ctx context.Context, count int64, blockTime
 	if blockTimeout > 0 {
 		args.Block = blockTimeout
 	}
-	streams, err := q.rdb.XReadGroup(ctx, args).Result()
+	streams, err := q.xReadGroup(ctx, args)
 	if err == redis.Nil {
 		return nil, nil
 	}
@@ -134,7 +160,16 @@ func (q *schedulerOutboxStream) Ack(ctx context.Context, ids ...string) error {
 	if len(ids) == 0 {
 		return nil
 	}
-	return q.rdb.XAck(ctx, schedulerStreamKey, schedulerGroupName, ids...).Err()
+	err := q.rdb.XAck(ctx, schedulerStreamKey, schedulerGroupName, ids...).Err()
+	if !isMissingStreamOrGroup(err) {
+		return err
+	}
+	// stream/group 已被外部清理，对应消息也不复存在；
+	// 重建 group 让后续 Read/Publish 可以恢复，但当前 ACK 无需重试。
+	if recreateErr := q.ensureGroup(); recreateErr != nil {
+		return recreateErr
+	}
+	return nil
 }
 
 func (q *schedulerOutboxStream) Pending(ctx context.Context) (int64, error) {

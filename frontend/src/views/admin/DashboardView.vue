@@ -236,6 +236,7 @@
                 <DateRangePicker
                   v-model:start-date="startDate"
                   v-model:end-date="endDate"
+                  :custom-presets="dashboardPresets"
                   @change="onDateRangeChange"
                 />
               </div>
@@ -352,6 +353,7 @@ import AppLayout from '@/components/layout/AppLayout.vue'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import Icon from '@/components/icons/Icon.vue'
 import DateRangePicker from '@/components/common/DateRangePicker.vue'
+import type { DatePreset } from '@/components/common/DateRangePicker.vue'
 import Select from '@/components/common/Select.vue'
 import ModelDistributionChart from '@/components/charts/ModelDistributionChart.vue'
 import TokenUsageTrend from '@/components/charts/TokenUsageTrend.vue'
@@ -433,6 +435,38 @@ const granularity = ref<'day' | 'hour'>('hour')
 const defaultRange = getLast24HoursRangeDates()
 const startDate = ref(defaultRange.start)
 const endDate = ref(defaultRange.end)
+
+// Custom presets for dashboard (Last 24h, Last 48h, Last 7 days)
+const dashboardPresets: DatePreset[] = [
+  {
+    labelKey: 'dates.last24Hours',
+    value: 'last24h',
+    getRange: () => {
+      const end = new Date()
+      const start = new Date(end.getTime() - 24 * 60 * 60 * 1000)
+      return { start: formatLocalDate(start), end: formatLocalDate(end) }
+    }
+  },
+  {
+    labelKey: 'dates.last48Hours',
+    value: 'last48h',
+    getRange: () => {
+      const end = new Date()
+      const start = new Date(end.getTime() - 48 * 60 * 60 * 1000)
+      return { start: formatLocalDate(start), end: formatLocalDate(end) }
+    }
+  },
+  {
+    labelKey: 'dates.last7Days',
+    value: '7days',
+    getRange: () => {
+      const end = new Date()
+      const d = new Date()
+      d.setDate(d.getDate() - 6)
+      return { start: formatLocalDate(d), end: formatLocalDate(end) }
+    }
+  }
+]
 
 // Granularity options for Select component
 const granularityOptions = computed(() => [
@@ -631,8 +665,8 @@ const onDateRangeChange = (range: {
   const end = new Date(range.endDate)
   const daysDiff = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24))
 
-  // If range is 1 day, use hourly granularity
-  if (daysDiff <= 1) {
+  // If range is 2 days or less, use hourly granularity
+  if (daysDiff <= 2) {
     granularity.value = 'hour'
   } else {
     granularity.value = 'day'

@@ -399,6 +399,129 @@ func (_u *PaymentOrderUpdate) SetNillableStatus(v *string) *PaymentOrderUpdate {
 	return _u
 }
 
+// SetPromotionID sets the "promotion_id" field.
+func (_u *PaymentOrderUpdate) SetPromotionID(v int64) *PaymentOrderUpdate {
+	_u.mutation.ResetPromotionID()
+	_u.mutation.SetPromotionID(v)
+	return _u
+}
+
+// SetNillablePromotionID sets the "promotion_id" field if the given value is not nil.
+func (_u *PaymentOrderUpdate) SetNillablePromotionID(v *int64) *PaymentOrderUpdate {
+	if v != nil {
+		_u.SetPromotionID(*v)
+	}
+	return _u
+}
+
+// AddPromotionID adds value to the "promotion_id" field.
+func (_u *PaymentOrderUpdate) AddPromotionID(v int64) *PaymentOrderUpdate {
+	_u.mutation.AddPromotionID(v)
+	return _u
+}
+
+// ClearPromotionID clears the value of the "promotion_id" field.
+func (_u *PaymentOrderUpdate) ClearPromotionID() *PaymentOrderUpdate {
+	_u.mutation.ClearPromotionID()
+	return _u
+}
+
+// SetPromotionRuleID sets the "promotion_rule_id" field.
+func (_u *PaymentOrderUpdate) SetPromotionRuleID(v int64) *PaymentOrderUpdate {
+	_u.mutation.ResetPromotionRuleID()
+	_u.mutation.SetPromotionRuleID(v)
+	return _u
+}
+
+// SetNillablePromotionRuleID sets the "promotion_rule_id" field if the given value is not nil.
+func (_u *PaymentOrderUpdate) SetNillablePromotionRuleID(v *int64) *PaymentOrderUpdate {
+	if v != nil {
+		_u.SetPromotionRuleID(*v)
+	}
+	return _u
+}
+
+// AddPromotionRuleID adds value to the "promotion_rule_id" field.
+func (_u *PaymentOrderUpdate) AddPromotionRuleID(v int64) *PaymentOrderUpdate {
+	_u.mutation.AddPromotionRuleID(v)
+	return _u
+}
+
+// ClearPromotionRuleID clears the value of the "promotion_rule_id" field.
+func (_u *PaymentOrderUpdate) ClearPromotionRuleID() *PaymentOrderUpdate {
+	_u.mutation.ClearPromotionRuleID()
+	return _u
+}
+
+// SetOriginalAmount sets the "original_amount" field.
+func (_u *PaymentOrderUpdate) SetOriginalAmount(v float64) *PaymentOrderUpdate {
+	_u.mutation.ResetOriginalAmount()
+	_u.mutation.SetOriginalAmount(v)
+	return _u
+}
+
+// SetNillableOriginalAmount sets the "original_amount" field if the given value is not nil.
+func (_u *PaymentOrderUpdate) SetNillableOriginalAmount(v *float64) *PaymentOrderUpdate {
+	if v != nil {
+		_u.SetOriginalAmount(*v)
+	}
+	return _u
+}
+
+// AddOriginalAmount adds value to the "original_amount" field.
+func (_u *PaymentOrderUpdate) AddOriginalAmount(v float64) *PaymentOrderUpdate {
+	_u.mutation.AddOriginalAmount(v)
+	return _u
+}
+
+// ClearOriginalAmount clears the value of the "original_amount" field.
+func (_u *PaymentOrderUpdate) ClearOriginalAmount() *PaymentOrderUpdate {
+	_u.mutation.ClearOriginalAmount()
+	return _u
+}
+
+// SetDiscountAmount sets the "discount_amount" field.
+func (_u *PaymentOrderUpdate) SetDiscountAmount(v float64) *PaymentOrderUpdate {
+	_u.mutation.ResetDiscountAmount()
+	_u.mutation.SetDiscountAmount(v)
+	return _u
+}
+
+// SetNillableDiscountAmount sets the "discount_amount" field if the given value is not nil.
+func (_u *PaymentOrderUpdate) SetNillableDiscountAmount(v *float64) *PaymentOrderUpdate {
+	if v != nil {
+		_u.SetDiscountAmount(*v)
+	}
+	return _u
+}
+
+// AddDiscountAmount adds value to the "discount_amount" field.
+func (_u *PaymentOrderUpdate) AddDiscountAmount(v float64) *PaymentOrderUpdate {
+	_u.mutation.AddDiscountAmount(v)
+	return _u
+}
+
+// SetBonusAmount sets the "bonus_amount" field.
+func (_u *PaymentOrderUpdate) SetBonusAmount(v float64) *PaymentOrderUpdate {
+	_u.mutation.ResetBonusAmount()
+	_u.mutation.SetBonusAmount(v)
+	return _u
+}
+
+// SetNillableBonusAmount sets the "bonus_amount" field if the given value is not nil.
+func (_u *PaymentOrderUpdate) SetNillableBonusAmount(v *float64) *PaymentOrderUpdate {
+	if v != nil {
+		_u.SetBonusAmount(*v)
+	}
+	return _u
+}
+
+// AddBonusAmount adds value to the "bonus_amount" field.
+func (_u *PaymentOrderUpdate) AddBonusAmount(v float64) *PaymentOrderUpdate {
+	_u.mutation.AddBonusAmount(v)
+	return _u
+}
+
 // SetRefundAmount sets the "refund_amount" field.
 func (_u *PaymentOrderUpdate) SetRefundAmount(v float64) *PaymentOrderUpdate {
 	_u.mutation.ResetRefundAmount()
@@ -913,6 +1036,45 @@ func (_u *PaymentOrderUpdate) sqlSave(ctx context.Context) (_node int, err error
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(paymentorder.FieldStatus, field.TypeString, value)
 	}
+	if value, ok := _u.mutation.PromotionID(); ok {
+		_spec.SetField(paymentorder.FieldPromotionID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedPromotionID(); ok {
+		_spec.AddField(paymentorder.FieldPromotionID, field.TypeInt64, value)
+	}
+	if _u.mutation.PromotionIDCleared() {
+		_spec.ClearField(paymentorder.FieldPromotionID, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.PromotionRuleID(); ok {
+		_spec.SetField(paymentorder.FieldPromotionRuleID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedPromotionRuleID(); ok {
+		_spec.AddField(paymentorder.FieldPromotionRuleID, field.TypeInt64, value)
+	}
+	if _u.mutation.PromotionRuleIDCleared() {
+		_spec.ClearField(paymentorder.FieldPromotionRuleID, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.OriginalAmount(); ok {
+		_spec.SetField(paymentorder.FieldOriginalAmount, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedOriginalAmount(); ok {
+		_spec.AddField(paymentorder.FieldOriginalAmount, field.TypeFloat64, value)
+	}
+	if _u.mutation.OriginalAmountCleared() {
+		_spec.ClearField(paymentorder.FieldOriginalAmount, field.TypeFloat64)
+	}
+	if value, ok := _u.mutation.DiscountAmount(); ok {
+		_spec.SetField(paymentorder.FieldDiscountAmount, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedDiscountAmount(); ok {
+		_spec.AddField(paymentorder.FieldDiscountAmount, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.BonusAmount(); ok {
+		_spec.SetField(paymentorder.FieldBonusAmount, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedBonusAmount(); ok {
+		_spec.AddField(paymentorder.FieldBonusAmount, field.TypeFloat64, value)
+	}
 	if value, ok := _u.mutation.RefundAmount(); ok {
 		_spec.SetField(paymentorder.FieldRefundAmount, field.TypeFloat64, value)
 	}
@@ -1410,6 +1572,129 @@ func (_u *PaymentOrderUpdateOne) SetNillableStatus(v *string) *PaymentOrderUpdat
 	if v != nil {
 		_u.SetStatus(*v)
 	}
+	return _u
+}
+
+// SetPromotionID sets the "promotion_id" field.
+func (_u *PaymentOrderUpdateOne) SetPromotionID(v int64) *PaymentOrderUpdateOne {
+	_u.mutation.ResetPromotionID()
+	_u.mutation.SetPromotionID(v)
+	return _u
+}
+
+// SetNillablePromotionID sets the "promotion_id" field if the given value is not nil.
+func (_u *PaymentOrderUpdateOne) SetNillablePromotionID(v *int64) *PaymentOrderUpdateOne {
+	if v != nil {
+		_u.SetPromotionID(*v)
+	}
+	return _u
+}
+
+// AddPromotionID adds value to the "promotion_id" field.
+func (_u *PaymentOrderUpdateOne) AddPromotionID(v int64) *PaymentOrderUpdateOne {
+	_u.mutation.AddPromotionID(v)
+	return _u
+}
+
+// ClearPromotionID clears the value of the "promotion_id" field.
+func (_u *PaymentOrderUpdateOne) ClearPromotionID() *PaymentOrderUpdateOne {
+	_u.mutation.ClearPromotionID()
+	return _u
+}
+
+// SetPromotionRuleID sets the "promotion_rule_id" field.
+func (_u *PaymentOrderUpdateOne) SetPromotionRuleID(v int64) *PaymentOrderUpdateOne {
+	_u.mutation.ResetPromotionRuleID()
+	_u.mutation.SetPromotionRuleID(v)
+	return _u
+}
+
+// SetNillablePromotionRuleID sets the "promotion_rule_id" field if the given value is not nil.
+func (_u *PaymentOrderUpdateOne) SetNillablePromotionRuleID(v *int64) *PaymentOrderUpdateOne {
+	if v != nil {
+		_u.SetPromotionRuleID(*v)
+	}
+	return _u
+}
+
+// AddPromotionRuleID adds value to the "promotion_rule_id" field.
+func (_u *PaymentOrderUpdateOne) AddPromotionRuleID(v int64) *PaymentOrderUpdateOne {
+	_u.mutation.AddPromotionRuleID(v)
+	return _u
+}
+
+// ClearPromotionRuleID clears the value of the "promotion_rule_id" field.
+func (_u *PaymentOrderUpdateOne) ClearPromotionRuleID() *PaymentOrderUpdateOne {
+	_u.mutation.ClearPromotionRuleID()
+	return _u
+}
+
+// SetOriginalAmount sets the "original_amount" field.
+func (_u *PaymentOrderUpdateOne) SetOriginalAmount(v float64) *PaymentOrderUpdateOne {
+	_u.mutation.ResetOriginalAmount()
+	_u.mutation.SetOriginalAmount(v)
+	return _u
+}
+
+// SetNillableOriginalAmount sets the "original_amount" field if the given value is not nil.
+func (_u *PaymentOrderUpdateOne) SetNillableOriginalAmount(v *float64) *PaymentOrderUpdateOne {
+	if v != nil {
+		_u.SetOriginalAmount(*v)
+	}
+	return _u
+}
+
+// AddOriginalAmount adds value to the "original_amount" field.
+func (_u *PaymentOrderUpdateOne) AddOriginalAmount(v float64) *PaymentOrderUpdateOne {
+	_u.mutation.AddOriginalAmount(v)
+	return _u
+}
+
+// ClearOriginalAmount clears the value of the "original_amount" field.
+func (_u *PaymentOrderUpdateOne) ClearOriginalAmount() *PaymentOrderUpdateOne {
+	_u.mutation.ClearOriginalAmount()
+	return _u
+}
+
+// SetDiscountAmount sets the "discount_amount" field.
+func (_u *PaymentOrderUpdateOne) SetDiscountAmount(v float64) *PaymentOrderUpdateOne {
+	_u.mutation.ResetDiscountAmount()
+	_u.mutation.SetDiscountAmount(v)
+	return _u
+}
+
+// SetNillableDiscountAmount sets the "discount_amount" field if the given value is not nil.
+func (_u *PaymentOrderUpdateOne) SetNillableDiscountAmount(v *float64) *PaymentOrderUpdateOne {
+	if v != nil {
+		_u.SetDiscountAmount(*v)
+	}
+	return _u
+}
+
+// AddDiscountAmount adds value to the "discount_amount" field.
+func (_u *PaymentOrderUpdateOne) AddDiscountAmount(v float64) *PaymentOrderUpdateOne {
+	_u.mutation.AddDiscountAmount(v)
+	return _u
+}
+
+// SetBonusAmount sets the "bonus_amount" field.
+func (_u *PaymentOrderUpdateOne) SetBonusAmount(v float64) *PaymentOrderUpdateOne {
+	_u.mutation.ResetBonusAmount()
+	_u.mutation.SetBonusAmount(v)
+	return _u
+}
+
+// SetNillableBonusAmount sets the "bonus_amount" field if the given value is not nil.
+func (_u *PaymentOrderUpdateOne) SetNillableBonusAmount(v *float64) *PaymentOrderUpdateOne {
+	if v != nil {
+		_u.SetBonusAmount(*v)
+	}
+	return _u
+}
+
+// AddBonusAmount adds value to the "bonus_amount" field.
+func (_u *PaymentOrderUpdateOne) AddBonusAmount(v float64) *PaymentOrderUpdateOne {
+	_u.mutation.AddBonusAmount(v)
 	return _u
 }
 
@@ -1956,6 +2241,45 @@ func (_u *PaymentOrderUpdateOne) sqlSave(ctx context.Context) (_node *PaymentOrd
 	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(paymentorder.FieldStatus, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.PromotionID(); ok {
+		_spec.SetField(paymentorder.FieldPromotionID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedPromotionID(); ok {
+		_spec.AddField(paymentorder.FieldPromotionID, field.TypeInt64, value)
+	}
+	if _u.mutation.PromotionIDCleared() {
+		_spec.ClearField(paymentorder.FieldPromotionID, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.PromotionRuleID(); ok {
+		_spec.SetField(paymentorder.FieldPromotionRuleID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedPromotionRuleID(); ok {
+		_spec.AddField(paymentorder.FieldPromotionRuleID, field.TypeInt64, value)
+	}
+	if _u.mutation.PromotionRuleIDCleared() {
+		_spec.ClearField(paymentorder.FieldPromotionRuleID, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.OriginalAmount(); ok {
+		_spec.SetField(paymentorder.FieldOriginalAmount, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedOriginalAmount(); ok {
+		_spec.AddField(paymentorder.FieldOriginalAmount, field.TypeFloat64, value)
+	}
+	if _u.mutation.OriginalAmountCleared() {
+		_spec.ClearField(paymentorder.FieldOriginalAmount, field.TypeFloat64)
+	}
+	if value, ok := _u.mutation.DiscountAmount(); ok {
+		_spec.SetField(paymentorder.FieldDiscountAmount, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedDiscountAmount(); ok {
+		_spec.AddField(paymentorder.FieldDiscountAmount, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.BonusAmount(); ok {
+		_spec.SetField(paymentorder.FieldBonusAmount, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedBonusAmount(); ok {
+		_spec.AddField(paymentorder.FieldBonusAmount, field.TypeFloat64, value)
 	}
 	if value, ok := _u.mutation.RefundAmount(); ok {
 		_spec.SetField(paymentorder.FieldRefundAmount, field.TypeFloat64, value)

@@ -86,7 +86,7 @@ import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Icon from '@/components/icons/Icon.vue'
 
-interface DatePreset {
+export interface DatePreset {
   labelKey: string
   value: string
   getRange: () => { start: string; end: string }
@@ -97,6 +97,7 @@ interface Props {
   endDate: string
   placeholder?: string
   dropdownAlign?: 'left' | 'right'
+  customPresets?: DatePreset[]
 }
 
 interface Emits {
@@ -143,7 +144,7 @@ const formatDateToString = (date: Date): string => {
   return `${year}-${month}-${day}`
 }
 
-const presets: DatePreset[] = [
+const defaultPresets: DatePreset[] = [
   {
     labelKey: 'dates.last7Days',
     value: '7days',
@@ -207,9 +208,11 @@ const presets: DatePreset[] = [
   }
 ]
 
+const presets = computed(() => props.customPresets || defaultPresets)
+
 const displayValue = computed(() => {
   if (activePreset.value) {
-    const preset = presets.find((p) => p.value === activePreset.value)
+    const preset = presets.value.find((p) => p.value === activePreset.value)
     if (preset) return t(preset.labelKey)
   }
 
@@ -244,7 +247,7 @@ const selectPreset = (preset: DatePreset) => {
 const onDateChange = () => {
   // Check if current dates match any preset
   activePreset.value = null
-  for (const preset of presets) {
+  for (const preset of presets.value) {
     const range = preset.getRange()
     if (range.start === localStartDate.value && range.end === localEndDate.value) {
       activePreset.value = preset.value

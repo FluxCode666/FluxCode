@@ -213,11 +213,13 @@ func TestDashboardService_CacheMiss_StoresCache(t *testing.T) {
 		},
 	}
 	repo := &usageRepoStub{stats: stats}
-	aggRepo := &dashboardAggregationRepoStub{watermark: time.Unix(0, 0).UTC()}
+	aggRepo := &dashboardAggregationRepoStub{watermark: time.Now().UTC()}
 	cfg := &config.Config{
 		Dashboard: config.DashboardCacheConfig{Enabled: true},
 		DashboardAgg: config.DashboardAggregationConfig{
-			Enabled: true,
+			Enabled:         true,
+			IntervalSeconds: 60,
+			LookbackSeconds: 120,
 		},
 	}
 	svc := NewDashboardService(repo, aggRepo, cache, cfg)
@@ -245,11 +247,13 @@ func TestDashboardService_CacheDisabled_SkipsCache(t *testing.T) {
 		},
 	}
 	repo := &usageRepoStub{stats: stats}
-	aggRepo := &dashboardAggregationRepoStub{watermark: time.Unix(0, 0).UTC()}
+	aggRepo := &dashboardAggregationRepoStub{watermark: time.Now().UTC()}
 	cfg := &config.Config{
 		Dashboard: config.DashboardCacheConfig{Enabled: false},
 		DashboardAgg: config.DashboardAggregationConfig{
-			Enabled: true,
+			Enabled:         true,
+			IntervalSeconds: 60,
+			LookbackSeconds: 120,
 		},
 	}
 	svc := NewDashboardService(repo, aggRepo, cache, cfg)
@@ -285,11 +289,13 @@ func TestDashboardService_CacheHitStale_TriggersAsyncRefresh(t *testing.T) {
 		stats:  &usagestats.DashboardStats{TotalUsers: 22},
 		onCall: refreshCh,
 	}
-	aggRepo := &dashboardAggregationRepoStub{watermark: time.Unix(0, 0).UTC()}
+	aggRepo := &dashboardAggregationRepoStub{watermark: time.Now().UTC()}
 	cfg := &config.Config{
 		Dashboard: config.DashboardCacheConfig{Enabled: true},
 		DashboardAgg: config.DashboardAggregationConfig{
-			Enabled: true,
+			Enabled:         true,
+			IntervalSeconds: 60,
+			LookbackSeconds: 120,
 		},
 	}
 	svc := NewDashboardService(repo, aggRepo, cache, cfg)
@@ -316,11 +322,13 @@ func TestDashboardService_CacheParseError_EvictsAndRefetches(t *testing.T) {
 	}
 	stats := &usagestats.DashboardStats{TotalUsers: 9}
 	repo := &usageRepoStub{stats: stats}
-	aggRepo := &dashboardAggregationRepoStub{watermark: time.Unix(0, 0).UTC()}
+	aggRepo := &dashboardAggregationRepoStub{watermark: time.Now().UTC()}
 	cfg := &config.Config{
 		Dashboard: config.DashboardCacheConfig{Enabled: true},
 		DashboardAgg: config.DashboardAggregationConfig{
-			Enabled: true,
+			Enabled:         true,
+			IntervalSeconds: 60,
+			LookbackSeconds: 120,
 		},
 	}
 	svc := NewDashboardService(repo, aggRepo, cache, cfg)
@@ -338,7 +346,7 @@ func TestDashboardService_CacheParseError_RepoFailure(t *testing.T) {
 			return "not-json", nil
 		},
 	}
-	repo := &usageRepoStub{err: errors.New("db down")}
+	repo := &usageRepoStub{err: errors.New("db down"), rangeErr: errors.New("db down")}
 	aggRepo := &dashboardAggregationRepoStub{watermark: time.Unix(0, 0).UTC()}
 	cfg := &config.Config{
 		Dashboard: config.DashboardCacheConfig{Enabled: true},

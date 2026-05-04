@@ -309,6 +309,12 @@ const (
 	SettingKeyReferralOngoingRewardValue        = "referral_ongoing_reward_value"         // 持续奖励数值：fixed 时单位为美元，percentage 时单位为百分点（0-100）
 	SettingKeyReferralOngoingRewardMaxCount     = "referral_ongoing_reward_max_count"     // 每条推广关系最多触发持续奖励次数（0=不限）
 	SettingKeyReferralOngoingRewardDurationDays = "referral_ongoing_reward_duration_days" // 持续奖励有效期：注册后N天内充值才触发（0=永久有效）
+
+	// Codex CLI User-Agent 配置
+	// SettingKeyCodexCLIUserAgent 发往 OpenAI 上游的 User-Agent 头（默认 "codex_cli_rs/1.0.0"）
+	SettingKeyCodexCLIUserAgent = "codex_cli_user_agent"
+	// SettingKeyCodexCLIVersion 发往 OpenAI compact 端点的 Version 头（默认 "1.0.0"）
+	SettingKeyCodexCLIVersion = "codex_cli_version"
 )
 
 // AdminAPIKeyPrefix is the prefix for admin API keys (distinct from user "sk-" keys).

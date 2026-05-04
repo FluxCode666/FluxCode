@@ -49,6 +49,25 @@ const (
 	PromoCodeStatusDisabled = "disabled"
 )
 
+// Promotion constants（充值/订阅促销活动）
+const (
+	// 活动类型
+	PromotionTypeRecharge     = "recharge"     // 充值活动（全局）
+	PromotionTypeSubscription = "subscription" // 订阅活动（按 plan）
+
+	// 充值活动折扣模式
+	PromotionDiscountModeReducePay   = "reduce_pay"   // 降低实付金额
+	PromotionDiscountModeBonusCredit = "bonus_credit" // 增加到账金额（充送）
+
+	// 订阅活动折扣模式（plan 维度）
+	PromotionDiscountModeRate   = "rate"   // 按比例打折
+	PromotionDiscountModeAmount = "amount" // 按减额
+
+	// 活动状态
+	PromotionStatusActive   = "active"
+	PromotionStatusDisabled = "disabled"
+)
+
 // Admin adjustment type constants
 const (
 	AdjustmentTypeAdminBalance     = "admin_balance"     // 管理员调整余额

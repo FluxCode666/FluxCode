@@ -92,6 +92,11 @@ func (s *DashboardAggregationService) Start() {
 	}
 
 	s.timingWheel.ScheduleRecurring("dashboard:aggregation", interval, func() {
+		defer func() {
+			if r := recover(); r != nil {
+				logger.LegacyPrintf("service.dashboard_aggregation", "[DashboardAggregation] 聚合作业 panic 已恢复: %v", r)
+			}
+		}()
 		s.runScheduledAggregation()
 	})
 	logger.LegacyPrintf("service.dashboard_aggregation", "[DashboardAggregation] 聚合作业启动 (interval=%v, lookback=%ds)", interval, s.cfg.LookbackSeconds)

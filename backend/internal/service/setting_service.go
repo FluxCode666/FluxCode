@@ -94,6 +94,18 @@ const gatewayForwardingCacheTTL = 60 * time.Second
 const gatewayForwardingErrorTTL = 5 * time.Second
 const gatewayForwardingDBTimeout = 5 * time.Second
 
+// cachedCodexCLIConfig 缓存 Codex CLI UA 配置（进程内缓存，7 天 TTL，由 UpdateSettings 主动刷新）
+type cachedCodexCLIConfig struct {
+	userAgent string
+	version   string
+	expiresAt int64 // unix nano
+}
+
+var codexCLICfgCache atomic.Value // *cachedCodexCLIConfig
+var codexCLICfgSF singleflight.Group
+
+const codexCLICfgCacheTTL = 7 * 24 * time.Hour // 7 天；由 UpdateSettings 主动刷新
+
 // DefaultSubscriptionGroupReader validates group references used by default subscriptions.
 type DefaultSubscriptionGroupReader interface {
 	GetByID(ctx context.Context, id int64) (*Group, error)
@@ -116,10 +128,20 @@ type SettingService struct {
 
 // NewSettingService 创建系统设置服务实例
 func NewSettingService(settingRepo SettingRepository, cfg *config.Config) *SettingService {
-	return &SettingService{
+	svc := &SettingService{
 		settingRepo: settingRepo,
 		cfg:         cfg,
 	}
+	// 启动时预热 Codex CLI UA 缓存，使 DB 值立即生效
+	go svc.warmCodexCLIConfigCache()
+	return svc
+}
+
+// warmCodexCLIConfigCache 在后台预热 Codex CLI UA 缓存，忽略错误（resolve 函数会回退到配置文件/默认值）。
+func (s *SettingService) warmCodexCLIConfigCache() {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	s.GetCodexCLIConfig(ctx)
 }
 
 // SetDefaultSubscriptionGroupReader injects an optional group reader for default subscription validation.
@@ -649,6 +671,10 @@ func (s *SettingService) UpdateSettings(ctx context.Context, settings *SystemSet
 	updates[SettingKeyAccountQuotaNotifyEnabled] = strconv.FormatBool(settings.AccountQuotaNotifyEnabled)
 	updates[SettingKeyAccountQuotaNotifyEmails] = MarshalNotifyEmails(settings.AccountQuotaNotifyEmails)
 
+	// Codex CLI User-Agent 配置
+	updates[SettingKeyCodexCLIUserAgent] = settings.CodexCLIUserAgent
+	updates[SettingKeyCodexCLIVersion] = settings.CodexCLIVersion
+
 	err = s.settingRepo.SetMultiple(ctx, updates)
 	if err == nil {
 		// 先使 inflight singleflight 失效，再刷新缓存，缩小旧值覆盖新值的竞态窗口
@@ -669,6 +695,12 @@ func (s *SettingService) UpdateSettings(ctx context.Context, settings *SystemSet
 			metadataPassthrough:    settings.EnableMetadataPassthrough,
 			cchSigning:             settings.EnableCCHSigning,
 			expiresAt:              time.Now().Add(gatewayForwardingCacheTTL).UnixNano(),
+		})
+		codexCLICfgSF.Forget("codex_cli_cfg")
+		codexCLICfgCache.Store(&cachedCodexCLIConfig{
+			userAgent: settings.CodexCLIUserAgent,
+			version:   settings.CodexCLIVersion,
+			expiresAt: time.Now().Add(codexCLICfgCacheTTL).UnixNano(),
 		})
 		if s.onUpdate != nil {
 			s.onUpdate() // Invalidate cache after settings update
@@ -825,6 +857,52 @@ func (s *SettingService) GetGatewayForwardingSettings(ctx context.Context) (fing
 		return r.fp, r.mp, r.cch
 	}
 	return true, false, false // fail-open defaults
+}
+
+// GetCodexCLIConfig returns cached Codex CLI UA configuration.
+// Uses in-process atomic.Value cache with 7-day TTL (refreshed by UpdateSettings).
+// Returns (userAgent, version).
+func (s *SettingService) GetCodexCLIConfig(ctx context.Context) (userAgent, version string) {
+	if cached, ok := codexCLICfgCache.Load().(*cachedCodexCLIConfig); ok && cached != nil {
+		if time.Now().UnixNano() < cached.expiresAt {
+			return cached.userAgent, cached.version
+		}
+	}
+	type cliResult struct {
+		ua, ver string
+	}
+	val, _, _ := codexCLICfgSF.Do("codex_cli_cfg", func() (any, error) {
+		if cached, ok := codexCLICfgCache.Load().(*cachedCodexCLIConfig); ok && cached != nil {
+			if time.Now().UnixNano() < cached.expiresAt {
+				return cliResult{cached.userAgent, cached.version}, nil
+			}
+		}
+		dbCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		defer cancel()
+		values, err := s.settingRepo.GetMultiple(dbCtx, []string{
+			SettingKeyCodexCLIUserAgent,
+			SettingKeyCodexCLIVersion,
+		})
+		if err != nil {
+			slog.Warn("failed to get codex CLI config", "error", err)
+			codexCLICfgCache.Store(&cachedCodexCLIConfig{
+				expiresAt: time.Now().Add(5 * time.Second).UnixNano(),
+			})
+			return cliResult{}, nil
+		}
+		ua := strings.TrimSpace(values[SettingKeyCodexCLIUserAgent])
+		ver := strings.TrimSpace(values[SettingKeyCodexCLIVersion])
+		codexCLICfgCache.Store(&cachedCodexCLIConfig{
+			userAgent: ua,
+			version:   ver,
+			expiresAt: time.Now().Add(codexCLICfgCacheTTL).UnixNano(),
+		})
+		return cliResult{ua, ver}, nil
+	})
+	if r, ok := val.(cliResult); ok {
+		return r.ua, r.ver
+	}
+	return "", ""
 }
 
 // IsEmailVerifyEnabled 检查是否开启邮件验证
@@ -1275,6 +1353,10 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	}
 	result.EnableMetadataPassthrough = settings[SettingKeyEnableMetadataPassthrough] == "true"
 	result.EnableCCHSigning = settings[SettingKeyEnableCCHSigning] == "true"
+
+	// Codex CLI User-Agent 配置
+	result.CodexCLIUserAgent = settings[SettingKeyCodexCLIUserAgent]
+	result.CodexCLIVersion = settings[SettingKeyCodexCLIVersion]
 
 	// Web search emulation: quick enabled check from the JSON config
 	if raw := settings[SettingKeyWebSearchEmulationConfig]; raw != "" {

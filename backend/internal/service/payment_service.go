@@ -78,6 +78,7 @@ type CreateOrderRequest struct {
 	SrcURL      string
 	OrderType   string
 	PlanID      int64
+	PromotionID int64 // 用户选择的促销活动 ID（0 表示不使用）
 }
 
 type CreateOrderResponse struct {
@@ -92,6 +93,14 @@ type CreateOrderResponse struct {
 	ClientSecret string    `json:"client_secret,omitempty"`
 	ExpiresAt    time.Time `json:"expires_at"`
 	PaymentMode  string    `json:"payment_mode,omitempty"`
+
+	// 促销活动信息（命中时填充）
+	OriginalAmount float64 `json:"original_amount"`
+	DiscountAmount float64 `json:"discount_amount"`
+	BonusAmount    float64 `json:"bonus_amount"`
+	PromotionID    *int64  `json:"promotion_id,omitempty"`
+	PromotionName  string  `json:"promotion_name,omitempty"`
+	PromotionMode  string  `json:"promotion_mode,omitempty"`
 }
 
 type OrderListParams struct {
@@ -159,17 +168,19 @@ type TopUserStat struct {
 // --- Service ---
 
 type PaymentService struct {
-	providerMu      sync.Mutex
-	providersLoaded bool
-	entClient       *dbent.Client
-	registry        *payment.Registry
-	loadBalancer    payment.LoadBalancer
-	redeemService   *RedeemService
-	subscriptionSvc *SubscriptionService
-	configService   *PaymentConfigService
-	userRepo        UserRepository
-	groupRepo       GroupRepository
-	referralService *ReferralService
+	providerMu        sync.Mutex
+	providersLoaded   bool
+	entClient         *dbent.Client
+	registry          *payment.Registry
+	loadBalancer      payment.LoadBalancer
+	redeemService     *RedeemService
+	subscriptionSvc   *SubscriptionService
+	configService     *PaymentConfigService
+	userRepo          UserRepository
+	groupRepo         GroupRepository
+	referralService   *ReferralService
+	promotionRepo     PromotionRepository
+	promotionResolver *PromotionResolver
 }
 
 // SetReferralService 注入推广奖励服务（避免循环依赖）
@@ -177,8 +188,43 @@ func (s *PaymentService) SetReferralService(svc *ReferralService) {
 	s.referralService = svc
 }
 
-func NewPaymentService(entClient *dbent.Client, registry *payment.Registry, loadBalancer payment.LoadBalancer, redeemService *RedeemService, subscriptionSvc *SubscriptionService, configService *PaymentConfigService, userRepo UserRepository, groupRepo GroupRepository) *PaymentService {
-	return &PaymentService{entClient: entClient, registry: registry, loadBalancer: loadBalancer, redeemService: redeemService, subscriptionSvc: subscriptionSvc, configService: configService, userRepo: userRepo, groupRepo: groupRepo}
+func NewPaymentService(
+	entClient *dbent.Client,
+	registry *payment.Registry,
+	loadBalancer payment.LoadBalancer,
+	redeemService *RedeemService,
+	subscriptionSvc *SubscriptionService,
+	configService *PaymentConfigService,
+	userRepo UserRepository,
+	groupRepo GroupRepository,
+	promotionRepo PromotionRepository,
+	promotionResolver *PromotionResolver,
+) *PaymentService {
+	return &PaymentService{
+		entClient:         entClient,
+		registry:          registry,
+		loadBalancer:      loadBalancer,
+		redeemService:     redeemService,
+		subscriptionSvc:   subscriptionSvc,
+		configService:     configService,
+		userRepo:          userRepo,
+		groupRepo:         groupRepo,
+		promotionRepo:     promotionRepo,
+		promotionResolver: promotionResolver,
+	}
+}
+
+// ListAvailablePromotions 列出用户当前可用的促销活动
+func (s *PaymentService) ListAvailablePromotions(ctx context.Context, userID int64, orderType string, planID int64) ([]AvailablePromotion, error) {
+	if s.promotionResolver == nil {
+		return nil, nil
+	}
+	switch orderType {
+	case payment.OrderTypeSubscription:
+		return s.promotionResolver.ListAvailableForSubscription(ctx, userID, planID)
+	default:
+		return s.promotionResolver.ListAvailableForRecharge(ctx, userID)
+	}
 }
 
 // --- Provider Registry ---

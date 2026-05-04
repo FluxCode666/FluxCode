@@ -12,6 +12,7 @@ import (
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/paymentauditlog"
 	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
+	"github.com/Wei-Shaw/sub2api/ent/promotionusage"
 	"github.com/Wei-Shaw/sub2api/internal/payment"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 )
@@ -245,7 +246,55 @@ func (s *PaymentService) markCompleted(ctx context.Context, o *dbent.PaymentOrde
 		"creditedAmount": o.Amount,
 		"payAmount":      o.PayAmount,
 	})
+	s.recordPromotionUsage(ctx, o, now)
 	return nil
+}
+
+// recordPromotionUsage 在订单履约成功后记录 promotion_usages，用于限次校验与报表。
+// 失败仅记日志，不影响主流程。
+func (s *PaymentService) recordPromotionUsage(ctx context.Context, o *dbent.PaymentOrder, now time.Time) {
+	if s.promotionRepo == nil || o.PromotionID == nil {
+		return
+	}
+	// 已记录的订单避免重复（重试场景）：使用 order_id 唯一性
+	already, err := s.entClient.PromotionUsage.Query().
+		Where(promotionusage.OrderIDEQ(o.ID)).
+		Limit(1).
+		Count(ctx)
+	if err != nil {
+		slog.Warn("[PaymentService] check promotion usage existence failed", "orderID", o.ID, "error", err)
+		return
+	}
+	if already > 0 {
+		return
+	}
+	usage := &PromotionUsage{
+		PromotionID:    *o.PromotionID,
+		UserID:         o.UserID,
+		OrderID:        o.ID,
+		DiscountAmount: o.DiscountAmount,
+		BonusAmount:    o.BonusAmount,
+		UsedAt:         now,
+	}
+	if o.PlanID != nil {
+		usage.PlanID = o.PlanID
+	}
+	if err := s.promotionRepo.CreateUsage(ctx, usage); err != nil {
+		slog.Warn("[PaymentService] write promotion usage failed", "orderID", o.ID, "promotionID", *o.PromotionID, "error", err)
+		return
+	}
+	auditDetail := map[string]any{
+		"promotionId":    *o.PromotionID,
+		"discountAmount": o.DiscountAmount,
+		"bonusAmount":    o.BonusAmount,
+	}
+	if o.PromotionRuleID != nil {
+		auditDetail["promotionRuleId"] = *o.PromotionRuleID
+	}
+	if o.PlanID != nil {
+		auditDetail["planId"] = *o.PlanID
+	}
+	s.writeAuditLog(ctx, o.ID, "PROMO_APPLIED", "system", auditDetail)
 }
 
 func (s *PaymentService) ExecuteSubscriptionFulfillment(ctx context.Context, oid int64) error {
