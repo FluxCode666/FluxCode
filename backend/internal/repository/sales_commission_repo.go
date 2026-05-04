@@ -265,10 +265,11 @@ func (r *salesCommissionRepository) CreateSettlement(ctx context.Context, input 
 		JOIN payment_orders po ON po.id = scr.payment_order_id
 		WHERE scr.sales_user_id = $1
 		  AND po.status = $2
+		  AND scr.status <> $3
 		  AND scr.unlocked_cny > scr.settled_cny
 		ORDER BY scr.id ASC
 		FOR UPDATE
-	`, input.SalesUserID, payment.OrderStatusCompleted)
+	`, input.SalesUserID, payment.OrderStatusCompleted, service.SalesCommissionStatusSettlementBlocked)
 	if err != nil {
 		return nil, err
 	}

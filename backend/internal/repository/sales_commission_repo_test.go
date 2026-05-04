@@ -82,6 +82,53 @@ func TestSalesCommissionRepositoryListSummariesSettleableRequiresCompletedAndUnb
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
+func TestSalesCommissionRepositoryGetSummaryBySalesUserSettleableRequiresCompletedAndUnblocked(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer db.Close()
+
+	repo := NewSalesCommissionRepository(db)
+	ctx := context.Background()
+
+	summaryRows := sqlmock.NewRows([]string{
+		"sales_user_id", "sales_email", "sales_username",
+		"total_commission_cny", "frozen_cny", "unlocked_cny",
+		"settleable_cny", "settled_cny", "records_count",
+	}).AddRow(int64(10), "sales@example.com", "sales", dec("3"), dec("1.80"), dec("1.20"), dec("0.30"), dec("0.20"), 3)
+
+	mock.ExpectQuery(regexp.QuoteMeta("SUM(CASE WHEN po.status = $2 AND scr.status <> $3 THEN scr.unlocked_cny - scr.settled_cny ELSE 0 END)")).
+		WithArgs(int64(10), payment.OrderStatusCompleted, service.SalesCommissionStatusSettlementBlocked).
+		WillReturnRows(summaryRows)
+
+	summary, err := repo.GetSummaryBySalesUser(ctx, 10)
+	require.NoError(t, err)
+	require.InDelta(t, 0.30, summary.SettleableCNY, 0.000001)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestSalesCommissionRepositoryCreateSettlementSkipsBlockedRecords(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer db.Close()
+
+	repo := NewSalesCommissionRepository(db)
+	ctx := context.Background()
+
+	mock.ExpectBegin()
+	mock.ExpectQuery(regexp.QuoteMeta("AND scr.status <> $3")).
+		WithArgs(int64(10), payment.OrderStatusCompleted, service.SalesCommissionStatusSettlementBlocked).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "unlocked_cny", "settled_cny"}))
+	mock.ExpectRollback()
+
+	_, err = repo.CreateSettlement(ctx, &service.SalesCommissionSettlementCreate{
+		SalesUserID: 10,
+		AmountCNY:   1,
+		Note:        "blocked records should not settle",
+	})
+	require.ErrorIs(t, err, service.ErrSalesCommissionSettleAmountExceeded)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 func dec(v string) decimal.Decimal {
 	d, err := decimal.NewFromString(v)
 	if err != nil {
