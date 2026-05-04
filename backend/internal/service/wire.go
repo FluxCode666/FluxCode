@@ -660,6 +660,7 @@ var ProviderSet = wire.NewSet(
 	ProvideBalanceNotifyService,
 	NewReferralConfigResolver,
 	NewReferralService,
+	NewSalesCommissionService,
 	ProvideGiftBalanceExpiryService,
 )
 

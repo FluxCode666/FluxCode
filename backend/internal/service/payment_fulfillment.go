@@ -231,6 +231,13 @@ func (s *PaymentService) doBalance(ctx context.Context, o *dbent.PaymentOrder) e
 		}
 		s.referralService.HandleOngoingRewardOnRecharge(ctx, o.UserID, o.Amount)
 	}
+	if s.salesCommissionService != nil {
+		completedOrder := *o
+		completedOrder.Status = OrderStatusCompleted
+		if err := s.salesCommissionService.HandleBalanceRechargeCompleted(ctx, &completedOrder); err != nil {
+			slog.Warn("[PaymentService] create sales commission failed", "orderID", o.ID, "error", err)
+		}
+	}
 
 	return nil
 }

@@ -8,12 +8,14 @@ package main
 
 import (
 	"context"
+	_ "embed"
 	"log"
 	"net/http"
 	"sync"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/ent"
+	_ "github.com/Wei-Shaw/sub2api/ent/runtime"
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/handler"
 	"github.com/Wei-Shaw/sub2api/internal/handler/admin"
@@ -23,10 +25,6 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/redis/go-redis/v9"
-
-	_ "embed"
-
-	_ "github.com/Wei-Shaw/sub2api/ent/runtime"
 )
 
 // Injectors from wire.go:
@@ -233,17 +231,18 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	poolMonitorHandler := admin.NewPoolMonitorHandler(poolMonitorService)
 	channelHandler := admin.NewChannelHandler(channelService, billingService)
 	paymentHandler := admin.NewPaymentHandler(paymentService, paymentConfigService)
-	// Referral system
 	referralRepository := repository.NewReferralRepository(db)
 	giftBalanceRepository := repository.NewGiftBalanceRepository(db)
 	userReferralConfigRepository := repository.NewUserReferralConfigRepository(db)
 	referralConfigResolver := service.NewReferralConfigResolver(settingRepository, userReferralConfigRepository)
 	referralService := service.NewReferralService(userRepository, referralRepository, giftBalanceRepository, referralConfigResolver)
+	salesCommissionRepository := repository.NewSalesCommissionRepository(db)
+	salesCommissionService := service.NewSalesCommissionService(salesCommissionRepository, referralRepository, userRepository)
 	authService.SetReferralService(referralService)
 	paymentService.SetReferralService(referralService)
+	paymentService.SetSalesCommissionService(salesCommissionService)
 	gatewayService.SetGiftBalanceRepo(giftBalanceRepository)
 	openAIGatewayService.SetGiftBalanceRepo(giftBalanceRepository)
-	giftBalanceExpiryService := service.ProvideGiftBalanceExpiryService(referralService)
 	adminReferralHandler := admin.NewReferralHandler(referralService, referralConfigResolver, settingRepository, userReferralConfigRepository)
 	promotionService := service.NewPromotionService(promotionRepository)
 	promotionHandler := admin.NewPromotionHandler(promotionService)
@@ -281,6 +280,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	openAIPoolMonitorWorker := service.ProvideOpenAIPoolMonitorWorker(db, timingWheelService, accountRepository, proxyRepository, poolMonitorService, alertService, proxyExitInfoProber, proxyConnectivitySnapshotStore)
 	scheduledTestRunnerService := service.ProvideScheduledTestRunnerService(scheduledTestPlanRepository, scheduledTestService, accountTestService, rateLimitService, configConfig)
 	paymentOrderExpiryService := service.ProvidePaymentOrderExpiryService(paymentService)
+	giftBalanceExpiryService := service.ProvideGiftBalanceExpiryService(referralService)
 	v := provideCleanup(client, redisClient, opsMetricsCollector, opsAggregationService, opsAlertEvaluatorService, opsCleanupService, opsScheduledReportService, opsSystemLogSink, schedulerSnapshotService, tokenRefreshService, accountExpiryService, subscriptionExpiryService, usageCleanupService, idempotencyCleanupService, pricingService, openAIPoolMonitorWorker, emailQueueService, billingCacheService, usageRecordWorkerPool, subscriptionService, oAuthService, openAIOAuthService, geminiOAuthService, antigravityOAuthService, openAIGatewayService, scheduledTestRunnerService, backupService, paymentOrderExpiryService, giftBalanceExpiryService)
 	application := &Application{
 		Server:  httpServer,

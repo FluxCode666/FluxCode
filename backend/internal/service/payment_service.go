@@ -168,24 +168,29 @@ type TopUserStat struct {
 // --- Service ---
 
 type PaymentService struct {
-	providerMu        sync.Mutex
-	providersLoaded   bool
-	entClient         *dbent.Client
-	registry          *payment.Registry
-	loadBalancer      payment.LoadBalancer
-	redeemService     *RedeemService
-	subscriptionSvc   *SubscriptionService
-	configService     *PaymentConfigService
-	userRepo          UserRepository
-	groupRepo         GroupRepository
-	referralService   *ReferralService
-	promotionRepo     PromotionRepository
-	promotionResolver *PromotionResolver
+	providerMu             sync.Mutex
+	providersLoaded        bool
+	entClient              *dbent.Client
+	registry               *payment.Registry
+	loadBalancer           payment.LoadBalancer
+	redeemService          *RedeemService
+	subscriptionSvc        *SubscriptionService
+	configService          *PaymentConfigService
+	userRepo               UserRepository
+	groupRepo              GroupRepository
+	referralService        *ReferralService
+	salesCommissionService *SalesCommissionService
+	promotionRepo          PromotionRepository
+	promotionResolver      *PromotionResolver
 }
 
 // SetReferralService 注入推广奖励服务（避免循环依赖）
 func (s *PaymentService) SetReferralService(svc *ReferralService) {
 	s.referralService = svc
+}
+
+func (s *PaymentService) SetSalesCommissionService(svc *SalesCommissionService) {
+	s.salesCommissionService = svc
 }
 
 func NewPaymentService(
