@@ -249,6 +249,42 @@ func (f ReferralFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, er
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ReferralMutation", m)
 }
 
+// The SalesCommissionRecordFunc type is an adapter to allow the use of ordinary
+// function as SalesCommissionRecord mutator.
+type SalesCommissionRecordFunc func(context.Context, *ent.SalesCommissionRecordMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f SalesCommissionRecordFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.SalesCommissionRecordMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.SalesCommissionRecordMutation", m)
+}
+
+// The SalesCommissionSettlementFunc type is an adapter to allow the use of ordinary
+// function as SalesCommissionSettlement mutator.
+type SalesCommissionSettlementFunc func(context.Context, *ent.SalesCommissionSettlementMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f SalesCommissionSettlementFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.SalesCommissionSettlementMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.SalesCommissionSettlementMutation", m)
+}
+
+// The SalesCommissionSettlementItemFunc type is an adapter to allow the use of ordinary
+// function as SalesCommissionSettlementItem mutator.
+type SalesCommissionSettlementItemFunc func(context.Context, *ent.SalesCommissionSettlementItemMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f SalesCommissionSettlementItemFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.SalesCommissionSettlementItemMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.SalesCommissionSettlementItemMutation", m)
+}
+
 // The SecuritySecretFunc type is an adapter to allow the use of ordinary
 // function as SecuritySecret mutator.
 type SecuritySecretFunc func(context.Context, *ent.SecuritySecretMutation) (ent.Value, error)

@@ -333,6 +333,41 @@ func (_u *UserUpdate) AddTotalRecharged(v float64) *UserUpdate {
 	return _u
 }
 
+// SetIsSales sets the "is_sales" field.
+func (_u *UserUpdate) SetIsSales(v bool) *UserUpdate {
+	_u.mutation.SetIsSales(v)
+	return _u
+}
+
+// SetNillableIsSales sets the "is_sales" field if the given value is not nil.
+func (_u *UserUpdate) SetNillableIsSales(v *bool) *UserUpdate {
+	if v != nil {
+		_u.SetIsSales(*v)
+	}
+	return _u
+}
+
+// SetSalesCommissionRate sets the "sales_commission_rate" field.
+func (_u *UserUpdate) SetSalesCommissionRate(v float64) *UserUpdate {
+	_u.mutation.ResetSalesCommissionRate()
+	_u.mutation.SetSalesCommissionRate(v)
+	return _u
+}
+
+// SetNillableSalesCommissionRate sets the "sales_commission_rate" field if the given value is not nil.
+func (_u *UserUpdate) SetNillableSalesCommissionRate(v *float64) *UserUpdate {
+	if v != nil {
+		_u.SetSalesCommissionRate(*v)
+	}
+	return _u
+}
+
+// AddSalesCommissionRate adds value to the "sales_commission_rate" field.
+func (_u *UserUpdate) AddSalesCommissionRate(v float64) *UserUpdate {
+	_u.mutation.AddSalesCommissionRate(v)
+	return _u
+}
+
 // SetReferralCode sets the "referral_code" field.
 func (_u *UserUpdate) SetReferralCode(v string) *UserUpdate {
 	_u.mutation.SetReferralCode(v)
@@ -905,6 +940,15 @@ func (_u *UserUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.AddedTotalRecharged(); ok {
 		_spec.AddField(user.FieldTotalRecharged, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.IsSales(); ok {
+		_spec.SetField(user.FieldIsSales, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.SalesCommissionRate(); ok {
+		_spec.SetField(user.FieldSalesCommissionRate, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedSalesCommissionRate(); ok {
+		_spec.AddField(user.FieldSalesCommissionRate, field.TypeFloat64, value)
 	}
 	if value, ok := _u.mutation.ReferralCode(); ok {
 		_spec.SetField(user.FieldReferralCode, field.TypeString, value)
@@ -1696,6 +1740,41 @@ func (_u *UserUpdateOne) AddTotalRecharged(v float64) *UserUpdateOne {
 	return _u
 }
 
+// SetIsSales sets the "is_sales" field.
+func (_u *UserUpdateOne) SetIsSales(v bool) *UserUpdateOne {
+	_u.mutation.SetIsSales(v)
+	return _u
+}
+
+// SetNillableIsSales sets the "is_sales" field if the given value is not nil.
+func (_u *UserUpdateOne) SetNillableIsSales(v *bool) *UserUpdateOne {
+	if v != nil {
+		_u.SetIsSales(*v)
+	}
+	return _u
+}
+
+// SetSalesCommissionRate sets the "sales_commission_rate" field.
+func (_u *UserUpdateOne) SetSalesCommissionRate(v float64) *UserUpdateOne {
+	_u.mutation.ResetSalesCommissionRate()
+	_u.mutation.SetSalesCommissionRate(v)
+	return _u
+}
+
+// SetNillableSalesCommissionRate sets the "sales_commission_rate" field if the given value is not nil.
+func (_u *UserUpdateOne) SetNillableSalesCommissionRate(v *float64) *UserUpdateOne {
+	if v != nil {
+		_u.SetSalesCommissionRate(*v)
+	}
+	return _u
+}
+
+// AddSalesCommissionRate adds value to the "sales_commission_rate" field.
+func (_u *UserUpdateOne) AddSalesCommissionRate(v float64) *UserUpdateOne {
+	_u.mutation.AddSalesCommissionRate(v)
+	return _u
+}
+
 // SetReferralCode sets the "referral_code" field.
 func (_u *UserUpdateOne) SetReferralCode(v string) *UserUpdateOne {
 	_u.mutation.SetReferralCode(v)
@@ -2298,6 +2377,15 @@ func (_u *UserUpdateOne) sqlSave(ctx context.Context) (_node *User, err error) {
 	}
 	if value, ok := _u.mutation.AddedTotalRecharged(); ok {
 		_spec.AddField(user.FieldTotalRecharged, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.IsSales(); ok {
+		_spec.SetField(user.FieldIsSales, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.SalesCommissionRate(); ok {
+		_spec.SetField(user.FieldSalesCommissionRate, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedSalesCommissionRate(); ok {
+		_spec.AddField(user.FieldSalesCommissionRate, field.TypeFloat64, value)
 	}
 	if value, ok := _u.mutation.ReferralCode(); ok {
 		_spec.SetField(user.FieldReferralCode, field.TypeString, value)

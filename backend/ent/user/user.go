@@ -53,6 +53,10 @@ const (
 	FieldBalanceNotifyExtraEmails = "balance_notify_extra_emails"
 	// FieldTotalRecharged holds the string denoting the total_recharged field in the database.
 	FieldTotalRecharged = "total_recharged"
+	// FieldIsSales holds the string denoting the is_sales field in the database.
+	FieldIsSales = "is_sales"
+	// FieldSalesCommissionRate holds the string denoting the sales_commission_rate field in the database.
+	FieldSalesCommissionRate = "sales_commission_rate"
 	// FieldReferralCode holds the string denoting the referral_code field in the database.
 	FieldReferralCode = "referral_code"
 	// FieldReferredBy holds the string denoting the referred_by field in the database.
@@ -180,6 +184,8 @@ var Columns = []string{
 	FieldBalanceNotifyThreshold,
 	FieldBalanceNotifyExtraEmails,
 	FieldTotalRecharged,
+	FieldIsSales,
+	FieldSalesCommissionRate,
 	FieldReferralCode,
 	FieldReferredBy,
 }
@@ -246,6 +252,10 @@ var (
 	DefaultBalanceNotifyExtraEmails string
 	// DefaultTotalRecharged holds the default value on creation for the "total_recharged" field.
 	DefaultTotalRecharged float64
+	// DefaultIsSales holds the default value on creation for the "is_sales" field.
+	DefaultIsSales bool
+	// DefaultSalesCommissionRate holds the default value on creation for the "sales_commission_rate" field.
+	DefaultSalesCommissionRate float64
 	// DefaultReferralCode holds the default value on creation for the "referral_code" field.
 	DefaultReferralCode string
 	// ReferralCodeValidator is a validator for the "referral_code" field. It is called by the builders before save.
@@ -353,6 +363,16 @@ func ByBalanceNotifyExtraEmails(opts ...sql.OrderTermOption) OrderOption {
 // ByTotalRecharged orders the results by the total_recharged field.
 func ByTotalRecharged(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldTotalRecharged, opts...).ToFunc()
+}
+
+// ByIsSales orders the results by the is_sales field.
+func ByIsSales(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldIsSales, opts...).ToFunc()
+}
+
+// BySalesCommissionRate orders the results by the sales_commission_rate field.
+func BySalesCommissionRate(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldSalesCommissionRate, opts...).ToFunc()
 }
 
 // ByReferralCode orders the results by the referral_code field.

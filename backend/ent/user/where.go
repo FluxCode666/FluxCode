@@ -150,6 +150,16 @@ func TotalRecharged(v float64) predicate.User {
 	return predicate.User(sql.FieldEQ(FieldTotalRecharged, v))
 }
 
+// IsSales applies equality check predicate on the "is_sales" field. It's identical to IsSalesEQ.
+func IsSales(v bool) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldIsSales, v))
+}
+
+// SalesCommissionRate applies equality check predicate on the "sales_commission_rate" field. It's identical to SalesCommissionRateEQ.
+func SalesCommissionRate(v float64) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldSalesCommissionRate, v))
+}
+
 // ReferralCode applies equality check predicate on the "referral_code" field. It's identical to ReferralCodeEQ.
 func ReferralCode(v string) predicate.User {
 	return predicate.User(sql.FieldEQ(FieldReferralCode, v))
@@ -1123,6 +1133,56 @@ func TotalRechargedLT(v float64) predicate.User {
 // TotalRechargedLTE applies the LTE predicate on the "total_recharged" field.
 func TotalRechargedLTE(v float64) predicate.User {
 	return predicate.User(sql.FieldLTE(FieldTotalRecharged, v))
+}
+
+// IsSalesEQ applies the EQ predicate on the "is_sales" field.
+func IsSalesEQ(v bool) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldIsSales, v))
+}
+
+// IsSalesNEQ applies the NEQ predicate on the "is_sales" field.
+func IsSalesNEQ(v bool) predicate.User {
+	return predicate.User(sql.FieldNEQ(FieldIsSales, v))
+}
+
+// SalesCommissionRateEQ applies the EQ predicate on the "sales_commission_rate" field.
+func SalesCommissionRateEQ(v float64) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldSalesCommissionRate, v))
+}
+
+// SalesCommissionRateNEQ applies the NEQ predicate on the "sales_commission_rate" field.
+func SalesCommissionRateNEQ(v float64) predicate.User {
+	return predicate.User(sql.FieldNEQ(FieldSalesCommissionRate, v))
+}
+
+// SalesCommissionRateIn applies the In predicate on the "sales_commission_rate" field.
+func SalesCommissionRateIn(vs ...float64) predicate.User {
+	return predicate.User(sql.FieldIn(FieldSalesCommissionRate, vs...))
+}
+
+// SalesCommissionRateNotIn applies the NotIn predicate on the "sales_commission_rate" field.
+func SalesCommissionRateNotIn(vs ...float64) predicate.User {
+	return predicate.User(sql.FieldNotIn(FieldSalesCommissionRate, vs...))
+}
+
+// SalesCommissionRateGT applies the GT predicate on the "sales_commission_rate" field.
+func SalesCommissionRateGT(v float64) predicate.User {
+	return predicate.User(sql.FieldGT(FieldSalesCommissionRate, v))
+}
+
+// SalesCommissionRateGTE applies the GTE predicate on the "sales_commission_rate" field.
+func SalesCommissionRateGTE(v float64) predicate.User {
+	return predicate.User(sql.FieldGTE(FieldSalesCommissionRate, v))
+}
+
+// SalesCommissionRateLT applies the LT predicate on the "sales_commission_rate" field.
+func SalesCommissionRateLT(v float64) predicate.User {
+	return predicate.User(sql.FieldLT(FieldSalesCommissionRate, v))
+}
+
+// SalesCommissionRateLTE applies the LTE predicate on the "sales_commission_rate" field.
+func SalesCommissionRateLTE(v float64) predicate.User {
+	return predicate.User(sql.FieldLTE(FieldSalesCommissionRate, v))
 }
 
 // ReferralCodeEQ applies the EQ predicate on the "referral_code" field.
