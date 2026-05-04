@@ -94,6 +94,7 @@ func (User) Fields() []ent.Field {
 			Default(false),
 		field.Float("sales_commission_rate").
 			SchemaType(map[string]string{dialect.Postgres: "decimal(8,4)"}).
+			Validate(validateSalesCommissionRate).
 			Default(0),
 
 		// 推广奖励字段

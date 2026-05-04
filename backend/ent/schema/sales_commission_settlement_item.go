@@ -23,7 +23,9 @@ func (SalesCommissionSettlementItem) Fields() []ent.Field {
 	return []ent.Field{
 		field.Int64("settlement_id"),
 		field.Int64("commission_record_id"),
-		field.Float("amount_cny").SchemaType(map[string]string{dialect.Postgres: "decimal(20,2)"}),
+		field.Float("amount_cny").
+			SchemaType(map[string]string{dialect.Postgres: "decimal(20,2)"}).
+			Validate(validatePositiveSalesCommissionAmount("amount_cny")),
 		field.Time("created_at").Default(time.Now).SchemaType(map[string]string{dialect.Postgres: "timestamptz"}).Immutable(),
 	}
 }

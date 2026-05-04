@@ -129,6 +129,11 @@ func (_c *SalesCommissionSettlementCreate) check() error {
 	if _, ok := _c.mutation.AmountCny(); !ok {
 		return &ValidationError{Name: "amount_cny", err: errors.New(`ent: missing required field "SalesCommissionSettlement.amount_cny"`)}
 	}
+	if v, ok := _c.mutation.AmountCny(); ok {
+		if err := salescommissionsettlement.AmountCnyValidator(v); err != nil {
+			return &ValidationError{Name: "amount_cny", err: fmt.Errorf(`ent: validator failed for field "SalesCommissionSettlement.amount_cny": %w`, err)}
+		}
+	}
 	if _, ok := _c.mutation.Note(); !ok {
 		return &ValidationError{Name: "note", err: errors.New(`ent: missing required field "SalesCommissionSettlement.note"`)}
 	}

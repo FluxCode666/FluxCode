@@ -26,6 +26,7 @@ func TestMigrationsRunner_IsIdempotent_AndSchemaIsUpToDate(t *testing.T) {
 	requireColumn(t, tx, "users", "notes", "text", 0, false)
 	requireColumn(t, tx, "users", "is_sales", "boolean", 0, false)
 	requireColumn(t, tx, "users", "sales_commission_rate", "numeric", 0, false)
+	requireCheckConstraint(t, tx, "users", "chk_users_sales_commission_rate")
 
 	// accounts: schedulable and rate-limit fields
 	requireColumn(t, tx, "accounts", "notes", "text", 0, true)
@@ -181,6 +182,12 @@ func TestMigrationsRunner_IsIdempotent_AndSchemaIsUpToDate(t *testing.T) {
 	requireIndex(t, tx, "sales_commission_records", "idx_sales_commission_sales_user")
 	requireIndex(t, tx, "sales_commission_records", "idx_sales_commission_referee")
 	requireIndex(t, tx, "sales_commission_records", "idx_sales_commission_status")
+	requireForeignKey(t, tx, "sales_commission_records", "fk_sales_commission_records_sales_user", "users")
+	requireForeignKey(t, tx, "sales_commission_records", "fk_sales_commission_records_referee_user", "users")
+	requireForeignKey(t, tx, "sales_commission_records", "fk_sales_commission_records_referral", "referrals")
+	requireForeignKey(t, tx, "sales_commission_records", "fk_sales_commission_records_payment_order", "payment_orders")
+	requireCheckConstraint(t, tx, "sales_commission_records", "chk_sales_commission_records_amounts")
+	requireCheckConstraint(t, tx, "sales_commission_records", "chk_sales_commission_records_status")
 
 	var salesCommissionSettlementsRegclass sql.NullString
 	require.NoError(t, tx.QueryRowContext(context.Background(), "SELECT to_regclass('public.sales_commission_settlements')").Scan(&salesCommissionSettlementsRegclass))
@@ -191,6 +198,9 @@ func TestMigrationsRunner_IsIdempotent_AndSchemaIsUpToDate(t *testing.T) {
 	requireColumn(t, tx, "sales_commission_settlements", "created_by", "bigint", 0, true)
 	requireColumn(t, tx, "sales_commission_settlements", "created_at", "timestamp with time zone", 0, false)
 	requireIndex(t, tx, "sales_commission_settlements", "idx_sales_commission_settlements_sales_user")
+	requireForeignKey(t, tx, "sales_commission_settlements", "fk_sales_commission_settlements_sales_user", "users")
+	requireForeignKey(t, tx, "sales_commission_settlements", "fk_sales_commission_settlements_created_by", "users")
+	requireCheckConstraint(t, tx, "sales_commission_settlements", "chk_sales_commission_settlements_amount")
 
 	var salesCommissionSettlementItemsRegclass sql.NullString
 	require.NoError(t, tx.QueryRowContext(context.Background(), "SELECT to_regclass('public.sales_commission_settlement_items')").Scan(&salesCommissionSettlementItemsRegclass))
@@ -200,6 +210,10 @@ func TestMigrationsRunner_IsIdempotent_AndSchemaIsUpToDate(t *testing.T) {
 	requireColumn(t, tx, "sales_commission_settlement_items", "amount_cny", "numeric", 0, false)
 	requireColumn(t, tx, "sales_commission_settlement_items", "created_at", "timestamp with time zone", 0, false)
 	requireIndex(t, tx, "sales_commission_settlement_items", "idx_sales_commission_settlement_items_record")
+	requireIndex(t, tx, "sales_commission_settlement_items", "idx_sales_commission_settlement_items_settlement")
+	requireForeignKey(t, tx, "sales_commission_settlement_items", "fk_sales_commission_settlement_items_settlement", "sales_commission_settlements")
+	requireForeignKey(t, tx, "sales_commission_settlement_items", "fk_sales_commission_settlement_items_record", "sales_commission_records")
+	requireCheckConstraint(t, tx, "sales_commission_settlement_items", "chk_sales_commission_settlement_items_amount")
 }
 
 func requireIndex(t *testing.T, tx *sql.Tx, table, index string) {
@@ -267,4 +281,41 @@ WHERE table_schema = 'public'
 	require.NoError(t, err, "query column default for %s.%s", table, column)
 	require.True(t, columnDefault.Valid, "expected default for %s.%s", table, column)
 	require.Contains(t, columnDefault.String, expected, "default mismatch for %s.%s", table, column)
+}
+
+func requireForeignKey(t *testing.T, tx *sql.Tx, table, constraint, referencedTable string) {
+	t.Helper()
+
+	var actualReferencedTable string
+	err := tx.QueryRowContext(context.Background(), `
+SELECT ccu.table_name
+FROM information_schema.table_constraints tc
+JOIN information_schema.constraint_column_usage ccu
+  ON ccu.constraint_schema = tc.constraint_schema
+ AND ccu.constraint_name = tc.constraint_name
+WHERE tc.table_schema = 'public'
+  AND tc.table_name = $1
+  AND tc.constraint_name = $2
+  AND tc.constraint_type = 'FOREIGN KEY'
+`, table, constraint).Scan(&actualReferencedTable)
+	require.NoError(t, err, "query foreign key %s on %s", constraint, table)
+	require.Equal(t, referencedTable, actualReferencedTable, "referenced table mismatch for %s.%s", table, constraint)
+}
+
+func requireCheckConstraint(t *testing.T, tx *sql.Tx, table, constraint string) {
+	t.Helper()
+
+	var exists bool
+	err := tx.QueryRowContext(context.Background(), `
+SELECT EXISTS (
+	SELECT 1
+	FROM information_schema.table_constraints
+	WHERE table_schema = 'public'
+	  AND table_name = $1
+	  AND constraint_name = $2
+	  AND constraint_type = 'CHECK'
+)
+`, table, constraint).Scan(&exists)
+	require.NoError(t, err, "query check constraint %s on %s", constraint, table)
+	require.True(t, exists, "expected check constraint %s on %s", constraint, table)
 }

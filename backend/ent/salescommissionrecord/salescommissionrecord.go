@@ -78,12 +78,26 @@ func ValidColumn(column string) bool {
 }
 
 var (
+	// OrderPayAmountCnyValidator is a validator for the "order_pay_amount_cny" field. It is called by the builders before save.
+	OrderPayAmountCnyValidator func(float64) error
+	// OrderCreditedAmountValidator is a validator for the "order_credited_amount" field. It is called by the builders before save.
+	OrderCreditedAmountValidator func(float64) error
+	// CommissionRateValidator is a validator for the "commission_rate" field. It is called by the builders before save.
+	CommissionRateValidator func(float64) error
+	// CommissionTotalCnyValidator is a validator for the "commission_total_cny" field. It is called by the builders before save.
+	CommissionTotalCnyValidator func(float64) error
 	// DefaultCreditedUsedAmount holds the default value on creation for the "credited_used_amount" field.
 	DefaultCreditedUsedAmount float64
+	// CreditedUsedAmountValidator is a validator for the "credited_used_amount" field. It is called by the builders before save.
+	CreditedUsedAmountValidator func(float64) error
 	// DefaultUnlockedCny holds the default value on creation for the "unlocked_cny" field.
 	DefaultUnlockedCny float64
+	// UnlockedCnyValidator is a validator for the "unlocked_cny" field. It is called by the builders before save.
+	UnlockedCnyValidator func(float64) error
 	// DefaultSettledCny holds the default value on creation for the "settled_cny" field.
 	DefaultSettledCny float64
+	// SettledCnyValidator is a validator for the "settled_cny" field. It is called by the builders before save.
+	SettledCnyValidator func(float64) error
 	// DefaultStatus holds the default value on creation for the "status" field.
 	DefaultStatus string
 	// StatusValidator is a validator for the "status" field. It is called by the builders before save.

@@ -250,23 +250,58 @@ func (_c *SalesCommissionRecordCreate) check() error {
 	if _, ok := _c.mutation.OrderPayAmountCny(); !ok {
 		return &ValidationError{Name: "order_pay_amount_cny", err: errors.New(`ent: missing required field "SalesCommissionRecord.order_pay_amount_cny"`)}
 	}
+	if v, ok := _c.mutation.OrderPayAmountCny(); ok {
+		if err := salescommissionrecord.OrderPayAmountCnyValidator(v); err != nil {
+			return &ValidationError{Name: "order_pay_amount_cny", err: fmt.Errorf(`ent: validator failed for field "SalesCommissionRecord.order_pay_amount_cny": %w`, err)}
+		}
+	}
 	if _, ok := _c.mutation.OrderCreditedAmount(); !ok {
 		return &ValidationError{Name: "order_credited_amount", err: errors.New(`ent: missing required field "SalesCommissionRecord.order_credited_amount"`)}
+	}
+	if v, ok := _c.mutation.OrderCreditedAmount(); ok {
+		if err := salescommissionrecord.OrderCreditedAmountValidator(v); err != nil {
+			return &ValidationError{Name: "order_credited_amount", err: fmt.Errorf(`ent: validator failed for field "SalesCommissionRecord.order_credited_amount": %w`, err)}
+		}
 	}
 	if _, ok := _c.mutation.CommissionRate(); !ok {
 		return &ValidationError{Name: "commission_rate", err: errors.New(`ent: missing required field "SalesCommissionRecord.commission_rate"`)}
 	}
+	if v, ok := _c.mutation.CommissionRate(); ok {
+		if err := salescommissionrecord.CommissionRateValidator(v); err != nil {
+			return &ValidationError{Name: "commission_rate", err: fmt.Errorf(`ent: validator failed for field "SalesCommissionRecord.commission_rate": %w`, err)}
+		}
+	}
 	if _, ok := _c.mutation.CommissionTotalCny(); !ok {
 		return &ValidationError{Name: "commission_total_cny", err: errors.New(`ent: missing required field "SalesCommissionRecord.commission_total_cny"`)}
+	}
+	if v, ok := _c.mutation.CommissionTotalCny(); ok {
+		if err := salescommissionrecord.CommissionTotalCnyValidator(v); err != nil {
+			return &ValidationError{Name: "commission_total_cny", err: fmt.Errorf(`ent: validator failed for field "SalesCommissionRecord.commission_total_cny": %w`, err)}
+		}
 	}
 	if _, ok := _c.mutation.CreditedUsedAmount(); !ok {
 		return &ValidationError{Name: "credited_used_amount", err: errors.New(`ent: missing required field "SalesCommissionRecord.credited_used_amount"`)}
 	}
+	if v, ok := _c.mutation.CreditedUsedAmount(); ok {
+		if err := salescommissionrecord.CreditedUsedAmountValidator(v); err != nil {
+			return &ValidationError{Name: "credited_used_amount", err: fmt.Errorf(`ent: validator failed for field "SalesCommissionRecord.credited_used_amount": %w`, err)}
+		}
+	}
 	if _, ok := _c.mutation.UnlockedCny(); !ok {
 		return &ValidationError{Name: "unlocked_cny", err: errors.New(`ent: missing required field "SalesCommissionRecord.unlocked_cny"`)}
 	}
+	if v, ok := _c.mutation.UnlockedCny(); ok {
+		if err := salescommissionrecord.UnlockedCnyValidator(v); err != nil {
+			return &ValidationError{Name: "unlocked_cny", err: fmt.Errorf(`ent: validator failed for field "SalesCommissionRecord.unlocked_cny": %w`, err)}
+		}
+	}
 	if _, ok := _c.mutation.SettledCny(); !ok {
 		return &ValidationError{Name: "settled_cny", err: errors.New(`ent: missing required field "SalesCommissionRecord.settled_cny"`)}
+	}
+	if v, ok := _c.mutation.SettledCny(); ok {
+		if err := salescommissionrecord.SettledCnyValidator(v); err != nil {
+			return &ValidationError{Name: "settled_cny", err: fmt.Errorf(`ent: validator failed for field "SalesCommissionRecord.settled_cny": %w`, err)}
+		}
 	}
 	if _, ok := _c.mutation.Status(); !ok {
 		return &ValidationError{Name: "status", err: errors.New(`ent: missing required field "SalesCommissionRecord.status"`)}

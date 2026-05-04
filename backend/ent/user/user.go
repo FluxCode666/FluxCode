@@ -256,6 +256,8 @@ var (
 	DefaultIsSales bool
 	// DefaultSalesCommissionRate holds the default value on creation for the "sales_commission_rate" field.
 	DefaultSalesCommissionRate float64
+	// SalesCommissionRateValidator is a validator for the "sales_commission_rate" field. It is called by the builders before save.
+	SalesCommissionRateValidator func(float64) error
 	// DefaultReferralCode holds the default value on creation for the "referral_code" field.
 	DefaultReferralCode string
 	// ReferralCodeValidator is a validator for the "referral_code" field. It is called by the builders before save.

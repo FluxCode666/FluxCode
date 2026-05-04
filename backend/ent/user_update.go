@@ -843,6 +843,11 @@ func (_u *UserUpdate) check() error {
 			return &ValidationError{Name: "username", err: fmt.Errorf(`ent: validator failed for field "User.username": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.SalesCommissionRate(); ok {
+		if err := user.SalesCommissionRateValidator(v); err != nil {
+			return &ValidationError{Name: "sales_commission_rate", err: fmt.Errorf(`ent: validator failed for field "User.sales_commission_rate": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.ReferralCode(); ok {
 		if err := user.ReferralCodeValidator(v); err != nil {
 			return &ValidationError{Name: "referral_code", err: fmt.Errorf(`ent: validator failed for field "User.referral_code": %w`, err)}
@@ -2261,6 +2266,11 @@ func (_u *UserUpdateOne) check() error {
 	if v, ok := _u.mutation.Username(); ok {
 		if err := user.UsernameValidator(v); err != nil {
 			return &ValidationError{Name: "username", err: fmt.Errorf(`ent: validator failed for field "User.username": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.SalesCommissionRate(); ok {
+		if err := user.SalesCommissionRateValidator(v); err != nil {
+			return &ValidationError{Name: "sales_commission_rate", err: fmt.Errorf(`ent: validator failed for field "User.sales_commission_rate": %w`, err)}
 		}
 	}
 	if v, ok := _u.mutation.ReferralCode(); ok {

@@ -336,6 +336,41 @@ func (_u *SalesCommissionRecordUpdate) defaults() {
 
 // check runs all checks and user-defined validators on the builder.
 func (_u *SalesCommissionRecordUpdate) check() error {
+	if v, ok := _u.mutation.OrderPayAmountCny(); ok {
+		if err := salescommissionrecord.OrderPayAmountCnyValidator(v); err != nil {
+			return &ValidationError{Name: "order_pay_amount_cny", err: fmt.Errorf(`ent: validator failed for field "SalesCommissionRecord.order_pay_amount_cny": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.OrderCreditedAmount(); ok {
+		if err := salescommissionrecord.OrderCreditedAmountValidator(v); err != nil {
+			return &ValidationError{Name: "order_credited_amount", err: fmt.Errorf(`ent: validator failed for field "SalesCommissionRecord.order_credited_amount": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.CommissionRate(); ok {
+		if err := salescommissionrecord.CommissionRateValidator(v); err != nil {
+			return &ValidationError{Name: "commission_rate", err: fmt.Errorf(`ent: validator failed for field "SalesCommissionRecord.commission_rate": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.CommissionTotalCny(); ok {
+		if err := salescommissionrecord.CommissionTotalCnyValidator(v); err != nil {
+			return &ValidationError{Name: "commission_total_cny", err: fmt.Errorf(`ent: validator failed for field "SalesCommissionRecord.commission_total_cny": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.CreditedUsedAmount(); ok {
+		if err := salescommissionrecord.CreditedUsedAmountValidator(v); err != nil {
+			return &ValidationError{Name: "credited_used_amount", err: fmt.Errorf(`ent: validator failed for field "SalesCommissionRecord.credited_used_amount": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.UnlockedCny(); ok {
+		if err := salescommissionrecord.UnlockedCnyValidator(v); err != nil {
+			return &ValidationError{Name: "unlocked_cny", err: fmt.Errorf(`ent: validator failed for field "SalesCommissionRecord.unlocked_cny": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.SettledCny(); ok {
+		if err := salescommissionrecord.SettledCnyValidator(v); err != nil {
+			return &ValidationError{Name: "settled_cny", err: fmt.Errorf(`ent: validator failed for field "SalesCommissionRecord.settled_cny": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.Status(); ok {
 		if err := salescommissionrecord.StatusValidator(v); err != nil {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "SalesCommissionRecord.status": %w`, err)}
@@ -772,6 +807,41 @@ func (_u *SalesCommissionRecordUpdateOne) defaults() {
 
 // check runs all checks and user-defined validators on the builder.
 func (_u *SalesCommissionRecordUpdateOne) check() error {
+	if v, ok := _u.mutation.OrderPayAmountCny(); ok {
+		if err := salescommissionrecord.OrderPayAmountCnyValidator(v); err != nil {
+			return &ValidationError{Name: "order_pay_amount_cny", err: fmt.Errorf(`ent: validator failed for field "SalesCommissionRecord.order_pay_amount_cny": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.OrderCreditedAmount(); ok {
+		if err := salescommissionrecord.OrderCreditedAmountValidator(v); err != nil {
+			return &ValidationError{Name: "order_credited_amount", err: fmt.Errorf(`ent: validator failed for field "SalesCommissionRecord.order_credited_amount": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.CommissionRate(); ok {
+		if err := salescommissionrecord.CommissionRateValidator(v); err != nil {
+			return &ValidationError{Name: "commission_rate", err: fmt.Errorf(`ent: validator failed for field "SalesCommissionRecord.commission_rate": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.CommissionTotalCny(); ok {
+		if err := salescommissionrecord.CommissionTotalCnyValidator(v); err != nil {
+			return &ValidationError{Name: "commission_total_cny", err: fmt.Errorf(`ent: validator failed for field "SalesCommissionRecord.commission_total_cny": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.CreditedUsedAmount(); ok {
+		if err := salescommissionrecord.CreditedUsedAmountValidator(v); err != nil {
+			return &ValidationError{Name: "credited_used_amount", err: fmt.Errorf(`ent: validator failed for field "SalesCommissionRecord.credited_used_amount": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.UnlockedCny(); ok {
+		if err := salescommissionrecord.UnlockedCnyValidator(v); err != nil {
+			return &ValidationError{Name: "unlocked_cny", err: fmt.Errorf(`ent: validator failed for field "SalesCommissionRecord.unlocked_cny": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.SettledCny(); ok {
+		if err := salescommissionrecord.SettledCnyValidator(v); err != nil {
+			return &ValidationError{Name: "settled_cny", err: fmt.Errorf(`ent: validator failed for field "SalesCommissionRecord.settled_cny": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.Status(); ok {
 		if err := salescommissionrecord.StatusValidator(v); err != nil {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "SalesCommissionRecord.status": %w`, err)}

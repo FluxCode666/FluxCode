@@ -45,6 +45,8 @@ func ValidColumn(column string) bool {
 }
 
 var (
+	// AmountCnyValidator is a validator for the "amount_cny" field. It is called by the builders before save.
+	AmountCnyValidator func(float64) error
 	// DefaultCreatedAt holds the default value on creation for the "created_at" field.
 	DefaultCreatedAt func() time.Time
 )

@@ -675,6 +675,11 @@ func (_c *UserCreate) check() error {
 	if _, ok := _c.mutation.SalesCommissionRate(); !ok {
 		return &ValidationError{Name: "sales_commission_rate", err: errors.New(`ent: missing required field "User.sales_commission_rate"`)}
 	}
+	if v, ok := _c.mutation.SalesCommissionRate(); ok {
+		if err := user.SalesCommissionRateValidator(v); err != nil {
+			return &ValidationError{Name: "sales_commission_rate", err: fmt.Errorf(`ent: validator failed for field "User.sales_commission_rate": %w`, err)}
+		}
+	}
 	if _, ok := _c.mutation.ReferralCode(); !ok {
 		return &ValidationError{Name: "referral_code", err: errors.New(`ent: missing required field "User.referral_code"`)}
 	}

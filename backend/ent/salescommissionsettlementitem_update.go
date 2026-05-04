@@ -122,7 +122,20 @@ func (_u *SalesCommissionSettlementItemUpdate) ExecX(ctx context.Context) {
 	}
 }
 
+// check runs all checks and user-defined validators on the builder.
+func (_u *SalesCommissionSettlementItemUpdate) check() error {
+	if v, ok := _u.mutation.AmountCny(); ok {
+		if err := salescommissionsettlementitem.AmountCnyValidator(v); err != nil {
+			return &ValidationError{Name: "amount_cny", err: fmt.Errorf(`ent: validator failed for field "SalesCommissionSettlementItem.amount_cny": %w`, err)}
+		}
+	}
+	return nil
+}
+
 func (_u *SalesCommissionSettlementItemUpdate) sqlSave(ctx context.Context) (_node int, err error) {
+	if err := _u.check(); err != nil {
+		return _node, err
+	}
 	_spec := sqlgraph.NewUpdateSpec(salescommissionsettlementitem.Table, salescommissionsettlementitem.Columns, sqlgraph.NewFieldSpec(salescommissionsettlementitem.FieldID, field.TypeInt64))
 	if ps := _u.mutation.predicates; len(ps) > 0 {
 		_spec.Predicate = func(selector *sql.Selector) {
@@ -277,7 +290,20 @@ func (_u *SalesCommissionSettlementItemUpdateOne) ExecX(ctx context.Context) {
 	}
 }
 
+// check runs all checks and user-defined validators on the builder.
+func (_u *SalesCommissionSettlementItemUpdateOne) check() error {
+	if v, ok := _u.mutation.AmountCny(); ok {
+		if err := salescommissionsettlementitem.AmountCnyValidator(v); err != nil {
+			return &ValidationError{Name: "amount_cny", err: fmt.Errorf(`ent: validator failed for field "SalesCommissionSettlementItem.amount_cny": %w`, err)}
+		}
+	}
+	return nil
+}
+
 func (_u *SalesCommissionSettlementItemUpdateOne) sqlSave(ctx context.Context) (_node *SalesCommissionSettlementItem, err error) {
+	if err := _u.check(); err != nil {
+		return _node, err
+	}
 	_spec := sqlgraph.NewUpdateSpec(salescommissionsettlementitem.Table, salescommissionsettlementitem.Columns, sqlgraph.NewFieldSpec(salescommissionsettlementitem.FieldID, field.TypeInt64))
 	id, ok := _u.mutation.ID()
 	if !ok {
