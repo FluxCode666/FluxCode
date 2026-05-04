@@ -148,6 +148,7 @@ func (s *PaymentService) ExecuteBalanceFulfillment(ctx context.Context, oid int6
 		return infraerrors.NotFound("NOT_FOUND", "order not found")
 	}
 	if o.Status == OrderStatusCompleted {
+		s.handleSalesCommissionAfterBalanceCompleted(fulfillCtx, o)
 		return nil
 	}
 	if psIsRefundStatus(o.Status) {

@@ -96,6 +96,62 @@ func TestPaymentBalanceFulfillment_SkipCompletedCreatesSalesCommission(t *testin
 	require.Equal(t, 1, auditCount)
 }
 
+func TestPaymentBalanceFulfillment_CompletedOrderRetriesSalesCommission(t *testing.T) {
+	ctx := context.Background()
+	entClient, _ := newPaymentFulfillmentEntClient(t)
+
+	user, err := entClient.User.Create().
+		SetEmail("completed-buyer@example.com").
+		SetPasswordHash("hash").
+		SetUsername("completed-buyer").
+		Save(ctx)
+	require.NoError(t, err)
+
+	order, err := entClient.PaymentOrder.Create().
+		SetUserID(user.ID).
+		SetUserEmail(user.Email).
+		SetUserName(user.Username).
+		SetAmount(100).
+		SetPayAmount(100).
+		SetRechargeCode("completed-retry-code").
+		SetOutTradeNo("out-completed-retry").
+		SetPaymentType(payment.TypeAlipay).
+		SetPaymentTradeNo("trade-completed-retry").
+		SetOrderType(payment.OrderTypeBalance).
+		SetStatus(OrderStatusCompleted).
+		SetExpiresAt(time.Now().Add(time.Hour)).
+		SetCompletedAt(time.Now()).
+		SetClientIP("127.0.0.1").
+		SetSrcHost("example.com").
+		Save(ctx)
+	require.NoError(t, err)
+
+	commissionRepo := &salesCommissionRepoStub{}
+	paymentSvc := &PaymentService{
+		entClient: entClient,
+		salesCommissionService: NewSalesCommissionService(
+			commissionRepo,
+			&salesCommissionReferralRepoStub{
+				byReferee: map[int64]*Referral{
+					user.ID: {ID: 78, ReferrerID: 10, RefereeID: user.ID},
+				},
+			},
+			&salesCommissionUserRepoStub{
+				byID: map[int64]*User{
+					10: {ID: 10, IsSales: true, SalesCommissionRate: 10},
+				},
+			},
+		),
+	}
+
+	err = paymentSvc.ExecuteBalanceFulfillment(ctx, order.ID)
+
+	require.NoError(t, err)
+	require.Len(t, commissionRepo.created, 1)
+	require.Equal(t, order.ID, commissionRepo.created[0].PaymentOrderID)
+	require.Equal(t, user.ID, commissionRepo.created[0].RefereeUserID)
+}
+
 func newPaymentFulfillmentEntClient(t *testing.T) (*dbent.Client, *sql.DB) {
 	t.Helper()
 
