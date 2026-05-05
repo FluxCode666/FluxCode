@@ -64,6 +64,14 @@ func RegisterUserRoutes(
 			}
 		}
 
+		if h.SalesCommission != nil {
+			salesCommissions := authenticated.Group("/sales-commissions")
+			{
+				salesCommissions.GET("/summary", h.SalesCommission.GetSummary)
+				salesCommissions.GET("/records", h.SalesCommission.ListRecords)
+			}
+		}
+
 		// API Key管理
 		keys := authenticated.Group("/keys")
 		{

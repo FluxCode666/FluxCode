@@ -281,6 +281,34 @@ func (_c *UserCreate) SetNillableTotalRecharged(v *float64) *UserCreate {
 	return _c
 }
 
+// SetIsSales sets the "is_sales" field.
+func (_c *UserCreate) SetIsSales(v bool) *UserCreate {
+	_c.mutation.SetIsSales(v)
+	return _c
+}
+
+// SetNillableIsSales sets the "is_sales" field if the given value is not nil.
+func (_c *UserCreate) SetNillableIsSales(v *bool) *UserCreate {
+	if v != nil {
+		_c.SetIsSales(*v)
+	}
+	return _c
+}
+
+// SetSalesCommissionRate sets the "sales_commission_rate" field.
+func (_c *UserCreate) SetSalesCommissionRate(v float64) *UserCreate {
+	_c.mutation.SetSalesCommissionRate(v)
+	return _c
+}
+
+// SetNillableSalesCommissionRate sets the "sales_commission_rate" field if the given value is not nil.
+func (_c *UserCreate) SetNillableSalesCommissionRate(v *float64) *UserCreate {
+	if v != nil {
+		_c.SetSalesCommissionRate(*v)
+	}
+	return _c
+}
+
 // SetReferralCode sets the "referral_code" field.
 func (_c *UserCreate) SetReferralCode(v string) *UserCreate {
 	_c.mutation.SetReferralCode(v)
@@ -554,6 +582,14 @@ func (_c *UserCreate) defaults() error {
 		v := user.DefaultTotalRecharged
 		_c.mutation.SetTotalRecharged(v)
 	}
+	if _, ok := _c.mutation.IsSales(); !ok {
+		v := user.DefaultIsSales
+		_c.mutation.SetIsSales(v)
+	}
+	if _, ok := _c.mutation.SalesCommissionRate(); !ok {
+		v := user.DefaultSalesCommissionRate
+		_c.mutation.SetSalesCommissionRate(v)
+	}
 	if _, ok := _c.mutation.ReferralCode(); !ok {
 		v := user.DefaultReferralCode
 		_c.mutation.SetReferralCode(v)
@@ -632,6 +668,17 @@ func (_c *UserCreate) check() error {
 	}
 	if _, ok := _c.mutation.TotalRecharged(); !ok {
 		return &ValidationError{Name: "total_recharged", err: errors.New(`ent: missing required field "User.total_recharged"`)}
+	}
+	if _, ok := _c.mutation.IsSales(); !ok {
+		return &ValidationError{Name: "is_sales", err: errors.New(`ent: missing required field "User.is_sales"`)}
+	}
+	if _, ok := _c.mutation.SalesCommissionRate(); !ok {
+		return &ValidationError{Name: "sales_commission_rate", err: errors.New(`ent: missing required field "User.sales_commission_rate"`)}
+	}
+	if v, ok := _c.mutation.SalesCommissionRate(); ok {
+		if err := user.SalesCommissionRateValidator(v); err != nil {
+			return &ValidationError{Name: "sales_commission_rate", err: fmt.Errorf(`ent: validator failed for field "User.sales_commission_rate": %w`, err)}
+		}
 	}
 	if _, ok := _c.mutation.ReferralCode(); !ok {
 		return &ValidationError{Name: "referral_code", err: errors.New(`ent: missing required field "User.referral_code"`)}
@@ -743,6 +790,14 @@ func (_c *UserCreate) createSpec() (*User, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.TotalRecharged(); ok {
 		_spec.SetField(user.FieldTotalRecharged, field.TypeFloat64, value)
 		_node.TotalRecharged = value
+	}
+	if value, ok := _c.mutation.IsSales(); ok {
+		_spec.SetField(user.FieldIsSales, field.TypeBool, value)
+		_node.IsSales = value
+	}
+	if value, ok := _c.mutation.SalesCommissionRate(); ok {
+		_spec.SetField(user.FieldSalesCommissionRate, field.TypeFloat64, value)
+		_node.SalesCommissionRate = value
 	}
 	if value, ok := _c.mutation.ReferralCode(); ok {
 		_spec.SetField(user.FieldReferralCode, field.TypeString, value)
@@ -1232,6 +1287,36 @@ func (u *UserUpsert) AddTotalRecharged(v float64) *UserUpsert {
 	return u
 }
 
+// SetIsSales sets the "is_sales" field.
+func (u *UserUpsert) SetIsSales(v bool) *UserUpsert {
+	u.Set(user.FieldIsSales, v)
+	return u
+}
+
+// UpdateIsSales sets the "is_sales" field to the value that was provided on create.
+func (u *UserUpsert) UpdateIsSales() *UserUpsert {
+	u.SetExcluded(user.FieldIsSales)
+	return u
+}
+
+// SetSalesCommissionRate sets the "sales_commission_rate" field.
+func (u *UserUpsert) SetSalesCommissionRate(v float64) *UserUpsert {
+	u.Set(user.FieldSalesCommissionRate, v)
+	return u
+}
+
+// UpdateSalesCommissionRate sets the "sales_commission_rate" field to the value that was provided on create.
+func (u *UserUpsert) UpdateSalesCommissionRate() *UserUpsert {
+	u.SetExcluded(user.FieldSalesCommissionRate)
+	return u
+}
+
+// AddSalesCommissionRate adds v to the "sales_commission_rate" field.
+func (u *UserUpsert) AddSalesCommissionRate(v float64) *UserUpsert {
+	u.Add(user.FieldSalesCommissionRate, v)
+	return u
+}
+
 // SetReferralCode sets the "referral_code" field.
 func (u *UserUpsert) SetReferralCode(v string) *UserUpsert {
 	u.Set(user.FieldReferralCode, v)
@@ -1618,6 +1703,41 @@ func (u *UserUpsertOne) AddTotalRecharged(v float64) *UserUpsertOne {
 func (u *UserUpsertOne) UpdateTotalRecharged() *UserUpsertOne {
 	return u.Update(func(s *UserUpsert) {
 		s.UpdateTotalRecharged()
+	})
+}
+
+// SetIsSales sets the "is_sales" field.
+func (u *UserUpsertOne) SetIsSales(v bool) *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.SetIsSales(v)
+	})
+}
+
+// UpdateIsSales sets the "is_sales" field to the value that was provided on create.
+func (u *UserUpsertOne) UpdateIsSales() *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateIsSales()
+	})
+}
+
+// SetSalesCommissionRate sets the "sales_commission_rate" field.
+func (u *UserUpsertOne) SetSalesCommissionRate(v float64) *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.SetSalesCommissionRate(v)
+	})
+}
+
+// AddSalesCommissionRate adds v to the "sales_commission_rate" field.
+func (u *UserUpsertOne) AddSalesCommissionRate(v float64) *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.AddSalesCommissionRate(v)
+	})
+}
+
+// UpdateSalesCommissionRate sets the "sales_commission_rate" field to the value that was provided on create.
+func (u *UserUpsertOne) UpdateSalesCommissionRate() *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateSalesCommissionRate()
 	})
 }
 
@@ -2179,6 +2299,41 @@ func (u *UserUpsertBulk) AddTotalRecharged(v float64) *UserUpsertBulk {
 func (u *UserUpsertBulk) UpdateTotalRecharged() *UserUpsertBulk {
 	return u.Update(func(s *UserUpsert) {
 		s.UpdateTotalRecharged()
+	})
+}
+
+// SetIsSales sets the "is_sales" field.
+func (u *UserUpsertBulk) SetIsSales(v bool) *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.SetIsSales(v)
+	})
+}
+
+// UpdateIsSales sets the "is_sales" field to the value that was provided on create.
+func (u *UserUpsertBulk) UpdateIsSales() *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateIsSales()
+	})
+}
+
+// SetSalesCommissionRate sets the "sales_commission_rate" field.
+func (u *UserUpsertBulk) SetSalesCommissionRate(v float64) *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.SetSalesCommissionRate(v)
+	})
+}
+
+// AddSalesCommissionRate adds v to the "sales_commission_rate" field.
+func (u *UserUpsertBulk) AddSalesCommissionRate(v float64) *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.AddSalesCommissionRate(v)
+	})
+}
+
+// UpdateSalesCommissionRate sets the "sales_commission_rate" field to the value that was provided on create.
+func (u *UserUpsertBulk) UpdateSalesCommissionRate() *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateSalesCommissionRate()
 	})
 }
 

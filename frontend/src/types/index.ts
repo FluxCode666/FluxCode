@@ -43,6 +43,8 @@ export interface User {
   concurrency: number // Allowed concurrent requests
   status: 'active' | 'disabled' // Account status
   allowed_groups: number[] | null // Allowed group IDs (null = all non-exclusive groups)
+  is_sales: boolean
+  sales_commission_rate: number
   balance_notify_enabled: boolean
   balance_notify_threshold: number | null
   balance_notify_extra_emails: NotifyEmailEntry[]
@@ -1310,9 +1312,61 @@ export interface UpdateUserRequest {
   concurrency?: number
   status?: 'active' | 'disabled'
   allowed_groups?: number[] | null
+  is_sales?: boolean
+  sales_commission_rate?: number
   // 用户专属分组倍率配置 (group_id -> rate_multiplier | null)
   // null 表示删除该分组的专属倍率
   group_rates?: Record<number, number | null>
+}
+
+// ==================== Sales Commission Types ====================
+
+export interface SalesCommissionSummary {
+  sales_user_id: number
+  sales_email: string
+  sales_username: string
+  total_commission_cny: number
+  frozen_cny: number
+  unlocked_cny: number
+  settleable_cny: number
+  settled_cny: number
+  records_count: number
+}
+
+export interface SalesCommissionRecord {
+  id: number
+  sales_user_id: number
+  sales_email: string
+  sales_username: string
+  referee_user_id: number
+  referee_email: string
+  referee_username: string
+  referral_id: number
+  payment_order_id: number
+  payment_order_status: string
+  order_pay_amount_cny: number
+  order_credited_amount: number
+  commission_rate: number
+  commission_total_cny: number
+  credited_used_amount: number
+  frozen_cny: number
+  unlocked_cny: number
+  settled_cny: number
+  settleable_cny: number
+  status: string
+  note: string
+  created_at: string
+  updated_at: string
+}
+
+export interface SalesCommissionSettlement {
+  id: number
+  sales_user_id: number
+  sales_email: string
+  amount_cny: number
+  note: string
+  created_by?: number
+  created_at: string
 }
 
 export interface ChangePasswordRequest {

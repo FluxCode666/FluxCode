@@ -38,6 +38,7 @@ func ProvideAdminHandlers(
 	channelHandler *admin.ChannelHandler,
 	paymentHandler *admin.PaymentHandler,
 	referralHandler *admin.ReferralHandler,
+	salesCommissionHandler *admin.SalesCommissionHandler,
 	promotionHandler *admin.PromotionHandler,
 ) *AdminHandlers {
 	return &AdminHandlers{
@@ -70,6 +71,7 @@ func ProvideAdminHandlers(
 		Channel:               channelHandler,
 		Payment:               paymentHandler,
 		Referral:              referralHandler,
+		SalesCommission:       salesCommissionHandler,
 		Promotion:             promotionHandler,
 	}
 }
@@ -102,26 +104,28 @@ func ProvideHandlers(
 	paymentHandler *PaymentHandler,
 	paymentWebhookHandler *PaymentWebhookHandler,
 	referralHandler *ReferralHandler,
+	salesCommissionHandler *SalesCommissionHandler,
 	_ *service.IdempotencyCoordinator,
 	_ *service.IdempotencyCleanupService,
 ) *Handlers {
 	return &Handlers{
-		Auth:           authHandler,
-		User:           userHandler,
-		APIKey:         apiKeyHandler,
-		Usage:          usageHandler,
-		Redeem:         redeemHandler,
-		Subscription:   subscriptionHandler,
-		Announcement:   announcementHandler,
-		Admin:          adminHandlers,
-		Gateway:        gatewayHandler,
-		OpenAIGateway:  openaiGatewayHandler,
-		Setting:        settingHandler,
-		Totp:           totpHandler,
-		PricingPlan:    pricingPlanHandler,
-		Payment:        paymentHandler,
-		PaymentWebhook: paymentWebhookHandler,
-		Referral:       referralHandler,
+		Auth:            authHandler,
+		User:            userHandler,
+		APIKey:          apiKeyHandler,
+		Usage:           usageHandler,
+		Redeem:          redeemHandler,
+		Subscription:    subscriptionHandler,
+		Announcement:    announcementHandler,
+		Admin:           adminHandlers,
+		Gateway:         gatewayHandler,
+		OpenAIGateway:   openaiGatewayHandler,
+		Setting:         settingHandler,
+		Totp:            totpHandler,
+		PricingPlan:     pricingPlanHandler,
+		Payment:         paymentHandler,
+		PaymentWebhook:  paymentWebhookHandler,
+		Referral:        referralHandler,
+		SalesCommission: salesCommissionHandler,
 	}
 }
 
@@ -173,7 +177,9 @@ var ProviderSet = wire.NewSet(
 	admin.NewChannelHandler,
 	admin.NewPaymentHandler,
 	admin.NewReferralHandler,
+	admin.NewSalesCommissionHandler,
 	NewReferralHandler,
+	NewSalesCommissionHandler,
 	admin.NewPromotionHandler,
 
 	// AdminHandlers and Handlers constructors

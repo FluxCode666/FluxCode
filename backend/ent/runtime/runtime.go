@@ -25,6 +25,9 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/proxy"
 	"github.com/Wei-Shaw/sub2api/ent/redeemcode"
 	"github.com/Wei-Shaw/sub2api/ent/referral"
+	"github.com/Wei-Shaw/sub2api/ent/salescommissionrecord"
+	"github.com/Wei-Shaw/sub2api/ent/salescommissionsettlement"
+	"github.com/Wei-Shaw/sub2api/ent/salescommissionsettlementitem"
 	"github.com/Wei-Shaw/sub2api/ent/schema"
 	"github.com/Wei-Shaw/sub2api/ent/securitysecret"
 	"github.com/Wei-Shaw/sub2api/ent/setting"
@@ -1056,6 +1059,100 @@ func init() {
 	referral.DefaultUpdatedAt = referralDescUpdatedAt.Default.(func() time.Time)
 	// referral.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
 	referral.UpdateDefaultUpdatedAt = referralDescUpdatedAt.UpdateDefault.(func() time.Time)
+	salescommissionrecordFields := schema.SalesCommissionRecord{}.Fields()
+	_ = salescommissionrecordFields
+	// salescommissionrecordDescOrderPayAmountCny is the schema descriptor for order_pay_amount_cny field.
+	salescommissionrecordDescOrderPayAmountCny := salescommissionrecordFields[4].Descriptor()
+	// salescommissionrecord.OrderPayAmountCnyValidator is a validator for the "order_pay_amount_cny" field. It is called by the builders before save.
+	salescommissionrecord.OrderPayAmountCnyValidator = salescommissionrecordDescOrderPayAmountCny.Validators[0].(func(float64) error)
+	// salescommissionrecordDescOrderCreditedAmount is the schema descriptor for order_credited_amount field.
+	salescommissionrecordDescOrderCreditedAmount := salescommissionrecordFields[5].Descriptor()
+	// salescommissionrecord.OrderCreditedAmountValidator is a validator for the "order_credited_amount" field. It is called by the builders before save.
+	salescommissionrecord.OrderCreditedAmountValidator = salescommissionrecordDescOrderCreditedAmount.Validators[0].(func(float64) error)
+	// salescommissionrecordDescCommissionRate is the schema descriptor for commission_rate field.
+	salescommissionrecordDescCommissionRate := salescommissionrecordFields[6].Descriptor()
+	// salescommissionrecord.CommissionRateValidator is a validator for the "commission_rate" field. It is called by the builders before save.
+	salescommissionrecord.CommissionRateValidator = salescommissionrecordDescCommissionRate.Validators[0].(func(float64) error)
+	// salescommissionrecordDescCommissionTotalCny is the schema descriptor for commission_total_cny field.
+	salescommissionrecordDescCommissionTotalCny := salescommissionrecordFields[7].Descriptor()
+	// salescommissionrecord.CommissionTotalCnyValidator is a validator for the "commission_total_cny" field. It is called by the builders before save.
+	salescommissionrecord.CommissionTotalCnyValidator = salescommissionrecordDescCommissionTotalCny.Validators[0].(func(float64) error)
+	// salescommissionrecordDescCreditedUsedAmount is the schema descriptor for credited_used_amount field.
+	salescommissionrecordDescCreditedUsedAmount := salescommissionrecordFields[8].Descriptor()
+	// salescommissionrecord.DefaultCreditedUsedAmount holds the default value on creation for the credited_used_amount field.
+	salescommissionrecord.DefaultCreditedUsedAmount = salescommissionrecordDescCreditedUsedAmount.Default.(float64)
+	// salescommissionrecord.CreditedUsedAmountValidator is a validator for the "credited_used_amount" field. It is called by the builders before save.
+	salescommissionrecord.CreditedUsedAmountValidator = salescommissionrecordDescCreditedUsedAmount.Validators[0].(func(float64) error)
+	// salescommissionrecordDescUnlockedCny is the schema descriptor for unlocked_cny field.
+	salescommissionrecordDescUnlockedCny := salescommissionrecordFields[9].Descriptor()
+	// salescommissionrecord.DefaultUnlockedCny holds the default value on creation for the unlocked_cny field.
+	salescommissionrecord.DefaultUnlockedCny = salescommissionrecordDescUnlockedCny.Default.(float64)
+	// salescommissionrecord.UnlockedCnyValidator is a validator for the "unlocked_cny" field. It is called by the builders before save.
+	salescommissionrecord.UnlockedCnyValidator = salescommissionrecordDescUnlockedCny.Validators[0].(func(float64) error)
+	// salescommissionrecordDescSettledCny is the schema descriptor for settled_cny field.
+	salescommissionrecordDescSettledCny := salescommissionrecordFields[10].Descriptor()
+	// salescommissionrecord.DefaultSettledCny holds the default value on creation for the settled_cny field.
+	salescommissionrecord.DefaultSettledCny = salescommissionrecordDescSettledCny.Default.(float64)
+	// salescommissionrecord.SettledCnyValidator is a validator for the "settled_cny" field. It is called by the builders before save.
+	salescommissionrecord.SettledCnyValidator = salescommissionrecordDescSettledCny.Validators[0].(func(float64) error)
+	// salescommissionrecordDescStatus is the schema descriptor for status field.
+	salescommissionrecordDescStatus := salescommissionrecordFields[11].Descriptor()
+	// salescommissionrecord.DefaultStatus holds the default value on creation for the status field.
+	salescommissionrecord.DefaultStatus = salescommissionrecordDescStatus.Default.(string)
+	// salescommissionrecord.StatusValidator is a validator for the "status" field. It is called by the builders before save.
+	salescommissionrecord.StatusValidator = func() func(string) error {
+		validators := salescommissionrecordDescStatus.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(status string) error {
+			for _, fn := range fns {
+				if err := fn(status); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// salescommissionrecordDescNote is the schema descriptor for note field.
+	salescommissionrecordDescNote := salescommissionrecordFields[12].Descriptor()
+	// salescommissionrecord.DefaultNote holds the default value on creation for the note field.
+	salescommissionrecord.DefaultNote = salescommissionrecordDescNote.Default.(string)
+	// salescommissionrecordDescCreatedAt is the schema descriptor for created_at field.
+	salescommissionrecordDescCreatedAt := salescommissionrecordFields[13].Descriptor()
+	// salescommissionrecord.DefaultCreatedAt holds the default value on creation for the created_at field.
+	salescommissionrecord.DefaultCreatedAt = salescommissionrecordDescCreatedAt.Default.(func() time.Time)
+	// salescommissionrecordDescUpdatedAt is the schema descriptor for updated_at field.
+	salescommissionrecordDescUpdatedAt := salescommissionrecordFields[14].Descriptor()
+	// salescommissionrecord.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	salescommissionrecord.DefaultUpdatedAt = salescommissionrecordDescUpdatedAt.Default.(func() time.Time)
+	// salescommissionrecord.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	salescommissionrecord.UpdateDefaultUpdatedAt = salescommissionrecordDescUpdatedAt.UpdateDefault.(func() time.Time)
+	salescommissionsettlementFields := schema.SalesCommissionSettlement{}.Fields()
+	_ = salescommissionsettlementFields
+	// salescommissionsettlementDescAmountCny is the schema descriptor for amount_cny field.
+	salescommissionsettlementDescAmountCny := salescommissionsettlementFields[1].Descriptor()
+	// salescommissionsettlement.AmountCnyValidator is a validator for the "amount_cny" field. It is called by the builders before save.
+	salescommissionsettlement.AmountCnyValidator = salescommissionsettlementDescAmountCny.Validators[0].(func(float64) error)
+	// salescommissionsettlementDescNote is the schema descriptor for note field.
+	salescommissionsettlementDescNote := salescommissionsettlementFields[2].Descriptor()
+	// salescommissionsettlement.DefaultNote holds the default value on creation for the note field.
+	salescommissionsettlement.DefaultNote = salescommissionsettlementDescNote.Default.(string)
+	// salescommissionsettlementDescCreatedAt is the schema descriptor for created_at field.
+	salescommissionsettlementDescCreatedAt := salescommissionsettlementFields[4].Descriptor()
+	// salescommissionsettlement.DefaultCreatedAt holds the default value on creation for the created_at field.
+	salescommissionsettlement.DefaultCreatedAt = salescommissionsettlementDescCreatedAt.Default.(func() time.Time)
+	salescommissionsettlementitemFields := schema.SalesCommissionSettlementItem{}.Fields()
+	_ = salescommissionsettlementitemFields
+	// salescommissionsettlementitemDescAmountCny is the schema descriptor for amount_cny field.
+	salescommissionsettlementitemDescAmountCny := salescommissionsettlementitemFields[2].Descriptor()
+	// salescommissionsettlementitem.AmountCnyValidator is a validator for the "amount_cny" field. It is called by the builders before save.
+	salescommissionsettlementitem.AmountCnyValidator = salescommissionsettlementitemDescAmountCny.Validators[0].(func(float64) error)
+	// salescommissionsettlementitemDescCreatedAt is the schema descriptor for created_at field.
+	salescommissionsettlementitemDescCreatedAt := salescommissionsettlementitemFields[3].Descriptor()
+	// salescommissionsettlementitem.DefaultCreatedAt holds the default value on creation for the created_at field.
+	salescommissionsettlementitem.DefaultCreatedAt = salescommissionsettlementitemDescCreatedAt.Default.(func() time.Time)
 	securitysecretMixin := schema.SecuritySecret{}.Mixin()
 	securitysecretMixinFields0 := securitysecretMixin[0].Fields()
 	_ = securitysecretMixinFields0
@@ -1537,8 +1634,18 @@ func init() {
 	userDescTotalRecharged := userFields[15].Descriptor()
 	// user.DefaultTotalRecharged holds the default value on creation for the total_recharged field.
 	user.DefaultTotalRecharged = userDescTotalRecharged.Default.(float64)
+	// userDescIsSales is the schema descriptor for is_sales field.
+	userDescIsSales := userFields[16].Descriptor()
+	// user.DefaultIsSales holds the default value on creation for the is_sales field.
+	user.DefaultIsSales = userDescIsSales.Default.(bool)
+	// userDescSalesCommissionRate is the schema descriptor for sales_commission_rate field.
+	userDescSalesCommissionRate := userFields[17].Descriptor()
+	// user.DefaultSalesCommissionRate holds the default value on creation for the sales_commission_rate field.
+	user.DefaultSalesCommissionRate = userDescSalesCommissionRate.Default.(float64)
+	// user.SalesCommissionRateValidator is a validator for the "sales_commission_rate" field. It is called by the builders before save.
+	user.SalesCommissionRateValidator = userDescSalesCommissionRate.Validators[0].(func(float64) error)
 	// userDescReferralCode is the schema descriptor for referral_code field.
-	userDescReferralCode := userFields[16].Descriptor()
+	userDescReferralCode := userFields[18].Descriptor()
 	// user.DefaultReferralCode holds the default value on creation for the referral_code field.
 	user.DefaultReferralCode = userDescReferralCode.Default.(string)
 	// user.ReferralCodeValidator is a validator for the "referral_code" field. It is called by the builders before save.

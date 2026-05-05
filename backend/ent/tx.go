@@ -54,6 +54,12 @@ type Tx struct {
 	RedeemCode *RedeemCodeClient
 	// Referral is the client for interacting with the Referral builders.
 	Referral *ReferralClient
+	// SalesCommissionRecord is the client for interacting with the SalesCommissionRecord builders.
+	SalesCommissionRecord *SalesCommissionRecordClient
+	// SalesCommissionSettlement is the client for interacting with the SalesCommissionSettlement builders.
+	SalesCommissionSettlement *SalesCommissionSettlementClient
+	// SalesCommissionSettlementItem is the client for interacting with the SalesCommissionSettlementItem builders.
+	SalesCommissionSettlementItem *SalesCommissionSettlementItemClient
 	// SecuritySecret is the client for interacting with the SecuritySecret builders.
 	SecuritySecret *SecuritySecretClient
 	// Setting is the client for interacting with the Setting builders.
@@ -231,6 +237,9 @@ func (tx *Tx) init() {
 	tx.Proxy = NewProxyClient(tx.config)
 	tx.RedeemCode = NewRedeemCodeClient(tx.config)
 	tx.Referral = NewReferralClient(tx.config)
+	tx.SalesCommissionRecord = NewSalesCommissionRecordClient(tx.config)
+	tx.SalesCommissionSettlement = NewSalesCommissionSettlementClient(tx.config)
+	tx.SalesCommissionSettlementItem = NewSalesCommissionSettlementItemClient(tx.config)
 	tx.SecuritySecret = NewSecuritySecretClient(tx.config)
 	tx.Setting = NewSettingClient(tx.config)
 	tx.SubscriptionGrant = NewSubscriptionGrantClient(tx.config)

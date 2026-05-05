@@ -8,11 +8,6 @@ package main
 
 import (
 	"context"
-	"log"
-	"net/http"
-	"sync"
-	"time"
-
 	"github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/handler"
@@ -23,9 +18,14 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/redis/go-redis/v9"
+	"log"
+	"net/http"
+	"sync"
+	"time"
+)
 
+import (
 	_ "embed"
-
 	_ "github.com/Wei-Shaw/sub2api/ent/runtime"
 )
 
@@ -69,7 +69,12 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	apiKeyAuthCacheInvalidator := service.ProvideAPIKeyAuthCacheInvalidator(apiKeyService)
 	promoService := service.NewPromoService(promoCodeRepository, userRepository, billingCacheService, client, apiKeyAuthCacheInvalidator)
 	subscriptionService := service.NewSubscriptionService(groupRepository, userSubscriptionRepository, subscriptionGrantRepository, billingCacheService, client, configConfig)
-	authService := service.NewAuthService(client, userRepository, redeemCodeRepository, refreshTokenCache, configConfig, settingService, emailService, turnstileService, emailQueueService, promoService, subscriptionService)
+	referralRepository := repository.NewReferralRepository(db)
+	giftBalanceRepository := repository.NewGiftBalanceRepository(db)
+	userReferralConfigRepository := repository.NewUserReferralConfigRepository(db)
+	referralConfigResolver := service.NewReferralConfigResolver(settingRepository, userReferralConfigRepository)
+	referralService := service.NewReferralService(userRepository, referralRepository, giftBalanceRepository, referralConfigResolver)
+	authService := service.ProvideAuthService(client, userRepository, redeemCodeRepository, refreshTokenCache, configConfig, settingService, emailService, turnstileService, emailQueueService, promoService, subscriptionService, referralService)
 	userService := service.NewUserService(userRepository, settingRepository, apiKeyAuthCacheInvalidator, billingCache)
 	redeemCache := repository.NewRedeemCache(redisClient)
 	redeemService := service.NewRedeemService(redeemCodeRepository, userRepository, subscriptionService, redeemCache, billingCacheService, client, apiKeyAuthCacheInvalidator)
@@ -184,9 +189,9 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	proxyTransportFailureCounter := repository.NewProxyTransportFailureCounter(redisClient)
 	poolAlertConfigCache := repository.NewPoolAlertConfigCache(redisClient)
 	poolMonitorService := service.NewPoolMonitorService(poolAlertConfigRepository, proxyTransportFailureCounter, poolAlertConfigCache)
-	gatewayService := service.ProvideGatewayService(accountRepository, groupRepository, usageLogRepository, usageBillingRepository, userRepository, userSubscriptionRepository, userGroupRateRepository, gatewayCache, configConfig, schedulerSnapshotService, concurrencyService, billingService, rateLimitService, billingCacheService, identityService, httpUpstream, deferredService, claudeTokenProvider, sessionLimitCache, rpmCache, digestSessionStore, settingService, tlsFingerprintProfileService, channelService, modelPricingResolver, balanceNotifyService, poolMonitorService)
+	gatewayService := service.ProvideGatewayService(accountRepository, groupRepository, usageLogRepository, usageBillingRepository, userRepository, userSubscriptionRepository, userGroupRateRepository, gatewayCache, configConfig, schedulerSnapshotService, concurrencyService, billingService, rateLimitService, billingCacheService, identityService, httpUpstream, deferredService, claudeTokenProvider, sessionLimitCache, rpmCache, digestSessionStore, settingService, tlsFingerprintProfileService, channelService, modelPricingResolver, balanceNotifyService, poolMonitorService, giftBalanceRepository)
 	openAITokenProvider := service.ProvideOpenAITokenProvider(accountRepository, geminiTokenCache, openAIOAuthService, oAuthRefreshAPI)
-	openAIGatewayService := service.ProvideOpenAIGatewayService(accountRepository, usageLogRepository, usageBillingRepository, userRepository, userSubscriptionRepository, userGroupRateRepository, gatewayCache, configConfig, schedulerSnapshotService, concurrencyService, billingService, rateLimitService, billingCacheService, httpUpstream, deferredService, openAITokenProvider, modelPricingResolver, channelService, balanceNotifyService, proxyUsageMetricsRepository, poolMonitorService)
+	openAIGatewayService := service.ProvideOpenAIGatewayService(accountRepository, usageLogRepository, usageBillingRepository, userRepository, userSubscriptionRepository, userGroupRateRepository, gatewayCache, configConfig, schedulerSnapshotService, concurrencyService, billingService, rateLimitService, billingCacheService, httpUpstream, deferredService, openAITokenProvider, modelPricingResolver, channelService, balanceNotifyService, proxyUsageMetricsRepository, poolMonitorService, giftBalanceRepository)
 	geminiMessagesCompatService := service.ProvideGeminiMessagesCompatService(accountRepository, groupRepository, gatewayCache, schedulerSnapshotService, geminiTokenProvider, rateLimitService, httpUpstream, antigravityGatewayService, configConfig, poolMonitorService)
 	opsSystemLogSink := service.ProvideOpsSystemLogSink(opsRepository)
 	opsService := service.NewOpsService(opsRepository, settingRepository, configConfig, accountRepository, userRepository, concurrencyService, gatewayService, openAIGatewayService, geminiMessagesCompatService, antigravityGatewayService, opsSystemLogSink)
@@ -199,7 +204,9 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	defaultLoadBalancer := payment.ProvideDefaultLoadBalancer(client, encryptionKey)
 	promotionRepository := repository.NewPromotionRepository(client)
 	promotionResolver := service.NewPromotionResolver(promotionRepository)
-	paymentService := service.NewPaymentService(client, registry, defaultLoadBalancer, redeemService, subscriptionService, paymentConfigService, userRepository, groupRepository, promotionRepository, promotionResolver)
+	salesCommissionRepository := repository.NewSalesCommissionRepository(db)
+	salesCommissionService := service.NewSalesCommissionService(salesCommissionRepository, referralRepository, userRepository)
+	paymentService := service.ProvidePaymentService(client, registry, defaultLoadBalancer, redeemService, subscriptionService, paymentConfigService, userRepository, groupRepository, promotionRepository, promotionResolver, referralService, salesCommissionService)
 	settingHandler := admin.NewSettingHandler(settingService, emailService, turnstileService, opsService, paymentConfigService, paymentService)
 	opsHandler := admin.NewOpsHandler(opsService)
 	updateCache := repository.NewUpdateCache(redisClient)
@@ -233,21 +240,11 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	poolMonitorHandler := admin.NewPoolMonitorHandler(poolMonitorService)
 	channelHandler := admin.NewChannelHandler(channelService, billingService)
 	paymentHandler := admin.NewPaymentHandler(paymentService, paymentConfigService)
-	// Referral system
-	referralRepository := repository.NewReferralRepository(db)
-	giftBalanceRepository := repository.NewGiftBalanceRepository(db)
-	userReferralConfigRepository := repository.NewUserReferralConfigRepository(db)
-	referralConfigResolver := service.NewReferralConfigResolver(settingRepository, userReferralConfigRepository)
-	referralService := service.NewReferralService(userRepository, referralRepository, giftBalanceRepository, referralConfigResolver)
-	authService.SetReferralService(referralService)
-	paymentService.SetReferralService(referralService)
-	gatewayService.SetGiftBalanceRepo(giftBalanceRepository)
-	openAIGatewayService.SetGiftBalanceRepo(giftBalanceRepository)
-	giftBalanceExpiryService := service.ProvideGiftBalanceExpiryService(referralService)
-	adminReferralHandler := admin.NewReferralHandler(referralService, referralConfigResolver, settingRepository, userReferralConfigRepository)
+	referralHandler := admin.NewReferralHandler(referralService, referralConfigResolver, settingRepository, userReferralConfigRepository)
+	salesCommissionHandler := admin.NewSalesCommissionHandler(salesCommissionService)
 	promotionService := service.NewPromotionService(promotionRepository)
 	promotionHandler := admin.NewPromotionHandler(promotionService)
-	adminHandlers := handler.ProvideAdminHandlers(dashboardHandler, adminUserHandler, groupHandler, accountHandler, adminAnnouncementHandler, dataManagementHandler, backupHandler, oAuthHandler, openAIOAuthHandler, geminiOAuthHandler, antigravityOAuthHandler, proxyHandler, adminRedeemHandler, promoHandler, settingHandler, opsHandler, systemHandler, adminSubscriptionHandler, adminUsageHandler, userAttributeHandler, errorPassthroughHandler, tlsFingerprintProfileHandler, adminAPIKeyHandler, scheduledTestHandler, pricingPlanHandler, poolMonitorHandler, channelHandler, paymentHandler, adminReferralHandler, promotionHandler)
+	adminHandlers := handler.ProvideAdminHandlers(dashboardHandler, adminUserHandler, groupHandler, accountHandler, adminAnnouncementHandler, dataManagementHandler, backupHandler, oAuthHandler, openAIOAuthHandler, geminiOAuthHandler, antigravityOAuthHandler, proxyHandler, adminRedeemHandler, promoHandler, settingHandler, opsHandler, systemHandler, adminSubscriptionHandler, adminUsageHandler, userAttributeHandler, errorPassthroughHandler, tlsFingerprintProfileHandler, adminAPIKeyHandler, scheduledTestHandler, pricingPlanHandler, poolMonitorHandler, channelHandler, paymentHandler, referralHandler, salesCommissionHandler, promotionHandler)
 	usageRecordWorkerPool := service.NewUsageRecordWorkerPool(configConfig)
 	userMsgQueueCache := repository.NewUserMsgQueueCache(redisClient)
 	userMessageQueueService := service.ProvideUserMessageQueueService(userMsgQueueCache, rpmCache, configConfig)
@@ -259,9 +256,10 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	handlerPaymentHandler := handler.NewPaymentHandler(paymentService, paymentConfigService, channelService)
 	paymentWebhookHandler := handler.NewPaymentWebhookHandler(paymentService, registry)
 	handlerReferralHandler := handler.NewReferralHandler(referralService)
+	handlerSalesCommissionHandler := handler.NewSalesCommissionHandler(salesCommissionService)
 	idempotencyCoordinator := service.ProvideIdempotencyCoordinator(idempotencyRepository, configConfig)
 	idempotencyCleanupService := service.ProvideIdempotencyCleanupService(idempotencyRepository, configConfig)
-	handlers := handler.ProvideHandlers(authHandler, userHandler, apiKeyHandler, usageHandler, redeemHandler, subscriptionHandler, announcementHandler, adminHandlers, gatewayHandler, openAIGatewayHandler, handlerSettingHandler, totpHandler, handlerPricingPlanHandler, handlerPaymentHandler, paymentWebhookHandler, handlerReferralHandler, idempotencyCoordinator, idempotencyCleanupService)
+	handlers := handler.ProvideHandlers(authHandler, userHandler, apiKeyHandler, usageHandler, redeemHandler, subscriptionHandler, announcementHandler, adminHandlers, gatewayHandler, openAIGatewayHandler, handlerSettingHandler, totpHandler, handlerPricingPlanHandler, handlerPaymentHandler, paymentWebhookHandler, handlerReferralHandler, handlerSalesCommissionHandler, idempotencyCoordinator, idempotencyCleanupService)
 	jwtAuthMiddleware := middleware.NewJWTAuthMiddleware(authService, userService)
 	adminAuthMiddleware := middleware.NewAdminAuthMiddleware(authService, userService, settingService)
 	apiKeyAuthMiddleware := middleware.NewAPIKeyAuthMiddleware(apiKeyService, subscriptionService, configConfig)
@@ -281,6 +279,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	openAIPoolMonitorWorker := service.ProvideOpenAIPoolMonitorWorker(db, timingWheelService, accountRepository, proxyRepository, poolMonitorService, alertService, proxyExitInfoProber, proxyConnectivitySnapshotStore)
 	scheduledTestRunnerService := service.ProvideScheduledTestRunnerService(scheduledTestPlanRepository, scheduledTestService, accountTestService, rateLimitService, configConfig)
 	paymentOrderExpiryService := service.ProvidePaymentOrderExpiryService(paymentService)
+	giftBalanceExpiryService := service.ProvideGiftBalanceExpiryService(referralService)
 	v := provideCleanup(client, redisClient, opsMetricsCollector, opsAggregationService, opsAlertEvaluatorService, opsCleanupService, opsScheduledReportService, opsSystemLogSink, schedulerSnapshotService, tokenRefreshService, accountExpiryService, subscriptionExpiryService, usageCleanupService, idempotencyCleanupService, pricingService, openAIPoolMonitorWorker, emailQueueService, billingCacheService, usageRecordWorkerPool, subscriptionService, oAuthService, openAIOAuthService, geminiOAuthService, antigravityOAuthService, openAIGatewayService, scheduledTestRunnerService, backupService, paymentOrderExpiryService, giftBalanceExpiryService)
 	application := &Application{
 		Server:  httpServer,

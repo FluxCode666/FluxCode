@@ -130,14 +130,16 @@ type CreateUserInput struct {
 }
 
 type UpdateUserInput struct {
-	Email         string
-	Password      string
-	Username      *string
-	Notes         *string
-	Balance       *float64 // 使用指针区分"未提供"和"设置为0"
-	Concurrency   *int     // 使用指针区分"未提供"和"设置为0"
-	Status        string
-	AllowedGroups *[]int64 // 使用指针区分"未提供"和"设置为空数组"
+	Email               string
+	Password            string
+	Username            *string
+	Notes               *string
+	Balance             *float64 // 使用指针区分"未提供"和"设置为0"
+	Concurrency         *int     // 使用指针区分"未提供"和"设置为0"
+	Status              string
+	AllowedGroups       *[]int64 // 使用指针区分"未提供"和"设置为空数组"
+	IsSales             *bool
+	SalesCommissionRate *float64
 	// GroupRates 用户专属分组倍率配置
 	// map[groupID]*rate，nil 表示删除该分组的专属倍率
 	GroupRates map[int64]*float64
@@ -642,6 +644,26 @@ func (s *adminServiceImpl) UpdateUser(ctx context.Context, id int64, input *Upda
 
 	if input.AllowedGroups != nil {
 		user.AllowedGroups = *input.AllowedGroups
+	}
+	if input.SalesCommissionRate != nil && (*input.SalesCommissionRate < 0 || *input.SalesCommissionRate > 100) {
+		return nil, infraerrors.BadRequest("INVALID_SALES_COMMISSION_RATE", "sales commission rate must be between 0 and 100")
+	}
+	effectiveIsSales := user.IsSales
+	if input.IsSales != nil {
+		effectiveIsSales = *input.IsSales
+	}
+	effectiveSalesCommissionRate := user.SalesCommissionRate
+	if input.SalesCommissionRate != nil {
+		effectiveSalesCommissionRate = *input.SalesCommissionRate
+	}
+	if effectiveIsSales && effectiveSalesCommissionRate <= 0 {
+		return nil, infraerrors.BadRequest("INVALID_SALES_COMMISSION_RATE", "sales commission rate must be greater than 0 for sales users")
+	}
+	if input.IsSales != nil {
+		user.IsSales = effectiveIsSales
+	}
+	if input.SalesCommissionRate != nil {
+		user.SalesCommissionRate = effectiveSalesCommissionRate
 	}
 
 	if err := s.userRepo.Update(ctx, user); err != nil {

@@ -286,3 +286,87 @@ func TestUsageBillingRepositoryApply_DeduplicatesAgainstArchivedKey(t *testing.T
 	require.NoError(t, integrationDB.QueryRowContext(ctx, "SELECT balance FROM users WHERE id = $1", user.ID).Scan(&balance))
 	require.InDelta(t, 98.75, balance, 0.000001)
 }
+
+func TestUsageBillingRepositoryApply_UnlocksSalesCommissionFromOrdinaryBalanceOnly(t *testing.T) {
+	ctx := context.Background()
+	client := testEntClient(t)
+	repo := NewUsageBillingRepository(client, integrationDB)
+
+	sales := mustCreateUser(t, client, &service.User{Email: "sales-unlock-" + uuid.NewString() + "@example.com"})
+	referee := mustCreateUser(t, client, &service.User{Email: "buyer-unlock-" + uuid.NewString() + "@example.com", Balance: 10})
+	apiKey := mustCreateApiKey(t, client, &service.APIKey{UserID: referee.ID, Key: "sk-sales-unlock-" + uuid.NewString(), Name: "billing"})
+	referralID := mustCreateSalesCommissionReferral(t, ctx, sales.ID, referee.ID)
+	orderID := mustCreateCompletedBalanceOrder(t, ctx, referee.ID, 10, 10)
+
+	_, err := integrationDB.ExecContext(ctx, `
+		INSERT INTO sales_commission_records
+			(sales_user_id, referee_user_id, referral_id, payment_order_id, order_pay_amount_cny, order_credited_amount, commission_rate, commission_total_cny)
+		VALUES ($1,$2,$3,$4,10,10,10,1)
+	`, sales.ID, referee.ID, referralID, orderID)
+	require.NoError(t, err)
+	_, err = integrationDB.ExecContext(ctx, `
+		INSERT INTO gift_balance_records (user_id, amount, remaining, source, note, created_at, updated_at)
+		VALUES ($1, 1, 1, 'admin_grant', 'gift first', NOW(), NOW())
+	`, referee.ID)
+	require.NoError(t, err)
+
+	_, err = repo.Apply(ctx, &service.UsageBillingCommand{
+		RequestID:   uuid.NewString(),
+		APIKeyID:    apiKey.ID,
+		UserID:      referee.ID,
+		BalanceCost: 3,
+	})
+	require.NoError(t, err)
+
+	var creditedUsed, unlocked float64
+	require.NoError(t, integrationDB.QueryRowContext(ctx, `
+		SELECT credited_used_amount, unlocked_cny FROM sales_commission_records WHERE payment_order_id = $1
+	`, orderID).Scan(&creditedUsed, &unlocked))
+	require.InDelta(t, 2, creditedUsed, 0.000001, "1 gift dollar should not unlock commission")
+	require.InDelta(t, 0.20, unlocked, 0.000001)
+}
+
+func TestUsageBillingRepositoryApply_UnlocksSalesCommissionFIFOAndDeduplicates(t *testing.T) {
+	ctx := context.Background()
+	client := testEntClient(t)
+	repo := NewUsageBillingRepository(client, integrationDB)
+
+	sales := mustCreateUser(t, client, &service.User{Email: "sales-fifo-" + uuid.NewString() + "@example.com"})
+	referee := mustCreateUser(t, client, &service.User{Email: "buyer-fifo-" + uuid.NewString() + "@example.com", Balance: 20})
+	apiKey := mustCreateApiKey(t, client, &service.APIKey{UserID: referee.ID, Key: "sk-sales-fifo-" + uuid.NewString(), Name: "billing"})
+	referralID := mustCreateSalesCommissionReferral(t, ctx, sales.ID, referee.ID)
+
+	insertCommission := func(amount float64) int64 {
+		orderID := mustCreateCompletedBalanceOrder(t, ctx, referee.ID, amount, amount)
+		_, err := integrationDB.ExecContext(ctx, `
+			INSERT INTO sales_commission_records
+				(sales_user_id, referee_user_id, referral_id, payment_order_id, order_pay_amount_cny, order_credited_amount, commission_rate, commission_total_cny)
+			VALUES ($1,$2,$3,$4,$5,$5,10,$6)
+		`, sales.ID, referee.ID, referralID, orderID, amount, amount*0.1)
+		require.NoError(t, err)
+		return orderID
+	}
+	firstOrderID := insertCommission(10)
+	secondOrderID := insertCommission(10)
+
+	requestID := uuid.NewString()
+	cmd := &service.UsageBillingCommand{RequestID: requestID, APIKeyID: apiKey.ID, UserID: referee.ID, BalanceCost: 12}
+	result, err := repo.Apply(ctx, cmd)
+	require.NoError(t, err)
+	require.True(t, result.Applied)
+	result, err = repo.Apply(ctx, cmd)
+	require.NoError(t, err)
+	require.False(t, result.Applied)
+
+	var firstUsed, firstUnlocked, secondUsed, secondUnlocked float64
+	require.NoError(t, integrationDB.QueryRowContext(ctx, `
+		SELECT credited_used_amount, unlocked_cny FROM sales_commission_records WHERE payment_order_id = $1
+	`, firstOrderID).Scan(&firstUsed, &firstUnlocked))
+	require.NoError(t, integrationDB.QueryRowContext(ctx, `
+		SELECT credited_used_amount, unlocked_cny FROM sales_commission_records WHERE payment_order_id = $1
+	`, secondOrderID).Scan(&secondUsed, &secondUnlocked))
+	require.InDelta(t, 10, firstUsed, 0.000001)
+	require.InDelta(t, 1, firstUnlocked, 0.000001)
+	require.InDelta(t, 2, secondUsed, 0.000001)
+	require.InDelta(t, 0.20, secondUnlocked, 0.000001)
+}

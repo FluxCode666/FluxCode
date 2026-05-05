@@ -34,6 +34,14 @@ func (s *schedulerCacheRecorder) SetSnapshot(ctx context.Context, bucket service
 	return nil
 }
 
+func (s *schedulerCacheRecorder) SetSnapshotIndex(ctx context.Context, bucket service.SchedulerBucket, accounts []service.Account) error {
+	return nil
+}
+
+func (s *schedulerCacheRecorder) WriteAccounts(ctx context.Context, accounts []service.Account) error {
+	return nil
+}
+
 func (s *schedulerCacheRecorder) GetAccount(ctx context.Context, accountID int64) (*service.Account, error) {
 	if s.accounts == nil {
 		return nil, nil

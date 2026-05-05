@@ -83,6 +83,10 @@ func (s *GatewayRecordUsageGrantsSuite) SetupTest() {
 		nil,
 		nil,
 		nil,
+		nil,
+		nil,
+		nil,
+		nil,
 	)
 	s.openaiSvc = service.NewOpenAIGatewayService(
 		accountRepo,
@@ -100,6 +104,9 @@ func (s *GatewayRecordUsageGrantsSuite) SetupTest() {
 		billingCacheService,
 		nil,
 		deferred,
+		nil,
+		nil,
+		nil,
 		nil,
 	)
 }

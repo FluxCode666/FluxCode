@@ -100,6 +100,9 @@ func RegisterAdminRoutes(
 
 		// 推广管理
 		registerReferralRoutes(admin, h)
+
+		// 销售佣金管理
+		registerSalesCommissionRoutes(admin, h)
 	}
 }
 
@@ -642,5 +645,18 @@ func registerReferralRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		referral.GET("/user-config/:userId", h.Admin.Referral.GetUserConfig)
 		referral.PUT("/user-config/:userId", h.Admin.Referral.UpsertUserConfig)
 		referral.DELETE("/user-config/:userId", h.Admin.Referral.DeleteUserConfig)
+	}
+}
+
+func registerSalesCommissionRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	if h.Admin.SalesCommission == nil {
+		return
+	}
+	commissions := admin.Group("/sales-commissions")
+	{
+		commissions.GET("/summary", h.Admin.SalesCommission.ListSummaries)
+		commissions.GET("/records", h.Admin.SalesCommission.ListRecords)
+		commissions.GET("/settlements", h.Admin.SalesCommission.ListSettlements)
+		commissions.POST("/settlements", h.Admin.SalesCommission.CreateSettlement)
 	}
 }

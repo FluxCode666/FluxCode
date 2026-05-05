@@ -140,6 +140,28 @@ func (s *UserRepoSuite) TestUpdate() {
 	s.Require().Equal("updated", updated.Username)
 }
 
+func (s *UserRepoSuite) TestUserSalesCommissionFieldsPersist() {
+	user := s.mustCreateUser(&service.User{
+		Email:               "sales-flags@test.com",
+		IsSales:             true,
+		SalesCommissionRate: 12.5,
+	})
+
+	got, err := s.repo.GetByID(s.ctx, user.ID)
+	s.Require().NoError(err)
+	s.Require().True(got.IsSales)
+	s.Require().InDelta(12.5, got.SalesCommissionRate, 0.000001)
+
+	got.IsSales = false
+	got.SalesCommissionRate = 0
+	s.Require().NoError(s.repo.Update(s.ctx, got))
+
+	updated, err := s.repo.GetByID(s.ctx, user.ID)
+	s.Require().NoError(err)
+	s.Require().False(updated.IsSales)
+	s.Require().InDelta(0, updated.SalesCommissionRate, 0.000001)
+}
+
 func (s *UserRepoSuite) TestDelete() {
 	user := s.mustCreateUser(&service.User{Email: "delete@test.com"})
 
