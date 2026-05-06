@@ -942,20 +942,16 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesChatGPTWeb(
 		return nil, &openAIImageStatusError{StatusCode: http.StatusBadRequest, Message: errMsg}
 	}
 
-	if len(sseState.FileIDs) == 0 && len(sseState.SedimentIDs) == 0 {
-		if sseState.Text != "" {
-			return nil, fmt.Errorf("no image output, upstream message: %s", truncateChatGPTWebText(sseState.Text, 300))
-		}
-		return nil, fmt.Errorf("no image pointers in ChatGPT Web response")
-	}
-
-	// 7. Resolve download URLs
+	// 7. Resolve download URLs (includes polling fallback when SSE yields no pointers)
 	imageURLs, err := webClient.resolveImageURLs(ctx, sseState)
 	if err != nil {
 		return nil, fmt.Errorf("chatgpt web resolve images: %w", err)
 	}
 	if len(imageURLs) == 0 {
-		return nil, fmt.Errorf("failed to resolve any image download URLs")
+		if sseState.Text != "" {
+			return nil, fmt.Errorf("no image output, upstream message: %s", truncateChatGPTWebText(sseState.Text, 300))
+		}
+		return nil, fmt.Errorf("no image pointers in ChatGPT Web response")
 	}
 
 	// 8. Download images

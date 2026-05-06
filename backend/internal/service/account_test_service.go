@@ -1292,21 +1292,18 @@ func (s *AccountTestService) testOpenAIImageChatGPTWeb(c *gin.Context, ctx conte
 	if sseState.Blocked {
 		return s.sendErrorAndEnd(c, "Image generation blocked by content policy")
 	}
-	if len(sseState.FileIDs) == 0 && len(sseState.SedimentIDs) == 0 {
-		msg := "No image pointers in response"
-		if sseState.Text != "" {
-			msg = sseState.Text
-		}
-		return s.sendErrorAndEnd(c, msg)
-	}
 
-	// Resolve and download
-	s.sendEvent(c, TestEvent{Type: "content", Text: "Downloading image...\n"})
+	// Resolve image URLs (includes polling fallback when SSE yields no pointers)
+	s.sendEvent(c, TestEvent{Type: "content", Text: fmt.Sprintf("SSE done: events conversation_id=%s file_ids=%d sediment_ids=%d\n", sseState.ConversationID, len(sseState.FileIDs), len(sseState.SedimentIDs))})
+	s.sendEvent(c, TestEvent{Type: "content", Text: "Resolving image URLs...\n"})
 	imageURLs, err := webClient.resolveImageURLs(ctx, sseState)
 	if err != nil || len(imageURLs) == 0 {
-		errMsg := "Failed to resolve image download URLs"
+		errMsg := "No image pointers in response"
+		if sseState.Text != "" {
+			errMsg = sseState.Text
+		}
 		if err != nil {
-			errMsg = err.Error()
+			errMsg = fmt.Sprintf("Failed to resolve image URLs: %s", err.Error())
 		}
 		return s.sendErrorAndEnd(c, errMsg)
 	}
