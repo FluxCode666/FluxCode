@@ -136,7 +136,7 @@ func buildChatGPTWebGeneratePayload(prompt, model string, refs []chatGPTWebImage
 		"messages": []map[string]any{{
 			"id":          uuid.New().String(),
 			"author":      map[string]any{"role": "user"},
-			"create_time": float64(time.Now().Unix()),
+			"create_time": float64(time.Now().UnixNano()) / 1e9,
 			"content":     content,
 			"metadata":    metadata,
 		}},
@@ -177,6 +177,7 @@ func parseChatGPTWebSSEStream(r io.Reader) chatGPTWebSSEState {
 	scanner.Buffer(make([]byte, 0, 256*1024), 1024*1024)
 	state := chatGPTWebSSEState{}
 	eventCount := 0
+	var samplePayloads []string
 	for scanner.Scan() {
 		line := scanner.Text()
 		var payload string
@@ -194,7 +195,18 @@ func parseChatGPTWebSSEStream(r io.Reader) chatGPTWebSSEState {
 			break
 		}
 		eventCount++
+		// Collect first 5 payloads (truncated) for debugging
+		if len(samplePayloads) < 5 {
+			sample := payload
+			if len(sample) > 500 {
+				sample = sample[:500] + "..."
+			}
+			samplePayloads = append(samplePayloads, sample)
+		}
 		updateChatGPTWebSSEState(&state, payload)
+	}
+	if err := scanner.Err(); err != nil {
+		slog.Warn("chatgpt_web_sse_scanner_err", "error", err.Error())
 	}
 	slog.Info("chatgpt_web_sse_stream_done",
 		"events", eventCount,
@@ -203,6 +215,7 @@ func parseChatGPTWebSSEStream(r io.Reader) chatGPTWebSSEState {
 		"sediment_ids", len(state.SedimentIDs),
 		"blocked", state.Blocked,
 		"text_len", len(state.Text),
+		"sample_payloads", samplePayloads,
 	)
 	return state
 }
@@ -421,6 +434,8 @@ func (c *chatGPTWebClient) pathHeaders(path string) map[string]string {
 	}
 }
 
+// imageHeaders matches reference _image_headers: only includes proof_token + conduit_token + chat-requirements-token.
+// Reference deliberately excludes Turnstile-Token and SO-Token for image endpoints.
 func (c *chatGPTWebClient) imageHeaders(path string, requirements *chatGPTWebRequirements, conduitToken, accept string) map[string]string {
 	headers := map[string]string{
 		"Content-Type": "application/json",
@@ -431,12 +446,6 @@ func (c *chatGPTWebClient) imageHeaders(path string, requirements *chatGPTWebReq
 	}
 	if requirements.ProofToken != "" {
 		headers["OpenAI-Sentinel-Proof-Token"] = requirements.ProofToken
-	}
-	if requirements.TurnstileToken != "" {
-		headers["OpenAI-Sentinel-Turnstile-Token"] = requirements.TurnstileToken
-	}
-	if requirements.SOToken != "" {
-		headers["OpenAI-Sentinel-SO-Token"] = requirements.SOToken
 	}
 	if conduitToken != "" {
 		headers["X-Conduit-Token"] = conduitToken
@@ -507,12 +516,24 @@ func (c *chatGPTWebClient) sentinel(ctx context.Context) (*chatGPTWebRequirement
 		}
 	}
 
-	// Solve turnstile if required
+	// Check arkose required (reference raises error)
+	if arkose, ok := result["arkose"].(map[string]any); ok {
+		if required, _ := arkose["required"].(bool); required {
+			return nil, fmt.Errorf("chat requirements requires arkose token, which is not implemented")
+		}
+	}
+
+	// Solve turnstile if required.
+	// Reference passes empty source_p for authenticated users; only anon users pass p.
 	turnstileToken := ""
 	if tsInfo, ok := result["turnstile"].(map[string]any); ok {
 		if required, _ := tsInfo["required"].(bool); required {
 			if dx, ok := tsInfo["dx"].(string); ok && dx != "" {
-				turnstileToken = chatgptweb.SolveTurnstileToken(dx, p)
+				sourceP := ""
+				if c.accessToken == "" {
+					sourceP = p
+				}
+				turnstileToken = chatgptweb.SolveTurnstileToken(dx, sourceP)
 			}
 		}
 	}
