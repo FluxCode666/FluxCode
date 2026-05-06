@@ -176,17 +176,34 @@ func parseChatGPTWebSSEStream(r io.Reader) chatGPTWebSSEState {
 	scanner := bufio.NewScanner(r)
 	scanner.Buffer(make([]byte, 0, 256*1024), 1024*1024)
 	state := chatGPTWebSSEState{}
+	eventCount := 0
 	for scanner.Scan() {
 		line := scanner.Text()
-		if !strings.HasPrefix(line, "data: ") {
+		var payload string
+		if strings.HasPrefix(line, "data: ") {
+			payload = line[6:]
+		} else if strings.HasPrefix(line, "data:") {
+			payload = strings.TrimSpace(line[5:])
+		} else {
 			continue
 		}
-		payload := strings.TrimPrefix(line, "data: ")
+		if payload == "" {
+			continue
+		}
 		if payload == "[DONE]" {
 			break
 		}
+		eventCount++
 		updateChatGPTWebSSEState(&state, payload)
 	}
+	slog.Info("chatgpt_web_sse_stream_done",
+		"events", eventCount,
+		"conversation_id", state.ConversationID,
+		"file_ids", len(state.FileIDs),
+		"sediment_ids", len(state.SedimentIDs),
+		"blocked", state.Blocked,
+		"text_len", len(state.Text),
+	)
 	return state
 }
 
@@ -194,7 +211,6 @@ func updateChatGPTWebSSEState(state *chatGPTWebSSEState, payload string) {
 	// Extract conversation_id via regex (fast path)
 	if state.ConversationID == "" {
 		if idx := strings.Index(payload, `"conversation_id"`); idx >= 0 {
-			// Try to extract value
 			rest := payload[idx:]
 			if start := strings.Index(rest, `":"`); start >= 0 {
 				rest = rest[start+3:]
@@ -214,6 +230,12 @@ func updateChatGPTWebSSEState(state *chatGPTWebSSEState, payload string) {
 	if cid, ok := event["conversation_id"].(string); ok && cid != "" {
 		state.ConversationID = cid
 	}
+	// Also check nested v.conversation_id
+	if v, ok := event["v"].(map[string]any); ok {
+		if cid, ok := v["conversation_id"].(string); ok && cid != "" {
+			state.ConversationID = cid
+		}
+	}
 
 	// Check moderation blocked
 	if eventType, _ := event["type"].(string); eventType == "moderation" {
@@ -224,9 +246,8 @@ func updateChatGPTWebSSEState(state *chatGPTWebSSEState, payload string) {
 		}
 	}
 
-	// Check if this is an image tool event
+	// Check if this is an image tool event — extract file/sediment IDs
 	if isImageToolEvent(event) {
-		// Extract file_ids and sediment_ids from the payload string
 		for _, match := range fileIDPattern.FindAllString(payload, -1) {
 			addUnique(&state.FileIDs, match)
 		}
@@ -237,6 +258,21 @@ func updateChatGPTWebSSEState(state *chatGPTWebSSEState, payload string) {
 		}
 	}
 
+	// Also extract file/sediment IDs from any event containing asset_pointer
+	if strings.Contains(payload, "asset_pointer") || strings.Contains(payload, "file-service://") || strings.Contains(payload, "sediment://") {
+		for _, match := range fileIDPattern.FindAllString(payload, -1) {
+			addUnique(&state.FileIDs, match)
+		}
+		for _, matches := range sedimentIDPattern.FindAllStringSubmatch(payload, -1) {
+			if len(matches) >= 2 {
+				addUnique(&state.SedimentIDs, matches[1])
+			}
+		}
+	}
+
+	// Collect assistant text
+	chatGPTWebExtractAssistantText(state, event)
+
 	// Check server metadata
 	if eventType, _ := event["type"].(string); eventType == "server_ste_metadata" {
 		if meta, ok := event["metadata"].(map[string]any); ok {
@@ -245,6 +281,31 @@ func updateChatGPTWebSSEState(state *chatGPTWebSSEState, payload string) {
 			}
 			if tuc, ok := meta["turn_use_case"].(string); ok && tuc != "" {
 				state.TurnUseCase = tuc
+			}
+		}
+	}
+}
+
+func chatGPTWebExtractAssistantText(state *chatGPTWebSSEState, event map[string]any) {
+	// Try event.message and event.v.message
+	for _, candidate := range []any{event, event["v"]} {
+		m, ok := candidate.(map[string]any)
+		if !ok {
+			continue
+		}
+		message, ok := m["message"].(map[string]any)
+		if !ok {
+			continue
+		}
+		author, _ := message["author"].(map[string]any)
+		if author["role"] != "assistant" {
+			continue
+		}
+		content, _ := message["content"].(map[string]any)
+		parts, _ := content["parts"].([]any)
+		for _, p := range parts {
+			if s, ok := p.(string); ok && s != "" {
+				state.Text = s
 			}
 		}
 	}
@@ -599,13 +660,111 @@ func (c *chatGPTWebClient) uploadImage(ctx context.Context, upload OpenAIImagesU
 }
 
 func (c *chatGPTWebClient) resolveImageURLs(ctx context.Context, state chatGPTWebSSEState) ([]string, error) {
-	var urls []string
+	fileIDs := filterFileIDs(state.FileIDs)
+	sedimentIDs := state.SedimentIDs
 
-	// Try file-service IDs first
-	for _, fid := range state.FileIDs {
-		if fid == "file_upload" {
+	// If no pointers from SSE but have conversation_id, poll conversation details
+	if len(fileIDs) == 0 && len(sedimentIDs) == 0 && state.ConversationID != "" {
+		slog.Info("chatgpt_web_poll_needed", "conversation_id", state.ConversationID)
+		polledFileIDs, polledSedimentIDs := c.pollImageResults(ctx, state.ConversationID, 120*time.Second)
+		fileIDs = append(fileIDs, polledFileIDs...)
+		sedimentIDs = append(sedimentIDs, polledSedimentIDs...)
+	}
+
+	return c.resolveImageDownloadURLs(ctx, state.ConversationID, fileIDs, sedimentIDs)
+}
+
+func filterFileIDs(ids []string) []string {
+	var result []string
+	for _, id := range ids {
+		if id != "file_upload" && id != "" {
+			result = append(result, id)
+		}
+	}
+	return result
+}
+
+func (c *chatGPTWebClient) pollImageResults(ctx context.Context, conversationID string, timeout time.Duration) (fileIDs, sedimentIDs []string) {
+	start := time.Now()
+	attempt := 0
+	filePat := regexp.MustCompile(`file-service://([A-Za-z0-9_-]+)`)
+	sedPat := regexp.MustCompile(`sediment://([A-Za-z0-9_-]+)`)
+
+	for time.Since(start) < timeout {
+		attempt++
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(4 * time.Second):
+		}
+
+		path := fmt.Sprintf("/backend-api/conversation/%s", conversationID)
+		var conversation map[string]any
+		resp, err := c.client.R().
+			SetContext(ctx).
+			SetHeaders(c.pathHeaders(path)).
+			SetHeader("Accept", "application/json").
+			SetSuccessResult(&conversation).
+			Get(path)
+		if err != nil {
+			slog.Warn("chatgpt_web_poll_error", "attempt", attempt, "error", err.Error())
 			continue
 		}
+		if resp.StatusCode >= 400 {
+			slog.Warn("chatgpt_web_poll_error", "attempt", attempt, "status", resp.StatusCode)
+			continue
+		}
+
+		mapping, _ := conversation["mapping"].(map[string]any)
+		for _, node := range mapping {
+			nodeMap, _ := node.(map[string]any)
+			message, _ := nodeMap["message"].(map[string]any)
+			if message == nil {
+				continue
+			}
+			author, _ := message["author"].(map[string]any)
+			metadata, _ := message["metadata"].(map[string]any)
+			content, _ := message["content"].(map[string]any)
+			if author["role"] != "tool" || metadata["async_task_type"] != "image_gen" {
+				continue
+			}
+			if content["content_type"] != "multimodal_text" {
+				continue
+			}
+			parts, _ := content["parts"].([]any)
+			for _, part := range parts {
+				var text string
+				if pm, ok := part.(map[string]any); ok {
+					text, _ = pm["asset_pointer"].(string)
+				} else if s, ok := part.(string); ok {
+					text = s
+				}
+				for _, match := range filePat.FindAllStringSubmatch(text, -1) {
+					if len(match) >= 2 {
+						addUnique(&fileIDs, match[1])
+					}
+				}
+				for _, match := range sedPat.FindAllStringSubmatch(text, -1) {
+					if len(match) >= 2 {
+						addUnique(&sedimentIDs, match[1])
+					}
+				}
+			}
+		}
+
+		slog.Info("chatgpt_web_poll_check", "attempt", attempt, "file_ids", len(fileIDs), "sediment_ids", len(sedimentIDs))
+		if len(fileIDs) > 0 || len(sedimentIDs) > 0 {
+			return
+		}
+	}
+	slog.Warn("chatgpt_web_poll_timeout", "conversation_id", conversationID)
+	return
+}
+
+func (c *chatGPTWebClient) resolveImageDownloadURLs(ctx context.Context, conversationID string, fileIDs, sedimentIDs []string) ([]string, error) {
+	var urls []string
+
+	for _, fid := range fileIDs {
 		path := fmt.Sprintf("/backend-api/files/%s/download", fid)
 		var result map[string]any
 		resp, err := c.client.R().
@@ -628,13 +787,12 @@ func (c *chatGPTWebClient) resolveImageURLs(ctx context.Context, state chatGPTWe
 		}
 	}
 
-	if len(urls) > 0 || state.ConversationID == "" {
+	if len(urls) > 0 || conversationID == "" {
 		return urls, nil
 	}
 
-	// Fallback to sediment attachment download
-	for _, sid := range state.SedimentIDs {
-		path := fmt.Sprintf("/backend-api/conversation/%s/attachment/%s/download", state.ConversationID, sid)
+	for _, sid := range sedimentIDs {
+		path := fmt.Sprintf("/backend-api/conversation/%s/attachment/%s/download", conversationID, sid)
 		var result map[string]any
 		resp, err := c.client.R().
 			SetContext(ctx).
