@@ -307,6 +307,7 @@ func newChatGPTWebClient(accessToken, proxyURL string) *chatGPTWebClient {
 	userAgent := chatGPTWebDefaultUserAgent
 
 	client := req.C().
+		ImpersonateChrome().
 		SetTimeout(300*time.Second).
 		SetBaseURL(chatGPTWebBaseURL).
 		SetCommonHeader("User-Agent", userAgent).
