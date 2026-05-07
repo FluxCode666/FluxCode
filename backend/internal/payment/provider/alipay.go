@@ -25,6 +25,26 @@ const (
 	alipayRefundSuffix     = "-refund"
 )
 
+// Alipay paymentMode values control which Alipay product is used to create a trade.
+//
+// Most direct-Alipay merchants only have "Face-to-Face Payment" (当面付 / trade.precreate)
+// activated; "Mobile Site Payment" (手机网站支付 / trade.wap.pay) is a separate product
+// that requires an additional qualification review. When we silently switched to WAP
+// based on User-Agent for mobile browsers, merchants without WAP entitlement landed on
+// Alipay's risk/error page instead of seeing our QR code. The paymentMode setting lets
+// the operator pick the product explicitly.
+const (
+	// alipayPaymentModeQRCode forces trade.precreate (当面付) for every device. Mobile
+	// users see the same QR code and can long-press to save / scan with another device.
+	// This is the default when paymentMode is empty.
+	alipayPaymentModeQRCode = "qrcode"
+	// alipayPaymentModeWap forces trade.wap.pay (手机网站支付) for every device. Only
+	// useful when the merchant has the "Mobile Site Payment" product activated.
+	alipayPaymentModeWap = "wap"
+	// alipayPaymentModeAuto preserves the legacy behaviour: mobile UA → WAP, desktop → QR.
+	alipayPaymentModeAuto = "auto"
+)
+
 // Alipay implements payment.Provider and payment.CancelableProvider using the smartwalle/alipay SDK.
 type Alipay struct {
 	instanceID string
@@ -120,7 +140,7 @@ func (a *Alipay) SupportedTypes() []payment.PaymentType {
 }
 
 // CreatePayment creates an Alipay payment.
-// Mobile browsers use WAP pay; desktop requests use precreate and return a QR payload.
+// The Alipay product is chosen by the instance's paymentMode setting; see resolveAlipayPaymentMode.
 func (a *Alipay) CreatePayment(ctx context.Context, req payment.CreatePaymentRequest) (*payment.CreatePaymentResponse, error) {
 	client, err := a.getClient()
 	if err != nil {
@@ -136,10 +156,37 @@ func (a *Alipay) CreatePayment(ctx context.Context, req payment.CreatePaymentReq
 		returnURL = req.ReturnURL
 	}
 
-	if req.IsMobile {
+	if a.shouldUseWapPay(req.IsMobile) {
 		return a.createWapTrade(client, req, notifyURL, returnURL)
 	}
 	return a.createPreCreateTrade(ctx, client, req, notifyURL)
+}
+
+// shouldUseWapPay decides whether to call trade.wap.pay (true) or trade.precreate (false).
+//
+// The decision follows the merchant-configured paymentMode:
+//   - "wap" / "h5" / "popup" → always WAP. Use only when the merchant has activated the
+//     "Mobile Site Payment" (手机网站支付) product on Alipay's open platform.
+//   - "auto" → mobile UA gets WAP, desktop gets QR. This preserves the legacy behaviour
+//     for merchants that have both products enabled.
+//   - "qrcode" / "precreate" / "f2f" / "face_to_face" / "" (default) → always QR. Mobile
+//     users see the same QR they can long-press to save or scan with another device.
+//
+// Defaulting empty to QR is intentional: most direct-Alipay merchants only have the
+// "Face-to-Face Payment" (当面付) product activated, and silently falling back to WAP
+// based on User-Agent caused those merchants' mobile users to land on Alipay's risk /
+// error page instead of seeing the QR payload.
+func (a *Alipay) shouldUseWapPay(isMobile bool) bool {
+	mode := strings.TrimSpace(strings.ToLower(a.config["paymentMode"]))
+	switch mode {
+	case alipayPaymentModeWap, "h5", "popup":
+		return true
+	case alipayPaymentModeAuto:
+		return isMobile
+	default:
+		// qrcode / precreate / f2f / face_to_face / "" / unknown → always QR.
+		return false
+	}
 }
 
 func (a *Alipay) createWapTrade(client *alipay.Client, req payment.CreatePaymentRequest, notifyURL, returnURL string) (*payment.CreatePaymentResponse, error) {
