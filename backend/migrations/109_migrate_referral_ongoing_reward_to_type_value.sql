@@ -15,8 +15,6 @@
 --   推广功能尚未上线，本迁移在大多数环境下应为零数据迁移；
 --   保留迁移逻辑以保证已经误写入数据的环境也能平滑升级。
 
-BEGIN;
-
 -- ========================================
 -- 1. user_referral_configs：新增 type/value 列
 -- ========================================
@@ -124,4 +122,3 @@ BEGIN
      WHERE key IN ('referral_ongoing_reward_amount', 'referral_ongoing_reward_percent');
 END$$;
 
-COMMIT;

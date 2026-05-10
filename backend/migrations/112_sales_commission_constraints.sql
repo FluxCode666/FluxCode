@@ -1,8 +1,6 @@
 -- 112_sales_commission_constraints.sql
 -- 为销售佣金账本补充外键、检查约束和结算批次明细查询索引。
 
-BEGIN;
-
 DO $$
 BEGIN
     IF NOT EXISTS (
@@ -160,4 +158,3 @@ BEGIN
     END IF;
 END $$;
 
-COMMIT;

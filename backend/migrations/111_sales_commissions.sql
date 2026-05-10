@@ -1,8 +1,6 @@
 -- 111_sales_commissions.sql
 -- 销售佣金系统：新增销售用户标记、佣金记录、结算批次和结算明细表。
 
-BEGIN;
-
 -- ========================================
 -- 1. 扩展 users 表
 -- ========================================
@@ -79,4 +77,3 @@ CREATE TABLE IF NOT EXISTS sales_commission_settlement_items (
 CREATE INDEX IF NOT EXISTS idx_sales_commission_settlement_items_record
     ON sales_commission_settlement_items (commission_record_id);
 
-COMMIT;
