@@ -2,6 +2,8 @@
 -- 推广奖励系统：新增 gift_balance_records, referrals, user_referral_configs 表
 -- 扩展 users 表添加 referral_code, referred_by 字段
 
+BEGIN;
+
 -- ========================================
 -- 1. 扩展 users 表
 -- ========================================
@@ -98,3 +100,5 @@ CREATE TABLE IF NOT EXISTS user_referral_configs (
 
 -- 每个用户只能有一条配置
 CREATE UNIQUE INDEX IF NOT EXISTS idx_user_referral_configs_user_id_unique ON user_referral_configs (user_id);
+
+COMMIT;
