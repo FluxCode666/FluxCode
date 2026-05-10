@@ -160,6 +160,7 @@ export interface CreateOrderRequest {
   order_type: string
   plan_id?: number
   promotion_id?: number
+  subscription_mode?: 'extend' | 'stack'
 }
 
 export interface CreateOrderResult {

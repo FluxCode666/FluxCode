@@ -69,16 +69,17 @@ func generateRandomString(n int) string {
 }
 
 type CreateOrderRequest struct {
-	UserID      int64
-	Amount      float64
-	PaymentType string
-	ClientIP    string
-	IsMobile    bool
-	SrcHost     string
-	SrcURL      string
-	OrderType   string
-	PlanID      int64
-	PromotionID int64 // 用户选择的促销活动 ID（0 表示不使用）
+	UserID           int64
+	Amount           float64
+	PaymentType      string
+	ClientIP         string
+	IsMobile         bool
+	SrcHost          string
+	SrcURL           string
+	OrderType        string
+	PlanID           int64
+	PromotionID      int64  // 用户选择的促销活动 ID（0 表示不使用）
+	SubscriptionMode string // extend / stack（订阅续费模式，仅订阅订单有效）
 }
 
 type CreateOrderResponse struct {

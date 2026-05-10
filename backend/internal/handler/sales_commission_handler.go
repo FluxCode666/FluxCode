@@ -4,6 +4,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
+	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 )
 
@@ -50,16 +51,9 @@ func (h *SalesCommissionHandler) ListRecords(c *gin.Context) {
 }
 
 func currentSalesCommissionUserID(c *gin.Context) (int64, bool) {
-	v, ok := c.Get("user_id")
+	sub, ok := middleware.GetAuthSubjectFromContext(c)
 	if !ok {
 		return 0, false
 	}
-	switch id := v.(type) {
-	case int64:
-		return id, true
-	case int:
-		return int64(id), true
-	default:
-		return 0, false
-	}
+	return sub.UserID, true
 }

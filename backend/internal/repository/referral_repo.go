@@ -195,7 +195,7 @@ func (r *referralRepository) GetLeaderboard(ctx context.Context, period string, 
 		return nil, err
 	}
 	defer rows.Close()
-	var entries []service.ReferralLeaderboardEntry
+	entries := make([]service.ReferralLeaderboardEntry, 0)
 	for rows.Next() {
 		var e service.ReferralLeaderboardEntry
 		if err := rows.Scan(&e.UserID, &e.Email, &e.Username, &e.ReferralCode, &e.InviteCount, &e.TotalReward); err != nil {

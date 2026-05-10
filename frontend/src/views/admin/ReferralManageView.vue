@@ -591,10 +591,10 @@ async function loadList() {
 
 async function loadLeaderboard() {
   try {
-    leaderboard.value = await adminReferralAPI.getLeaderboard({
+    leaderboard.value = (await adminReferralAPI.getLeaderboard({
       limit: 20,
       period: leaderboardPeriod.value,
-    })
+    })) || []
   } catch (error) {
     console.error('Failed to load leaderboard:', error)
   }

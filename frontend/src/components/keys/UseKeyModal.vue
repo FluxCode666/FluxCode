@@ -110,6 +110,43 @@
           </div>
         </div>
 
+        <!-- Quick Setup Command -->
+        <div v-if="quickSetupCommand" class="space-y-2">
+          <div class="flex items-center gap-2">
+            <svg class="w-4 h-4 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" />
+            </svg>
+            <span class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('keys.useKeyModal.quickSetup.title') }}</span>
+          </div>
+          <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('keys.useKeyModal.quickSetup.description') }}</p>
+          <div class="relative bg-gray-900 dark:bg-dark-900 rounded-xl overflow-hidden">
+            <div class="flex items-center justify-between px-4 py-2 bg-emerald-900/30 dark:bg-emerald-900/20 border-b border-emerald-700/30 dark:border-emerald-800/30">
+              <span class="text-xs text-emerald-400 font-mono flex items-center gap-1.5">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="m6.75 7.5 3 2.25-3 2.25m4.5 0h3m-9 8.25h13.5A2.25 2.25 0 0 0 21 17.25V6.75A2.25 2.25 0 0 0 18.75 4.5H5.25A2.25 2.25 0 0 0 3 6.75v10.5A2.25 2.25 0 0 0 5.25 20.25Z" />
+                </svg>
+                {{ quickSetupShellLabel }}
+              </span>
+              <button
+                @click="copyQuickSetup"
+                class="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-lg transition-colors"
+                :class="quickSetupCopied
+                  ? 'bg-green-500/20 text-green-400'
+                  : 'bg-emerald-700/30 hover:bg-emerald-600/30 text-emerald-300 hover:text-emerald-200'"
+              >
+                <svg v-if="quickSetupCopied" class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+                <svg v-else class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M15.666 3.888A2.25 2.25 0 0013.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 01-.75.75H9a.75.75 0 01-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 01-2.25 2.25H6.75A2.25 2.25 0 014.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 011.927-.184" />
+                </svg>
+                {{ quickSetupCopied ? t('keys.useKeyModal.quickSetup.copied') : t('keys.useKeyModal.quickSetup.copy') }}
+              </button>
+            </div>
+            <pre class="p-4 text-sm font-mono text-gray-100 overflow-x-auto whitespace-pre-wrap"><code v-text="quickSetupCommand"></code></pre>
+          </div>
+        </div>
+
         <!-- Usage Note -->
         <div v-if="showPlatformNote" class="flex items-start gap-3 p-3 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800">
           <Icon name="infoCircle" size="md" class="text-blue-500 flex-shrink-0 mt-0.5" />
@@ -1139,6 +1176,92 @@ const copyContent = async (content: string, index: number) => {
     copiedIndex.value = index
     setTimeout(() => {
       copiedIndex.value = null
+    }, 2000)
+  }
+}
+
+// Quick Setup Command
+const quickSetupCopied = ref(false)
+
+const quickSetupShellLabel = computed(() => {
+  if (!showShellTabs.value) return 'bash'
+  switch (activeTab.value) {
+    case 'unix': return 'bash'
+    case 'cmd': return 'cmd'
+    case 'powershell': return 'powershell'
+    case 'windows': return 'powershell'
+    default: return 'bash'
+  }
+})
+
+const quickSetupCommand = computed((): string => {
+  const files = currentFiles.value
+  if (!files.length) return ''
+
+  const isUnix = activeTab.value === 'unix' || !showShellTabs.value
+  const isCmd = activeTab.value === 'cmd'
+  const isPowershell = activeTab.value === 'powershell' || activeTab.value === 'windows'
+
+  const parts: string[] = []
+
+  for (const file of files) {
+    const isTerminal = ['Terminal', 'Command Prompt', 'PowerShell'].includes(file.path)
+
+    if (isTerminal) {
+      // Environment variable commands - already shell commands
+      const lines = file.content.split('\n').filter(l => l.trim())
+      if (isUnix) {
+        parts.push(lines.join(' && '))
+      } else if (isCmd) {
+        parts.push(lines.join(' && '))
+      } else if (isPowershell) {
+        parts.push(lines.join('; '))
+      }
+    } else {
+      // File content - generate write commands
+      const filePath = file.path
+      if (isUnix) {
+        const dir = filePath.substring(0, filePath.lastIndexOf('/'))
+        if (dir) parts.push(`mkdir -p ${dir}`)
+        parts.push(`cat > ${filePath} << 'FLUXEOF'\n${file.content}\nFLUXEOF`)
+      } else if (isPowershell) {
+        const winPath = filePath.replace(/^~\//, '$env:USERPROFILE\\').replace(/%userprofile%\\/i, '$env:USERPROFILE\\').replace(/\//g, '\\')
+        const dir = winPath.substring(0, winPath.lastIndexOf('\\'))
+        parts.push(`New-Item -ItemType Directory -Force -Path "${dir}" | Out-Null`)
+        parts.push(`@'\n${file.content}\n'@ | Set-Content -Path "${winPath}" -Encoding UTF8`)
+      } else if (isCmd) {
+        const winPath = filePath.replace(/^~\//, '%userprofile%\\').replace(/\//g, '\\')
+        const dir = winPath.substring(0, winPath.lastIndexOf('\\'))
+        parts.push(`if not exist "${dir}" mkdir "${dir}"`)
+        // Use PowerShell inline for multi-line file creation in CMD
+        const escaped = file.content.replace(/"/g, '\\"').replace(/\n/g, '`n')
+        parts.push(`powershell -Command "Set-Content -Path '${winPath}' -Value \\"${escaped}\\" -Encoding UTF8"`)
+      }
+    }
+  }
+
+  // Join parts based on shell type
+  if (isPowershell) {
+    const hasHeredoc = parts.some(p => p.includes("@'"))
+    return hasHeredoc ? parts.join('\n') : parts.join('; ')
+  } else if (isCmd) {
+    return parts.join(' && ')
+  } else {
+    // Unix: heredoc blocks need newlines, env vars can use &&
+    const hasHeredoc = parts.some(p => p.includes('FLUXEOF'))
+    if (hasHeredoc) {
+      return parts.join('\n')
+    }
+    return parts.join(' && ')
+  }
+})
+
+const copyQuickSetup = async () => {
+  const success = await clipboardCopy(quickSetupCommand.value, t('keys.useKeyModal.quickSetup.copied'))
+  if (success) {
+    quickSetupCopied.value = true
+    setTimeout(() => {
+      quickSetupCopied.value = false
     }, 2000)
   }
 }

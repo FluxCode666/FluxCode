@@ -678,6 +678,12 @@ export default {
         title: 'OpenCode 配置示例',
         subtitle: 'opencode.json',
         hint: '配置文件路径：~/.config/opencode/opencode.json（或 opencode.jsonc），不存在需手动创建。可使用默认 provider（openai/anthropic/google）或自定义 provider_id。API Key 支持直接配置或通过客户端 /connect 命令配置。示例仅供参考，模型与选项可按需调整。'
+      },
+      quickSetup: {
+        title: '一键配置命令',
+        description: '复制以下命令到终端中执行，即可一键完成所有配置。',
+        copy: '复制命令',
+        copied: '已复制！'
       }
     },
     customKeyLabel: '自定义密钥',
@@ -6264,6 +6270,12 @@ export default {
     },
     subscribeNow: '立即开通',
     renewNow: '续费',
+    subscriptionModeTitle: '选择续费方式',
+    subscriptionModeDesc: '你在该分组已有活跃订阅，请先选择本次购买的生效方式。',
+    subscriptionModeExtend: '延长有效期',
+    subscriptionModeExtendDesc: '在当前到期时间基础上延长 {days} 天，额度倍数不变',
+    subscriptionModeStack: '叠加额度（叠卡）',
+    subscriptionModeStackDesc: '从现在开始叠加额度 {days} 天，额度倍数 +1',
     selectPlan: '选择套餐',
     planFeatures: '功能特性',
     planCard: {
