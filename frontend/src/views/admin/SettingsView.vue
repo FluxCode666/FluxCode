@@ -2571,6 +2571,17 @@
                 <div><label class="input-label">{{ t('admin.settings.payment.productNameSuffix') }}</label><input v-model="form.payment_product_name_suffix" type="text" class="input" placeholder="CNY" /></div>
                 <div><label class="input-label">{{ t('admin.settings.payment.preview') }}</label><div class="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-300">{{ (form.payment_product_name_prefix || 'Sub2API') + ' 100 ' + (form.payment_product_name_suffix || 'CNY') }}</div></div>
               </div>
+              <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <div>
+                  <label class="input-label">{{ t('admin.settings.payment.orderIdPrefix') }}</label>
+                  <input v-model="form.payment_order_id_prefix" type="text" maxlength="16" class="input" placeholder="sub2_" />
+                  <p class="mt-0.5 text-xs text-gray-400">{{ t('admin.settings.payment.orderIdPrefixHint') }}</p>
+                </div>
+                <div class="sm:col-span-2">
+                  <label class="input-label">{{ t('admin.settings.payment.orderIdPreview') }}</label>
+                  <div class="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-300">{{ (form.payment_order_id_prefix || 'sub2_') + '20260510AbCd1234' }}</div>
+                </div>
+              </div>
               <!-- Row 2: Balance toggle + amounts -->
               <div class="grid grid-cols-2 gap-3 sm:grid-cols-5">
                 <div><label class="input-label">{{ t('admin.settings.payment.minAmount') }}</label><input :value="form.payment_min_amount || ''" @input="form.payment_min_amount = parseFloat(($event.target as HTMLInputElement).value) || 0" type="number" step="0.01" min="0" class="input" :placeholder="t('admin.settings.payment.noLimit')" /></div>
@@ -3184,7 +3195,7 @@ const form = reactive<SettingsForm>({
   home_content: '',
   backend_mode_enabled: false,
   hide_ccs_import_button: false,
-  payment_enabled: false,  payment_min_amount: 1,  payment_max_amount: 10000,  payment_daily_limit: 50000,  payment_max_pending_orders: 3,  payment_order_timeout_minutes: 30,  payment_balance_disabled: false,  payment_balance_recharge_multiplier: 1,  payment_recharge_fee_rate: 0,  payment_enabled_types: [],  payment_help_image_url: '',  payment_help_text: '',  payment_product_name_prefix: '',  payment_product_name_suffix: '',  payment_load_balance_strategy: 'round-robin',  payment_cancel_rate_limit_enabled: false,  payment_cancel_rate_limit_max: 10,  payment_cancel_rate_limit_window: 1,  payment_cancel_rate_limit_unit: 'day',  payment_cancel_rate_limit_window_mode: 'rolling',
+  payment_enabled: false,  payment_min_amount: 1,  payment_max_amount: 10000,  payment_daily_limit: 50000,  payment_max_pending_orders: 3,  payment_order_timeout_minutes: 30,  payment_balance_disabled: false,  payment_balance_recharge_multiplier: 1,  payment_recharge_fee_rate: 0,  payment_order_id_prefix: 'sub2_',  payment_enabled_types: [],  payment_help_image_url: '',  payment_help_text: '',  payment_product_name_prefix: '',  payment_product_name_suffix: '',  payment_load_balance_strategy: 'round-robin',  payment_cancel_rate_limit_enabled: false,  payment_cancel_rate_limit_max: 10,  payment_cancel_rate_limit_window: 1,  payment_cancel_rate_limit_unit: 'day',  payment_cancel_rate_limit_window_mode: 'rolling',
   table_default_page_size: tablePageSizeDefault,
   table_page_size_options: [10, 20, 50, 100],
   custom_menu_items: [] as Array<{id: string; label: string; icon_svg: string; url: string; visibility: 'user' | 'admin'; sort_order: number}>,
@@ -3862,6 +3873,7 @@ async function saveSettings() {
       payment_balance_disabled: form.payment_balance_disabled,
       payment_balance_recharge_multiplier: Number(form.payment_balance_recharge_multiplier) || 1,
       payment_recharge_fee_rate: Number(form.payment_recharge_fee_rate) || 0,
+      payment_order_id_prefix: form.payment_order_id_prefix,
       payment_enabled_types: form.payment_enabled_types,
       payment_load_balance_strategy: form.payment_load_balance_strategy,
       payment_product_name_prefix: form.payment_product_name_prefix,

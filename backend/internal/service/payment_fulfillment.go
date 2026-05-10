@@ -27,7 +27,7 @@ func (s *PaymentService) HandlePaymentNotification(ctx context.Context, n *payme
 	order, err := s.entClient.PaymentOrder.Query().Where(paymentorder.OutTradeNo(n.OrderID)).Only(ctx)
 	if err != nil {
 		// Fallback: try legacy format (sub2_N where N is DB ID)
-		trimmed := strings.TrimPrefix(n.OrderID, orderIDPrefix)
+		trimmed := strings.TrimPrefix(n.OrderID, defaultOrderIDPrefix)
 		if oid, parseErr := strconv.ParseInt(trimmed, 10, 64); parseErr == nil {
 			return s.confirmPayment(ctx, oid, n.TradeNo, n.Amount, pk)
 		}
