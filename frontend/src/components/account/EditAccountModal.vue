@@ -1173,6 +1173,36 @@
         </div>
       </div>
 
+      <!-- Anthropic API Key: Sub 层 Token 统计 -->
+      <div
+        v-if="account?.platform === 'anthropic' && account?.type === 'apikey'"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600"
+      >
+        <div class="flex items-center justify-between">
+          <div>
+            <label class="input-label mb-0">{{ t('admin.accounts.anthropic.subUsageAccounting') }}</label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.anthropic.subUsageAccountingDesc') }}
+            </p>
+          </div>
+          <button
+            type="button"
+            @click="anthropicSubUsageAccountingEnabled = !anthropicSubUsageAccountingEnabled"
+            :class="[
+              'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+              anthropicSubUsageAccountingEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+            ]"
+          >
+            <span
+              :class="[
+                'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                anthropicSubUsageAccountingEnabled ? 'translate-x-5' : 'translate-x-0'
+              ]"
+            />
+          </button>
+        </div>
+      </div>
+
       <!-- 配额控制 (Anthropic apikey/bedrock: 配额限制 + 亲和) -->
       <div
         v-if="account?.platform === 'anthropic' && (account?.type === 'apikey' || account?.type === 'bedrock')"
@@ -1997,6 +2027,7 @@ const openaiOAuthResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF
 const openaiAPIKeyResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const codexCLIOnlyEnabled = ref(false)
 const anthropicPassthroughEnabled = ref(false)
+const anthropicSubUsageAccountingEnabled = ref(false)
 const webSearchEmulationMode = ref('default')
 const webSearchGlobalEnabled = ref(false)
 const {
@@ -2183,6 +2214,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   openaiAPIKeyResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
   codexCLIOnlyEnabled.value = false
   anthropicPassthroughEnabled.value = false
+  anthropicSubUsageAccountingEnabled.value = false
   webSearchEmulationMode.value = 'default'
   if (newAccount.platform === 'openai' && (newAccount.type === 'oauth' || newAccount.type === 'apikey')) {
     openaiPassthroughEnabled.value = extra?.openai_passthrough === true || extra?.openai_oauth_passthrough === true
@@ -2204,6 +2236,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   }
   if (newAccount.platform === 'anthropic' && newAccount.type === 'apikey') {
     anthropicPassthroughEnabled.value = extra?.anthropic_passthrough === true
+    anthropicSubUsageAccountingEnabled.value = extra?.anthropic_sub_usage_accounting_enabled === true
     // 三态：string "default"/"enabled"/"disabled"，向后兼容旧 bool
     const wsVal = extra?.web_search_emulation
     if (wsVal === 'enabled' || wsVal === 'disabled') {
@@ -3194,6 +3227,11 @@ const handleSubmit = async () => {
         delete newExtra.web_search_emulation
       } else {
         newExtra.web_search_emulation = webSearchEmulationMode.value
+      }
+      if (anthropicSubUsageAccountingEnabled.value) {
+        newExtra.anthropic_sub_usage_accounting_enabled = true
+      } else {
+        delete newExtra.anthropic_sub_usage_accounting_enabled
       }
       updatePayload.extra = newExtra
     }

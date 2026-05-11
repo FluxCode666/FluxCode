@@ -2784,6 +2784,9 @@ export default {
         webSearchDefault: 'Default',
         webSearchEnabled: 'Enabled',
         webSearchDisabled: 'Disabled',
+        subUsageAccounting: 'Sub-layer Token Accounting',
+        subUsageAccountingDesc:
+          'Only applies to this Anthropic API Key account. When enabled, input, output, cache write, and cache read tokens are estimated locally by sub2api instead of relying on upstream usage.',
       },
       modelRestriction: 'Model Restriction (Optional)',
       modelWhitelist: 'Model Whitelist',

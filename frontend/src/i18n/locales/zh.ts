@@ -2920,6 +2920,9 @@ export default {
         webSearchDefault: '默认',
         webSearchEnabled: '开启',
         webSearchDisabled: '关闭',
+        subUsageAccounting: 'Sub 层 Token 统计',
+        subUsageAccountingDesc:
+          '仅对当前 Anthropic API Key 账号生效。开启后，输入、输出、写缓存、读缓存 token 都由 sub2api 本地估算并记录，不再依赖上游 usage。',
       },
       modelRestriction: '模型限制（可选）',
       modelWhitelist: '模型白名单',
