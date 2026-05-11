@@ -4,6 +4,7 @@ import (
 	"strconv"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
+	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
 )
@@ -20,7 +21,12 @@ func NewReferralHandler(referralService *service.ReferralService) *ReferralHandl
 // GetReferralInfo 获取推广中心信息
 // GET /api/v1/user/referral/info
 func (h *ReferralHandler) GetReferralInfo(c *gin.Context) {
-	userID := c.GetInt64("user_id")
+	subject, ok := middleware.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+	userID := subject.UserID
 	info, err := h.referralService.GetUserReferralInfo(c.Request.Context(), userID)
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -32,7 +38,12 @@ func (h *ReferralHandler) GetReferralInfo(c *gin.Context) {
 // GenerateReferralCode 生成推广码
 // POST /api/v1/user/referral/generate-code
 func (h *ReferralHandler) GenerateReferralCode(c *gin.Context) {
-	userID := c.GetInt64("user_id")
+	subject, ok := middleware.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+	userID := subject.UserID
 	code, err := h.referralService.GenerateReferralCode(c.Request.Context(), userID)
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -44,7 +55,12 @@ func (h *ReferralHandler) GenerateReferralCode(c *gin.Context) {
 // GetMyReferrals 获取我的邀请列表
 // GET /api/v1/user/referral/invites
 func (h *ReferralHandler) GetMyReferrals(c *gin.Context) {
-	userID := c.GetInt64("user_id")
+	subject, ok := middleware.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+	userID := subject.UserID
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
 	if page < 1 {
@@ -69,7 +85,12 @@ func (h *ReferralHandler) GetMyReferrals(c *gin.Context) {
 // GetMyGiftBalanceRecords 获取赠送余额记录
 // GET /api/v1/user/referral/gift-balance
 func (h *ReferralHandler) GetMyGiftBalanceRecords(c *gin.Context) {
-	userID := c.GetInt64("user_id")
+	subject, ok := middleware.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+	userID := subject.UserID
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
 	if page < 1 {
@@ -94,7 +115,12 @@ func (h *ReferralHandler) GetMyGiftBalanceRecords(c *gin.Context) {
 // GetGiftBalanceRemaining 获取赠送余额剩余
 // GET /api/v1/referral/gift-balance/remaining
 func (h *ReferralHandler) GetGiftBalanceRemaining(c *gin.Context) {
-	userID := c.GetInt64("user_id")
+	subject, ok := middleware.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+	userID := subject.UserID
 	remaining, err := h.referralService.GetGiftBalanceRemaining(c.Request.Context(), userID)
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -106,7 +132,12 @@ func (h *ReferralHandler) GetGiftBalanceRemaining(c *gin.Context) {
 // GetMyGiftBalanceSummary 获取赠送余额汇总（已发/已用/剩余/已过期）
 // GET /api/v1/referral/gift-balance/summary
 func (h *ReferralHandler) GetMyGiftBalanceSummary(c *gin.Context) {
-	userID := c.GetInt64("user_id")
+	subject, ok := middleware.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+	userID := subject.UserID
 	summary, err := h.referralService.GetGiftBalanceSummary(c.Request.Context(), userID)
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -118,7 +149,12 @@ func (h *ReferralHandler) GetMyGiftBalanceSummary(c *gin.Context) {
 // GetMyStats 获取我的推广趋势数据
 // GET /api/v1/referral/stats
 func (h *ReferralHandler) GetMyStats(c *gin.Context) {
-	userID := c.GetInt64("user_id")
+	subject, ok := middleware.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+	userID := subject.UserID
 	days, _ := strconv.Atoi(c.DefaultQuery("days", "30"))
 	if days <= 0 || days > 365 {
 		days = 30

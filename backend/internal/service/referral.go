@@ -21,37 +21,37 @@ const (
 
 // GiftBalanceRecord 赠送余额记录
 type GiftBalanceRecord struct {
-	ID          int64
-	UserID      int64
-	Amount      float64
-	Remaining   float64
-	Source      string
-	SourceRefID *int64
-	Note        string
-	ExpiresAt   *time.Time
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	ID          int64      `json:"id"`
+	UserID      int64      `json:"user_id"`
+	Amount      float64    `json:"amount"`
+	Remaining   float64    `json:"remaining"`
+	Source      string     `json:"source"`
+	SourceRefID *int64     `json:"source_ref_id"`
+	Note        string     `json:"note,omitempty"`
+	ExpiresAt   *time.Time `json:"expires_at"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
 }
 
 // Referral 推广关系记录
 type Referral struct {
-	ID                  int64
-	ReferrerID          int64
-	RefereeID           int64
-	ReferralCode        string
-	Status              string
-	InviteeRewardAmount float64
-	InviterRewardAmount float64
-	InviteeRewardedAt   *time.Time
-	InviterRewardedAt   *time.Time
-	OngoingRewardCount  int
-	OngoingRewardTotal  float64
-	CreatedAt           time.Time
-	UpdatedAt           time.Time
+	ID                  int64      `json:"id"`
+	ReferrerID          int64      `json:"referrer_id"`
+	RefereeID           int64      `json:"referee_id"`
+	ReferralCode        string     `json:"referral_code"`
+	Status              string     `json:"status"`
+	InviteeRewardAmount float64    `json:"invitee_reward_amount"`
+	InviterRewardAmount float64    `json:"inviter_reward_amount"`
+	InviteeRewardedAt   *time.Time `json:"invitee_rewarded_at"`
+	InviterRewardedAt   *time.Time `json:"inviter_rewarded_at"`
+	OngoingRewardCount  int        `json:"ongoing_reward_count"`
+	OngoingRewardTotal  float64    `json:"ongoing_reward_total"`
+	CreatedAt           time.Time  `json:"created_at"`
+	UpdatedAt           time.Time  `json:"updated_at"`
 
 	// 附加字段（列表查询时填充）
-	RefereeEmail    string
-	RefereeUsername string
+	RefereeEmail    string `json:"referee_email,omitempty"`
+	RefereeUsername string `json:"referee_username,omitempty"`
 }
 
 // UserReferralConfig 用户级推广配置覆盖

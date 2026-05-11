@@ -94,11 +94,7 @@
             <div class="card">
               <div class="flex items-center justify-between border-b border-gray-200 p-4 dark:border-dark-600">
                 <h3 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('adminReferral.trendTitle') }}</h3>
-                <select v-model.number="trendDays" @change="loadDashboard" class="rounded-md border border-gray-200 bg-white px-3 py-1.5 text-sm dark:border-dark-600 dark:bg-dark-700 dark:text-white">
-                  <option :value="7">{{ t('referral.last7Days') }}</option>
-                  <option :value="30">{{ t('referral.last30Days') }}</option>
-                  <option :value="90">{{ t('referral.last90Days') }}</option>
-                </select>
+                <Select v-model="trendDays" :options="trendDaysOptions" class="w-36" @change="loadDashboard" />
               </div>
               <div class="p-4">
                 <div v-if="trendChartData" class="h-72">
@@ -159,10 +155,7 @@
               <template v-if="config.referral_ongoing_reward_enabled">
                 <div>
                   <label class="input-label">{{ t('adminReferral.ongoingRewardType') }}</label>
-                  <select v-model="config.referral_ongoing_reward_type" class="input mt-1">
-                    <option value="fixed">{{ t('adminReferral.fixedAmount') }}</option>
-                    <option value="percentage">{{ t('adminReferral.percentage') }}</option>
-                  </select>
+                  <Select v-model="config.referral_ongoing_reward_type" :options="ongoingRewardTypeOptions" class="mt-1" />
                 </div>
                 <div>
                   <label class="input-label">
@@ -189,11 +182,7 @@
           <!-- Referral List Tab -->
           <div v-if="activeTab === 'list'" class="p-6">
             <div class="mb-4 flex items-center gap-2">
-              <select v-model="listFilter.status" @change="loadList" class="rounded-md border border-gray-200 bg-white px-3 py-1.5 text-sm dark:border-dark-600 dark:bg-dark-700 dark:text-white">
-                <option value="">{{ t('adminReferral.allStatus') }}</option>
-                <option value="pending">{{ t('referral.pending') }}</option>
-                <option value="completed">{{ t('referral.completed') }}</option>
-              </select>
+              <Select v-model="listFilter.status" :options="listStatusOptions" class="w-40" @change="loadList" />
             </div>
             <div v-if="referralList.length === 0" class="py-8 text-center text-gray-500 dark:text-dark-400">
               {{ t('adminReferral.noReferrals') }}
@@ -236,11 +225,7 @@
           <!-- Leaderboard Tab -->
           <div v-if="activeTab === 'leaderboard'" class="p-6">
             <div class="mb-4 flex items-center gap-2">
-              <select v-model="leaderboardPeriod" @change="loadLeaderboard" class="rounded-md border border-gray-200 bg-white px-3 py-1.5 text-sm dark:border-dark-600 dark:bg-dark-700 dark:text-white">
-                <option value="all_time">{{ t('adminReferral.allTime') }}</option>
-                <option value="this_month">{{ t('adminReferral.thisMonth') }}</option>
-                <option value="this_week">{{ t('adminReferral.thisWeek') }}</option>
-              </select>
+              <Select v-model="leaderboardPeriod" :options="leaderboardPeriodOptions" class="w-40" @change="loadLeaderboard" />
             </div>
             <div v-if="leaderboard.length === 0" class="py-8 text-center text-gray-500 dark:text-dark-400">
               {{ t('adminReferral.noLeaderboard') }}
@@ -303,10 +288,7 @@
               <div class="mt-4 max-w-lg space-y-4">
                 <div>
                   <label class="input-label">{{ t('adminReferral.batchTarget') }}</label>
-                  <select v-model="batchForm.target" class="input mt-1">
-                    <option value="all">{{ t('adminReferral.batchAll') }}</option>
-                    <option value="selected">{{ t('adminReferral.batchSelected') }}</option>
-                  </select>
+                  <Select v-model="batchForm.target" :options="batchTargetOptions" class="mt-1" />
                 </div>
                 <div v-if="batchForm.target === 'selected'">
                   <label class="input-label">{{ t('adminReferral.batchUserIds') }}</label>
@@ -371,11 +353,7 @@
                 </div>
                 <div>
                   <label class="input-label">{{ t('adminReferral.ongoingRewardType') }}</label>
-                  <select v-model="userConfigForm.ongoing_reward_type" class="input mt-1">
-                    <option value="">{{ t('adminReferral.useGlobal') }}</option>
-                    <option value="fixed">{{ t('adminReferral.fixedAmount') }}</option>
-                    <option value="percentage">{{ t('adminReferral.percentage') }}</option>
-                  </select>
+                  <Select v-model="userConfigForm.ongoing_reward_type" :options="userConfigRewardTypeOptions" class="mt-1" />
                 </div>
                 <div>
                   <label class="input-label">{{ t('adminReferral.ongoingRewardValue') }}</label>
@@ -412,6 +390,7 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { AppLayout } from '@/components/layout'
+import Select from '@/components/common/Select.vue'
 import { useAppStore } from '@/stores'
 import {
   Chart as ChartJS,
@@ -449,7 +428,41 @@ const granting = ref(false)
 const batchGranting = ref(false)
 
 const dashboard = ref<AdminReferralDashboard | null>(null)
-const trendDays = ref(30)
+const trendDays = ref<number | string | boolean | null>(30)
+
+const trendDaysOptions = computed(() => [
+  { value: 7, label: t('referral.last7Days') },
+  { value: 30, label: t('referral.last30Days') },
+  { value: 90, label: t('referral.last90Days') },
+])
+
+const ongoingRewardTypeOptions = computed(() => [
+  { value: 'fixed', label: t('adminReferral.fixedAmount') },
+  { value: 'percentage', label: t('adminReferral.percentage') },
+])
+
+const listStatusOptions = computed(() => [
+  { value: '', label: t('adminReferral.allStatus') },
+  { value: 'pending', label: t('referral.pending') },
+  { value: 'completed', label: t('referral.completed') },
+])
+
+const leaderboardPeriodOptions = computed(() => [
+  { value: 'all_time', label: t('adminReferral.allTime') },
+  { value: 'this_month', label: t('adminReferral.thisMonth') },
+  { value: 'this_week', label: t('adminReferral.thisWeek') },
+])
+
+const batchTargetOptions = computed(() => [
+  { value: 'all', label: t('adminReferral.batchAll') },
+  { value: 'selected', label: t('adminReferral.batchSelected') },
+])
+
+const userConfigRewardTypeOptions = computed(() => [
+  { value: '', label: t('adminReferral.useGlobal') },
+  { value: 'fixed', label: t('adminReferral.fixedAmount') },
+  { value: 'percentage', label: t('adminReferral.percentage') },
+])
 
 const config = reactive<ReferralConfig>({
   referral_enabled: false,
@@ -561,7 +574,7 @@ async function loadAll() {
 
 async function loadDashboard() {
   try {
-    dashboard.value = await adminReferralAPI.getDashboard(trendDays.value)
+    dashboard.value = await adminReferralAPI.getDashboard(Number(trendDays.value))
   } catch (error) {
     console.error('Failed to load dashboard:', error)
   }

@@ -99,12 +99,7 @@
           <div class="card">
             <div class="flex items-center justify-between border-b border-gray-200 p-4 dark:border-dark-600">
               <h2 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('referral.trendTitle') }}</h2>
-              <select v-model="trendDays" @change="loadTrend"
-                class="rounded-md border border-gray-200 bg-white px-3 py-1.5 text-sm dark:border-dark-600 dark:bg-dark-700 dark:text-white">
-                <option :value="7">{{ t('referral.last7Days') }}</option>
-                <option :value="30">{{ t('referral.last30Days') }}</option>
-                <option :value="90">{{ t('referral.last90Days') }}</option>
-              </select>
+              <Select v-model="trendDays" :options="trendDaysOptions" class="w-36" @change="loadTrend" />
             </div>
             <div class="p-4">
               <div v-if="trendLoading" class="flex h-64 items-center justify-center text-sm text-gray-400">
@@ -271,6 +266,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { AppLayout } from '@/components/layout'
+import Select from '@/components/common/Select.vue'
 import { useAppStore } from '@/stores'
 import {
   Chart as ChartJS,
@@ -305,7 +301,13 @@ const loading = ref(true)
 const trendLoading = ref(false)
 const generating = ref(false)
 const activeTab = ref<'invites' | 'giftBalance'>('invites')
-const trendDays = ref(30)
+const trendDays = ref<number | string | boolean | null>(30)
+
+const trendDaysOptions = computed(() => [
+  { value: 7, label: t('referral.last7Days') },
+  { value: 30, label: t('referral.last30Days') },
+  { value: 90, label: t('referral.last90Days') },
+])
 
 const referralInfo = ref<ReferralInfo | null>(null)
 const invites = ref<ReferralInvite[]>([])
@@ -386,7 +388,7 @@ async function loadData() {
 async function loadTrend() {
   trendLoading.value = true
   try {
-    const result = await getMyReferralStats(trendDays.value)
+    const result = await getMyReferralStats(Number(trendDays.value))
     trendData.value = result.data || []
   } catch (error) {
     console.error('Failed to load trend:', error)
