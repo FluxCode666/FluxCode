@@ -1196,6 +1196,18 @@ func (a *Account) IsAnthropicAPIKeyPassthroughEnabled() bool {
 	return ok && enabled
 }
 
+// IsAnthropicSubUsageAccountingEnabled 返回 Anthropic API Key 账号是否启用 Sub 层 Token 统计。
+// 开启后 sub2api 不再依赖上游 usage，而是本地估算并记录 input/output/cache_read/cache_creation tokens。
+// 字段：accounts.extra.anthropic_sub_usage_accounting_enabled。
+// 字段缺失或类型不正确时，按 false（关闭）处理。
+func (a *Account) IsAnthropicSubUsageAccountingEnabled() bool {
+	if a == nil || a.Platform != PlatformAnthropic || a.Type != AccountTypeAPIKey || a.Extra == nil {
+		return false
+	}
+	enabled, ok := a.Extra["anthropic_sub_usage_accounting_enabled"].(bool)
+	return ok && enabled
+}
+
 // WebSearch 模拟三态常量
 const (
 	WebSearchModeDefault  = "default"  // 跟随渠道配置

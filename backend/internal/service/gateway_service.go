@@ -7733,6 +7733,7 @@ func (s *GatewayService) RecordUsage(ctx context.Context, input *RecordUsageInpu
 		APIKeyService:      input.APIKeyService,
 		ChannelUsageFields: input.ChannelUsageFields,
 	}, &recordUsageOpts{
+		ParsedRequest:    input.ParsedRequest,
 		EnableClaudePath: true,
 	})
 }
@@ -7810,6 +7811,12 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 	billedAt := input.BilledAt
 	if billedAt.IsZero() {
 		billedAt = time.Now()
+	}
+
+	// Sub 层 Token 统计：对启用了该功能的 Anthropic API Key 账号，
+	// 用本地估算值覆盖上游 usage（在其他计费逻辑之前执行）
+	if opts != nil && opts.ParsedRequest != nil {
+		s.applySubUsageAccounting(result, account, apiKey, opts.ParsedRequest)
 	}
 
 	// 强制缓存计费：将 input_tokens 转为 cache_read_input_tokens
