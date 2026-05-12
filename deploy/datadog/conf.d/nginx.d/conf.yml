@@ -1,0 +1,14 @@
+logs:
+  - type: file
+    path: /var/log/nginx/access.log
+    service: nginx
+    source: nginx
+    tags:
+      - env:prod
+
+  - type: file
+    path: /var/log/nginx/error.log
+    service: nginx
+    source: nginx
+    tags:
+      - env:prod
