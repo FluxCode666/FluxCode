@@ -93,6 +93,10 @@ func (m *concurrencyCacheMock) CleanupStaleProcessSlots(ctx context.Context, act
 	return nil
 }
 
+func (m *concurrencyCacheMock) CleanupExpiredSlotsByScan(ctx context.Context) error {
+	return nil
+}
+
 func TestConcurrencyHelper_TryAcquireUserSlot(t *testing.T) {
 	cache := &concurrencyCacheMock{
 		acquireUserSlotFn: func(ctx context.Context, userID int64, maxConcurrency int, requestID string) (bool, error) {
