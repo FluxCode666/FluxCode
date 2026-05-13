@@ -152,6 +152,9 @@ func (s *ReferralService) HandleInviterRewardOnFirstRecharge(ctx context.Context
 	if err != nil || ref == nil || ref.Status == ReferralStatusCompleted {
 		return
 	}
+	if s.isSalesReferrer(ctx, ref.ReferrerID) {
+		return
+	}
 
 	cfg := s.configResolver.Resolve(ctx, ref.ReferrerID)
 	if !cfg.Enabled {
@@ -173,6 +176,9 @@ func (s *ReferralService) HandleInviterRewardOnFirstRecharge(ctx context.Context
 func (s *ReferralService) HandleOngoingRewardOnRecharge(ctx context.Context, userID int64, rechargeAmount float64) {
 	ref, err := s.referralRepo.GetByRefereeID(ctx, userID)
 	if err != nil || ref == nil {
+		return
+	}
+	if s.isSalesReferrer(ctx, ref.ReferrerID) {
 		return
 	}
 
@@ -462,6 +468,14 @@ func (s *ReferralService) grantGiftBalance(ctx context.Context, userID int64, am
 	if err := s.giftBalanceRepo.Create(ctx, record); err != nil {
 		slog.Error("grant gift balance", "userID", userID, "amount", amount, "source", source, "error", err)
 	}
+}
+
+func (s *ReferralService) isSalesReferrer(ctx context.Context, userID int64) bool {
+	user, err := s.userRepo.GetByID(ctx, userID)
+	if err != nil || user == nil {
+		return false
+	}
+	return user.IsSales
 }
 
 // generateUniqueCode 生成 6-8 位唯一推广码
