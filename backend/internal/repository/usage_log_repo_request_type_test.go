@@ -25,6 +25,7 @@ func TestUsageLogRepositoryCreateSyncRequestTypeAndLegacyFields(t *testing.T) {
 		UserID:         1,
 		APIKeyID:       2,
 		AccountID:      3,
+		TraceID:        "trace-1",
 		RequestID:      "req-1",
 		Model:          "gpt-5",
 		RequestedModel: "gpt-5",
@@ -44,6 +45,7 @@ func TestUsageLogRepositoryCreateSyncRequestTypeAndLegacyFields(t *testing.T) {
 			log.UserID,
 			log.APIKeyID,
 			log.AccountID,
+			log.TraceID,
 			log.RequestID,
 			log.Model,
 			log.RequestedModel,
@@ -111,6 +113,7 @@ func TestUsageLogRepositoryCreate_PersistsServiceTier(t *testing.T) {
 		UserID:         1,
 		APIKeyID:       2,
 		AccountID:      3,
+		TraceID:        "trace-service-tier",
 		RequestID:      "req-service-tier",
 		Model:          "gpt-5.4",
 		RequestedModel: "gpt-5.4",
@@ -123,6 +126,7 @@ func TestUsageLogRepositoryCreate_PersistsServiceTier(t *testing.T) {
 			log.UserID,
 			log.APIKeyID,
 			log.AccountID,
+			log.TraceID,
 			log.RequestID,
 			log.Model,
 			log.RequestedModel,
@@ -180,6 +184,7 @@ func TestBuildUsageLogBestEffortInsertQuery_IncludesRequestedModelColumn(t *test
 		UserID:         1,
 		APIKeyID:       2,
 		AccountID:      3,
+		TraceID:        "trace-best-effort-query",
 		RequestID:      "req-best-effort-query",
 		Model:          "gpt-5",
 		RequestedModel: "gpt-5",
@@ -189,10 +194,10 @@ func TestBuildUsageLogBestEffortInsertQuery_IncludesRequestedModelColumn(t *test
 	query, args := buildUsageLogBestEffortInsertQuery([]usageLogInsertPrepared{prepared})
 
 	require.Contains(t, query, "INSERT INTO usage_logs (")
-	require.Contains(t, query, "\n\t\t\tmodel,\n\t\t\trequested_model,\n\t\t\tupstream_model,")
-	require.Contains(t, query, "\n\t\t\trequest_id,\n\t\t\tmodel,\n\t\t\trequested_model,\n\t\t\tupstream_model,")
+	require.Contains(t, query, "\n\t\t\ttrace_id,\n\t\t\trequest_id,\n\t\t\tmodel,")
+	require.Contains(t, query, "\n\t\t\taccount_id,\n\t\t\ttrace_id,\n\t\t\trequest_id,")
 	require.Len(t, args, len(prepared.args))
-	require.Equal(t, prepared.args[5], args[5])
+	require.Equal(t, prepared.args[3], args[3])
 }
 
 func TestExecUsageLogInsertNoResult_PersistsRequestedModel(t *testing.T) {
@@ -201,6 +206,7 @@ func TestExecUsageLogInsertNoResult_PersistsRequestedModel(t *testing.T) {
 		UserID:         1,
 		APIKeyID:       2,
 		AccountID:      3,
+		TraceID:        "trace-best-effort-exec",
 		RequestID:      "req-best-effort-exec",
 		Model:          "gpt-5",
 		RequestedModel: "gpt-5",
@@ -221,6 +227,7 @@ func TestPrepareUsageLogInsert_ArgCountMatchesTypes(t *testing.T) {
 		UserID:         1,
 		APIKeyID:       2,
 		AccountID:      3,
+		TraceID:        "trace-arg-count",
 		RequestID:      "req-arg-count",
 		Model:          "gpt-5",
 		RequestedModel: "gpt-5",
@@ -573,6 +580,7 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			int64(10), // user_id
 			int64(20), // api_key_id
 			int64(30), // account_id
+			sql.NullString{Valid: true, String: "trace-req-1"},
 			sql.NullString{Valid: true, String: "req-1"},
 			"gpt-5", // model
 			sql.NullString{Valid: true, String: "gpt-5"}, // requested_model
@@ -618,6 +626,7 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			now,
 		}})
 		require.NoError(t, err)
+		require.Equal(t, "trace-req-1", log.TraceID)
 		require.NotNil(t, log.ServiceTier)
 		require.Equal(t, "priority", *log.ServiceTier)
 		require.Equal(t, service.RequestTypeWSV2, log.RequestType)
@@ -632,6 +641,7 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			int64(11),
 			int64(21),
 			int64(31),
+			sql.NullString{Valid: true, String: "trace-req-2"},
 			sql.NullString{Valid: true, String: "req-2"},
 			"gpt-5",
 			sql.NullString{Valid: true, String: "gpt-5"},
@@ -666,6 +676,7 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			now,
 		}})
 		require.NoError(t, err)
+		require.Equal(t, "trace-req-2", log.TraceID)
 		require.NotNil(t, log.ServiceTier)
 		require.Equal(t, "flex", *log.ServiceTier)
 		require.Equal(t, service.RequestTypeStream, log.RequestType)
@@ -680,6 +691,7 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			int64(12),
 			int64(22),
 			int64(32),
+			sql.NullString{Valid: true, String: "trace-req-3"},
 			sql.NullString{Valid: true, String: "req-3"},
 			"gpt-5.4",
 			sql.NullString{Valid: true, String: "gpt-5.4"},
@@ -714,6 +726,7 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			now,
 		}})
 		require.NoError(t, err)
+		require.Equal(t, "trace-req-3", log.TraceID)
 		require.NotNil(t, log.ServiceTier)
 		require.Equal(t, "priority", *log.ServiceTier)
 	})

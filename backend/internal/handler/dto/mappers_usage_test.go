@@ -80,6 +80,7 @@ func TestUsageLogFromService_IncludesServiceTierForUserAndAdmin(t *testing.T) {
 	inboundEndpoint := "/v1/chat/completions"
 	upstreamEndpoint := "/v1/responses"
 	log := &service.UsageLog{
+		TraceID:               "trace-dto-1",
 		RequestID:             "req_3",
 		Model:                 "gpt-5.4",
 		ServiceTier:           &serviceTier,
@@ -91,6 +92,8 @@ func TestUsageLogFromService_IncludesServiceTierForUserAndAdmin(t *testing.T) {
 	userDTO := UsageLogFromService(log)
 	adminDTO := UsageLogFromServiceAdmin(log)
 
+	require.Equal(t, "trace-dto-1", userDTO.TraceID)
+	require.Equal(t, "trace-dto-1", adminDTO.TraceID)
 	require.NotNil(t, userDTO.ServiceTier)
 	require.Equal(t, serviceTier, *userDTO.ServiceTier)
 	require.NotNil(t, userDTO.InboundEndpoint)

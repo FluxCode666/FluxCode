@@ -74,6 +74,26 @@ func (_u *UsageLogUpdate) SetNillableAccountID(v *int64) *UsageLogUpdate {
 	return _u
 }
 
+// SetTraceID sets the "trace_id" field.
+func (_u *UsageLogUpdate) SetTraceID(v string) *UsageLogUpdate {
+	_u.mutation.SetTraceID(v)
+	return _u
+}
+
+// SetNillableTraceID sets the "trace_id" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableTraceID(v *string) *UsageLogUpdate {
+	if v != nil {
+		_u.SetTraceID(*v)
+	}
+	return _u
+}
+
+// ClearTraceID clears the value of the "trace_id" field.
+func (_u *UsageLogUpdate) ClearTraceID() *UsageLogUpdate {
+	_u.mutation.ClearTraceID()
+	return _u
+}
+
 // SetRequestID sets the "request_id" field.
 func (_u *UsageLogUpdate) SetRequestID(v string) *UsageLogUpdate {
 	_u.mutation.SetRequestID(v)
@@ -842,6 +862,11 @@ func (_u *UsageLogUpdate) ExecX(ctx context.Context) {
 
 // check runs all checks and user-defined validators on the builder.
 func (_u *UsageLogUpdate) check() error {
+	if v, ok := _u.mutation.TraceID(); ok {
+		if err := usagelog.TraceIDValidator(v); err != nil {
+			return &ValidationError{Name: "trace_id", err: fmt.Errorf(`ent: validator failed for field "UsageLog.trace_id": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.RequestID(); ok {
 		if err := usagelog.RequestIDValidator(v); err != nil {
 			return &ValidationError{Name: "request_id", err: fmt.Errorf(`ent: validator failed for field "UsageLog.request_id": %w`, err)}
@@ -915,6 +940,12 @@ func (_u *UsageLogUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 				ps[i](selector)
 			}
 		}
+	}
+	if value, ok := _u.mutation.TraceID(); ok {
+		_spec.SetField(usagelog.FieldTraceID, field.TypeString, value)
+	}
+	if _u.mutation.TraceIDCleared() {
+		_spec.ClearField(usagelog.FieldTraceID, field.TypeString)
 	}
 	if value, ok := _u.mutation.RequestID(); ok {
 		_spec.SetField(usagelog.FieldRequestID, field.TypeString, value)
@@ -1306,6 +1337,26 @@ func (_u *UsageLogUpdateOne) SetNillableAccountID(v *int64) *UsageLogUpdateOne {
 	if v != nil {
 		_u.SetAccountID(*v)
 	}
+	return _u
+}
+
+// SetTraceID sets the "trace_id" field.
+func (_u *UsageLogUpdateOne) SetTraceID(v string) *UsageLogUpdateOne {
+	_u.mutation.SetTraceID(v)
+	return _u
+}
+
+// SetNillableTraceID sets the "trace_id" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableTraceID(v *string) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetTraceID(*v)
+	}
+	return _u
+}
+
+// ClearTraceID clears the value of the "trace_id" field.
+func (_u *UsageLogUpdateOne) ClearTraceID() *UsageLogUpdateOne {
+	_u.mutation.ClearTraceID()
 	return _u
 }
 
@@ -2090,6 +2141,11 @@ func (_u *UsageLogUpdateOne) ExecX(ctx context.Context) {
 
 // check runs all checks and user-defined validators on the builder.
 func (_u *UsageLogUpdateOne) check() error {
+	if v, ok := _u.mutation.TraceID(); ok {
+		if err := usagelog.TraceIDValidator(v); err != nil {
+			return &ValidationError{Name: "trace_id", err: fmt.Errorf(`ent: validator failed for field "UsageLog.trace_id": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.RequestID(); ok {
 		if err := usagelog.RequestIDValidator(v); err != nil {
 			return &ValidationError{Name: "request_id", err: fmt.Errorf(`ent: validator failed for field "UsageLog.request_id": %w`, err)}
@@ -2180,6 +2236,12 @@ func (_u *UsageLogUpdateOne) sqlSave(ctx context.Context) (_node *UsageLog, err 
 				ps[i](selector)
 			}
 		}
+	}
+	if value, ok := _u.mutation.TraceID(); ok {
+		_spec.SetField(usagelog.FieldTraceID, field.TypeString, value)
+	}
+	if _u.mutation.TraceIDCleared() {
+		_spec.ClearField(usagelog.FieldTraceID, field.TypeString)
 	}
 	if value, ok := _u.mutation.RequestID(); ok {
 		_spec.SetField(usagelog.FieldRequestID, field.TypeString, value)

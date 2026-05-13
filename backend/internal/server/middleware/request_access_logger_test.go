@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/gin-gonic/gin"
 )
 
@@ -112,11 +114,36 @@ func TestRequestLogger_KeepIncomingRequestID(t *testing.T) {
 	}
 }
 
+func TestRequestLogger_PropagatesTraceID(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.Use(RequestLogger())
+	r.GET("/t", func(c *gin.Context) {
+		traceID, _ := c.Request.Context().Value(ctxkey.TraceID).(string)
+		if traceID != "trace-fixed" {
+			t.Fatalf("trace_id=%q, want trace-fixed", traceID)
+		}
+		if got := c.Writer.Header().Get("X-Trace-ID"); got != "trace-fixed" {
+			t.Fatalf("header=%q, want trace-fixed", got)
+		}
+		c.Status(http.StatusOK)
+	})
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/t", nil)
+	req.Header.Set("X-Trace-ID", "trace-fixed")
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status=%d", w.Code)
+	}
+}
+
 func TestLogger_AccessLogIncludesCoreFields(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	sink := initMiddlewareTestLogger(t)
 
 	r := gin.New()
+	r.Use(RequestLogger())
 	r.Use(Logger())
 	r.Use(func(c *gin.Context) {
 		ctx := c.Request.Context()
@@ -132,6 +159,7 @@ func TestLogger_AccessLogIncludesCoreFields(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/test", nil)
+	req.Header.Set("X-Trace-ID", "trace-access")
 	r.ServeHTTP(w, req)
 	if w.Code != http.StatusCreated {
 		t.Fatalf("status=%d", w.Code)
@@ -174,9 +202,34 @@ func TestLogger_AccessLogIncludesCoreFields(t *testing.T) {
 		if event.Fields["platform"] != "openai" || event.Fields["model"] != "gpt-5" {
 			t.Fatalf("platform/model mismatch: %+v", event.Fields)
 		}
+		if event.Fields["trace_id"] != "trace-access" {
+			t.Fatalf("trace_id mismatch: %+v", event.Fields)
+		}
 	}
 	if !found {
 		t.Fatalf("access log event not found")
+	}
+}
+
+func TestErrorWithDetails_IncludesTraceID(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.Use(RequestLogger())
+	r.GET("/err", func(c *gin.Context) {
+		response.Error(c, http.StatusBadRequest, "bad request")
+	})
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/err", nil)
+	req.Header.Set("X-Trace-ID", "trace-error")
+	r.ServeHTTP(w, req)
+
+	var body map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("unmarshal body: %v", err)
+	}
+	if body["trace_id"] != "trace-error" {
+		t.Fatalf("trace_id=%v, want trace-error", body["trace_id"])
 	}
 }
 

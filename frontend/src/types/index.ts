@@ -1001,6 +1001,7 @@ export interface UsageLog {
   user_id: number
   api_key_id: number
   account_id: number | null
+  trace_id?: string | null
   request_id: string
   model: string
   service_tier?: string | null

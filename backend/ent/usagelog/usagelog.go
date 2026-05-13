@@ -20,6 +20,8 @@ const (
 	FieldAPIKeyID = "api_key_id"
 	// FieldAccountID holds the string denoting the account_id field in the database.
 	FieldAccountID = "account_id"
+	// FieldTraceID holds the string denoting the trace_id field in the database.
+	FieldTraceID = "trace_id"
 	// FieldRequestID holds the string denoting the request_id field in the database.
 	FieldRequestID = "request_id"
 	// FieldModel holds the string denoting the model field in the database.
@@ -143,6 +145,7 @@ var Columns = []string{
 	FieldUserID,
 	FieldAPIKeyID,
 	FieldAccountID,
+	FieldTraceID,
 	FieldRequestID,
 	FieldModel,
 	FieldRequestedModel,
@@ -190,6 +193,8 @@ func ValidColumn(column string) bool {
 }
 
 var (
+	// TraceIDValidator is a validator for the "trace_id" field. It is called by the builders before save.
+	TraceIDValidator func(string) error
 	// RequestIDValidator is a validator for the "request_id" field. It is called by the builders before save.
 	RequestIDValidator func(string) error
 	// ModelValidator is a validator for the "model" field. It is called by the builders before save.
@@ -269,6 +274,11 @@ func ByAPIKeyID(opts ...sql.OrderTermOption) OrderOption {
 // ByAccountID orders the results by the account_id field.
 func ByAccountID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldAccountID, opts...).ToFunc()
+}
+
+// ByTraceID orders the results by the trace_id field.
+func ByTraceID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldTraceID, opts...).ToFunc()
 }
 
 // ByRequestID orders the results by the request_id field.

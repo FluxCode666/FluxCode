@@ -8069,6 +8069,7 @@ func (s *GatewayService) buildRecordUsageLog(
 		UserID:                user.ID,
 		APIKeyID:              apiKey.ID,
 		AccountID:             account.ID,
+		TraceID:               resolveUsageLogTraceID(ctx),
 		RequestID:             requestID,
 		Model:                 result.Model,
 		RequestedModel:        requestedModel,

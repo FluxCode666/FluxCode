@@ -577,6 +577,7 @@ func usageLogFromServiceUser(l *service.UsageLog) UsageLog {
 		UserID:                l.UserID,
 		APIKeyID:              l.APIKeyID,
 		AccountID:             l.AccountID,
+		TraceID:               l.TraceID,
 		RequestID:             l.RequestID,
 		Model:                 requestedModel,
 		ServiceTier:           l.ServiceTier,

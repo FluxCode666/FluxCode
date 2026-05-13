@@ -53,6 +53,26 @@
           <span v-else class="font-medium text-gray-900 dark:text-white">{{ row.model }}</span>
         </template>
 
+        <template #cell-trace_id="{ row }">
+          <div class="max-w-[240px] space-y-0.5 text-xs">
+            <div class="text-[11px] font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+              {{ t('admin.usage.traceId') }}
+            </div>
+            <span v-if="row.trace_id" class="block break-all font-mono text-gray-700 dark:text-gray-300">{{ row.trace_id }}</span>
+            <span v-else class="text-sm text-gray-400 dark:text-gray-500">-</span>
+          </div>
+        </template>
+
+        <template #cell-request_id="{ row }">
+          <div class="max-w-[240px] space-y-0.5 text-xs">
+            <div class="text-[11px] font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+              {{ t('admin.usage.upstreamRequestId') }}
+            </div>
+            <span v-if="row.request_id" class="block break-all font-mono text-gray-700 dark:text-gray-300">{{ row.request_id }}</span>
+            <span v-else class="text-sm text-gray-400 dark:text-gray-500">-</span>
+          </div>
+        </template>
+
         <template #cell-reasoning_effort="{ row }">
           <span class="text-sm text-gray-900 dark:text-white">
             {{ formatReasoningEffort(row.reasoning_effort) }}
