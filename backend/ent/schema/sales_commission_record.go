@@ -25,7 +25,7 @@ func (SalesCommissionRecord) Fields() []ent.Field {
 		field.Int64("sales_user_id"),
 		field.Int64("referee_user_id"),
 		field.Int64("referral_id"),
-		field.Int64("payment_order_id"),
+		field.Int64("payment_order_id").Optional().Nillable(),
 		field.Float("order_pay_amount_cny").
 			SchemaType(map[string]string{dialect.Postgres: "decimal(20,2)"}).
 			Validate(validatePositiveSalesCommissionAmount("order_pay_amount_cny")),

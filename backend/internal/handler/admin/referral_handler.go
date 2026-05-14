@@ -219,6 +219,12 @@ type grantGiftBalanceRequest struct {
 	Notes      string  `json:"notes"`
 }
 
+type markCompletedRequest struct {
+	Notes               string  `json:"notes"`
+	OrderPayAmountCNY   float64 `json:"order_pay_amount_cny"`
+	OrderCreditedAmount float64 `json:"order_credited_amount"`
+}
+
 // GrantGiftBalance 手动发放赠送余额
 // POST /api/v1/admin/referral/grant-gift-balance
 func (h *ReferralHandler) GrantGiftBalance(c *gin.Context) {
@@ -229,6 +235,38 @@ func (h *ReferralHandler) GrantGiftBalance(c *gin.Context) {
 	}
 
 	if err := h.referralService.AdminGrantGiftBalance(c.Request.Context(), req.UserID, req.Amount, req.ExpiryDays, req.Notes); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"message": "ok"})
+}
+
+// MarkCompleted 手动完成推广关系
+// POST /api/v1/admin/referral/:id/mark-completed
+func (h *ReferralHandler) MarkCompleted(c *gin.Context) {
+	referralID, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	if referralID <= 0 {
+		response.BadRequest(c, "Invalid referral ID")
+		return
+	}
+
+	var req markCompletedRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	if strings.TrimSpace(req.Notes) == "" {
+		response.BadRequest(c, "notes is required")
+		return
+	}
+
+	if err := h.referralService.AdminMarkReferralCompleted(
+		c.Request.Context(),
+		referralID,
+		req.Notes,
+		req.OrderPayAmountCNY,
+		req.OrderCreditedAmount,
+	); err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}

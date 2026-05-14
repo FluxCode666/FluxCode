@@ -39,7 +39,7 @@ func TestSalesCommissionRepositoryListRecordsSettleableRequiresCompletedAndUnblo
 		AddRow(int64(2), int64(10), "sales@example.com", "sales", int64(21), "buyer2@example.com", "buyer2", int64(31), int64(41), payment.OrderStatusRefunded, dec("10"), dec("10"), dec("10"), dec("1"), dec("4"), dec("0.60"), dec("0.40"), dec("0.10"), dec("0"), service.SalesCommissionStatusPartialUnlocked, "", time.Now(), time.Now()).
 		AddRow(int64(3), int64(10), "sales@example.com", "sales", int64(22), "buyer3@example.com", "buyer3", int64(32), int64(42), payment.OrderStatusCompleted, dec("10"), dec("10"), dec("10"), dec("1"), dec("4"), dec("0.60"), dec("0.40"), dec("0.10"), dec("0"), service.SalesCommissionStatusSettlementBlocked, "", time.Now(), time.Now())
 
-	mock.ExpectQuery(regexp.QuoteMeta("CASE WHEN po.status = $2 AND scr.status <> $3 THEN scr.unlocked_cny - scr.settled_cny ELSE 0 END")).
+	mock.ExpectQuery(regexp.QuoteMeta("CASE WHEN (scr.payment_order_id IS NULL OR po.status = $2) AND scr.status <> $3 THEN scr.unlocked_cny - scr.settled_cny ELSE 0 END")).
 		WithArgs(int64(10), payment.OrderStatusCompleted, service.SalesCommissionStatusSettlementBlocked, 20, 0).
 		WillReturnRows(recordsRows)
 
@@ -70,7 +70,7 @@ func TestSalesCommissionRepositoryListSummariesSettleableRequiresCompletedAndUnb
 		"settleable_cny", "settled_cny", "records_count",
 	}).AddRow(int64(10), "sales@example.com", "sales", dec("3"), dec("1.80"), dec("1.20"), dec("0.30"), dec("0.20"), 3)
 
-	mock.ExpectQuery(regexp.QuoteMeta("SUM(CASE WHEN po.status = $1 AND scr.status <> $2 THEN scr.unlocked_cny - scr.settled_cny ELSE 0 END)")).
+	mock.ExpectQuery(regexp.QuoteMeta("SUM(CASE WHEN (scr.payment_order_id IS NULL OR po.status = $1) AND scr.status <> $2 THEN scr.unlocked_cny - scr.settled_cny ELSE 0 END)")).
 		WithArgs(payment.OrderStatusCompleted, service.SalesCommissionStatusSettlementBlocked, 20, 0).
 		WillReturnRows(summaryRows)
 
@@ -96,7 +96,7 @@ func TestSalesCommissionRepositoryGetSummaryBySalesUserSettleableRequiresComplet
 		"settleable_cny", "settled_cny", "records_count",
 	}).AddRow(int64(10), "sales@example.com", "sales", dec("3"), dec("1.80"), dec("1.20"), dec("0.30"), dec("0.20"), 3)
 
-	mock.ExpectQuery(regexp.QuoteMeta("SUM(CASE WHEN po.status = $2 AND scr.status <> $3 THEN scr.unlocked_cny - scr.settled_cny ELSE 0 END)")).
+	mock.ExpectQuery(regexp.QuoteMeta("SUM(CASE WHEN (scr.payment_order_id IS NULL OR po.status = $2) AND scr.status <> $3 THEN scr.unlocked_cny - scr.settled_cny ELSE 0 END)")).
 		WithArgs(int64(10), payment.OrderStatusCompleted, service.SalesCommissionStatusSettlementBlocked).
 		WillReturnRows(summaryRows)
 

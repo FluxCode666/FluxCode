@@ -196,13 +196,21 @@
                     <th class="pb-3 pr-4 text-left font-medium text-gray-500 dark:text-dark-400">{{ t('adminReferral.referee') }}</th>
                     <th class="pb-3 pr-4 text-left font-medium text-gray-500 dark:text-dark-400">{{ t('adminReferral.status') }}</th>
                     <th class="pb-3 pr-4 text-right font-medium text-gray-500 dark:text-dark-400">{{ t('adminReferral.inviteeAmount') }}</th>
-                    <th class="pb-3 text-right font-medium text-gray-500 dark:text-dark-400">{{ t('adminReferral.inviterAmount') }}</th>
+                    <th class="pb-3 pr-4 text-right font-medium text-gray-500 dark:text-dark-400">{{ t('adminReferral.inviterAmount') }}</th>
+                    <th class="pb-3 text-right font-medium text-gray-500 dark:text-dark-400">{{ t('adminReferral.actions') }}</th>
                   </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-100 dark:divide-dark-700">
                   <tr v-for="item in referralList" :key="item.id">
                     <td class="py-3 pr-4 text-gray-700 dark:text-dark-200">{{ formatDate(item.created_at) }}</td>
-                    <td class="py-3 pr-4 text-gray-700 dark:text-dark-200">#{{ item.referrer_id }}</td>
+                    <td class="py-3 pr-4 text-gray-700 dark:text-dark-200">
+                      <div class="flex items-center gap-2">
+                        <span class="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700 dark:bg-dark-700 dark:text-dark-200">
+                          #{{ item.referrer_id }}
+                        </span>
+                        <span>{{ item.referrer_email || `#${item.referrer_id}` }}</span>
+                      </div>
+                    </td>
                     <td class="py-3 pr-4 text-gray-700 dark:text-dark-200">{{ item.referee_email || `#${item.referee_id}` }}</td>
                     <td class="py-3 pr-4">
                       <span :class="[
@@ -215,7 +223,17 @@
                       </span>
                     </td>
                     <td class="py-3 pr-4 text-right text-gray-700 dark:text-dark-200">${{ item.invitee_reward_amount.toFixed(2) }}</td>
-                    <td class="py-3 text-right text-gray-700 dark:text-dark-200">${{ item.inviter_reward_amount.toFixed(2) }}</td>
+                    <td class="py-3 pr-4 text-right text-gray-700 dark:text-dark-200">${{ item.inviter_reward_amount.toFixed(2) }}</td>
+                    <td class="py-3 text-right">
+                      <button
+                        v-if="item.status === 'pending'"
+                        @click="handleMarkCompleted(item)"
+                        :disabled="completingReferralId === item.id"
+                        class="btn btn-outline btn-sm"
+                      >
+                        {{ completingReferralId === item.id ? t('adminReferral.granting') : t('adminReferral.manualComplete') }}
+                      </button>
+                    </td>
                   </tr>
                 </tbody>
               </table>
@@ -426,6 +444,7 @@ const activeTab = ref<Tab>('dashboard')
 const savingConfig = ref(false)
 const granting = ref(false)
 const batchGranting = ref(false)
+const completingReferralId = ref<number | null>(null)
 
 const dashboard = ref<AdminReferralDashboard | null>(null)
 const trendDays = ref<number | string | boolean | null>(30)
@@ -687,6 +706,49 @@ async function handleBatchGrant() {
     appStore.showError(t('adminReferral.grantFailed'))
   } finally {
     batchGranting.value = false
+  }
+}
+
+async function handleMarkCompleted(item: ReferralListItem) {
+  const notes = window.prompt(t('adminReferral.manualCompletePrompt'))
+  if (!notes || !notes.trim()) {
+    appStore.showError(t('adminReferral.manualCompleteNotesRequired'))
+    return
+  }
+
+  const request: {
+    notes: string
+    order_pay_amount_cny?: number
+    order_credited_amount?: number
+  } = {
+    notes: notes.trim(),
+  }
+
+  if (item.referrer_is_sales) {
+    const payAmountRaw = window.prompt(t('adminReferral.manualCompletePayAmountPrompt'))
+    const creditedAmountRaw = window.prompt(t('adminReferral.manualCompleteCreditedAmountPrompt'))
+    const orderPayAmountCNY = Number(payAmountRaw)
+    const orderCreditedAmount = Number(creditedAmountRaw)
+
+    if (!Number.isFinite(orderPayAmountCNY) || orderPayAmountCNY <= 0 || !Number.isFinite(orderCreditedAmount) || orderCreditedAmount <= 0) {
+      appStore.showError(t('adminReferral.manualCompleteAmountsRequired'))
+      return
+    }
+
+    request.order_pay_amount_cny = orderPayAmountCNY
+    request.order_credited_amount = orderCreditedAmount
+  }
+
+  completingReferralId.value = item.id
+  try {
+    await adminReferralAPI.markReferralCompleted(item.id, request)
+    appStore.showSuccess(t('adminReferral.manualCompleteSuccess'))
+    await Promise.all([loadList(), loadDashboard()])
+  } catch (error) {
+    console.error('Failed to mark referral completed:', error)
+    appStore.showError(t('adminReferral.manualCompleteFailed'))
+  } finally {
+    completingReferralId.value = null
   }
 }
 

@@ -24,6 +24,25 @@ func (r *referralRepository) Create(ctx context.Context, ref *service.Referral) 
 	).Scan(&ref.ID, &ref.CreatedAt, &ref.UpdatedAt)
 }
 
+func (r *referralRepository) GetByID(ctx context.Context, id int64) (*service.Referral, error) {
+	var ref service.Referral
+	err := r.db.QueryRowContext(ctx,
+		`SELECT id, referrer_id, referee_id, referral_code, status, invitee_reward_amount, inviter_reward_amount,
+		        invitee_rewarded_at, inviter_rewarded_at, ongoing_reward_count, ongoing_reward_total, created_at, updated_at
+		 FROM referrals WHERE id = $1`, id,
+	).Scan(&ref.ID, &ref.ReferrerID, &ref.RefereeID, &ref.ReferralCode, &ref.Status,
+		&ref.InviteeRewardAmount, &ref.InviterRewardAmount,
+		&ref.InviteeRewardedAt, &ref.InviterRewardedAt,
+		&ref.OngoingRewardCount, &ref.OngoingRewardTotal, &ref.CreatedAt, &ref.UpdatedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &ref, nil
+}
+
 func (r *referralRepository) GetByRefereeID(ctx context.Context, refereeID int64) (*service.Referral, error) {
 	var ref service.Referral
 	err := r.db.QueryRowContext(ctx,
@@ -54,8 +73,10 @@ func (r *referralRepository) GetByReferrerID(ctx context.Context, referrerID int
 		        r.invitee_reward_amount, r.inviter_reward_amount,
 		        r.invitee_rewarded_at, r.inviter_rewarded_at,
 		        r.ongoing_reward_count, r.ongoing_reward_total, r.created_at, r.updated_at,
-		        COALESCE(u.email, ''), COALESCE(u.username, '')
-		 FROM referrals r LEFT JOIN users u ON r.referee_id = u.id
+		        COALESCE(ru.email, ''), COALESCE(ru.is_sales, FALSE), COALESCE(u.email, ''), COALESCE(u.username, '')
+		 FROM referrals r
+		 LEFT JOIN users u ON r.referee_id = u.id
+		 LEFT JOIN users ru ON r.referrer_id = ru.id
 		 WHERE r.referrer_id = $1 ORDER BY r.created_at DESC LIMIT $2 OFFSET $3`,
 		referrerID, limit, offset)
 	if err != nil {
@@ -69,7 +90,7 @@ func (r *referralRepository) GetByReferrerID(ctx context.Context, referrerID int
 			&ref.InviteeRewardAmount, &ref.InviterRewardAmount,
 			&ref.InviteeRewardedAt, &ref.InviterRewardedAt,
 			&ref.OngoingRewardCount, &ref.OngoingRewardTotal, &ref.CreatedAt, &ref.UpdatedAt,
-			&ref.RefereeEmail, &ref.RefereeUsername); err != nil {
+			&ref.ReferrerEmail, &ref.ReferrerIsSales, &ref.RefereeEmail, &ref.RefereeUsername); err != nil {
 			return nil, 0, err
 		}
 		refs = append(refs, ref)
@@ -86,6 +107,13 @@ func (r *referralRepository) CountByReferrerID(ctx context.Context, referrerID i
 func (r *referralRepository) UpdateStatus(ctx context.Context, id int64, status string) error {
 	_, err := r.db.ExecContext(ctx,
 		`UPDATE referrals SET status = $1, updated_at = NOW() WHERE id = $2`, status, id)
+	return err
+}
+
+func (r *referralRepository) MarkCompleted(ctx context.Context, id int64, rewardAmount float64, _ string) error {
+	_, err := r.db.ExecContext(ctx,
+		`UPDATE referrals SET status = 'completed', inviter_reward_amount = $1, inviter_rewarded_at = COALESCE(inviter_rewarded_at, NOW()), updated_at = NOW() WHERE id = $2`,
+		rewardAmount, id)
 	return err
 }
 
@@ -132,8 +160,10 @@ func (r *referralRepository) ListAll(ctx context.Context, status string, offset,
 		r.invitee_reward_amount, r.inviter_reward_amount,
 		r.invitee_rewarded_at, r.inviter_rewarded_at,
 		r.ongoing_reward_count, r.ongoing_reward_total, r.created_at, r.updated_at,
-		COALESCE(u.email, ''), COALESCE(u.username, '')
-		FROM referrals r LEFT JOIN users u ON r.referee_id = u.id`
+		COALESCE(ru.email, ''), COALESCE(ru.is_sales, FALSE), COALESCE(u.email, ''), COALESCE(u.username, '')
+		FROM referrals r
+		LEFT JOIN users u ON r.referee_id = u.id
+		LEFT JOIN users ru ON r.referrer_id = ru.id`
 
 	var args []any
 	argIdx := 1
@@ -164,7 +194,7 @@ func (r *referralRepository) ListAll(ctx context.Context, status string, offset,
 			&ref.InviteeRewardAmount, &ref.InviterRewardAmount,
 			&ref.InviteeRewardedAt, &ref.InviterRewardedAt,
 			&ref.OngoingRewardCount, &ref.OngoingRewardTotal, &ref.CreatedAt, &ref.UpdatedAt,
-			&ref.RefereeEmail, &ref.RefereeUsername); err != nil {
+			&ref.ReferrerEmail, &ref.ReferrerIsSales, &ref.RefereeEmail, &ref.RefereeUsername); err != nil {
 			return nil, 0, err
 		}
 		refs = append(refs, ref)

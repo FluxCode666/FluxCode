@@ -50,6 +50,8 @@ type Referral struct {
 	UpdatedAt           time.Time  `json:"updated_at"`
 
 	// 附加字段（列表查询时填充）
+	ReferrerEmail   string `json:"referrer_email,omitempty"`
+	ReferrerIsSales bool   `json:"referrer_is_sales,omitempty"`
 	RefereeEmail    string `json:"referee_email,omitempty"`
 	RefereeUsername string `json:"referee_username,omitempty"`
 }
@@ -215,6 +217,8 @@ type GiftBalanceRepository interface {
 type ReferralRepository interface {
 	// Create 创建推广关系
 	Create(ctx context.Context, referral *Referral) error
+	// GetByID 根据推广关系 ID 获取推广关系
+	GetByID(ctx context.Context, id int64) (*Referral, error)
 	// GetByRefereeID 根据被邀请人ID获取推广关系
 	GetByRefereeID(ctx context.Context, refereeID int64) (*Referral, error)
 	// GetByReferrerID 获取推广人的邀请列表（分页）
@@ -223,6 +227,8 @@ type ReferralRepository interface {
 	CountByReferrerID(ctx context.Context, referrerID int64) (int, error)
 	// UpdateStatus 更新推广关系状态
 	UpdateStatus(ctx context.Context, id int64, status string) error
+	// MarkCompleted 标记推广关系完成
+	MarkCompleted(ctx context.Context, id int64, rewardAmount float64, note string) error
 	// SetInviteeRewarded 标记被邀请人已获得注册奖励
 	SetInviteeRewarded(ctx context.Context, id int64) error
 	// SetInviterRewarded 标记推广人已获得首充奖励

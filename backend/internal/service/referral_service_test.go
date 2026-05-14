@@ -63,6 +63,117 @@ func TestReferralService_RechargeRewards_StillGrantForRegularReferrer(t *testing
 	require.Equal(t, []float64{5}, referralRepo.ongoingRewardIncrements)
 }
 
+func TestReferralService_AdminMarkReferralCompleted_GrantsInviterRewardOnly(t *testing.T) {
+	t.Parallel()
+
+	settingRepo := &referralSettingRepoStub{
+		values: map[string]string{
+			SettingKeyReferralEnabled:                   "true",
+			SettingKeyReferralInviteeReward:             "10",
+			SettingKeyReferralInviterReward:             "20",
+			SettingKeyReferralMaxInvites:                "0",
+			SettingKeyReferralRewardExpiryDays:          "7",
+			SettingKeyReferralOngoingRewardEnabled:      "false",
+			SettingKeyReferralOngoingRewardType:         "fixed",
+			SettingKeyReferralOngoingRewardValue:        "0",
+			SettingKeyReferralOngoingRewardMaxCount:     "0",
+			SettingKeyReferralOngoingRewardDurationDays: "0",
+		},
+	}
+	userRepo := &referralUserRepoStub{
+		byID: map[int64]*User{
+			12: {ID: 12, Email: "referrer@example.com"},
+			34: {ID: 34, Email: "buyer@example.com"},
+		},
+	}
+	referralRepo := &referralRepoStub{
+		referralByID: map[int64]*Referral{
+			9: {
+				ID:                  9,
+				ReferrerID:          12,
+				RefereeID:           34,
+				Status:              ReferralStatusPending,
+				InviteeRewardAmount: 10,
+				InviterRewardAmount: 20,
+			},
+		},
+	}
+	giftRepo := &referralGiftBalanceRepoStub{}
+	resolver := NewReferralConfigResolver(settingRepo, &referralUserConfigRepoStub{})
+	svc := NewReferralService(userRepo, referralRepo, giftRepo, resolver, nil)
+
+	err := svc.AdminMarkReferralCompleted(context.Background(), 9, "webhook missed", 0, 0)
+
+	require.NoError(t, err)
+	require.Len(t, giftRepo.created, 1)
+	require.Equal(t, int64(12), giftRepo.created[0].UserID)
+	require.Equal(t, GiftBalanceSourceReferralInviter, giftRepo.created[0].Source)
+	require.NotNil(t, giftRepo.created[0].SourceRefID)
+	require.Equal(t, int64(9), *giftRepo.created[0].SourceRefID)
+	require.Equal(t, int64(9), referralRepo.markCompletedID)
+	require.Equal(t, 20.0, referralRepo.markCompletedRewardAmount)
+	require.Equal(t, "webhook missed", referralRepo.markCompletedNote)
+}
+
+func TestReferralService_AdminMarkReferralCompleted_RejectsCompletedReferral(t *testing.T) {
+	t.Parallel()
+
+	settingRepo := &referralSettingRepoStub{
+		values: map[string]string{
+			SettingKeyReferralEnabled:                   "true",
+			SettingKeyReferralInviteeReward:             "10",
+			SettingKeyReferralInviterReward:             "20",
+			SettingKeyReferralMaxInvites:                "0",
+			SettingKeyReferralRewardExpiryDays:          "7",
+			SettingKeyReferralOngoingRewardEnabled:      "false",
+			SettingKeyReferralOngoingRewardType:         "fixed",
+			SettingKeyReferralOngoingRewardValue:        "0",
+			SettingKeyReferralOngoingRewardMaxCount:     "0",
+			SettingKeyReferralOngoingRewardDurationDays: "0",
+		},
+	}
+	referralRepo := &referralRepoStub{
+		referralByID: map[int64]*Referral{
+			9: {
+				ID:         9,
+				ReferrerID: 12,
+				RefereeID:  34,
+				Status:     ReferralStatusCompleted,
+			},
+		},
+	}
+	resolver := NewReferralConfigResolver(settingRepo, &referralUserConfigRepoStub{})
+	svc := NewReferralService(&referralUserRepoStub{}, referralRepo, &referralGiftBalanceRepoStub{}, resolver, nil)
+
+	err := svc.AdminMarkReferralCompleted(context.Background(), 9, "duplicate", 0, 0)
+
+	require.Error(t, err)
+	require.Zero(t, referralRepo.markCompletedID)
+}
+
+func TestReferralService_AdminMarkReferralCompleted_SalesReferrerRequiresAmounts(t *testing.T) {
+	t.Parallel()
+
+	settingRepo := &referralSettingRepoStub{values: map[string]string{SettingKeyReferralEnabled: "true"}}
+	userRepo := &referralUserRepoStub{
+		byID: map[int64]*User{
+			12: {ID: 12, Email: "sales@example.com", IsSales: true, SalesCommissionRate: 10},
+		},
+	}
+	referralRepo := &referralRepoStub{
+		referralByID: map[int64]*Referral{
+			9: {ID: 9, ReferrerID: 12, RefereeID: 34, Status: ReferralStatusPending},
+		},
+	}
+	resolver := NewReferralConfigResolver(settingRepo, &referralUserConfigRepoStub{})
+	svc := NewReferralService(userRepo, referralRepo, &referralGiftBalanceRepoStub{}, resolver, &SalesCommissionService{})
+
+	err := svc.AdminMarkReferralCompleted(context.Background(), 9, "manual fix", 0, 0)
+
+	require.Error(t, err)
+	require.Zero(t, referralRepo.markCompletedID)
+}
+
 func newReferralRewardTestService(referrer *User, referral *Referral) (*ReferralService, *referralGiftBalanceRepoStub, *referralRepoStub) {
 	settingRepo := &referralSettingRepoStub{
 		values: map[string]string{
@@ -88,7 +199,7 @@ func newReferralRewardTestService(referrer *User, referral *Referral) (*Referral
 	}}
 	giftRepo := &referralGiftBalanceRepoStub{}
 	resolver := NewReferralConfigResolver(settingRepo, &referralUserConfigRepoStub{})
-	return NewReferralService(userRepo, referralRepo, giftRepo, resolver), giftRepo, referralRepo
+	return NewReferralService(userRepo, referralRepo, giftRepo, resolver, nil), giftRepo, referralRepo
 }
 
 type referralSettingRepoStub struct {
@@ -180,14 +291,21 @@ func (r *referralUserRepoStub) IsFirstRecharge(_ context.Context, _ int64) (bool
 func (r *referralUserRepoStub) ListActiveUserIDs(_ context.Context) ([]int64, error) { return nil, nil }
 
 type referralRepoStub struct {
-	referralByReferee       map[int64]*Referral
-	inviterRewarded         []float64
-	ongoingRewardIncrements []float64
+	referralByReferee         map[int64]*Referral
+	referralByID              map[int64]*Referral
+	inviterRewarded           []float64
+	ongoingRewardIncrements   []float64
+	markCompletedID           int64
+	markCompletedRewardAmount float64
+	markCompletedNote         string
 }
 
 func (r *referralRepoStub) Create(_ context.Context, _ *Referral) error { return nil }
 func (r *referralRepoStub) GetByRefereeID(_ context.Context, refereeID int64) (*Referral, error) {
 	return r.referralByReferee[refereeID], nil
+}
+func (r *referralRepoStub) GetByID(_ context.Context, id int64) (*Referral, error) {
+	return r.referralByID[id], nil
 }
 func (r *referralRepoStub) GetByReferrerID(_ context.Context, _ int64, _, _ int) ([]Referral, int, error) {
 	return nil, 0, nil
@@ -220,6 +338,12 @@ func (r *referralRepoStub) GetGlobalTrend(_ context.Context, _ int) ([]ReferralT
 }
 func (r *referralRepoStub) CountFirstRecharges(_ context.Context) (int, error) { return 0, nil }
 func (r *referralRepoStub) CountAll(_ context.Context) (int, error)            { return 0, nil }
+func (r *referralRepoStub) MarkCompleted(_ context.Context, id int64, rewardAmount float64, note string) error {
+	r.markCompletedID = id
+	r.markCompletedRewardAmount = rewardAmount
+	r.markCompletedNote = note
+	return nil
+}
 
 type referralGiftBalanceRepoStub struct {
 	created []*GiftBalanceRecord

@@ -640,6 +640,7 @@ func registerReferralRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		referral.PUT("/config", h.Admin.Referral.UpdateConfig)
 		referral.GET("/list", h.Admin.Referral.ListReferrals)
 		referral.GET("/leaderboard", h.Admin.Referral.GetLeaderboard)
+		referral.POST("/:id/mark-completed", h.Admin.Referral.MarkCompleted)
 		referral.POST("/grant-gift-balance", h.Admin.Referral.GrantGiftBalance)
 		referral.POST("/grant-batch", h.Admin.Referral.BatchGrantGiftBalance)
 		referral.GET("/user-config/:userId", h.Admin.Referral.GetUserConfig)

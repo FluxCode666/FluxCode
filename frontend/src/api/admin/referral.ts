@@ -33,6 +33,8 @@ export interface ReferralConfig {
 export interface ReferralListItem {
   id: number
   referrer_id: number
+  referrer_email?: string
+  referrer_is_sales?: boolean
   referee_id: number
   referee_email?: string
   referee_username?: string
@@ -182,6 +184,21 @@ export async function grantGiftBalance(request: {
   return data
 }
 
+export async function markReferralCompleted(
+  id: number,
+  request: {
+    notes: string
+    order_pay_amount_cny?: number
+    order_credited_amount?: number
+  }
+): Promise<{ message: string }> {
+  const { data } = await apiClient.post<{ message: string }>(
+    `/admin/referral/${id}/mark-completed`,
+    request
+  )
+  return data
+}
+
 export async function batchGrantGiftBalance(request: {
   target: 'all' | 'selected'
   user_ids?: number[]
@@ -227,6 +244,7 @@ const adminReferralAPI = {
   listReferrals,
   getLeaderboard,
   grantGiftBalance,
+  markReferralCompleted,
   batchGrantGiftBalance,
   getUserConfig,
   upsertUserConfig,

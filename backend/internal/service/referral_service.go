@@ -25,10 +25,11 @@ var (
 
 // ReferralService 推广奖励服务
 type ReferralService struct {
-	userRepo        UserRepository
-	referralRepo    ReferralRepository
-	giftBalanceRepo GiftBalanceRepository
-	configResolver  *ReferralConfigResolver
+	userRepo               UserRepository
+	referralRepo           ReferralRepository
+	giftBalanceRepo        GiftBalanceRepository
+	configResolver         *ReferralConfigResolver
+	salesCommissionService *SalesCommissionService
 }
 
 // NewReferralService 创建推广奖励服务
@@ -37,12 +38,14 @@ func NewReferralService(
 	referralRepo ReferralRepository,
 	giftBalanceRepo GiftBalanceRepository,
 	configResolver *ReferralConfigResolver,
+	salesCommissionService *SalesCommissionService,
 ) *ReferralService {
 	return &ReferralService{
-		userRepo:        userRepo,
-		referralRepo:    referralRepo,
-		giftBalanceRepo: giftBalanceRepo,
-		configResolver:  configResolver,
+		userRepo:               userRepo,
+		referralRepo:           referralRepo,
+		giftBalanceRepo:        giftBalanceRepo,
+		configResolver:         configResolver,
+		salesCommissionService: salesCommissionService,
 	}
 }
 
@@ -228,6 +231,48 @@ func (s *ReferralService) AdminGrantGiftBalance(ctx context.Context, userID int6
 	}
 	s.grantGiftBalance(ctx, userID, amount, GiftBalanceSourceAdminGrant, 0, expiryDays, note)
 	return nil
+}
+
+// AdminMarkReferralCompleted 管理端手动完成推广记录，仅补发推广侧奖励。
+func (s *ReferralService) AdminMarkReferralCompleted(ctx context.Context, referralID int64, note string, orderPayAmountCNY, orderCreditedAmount float64) error {
+	ref, err := s.referralRepo.GetByID(ctx, referralID)
+	if err != nil {
+		return err
+	}
+	if ref == nil {
+		return infraerrors.NotFound("REFERRAL_NOT_FOUND", "referral not found")
+	}
+	if ref.Status != ReferralStatusPending {
+		return infraerrors.BadRequest("REFERRAL_STATUS_INVALID", "referral is not pending")
+	}
+
+	if s.isSalesReferrer(ctx, ref.ReferrerID) {
+		if orderPayAmountCNY <= 0 || orderCreditedAmount <= 0 {
+			return infraerrors.BadRequest("MANUAL_COMPLETION_ORDER_AMOUNT_REQUIRED", "order_pay_amount_cny and order_credited_amount must be greater than 0 for sales referrers")
+		}
+		if s.salesCommissionService != nil {
+			if err := s.salesCommissionService.HandleReferralManualCompletion(ctx, ref, orderPayAmountCNY, orderCreditedAmount, strings.TrimSpace(note)); err != nil {
+				return err
+			}
+		}
+		return s.referralRepo.MarkCompleted(ctx, ref.ID, 0, strings.TrimSpace(note))
+	}
+
+	cfg := s.configResolver.Resolve(ctx, ref.ReferrerID)
+	rewardAmount := cfg.InviterRewardAmount
+	if rewardAmount > 0 && ref.InviterRewardedAt == nil {
+		s.grantGiftBalance(
+			ctx,
+			ref.ReferrerID,
+			rewardAmount,
+			GiftBalanceSourceReferralInviter,
+			ref.ID,
+			cfg.RewardExpiryDays,
+			strings.TrimSpace(note),
+		)
+	}
+
+	return s.referralRepo.MarkCompleted(ctx, ref.ID, rewardAmount, strings.TrimSpace(note))
 }
 
 // GetUserReferralInfo 获取用户推广信息（推广中心页面数据，强类型）

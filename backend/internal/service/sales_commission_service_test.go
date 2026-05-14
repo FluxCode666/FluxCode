@@ -37,17 +37,46 @@ func TestSalesCommissionService_HandleBalanceRechargeCompleted_CreatesFrozenComm
 
 	require.NoError(t, err)
 	require.Len(t, repo.created, 1)
-	require.Equal(t, &SalesCommissionCreate{
-		SalesUserID:         10,
-		RefereeUserID:       20,
-		ReferralID:          7,
-		PaymentOrderID:      99,
-		OrderPayAmountCNY:   123.456,
-		OrderCreditedAmount: 200.12345678,
-		CommissionRate:      12.5,
-		CommissionTotalCNY:  15.43,
-		Note:                "Balance recharge commission",
-	}, repo.created[0])
+	require.NotNil(t, repo.created[0].PaymentOrderID)
+	require.Equal(t, int64(10), repo.created[0].SalesUserID)
+	require.Equal(t, int64(20), repo.created[0].RefereeUserID)
+	require.Equal(t, int64(7), repo.created[0].ReferralID)
+	require.Equal(t, 123.456, repo.created[0].OrderPayAmountCNY)
+	require.Equal(t, 200.12345678, repo.created[0].OrderCreditedAmount)
+	require.Equal(t, 12.5, repo.created[0].CommissionRate)
+	require.Equal(t, 15.43, repo.created[0].CommissionTotalCNY)
+	require.Equal(t, "Balance recharge commission", repo.created[0].Note)
+	require.Equal(t, int64(99), *repo.created[0].PaymentOrderID)
+}
+
+func TestSalesCommissionService_HandleReferralManualCompletion_CreatesCommissionRecord(t *testing.T) {
+	ctx := context.Background()
+	repo := &salesCommissionRepoStub{}
+	refRepo := &salesCommissionReferralRepoStub{}
+	userRepo := &salesCommissionUserRepoStub{
+		byID: map[int64]*User{
+			10: {ID: 10, IsSales: true, SalesCommissionRate: 12.5},
+		},
+	}
+	svc := NewSalesCommissionService(repo, refRepo, userRepo)
+
+	err := svc.HandleReferralManualCompletion(ctx, &Referral{
+		ID:         7,
+		ReferrerID: 10,
+		RefereeID:  20,
+		Status:     ReferralStatusPending,
+	}, 123.456, 200.12345678, "manual completion")
+
+	require.NoError(t, err)
+	require.Len(t, repo.created, 1)
+	require.Equal(t, int64(10), repo.created[0].SalesUserID)
+	require.Equal(t, int64(20), repo.created[0].RefereeUserID)
+	require.Equal(t, int64(7), repo.created[0].ReferralID)
+	require.Nil(t, repo.created[0].PaymentOrderID)
+	require.Equal(t, 123.456, repo.created[0].OrderPayAmountCNY)
+	require.Equal(t, 200.12345678, repo.created[0].OrderCreditedAmount)
+	require.Equal(t, 15.43, repo.created[0].CommissionTotalCNY)
+	require.Contains(t, repo.created[0].Note, "manual completion")
 }
 
 func TestSalesCommissionService_HandleBalanceRechargeCompleted_IgnoresIneligibleOrders(t *testing.T) {
@@ -270,6 +299,10 @@ type salesCommissionReferralRepoStub struct {
 
 func (r *salesCommissionReferralRepoStub) Create(context.Context, *Referral) error { return nil }
 
+func (r *salesCommissionReferralRepoStub) GetByID(_ context.Context, _ int64) (*Referral, error) {
+	return nil, r.err
+}
+
 func (r *salesCommissionReferralRepoStub) GetByRefereeID(_ context.Context, refereeID int64) (*Referral, error) {
 	r.getByRefereeCalls++
 	if r.err != nil {
@@ -287,6 +320,10 @@ func (r *salesCommissionReferralRepoStub) CountByReferrerID(context.Context, int
 }
 
 func (r *salesCommissionReferralRepoStub) UpdateStatus(context.Context, int64, string) error {
+	return nil
+}
+
+func (r *salesCommissionReferralRepoStub) MarkCompleted(context.Context, int64, float64, string) error {
 	return nil
 }
 

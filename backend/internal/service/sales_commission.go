@@ -24,7 +24,7 @@ type SalesCommissionCreate struct {
 	SalesUserID         int64
 	RefereeUserID       int64
 	ReferralID          int64
-	PaymentOrderID      int64
+	PaymentOrderID      *int64
 	OrderPayAmountCNY   float64
 	OrderCreditedAmount float64
 	CommissionRate      float64
@@ -41,8 +41,8 @@ type SalesCommissionRecord struct {
 	RefereeEmail        string    `json:"referee_email"`
 	RefereeUsername     string    `json:"referee_username"`
 	ReferralID          int64     `json:"referral_id"`
-	PaymentOrderID      int64     `json:"payment_order_id"`
-	PaymentOrderStatus  string    `json:"payment_order_status"`
+	PaymentOrderID      *int64    `json:"payment_order_id,omitempty"`
+	PaymentOrderStatus  string    `json:"payment_order_status,omitempty"`
 	OrderPayAmountCNY   float64   `json:"order_pay_amount_cny"`
 	OrderCreditedAmount float64   `json:"order_credited_amount"`
 	CommissionRate      float64   `json:"commission_rate"`

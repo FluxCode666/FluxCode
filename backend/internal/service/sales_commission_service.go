@@ -59,12 +59,47 @@ func (s *SalesCommissionService) HandleBalanceRechargeCompleted(ctx context.Cont
 		SalesUserID:         ref.ReferrerID,
 		RefereeUserID:       order.UserID,
 		ReferralID:          ref.ID,
-		PaymentOrderID:      order.ID,
+		PaymentOrderID:      &order.ID,
 		OrderPayAmountCNY:   order.PayAmount,
 		OrderCreditedAmount: order.Amount,
 		CommissionRate:      referrer.SalesCommissionRate,
 		CommissionTotalCNY:  commissionTotal,
 		Note:                "Balance recharge commission",
+	})
+}
+
+func (s *SalesCommissionService) HandleReferralManualCompletion(ctx context.Context, ref *Referral, orderPayAmountCNY float64, orderCreditedAmount float64, note string) error {
+	if s == nil || s.repo == nil || s.userRepo == nil || ref == nil {
+		return nil
+	}
+	if orderPayAmountCNY <= 0 || orderCreditedAmount <= 0 {
+		return nil
+	}
+
+	referrer, err := s.userRepo.GetByID(ctx, ref.ReferrerID)
+	if err != nil {
+		return err
+	}
+	if referrer == nil || !referrer.IsSales || referrer.SalesCommissionRate <= 0 {
+		return nil
+	}
+
+	commissionTotal, _ := decimal.NewFromFloat(orderPayAmountCNY).
+		Mul(decimal.NewFromFloat(referrer.SalesCommissionRate)).
+		Div(decimal.NewFromInt(100)).
+		Round(2).
+		Float64()
+
+	return s.repo.CreateForOrder(ctx, &SalesCommissionCreate{
+		SalesUserID:         ref.ReferrerID,
+		RefereeUserID:       ref.RefereeID,
+		ReferralID:          ref.ID,
+		PaymentOrderID:      nil,
+		OrderPayAmountCNY:   orderPayAmountCNY,
+		OrderCreditedAmount: orderCreditedAmount,
+		CommissionRate:      referrer.SalesCommissionRate,
+		CommissionTotalCNY:  commissionTotal,
+		Note:                "Referral manual completion: " + note,
 	})
 }
 

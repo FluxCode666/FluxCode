@@ -43,10 +43,16 @@ func (r *salesCommissionRepository) CreateForOrder(ctx context.Context, input *s
 		INSERT INTO sales_commission_records (
 			sales_user_id, referee_user_id, referral_id, payment_order_id,
 			order_pay_amount_cny, order_credited_amount, commission_rate, commission_total_cny,
-			note, created_at, updated_at
+			credited_used_amount, unlocked_cny, status, note, created_at, updated_at
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())
-		ON CONFLICT (payment_order_id) DO NOTHING
+		VALUES (
+			$1, $2, $3, $4, $5, $6, $7, $8,
+			CASE WHEN $4 IS NULL THEN $6 ELSE 0 END,
+			CASE WHEN $4 IS NULL THEN $8 ELSE 0 END,
+			CASE WHEN $4 IS NULL THEN $10 ELSE $11 END,
+			$9, NOW(), NOW()
+		)
+		ON CONFLICT DO NOTHING
 	`,
 		input.SalesUserID,
 		input.RefereeUserID,
@@ -57,6 +63,8 @@ func (r *salesCommissionRepository) CreateForOrder(ctx context.Context, input *s
 		decimal.NewFromFloat(input.CommissionRate),
 		cny(input.CommissionTotalCNY),
 		input.Note,
+		service.SalesCommissionStatusUnlocked,
+		service.SalesCommissionStatusFrozen,
 	)
 	return err
 }
@@ -99,12 +107,12 @@ func (r *salesCommissionRepository) ListSummaries(ctx context.Context, params se
 			COALESCE(SUM(scr.commission_total_cny), 0),
 			COALESCE(SUM(scr.commission_total_cny - scr.unlocked_cny), 0),
 			COALESCE(SUM(scr.unlocked_cny), 0),
-			COALESCE(SUM(CASE WHEN po.status = $%d AND scr.status <> $%d THEN scr.unlocked_cny - scr.settled_cny ELSE 0 END), 0),
+			COALESCE(SUM(CASE WHEN (scr.payment_order_id IS NULL OR po.status = $%d) AND scr.status <> $%d THEN scr.unlocked_cny - scr.settled_cny ELSE 0 END), 0),
 			COALESCE(SUM(scr.settled_cny), 0),
 			COUNT(*)
 		FROM sales_commission_records scr
 		JOIN users u ON u.id = scr.sales_user_id
-		JOIN payment_orders po ON po.id = scr.payment_order_id
+		LEFT JOIN payment_orders po ON po.id = scr.payment_order_id
 		%s
 		GROUP BY scr.sales_user_id, u.email, u.username
 		ORDER BY scr.sales_user_id ASC
@@ -148,7 +156,7 @@ func (r *salesCommissionRepository) GetSummaryBySalesUser(ctx context.Context, s
 			COALESCE(SUM(scr.commission_total_cny), 0),
 			COALESCE(SUM(scr.commission_total_cny - scr.unlocked_cny), 0),
 			COALESCE(SUM(scr.unlocked_cny), 0),
-			COALESCE(SUM(CASE WHEN po.status = $2 AND scr.status <> $3 THEN scr.unlocked_cny - scr.settled_cny ELSE 0 END), 0),
+			COALESCE(SUM(CASE WHEN (scr.payment_order_id IS NULL OR po.status = $2) AND scr.status <> $3 THEN scr.unlocked_cny - scr.settled_cny ELSE 0 END), 0),
 			COALESCE(SUM(scr.settled_cny), 0),
 			COUNT(scr.id)
 		FROM users u
@@ -178,7 +186,7 @@ func (r *salesCommissionRepository) ListRecords(ctx context.Context, params serv
 		FROM sales_commission_records scr
 		JOIN users su ON su.id = scr.sales_user_id
 		JOIN users ru ON ru.id = scr.referee_user_id
-		JOIN payment_orders po ON po.id = scr.payment_order_id
+		LEFT JOIN payment_orders po ON po.id = scr.payment_order_id
 		%s
 	`, where)
 	var total int
@@ -210,7 +218,7 @@ func (r *salesCommissionRepository) ListRecords(ctx context.Context, params serv
 			scr.commission_total_cny - scr.unlocked_cny,
 			scr.unlocked_cny,
 			scr.settled_cny,
-			CASE WHEN po.status = $%d AND scr.status <> $%d THEN scr.unlocked_cny - scr.settled_cny ELSE 0 END,
+			CASE WHEN (scr.payment_order_id IS NULL OR po.status = $%d) AND scr.status <> $%d THEN scr.unlocked_cny - scr.settled_cny ELSE 0 END,
 			scr.status,
 			scr.note,
 			scr.created_at,
@@ -218,7 +226,7 @@ func (r *salesCommissionRepository) ListRecords(ctx context.Context, params serv
 		FROM sales_commission_records scr
 		JOIN users su ON su.id = scr.sales_user_id
 		JOIN users ru ON ru.id = scr.referee_user_id
-		JOIN payment_orders po ON po.id = scr.payment_order_id
+		LEFT JOIN payment_orders po ON po.id = scr.payment_order_id
 		%s
 		ORDER BY scr.id ASC
 		LIMIT $%d OFFSET $%d
@@ -262,9 +270,9 @@ func (r *salesCommissionRepository) CreateSettlement(ctx context.Context, input 
 	rows, err := tx.QueryContext(ctx, `
 		SELECT scr.id, scr.unlocked_cny, scr.settled_cny
 		FROM sales_commission_records scr
-		JOIN payment_orders po ON po.id = scr.payment_order_id
+		LEFT JOIN payment_orders po ON po.id = scr.payment_order_id
 		WHERE scr.sales_user_id = $1
-		  AND po.status = $2
+		  AND (scr.payment_order_id IS NULL OR po.status = $2)
 		  AND scr.status <> $3
 		  AND scr.unlocked_cny > scr.settled_cny
 		ORDER BY scr.id ASC
@@ -464,6 +472,8 @@ func salesRecordWhere(params service.SalesCommissionRecordListParams) (string, [
 func scanSalesCommissionRecord(rows *sql.Rows) (service.SalesCommissionRecord, error) {
 	var record service.SalesCommissionRecord
 	var orderPay, orderCredited, rate, total, creditedUsed, frozen, unlocked, settled, settleable decimal.Decimal
+	var paymentOrderID sql.NullInt64
+	var paymentOrderStatus sql.NullString
 	err := rows.Scan(
 		&record.ID,
 		&record.SalesUserID,
@@ -473,8 +483,8 @@ func scanSalesCommissionRecord(rows *sql.Rows) (service.SalesCommissionRecord, e
 		&record.RefereeEmail,
 		&record.RefereeUsername,
 		&record.ReferralID,
-		&record.PaymentOrderID,
-		&record.PaymentOrderStatus,
+		&paymentOrderID,
+		&paymentOrderStatus,
 		&orderPay,
 		&orderCredited,
 		&rate,
@@ -491,6 +501,12 @@ func scanSalesCommissionRecord(rows *sql.Rows) (service.SalesCommissionRecord, e
 	)
 	if err != nil {
 		return record, err
+	}
+	if paymentOrderID.Valid {
+		record.PaymentOrderID = &paymentOrderID.Int64
+	}
+	if paymentOrderStatus.Valid {
+		record.PaymentOrderStatus = paymentOrderStatus.String
 	}
 	record.OrderPayAmountCNY = decimalFloat(orderPay)
 	record.OrderCreditedAmount = decimalFloat(orderCredited)
