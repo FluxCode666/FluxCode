@@ -436,8 +436,8 @@ const defaultRange = getLast24HoursRangeDates()
 const startDate = ref(defaultRange.start)
 const endDate = ref(defaultRange.end)
 
-// Custom presets for dashboard (Last 24h, Last 48h, Last 7 days)
-const dashboardPresets: DatePreset[] = [
+// Custom presets for dashboard – vary by granularity
+const hourPresets: DatePreset[] = [
   {
     labelKey: 'dates.last24Hours',
     value: 'last24h',
@@ -467,6 +467,48 @@ const dashboardPresets: DatePreset[] = [
     }
   }
 ]
+
+const dayPresets: DatePreset[] = [
+  {
+    labelKey: 'dates.last7Days',
+    value: '7days',
+    getRange: () => {
+      const end = new Date()
+      const d = new Date()
+      d.setDate(d.getDate() - 6)
+      return { start: formatLocalDate(d), end: formatLocalDate(end) }
+    }
+  },
+  {
+    labelKey: 'dates.thisMonth',
+    value: 'thisMonth',
+    getRange: () => {
+      const now = new Date()
+      const start = new Date(now.getFullYear(), now.getMonth(), 1)
+      return { start: formatLocalDate(start), end: formatLocalDate(now) }
+    }
+  },
+  {
+    labelKey: 'dates.thisQuarter',
+    value: 'thisQuarter',
+    getRange: () => {
+      const now = new Date()
+      const qStart = new Date(now.getFullYear(), Math.floor(now.getMonth() / 3) * 3, 1)
+      return { start: formatLocalDate(qStart), end: formatLocalDate(now) }
+    }
+  },
+  {
+    labelKey: 'dates.thisYear',
+    value: 'thisYear',
+    getRange: () => {
+      const now = new Date()
+      const start = new Date(now.getFullYear(), 0, 1)
+      return { start: formatLocalDate(start), end: formatLocalDate(now) }
+    }
+  }
+]
+
+const dashboardPresets = computed(() => granularity.value === 'day' ? dayPresets : hourPresets)
 
 // Granularity options for Select component
 const granularityOptions = computed(() => [

@@ -97,6 +97,12 @@ func RegisterAdminRoutes(
 
 		// 渠道管理
 		registerChannelRoutes(admin, h)
+
+		// 推广管理
+		registerReferralRoutes(admin, h)
+
+		// 销售佣金管理
+		registerSalesCommissionRoutes(admin, h)
 	}
 }
 
@@ -619,5 +625,39 @@ func registerChannelRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		channels.POST("", h.Admin.Channel.Create)
 		channels.PUT("/:id", h.Admin.Channel.Update)
 		channels.DELETE("/:id", h.Admin.Channel.Delete)
+	}
+}
+
+func registerReferralRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	if h.Admin.Referral == nil {
+		return
+	}
+	referral := admin.Group("/referral")
+	{
+		referral.GET("/stats", h.Admin.Referral.GetStats)
+		referral.GET("/dashboard", h.Admin.Referral.GetDashboard)
+		referral.GET("/config", h.Admin.Referral.GetConfig)
+		referral.PUT("/config", h.Admin.Referral.UpdateConfig)
+		referral.GET("/list", h.Admin.Referral.ListReferrals)
+		referral.GET("/leaderboard", h.Admin.Referral.GetLeaderboard)
+		referral.POST("/:id/mark-completed", h.Admin.Referral.MarkCompleted)
+		referral.POST("/grant-gift-balance", h.Admin.Referral.GrantGiftBalance)
+		referral.POST("/grant-batch", h.Admin.Referral.BatchGrantGiftBalance)
+		referral.GET("/user-config/:userId", h.Admin.Referral.GetUserConfig)
+		referral.PUT("/user-config/:userId", h.Admin.Referral.UpsertUserConfig)
+		referral.DELETE("/user-config/:userId", h.Admin.Referral.DeleteUserConfig)
+	}
+}
+
+func registerSalesCommissionRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	if h.Admin.SalesCommission == nil {
+		return
+	}
+	commissions := admin.Group("/sales-commissions")
+	{
+		commissions.GET("/summary", h.Admin.SalesCommission.ListSummaries)
+		commissions.GET("/records", h.Admin.SalesCommission.ListRecords)
+		commissions.GET("/settlements", h.Admin.SalesCommission.ListSettlements)
+		commissions.POST("/settlements", h.Admin.SalesCommission.CreateSettlement)
 	}
 }

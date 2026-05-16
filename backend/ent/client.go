@@ -21,6 +21,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/announcementread"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
 	"github.com/Wei-Shaw/sub2api/ent/errorpassthroughrule"
+	"github.com/Wei-Shaw/sub2api/ent/giftbalancerecord"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/idempotencyrecord"
 	"github.com/Wei-Shaw/sub2api/ent/paymentauditlog"
@@ -33,6 +34,10 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/promotionusage"
 	"github.com/Wei-Shaw/sub2api/ent/proxy"
 	"github.com/Wei-Shaw/sub2api/ent/redeemcode"
+	"github.com/Wei-Shaw/sub2api/ent/referral"
+	"github.com/Wei-Shaw/sub2api/ent/salescommissionrecord"
+	"github.com/Wei-Shaw/sub2api/ent/salescommissionsettlement"
+	"github.com/Wei-Shaw/sub2api/ent/salescommissionsettlementitem"
 	"github.com/Wei-Shaw/sub2api/ent/securitysecret"
 	"github.com/Wei-Shaw/sub2api/ent/setting"
 	"github.com/Wei-Shaw/sub2api/ent/subscriptiongrant"
@@ -44,6 +49,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/userallowedgroup"
 	"github.com/Wei-Shaw/sub2api/ent/userattributedefinition"
 	"github.com/Wei-Shaw/sub2api/ent/userattributevalue"
+	"github.com/Wei-Shaw/sub2api/ent/userreferralconfig"
 	"github.com/Wei-Shaw/sub2api/ent/usersubscription"
 
 	stdsql "database/sql"
@@ -66,6 +72,8 @@ type Client struct {
 	AnnouncementRead *AnnouncementReadClient
 	// ErrorPassthroughRule is the client for interacting with the ErrorPassthroughRule builders.
 	ErrorPassthroughRule *ErrorPassthroughRuleClient
+	// GiftBalanceRecord is the client for interacting with the GiftBalanceRecord builders.
+	GiftBalanceRecord *GiftBalanceRecordClient
 	// Group is the client for interacting with the Group builders.
 	Group *GroupClient
 	// IdempotencyRecord is the client for interacting with the IdempotencyRecord builders.
@@ -90,6 +98,14 @@ type Client struct {
 	Proxy *ProxyClient
 	// RedeemCode is the client for interacting with the RedeemCode builders.
 	RedeemCode *RedeemCodeClient
+	// Referral is the client for interacting with the Referral builders.
+	Referral *ReferralClient
+	// SalesCommissionRecord is the client for interacting with the SalesCommissionRecord builders.
+	SalesCommissionRecord *SalesCommissionRecordClient
+	// SalesCommissionSettlement is the client for interacting with the SalesCommissionSettlement builders.
+	SalesCommissionSettlement *SalesCommissionSettlementClient
+	// SalesCommissionSettlementItem is the client for interacting with the SalesCommissionSettlementItem builders.
+	SalesCommissionSettlementItem *SalesCommissionSettlementItemClient
 	// SecuritySecret is the client for interacting with the SecuritySecret builders.
 	SecuritySecret *SecuritySecretClient
 	// Setting is the client for interacting with the Setting builders.
@@ -112,6 +128,8 @@ type Client struct {
 	UserAttributeDefinition *UserAttributeDefinitionClient
 	// UserAttributeValue is the client for interacting with the UserAttributeValue builders.
 	UserAttributeValue *UserAttributeValueClient
+	// UserReferralConfig is the client for interacting with the UserReferralConfig builders.
+	UserReferralConfig *UserReferralConfigClient
 	// UserSubscription is the client for interacting with the UserSubscription builders.
 	UserSubscription *UserSubscriptionClient
 }
@@ -131,6 +149,7 @@ func (c *Client) init() {
 	c.Announcement = NewAnnouncementClient(c.config)
 	c.AnnouncementRead = NewAnnouncementReadClient(c.config)
 	c.ErrorPassthroughRule = NewErrorPassthroughRuleClient(c.config)
+	c.GiftBalanceRecord = NewGiftBalanceRecordClient(c.config)
 	c.Group = NewGroupClient(c.config)
 	c.IdempotencyRecord = NewIdempotencyRecordClient(c.config)
 	c.PaymentAuditLog = NewPaymentAuditLogClient(c.config)
@@ -143,6 +162,10 @@ func (c *Client) init() {
 	c.PromotionUsage = NewPromotionUsageClient(c.config)
 	c.Proxy = NewProxyClient(c.config)
 	c.RedeemCode = NewRedeemCodeClient(c.config)
+	c.Referral = NewReferralClient(c.config)
+	c.SalesCommissionRecord = NewSalesCommissionRecordClient(c.config)
+	c.SalesCommissionSettlement = NewSalesCommissionSettlementClient(c.config)
+	c.SalesCommissionSettlementItem = NewSalesCommissionSettlementItemClient(c.config)
 	c.SecuritySecret = NewSecuritySecretClient(c.config)
 	c.Setting = NewSettingClient(c.config)
 	c.SubscriptionGrant = NewSubscriptionGrantClient(c.config)
@@ -154,6 +177,7 @@ func (c *Client) init() {
 	c.UserAllowedGroup = NewUserAllowedGroupClient(c.config)
 	c.UserAttributeDefinition = NewUserAttributeDefinitionClient(c.config)
 	c.UserAttributeValue = NewUserAttributeValueClient(c.config)
+	c.UserReferralConfig = NewUserReferralConfigClient(c.config)
 	c.UserSubscription = NewUserSubscriptionClient(c.config)
 }
 
@@ -245,38 +269,44 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 	cfg := c.config
 	cfg.driver = tx
 	return &Tx{
-		ctx:                     ctx,
-		config:                  cfg,
-		APIKey:                  NewAPIKeyClient(cfg),
-		Account:                 NewAccountClient(cfg),
-		AccountGroup:            NewAccountGroupClient(cfg),
-		Announcement:            NewAnnouncementClient(cfg),
-		AnnouncementRead:        NewAnnouncementReadClient(cfg),
-		ErrorPassthroughRule:    NewErrorPassthroughRuleClient(cfg),
-		Group:                   NewGroupClient(cfg),
-		IdempotencyRecord:       NewIdempotencyRecordClient(cfg),
-		PaymentAuditLog:         NewPaymentAuditLogClient(cfg),
-		PaymentOrder:            NewPaymentOrderClient(cfg),
-		PaymentProviderInstance: NewPaymentProviderInstanceClient(cfg),
-		PromoCode:               NewPromoCodeClient(cfg),
-		PromoCodeUsage:          NewPromoCodeUsageClient(cfg),
-		Promotion:               NewPromotionClient(cfg),
-		PromotionPlanRule:       NewPromotionPlanRuleClient(cfg),
-		PromotionUsage:          NewPromotionUsageClient(cfg),
-		Proxy:                   NewProxyClient(cfg),
-		RedeemCode:              NewRedeemCodeClient(cfg),
-		SecuritySecret:          NewSecuritySecretClient(cfg),
-		Setting:                 NewSettingClient(cfg),
-		SubscriptionGrant:       NewSubscriptionGrantClient(cfg),
-		SubscriptionPlan:        NewSubscriptionPlanClient(cfg),
-		TLSFingerprintProfile:   NewTLSFingerprintProfileClient(cfg),
-		UsageCleanupTask:        NewUsageCleanupTaskClient(cfg),
-		UsageLog:                NewUsageLogClient(cfg),
-		User:                    NewUserClient(cfg),
-		UserAllowedGroup:        NewUserAllowedGroupClient(cfg),
-		UserAttributeDefinition: NewUserAttributeDefinitionClient(cfg),
-		UserAttributeValue:      NewUserAttributeValueClient(cfg),
-		UserSubscription:        NewUserSubscriptionClient(cfg),
+		ctx:                           ctx,
+		config:                        cfg,
+		APIKey:                        NewAPIKeyClient(cfg),
+		Account:                       NewAccountClient(cfg),
+		AccountGroup:                  NewAccountGroupClient(cfg),
+		Announcement:                  NewAnnouncementClient(cfg),
+		AnnouncementRead:              NewAnnouncementReadClient(cfg),
+		ErrorPassthroughRule:          NewErrorPassthroughRuleClient(cfg),
+		GiftBalanceRecord:             NewGiftBalanceRecordClient(cfg),
+		Group:                         NewGroupClient(cfg),
+		IdempotencyRecord:             NewIdempotencyRecordClient(cfg),
+		PaymentAuditLog:               NewPaymentAuditLogClient(cfg),
+		PaymentOrder:                  NewPaymentOrderClient(cfg),
+		PaymentProviderInstance:       NewPaymentProviderInstanceClient(cfg),
+		PromoCode:                     NewPromoCodeClient(cfg),
+		PromoCodeUsage:                NewPromoCodeUsageClient(cfg),
+		Promotion:                     NewPromotionClient(cfg),
+		PromotionPlanRule:             NewPromotionPlanRuleClient(cfg),
+		PromotionUsage:                NewPromotionUsageClient(cfg),
+		Proxy:                         NewProxyClient(cfg),
+		RedeemCode:                    NewRedeemCodeClient(cfg),
+		Referral:                      NewReferralClient(cfg),
+		SalesCommissionRecord:         NewSalesCommissionRecordClient(cfg),
+		SalesCommissionSettlement:     NewSalesCommissionSettlementClient(cfg),
+		SalesCommissionSettlementItem: NewSalesCommissionSettlementItemClient(cfg),
+		SecuritySecret:                NewSecuritySecretClient(cfg),
+		Setting:                       NewSettingClient(cfg),
+		SubscriptionGrant:             NewSubscriptionGrantClient(cfg),
+		SubscriptionPlan:              NewSubscriptionPlanClient(cfg),
+		TLSFingerprintProfile:         NewTLSFingerprintProfileClient(cfg),
+		UsageCleanupTask:              NewUsageCleanupTaskClient(cfg),
+		UsageLog:                      NewUsageLogClient(cfg),
+		User:                          NewUserClient(cfg),
+		UserAllowedGroup:              NewUserAllowedGroupClient(cfg),
+		UserAttributeDefinition:       NewUserAttributeDefinitionClient(cfg),
+		UserAttributeValue:            NewUserAttributeValueClient(cfg),
+		UserReferralConfig:            NewUserReferralConfigClient(cfg),
+		UserSubscription:              NewUserSubscriptionClient(cfg),
 	}, nil
 }
 
@@ -294,38 +324,44 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 	cfg := c.config
 	cfg.driver = &txDriver{tx: tx, drv: c.driver}
 	return &Tx{
-		ctx:                     ctx,
-		config:                  cfg,
-		APIKey:                  NewAPIKeyClient(cfg),
-		Account:                 NewAccountClient(cfg),
-		AccountGroup:            NewAccountGroupClient(cfg),
-		Announcement:            NewAnnouncementClient(cfg),
-		AnnouncementRead:        NewAnnouncementReadClient(cfg),
-		ErrorPassthroughRule:    NewErrorPassthroughRuleClient(cfg),
-		Group:                   NewGroupClient(cfg),
-		IdempotencyRecord:       NewIdempotencyRecordClient(cfg),
-		PaymentAuditLog:         NewPaymentAuditLogClient(cfg),
-		PaymentOrder:            NewPaymentOrderClient(cfg),
-		PaymentProviderInstance: NewPaymentProviderInstanceClient(cfg),
-		PromoCode:               NewPromoCodeClient(cfg),
-		PromoCodeUsage:          NewPromoCodeUsageClient(cfg),
-		Promotion:               NewPromotionClient(cfg),
-		PromotionPlanRule:       NewPromotionPlanRuleClient(cfg),
-		PromotionUsage:          NewPromotionUsageClient(cfg),
-		Proxy:                   NewProxyClient(cfg),
-		RedeemCode:              NewRedeemCodeClient(cfg),
-		SecuritySecret:          NewSecuritySecretClient(cfg),
-		Setting:                 NewSettingClient(cfg),
-		SubscriptionGrant:       NewSubscriptionGrantClient(cfg),
-		SubscriptionPlan:        NewSubscriptionPlanClient(cfg),
-		TLSFingerprintProfile:   NewTLSFingerprintProfileClient(cfg),
-		UsageCleanupTask:        NewUsageCleanupTaskClient(cfg),
-		UsageLog:                NewUsageLogClient(cfg),
-		User:                    NewUserClient(cfg),
-		UserAllowedGroup:        NewUserAllowedGroupClient(cfg),
-		UserAttributeDefinition: NewUserAttributeDefinitionClient(cfg),
-		UserAttributeValue:      NewUserAttributeValueClient(cfg),
-		UserSubscription:        NewUserSubscriptionClient(cfg),
+		ctx:                           ctx,
+		config:                        cfg,
+		APIKey:                        NewAPIKeyClient(cfg),
+		Account:                       NewAccountClient(cfg),
+		AccountGroup:                  NewAccountGroupClient(cfg),
+		Announcement:                  NewAnnouncementClient(cfg),
+		AnnouncementRead:              NewAnnouncementReadClient(cfg),
+		ErrorPassthroughRule:          NewErrorPassthroughRuleClient(cfg),
+		GiftBalanceRecord:             NewGiftBalanceRecordClient(cfg),
+		Group:                         NewGroupClient(cfg),
+		IdempotencyRecord:             NewIdempotencyRecordClient(cfg),
+		PaymentAuditLog:               NewPaymentAuditLogClient(cfg),
+		PaymentOrder:                  NewPaymentOrderClient(cfg),
+		PaymentProviderInstance:       NewPaymentProviderInstanceClient(cfg),
+		PromoCode:                     NewPromoCodeClient(cfg),
+		PromoCodeUsage:                NewPromoCodeUsageClient(cfg),
+		Promotion:                     NewPromotionClient(cfg),
+		PromotionPlanRule:             NewPromotionPlanRuleClient(cfg),
+		PromotionUsage:                NewPromotionUsageClient(cfg),
+		Proxy:                         NewProxyClient(cfg),
+		RedeemCode:                    NewRedeemCodeClient(cfg),
+		Referral:                      NewReferralClient(cfg),
+		SalesCommissionRecord:         NewSalesCommissionRecordClient(cfg),
+		SalesCommissionSettlement:     NewSalesCommissionSettlementClient(cfg),
+		SalesCommissionSettlementItem: NewSalesCommissionSettlementItemClient(cfg),
+		SecuritySecret:                NewSecuritySecretClient(cfg),
+		Setting:                       NewSettingClient(cfg),
+		SubscriptionGrant:             NewSubscriptionGrantClient(cfg),
+		SubscriptionPlan:              NewSubscriptionPlanClient(cfg),
+		TLSFingerprintProfile:         NewTLSFingerprintProfileClient(cfg),
+		UsageCleanupTask:              NewUsageCleanupTaskClient(cfg),
+		UsageLog:                      NewUsageLogClient(cfg),
+		User:                          NewUserClient(cfg),
+		UserAllowedGroup:              NewUserAllowedGroupClient(cfg),
+		UserAttributeDefinition:       NewUserAttributeDefinitionClient(cfg),
+		UserAttributeValue:            NewUserAttributeValueClient(cfg),
+		UserReferralConfig:            NewUserReferralConfigClient(cfg),
+		UserSubscription:              NewUserSubscriptionClient(cfg),
 	}, nil
 }
 
@@ -356,12 +392,14 @@ func (c *Client) Close() error {
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
 		c.APIKey, c.Account, c.AccountGroup, c.Announcement, c.AnnouncementRead,
-		c.ErrorPassthroughRule, c.Group, c.IdempotencyRecord, c.PaymentAuditLog,
-		c.PaymentOrder, c.PaymentProviderInstance, c.PromoCode, c.PromoCodeUsage,
-		c.Promotion, c.PromotionPlanRule, c.PromotionUsage, c.Proxy, c.RedeemCode,
-		c.SecuritySecret, c.Setting, c.SubscriptionGrant, c.SubscriptionPlan,
-		c.TLSFingerprintProfile, c.UsageCleanupTask, c.UsageLog, c.User,
-		c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
+		c.ErrorPassthroughRule, c.GiftBalanceRecord, c.Group, c.IdempotencyRecord,
+		c.PaymentAuditLog, c.PaymentOrder, c.PaymentProviderInstance, c.PromoCode,
+		c.PromoCodeUsage, c.Promotion, c.PromotionPlanRule, c.PromotionUsage, c.Proxy,
+		c.RedeemCode, c.Referral, c.SalesCommissionRecord, c.SalesCommissionSettlement,
+		c.SalesCommissionSettlementItem, c.SecuritySecret, c.Setting,
+		c.SubscriptionGrant, c.SubscriptionPlan, c.TLSFingerprintProfile,
+		c.UsageCleanupTask, c.UsageLog, c.User, c.UserAllowedGroup,
+		c.UserAttributeDefinition, c.UserAttributeValue, c.UserReferralConfig,
 		c.UserSubscription,
 	} {
 		n.Use(hooks...)
@@ -373,12 +411,14 @@ func (c *Client) Use(hooks ...Hook) {
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
 		c.APIKey, c.Account, c.AccountGroup, c.Announcement, c.AnnouncementRead,
-		c.ErrorPassthroughRule, c.Group, c.IdempotencyRecord, c.PaymentAuditLog,
-		c.PaymentOrder, c.PaymentProviderInstance, c.PromoCode, c.PromoCodeUsage,
-		c.Promotion, c.PromotionPlanRule, c.PromotionUsage, c.Proxy, c.RedeemCode,
-		c.SecuritySecret, c.Setting, c.SubscriptionGrant, c.SubscriptionPlan,
-		c.TLSFingerprintProfile, c.UsageCleanupTask, c.UsageLog, c.User,
-		c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
+		c.ErrorPassthroughRule, c.GiftBalanceRecord, c.Group, c.IdempotencyRecord,
+		c.PaymentAuditLog, c.PaymentOrder, c.PaymentProviderInstance, c.PromoCode,
+		c.PromoCodeUsage, c.Promotion, c.PromotionPlanRule, c.PromotionUsage, c.Proxy,
+		c.RedeemCode, c.Referral, c.SalesCommissionRecord, c.SalesCommissionSettlement,
+		c.SalesCommissionSettlementItem, c.SecuritySecret, c.Setting,
+		c.SubscriptionGrant, c.SubscriptionPlan, c.TLSFingerprintProfile,
+		c.UsageCleanupTask, c.UsageLog, c.User, c.UserAllowedGroup,
+		c.UserAttributeDefinition, c.UserAttributeValue, c.UserReferralConfig,
 		c.UserSubscription,
 	} {
 		n.Intercept(interceptors...)
@@ -400,6 +440,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.AnnouncementRead.mutate(ctx, m)
 	case *ErrorPassthroughRuleMutation:
 		return c.ErrorPassthroughRule.mutate(ctx, m)
+	case *GiftBalanceRecordMutation:
+		return c.GiftBalanceRecord.mutate(ctx, m)
 	case *GroupMutation:
 		return c.Group.mutate(ctx, m)
 	case *IdempotencyRecordMutation:
@@ -424,6 +466,14 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.Proxy.mutate(ctx, m)
 	case *RedeemCodeMutation:
 		return c.RedeemCode.mutate(ctx, m)
+	case *ReferralMutation:
+		return c.Referral.mutate(ctx, m)
+	case *SalesCommissionRecordMutation:
+		return c.SalesCommissionRecord.mutate(ctx, m)
+	case *SalesCommissionSettlementMutation:
+		return c.SalesCommissionSettlement.mutate(ctx, m)
+	case *SalesCommissionSettlementItemMutation:
+		return c.SalesCommissionSettlementItem.mutate(ctx, m)
 	case *SecuritySecretMutation:
 		return c.SecuritySecret.mutate(ctx, m)
 	case *SettingMutation:
@@ -446,6 +496,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.UserAttributeDefinition.mutate(ctx, m)
 	case *UserAttributeValueMutation:
 		return c.UserAttributeValue.mutate(ctx, m)
+	case *UserReferralConfigMutation:
+		return c.UserReferralConfig.mutate(ctx, m)
 	case *UserSubscriptionMutation:
 		return c.UserSubscription.mutate(ctx, m)
 	default:
@@ -1395,6 +1447,139 @@ func (c *ErrorPassthroughRuleClient) mutate(ctx context.Context, m *ErrorPassthr
 		return (&ErrorPassthroughRuleDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown ErrorPassthroughRule mutation op: %q", m.Op())
+	}
+}
+
+// GiftBalanceRecordClient is a client for the GiftBalanceRecord schema.
+type GiftBalanceRecordClient struct {
+	config
+}
+
+// NewGiftBalanceRecordClient returns a client for the GiftBalanceRecord from the given config.
+func NewGiftBalanceRecordClient(c config) *GiftBalanceRecordClient {
+	return &GiftBalanceRecordClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `giftbalancerecord.Hooks(f(g(h())))`.
+func (c *GiftBalanceRecordClient) Use(hooks ...Hook) {
+	c.hooks.GiftBalanceRecord = append(c.hooks.GiftBalanceRecord, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `giftbalancerecord.Intercept(f(g(h())))`.
+func (c *GiftBalanceRecordClient) Intercept(interceptors ...Interceptor) {
+	c.inters.GiftBalanceRecord = append(c.inters.GiftBalanceRecord, interceptors...)
+}
+
+// Create returns a builder for creating a GiftBalanceRecord entity.
+func (c *GiftBalanceRecordClient) Create() *GiftBalanceRecordCreate {
+	mutation := newGiftBalanceRecordMutation(c.config, OpCreate)
+	return &GiftBalanceRecordCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of GiftBalanceRecord entities.
+func (c *GiftBalanceRecordClient) CreateBulk(builders ...*GiftBalanceRecordCreate) *GiftBalanceRecordCreateBulk {
+	return &GiftBalanceRecordCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *GiftBalanceRecordClient) MapCreateBulk(slice any, setFunc func(*GiftBalanceRecordCreate, int)) *GiftBalanceRecordCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &GiftBalanceRecordCreateBulk{err: fmt.Errorf("calling to GiftBalanceRecordClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*GiftBalanceRecordCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &GiftBalanceRecordCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for GiftBalanceRecord.
+func (c *GiftBalanceRecordClient) Update() *GiftBalanceRecordUpdate {
+	mutation := newGiftBalanceRecordMutation(c.config, OpUpdate)
+	return &GiftBalanceRecordUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *GiftBalanceRecordClient) UpdateOne(_m *GiftBalanceRecord) *GiftBalanceRecordUpdateOne {
+	mutation := newGiftBalanceRecordMutation(c.config, OpUpdateOne, withGiftBalanceRecord(_m))
+	return &GiftBalanceRecordUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *GiftBalanceRecordClient) UpdateOneID(id int64) *GiftBalanceRecordUpdateOne {
+	mutation := newGiftBalanceRecordMutation(c.config, OpUpdateOne, withGiftBalanceRecordID(id))
+	return &GiftBalanceRecordUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for GiftBalanceRecord.
+func (c *GiftBalanceRecordClient) Delete() *GiftBalanceRecordDelete {
+	mutation := newGiftBalanceRecordMutation(c.config, OpDelete)
+	return &GiftBalanceRecordDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *GiftBalanceRecordClient) DeleteOne(_m *GiftBalanceRecord) *GiftBalanceRecordDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *GiftBalanceRecordClient) DeleteOneID(id int64) *GiftBalanceRecordDeleteOne {
+	builder := c.Delete().Where(giftbalancerecord.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &GiftBalanceRecordDeleteOne{builder}
+}
+
+// Query returns a query builder for GiftBalanceRecord.
+func (c *GiftBalanceRecordClient) Query() *GiftBalanceRecordQuery {
+	return &GiftBalanceRecordQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeGiftBalanceRecord},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a GiftBalanceRecord entity by its id.
+func (c *GiftBalanceRecordClient) Get(ctx context.Context, id int64) (*GiftBalanceRecord, error) {
+	return c.Query().Where(giftbalancerecord.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *GiftBalanceRecordClient) GetX(ctx context.Context, id int64) *GiftBalanceRecord {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *GiftBalanceRecordClient) Hooks() []Hook {
+	return c.hooks.GiftBalanceRecord
+}
+
+// Interceptors returns the client interceptors.
+func (c *GiftBalanceRecordClient) Interceptors() []Interceptor {
+	return c.inters.GiftBalanceRecord
+}
+
+func (c *GiftBalanceRecordClient) mutate(ctx context.Context, m *GiftBalanceRecordMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&GiftBalanceRecordCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&GiftBalanceRecordUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&GiftBalanceRecordUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&GiftBalanceRecordDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown GiftBalanceRecord mutation op: %q", m.Op())
 	}
 }
 
@@ -3302,6 +3487,538 @@ func (c *RedeemCodeClient) mutate(ctx context.Context, m *RedeemCodeMutation) (V
 	}
 }
 
+// ReferralClient is a client for the Referral schema.
+type ReferralClient struct {
+	config
+}
+
+// NewReferralClient returns a client for the Referral from the given config.
+func NewReferralClient(c config) *ReferralClient {
+	return &ReferralClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `referral.Hooks(f(g(h())))`.
+func (c *ReferralClient) Use(hooks ...Hook) {
+	c.hooks.Referral = append(c.hooks.Referral, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `referral.Intercept(f(g(h())))`.
+func (c *ReferralClient) Intercept(interceptors ...Interceptor) {
+	c.inters.Referral = append(c.inters.Referral, interceptors...)
+}
+
+// Create returns a builder for creating a Referral entity.
+func (c *ReferralClient) Create() *ReferralCreate {
+	mutation := newReferralMutation(c.config, OpCreate)
+	return &ReferralCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of Referral entities.
+func (c *ReferralClient) CreateBulk(builders ...*ReferralCreate) *ReferralCreateBulk {
+	return &ReferralCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *ReferralClient) MapCreateBulk(slice any, setFunc func(*ReferralCreate, int)) *ReferralCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &ReferralCreateBulk{err: fmt.Errorf("calling to ReferralClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*ReferralCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &ReferralCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for Referral.
+func (c *ReferralClient) Update() *ReferralUpdate {
+	mutation := newReferralMutation(c.config, OpUpdate)
+	return &ReferralUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *ReferralClient) UpdateOne(_m *Referral) *ReferralUpdateOne {
+	mutation := newReferralMutation(c.config, OpUpdateOne, withReferral(_m))
+	return &ReferralUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *ReferralClient) UpdateOneID(id int64) *ReferralUpdateOne {
+	mutation := newReferralMutation(c.config, OpUpdateOne, withReferralID(id))
+	return &ReferralUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for Referral.
+func (c *ReferralClient) Delete() *ReferralDelete {
+	mutation := newReferralMutation(c.config, OpDelete)
+	return &ReferralDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *ReferralClient) DeleteOne(_m *Referral) *ReferralDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *ReferralClient) DeleteOneID(id int64) *ReferralDeleteOne {
+	builder := c.Delete().Where(referral.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &ReferralDeleteOne{builder}
+}
+
+// Query returns a query builder for Referral.
+func (c *ReferralClient) Query() *ReferralQuery {
+	return &ReferralQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeReferral},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a Referral entity by its id.
+func (c *ReferralClient) Get(ctx context.Context, id int64) (*Referral, error) {
+	return c.Query().Where(referral.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *ReferralClient) GetX(ctx context.Context, id int64) *Referral {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *ReferralClient) Hooks() []Hook {
+	return c.hooks.Referral
+}
+
+// Interceptors returns the client interceptors.
+func (c *ReferralClient) Interceptors() []Interceptor {
+	return c.inters.Referral
+}
+
+func (c *ReferralClient) mutate(ctx context.Context, m *ReferralMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&ReferralCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&ReferralUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&ReferralUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&ReferralDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown Referral mutation op: %q", m.Op())
+	}
+}
+
+// SalesCommissionRecordClient is a client for the SalesCommissionRecord schema.
+type SalesCommissionRecordClient struct {
+	config
+}
+
+// NewSalesCommissionRecordClient returns a client for the SalesCommissionRecord from the given config.
+func NewSalesCommissionRecordClient(c config) *SalesCommissionRecordClient {
+	return &SalesCommissionRecordClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `salescommissionrecord.Hooks(f(g(h())))`.
+func (c *SalesCommissionRecordClient) Use(hooks ...Hook) {
+	c.hooks.SalesCommissionRecord = append(c.hooks.SalesCommissionRecord, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `salescommissionrecord.Intercept(f(g(h())))`.
+func (c *SalesCommissionRecordClient) Intercept(interceptors ...Interceptor) {
+	c.inters.SalesCommissionRecord = append(c.inters.SalesCommissionRecord, interceptors...)
+}
+
+// Create returns a builder for creating a SalesCommissionRecord entity.
+func (c *SalesCommissionRecordClient) Create() *SalesCommissionRecordCreate {
+	mutation := newSalesCommissionRecordMutation(c.config, OpCreate)
+	return &SalesCommissionRecordCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of SalesCommissionRecord entities.
+func (c *SalesCommissionRecordClient) CreateBulk(builders ...*SalesCommissionRecordCreate) *SalesCommissionRecordCreateBulk {
+	return &SalesCommissionRecordCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *SalesCommissionRecordClient) MapCreateBulk(slice any, setFunc func(*SalesCommissionRecordCreate, int)) *SalesCommissionRecordCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &SalesCommissionRecordCreateBulk{err: fmt.Errorf("calling to SalesCommissionRecordClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*SalesCommissionRecordCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &SalesCommissionRecordCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for SalesCommissionRecord.
+func (c *SalesCommissionRecordClient) Update() *SalesCommissionRecordUpdate {
+	mutation := newSalesCommissionRecordMutation(c.config, OpUpdate)
+	return &SalesCommissionRecordUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *SalesCommissionRecordClient) UpdateOne(_m *SalesCommissionRecord) *SalesCommissionRecordUpdateOne {
+	mutation := newSalesCommissionRecordMutation(c.config, OpUpdateOne, withSalesCommissionRecord(_m))
+	return &SalesCommissionRecordUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *SalesCommissionRecordClient) UpdateOneID(id int64) *SalesCommissionRecordUpdateOne {
+	mutation := newSalesCommissionRecordMutation(c.config, OpUpdateOne, withSalesCommissionRecordID(id))
+	return &SalesCommissionRecordUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for SalesCommissionRecord.
+func (c *SalesCommissionRecordClient) Delete() *SalesCommissionRecordDelete {
+	mutation := newSalesCommissionRecordMutation(c.config, OpDelete)
+	return &SalesCommissionRecordDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *SalesCommissionRecordClient) DeleteOne(_m *SalesCommissionRecord) *SalesCommissionRecordDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *SalesCommissionRecordClient) DeleteOneID(id int64) *SalesCommissionRecordDeleteOne {
+	builder := c.Delete().Where(salescommissionrecord.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &SalesCommissionRecordDeleteOne{builder}
+}
+
+// Query returns a query builder for SalesCommissionRecord.
+func (c *SalesCommissionRecordClient) Query() *SalesCommissionRecordQuery {
+	return &SalesCommissionRecordQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeSalesCommissionRecord},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a SalesCommissionRecord entity by its id.
+func (c *SalesCommissionRecordClient) Get(ctx context.Context, id int64) (*SalesCommissionRecord, error) {
+	return c.Query().Where(salescommissionrecord.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *SalesCommissionRecordClient) GetX(ctx context.Context, id int64) *SalesCommissionRecord {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *SalesCommissionRecordClient) Hooks() []Hook {
+	return c.hooks.SalesCommissionRecord
+}
+
+// Interceptors returns the client interceptors.
+func (c *SalesCommissionRecordClient) Interceptors() []Interceptor {
+	return c.inters.SalesCommissionRecord
+}
+
+func (c *SalesCommissionRecordClient) mutate(ctx context.Context, m *SalesCommissionRecordMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&SalesCommissionRecordCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&SalesCommissionRecordUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&SalesCommissionRecordUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&SalesCommissionRecordDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown SalesCommissionRecord mutation op: %q", m.Op())
+	}
+}
+
+// SalesCommissionSettlementClient is a client for the SalesCommissionSettlement schema.
+type SalesCommissionSettlementClient struct {
+	config
+}
+
+// NewSalesCommissionSettlementClient returns a client for the SalesCommissionSettlement from the given config.
+func NewSalesCommissionSettlementClient(c config) *SalesCommissionSettlementClient {
+	return &SalesCommissionSettlementClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `salescommissionsettlement.Hooks(f(g(h())))`.
+func (c *SalesCommissionSettlementClient) Use(hooks ...Hook) {
+	c.hooks.SalesCommissionSettlement = append(c.hooks.SalesCommissionSettlement, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `salescommissionsettlement.Intercept(f(g(h())))`.
+func (c *SalesCommissionSettlementClient) Intercept(interceptors ...Interceptor) {
+	c.inters.SalesCommissionSettlement = append(c.inters.SalesCommissionSettlement, interceptors...)
+}
+
+// Create returns a builder for creating a SalesCommissionSettlement entity.
+func (c *SalesCommissionSettlementClient) Create() *SalesCommissionSettlementCreate {
+	mutation := newSalesCommissionSettlementMutation(c.config, OpCreate)
+	return &SalesCommissionSettlementCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of SalesCommissionSettlement entities.
+func (c *SalesCommissionSettlementClient) CreateBulk(builders ...*SalesCommissionSettlementCreate) *SalesCommissionSettlementCreateBulk {
+	return &SalesCommissionSettlementCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *SalesCommissionSettlementClient) MapCreateBulk(slice any, setFunc func(*SalesCommissionSettlementCreate, int)) *SalesCommissionSettlementCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &SalesCommissionSettlementCreateBulk{err: fmt.Errorf("calling to SalesCommissionSettlementClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*SalesCommissionSettlementCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &SalesCommissionSettlementCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for SalesCommissionSettlement.
+func (c *SalesCommissionSettlementClient) Update() *SalesCommissionSettlementUpdate {
+	mutation := newSalesCommissionSettlementMutation(c.config, OpUpdate)
+	return &SalesCommissionSettlementUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *SalesCommissionSettlementClient) UpdateOne(_m *SalesCommissionSettlement) *SalesCommissionSettlementUpdateOne {
+	mutation := newSalesCommissionSettlementMutation(c.config, OpUpdateOne, withSalesCommissionSettlement(_m))
+	return &SalesCommissionSettlementUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *SalesCommissionSettlementClient) UpdateOneID(id int64) *SalesCommissionSettlementUpdateOne {
+	mutation := newSalesCommissionSettlementMutation(c.config, OpUpdateOne, withSalesCommissionSettlementID(id))
+	return &SalesCommissionSettlementUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for SalesCommissionSettlement.
+func (c *SalesCommissionSettlementClient) Delete() *SalesCommissionSettlementDelete {
+	mutation := newSalesCommissionSettlementMutation(c.config, OpDelete)
+	return &SalesCommissionSettlementDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *SalesCommissionSettlementClient) DeleteOne(_m *SalesCommissionSettlement) *SalesCommissionSettlementDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *SalesCommissionSettlementClient) DeleteOneID(id int64) *SalesCommissionSettlementDeleteOne {
+	builder := c.Delete().Where(salescommissionsettlement.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &SalesCommissionSettlementDeleteOne{builder}
+}
+
+// Query returns a query builder for SalesCommissionSettlement.
+func (c *SalesCommissionSettlementClient) Query() *SalesCommissionSettlementQuery {
+	return &SalesCommissionSettlementQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeSalesCommissionSettlement},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a SalesCommissionSettlement entity by its id.
+func (c *SalesCommissionSettlementClient) Get(ctx context.Context, id int64) (*SalesCommissionSettlement, error) {
+	return c.Query().Where(salescommissionsettlement.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *SalesCommissionSettlementClient) GetX(ctx context.Context, id int64) *SalesCommissionSettlement {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *SalesCommissionSettlementClient) Hooks() []Hook {
+	return c.hooks.SalesCommissionSettlement
+}
+
+// Interceptors returns the client interceptors.
+func (c *SalesCommissionSettlementClient) Interceptors() []Interceptor {
+	return c.inters.SalesCommissionSettlement
+}
+
+func (c *SalesCommissionSettlementClient) mutate(ctx context.Context, m *SalesCommissionSettlementMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&SalesCommissionSettlementCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&SalesCommissionSettlementUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&SalesCommissionSettlementUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&SalesCommissionSettlementDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown SalesCommissionSettlement mutation op: %q", m.Op())
+	}
+}
+
+// SalesCommissionSettlementItemClient is a client for the SalesCommissionSettlementItem schema.
+type SalesCommissionSettlementItemClient struct {
+	config
+}
+
+// NewSalesCommissionSettlementItemClient returns a client for the SalesCommissionSettlementItem from the given config.
+func NewSalesCommissionSettlementItemClient(c config) *SalesCommissionSettlementItemClient {
+	return &SalesCommissionSettlementItemClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `salescommissionsettlementitem.Hooks(f(g(h())))`.
+func (c *SalesCommissionSettlementItemClient) Use(hooks ...Hook) {
+	c.hooks.SalesCommissionSettlementItem = append(c.hooks.SalesCommissionSettlementItem, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `salescommissionsettlementitem.Intercept(f(g(h())))`.
+func (c *SalesCommissionSettlementItemClient) Intercept(interceptors ...Interceptor) {
+	c.inters.SalesCommissionSettlementItem = append(c.inters.SalesCommissionSettlementItem, interceptors...)
+}
+
+// Create returns a builder for creating a SalesCommissionSettlementItem entity.
+func (c *SalesCommissionSettlementItemClient) Create() *SalesCommissionSettlementItemCreate {
+	mutation := newSalesCommissionSettlementItemMutation(c.config, OpCreate)
+	return &SalesCommissionSettlementItemCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of SalesCommissionSettlementItem entities.
+func (c *SalesCommissionSettlementItemClient) CreateBulk(builders ...*SalesCommissionSettlementItemCreate) *SalesCommissionSettlementItemCreateBulk {
+	return &SalesCommissionSettlementItemCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *SalesCommissionSettlementItemClient) MapCreateBulk(slice any, setFunc func(*SalesCommissionSettlementItemCreate, int)) *SalesCommissionSettlementItemCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &SalesCommissionSettlementItemCreateBulk{err: fmt.Errorf("calling to SalesCommissionSettlementItemClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*SalesCommissionSettlementItemCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &SalesCommissionSettlementItemCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for SalesCommissionSettlementItem.
+func (c *SalesCommissionSettlementItemClient) Update() *SalesCommissionSettlementItemUpdate {
+	mutation := newSalesCommissionSettlementItemMutation(c.config, OpUpdate)
+	return &SalesCommissionSettlementItemUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *SalesCommissionSettlementItemClient) UpdateOne(_m *SalesCommissionSettlementItem) *SalesCommissionSettlementItemUpdateOne {
+	mutation := newSalesCommissionSettlementItemMutation(c.config, OpUpdateOne, withSalesCommissionSettlementItem(_m))
+	return &SalesCommissionSettlementItemUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *SalesCommissionSettlementItemClient) UpdateOneID(id int64) *SalesCommissionSettlementItemUpdateOne {
+	mutation := newSalesCommissionSettlementItemMutation(c.config, OpUpdateOne, withSalesCommissionSettlementItemID(id))
+	return &SalesCommissionSettlementItemUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for SalesCommissionSettlementItem.
+func (c *SalesCommissionSettlementItemClient) Delete() *SalesCommissionSettlementItemDelete {
+	mutation := newSalesCommissionSettlementItemMutation(c.config, OpDelete)
+	return &SalesCommissionSettlementItemDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *SalesCommissionSettlementItemClient) DeleteOne(_m *SalesCommissionSettlementItem) *SalesCommissionSettlementItemDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *SalesCommissionSettlementItemClient) DeleteOneID(id int64) *SalesCommissionSettlementItemDeleteOne {
+	builder := c.Delete().Where(salescommissionsettlementitem.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &SalesCommissionSettlementItemDeleteOne{builder}
+}
+
+// Query returns a query builder for SalesCommissionSettlementItem.
+func (c *SalesCommissionSettlementItemClient) Query() *SalesCommissionSettlementItemQuery {
+	return &SalesCommissionSettlementItemQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeSalesCommissionSettlementItem},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a SalesCommissionSettlementItem entity by its id.
+func (c *SalesCommissionSettlementItemClient) Get(ctx context.Context, id int64) (*SalesCommissionSettlementItem, error) {
+	return c.Query().Where(salescommissionsettlementitem.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *SalesCommissionSettlementItemClient) GetX(ctx context.Context, id int64) *SalesCommissionSettlementItem {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *SalesCommissionSettlementItemClient) Hooks() []Hook {
+	return c.hooks.SalesCommissionSettlementItem
+}
+
+// Interceptors returns the client interceptors.
+func (c *SalesCommissionSettlementItemClient) Interceptors() []Interceptor {
+	return c.inters.SalesCommissionSettlementItem
+}
+
+func (c *SalesCommissionSettlementItemClient) mutate(ctx context.Context, m *SalesCommissionSettlementItemMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&SalesCommissionSettlementItemCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&SalesCommissionSettlementItemUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&SalesCommissionSettlementItemUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&SalesCommissionSettlementItemDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown SalesCommissionSettlementItem mutation op: %q", m.Op())
+	}
+}
+
 // SecuritySecretClient is a client for the SecuritySecret schema.
 type SecuritySecretClient struct {
 	config
@@ -5074,6 +5791,139 @@ func (c *UserAttributeValueClient) mutate(ctx context.Context, m *UserAttributeV
 	}
 }
 
+// UserReferralConfigClient is a client for the UserReferralConfig schema.
+type UserReferralConfigClient struct {
+	config
+}
+
+// NewUserReferralConfigClient returns a client for the UserReferralConfig from the given config.
+func NewUserReferralConfigClient(c config) *UserReferralConfigClient {
+	return &UserReferralConfigClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `userreferralconfig.Hooks(f(g(h())))`.
+func (c *UserReferralConfigClient) Use(hooks ...Hook) {
+	c.hooks.UserReferralConfig = append(c.hooks.UserReferralConfig, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `userreferralconfig.Intercept(f(g(h())))`.
+func (c *UserReferralConfigClient) Intercept(interceptors ...Interceptor) {
+	c.inters.UserReferralConfig = append(c.inters.UserReferralConfig, interceptors...)
+}
+
+// Create returns a builder for creating a UserReferralConfig entity.
+func (c *UserReferralConfigClient) Create() *UserReferralConfigCreate {
+	mutation := newUserReferralConfigMutation(c.config, OpCreate)
+	return &UserReferralConfigCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of UserReferralConfig entities.
+func (c *UserReferralConfigClient) CreateBulk(builders ...*UserReferralConfigCreate) *UserReferralConfigCreateBulk {
+	return &UserReferralConfigCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *UserReferralConfigClient) MapCreateBulk(slice any, setFunc func(*UserReferralConfigCreate, int)) *UserReferralConfigCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &UserReferralConfigCreateBulk{err: fmt.Errorf("calling to UserReferralConfigClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*UserReferralConfigCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &UserReferralConfigCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for UserReferralConfig.
+func (c *UserReferralConfigClient) Update() *UserReferralConfigUpdate {
+	mutation := newUserReferralConfigMutation(c.config, OpUpdate)
+	return &UserReferralConfigUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *UserReferralConfigClient) UpdateOne(_m *UserReferralConfig) *UserReferralConfigUpdateOne {
+	mutation := newUserReferralConfigMutation(c.config, OpUpdateOne, withUserReferralConfig(_m))
+	return &UserReferralConfigUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *UserReferralConfigClient) UpdateOneID(id int64) *UserReferralConfigUpdateOne {
+	mutation := newUserReferralConfigMutation(c.config, OpUpdateOne, withUserReferralConfigID(id))
+	return &UserReferralConfigUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for UserReferralConfig.
+func (c *UserReferralConfigClient) Delete() *UserReferralConfigDelete {
+	mutation := newUserReferralConfigMutation(c.config, OpDelete)
+	return &UserReferralConfigDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *UserReferralConfigClient) DeleteOne(_m *UserReferralConfig) *UserReferralConfigDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *UserReferralConfigClient) DeleteOneID(id int64) *UserReferralConfigDeleteOne {
+	builder := c.Delete().Where(userreferralconfig.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &UserReferralConfigDeleteOne{builder}
+}
+
+// Query returns a query builder for UserReferralConfig.
+func (c *UserReferralConfigClient) Query() *UserReferralConfigQuery {
+	return &UserReferralConfigQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeUserReferralConfig},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a UserReferralConfig entity by its id.
+func (c *UserReferralConfigClient) Get(ctx context.Context, id int64) (*UserReferralConfig, error) {
+	return c.Query().Where(userreferralconfig.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *UserReferralConfigClient) GetX(ctx context.Context, id int64) *UserReferralConfig {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *UserReferralConfigClient) Hooks() []Hook {
+	return c.hooks.UserReferralConfig
+}
+
+// Interceptors returns the client interceptors.
+func (c *UserReferralConfigClient) Interceptors() []Interceptor {
+	return c.inters.UserReferralConfig
+}
+
+func (c *UserReferralConfigClient) mutate(ctx context.Context, m *UserReferralConfigMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&UserReferralConfigCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&UserReferralConfigUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&UserReferralConfigUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&UserReferralConfigDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown UserReferralConfig mutation op: %q", m.Op())
+	}
+}
+
 // UserSubscriptionClient is a client for the UserSubscription schema.
 type UserSubscriptionClient struct {
 	config
@@ -5293,21 +6143,25 @@ func (c *UserSubscriptionClient) mutate(ctx context.Context, m *UserSubscription
 type (
 	hooks struct {
 		APIKey, Account, AccountGroup, Announcement, AnnouncementRead,
-		ErrorPassthroughRule, Group, IdempotencyRecord, PaymentAuditLog, PaymentOrder,
-		PaymentProviderInstance, PromoCode, PromoCodeUsage, Promotion,
-		PromotionPlanRule, PromotionUsage, Proxy, RedeemCode, SecuritySecret, Setting,
-		SubscriptionGrant, SubscriptionPlan, TLSFingerprintProfile, UsageCleanupTask,
-		UsageLog, User, UserAllowedGroup, UserAttributeDefinition, UserAttributeValue,
-		UserSubscription []ent.Hook
+		ErrorPassthroughRule, GiftBalanceRecord, Group, IdempotencyRecord,
+		PaymentAuditLog, PaymentOrder, PaymentProviderInstance, PromoCode,
+		PromoCodeUsage, Promotion, PromotionPlanRule, PromotionUsage, Proxy,
+		RedeemCode, Referral, SalesCommissionRecord, SalesCommissionSettlement,
+		SalesCommissionSettlementItem, SecuritySecret, Setting, SubscriptionGrant,
+		SubscriptionPlan, TLSFingerprintProfile, UsageCleanupTask, UsageLog, User,
+		UserAllowedGroup, UserAttributeDefinition, UserAttributeValue,
+		UserReferralConfig, UserSubscription []ent.Hook
 	}
 	inters struct {
 		APIKey, Account, AccountGroup, Announcement, AnnouncementRead,
-		ErrorPassthroughRule, Group, IdempotencyRecord, PaymentAuditLog, PaymentOrder,
-		PaymentProviderInstance, PromoCode, PromoCodeUsage, Promotion,
-		PromotionPlanRule, PromotionUsage, Proxy, RedeemCode, SecuritySecret, Setting,
-		SubscriptionGrant, SubscriptionPlan, TLSFingerprintProfile, UsageCleanupTask,
-		UsageLog, User, UserAllowedGroup, UserAttributeDefinition, UserAttributeValue,
-		UserSubscription []ent.Interceptor
+		ErrorPassthroughRule, GiftBalanceRecord, Group, IdempotencyRecord,
+		PaymentAuditLog, PaymentOrder, PaymentProviderInstance, PromoCode,
+		PromoCodeUsage, Promotion, PromotionPlanRule, PromotionUsage, Proxy,
+		RedeemCode, Referral, SalesCommissionRecord, SalesCommissionSettlement,
+		SalesCommissionSettlementItem, SecuritySecret, Setting, SubscriptionGrant,
+		SubscriptionPlan, TLSFingerprintProfile, UsageCleanupTask, UsageLog, User,
+		UserAllowedGroup, UserAttributeDefinition, UserAttributeValue,
+		UserReferralConfig, UserSubscription []ent.Interceptor
 	}
 )
 

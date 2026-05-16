@@ -71,6 +71,7 @@ type AuthService struct {
 	emailQueueService  *EmailQueueService
 	promoService       *PromoService
 	defaultSubAssigner DefaultSubscriptionAssigner
+	referralService    *ReferralService
 }
 
 type DefaultSubscriptionAssigner interface {
@@ -106,13 +107,18 @@ func NewAuthService(
 	}
 }
 
-// Register 用户注册，返回token和用户
-func (s *AuthService) Register(ctx context.Context, email, password string) (string, *User, error) {
-	return s.RegisterWithVerification(ctx, email, password, "", "", "")
+// SetReferralService 注入推广奖励服务（避免循环依赖）
+func (s *AuthService) SetReferralService(svc *ReferralService) {
+	s.referralService = svc
 }
 
-// RegisterWithVerification 用户注册（支持邮件验证、优惠码和邀请码），返回token和用户
-func (s *AuthService) RegisterWithVerification(ctx context.Context, email, password, verifyCode, promoCode, invitationCode string) (string, *User, error) {
+// Register 用户注册，返回token和用户
+func (s *AuthService) Register(ctx context.Context, email, password string) (string, *User, error) {
+	return s.RegisterWithVerification(ctx, email, password, "", "", "", "")
+}
+
+// RegisterWithVerification 用户注册（支持邮件验证、优惠码、邀请码和推广码），返回token和用户
+func (s *AuthService) RegisterWithVerification(ctx context.Context, email, password, verifyCode, promoCode, invitationCode, referralCode string) (string, *User, error) {
 	// 检查是否开放注册（默认关闭：settingService 未配置时不允许注册）
 	if s.settingService == nil || !s.settingService.IsRegistrationEnabled(ctx) {
 		return "", nil, ErrRegDisabled
@@ -225,6 +231,11 @@ func (s *AuthService) RegisterWithVerification(ctx context.Context, email, passw
 				user = updatedUser
 			}
 		}
+	}
+
+	// 处理推广码（如果提供且推广功能已启用）
+	if referralCode != "" && s.referralService != nil {
+		s.referralService.HandleReferralOnRegister(ctx, user.ID, referralCode)
 	}
 
 	// 生成token

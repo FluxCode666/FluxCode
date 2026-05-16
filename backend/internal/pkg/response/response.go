@@ -5,7 +5,9 @@ import (
 	"log"
 	"math"
 	"net/http"
+	"strings"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/util/logredact"
 	"github.com/gin-gonic/gin"
@@ -17,6 +19,7 @@ type Response struct {
 	Message  string            `json:"message"`
 	Reason   string            `json:"reason,omitempty"`
 	Metadata map[string]string `json:"metadata,omitempty"`
+	TraceID  string            `json:"trace_id,omitempty"`
 	Data     any               `json:"data,omitempty"`
 }
 
@@ -63,6 +66,7 @@ func Error(c *gin.Context, statusCode int, message string) {
 		Message:  message,
 		Reason:   "",
 		Metadata: nil,
+		TraceID:  traceIDFromContext(c),
 	})
 }
 
@@ -74,7 +78,23 @@ func ErrorWithDetails(c *gin.Context, statusCode int, message, reason string, me
 		Message:  message,
 		Reason:   reason,
 		Metadata: metadata,
+		TraceID:  traceIDFromContext(c),
 	})
+}
+
+func traceIDFromContext(c *gin.Context) string {
+	if c == nil {
+		return ""
+	}
+	if c.Request != nil {
+		if traceID, _ := c.Request.Context().Value(ctxkey.TraceID).(string); strings.TrimSpace(traceID) != "" {
+			return strings.TrimSpace(traceID)
+		}
+	}
+	if c.Writer != nil {
+		return strings.TrimSpace(c.Writer.Header().Get("X-Trace-ID"))
+	}
+	return ""
 }
 
 // ErrorFrom converts an ApplicationError (or any error) into the envelope-compatible error response.

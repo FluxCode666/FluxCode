@@ -193,6 +193,30 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/referral',
+    name: 'Referral',
+    component: () => import('@/views/user/ReferralView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Referral Center',
+      titleKey: 'referral.title',
+      descriptionKey: 'referral.description',
+      requiresReferral: true
+    }
+  },
+  {
+    path: '/sales-commissions',
+    name: 'SalesCommissions',
+    component: () => import('@/views/user/SalesCommissionsView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Sales Commissions',
+      titleKey: 'nav.salesCommissions'
+    }
+  },
+  {
     path: '/profile',
     name: 'Profile',
     component: () => import('@/views/user/ProfileView.vue'),
@@ -423,6 +447,28 @@ const routes: RouteRecordRaw[] = [
       title: 'Redeem Code Management',
       titleKey: 'admin.redeem.title',
       descriptionKey: 'admin.redeem.description'
+    }
+  },
+  {
+    path: '/admin/referral',
+    name: 'AdminReferral',
+    component: () => import('@/views/admin/ReferralManageView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Referral Management',
+      titleKey: 'nav.referralManagement',
+    }
+  },
+  {
+    path: '/admin/sales-commissions',
+    name: 'AdminSalesCommissions',
+    component: () => import('@/views/admin/SalesCommissionsView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Sales Commissions',
+      titleKey: 'nav.salesCommissions'
     }
   },
   {
@@ -679,6 +725,15 @@ router.beforeEach((to, _from, next) => {
   if (to.meta.requiresPayment) {
     const paymentEnabled = appStore.cachedPublicSettings?.payment_enabled
     if (!paymentEnabled) {
+      next(authStore.isAdmin ? '/admin/dashboard' : '/dashboard')
+      return
+    }
+  }
+
+  // Check referral requirement
+  if (to.meta.requiresReferral) {
+    const referralEnabled = appStore.cachedPublicSettings?.referral_enabled
+    if (!referralEnabled) {
       next(authStore.isAdmin ? '/admin/dashboard' : '/dashboard')
       return
     }

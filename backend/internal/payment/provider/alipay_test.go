@@ -162,6 +162,54 @@ func TestNewAlipayAcceptsSandboxAliases(t *testing.T) {
 	}
 }
 
+func TestAlipayShouldUseWapPay(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		paymentMode string
+		isMobile    bool
+		want        bool
+	}{
+		// Default (empty) → QR for every device. This is the bug-fix behaviour:
+		// merchants with only "Face-to-Face Payment" activated must never be silently
+		// switched to WAP based on User-Agent.
+		{name: "empty mode mobile keeps QR", paymentMode: "", isMobile: true, want: false},
+		{name: "empty mode desktop keeps QR", paymentMode: "", isMobile: false, want: false},
+
+		// Explicit qrcode / precreate / f2f aliases.
+		{name: "qrcode mobile", paymentMode: "qrcode", isMobile: true, want: false},
+		{name: "QRCODE upper-case", paymentMode: "QRCODE", isMobile: true, want: false},
+		{name: "precreate alias", paymentMode: "precreate", isMobile: true, want: false},
+		{name: "f2f alias", paymentMode: "f2f", isMobile: true, want: false},
+		{name: "face_to_face alias", paymentMode: "face_to_face", isMobile: true, want: false},
+
+		// Explicit wap / h5 / popup → always WAP.
+		{name: "wap mobile", paymentMode: "wap", isMobile: true, want: true},
+		{name: "wap desktop", paymentMode: "wap", isMobile: false, want: true},
+		{name: "h5 alias", paymentMode: "h5", isMobile: false, want: true},
+		{name: "popup alias", paymentMode: "popup", isMobile: false, want: true},
+		{name: "WAP whitespace", paymentMode: "  WAP  ", isMobile: false, want: true},
+
+		// auto preserves legacy UA-based switching.
+		{name: "auto mobile", paymentMode: "auto", isMobile: true, want: true},
+		{name: "auto desktop", paymentMode: "auto", isMobile: false, want: false},
+
+		// Unknown values fall back to QR (safe default).
+		{name: "unknown mode mobile", paymentMode: "garbage", isMobile: true, want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			a := &Alipay{config: map[string]string{"paymentMode": tt.paymentMode}}
+			if got := a.shouldUseWapPay(tt.isMobile); got != tt.want {
+				t.Errorf("shouldUseWapPay(mode=%q, mobile=%v) = %v, want %v", tt.paymentMode, tt.isMobile, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestAlipayGetClientUsesConfiguredGateway(t *testing.T) {
 	t.Parallel()
 

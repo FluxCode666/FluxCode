@@ -45,6 +45,20 @@ func (_c *UsageLogCreate) SetAccountID(v int64) *UsageLogCreate {
 	return _c
 }
 
+// SetTraceID sets the "trace_id" field.
+func (_c *UsageLogCreate) SetTraceID(v string) *UsageLogCreate {
+	_c.mutation.SetTraceID(v)
+	return _c
+}
+
+// SetNillableTraceID sets the "trace_id" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableTraceID(v *string) *UsageLogCreate {
+	if v != nil {
+		_c.SetTraceID(*v)
+	}
+	return _c
+}
+
 // SetRequestID sets the "request_id" field.
 func (_c *UsageLogCreate) SetRequestID(v string) *UsageLogCreate {
 	_c.mutation.SetRequestID(v)
@@ -650,6 +664,11 @@ func (_c *UsageLogCreate) check() error {
 	if _, ok := _c.mutation.AccountID(); !ok {
 		return &ValidationError{Name: "account_id", err: errors.New(`ent: missing required field "UsageLog.account_id"`)}
 	}
+	if v, ok := _c.mutation.TraceID(); ok {
+		if err := usagelog.TraceIDValidator(v); err != nil {
+			return &ValidationError{Name: "trace_id", err: fmt.Errorf(`ent: validator failed for field "UsageLog.trace_id": %w`, err)}
+		}
+	}
 	if _, ok := _c.mutation.RequestID(); !ok {
 		return &ValidationError{Name: "request_id", err: errors.New(`ent: missing required field "UsageLog.request_id"`)}
 	}
@@ -796,6 +815,10 @@ func (_c *UsageLogCreate) createSpec() (*UsageLog, *sqlgraph.CreateSpec) {
 		_spec = sqlgraph.NewCreateSpec(usagelog.Table, sqlgraph.NewFieldSpec(usagelog.FieldID, field.TypeInt64))
 	)
 	_spec.OnConflict = _c.conflict
+	if value, ok := _c.mutation.TraceID(); ok {
+		_spec.SetField(usagelog.FieldTraceID, field.TypeString, value)
+		_node.TraceID = &value
+	}
 	if value, ok := _c.mutation.RequestID(); ok {
 		_spec.SetField(usagelog.FieldRequestID, field.TypeString, value)
 		_node.RequestID = value
@@ -1094,6 +1117,24 @@ func (u *UsageLogUpsert) SetAccountID(v int64) *UsageLogUpsert {
 // UpdateAccountID sets the "account_id" field to the value that was provided on create.
 func (u *UsageLogUpsert) UpdateAccountID() *UsageLogUpsert {
 	u.SetExcluded(usagelog.FieldAccountID)
+	return u
+}
+
+// SetTraceID sets the "trace_id" field.
+func (u *UsageLogUpsert) SetTraceID(v string) *UsageLogUpsert {
+	u.Set(usagelog.FieldTraceID, v)
+	return u
+}
+
+// UpdateTraceID sets the "trace_id" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateTraceID() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldTraceID)
+	return u
+}
+
+// ClearTraceID clears the value of the "trace_id" field.
+func (u *UsageLogUpsert) ClearTraceID() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldTraceID)
 	return u
 }
 
@@ -1775,6 +1816,27 @@ func (u *UsageLogUpsertOne) SetAccountID(v int64) *UsageLogUpsertOne {
 func (u *UsageLogUpsertOne) UpdateAccountID() *UsageLogUpsertOne {
 	return u.Update(func(s *UsageLogUpsert) {
 		s.UpdateAccountID()
+	})
+}
+
+// SetTraceID sets the "trace_id" field.
+func (u *UsageLogUpsertOne) SetTraceID(v string) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetTraceID(v)
+	})
+}
+
+// UpdateTraceID sets the "trace_id" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateTraceID() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateTraceID()
+	})
+}
+
+// ClearTraceID clears the value of the "trace_id" field.
+func (u *UsageLogUpsertOne) ClearTraceID() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearTraceID()
 	})
 }
 
@@ -2721,6 +2783,27 @@ func (u *UsageLogUpsertBulk) SetAccountID(v int64) *UsageLogUpsertBulk {
 func (u *UsageLogUpsertBulk) UpdateAccountID() *UsageLogUpsertBulk {
 	return u.Update(func(s *UsageLogUpsert) {
 		s.UpdateAccountID()
+	})
+}
+
+// SetTraceID sets the "trace_id" field.
+func (u *UsageLogUpsertBulk) SetTraceID(v string) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetTraceID(v)
+	})
+}
+
+// UpdateTraceID sets the "trace_id" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateTraceID() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateTraceID()
+	})
+}
+
+// ClearTraceID clears the value of the "trace_id" field.
+func (u *UsageLogUpsertBulk) ClearTraceID() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearTraceID()
 	})
 }
 

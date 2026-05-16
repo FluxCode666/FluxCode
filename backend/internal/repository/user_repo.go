@@ -64,6 +64,8 @@ func (r *userRepository) Create(ctx context.Context, userIn *service.User) error
 		SetBalance(userIn.Balance).
 		SetConcurrency(userIn.Concurrency).
 		SetStatus(userIn.Status).
+		SetIsSales(userIn.IsSales).
+		SetSalesCommissionRate(userIn.SalesCommissionRate).
 		Save(ctx)
 	if err != nil {
 		return translatePersistenceError(err, nil, service.ErrEmailExists)
@@ -150,7 +152,9 @@ func (r *userRepository) Update(ctx context.Context, userIn *service.User) error
 		SetBalanceNotifyThresholdType(userIn.BalanceNotifyThresholdType).
 		SetNillableBalanceNotifyThreshold(userIn.BalanceNotifyThreshold).
 		SetBalanceNotifyExtraEmails(marshalExtraEmails(userIn.BalanceNotifyExtraEmails)).
-		SetTotalRecharged(userIn.TotalRecharged)
+		SetTotalRecharged(userIn.TotalRecharged).
+		SetIsSales(userIn.IsSales).
+		SetSalesCommissionRate(userIn.SalesCommissionRate)
 	if userIn.BalanceNotifyThreshold == nil {
 		updateOp = updateOp.ClearBalanceNotifyThreshold()
 	}
@@ -608,4 +612,66 @@ func (r *userRepository) DisableTotp(ctx context.Context, userID int64) error {
 		return translatePersistenceError(err, service.ErrUserNotFound, nil)
 	}
 	return nil
+}
+
+// --- 推广奖励相关 ---
+
+// GetByReferralCode 根据推广码查找用户
+func (r *userRepository) GetByReferralCode(ctx context.Context, code string) (*service.User, error) {
+	if code == "" {
+		return nil, nil
+	}
+	m, err := r.client.User.Query().Where(dbuser.ReferralCodeEQ(code), dbuser.DeletedAtIsNil()).Only(ctx)
+	if err != nil {
+		if dbent.IsNotFound(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return userEntityToService(m), nil
+}
+
+// UpdateReferralCode 更新用户推广码
+func (r *userRepository) UpdateReferralCode(ctx context.Context, userID int64, code string) error {
+	client := clientFromContext(ctx, r.client)
+	_, err := client.User.UpdateOneID(userID).SetReferralCode(code).Save(ctx)
+	if err != nil {
+		return translatePersistenceError(err, service.ErrUserNotFound, nil)
+	}
+	return nil
+}
+
+// UpdateReferredBy 设置用户的推荐人
+func (r *userRepository) UpdateReferredBy(ctx context.Context, userID int64, referrerID int64) error {
+	client := clientFromContext(ctx, r.client)
+	_, err := client.User.UpdateOneID(userID).SetReferredBy(referrerID).Save(ctx)
+	if err != nil {
+		return translatePersistenceError(err, service.ErrUserNotFound, nil)
+	}
+	return nil
+}
+
+// IsFirstRecharge 检查用户是否首次充值（total_recharged == 0 时为首次）
+func (r *userRepository) IsFirstRecharge(ctx context.Context, userID int64) (bool, error) {
+	u, err := r.client.User.Get(ctx, userID)
+	if err != nil {
+		return false, translatePersistenceError(err, service.ErrUserNotFound, nil)
+	}
+	return u.TotalRecharged == 0, nil
+}
+
+// ListActiveUserIDs 列出全部未删除用户 ID（用于批量发放赠送余额）
+func (r *userRepository) ListActiveUserIDs(ctx context.Context) ([]int64, error) {
+	users, err := r.client.User.Query().
+		Where(dbuser.DeletedAtIsNil()).
+		Select(dbuser.FieldID).
+		Ints(ctx)
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]int64, 0, len(users))
+	for _, id := range users {
+		ids = append(ids, int64(id))
+	}
+	return ids, nil
 }

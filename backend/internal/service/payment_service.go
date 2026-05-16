@@ -43,7 +43,7 @@ const (
 	topUsersLimit      = 10
 	amountToleranceCNY = 0.01
 
-	orderIDPrefix = "sub2_"
+	defaultOrderIDPrefix = "sub2_"
 
 	paymentFulfillmentTimeout = 30 * time.Second
 	paymentStateUpdateTimeout = 10 * time.Second
@@ -53,10 +53,13 @@ const (
 
 // generateOutTradeNo creates a unique external order ID for payment providers.
 // Format: sub2_20250409aB3kX9mQ (prefix + date + 8-char random)
-func generateOutTradeNo() string {
+func generateOutTradeNo(prefix string) string {
+	if prefix == "" {
+		prefix = defaultOrderIDPrefix
+	}
 	date := time.Now().Format("20060102")
 	rnd := generateRandomString(8)
-	return orderIDPrefix + date + rnd
+	return prefix + date + rnd
 }
 
 func generateRandomString(n int) string {
@@ -69,16 +72,17 @@ func generateRandomString(n int) string {
 }
 
 type CreateOrderRequest struct {
-	UserID      int64
-	Amount      float64
-	PaymentType string
-	ClientIP    string
-	IsMobile    bool
-	SrcHost     string
-	SrcURL      string
-	OrderType   string
-	PlanID      int64
-	PromotionID int64 // 用户选择的促销活动 ID（0 表示不使用）
+	UserID           int64
+	Amount           float64
+	PaymentType      string
+	ClientIP         string
+	IsMobile         bool
+	SrcHost          string
+	SrcURL           string
+	OrderType        string
+	PlanID           int64
+	PromotionID      int64  // 用户选择的促销活动 ID（0 表示不使用）
+	SubscriptionMode string // extend / stack（订阅续费模式，仅订阅订单有效）
 }
 
 type CreateOrderResponse struct {
@@ -168,18 +172,29 @@ type TopUserStat struct {
 // --- Service ---
 
 type PaymentService struct {
-	providerMu        sync.Mutex
-	providersLoaded   bool
-	entClient         *dbent.Client
-	registry          *payment.Registry
-	loadBalancer      payment.LoadBalancer
-	redeemService     *RedeemService
-	subscriptionSvc   *SubscriptionService
-	configService     *PaymentConfigService
-	userRepo          UserRepository
-	groupRepo         GroupRepository
-	promotionRepo     PromotionRepository
-	promotionResolver *PromotionResolver
+	providerMu             sync.Mutex
+	providersLoaded        bool
+	entClient              *dbent.Client
+	registry               *payment.Registry
+	loadBalancer           payment.LoadBalancer
+	redeemService          *RedeemService
+	subscriptionSvc        *SubscriptionService
+	configService          *PaymentConfigService
+	userRepo               UserRepository
+	groupRepo              GroupRepository
+	referralService        *ReferralService
+	salesCommissionService *SalesCommissionService
+	promotionRepo          PromotionRepository
+	promotionResolver      *PromotionResolver
+}
+
+// SetReferralService 注入推广奖励服务（避免循环依赖）
+func (s *PaymentService) SetReferralService(svc *ReferralService) {
+	s.referralService = svc
+}
+
+func (s *PaymentService) SetSalesCommissionService(svc *SalesCommissionService) {
+	s.salesCommissionService = svc
 }
 
 func NewPaymentService(

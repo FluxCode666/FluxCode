@@ -149,6 +149,8 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 				user.FieldBalanceNotifyThreshold,
 				user.FieldBalanceNotifyExtraEmails,
 				user.FieldTotalRecharged,
+				user.FieldIsSales,
+				user.FieldSalesCommissionRate,
 			)
 		}).
 		WithGroup(func(q *dbent.GroupQuery) {
@@ -663,6 +665,10 @@ func userEntityToService(u *dbent.User) *service.User {
 		BalanceNotifyThresholdType: u.BalanceNotifyThresholdType,
 		BalanceNotifyThreshold:     u.BalanceNotifyThreshold,
 		TotalRecharged:             u.TotalRecharged,
+		IsSales:                    u.IsSales,
+		SalesCommissionRate:        u.SalesCommissionRate,
+		ReferralCode:               u.ReferralCode,
+		ReferredBy:                 u.ReferredBy,
 		CreatedAt:                  u.CreatedAt,
 		UpdatedAt:                  u.UpdatedAt,
 	}

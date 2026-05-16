@@ -603,6 +603,7 @@ func TestAPIContracts(t *testing.T) {
 					"payment_balance_disabled": false,
 					"payment_balance_recharge_multiplier": 0,
 					"payment_recharge_fee_rate": 0,
+					"payment_order_id_prefix": "",
 					"payment_load_balance_strategy": "",
 					"payment_product_name_prefix": "",
 					"payment_product_name_suffix": "",

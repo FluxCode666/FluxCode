@@ -2,7 +2,7 @@
   <div class="min-h-screen bg-[#faf7f2] text-gray-900 dark:bg-dark-950 dark:text-gray-100">
     <PublicHeader :site-name="siteName" :site-logo="siteLogo" />
 
-    <main id="top" class="pt-24">
+    <main id="top">
       <!-- Hero（参考 HOPCC：居中排版 + 暖色背景） -->
       <section class="relative overflow-hidden">
         <div class="pointer-events-none absolute inset-0">
@@ -11,7 +11,7 @@
           <div class="absolute inset-0 opacity-[0.35] [background-image:radial-gradient(rgba(0,0,0,0.06)_1px,transparent_1px)] [background-size:24px_24px] dark:opacity-[0.08]"></div>
         </div>
 
-        <div class="relative mx-auto max-w-4xl px-6 py-24 text-center sm:py-28">
+        <div class="relative mx-auto max-w-4xl px-6 pb-24 pt-36 text-center sm:pb-28 sm:pt-40">
           <h1 class="text-6xl font-extrabold tracking-tight text-gray-900 dark:text-white sm:text-7xl">
             <span class="relative inline-block">
               <!-- 标题右上渐变光晕 -->

@@ -34,13 +34,14 @@
         <ToggleSwitch :label="t('common.enabled')" :checked="form.enabled" @toggle="form.enabled = !form.enabled" />
         <ToggleSwitch :label="t('admin.settings.payment.refundEnabled')" :checked="form.refund_enabled" @toggle="form.refund_enabled = !form.refund_enabled; if (!form.refund_enabled) form.allow_user_refund = false" />
         <ToggleSwitch v-if="form.refund_enabled" :label="t('admin.settings.payment.allowUserRefund')" :checked="form.allow_user_refund" @toggle="form.allow_user_refund = !form.allow_user_refund" />
-        <div v-if="form.provider_key === 'easypay'" class="flex items-center gap-2">
+        <div v-if="showPaymentMode" class="flex items-center gap-2">
           <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.settings.payment.paymentMode') }}</span>
           <div class="flex gap-1.5">
             <button
               v-for="mode in paymentModeOptions"
               :key="mode.value"
               type="button"
+              :title="mode.hint"
               @click="form.payment_mode = mode.value"
               :class="[
                 'rounded-lg border px-2.5 py-1 text-xs font-medium transition-all',
@@ -221,6 +222,10 @@ import {
   WEBHOOK_PATHS,
   PAYMENT_MODE_QRCODE,
   PAYMENT_MODE_POPUP,
+  PAYMENT_MODE_WAP,
+  PAYMENT_MODE_AUTO,
+  defaultPaymentMode,
+  providerSupportsPaymentMode,
   getAvailableTypes,
   extractBaseUrl,
 } from './providerConfig'
@@ -278,7 +283,16 @@ const stripeWebhookUrl = computed(() =>
 
 const callbackPaths = computed(() => PROVIDER_CALLBACK_PATHS[form.provider_key] || null)
 
-const paymentModeOptions = computed(() => {
+const showPaymentMode = computed(() => providerSupportsPaymentMode(form.provider_key))
+
+const paymentModeOptions = computed<{ value: string; label: string; hint?: string }[]>(() => {
+  if (form.provider_key === 'alipay') {
+    return [
+      { value: PAYMENT_MODE_QRCODE, label: t('admin.settings.payment.modeQRCode'), hint: t('admin.settings.payment.modeAlipayQRCodeHint') },
+      { value: PAYMENT_MODE_WAP, label: t('admin.settings.payment.modeWap'), hint: t('admin.settings.payment.modeAlipayWapHint') },
+      { value: PAYMENT_MODE_AUTO, label: t('admin.settings.payment.modeAuto'), hint: t('admin.settings.payment.modeAlipayAutoHint') },
+    ]
+  }
   return [
     { value: PAYMENT_MODE_QRCODE, label: t('admin.settings.payment.modeQRCode') },
     { value: PAYMENT_MODE_POPUP, label: t('admin.settings.payment.modePopup') },
@@ -434,7 +448,7 @@ function handleSave() {
     name: form.name,
     supported_types: form.supported_types,
     enabled: form.enabled,
-    payment_mode: form.provider_key === 'easypay' ? form.payment_mode : '',
+    payment_mode: providerSupportsPaymentMode(form.provider_key) ? form.payment_mode : '',
     refund_enabled: form.refund_enabled,
     allow_user_refund: form.refund_enabled ? form.allow_user_refund : false,
     config: filteredConfig,
@@ -454,7 +468,7 @@ function reset(defaultKey: string) {
   form.provider_key = defaultKey
   form.supported_types = [...(PROVIDER_SUPPORTED_TYPES[defaultKey] || [])]
   form.enabled = true
-  form.payment_mode = defaultKey === 'easypay' ? PAYMENT_MODE_QRCODE : ''
+  form.payment_mode = defaultPaymentMode(defaultKey)
   form.refund_enabled = false
   form.allow_user_refund = false
   clearConfig()
@@ -466,7 +480,7 @@ function loadProvider(provider: ProviderInstance) {
   form.provider_key = provider.provider_key
   form.supported_types = Array.isArray(provider.supported_types) ? [...provider.supported_types] : []
   form.enabled = provider.enabled
-  form.payment_mode = provider.payment_mode || (provider.provider_key === 'easypay' ? PAYMENT_MODE_QRCODE : '')
+  form.payment_mode = provider.payment_mode || defaultPaymentMode(provider.provider_key)
   form.refund_enabled = provider.refund_enabled
   form.allow_user_refund = provider.allow_user_refund
   clearConfig()

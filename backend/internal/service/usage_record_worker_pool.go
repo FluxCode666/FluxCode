@@ -141,8 +141,10 @@ func NewUsageRecordWorkerPoolWithOptions(opts UsageRecordWorkerPoolOptions) *Usa
 }
 
 // Submit 提交一个使用量记录任务。
+// baseCtx 里的请求级 metadata（如 trace_id / request_id）会透传到异步任务中，
+// 同时使用独立 timeout，避免请求取消后任务立即中断。
 // 提交失败（队列满）时按 overflowPolicy 执行降级策略：drop/sample/sync。
-func (p *UsageRecordWorkerPool) Submit(task UsageRecordTask) UsageRecordSubmitMode {
+func (p *UsageRecordWorkerPool) Submit(baseCtx context.Context, task UsageRecordTask) UsageRecordSubmitMode {
 	if p == nil || task == nil {
 		return UsageRecordSubmitModeDropped
 	}
@@ -153,7 +155,7 @@ func (p *UsageRecordWorkerPool) Submit(task UsageRecordTask) UsageRecordSubmitMo
 	}
 
 	_, ok := p.pool.TrySubmit(func() {
-		p.execute(task)
+		p.execute(baseCtx, task)
 	})
 	if ok {
 		return UsageRecordSubmitModeEnqueued
@@ -168,12 +170,12 @@ func (p *UsageRecordWorkerPool) Submit(task UsageRecordTask) UsageRecordSubmitMo
 	switch p.overflowPolicy {
 	case config.UsageRecordOverflowPolicySync:
 		p.syncFallback.Add(1)
-		p.execute(task)
+		p.execute(baseCtx, task)
 		return UsageRecordSubmitModeSync
 	case config.UsageRecordOverflowPolicySample:
 		if p.shouldSyncFallback() {
 			p.syncFallback.Add(1)
-			p.execute(task)
+			p.execute(baseCtx, task)
 			return UsageRecordSubmitModeSync
 		}
 	}
@@ -314,8 +316,8 @@ func (p *UsageRecordWorkerPool) shouldSyncFallback() bool {
 	return int((n-1)%100) < p.overflowSamplePercent
 }
 
-func (p *UsageRecordWorkerPool) execute(task UsageRecordTask) {
-	ctx, cancel := context.WithTimeout(context.Background(), p.taskTimeout)
+func (p *UsageRecordWorkerPool) execute(baseCtx context.Context, task UsageRecordTask) {
+	ctx, cancel := NewDetachedUsageRecordContext(baseCtx, p.taskTimeout)
 	defer cancel()
 
 	defer func() {
@@ -328,6 +330,16 @@ func (p *UsageRecordWorkerPool) execute(task UsageRecordTask) {
 	}()
 
 	task(ctx)
+}
+
+// NewDetachedUsageRecordContext preserves request-scoped values while detaching from request cancellation.
+func NewDetachedUsageRecordContext(baseCtx context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
+	if baseCtx == nil {
+		baseCtx = context.Background()
+	} else {
+		baseCtx = context.WithoutCancel(baseCtx)
+	}
+	return context.WithTimeout(baseCtx, timeout)
 }
 
 func (p *UsageRecordWorkerPool) logDrop(reason string) {

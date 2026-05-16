@@ -36,12 +36,36 @@ export const PROVIDER_SUPPORTED_TYPES: Record<string, string[]> = {
 /** Available payment modes for EasyPay providers. */
 export const EASYPAY_PAYMENT_MODES = ['qrcode', 'popup'] as const
 
+/** Available payment modes for direct Alipay providers.
+ *  - qrcode: 当面付 / trade.precreate (always returns a QR payload)
+ *  - wap: 手机网站支付 / trade.wap.pay (always redirects, requires the WAP product)
+ *  - auto: legacy behaviour, switch by User-Agent
+ */
+export const ALIPAY_PAYMENT_MODES = ['qrcode', 'wap', 'auto'] as const
+
+/** Provider keys that expose the payment_mode selector in the admin UI. */
+export const PROVIDERS_WITH_PAYMENT_MODE = ['easypay', 'alipay'] as const
+
 /** Fixed display order for user-facing payment methods */
 export const METHOD_ORDER = ['alipay', 'alipay_direct', 'wxpay', 'wxpay_direct', 'stripe'] as const
 
 /** Payment mode constants */
 export const PAYMENT_MODE_QRCODE = 'qrcode'
 export const PAYMENT_MODE_POPUP = 'popup'
+export const PAYMENT_MODE_WAP = 'wap'
+export const PAYMENT_MODE_AUTO = 'auto'
+
+/** Returns true when this provider key supports a payment_mode selector. */
+export function providerSupportsPaymentMode(providerKey: string): boolean {
+  return (PROVIDERS_WITH_PAYMENT_MODE as readonly string[]).includes(providerKey)
+}
+
+/** Default payment_mode for a given provider key (used when creating new instances). */
+export function defaultPaymentMode(providerKey: string): string {
+  if (providerKey === 'easypay') return PAYMENT_MODE_QRCODE
+  if (providerKey === 'alipay') return PAYMENT_MODE_QRCODE
+  return ''
+}
 
 /** Window features for payment popup windows */
 export const POPUP_WINDOW_FEATURES = 'width=1000,height=750,left=100,top=80,scrollbars=yes,resizable=yes'

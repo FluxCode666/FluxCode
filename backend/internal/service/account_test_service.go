@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -1159,6 +1160,12 @@ func (s *AccountTestService) testOpenAIImageOAuth(c *gin.Context, ctx context.Co
 	c.Writer.Flush()
 
 	s.sendEvent(c, TestEvent{Type: "test_start", Model: modelID})
+
+	// Free OAuth accounts use ChatGPT Web pipeline
+	if isOpenAIFreeAccount(account) {
+		return s.testOpenAIImageChatGPTWeb(c, ctx, account, modelID, prompt)
+	}
+
 	s.sendEvent(c, TestEvent{Type: "content", Text: "Calling Codex /responses image tool...\n"})
 
 	parsed := &OpenAIImagesRequest{
@@ -1232,6 +1239,90 @@ func (s *AccountTestService) testOpenAIImageOAuth(c *gin.Context, ctx context.Co
 			Type:     "image",
 			ImageURL: "data:" + mimeType + ";base64," + item.Result,
 			MimeType: mimeType,
+		})
+	}
+
+	s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
+	return nil
+}
+
+// testOpenAIImageChatGPTWeb tests image generation using the ChatGPT Web pipeline for free OAuth accounts.
+func (s *AccountTestService) testOpenAIImageChatGPTWeb(c *gin.Context, ctx context.Context, account *Account, modelID, prompt string) error {
+	s.sendEvent(c, TestEvent{Type: "content", Text: "Using ChatGPT Web image pipeline (free account)...\n"})
+
+	authToken := account.GetOpenAIAccessToken()
+	proxyURL := account.EffectiveProxyURL()
+
+	webClient := newChatGPTWebClient(authToken, proxyURL)
+
+	// Bootstrap
+	s.sendEvent(c, TestEvent{Type: "content", Text: "Bootstrap...\n"})
+	if err := webClient.bootstrap(ctx); err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Bootstrap failed: %s", err.Error()))
+	}
+
+	// Sentinel
+	s.sendEvent(c, TestEvent{Type: "content", Text: "Sentinel...\n"})
+	requirements, err := webClient.sentinel(ctx)
+	if err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Sentinel failed: %s", err.Error()))
+	}
+
+	// Prepare
+	s.sendEvent(c, TestEvent{Type: "content", Text: "Prepare...\n"})
+	conduitToken, err := webClient.prepare(ctx, prompt, modelID, requirements)
+	if err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Prepare failed: %s", err.Error()))
+	}
+
+	// Generate
+	s.sendEvent(c, TestEvent{Type: "content", Text: "Generating image...\n"})
+	genResp, err := webClient.generate(ctx, prompt, modelID, requirements, conduitToken, nil)
+	if err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Generate failed: %s", err.Error()))
+	}
+	defer func() {
+		if genResp != nil && genResp.Body != nil {
+			_ = genResp.Body.Close()
+		}
+	}()
+
+	// Parse SSE
+	sseState := parseChatGPTWebSSEStream(genResp.Body)
+	if sseState.Blocked {
+		return s.sendErrorAndEnd(c, "Image generation blocked by content policy")
+	}
+
+	// Resolve image URLs (includes polling fallback when SSE yields no pointers)
+	s.sendEvent(c, TestEvent{Type: "content", Text: fmt.Sprintf("SSE done: events conversation_id=%s file_ids=%d sediment_ids=%d\n", sseState.ConversationID, len(sseState.FileIDs), len(sseState.SedimentIDs))})
+	s.sendEvent(c, TestEvent{Type: "content", Text: "Resolving image URLs...\n"})
+	imageURLs, err := webClient.resolveImageURLs(ctx, sseState)
+	if err != nil || len(imageURLs) == 0 {
+		errMsg := "No image pointers in response"
+		if sseState.Text != "" {
+			errMsg = sseState.Text
+		}
+		if err != nil {
+			errMsg = fmt.Sprintf("Failed to resolve image URLs: %s", err.Error())
+		}
+		return s.sendErrorAndEnd(c, errMsg)
+	}
+
+	imageDataList, err := webClient.downloadImages(ctx, imageURLs)
+	if err != nil || len(imageDataList) == 0 {
+		errMsg := "Failed to download images"
+		if err != nil {
+			errMsg = err.Error()
+		}
+		return s.sendErrorAndEnd(c, errMsg)
+	}
+
+	for _, imgData := range imageDataList {
+		b64 := base64.StdEncoding.EncodeToString(imgData)
+		s.sendEvent(c, TestEvent{
+			Type:     "image",
+			ImageURL: "data:image/png;base64," + b64,
+			MimeType: "image/png",
 		})
 	}
 

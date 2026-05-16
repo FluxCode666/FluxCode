@@ -270,6 +270,7 @@ func TestGatewayServiceRecordUsage_UsesFallbackRequestIDForUsageLog(t *testing.T
 	svc := newGatewayRecordUsageServiceForTest(usageRepo, userRepo, subRepo)
 
 	ctx := context.WithValue(context.Background(), ctxkey.RequestID, "gateway-local-fallback")
+	ctx = context.WithValue(ctx, ctxkey.TraceID, "trace-gateway-usage")
 	err := svc.RecordUsage(ctx, &RecordUsageInput{
 		Result: &ForwardResult{
 			RequestID: "",
@@ -287,6 +288,7 @@ func TestGatewayServiceRecordUsage_UsesFallbackRequestIDForUsageLog(t *testing.T
 
 	require.NoError(t, err)
 	require.NotNil(t, usageRepo.lastLog)
+	require.Equal(t, "trace-gateway-usage", usageRepo.lastLog.TraceID)
 	require.Equal(t, "local:gateway-local-fallback", usageRepo.lastLog.RequestID)
 }
 

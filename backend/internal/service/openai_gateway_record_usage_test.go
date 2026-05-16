@@ -560,6 +560,7 @@ func TestOpenAIGatewayServiceRecordUsage_UsesFallbackRequestIDForBillingAndUsage
 	svc := newOpenAIRecordUsageServiceWithBillingRepoForTest(usageRepo, billingRepo, userRepo, subRepo, nil)
 
 	ctx := context.WithValue(context.Background(), ctxkey.RequestID, "req-local-fallback")
+	ctx = context.WithValue(ctx, ctxkey.TraceID, "trace-openai-usage")
 	err := svc.RecordUsage(ctx, &OpenAIRecordUsageInput{
 		Result: &OpenAIForwardResult{
 			RequestID: "",
@@ -579,6 +580,7 @@ func TestOpenAIGatewayServiceRecordUsage_UsesFallbackRequestIDForBillingAndUsage
 	require.NotNil(t, billingRepo.lastCmd)
 	require.Equal(t, "local:req-local-fallback", billingRepo.lastCmd.RequestID)
 	require.NotNil(t, usageRepo.lastLog)
+	require.Equal(t, "trace-openai-usage", usageRepo.lastLog.TraceID)
 	require.Equal(t, "local:req-local-fallback", usageRepo.lastLog.RequestID)
 }
 

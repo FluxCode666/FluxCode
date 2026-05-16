@@ -87,6 +87,10 @@ func (PaymentOrder) Fields() []ent.Field {
 		field.Int("subscription_days").
 			Optional().
 			Nillable(),
+		field.String("subscription_mode").
+			MaxLen(16).
+			Optional().
+			Nillable(),
 		field.String("provider_instance_id").
 			Optional().
 			Nillable().

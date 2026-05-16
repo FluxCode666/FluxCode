@@ -203,11 +203,12 @@ func (h *PaymentHandler) GetLimits(c *gin.Context) {
 
 // CreateOrderRequest is the request body for creating a payment order.
 type CreateOrderRequest struct {
-	Amount      float64 `json:"amount"`
-	PaymentType string  `json:"payment_type" binding:"required"`
-	OrderType   string  `json:"order_type"`
-	PlanID      int64   `json:"plan_id"`
-	PromotionID int64   `json:"promotion_id"`
+	Amount           float64 `json:"amount"`
+	PaymentType      string  `json:"payment_type" binding:"required"`
+	OrderType        string  `json:"order_type"`
+	PlanID           int64   `json:"plan_id"`
+	PromotionID      int64   `json:"promotion_id"`
+	SubscriptionMode string  `json:"subscription_mode" binding:"omitempty,oneof=extend stack"`
 }
 
 // PreviewOrderRequest 用户端下单前预览促销折扣的请求体
@@ -261,16 +262,17 @@ func (h *PaymentHandler) CreateOrder(c *gin.Context) {
 	}
 
 	result, err := h.paymentService.CreateOrder(c.Request.Context(), service.CreateOrderRequest{
-		UserID:      subject.UserID,
-		Amount:      req.Amount,
-		PaymentType: req.PaymentType,
-		ClientIP:    c.ClientIP(),
-		IsMobile:    isMobile(c),
-		SrcHost:     c.Request.Host,
-		SrcURL:      c.Request.Referer(),
-		OrderType:   req.OrderType,
-		PlanID:      req.PlanID,
-		PromotionID: req.PromotionID,
+		UserID:           subject.UserID,
+		Amount:           req.Amount,
+		PaymentType:      req.PaymentType,
+		ClientIP:         c.ClientIP(),
+		IsMobile:         isMobile(c),
+		SrcHost:          c.Request.Host,
+		SrcURL:           c.Request.Referer(),
+		OrderType:        req.OrderType,
+		PlanID:           req.PlanID,
+		PromotionID:      req.PromotionID,
+		SubscriptionMode: req.SubscriptionMode,
 	})
 	if err != nil {
 		response.ErrorFrom(c, err)

@@ -25,6 +25,7 @@ const (
 	SettingBalancePayDisabled  = "BALANCE_PAYMENT_DISABLED"
 	SettingBalanceRechargeMult = "BALANCE_RECHARGE_MULTIPLIER"
 	SettingRechargeFeeRate     = "RECHARGE_FEE_RATE"
+	SettingOrderIDPrefix       = "ORDER_ID_PREFIX"
 	SettingProductNamePrefix   = "PRODUCT_NAME_PREFIX"
 	SettingProductNameSuffix   = "PRODUCT_NAME_SUFFIX"
 	SettingHelpImageURL        = "PAYMENT_HELP_IMAGE_URL"
@@ -54,6 +55,7 @@ type PaymentConfig struct {
 	BalanceDisabled           bool     `json:"balance_disabled"`
 	BalanceRechargeMultiplier float64  `json:"balance_recharge_multiplier"`
 	RechargeFeeRate           float64  `json:"recharge_fee_rate"`
+	OrderIDPrefix             string   `json:"order_id_prefix"`
 	LoadBalanceStrategy       string   `json:"load_balance_strategy"`
 	ProductNamePrefix         string   `json:"product_name_prefix"`
 	ProductNameSuffix         string   `json:"product_name_suffix"`
@@ -81,6 +83,7 @@ type UpdatePaymentConfigRequest struct {
 	BalanceDisabled           *bool    `json:"balance_disabled"`
 	BalanceRechargeMultiplier *float64 `json:"balance_recharge_multiplier"`
 	RechargeFeeRate           *float64 `json:"recharge_fee_rate"`
+	OrderIDPrefix             *string  `json:"order_id_prefix"`
 	LoadBalanceStrategy       *string  `json:"load_balance_strategy"`
 	ProductNamePrefix         *string  `json:"product_name_prefix"`
 	ProductNameSuffix         *string  `json:"product_name_suffix"`
@@ -192,7 +195,7 @@ func (s *PaymentConfigService) GetPaymentConfig(ctx context.Context) (*PaymentCo
 		SettingPaymentEnabled, SettingMinRechargeAmount, SettingMaxRechargeAmount,
 		SettingDailyRechargeLimit, SettingOrderTimeoutMinutes, SettingMaxPendingOrders,
 		SettingEnabledPaymentTypes, SettingBalancePayDisabled, SettingBalanceRechargeMult, SettingRechargeFeeRate, SettingLoadBalanceStrategy,
-		SettingProductNamePrefix, SettingProductNameSuffix,
+		SettingOrderIDPrefix, SettingProductNamePrefix, SettingProductNameSuffix,
 		SettingHelpImageURL, SettingHelpText,
 		SettingCancelRateLimitOn, SettingCancelRateLimitMax,
 		SettingCancelWindowSize, SettingCancelWindowUnit, SettingCancelWindowMode,
@@ -218,6 +221,7 @@ func (s *PaymentConfigService) parsePaymentConfig(vals map[string]string) *Payme
 		BalanceDisabled:           vals[SettingBalancePayDisabled] == "true",
 		BalanceRechargeMultiplier: normalizeBalanceRechargeMultiplier(pcParseFloat(vals[SettingBalanceRechargeMult], defaultBalanceRechargeMultiplier)),
 		RechargeFeeRate:           pcParseFloat(vals[SettingRechargeFeeRate], 0),
+		OrderIDPrefix:             normalizeOrderIDPrefix(vals[SettingOrderIDPrefix]),
 		LoadBalanceStrategy:       vals[SettingLoadBalanceStrategy],
 		ProductNamePrefix:         vals[SettingProductNamePrefix],
 		ProductNameSuffix:         vals[SettingProductNameSuffix],
@@ -281,6 +285,11 @@ func (s *PaymentConfigService) UpdatePaymentConfig(ctx context.Context, req Upda
 			return infraerrors.BadRequest("INVALID_RECHARGE_FEE_RATE", "recharge fee rate allows at most 2 decimal places")
 		}
 	}
+	if req.OrderIDPrefix != nil {
+		if err := validateOrderIDPrefix(*req.OrderIDPrefix); err != nil {
+			return err
+		}
+	}
 	m := map[string]string{
 		SettingPaymentEnabled:      formatBoolOrEmpty(req.Enabled),
 		SettingMinRechargeAmount:   formatPositiveFloat(req.MinAmount),
@@ -291,6 +300,7 @@ func (s *PaymentConfigService) UpdatePaymentConfig(ctx context.Context, req Upda
 		SettingBalancePayDisabled:  formatBoolOrEmpty(req.BalanceDisabled),
 		SettingBalanceRechargeMult: formatPositiveFloat(req.BalanceRechargeMultiplier),
 		SettingRechargeFeeRate:     formatNonNegativeFloat(req.RechargeFeeRate),
+		SettingOrderIDPrefix:       normalizeOrderIDPrefix(derefStr(req.OrderIDPrefix)),
 		SettingLoadBalanceStrategy: derefStr(req.LoadBalanceStrategy),
 		SettingProductNamePrefix:   derefStr(req.ProductNamePrefix),
 		SettingProductNameSuffix:   derefStr(req.ProductNameSuffix),
@@ -343,6 +353,31 @@ func derefStr(v *string) string {
 		return ""
 	}
 	return *v
+}
+
+func normalizeOrderIDPrefix(v string) string {
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return defaultOrderIDPrefix
+	}
+	return v
+}
+
+func validateOrderIDPrefix(v string) error {
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return nil
+	}
+	if len(v) > 16 {
+		return infraerrors.BadRequest("INVALID_ORDER_ID_PREFIX", "order id prefix must be at most 16 characters")
+	}
+	for _, r := range v {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_' || r == '-' {
+			continue
+		}
+		return infraerrors.BadRequest("INVALID_ORDER_ID_PREFIX", "order id prefix may only contain letters, numbers, underscore, and hyphen")
+	}
+	return nil
 }
 
 func splitTypes(s string) []string {

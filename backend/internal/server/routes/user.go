@@ -47,6 +47,29 @@ func RegisterUserRoutes(
 				totp.POST("/enable", h.Totp.Enable)
 				totp.POST("/disable", h.Totp.Disable)
 			}
+
+		}
+
+		// 推广中心（与设计文档对齐：/api/v1/referral/*）
+		if h.Referral != nil {
+			referral := authenticated.Group("/referral")
+			{
+				referral.GET("/info", h.Referral.GetReferralInfo)
+				referral.POST("/generate-code", h.Referral.GenerateReferralCode)
+				referral.GET("/invites", h.Referral.GetMyReferrals)
+				referral.GET("/stats", h.Referral.GetMyStats)
+				referral.GET("/gift-balance", h.Referral.GetMyGiftBalanceRecords)
+				referral.GET("/gift-balance/remaining", h.Referral.GetGiftBalanceRemaining)
+				referral.GET("/gift-balance/summary", h.Referral.GetMyGiftBalanceSummary)
+			}
+		}
+
+		if h.SalesCommission != nil {
+			salesCommissions := authenticated.Group("/sales-commissions")
+			{
+				salesCommissions.GET("/summary", h.SalesCommission.GetSummary)
+				salesCommissions.GET("/records", h.SalesCommission.ListRecords)
+			}
 		}
 
 		// API Key管理

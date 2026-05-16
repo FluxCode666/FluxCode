@@ -11,6 +11,7 @@ import (
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/shopspring/decimal"
 )
 
 type usageBillingRepository struct {
@@ -339,14 +340,37 @@ func allocateUsageBillingSubscriptionGrants(ctx context.Context, tx *sql.Tx, sub
 }
 
 func deductUsageBillingBalance(ctx context.Context, tx *sql.Tx, userID int64, amount float64) (float64, error) {
+	// 优先从赠送余额扣减（FIFO：按创建时间升序）
+	giftDeducted := deductGiftBalanceFIFO(ctx, tx, userID, amount)
+	remainingCost := amount - giftDeducted
+
+	// 不足部分从正常余额扣减
+	if remainingCost > 0.0001 { // 避免浮点精度问题
+		var newBalance float64
+		err := tx.QueryRowContext(ctx, `
+			UPDATE users
+			SET balance = balance - $1,
+				updated_at = NOW()
+			WHERE id = $2 AND deleted_at IS NULL
+			RETURNING balance
+		`, remainingCost, userID).Scan(&newBalance)
+		if errors.Is(err, sql.ErrNoRows) {
+			return 0, service.ErrUserNotFound
+		}
+		if err != nil {
+			return 0, err
+		}
+		if err := unlockSalesCommissionFIFO(ctx, tx, userID, remainingCost); err != nil {
+			return 0, err
+		}
+		return newBalance, nil
+	}
+
+	// 全部从赠送余额扣减，查询当前正常余额
 	var newBalance float64
 	err := tx.QueryRowContext(ctx, `
-		UPDATE users
-		SET balance = balance - $1,
-			updated_at = NOW()
-		WHERE id = $2 AND deleted_at IS NULL
-		RETURNING balance
-	`, amount, userID).Scan(&newBalance)
+		SELECT balance FROM users WHERE id = $1 AND deleted_at IS NULL
+	`, userID).Scan(&newBalance)
 	if errors.Is(err, sql.ErrNoRows) {
 		return 0, service.ErrUserNotFound
 	}
@@ -354,6 +378,136 @@ func deductUsageBillingBalance(ctx context.Context, tx *sql.Tx, userID int64, am
 		return 0, err
 	}
 	return newBalance, nil
+}
+
+func unlockSalesCommissionFIFO(ctx context.Context, tx *sql.Tx, refereeUserID int64, ordinaryUsageAmount float64) error {
+	if ordinaryUsageAmount <= 0.0001 {
+		return nil
+	}
+
+	rows, err := tx.QueryContext(ctx, `
+		SELECT scr.id, scr.order_credited_amount, scr.credited_used_amount, scr.commission_total_cny, scr.unlocked_cny
+		FROM sales_commission_records scr
+		JOIN payment_orders po ON po.id = scr.payment_order_id
+		WHERE scr.referee_user_id = $1
+			AND po.status = $2
+			AND scr.status <> $3
+			AND scr.credited_used_amount < scr.order_credited_amount
+		ORDER BY scr.id ASC
+		FOR UPDATE
+	`, refereeUserID, service.OrderStatusCompleted, service.SalesCommissionStatusSettlementBlocked)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	type commissionRow struct {
+		id                  int64
+		orderCreditedAmount float64
+		creditedUsedAmount  float64
+		commissionTotalCNY  float64
+		unlockedCNY         float64
+	}
+	var records []commissionRow
+	for rows.Next() {
+		var r commissionRow
+		if err := rows.Scan(&r.id, &r.orderCreditedAmount, &r.creditedUsedAmount, &r.commissionTotalCNY, &r.unlockedCNY); err != nil {
+			return err
+		}
+		records = append(records, r)
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	remaining := decimal.NewFromFloat(ordinaryUsageAmount)
+	for _, rec := range records {
+		if remaining.LessThanOrEqual(decimal.Zero) {
+			break
+		}
+
+		orderCredited := decimal.NewFromFloat(rec.orderCreditedAmount)
+		alreadyUsed := decimal.NewFromFloat(rec.creditedUsedAmount)
+		available := orderCredited.Sub(alreadyUsed)
+		if available.LessThanOrEqual(decimal.Zero) || orderCredited.LessThanOrEqual(decimal.Zero) {
+			continue
+		}
+
+		allocated := remaining
+		if available.LessThan(allocated) {
+			allocated = available
+		}
+		newUsed := alreadyUsed.Add(allocated).Round(8)
+		totalCommission := decimal.NewFromFloat(rec.commissionTotalCNY)
+		unlockDelta := allocated.Div(orderCredited).Mul(totalCommission).Round(2)
+		newUnlocked := decimal.NewFromFloat(rec.unlockedCNY).Add(unlockDelta).Round(2)
+		if newUsed.GreaterThanOrEqual(orderCredited) {
+			newUsed = orderCredited.Round(8)
+			newUnlocked = totalCommission.Round(2)
+		}
+
+		status := service.SalesCommissionStatusPartialUnlocked
+		if newUnlocked.GreaterThanOrEqual(totalCommission) {
+			status = service.SalesCommissionStatusUnlocked
+		}
+
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE sales_commission_records
+			SET credited_used_amount = $1, unlocked_cny = $2, status = $3, updated_at = NOW()
+			WHERE id = $4
+		`, newUsed.InexactFloat64(), newUnlocked.InexactFloat64(), status, rec.id); err != nil {
+			return err
+		}
+		remaining = remaining.Sub(allocated)
+	}
+	return nil
+}
+
+// deductGiftBalanceFIFO 在事务内按 FIFO 扣减赠送余额，返回实际扣减金额
+func deductGiftBalanceFIFO(ctx context.Context, tx *sql.Tx, userID int64, amount float64) float64 {
+	rows, err := tx.QueryContext(ctx,
+		`SELECT id, remaining FROM gift_balance_records
+		 WHERE user_id = $1 AND remaining > 0 AND (expires_at IS NULL OR expires_at > NOW())
+		 ORDER BY COALESCE(expires_at, '2099-12-31'::timestamptz) ASC, id ASC FOR UPDATE`, userID)
+	if err != nil {
+		return 0
+	}
+	defer rows.Close()
+
+	var totalDeducted float64
+	remaining := amount
+	type record struct {
+		id        int64
+		remaining float64
+	}
+	var records []record
+	for rows.Next() {
+		var r record
+		if err := rows.Scan(&r.id, &r.remaining); err != nil {
+			return totalDeducted
+		}
+		records = append(records, r)
+	}
+	rows.Close()
+
+	for _, rec := range records {
+		if remaining <= 0 {
+			break
+		}
+		deduct := rec.remaining
+		if deduct > remaining {
+			deduct = remaining
+		}
+		newRemaining := rec.remaining - deduct
+		if _, err := tx.ExecContext(ctx,
+			`UPDATE gift_balance_records SET remaining = $1, updated_at = NOW() WHERE id = $2`,
+			newRemaining, rec.id); err != nil {
+			return totalDeducted
+		}
+		totalDeducted += deduct
+		remaining -= deduct
+	}
+	return totalDeducted
 }
 
 func incrementUsageBillingAPIKeyQuota(ctx context.Context, tx *sql.Tx, apiKeyID int64, amount float64) (bool, error) {

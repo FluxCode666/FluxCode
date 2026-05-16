@@ -88,6 +88,22 @@ func (User) Fields() []ent.Field {
 		field.Float("total_recharged").
 			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"}).
 			Default(0),
+
+		// 销售佣金
+		field.Bool("is_sales").
+			Default(false),
+		field.Float("sales_commission_rate").
+			SchemaType(map[string]string{dialect.Postgres: "decimal(8,4)"}).
+			Validate(validateSalesCommissionRate).
+			Default(0),
+
+		// 推广奖励字段
+		field.String("referral_code").
+			MaxLen(20).
+			Default(""),
+		field.Int64("referred_by").
+			Optional().
+			Nillable(),
 	}
 }
 

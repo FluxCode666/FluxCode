@@ -54,6 +54,12 @@ func RegisterAuthRoutes(
 		auth.POST("/validate-invitation-code", rateLimiter.LimitWithOptions("validate-invitation", 10, time.Minute, middleware.RateLimitOptions{
 			FailureMode: middleware.RateLimitFailClose,
 		}), h.Auth.ValidateInvitationCode)
+		// 推广码验证接口
+		if h.Referral != nil {
+			auth.GET("/validate-referral-code", rateLimiter.LimitWithOptions("validate-referral", 10, time.Minute, middleware.RateLimitOptions{
+				FailureMode: middleware.RateLimitFailClose,
+			}), h.Referral.ValidateReferralCode)
+		}
 		// 忘记密码接口添加速率限制：每分钟最多 5 次（Redis 故障时 fail-close）
 		auth.POST("/forgot-password", rateLimiter.LimitWithOptions("forgot-password", 5, time.Minute, middleware.RateLimitOptions{
 			FailureMode: middleware.RateLimitFailClose,

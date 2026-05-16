@@ -10,6 +10,8 @@ const messages: Record<string, string> = {
   'admin.usage.outputCost': 'Output Cost',
   'admin.usage.cacheCreationCost': 'Cache Creation Cost',
   'admin.usage.cacheReadCost': 'Cache Read Cost',
+  'admin.usage.traceId': 'Trace ID',
+  'admin.usage.upstreamRequestId': 'Upstream Request ID',
   'usage.inputTokenPrice': 'Input price',
   'usage.outputTokenPrice': 'Output price',
   'usage.perMillionTokens': '/ 1M tokens',
@@ -40,6 +42,8 @@ const DataTableStub = {
     <div>
       <div v-for="row in data" :key="row.request_id">
         <slot name="cell-model" :row="row" :value="row.model" />
+        <slot name="cell-trace_id" :row="row" :value="row.trace_id" />
+        <slot name="cell-request_id" :row="row" :value="row.request_id" />
         <slot name="cell-cost" :row="row" />
       </div>
     </div>
@@ -146,5 +150,45 @@ describe('admin UsageTable tooltip', () => {
     const text = wrapper.text()
     expect(text).toContain('claude-sonnet-4')
     expect(text).toContain('claude-sonnet-4-20250514')
+  })
+
+  it('shows trace id and upstream request id separately for admin rows', () => {
+    const row = {
+      trace_id: 'trace-admin-1',
+      request_id: 'req-upstream-1',
+      model: 'claude-sonnet-4',
+      actual_cost: 0,
+      total_cost: 0,
+      account_rate_multiplier: 1,
+      rate_multiplier: 1,
+      input_cost: 0,
+      output_cost: 0,
+      cache_creation_cost: 0,
+      cache_read_cost: 0,
+      input_tokens: 0,
+      output_tokens: 0,
+    }
+
+    const wrapper = mount(UsageTable, {
+      props: {
+        data: [row],
+        loading: false,
+        columns: [],
+      },
+      global: {
+        stubs: {
+          DataTable: DataTableStub,
+          EmptyState: true,
+          Icon: true,
+          Teleport: true,
+        },
+      },
+    })
+
+    const text = wrapper.text()
+    expect(text).toContain('Trace ID')
+    expect(text).toContain('trace-admin-1')
+    expect(text).toContain('Upstream Request ID')
+    expect(text).toContain('req-upstream-1')
   })
 })

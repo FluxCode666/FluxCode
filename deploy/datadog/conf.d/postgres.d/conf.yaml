@@ -1,0 +1,9 @@
+init_config:
+
+instances:
+  - host: "%%env_PG_MONITOR_HOST%%"
+    port: "%%env_PG_MONITOR_PORT%%"
+    username: "%%env_PG_MONITOR_USER%%"
+    password: "%%env_PG_MONITOR_PASSWORD%%"
+    dbname: "%%env_PG_MONITOR_DB%%"
+    ssl: "disable"

@@ -219,6 +219,38 @@
                   </div>
                 </div>
               </div>
+              <div v-if="needsModeChoice" class="card p-6">
+                <div class="space-y-3">
+                  <div>
+                    <h3 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('payment.subscriptionModeTitle') }}</h3>
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('payment.subscriptionModeDesc') }}</p>
+                  </div>
+                  <div class="space-y-2">
+                    <button
+                      type="button"
+                      class="w-full rounded-xl border px-4 py-3 text-left transition-colors"
+                      :class="subscriptionMode === 'extend'
+                        ? 'border-primary-500 bg-primary-50 dark:border-primary-400 dark:bg-primary-500/10'
+                        : 'border-gray-200 hover:bg-gray-50 dark:border-dark-600 dark:hover:bg-dark-800'"
+                      @click="subscriptionMode = 'extend'"
+                    >
+                      <p class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('payment.subscriptionModeExtend') }}</p>
+                      <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('payment.subscriptionModeExtendDesc', { days: selectedPlan.validity_days }) }}</p>
+                    </button>
+                    <button
+                      type="button"
+                      class="w-full rounded-xl border px-4 py-3 text-left transition-colors"
+                      :class="subscriptionMode === 'stack'
+                        ? 'border-primary-500 bg-primary-50 dark:border-primary-400 dark:bg-primary-500/10'
+                        : 'border-gray-200 hover:bg-gray-50 dark:border-dark-600 dark:hover:bg-dark-800'"
+                      @click="subscriptionMode = 'stack'"
+                    >
+                      <p class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('payment.subscriptionModeStack') }}</p>
+                      <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('payment.subscriptionModeStackDesc', { days: selectedPlan.validity_days }) }}</p>
+                    </button>
+                  </div>
+                </div>
+              </div>
               <div v-if="enabledMethods.length >= 1" class="card p-6">
                 <PaymentMethodSelector
                   :methods="subMethodOptions"
@@ -428,6 +460,7 @@ const activeTab = ref<'recharge' | 'subscription'>('recharge')
 const amount = ref<number | null>(null)
 const selectedMethod = ref('')
 const selectedPlan = ref<SubscriptionPlan | null>(null)
+const subscriptionMode = ref<'extend' | 'stack' | ''>('')
 const previewImage = ref('')
 
 // Promotion state
@@ -606,6 +639,12 @@ const subMethodOptions = computed<PaymentMethodOption[]>(() => {
   })
 })
 
+const needsModeChoice = computed(() => {
+  const plan = selectedPlan.value
+  if (!plan) return false
+  return activeSubscriptions.value.some(sub => sub.group_id === plan.group_id && sub.status === 'active')
+})
+
 const subFeeAmount = computed(() => {
   const price = selectedPlan.value?.price ?? 0
   if (feeRate.value <= 0 || price <= 0) return 0
@@ -641,6 +680,7 @@ const canSubmitSubscription = computed(() =>
   selectedPlan.value !== null
     && amountFitsMethod(selectedPlan.value.price, selectedMethod.value)
     && selectedLimit.value?.available !== false
+    && (!needsModeChoice.value || subscriptionMode.value !== '')
 )
 
 // Auto-switch to first available method when current selection can't handle the amount
@@ -729,6 +769,7 @@ watch(selectedPromotionId, (id) => {
 watch(selectedPlan, (plan) => {
   subSelectedPromotionId.value = null
   subPromoPreview.value = null
+  subscriptionMode.value = ''
   if (!plan) {
     subAvailablePromotions.value = []
     return
@@ -800,10 +841,10 @@ async function handleSubmitRecharge() {
 
 async function confirmSubscribe() {
   if (!selectedPlan.value || submitting.value) return
-  await createOrder(selectedPlan.value.price, 'subscription', selectedPlan.value.id)
+  await createOrder(selectedPlan.value.price, 'subscription', selectedPlan.value.id, needsModeChoice.value ? subscriptionMode.value : '')
 }
 
-async function createOrder(orderAmount: number, orderType: OrderType, planId?: number) {
+async function createOrder(orderAmount: number, orderType: OrderType, planId?: number, subscriptionModeValue?: 'extend' | 'stack' | '') {
   submitting.value = true
   errorMessage.value = ''
   try {
@@ -814,6 +855,7 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
       order_type: orderType,
       plan_id: planId,
       promotion_id: promotionId || undefined,
+      subscription_mode: subscriptionModeValue || undefined,
     })
     const openWindow = (url: string) => {
       const win = window.open(url, 'paymentPopup', POPUP_WINDOW_FEATURES)

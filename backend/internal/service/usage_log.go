@@ -1,9 +1,12 @@
 package service
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 )
 
 const (
@@ -96,6 +99,7 @@ type UsageLog struct {
 	UserID    int64
 	APIKeyID  int64
 	AccountID int64
+	TraceID   string
 	RequestID string
 	Model     string
 	// RequestedModel is the client-requested model name recorded for stable user/admin display.
@@ -196,4 +200,14 @@ func (u *UsageLog) SyncRequestTypeAndLegacyFields() {
 	requestType := u.EffectiveRequestType()
 	u.RequestType = requestType
 	u.Stream, u.OpenAIWSMode = ApplyLegacyRequestFields(requestType, u.Stream, u.OpenAIWSMode)
+}
+
+func resolveUsageLogTraceID(ctx context.Context) string {
+	if ctx == nil {
+		return ""
+	}
+	if traceID, _ := ctx.Value(ctxkey.TraceID).(string); strings.TrimSpace(traceID) != "" {
+		return strings.TrimSpace(traceID)
+	}
+	return ""
 }

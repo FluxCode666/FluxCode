@@ -30,6 +30,8 @@ import poolMonitorAPI from './poolMonitor'
 import tlsFingerprintProfileAPI from './tlsFingerprintProfile'
 import channelsAPI from './channels'
 import adminPaymentAPI from './payment'
+import adminReferralAPI from './referral'
+import adminSalesCommissionsAPI from './salesCommissions'
 
 /**
  * Unified admin API object for convenient access
@@ -61,7 +63,9 @@ export const adminAPI = {
   poolMonitor: poolMonitorAPI,
   tlsFingerprintProfiles: tlsFingerprintProfileAPI,
   channels: channelsAPI,
-  payment: adminPaymentAPI
+  payment: adminPaymentAPI,
+  referral: adminReferralAPI,
+  salesCommissions: adminSalesCommissionsAPI
 }
 
 export {
@@ -91,7 +95,9 @@ export {
   poolMonitorAPI,
   tlsFingerprintProfileAPI,
   channelsAPI,
-  adminPaymentAPI
+  adminPaymentAPI,
+  adminReferralAPI,
+  adminSalesCommissionsAPI
 }
 
 export default adminAPI

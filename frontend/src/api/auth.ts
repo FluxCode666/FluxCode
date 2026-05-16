@@ -285,6 +285,24 @@ export async function validateInvitationCode(code: string): Promise<ValidateInvi
 }
 
 /**
+ * Validate referral code response
+ */
+export interface ValidateReferralCodeResponse {
+  valid: boolean
+  error_code?: string
+}
+
+/**
+ * Validate referral code (public endpoint, no auth required)
+ * @param code - Referral code to validate
+ * @returns Validation result
+ */
+export async function validateReferralCode(code: string): Promise<ValidateReferralCodeResponse> {
+  const { data } = await apiClient.get<ValidateReferralCodeResponse>('/auth/validate-referral-code', { params: { code } })
+  return data
+}
+
+/**
  * Forgot password request
  */
 export interface ForgotPasswordRequest {
@@ -398,6 +416,7 @@ export const authAPI = {
   sendVerifyCode,
   validatePromoCode,
   validateInvitationCode,
+  validateReferralCode,
   forgotPassword,
   resetPassword,
   refreshToken,

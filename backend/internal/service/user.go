@@ -37,6 +37,14 @@ type User struct {
 	BalanceNotifyExtraEmails   []NotifyEmailEntry
 	TotalRecharged             float64
 
+	// 销售佣金
+	IsSales             bool
+	SalesCommissionRate float64
+
+	// 推广奖励
+	ReferralCode string // 用户的推广码
+	ReferredBy   *int64 // 邀请人用户 ID
+
 	APIKeys       []APIKey
 	Subscriptions []UserSubscription
 }

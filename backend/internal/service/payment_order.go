@@ -206,7 +206,7 @@ func (s *PaymentService) createOrderInTx(ctx context.Context, req CreateOrderReq
 		SetPayAmount(comp.PayAmount).
 		SetFeeRate(comp.FeeRate).
 		SetRechargeCode("").
-		SetOutTradeNo(generateOutTradeNo()).
+		SetOutTradeNo(generateOutTradeNo(cfg.OrderIDPrefix)).
 		SetPaymentType(req.PaymentType).
 		SetPaymentTradeNo("").
 		SetOrderType(req.OrderType).
@@ -224,6 +224,9 @@ func (s *PaymentService) createOrderInTx(ctx context.Context, req CreateOrderReq
 	}
 	if plan != nil {
 		b.SetPlanID(plan.ID).SetSubscriptionGroupID(plan.GroupID).SetSubscriptionDays(psComputeValidityDays(plan.ValidityDays, plan.ValidityUnit))
+	}
+	if req.SubscriptionMode != "" {
+		b.SetSubscriptionMode(req.SubscriptionMode)
 	}
 	order, err := b.Save(ctx)
 	if err != nil {

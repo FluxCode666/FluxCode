@@ -55,6 +55,14 @@ type User struct {
 	BalanceNotifyExtraEmails string `json:"balance_notify_extra_emails,omitempty"`
 	// TotalRecharged holds the value of the "total_recharged" field.
 	TotalRecharged float64 `json:"total_recharged,omitempty"`
+	// IsSales holds the value of the "is_sales" field.
+	IsSales bool `json:"is_sales,omitempty"`
+	// SalesCommissionRate holds the value of the "sales_commission_rate" field.
+	SalesCommissionRate float64 `json:"sales_commission_rate,omitempty"`
+	// ReferralCode holds the value of the "referral_code" field.
+	ReferralCode string `json:"referral_code,omitempty"`
+	// ReferredBy holds the value of the "referred_by" field.
+	ReferredBy *int64 `json:"referred_by,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
 	// The values are being populated by the UserQuery when eager-loading is set.
 	Edges        UserEdges `json:"edges"`
@@ -194,13 +202,13 @@ func (*User) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case user.FieldTotpEnabled, user.FieldBalanceNotifyEnabled:
+		case user.FieldTotpEnabled, user.FieldBalanceNotifyEnabled, user.FieldIsSales:
 			values[i] = new(sql.NullBool)
-		case user.FieldBalance, user.FieldBalanceNotifyThreshold, user.FieldTotalRecharged:
+		case user.FieldBalance, user.FieldBalanceNotifyThreshold, user.FieldTotalRecharged, user.FieldSalesCommissionRate:
 			values[i] = new(sql.NullFloat64)
-		case user.FieldID, user.FieldConcurrency:
+		case user.FieldID, user.FieldConcurrency, user.FieldReferredBy:
 			values[i] = new(sql.NullInt64)
-		case user.FieldEmail, user.FieldPasswordHash, user.FieldRole, user.FieldStatus, user.FieldUsername, user.FieldNotes, user.FieldTotpSecretEncrypted, user.FieldBalanceNotifyThresholdType, user.FieldBalanceNotifyExtraEmails:
+		case user.FieldEmail, user.FieldPasswordHash, user.FieldRole, user.FieldStatus, user.FieldUsername, user.FieldNotes, user.FieldTotpSecretEncrypted, user.FieldBalanceNotifyThresholdType, user.FieldBalanceNotifyExtraEmails, user.FieldReferralCode:
 			values[i] = new(sql.NullString)
 		case user.FieldCreatedAt, user.FieldUpdatedAt, user.FieldDeletedAt, user.FieldTotpEnabledAt:
 			values[i] = new(sql.NullTime)
@@ -342,6 +350,31 @@ func (_m *User) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field total_recharged", values[i])
 			} else if value.Valid {
 				_m.TotalRecharged = value.Float64
+			}
+		case user.FieldIsSales:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field is_sales", values[i])
+			} else if value.Valid {
+				_m.IsSales = value.Bool
+			}
+		case user.FieldSalesCommissionRate:
+			if value, ok := values[i].(*sql.NullFloat64); !ok {
+				return fmt.Errorf("unexpected type %T for field sales_commission_rate", values[i])
+			} else if value.Valid {
+				_m.SalesCommissionRate = value.Float64
+			}
+		case user.FieldReferralCode:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field referral_code", values[i])
+			} else if value.Valid {
+				_m.ReferralCode = value.String
+			}
+		case user.FieldReferredBy:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field referred_by", values[i])
+			} else if value.Valid {
+				_m.ReferredBy = new(int64)
+				*_m.ReferredBy = value.Int64
 			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
@@ -498,6 +531,20 @@ func (_m *User) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("total_recharged=")
 	builder.WriteString(fmt.Sprintf("%v", _m.TotalRecharged))
+	builder.WriteString(", ")
+	builder.WriteString("is_sales=")
+	builder.WriteString(fmt.Sprintf("%v", _m.IsSales))
+	builder.WriteString(", ")
+	builder.WriteString("sales_commission_rate=")
+	builder.WriteString(fmt.Sprintf("%v", _m.SalesCommissionRate))
+	builder.WriteString(", ")
+	builder.WriteString("referral_code=")
+	builder.WriteString(_m.ReferralCode)
+	builder.WriteString(", ")
+	if v := _m.ReferredBy; v != nil {
+		builder.WriteString("referred_by=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
 	builder.WriteByte(')')
 	return builder.String()
 }

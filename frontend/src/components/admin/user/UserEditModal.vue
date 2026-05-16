@@ -37,6 +37,16 @@
         <label class="input-label">{{ t('admin.users.columns.concurrency') }}</label>
         <input v-model.number="form.concurrency" type="number" class="input" />
       </div>
+      <div class="rounded-lg border border-gray-200 p-3 dark:border-dark-700">
+        <label class="flex items-center justify-between gap-3 text-sm font-medium text-gray-700 dark:text-gray-200">
+          <span>{{ t('admin.users.sales.isSales') }}</span>
+          <input v-model="form.isSales" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
+        </label>
+        <div v-if="form.isSales" class="mt-3">
+          <label class="input-label">{{ t('admin.users.sales.commissionRate') }}</label>
+          <input v-model.number="form.salesCommissionRate" type="number" min="0.01" max="100" step="0.01" class="input" />
+        </div>
+      </div>
       <UserAttributeForm v-model="form.customAttributes" :user-id="user?.id" />
     </form>
     <template #footer>
@@ -66,11 +76,29 @@ const emit = defineEmits(['close', 'success'])
 const { t } = useI18n(); const appStore = useAppStore(); const { copyToClipboard } = useClipboard()
 
 const submitting = ref(false); const passwordCopied = ref(false)
-const form = reactive({ email: '', password: '', username: '', notes: '', concurrency: 1, customAttributes: {} as UserAttributeValuesMap })
+const form = reactive({
+  email: '',
+  password: '',
+  username: '',
+  notes: '',
+  concurrency: 1,
+  isSales: false,
+  salesCommissionRate: 0,
+  customAttributes: {} as UserAttributeValuesMap
+})
 
 watch(() => props.user, (u) => {
   if (u) {
-    Object.assign(form, { email: u.email, password: '', username: u.username || '', notes: u.notes || '', concurrency: u.concurrency, customAttributes: {} })
+    Object.assign(form, {
+      email: u.email,
+      password: '',
+      username: u.username || '',
+      notes: u.notes || '',
+      concurrency: u.concurrency,
+      isSales: !!u.is_sales,
+      salesCommissionRate: u.sales_commission_rate || 0,
+      customAttributes: {}
+    })
     passwordCopied.value = false
   }
 }, { immediate: true })
@@ -95,9 +123,20 @@ const handleUpdateUser = async () => {
     appStore.showError(t('admin.users.concurrencyMin'))
     return
   }
+  if (form.isSales && (form.salesCommissionRate <= 0 || form.salesCommissionRate > 100)) {
+    appStore.showError(t('admin.users.sales.invalidRate'))
+    return
+  }
   submitting.value = true
   try {
-    const data: any = { email: form.email, username: form.username, notes: form.notes, concurrency: form.concurrency }
+    const data: any = {
+      email: form.email,
+      username: form.username,
+      notes: form.notes,
+      concurrency: form.concurrency,
+      is_sales: form.isSales,
+      sales_commission_rate: form.isSales ? form.salesCommissionRate : 0
+    }
     if (form.password.trim()) data.password = form.password.trim()
     await adminAPI.users.update(props.user.id, data)
     if (Object.keys(form.customAttributes).length > 0) await adminAPI.userAttributes.updateUserAttributeValues(props.user.id, form.customAttributes)

@@ -145,6 +145,11 @@ func SubscriptionDays(v int) predicate.PaymentOrder {
 	return predicate.PaymentOrder(sql.FieldEQ(FieldSubscriptionDays, v))
 }
 
+// SubscriptionMode applies equality check predicate on the "subscription_mode" field. It's identical to SubscriptionModeEQ.
+func SubscriptionMode(v string) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldEQ(FieldSubscriptionMode, v))
+}
+
 // ProviderInstanceID applies equality check predicate on the "provider_instance_id" field. It's identical to ProviderInstanceIDEQ.
 func ProviderInstanceID(v string) predicate.PaymentOrder {
 	return predicate.PaymentOrder(sql.FieldEQ(FieldProviderInstanceID, v))
@@ -1308,6 +1313,81 @@ func SubscriptionDaysIsNil() predicate.PaymentOrder {
 // SubscriptionDaysNotNil applies the NotNil predicate on the "subscription_days" field.
 func SubscriptionDaysNotNil() predicate.PaymentOrder {
 	return predicate.PaymentOrder(sql.FieldNotNull(FieldSubscriptionDays))
+}
+
+// SubscriptionModeEQ applies the EQ predicate on the "subscription_mode" field.
+func SubscriptionModeEQ(v string) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldEQ(FieldSubscriptionMode, v))
+}
+
+// SubscriptionModeNEQ applies the NEQ predicate on the "subscription_mode" field.
+func SubscriptionModeNEQ(v string) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldNEQ(FieldSubscriptionMode, v))
+}
+
+// SubscriptionModeIn applies the In predicate on the "subscription_mode" field.
+func SubscriptionModeIn(vs ...string) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldIn(FieldSubscriptionMode, vs...))
+}
+
+// SubscriptionModeNotIn applies the NotIn predicate on the "subscription_mode" field.
+func SubscriptionModeNotIn(vs ...string) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldNotIn(FieldSubscriptionMode, vs...))
+}
+
+// SubscriptionModeGT applies the GT predicate on the "subscription_mode" field.
+func SubscriptionModeGT(v string) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldGT(FieldSubscriptionMode, v))
+}
+
+// SubscriptionModeGTE applies the GTE predicate on the "subscription_mode" field.
+func SubscriptionModeGTE(v string) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldGTE(FieldSubscriptionMode, v))
+}
+
+// SubscriptionModeLT applies the LT predicate on the "subscription_mode" field.
+func SubscriptionModeLT(v string) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldLT(FieldSubscriptionMode, v))
+}
+
+// SubscriptionModeLTE applies the LTE predicate on the "subscription_mode" field.
+func SubscriptionModeLTE(v string) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldLTE(FieldSubscriptionMode, v))
+}
+
+// SubscriptionModeContains applies the Contains predicate on the "subscription_mode" field.
+func SubscriptionModeContains(v string) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldContains(FieldSubscriptionMode, v))
+}
+
+// SubscriptionModeHasPrefix applies the HasPrefix predicate on the "subscription_mode" field.
+func SubscriptionModeHasPrefix(v string) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldHasPrefix(FieldSubscriptionMode, v))
+}
+
+// SubscriptionModeHasSuffix applies the HasSuffix predicate on the "subscription_mode" field.
+func SubscriptionModeHasSuffix(v string) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldHasSuffix(FieldSubscriptionMode, v))
+}
+
+// SubscriptionModeIsNil applies the IsNil predicate on the "subscription_mode" field.
+func SubscriptionModeIsNil() predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldIsNull(FieldSubscriptionMode))
+}
+
+// SubscriptionModeNotNil applies the NotNil predicate on the "subscription_mode" field.
+func SubscriptionModeNotNil() predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldNotNull(FieldSubscriptionMode))
+}
+
+// SubscriptionModeEqualFold applies the EqualFold predicate on the "subscription_mode" field.
+func SubscriptionModeEqualFold(v string) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldEqualFold(FieldSubscriptionMode, v))
+}
+
+// SubscriptionModeContainsFold applies the ContainsFold predicate on the "subscription_mode" field.
+func SubscriptionModeContainsFold(v string) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldContainsFold(FieldSubscriptionMode, v))
 }
 
 // ProviderInstanceIDEQ applies the EQ predicate on the "provider_instance_id" field.

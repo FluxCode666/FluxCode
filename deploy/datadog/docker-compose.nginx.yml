@@ -1,0 +1,42 @@
+version: "3.8"
+
+services:
+  dd-agent:
+    image: gcr.io/datadoghq/agent:7
+    container_name: dd-agent
+    restart: unless-stopped
+
+    environment:
+      DD_API_KEY: "${DD_API_KEY}"
+      DD_SITE: "ap1.datadoghq.com"
+      DD_ENV: "prod"
+      DD_HOSTNAME: "${DD_HOSTNAME:-hk-2}"
+
+      # ===== Logs =====
+      DD_LOGS_ENABLED: "true"
+      DD_LOGS_CONFIG_AUTO_MULTI_LINE_DETECTION: "true"
+      DD_LOGS_CONFIG_CONTAINER_COLLECT_ALL: "true"
+      DD_CONTAINER_EXCLUDE_LOGS: "name:dd-agent"
+
+      # ===== APM / DogStatsD =====
+      DD_DOGSTATSD_NON_LOCAL_TRAFFIC: "true"
+
+      # ===== 禁用自动 Redis（你已有手动配置）=====
+      DD_IGNORE_AUTOCONF: "redisdb"
+
+    volumes:
+      # ===== Datadog 必要 =====
+      - /opt/datadog-agent/run:/opt/datadog-agent/run:rw
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /proc/:/host/proc/:ro
+      - /sys/fs/cgroup/:/host/sys/fs/cgroup:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+
+      # 一次性挂载所有集成配置（推荐）
+      - ./conf.d:/conf.d:ro
+
+      # Nginx 日志（宿主机）
+      - /var/log/nginx:/var/log/nginx:ro
+
+    # 可选：避免权限问题（推荐开启）
+    user: root

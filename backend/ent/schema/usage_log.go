@@ -35,6 +35,10 @@ func (UsageLog) Fields() []ent.Field {
 		field.Int64("user_id"),
 		field.Int64("api_key_id"),
 		field.Int64("account_id"),
+		field.String("trace_id").
+			MaxLen(64).
+			Optional().
+			Nillable(),
 		field.String("request_id").
 			MaxLen(64).
 			NotEmpty(),
@@ -186,6 +190,7 @@ func (UsageLog) Indexes() []ent.Index {
 		index.Fields("created_at"),
 		index.Fields("model"),
 		index.Fields("requested_model"),
+		index.Fields("trace_id"),
 		index.Fields("request_id"),
 		// 复合索引用于时间范围查询
 		index.Fields("user_id", "created_at"),

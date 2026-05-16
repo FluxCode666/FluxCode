@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/stretchr/testify/require"
 )
 
@@ -21,7 +22,7 @@ func TestUsageRecordWorkerPool_SubmitEnqueued(t *testing.T) {
 	t.Cleanup(pool.Stop)
 
 	done := make(chan struct{})
-	mode := pool.Submit(func(ctx context.Context) {
+	mode := pool.Submit(context.Background(), func(ctx context.Context) {
 		close(done)
 	})
 	require.Equal(t, UsageRecordSubmitModeEnqueued, mode)
@@ -52,16 +53,16 @@ func TestUsageRecordWorkerPool_OverflowDrop(t *testing.T) {
 	started := make(chan struct{})
 	secondDone := make(chan struct{})
 
-	require.Equal(t, UsageRecordSubmitModeEnqueued, pool.Submit(func(ctx context.Context) {
+	require.Equal(t, UsageRecordSubmitModeEnqueued, pool.Submit(context.Background(), func(ctx context.Context) {
 		close(started)
 		<-block
 	}))
 	<-started
 
-	require.Equal(t, UsageRecordSubmitModeEnqueued, pool.Submit(func(ctx context.Context) {
+	require.Equal(t, UsageRecordSubmitModeEnqueued, pool.Submit(context.Background(), func(ctx context.Context) {
 		close(secondDone)
 	}))
-	require.Equal(t, UsageRecordSubmitModeDropped, pool.Submit(func(ctx context.Context) {}))
+	require.Equal(t, UsageRecordSubmitModeDropped, pool.Submit(context.Background(), func(ctx context.Context) {}))
 
 	close(block)
 	select {
@@ -90,17 +91,17 @@ func TestUsageRecordWorkerPool_OverflowSync(t *testing.T) {
 	secondDone := make(chan struct{})
 	var syncExecuted atomic.Bool
 
-	require.Equal(t, UsageRecordSubmitModeEnqueued, pool.Submit(func(ctx context.Context) {
+	require.Equal(t, UsageRecordSubmitModeEnqueued, pool.Submit(context.Background(), func(ctx context.Context) {
 		close(started)
 		<-block
 	}))
 	<-started
 
-	require.Equal(t, UsageRecordSubmitModeEnqueued, pool.Submit(func(ctx context.Context) {
+	require.Equal(t, UsageRecordSubmitModeEnqueued, pool.Submit(context.Background(), func(ctx context.Context) {
 		close(secondDone)
 	}))
 
-	mode := pool.Submit(func(ctx context.Context) {
+	mode := pool.Submit(context.Background(), func(ctx context.Context) {
 		syncExecuted.Store(true)
 	})
 	require.Equal(t, UsageRecordSubmitModeSync, mode)
@@ -133,23 +134,23 @@ func TestUsageRecordWorkerPool_OverflowSample(t *testing.T) {
 	secondDone := make(chan struct{})
 	var syncExecuted atomic.Bool
 
-	require.Equal(t, UsageRecordSubmitModeEnqueued, pool.Submit(func(ctx context.Context) {
+	require.Equal(t, UsageRecordSubmitModeEnqueued, pool.Submit(context.Background(), func(ctx context.Context) {
 		close(started)
 		<-block
 	}))
 	<-started
 
-	require.Equal(t, UsageRecordSubmitModeEnqueued, pool.Submit(func(ctx context.Context) {
+	require.Equal(t, UsageRecordSubmitModeEnqueued, pool.Submit(context.Background(), func(ctx context.Context) {
 		close(secondDone)
 	}))
 
-	firstOverflow := pool.Submit(func(ctx context.Context) {
+	firstOverflow := pool.Submit(context.Background(), func(ctx context.Context) {
 		syncExecuted.Store(true)
 	})
 	require.Equal(t, UsageRecordSubmitModeSync, firstOverflow)
 	require.True(t, syncExecuted.Load())
 
-	secondOverflow := pool.Submit(func(ctx context.Context) {})
+	secondOverflow := pool.Submit(context.Background(), func(ctx context.Context) {})
 	require.Equal(t, UsageRecordSubmitModeDropped, secondOverflow)
 
 	close(block)
@@ -175,9 +176,40 @@ func TestUsageRecordWorkerPool_SubmitAfterStop(t *testing.T) {
 	})
 
 	pool.Stop()
-	mode := pool.Submit(func(ctx context.Context) {})
+	mode := pool.Submit(context.Background(), func(ctx context.Context) {})
 	require.Equal(t, UsageRecordSubmitModeDropped, mode)
 	require.GreaterOrEqual(t, pool.Stats().DroppedPoolStopped, uint64(1))
+}
+
+func TestUsageRecordWorkerPool_SubmitPreservesContextValuesWithoutCancellation(t *testing.T) {
+	pool := NewUsageRecordWorkerPoolWithOptions(UsageRecordWorkerPoolOptions{
+		WorkerCount:           1,
+		QueueSize:             8,
+		TaskTimeout:           time.Second,
+		OverflowPolicy:        config.UsageRecordOverflowPolicyDrop,
+		OverflowSamplePercent: 0,
+	})
+	t.Cleanup(pool.Stop)
+
+	baseCtx, cancel := context.WithCancel(context.Background())
+	baseCtx = context.WithValue(baseCtx, ctxkey.TraceID, "trace-from-request")
+	cancel()
+
+	done := make(chan struct{})
+	mode := pool.Submit(baseCtx, func(ctx context.Context) {
+		defer close(done)
+		require.Equal(t, "trace-from-request", ctx.Value(ctxkey.TraceID))
+		require.NoError(t, ctx.Err())
+		_, hasDeadline := ctx.Deadline()
+		require.True(t, hasDeadline)
+	})
+	require.Equal(t, UsageRecordSubmitModeEnqueued, mode)
+
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("task not executed")
+	}
 }
 
 func TestUsageRecordWorkerPool_AutoScaleUpAndDown(t *testing.T) {
@@ -203,7 +235,7 @@ func TestUsageRecordWorkerPool_AutoScaleUpAndDown(t *testing.T) {
 
 	// 填满运行槽位 + 队列，触发扩容阈值。
 	for i := 0; i < 8; i++ {
-		require.Equal(t, UsageRecordSubmitModeEnqueued, pool.Submit(func(ctx context.Context) {
+		require.Equal(t, UsageRecordSubmitModeEnqueued, pool.Submit(context.Background(), func(ctx context.Context) {
 			<-block
 		}))
 	}
@@ -244,7 +276,7 @@ func TestUsageRecordWorkerPool_AutoScaleDownRequiresLowRunningUtilization(t *tes
 
 	block := make(chan struct{})
 	for i := 0; i < 2; i++ {
-		require.Equal(t, UsageRecordSubmitModeEnqueued, pool.Submit(func(ctx context.Context) {
+		require.Equal(t, UsageRecordSubmitModeEnqueued, pool.Submit(context.Background(), func(ctx context.Context) {
 			<-block
 		}))
 	}
@@ -261,7 +293,7 @@ func TestUsageRecordWorkerPool_AutoScaleDownRequiresLowRunningUtilization(t *tes
 
 func TestUsageRecordWorkerPool_SubmitNilReceiverAndNilTask(t *testing.T) {
 	var nilPool *UsageRecordWorkerPool
-	require.Equal(t, UsageRecordSubmitModeDropped, nilPool.Submit(func(ctx context.Context) {}))
+	require.Equal(t, UsageRecordSubmitModeDropped, nilPool.Submit(context.Background(), func(ctx context.Context) {}))
 
 	pool := NewUsageRecordWorkerPoolWithOptions(UsageRecordWorkerPoolOptions{
 		WorkerCount:           1,
@@ -273,7 +305,7 @@ func TestUsageRecordWorkerPool_SubmitNilReceiverAndNilTask(t *testing.T) {
 	})
 	t.Cleanup(pool.Stop)
 
-	require.Equal(t, UsageRecordSubmitModeDropped, pool.Submit(nil))
+	require.Equal(t, UsageRecordSubmitModeDropped, pool.Submit(context.Background(), nil))
 }
 
 func TestUsageRecordWorkerPool_AutoScaleDisabledKeepsFixedConcurrency(t *testing.T) {
@@ -299,7 +331,7 @@ func TestUsageRecordWorkerPool_AutoScaleDisabledKeepsFixedConcurrency(t *testing
 
 	block := make(chan struct{})
 	for i := 0; i < 4; i++ {
-		require.Equal(t, UsageRecordSubmitModeEnqueued, pool.Submit(func(ctx context.Context) {
+		require.Equal(t, UsageRecordSubmitModeEnqueued, pool.Submit(context.Background(), func(ctx context.Context) {
 			<-block
 		}))
 	}
@@ -449,13 +481,13 @@ func TestUsageRecordWorkerPool_Execute_PanicAndTimeout(t *testing.T) {
 	pool := &UsageRecordWorkerPool{taskTimeout: 30 * time.Millisecond}
 
 	require.NotPanics(t, func() {
-		pool.execute(func(ctx context.Context) {
+		pool.execute(context.Background(), func(ctx context.Context) {
 			panic("boom")
 		})
 	})
 
 	done := make(chan struct{})
-	pool.execute(func(ctx context.Context) {
+	pool.execute(context.Background(), func(ctx context.Context) {
 		<-ctx.Done()
 		close(done)
 	})

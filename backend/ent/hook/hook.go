@@ -81,6 +81,18 @@ func (f ErrorPassthroughRuleFunc) Mutate(ctx context.Context, m ent.Mutation) (e
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ErrorPassthroughRuleMutation", m)
 }
 
+// The GiftBalanceRecordFunc type is an adapter to allow the use of ordinary
+// function as GiftBalanceRecord mutator.
+type GiftBalanceRecordFunc func(context.Context, *ent.GiftBalanceRecordMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f GiftBalanceRecordFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.GiftBalanceRecordMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.GiftBalanceRecordMutation", m)
+}
+
 // The GroupFunc type is an adapter to allow the use of ordinary
 // function as Group mutator.
 type GroupFunc func(context.Context, *ent.GroupMutation) (ent.Value, error)
@@ -225,6 +237,54 @@ func (f RedeemCodeFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, 
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.RedeemCodeMutation", m)
 }
 
+// The ReferralFunc type is an adapter to allow the use of ordinary
+// function as Referral mutator.
+type ReferralFunc func(context.Context, *ent.ReferralMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f ReferralFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.ReferralMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ReferralMutation", m)
+}
+
+// The SalesCommissionRecordFunc type is an adapter to allow the use of ordinary
+// function as SalesCommissionRecord mutator.
+type SalesCommissionRecordFunc func(context.Context, *ent.SalesCommissionRecordMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f SalesCommissionRecordFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.SalesCommissionRecordMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.SalesCommissionRecordMutation", m)
+}
+
+// The SalesCommissionSettlementFunc type is an adapter to allow the use of ordinary
+// function as SalesCommissionSettlement mutator.
+type SalesCommissionSettlementFunc func(context.Context, *ent.SalesCommissionSettlementMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f SalesCommissionSettlementFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.SalesCommissionSettlementMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.SalesCommissionSettlementMutation", m)
+}
+
+// The SalesCommissionSettlementItemFunc type is an adapter to allow the use of ordinary
+// function as SalesCommissionSettlementItem mutator.
+type SalesCommissionSettlementItemFunc func(context.Context, *ent.SalesCommissionSettlementItemMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f SalesCommissionSettlementItemFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.SalesCommissionSettlementItemMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.SalesCommissionSettlementItemMutation", m)
+}
+
 // The SecuritySecretFunc type is an adapter to allow the use of ordinary
 // function as SecuritySecret mutator.
 type SecuritySecretFunc func(context.Context, *ent.SecuritySecretMutation) (ent.Value, error)
@@ -355,6 +415,18 @@ func (f UserAttributeValueFunc) Mutate(ctx context.Context, m ent.Mutation) (ent
 		return f(ctx, mv)
 	}
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.UserAttributeValueMutation", m)
+}
+
+// The UserReferralConfigFunc type is an adapter to allow the use of ordinary
+// function as UserReferralConfig mutator.
+type UserReferralConfigFunc func(context.Context, *ent.UserReferralConfigMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f UserReferralConfigFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.UserReferralConfigMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.UserReferralConfigMutation", m)
 }
 
 // The UserSubscriptionFunc type is an adapter to allow the use of ordinary

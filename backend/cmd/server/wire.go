@@ -98,6 +98,7 @@ func provideCleanup(
 	scheduledTestRunner *service.ScheduledTestRunnerService,
 	backupSvc *service.BackupService,
 	paymentOrderExpiry *service.PaymentOrderExpiryService,
+	giftBalanceExpiry *service.GiftBalanceExpiryService,
 ) func() {
 	return func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -243,6 +244,12 @@ func provideCleanup(
 			{"PaymentOrderExpiryService", func() error {
 				if paymentOrderExpiry != nil {
 					paymentOrderExpiry.Stop()
+				}
+				return nil
+			}},
+			{"GiftBalanceExpiryService", func() error {
+				if giftBalanceExpiry != nil {
+					giftBalanceExpiry.Stop()
 				}
 				return nil
 			}},

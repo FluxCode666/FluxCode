@@ -211,6 +211,20 @@ func (_c *PaymentOrderCreate) SetNillableSubscriptionDays(v *int) *PaymentOrderC
 	return _c
 }
 
+// SetSubscriptionMode sets the "subscription_mode" field.
+func (_c *PaymentOrderCreate) SetSubscriptionMode(v string) *PaymentOrderCreate {
+	_c.mutation.SetSubscriptionMode(v)
+	return _c
+}
+
+// SetNillableSubscriptionMode sets the "subscription_mode" field if the given value is not nil.
+func (_c *PaymentOrderCreate) SetNillableSubscriptionMode(v *string) *PaymentOrderCreate {
+	if v != nil {
+		_c.SetSubscriptionMode(*v)
+	}
+	return _c
+}
+
 // SetProviderInstanceID sets the "provider_instance_id" field.
 func (_c *PaymentOrderCreate) SetProviderInstanceID(v string) *PaymentOrderCreate {
 	_c.mutation.SetProviderInstanceID(v)
@@ -675,6 +689,11 @@ func (_c *PaymentOrderCreate) check() error {
 			return &ValidationError{Name: "order_type", err: fmt.Errorf(`ent: validator failed for field "PaymentOrder.order_type": %w`, err)}
 		}
 	}
+	if v, ok := _c.mutation.SubscriptionMode(); ok {
+		if err := paymentorder.SubscriptionModeValidator(v); err != nil {
+			return &ValidationError{Name: "subscription_mode", err: fmt.Errorf(`ent: validator failed for field "PaymentOrder.subscription_mode": %w`, err)}
+		}
+	}
 	if v, ok := _c.mutation.ProviderInstanceID(); ok {
 		if err := paymentorder.ProviderInstanceIDValidator(v); err != nil {
 			return &ValidationError{Name: "provider_instance_id", err: fmt.Errorf(`ent: validator failed for field "PaymentOrder.provider_instance_id": %w`, err)}
@@ -827,6 +846,10 @@ func (_c *PaymentOrderCreate) createSpec() (*PaymentOrder, *sqlgraph.CreateSpec)
 	if value, ok := _c.mutation.SubscriptionDays(); ok {
 		_spec.SetField(paymentorder.FieldSubscriptionDays, field.TypeInt, value)
 		_node.SubscriptionDays = &value
+	}
+	if value, ok := _c.mutation.SubscriptionMode(); ok {
+		_spec.SetField(paymentorder.FieldSubscriptionMode, field.TypeString, value)
+		_node.SubscriptionMode = &value
 	}
 	if value, ok := _c.mutation.ProviderInstanceID(); ok {
 		_spec.SetField(paymentorder.FieldProviderInstanceID, field.TypeString, value)
@@ -1284,6 +1307,24 @@ func (u *PaymentOrderUpsert) AddSubscriptionDays(v int) *PaymentOrderUpsert {
 // ClearSubscriptionDays clears the value of the "subscription_days" field.
 func (u *PaymentOrderUpsert) ClearSubscriptionDays() *PaymentOrderUpsert {
 	u.SetNull(paymentorder.FieldSubscriptionDays)
+	return u
+}
+
+// SetSubscriptionMode sets the "subscription_mode" field.
+func (u *PaymentOrderUpsert) SetSubscriptionMode(v string) *PaymentOrderUpsert {
+	u.Set(paymentorder.FieldSubscriptionMode, v)
+	return u
+}
+
+// UpdateSubscriptionMode sets the "subscription_mode" field to the value that was provided on create.
+func (u *PaymentOrderUpsert) UpdateSubscriptionMode() *PaymentOrderUpsert {
+	u.SetExcluded(paymentorder.FieldSubscriptionMode)
+	return u
+}
+
+// ClearSubscriptionMode clears the value of the "subscription_mode" field.
+func (u *PaymentOrderUpsert) ClearSubscriptionMode() *PaymentOrderUpsert {
+	u.SetNull(paymentorder.FieldSubscriptionMode)
 	return u
 }
 
@@ -2068,6 +2109,27 @@ func (u *PaymentOrderUpsertOne) UpdateSubscriptionDays() *PaymentOrderUpsertOne 
 func (u *PaymentOrderUpsertOne) ClearSubscriptionDays() *PaymentOrderUpsertOne {
 	return u.Update(func(s *PaymentOrderUpsert) {
 		s.ClearSubscriptionDays()
+	})
+}
+
+// SetSubscriptionMode sets the "subscription_mode" field.
+func (u *PaymentOrderUpsertOne) SetSubscriptionMode(v string) *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.SetSubscriptionMode(v)
+	})
+}
+
+// UpdateSubscriptionMode sets the "subscription_mode" field to the value that was provided on create.
+func (u *PaymentOrderUpsertOne) UpdateSubscriptionMode() *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.UpdateSubscriptionMode()
+	})
+}
+
+// ClearSubscriptionMode clears the value of the "subscription_mode" field.
+func (u *PaymentOrderUpsertOne) ClearSubscriptionMode() *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.ClearSubscriptionMode()
 	})
 }
 
@@ -3084,6 +3146,27 @@ func (u *PaymentOrderUpsertBulk) UpdateSubscriptionDays() *PaymentOrderUpsertBul
 func (u *PaymentOrderUpsertBulk) ClearSubscriptionDays() *PaymentOrderUpsertBulk {
 	return u.Update(func(s *PaymentOrderUpsert) {
 		s.ClearSubscriptionDays()
+	})
+}
+
+// SetSubscriptionMode sets the "subscription_mode" field.
+func (u *PaymentOrderUpsertBulk) SetSubscriptionMode(v string) *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.SetSubscriptionMode(v)
+	})
+}
+
+// UpdateSubscriptionMode sets the "subscription_mode" field to the value that was provided on create.
+func (u *PaymentOrderUpsertBulk) UpdateSubscriptionMode() *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.UpdateSubscriptionMode()
+	})
+}
+
+// ClearSubscriptionMode clears the value of the "subscription_mode" field.
+func (u *PaymentOrderUpsertBulk) ClearSubscriptionMode() *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.ClearSubscriptionMode()
 	})
 }
 

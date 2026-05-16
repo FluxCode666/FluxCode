@@ -27,7 +27,7 @@ func (s *PaymentService) HandlePaymentNotification(ctx context.Context, n *payme
 	order, err := s.entClient.PaymentOrder.Query().Where(paymentorder.OutTradeNo(n.OrderID)).Only(ctx)
 	if err != nil {
 		// Fallback: try legacy format (sub2_N where N is DB ID)
-		trimmed := strings.TrimPrefix(n.OrderID, orderIDPrefix)
+		trimmed := strings.TrimPrefix(n.OrderID, defaultOrderIDPrefix)
 		if oid, parseErr := strconv.ParseInt(trimmed, 10, 64); parseErr == nil {
 			return s.confirmPayment(ctx, oid, n.TradeNo, n.Amount, pk)
 		}
@@ -148,6 +148,7 @@ func (s *PaymentService) ExecuteBalanceFulfillment(ctx context.Context, oid int6
 		return infraerrors.NotFound("NOT_FOUND", "order not found")
 	}
 	if o.Status == OrderStatusCompleted {
+		s.handleSalesCommissionAfterBalanceCompleted(fulfillCtx, o)
 		return nil
 	}
 	if psIsRefundStatus(o.Status) {
@@ -202,7 +203,11 @@ func (s *PaymentService) doBalance(ctx context.Context, o *dbent.PaymentOrder) e
 	switch action {
 	case redeemActionSkipCompleted:
 		// Code already created and redeemed — just mark completed
-		return s.markCompleted(ctx, o, "RECHARGE_SUCCESS")
+		if err := s.markCompleted(ctx, o, "RECHARGE_SUCCESS"); err != nil {
+			return err
+		}
+		s.handleSalesCommissionAfterBalanceCompleted(ctx, o)
+		return nil
 	case redeemActionCreate:
 		rc := &RedeemCode{Code: o.RechargeCode, Type: RedeemTypeBalance, Value: o.Amount, Status: StatusUnused}
 		if err := s.redeemService.CreateCode(ctx, rc); err != nil {
@@ -211,10 +216,39 @@ func (s *PaymentService) doBalance(ctx context.Context, o *dbent.PaymentOrder) e
 	case redeemActionRedeem:
 		// Code exists but unused — skip creation, proceed to redeem
 	}
+	// 在 Redeem（会增加 TotalRecharged）之前判断是否首充
+	var isFirstRecharge bool
+	if s.referralService != nil {
+		isFirstRecharge, _ = s.userRepo.IsFirstRecharge(ctx, o.UserID)
+	}
+
 	if _, err := s.redeemService.Redeem(ctx, o.UserID, o.RechargeCode, ""); err != nil {
 		return fmt.Errorf("redeem balance: %w", err)
 	}
-	return s.markCompleted(ctx, o, "RECHARGE_SUCCESS")
+	if err := s.markCompleted(ctx, o, "RECHARGE_SUCCESS"); err != nil {
+		return err
+	}
+
+	// 充值完成后触发推广奖励
+	if s.referralService != nil {
+		if isFirstRecharge {
+			s.referralService.HandleInviterRewardOnFirstRecharge(ctx, o.UserID, o.Amount)
+		}
+		s.referralService.HandleOngoingRewardOnRecharge(ctx, o.UserID, o.Amount)
+	}
+	s.handleSalesCommissionAfterBalanceCompleted(ctx, o)
+
+	return nil
+}
+
+func (s *PaymentService) handleSalesCommissionAfterBalanceCompleted(ctx context.Context, o *dbent.PaymentOrder) {
+	if s.salesCommissionService != nil {
+		completedOrder := *o
+		completedOrder.Status = OrderStatusCompleted
+		if err := s.salesCommissionService.HandleBalanceRechargeCompleted(ctx, &completedOrder); err != nil {
+			slog.Warn("[PaymentService] create sales commission failed", "orderID", o.ID, "error", err)
+		}
+	}
 }
 
 func (s *PaymentService) markCompleted(ctx context.Context, o *dbent.PaymentOrder, auditAction string) error {
@@ -327,7 +361,21 @@ func (s *PaymentService) doSub(ctx context.Context, o *dbent.PaymentOrder) error
 		return s.markCompleted(ctx, o, "SUBSCRIPTION_SUCCESS")
 	}
 	orderNote := fmt.Sprintf("payment order %d", o.ID)
-	_, _, err = s.subscriptionSvc.AssignOrExtendSubscription(ctx, &AssignSubscriptionInput{UserID: o.UserID, GroupID: gid, ValidityDays: days, AssignedBy: 0, Notes: orderNote})
+	mode := ""
+	if o.SubscriptionMode != nil {
+		mode = *o.SubscriptionMode
+	}
+	if mode == string(SubscriptionModeExtend) || mode == string(SubscriptionModeStack) {
+		_, err = s.subscriptionSvc.ApplyRedeemSubscription(ctx, &ApplyRedeemSubscriptionInput{
+			UserID:           o.UserID,
+			GroupID:          gid,
+			ValidityDays:     days,
+			SubscriptionMode: SubscriptionMode(mode),
+			Notes:            orderNote,
+		})
+	} else {
+		_, _, err = s.subscriptionSvc.AssignOrExtendSubscription(ctx, &AssignSubscriptionInput{UserID: o.UserID, GroupID: gid, ValidityDays: days, AssignedBy: 0, Notes: orderNote})
+	}
 	if err != nil {
 		return fmt.Errorf("assign subscription: %w", err)
 	}
