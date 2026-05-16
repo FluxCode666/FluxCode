@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	pkghttputil "github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -91,11 +92,37 @@ func TestOpenAIHandleStreamingAwareError_JSONEscaping(t *testing.T) {
 	}
 }
 
+func TestOpenAIHandleStreamingAwareError_IncludesTraceIDInSSE(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	ctx := context.WithValue(req.Context(), ctxkey.TraceID, "trace-stream-1")
+	ctx = context.WithValue(ctx, ctxkey.RequestID, "request-stream-1")
+	c.Request = req.WithContext(ctx)
+
+	h := &OpenAIGatewayHandler{}
+	h.handleStreamingAwareError(c, http.StatusBadGateway, "upstream_error", "stream failed", true)
+
+	lines := strings.Split(strings.TrimSuffix(w.Body.String(), "\n\n"), "\n")
+	require.Len(t, lines, 2)
+	jsonStr := strings.TrimPrefix(lines[1], "data: ")
+
+	var parsed map[string]any
+	err := json.Unmarshal([]byte(jsonStr), &parsed)
+	require.NoError(t, err)
+	assert.Equal(t, "trace-stream-1", parsed["trace_id"])
+	assert.Equal(t, "request-stream-1", parsed["request_id"])
+}
+
 func TestOpenAIHandleStreamingAwareError_NonStreaming(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
-	c.Request = httptest.NewRequest(http.MethodGet, "/", nil)
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	ctx := context.WithValue(req.Context(), ctxkey.TraceID, "trace-response-1")
+	ctx = context.WithValue(ctx, ctxkey.RequestID, "request-response-1")
+	c.Request = req.WithContext(ctx)
 
 	h := &OpenAIGatewayHandler{}
 	h.handleStreamingAwareError(c, http.StatusBadGateway, "upstream_error", "test error", false)
@@ -110,6 +137,33 @@ func TestOpenAIHandleStreamingAwareError_NonStreaming(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, "upstream_error", errorObj["type"])
 	assert.Equal(t, "test error", errorObj["message"])
+	assert.Equal(t, "trace-response-1", parsed["trace_id"])
+	assert.Equal(t, "request-response-1", parsed["request_id"])
+}
+
+func TestGatewayErrorResponseIncludesTraceID(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	ctx := context.WithValue(req.Context(), ctxkey.TraceID, "trace-claude-1")
+	ctx = context.WithValue(ctx, ctxkey.RequestID, "request-claude-1")
+	c.Request = req.WithContext(ctx)
+
+	h := &GatewayHandler{}
+	h.errorResponse(c, http.StatusServiceUnavailable, "api_error", "Service temporarily unavailable")
+
+	assert.Equal(t, http.StatusServiceUnavailable, w.Code)
+
+	var parsed map[string]any
+	err := json.Unmarshal(w.Body.Bytes(), &parsed)
+	require.NoError(t, err)
+	errorObj, ok := parsed["error"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "api_error", errorObj["type"])
+	assert.Equal(t, "Service temporarily unavailable", errorObj["message"])
+	assert.Equal(t, "trace-claude-1", parsed["trace_id"])
+	assert.Equal(t, "request-claude-1", parsed["request_id"])
 }
 
 func TestReadRequestBodyWithPrealloc(t *testing.T) {
