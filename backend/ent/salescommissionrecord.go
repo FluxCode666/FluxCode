@@ -24,7 +24,7 @@ type SalesCommissionRecord struct {
 	// ReferralID holds the value of the "referral_id" field.
 	ReferralID int64 `json:"referral_id,omitempty"`
 	// PaymentOrderID holds the value of the "payment_order_id" field.
-	PaymentOrderID int64 `json:"payment_order_id,omitempty"`
+	PaymentOrderID *int64 `json:"payment_order_id,omitempty"`
 	// OrderPayAmountCny holds the value of the "order_pay_amount_cny" field.
 	OrderPayAmountCny float64 `json:"order_pay_amount_cny,omitempty"`
 	// OrderCreditedAmount holds the value of the "order_credited_amount" field.
@@ -33,6 +33,18 @@ type SalesCommissionRecord struct {
 	CommissionRate float64 `json:"commission_rate,omitempty"`
 	// CommissionTotalCny holds the value of the "commission_total_cny" field.
 	CommissionTotalCny float64 `json:"commission_total_cny,omitempty"`
+	// CommissionEventAt holds the value of the "commission_event_at" field.
+	CommissionEventAt *time.Time `json:"commission_event_at,omitempty"`
+	// CommissionMonth holds the value of the "commission_month" field.
+	CommissionMonth time.Time `json:"commission_month,omitempty"`
+	// SnapshotID holds the value of the "snapshot_id" field.
+	SnapshotID *int64 `json:"snapshot_id,omitempty"`
+	// CommissionMode holds the value of the "commission_mode" field.
+	CommissionMode string `json:"commission_mode,omitempty"`
+	// MonthlySalesBeforeCny holds the value of the "monthly_sales_before_cny" field.
+	MonthlySalesBeforeCny float64 `json:"monthly_sales_before_cny,omitempty"`
+	// MonthlySalesAfterCny holds the value of the "monthly_sales_after_cny" field.
+	MonthlySalesAfterCny float64 `json:"monthly_sales_after_cny,omitempty"`
 	// CreditedUsedAmount holds the value of the "credited_used_amount" field.
 	CreditedUsedAmount float64 `json:"credited_used_amount,omitempty"`
 	// UnlockedCny holds the value of the "unlocked_cny" field.
@@ -55,13 +67,13 @@ func (*SalesCommissionRecord) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case salescommissionrecord.FieldOrderPayAmountCny, salescommissionrecord.FieldOrderCreditedAmount, salescommissionrecord.FieldCommissionRate, salescommissionrecord.FieldCommissionTotalCny, salescommissionrecord.FieldCreditedUsedAmount, salescommissionrecord.FieldUnlockedCny, salescommissionrecord.FieldSettledCny:
+		case salescommissionrecord.FieldOrderPayAmountCny, salescommissionrecord.FieldOrderCreditedAmount, salescommissionrecord.FieldCommissionRate, salescommissionrecord.FieldCommissionTotalCny, salescommissionrecord.FieldMonthlySalesBeforeCny, salescommissionrecord.FieldMonthlySalesAfterCny, salescommissionrecord.FieldCreditedUsedAmount, salescommissionrecord.FieldUnlockedCny, salescommissionrecord.FieldSettledCny:
 			values[i] = new(sql.NullFloat64)
-		case salescommissionrecord.FieldID, salescommissionrecord.FieldSalesUserID, salescommissionrecord.FieldRefereeUserID, salescommissionrecord.FieldReferralID, salescommissionrecord.FieldPaymentOrderID:
+		case salescommissionrecord.FieldID, salescommissionrecord.FieldSalesUserID, salescommissionrecord.FieldRefereeUserID, salescommissionrecord.FieldReferralID, salescommissionrecord.FieldPaymentOrderID, salescommissionrecord.FieldSnapshotID:
 			values[i] = new(sql.NullInt64)
-		case salescommissionrecord.FieldStatus, salescommissionrecord.FieldNote:
+		case salescommissionrecord.FieldCommissionMode, salescommissionrecord.FieldStatus, salescommissionrecord.FieldNote:
 			values[i] = new(sql.NullString)
-		case salescommissionrecord.FieldCreatedAt, salescommissionrecord.FieldUpdatedAt:
+		case salescommissionrecord.FieldCommissionEventAt, salescommissionrecord.FieldCommissionMonth, salescommissionrecord.FieldCreatedAt, salescommissionrecord.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -106,7 +118,8 @@ func (_m *SalesCommissionRecord) assignValues(columns []string, values []any) er
 			if value, ok := values[i].(*sql.NullInt64); !ok {
 				return fmt.Errorf("unexpected type %T for field payment_order_id", values[i])
 			} else if value.Valid {
-				_m.PaymentOrderID = value.Int64
+				_m.PaymentOrderID = new(int64)
+				*_m.PaymentOrderID = value.Int64
 			}
 		case salescommissionrecord.FieldOrderPayAmountCny:
 			if value, ok := values[i].(*sql.NullFloat64); !ok {
@@ -131,6 +144,44 @@ func (_m *SalesCommissionRecord) assignValues(columns []string, values []any) er
 				return fmt.Errorf("unexpected type %T for field commission_total_cny", values[i])
 			} else if value.Valid {
 				_m.CommissionTotalCny = value.Float64
+			}
+		case salescommissionrecord.FieldCommissionEventAt:
+			if value, ok := values[i].(*sql.NullTime); !ok {
+				return fmt.Errorf("unexpected type %T for field commission_event_at", values[i])
+			} else if value.Valid {
+				_m.CommissionEventAt = new(time.Time)
+				*_m.CommissionEventAt = value.Time
+			}
+		case salescommissionrecord.FieldCommissionMonth:
+			if value, ok := values[i].(*sql.NullTime); !ok {
+				return fmt.Errorf("unexpected type %T for field commission_month", values[i])
+			} else if value.Valid {
+				_m.CommissionMonth = value.Time
+			}
+		case salescommissionrecord.FieldSnapshotID:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field snapshot_id", values[i])
+			} else if value.Valid {
+				_m.SnapshotID = new(int64)
+				*_m.SnapshotID = value.Int64
+			}
+		case salescommissionrecord.FieldCommissionMode:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field commission_mode", values[i])
+			} else if value.Valid {
+				_m.CommissionMode = value.String
+			}
+		case salescommissionrecord.FieldMonthlySalesBeforeCny:
+			if value, ok := values[i].(*sql.NullFloat64); !ok {
+				return fmt.Errorf("unexpected type %T for field monthly_sales_before_cny", values[i])
+			} else if value.Valid {
+				_m.MonthlySalesBeforeCny = value.Float64
+			}
+		case salescommissionrecord.FieldMonthlySalesAfterCny:
+			if value, ok := values[i].(*sql.NullFloat64); !ok {
+				return fmt.Errorf("unexpected type %T for field monthly_sales_after_cny", values[i])
+			} else if value.Valid {
+				_m.MonthlySalesAfterCny = value.Float64
 			}
 		case salescommissionrecord.FieldCreditedUsedAmount:
 			if value, ok := values[i].(*sql.NullFloat64); !ok {
@@ -219,8 +270,10 @@ func (_m *SalesCommissionRecord) String() string {
 	builder.WriteString("referral_id=")
 	builder.WriteString(fmt.Sprintf("%v", _m.ReferralID))
 	builder.WriteString(", ")
-	builder.WriteString("payment_order_id=")
-	builder.WriteString(fmt.Sprintf("%v", _m.PaymentOrderID))
+	if v := _m.PaymentOrderID; v != nil {
+		builder.WriteString("payment_order_id=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
 	builder.WriteString(", ")
 	builder.WriteString("order_pay_amount_cny=")
 	builder.WriteString(fmt.Sprintf("%v", _m.OrderPayAmountCny))
@@ -233,6 +286,28 @@ func (_m *SalesCommissionRecord) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("commission_total_cny=")
 	builder.WriteString(fmt.Sprintf("%v", _m.CommissionTotalCny))
+	builder.WriteString(", ")
+	if v := _m.CommissionEventAt; v != nil {
+		builder.WriteString("commission_event_at=")
+		builder.WriteString(v.Format(time.ANSIC))
+	}
+	builder.WriteString(", ")
+	builder.WriteString("commission_month=")
+	builder.WriteString(_m.CommissionMonth.Format(time.ANSIC))
+	builder.WriteString(", ")
+	if v := _m.SnapshotID; v != nil {
+		builder.WriteString("snapshot_id=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
+	builder.WriteString("commission_mode=")
+	builder.WriteString(_m.CommissionMode)
+	builder.WriteString(", ")
+	builder.WriteString("monthly_sales_before_cny=")
+	builder.WriteString(fmt.Sprintf("%v", _m.MonthlySalesBeforeCny))
+	builder.WriteString(", ")
+	builder.WriteString("monthly_sales_after_cny=")
+	builder.WriteString(fmt.Sprintf("%v", _m.MonthlySalesAfterCny))
 	builder.WriteString(", ")
 	builder.WriteString("credited_used_amount=")
 	builder.WriteString(fmt.Sprintf("%v", _m.CreditedUsedAmount))

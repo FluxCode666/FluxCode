@@ -249,6 +249,18 @@ func (f ReferralFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, er
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ReferralMutation", m)
 }
 
+// The SalesCommissionMonthlySnapshotFunc type is an adapter to allow the use of ordinary
+// function as SalesCommissionMonthlySnapshot mutator.
+type SalesCommissionMonthlySnapshotFunc func(context.Context, *ent.SalesCommissionMonthlySnapshotMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f SalesCommissionMonthlySnapshotFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.SalesCommissionMonthlySnapshotMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.SalesCommissionMonthlySnapshotMutation", m)
+}
+
 // The SalesCommissionRecordFunc type is an adapter to allow the use of ordinary
 // function as SalesCommissionRecord mutator.
 type SalesCommissionRecordFunc func(context.Context, *ent.SalesCommissionRecordMutation) (ent.Value, error)
@@ -283,6 +295,18 @@ func (f SalesCommissionSettlementItemFunc) Mutate(ctx context.Context, m ent.Mut
 		return f(ctx, mv)
 	}
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.SalesCommissionSettlementItemMutation", m)
+}
+
+// The SalesCommissionTierFunc type is an adapter to allow the use of ordinary
+// function as SalesCommissionTier mutator.
+type SalesCommissionTierFunc func(context.Context, *ent.SalesCommissionTierMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f SalesCommissionTierFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.SalesCommissionTierMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.SalesCommissionTierMutation", m)
 }
 
 // The SecuritySecretFunc type is an adapter to allow the use of ordinary

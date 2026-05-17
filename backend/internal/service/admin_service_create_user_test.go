@@ -95,3 +95,41 @@ func TestAdminService_CreateUser_AssignsDefaultSubscriptions(t *testing.T) {
 	require.Equal(t, int64(5), assigner.calls[0].GroupID)
 	require.Equal(t, 30, assigner.calls[0].ValidityDays)
 }
+
+func TestAdminService_CreateUser_WithTieredSalesCommissionConfig(t *testing.T) {
+	repo := &userRepoStub{nextID: 11}
+	svc := &adminServiceImpl{userRepo: repo}
+
+	minMonthlySales := 100.0
+	input := &CreateUserInput{
+		Email:                         "tiered-user@test.com",
+		Password:                      "strong-pass",
+		IsSales:                       true,
+		SalesCommissionMode:           SalesCommissionModeTiered,
+		SalesCommissionMinMonthlySales: minMonthlySales,
+		SalesCommissionTiers: []SalesCommissionTier{
+			{MonthSalesFromCNY: 0, MonthSalesToCNY: float64Ptr(500), CommissionRate: 10},
+			{MonthSalesFromCNY: 500, CommissionRate: 15},
+		},
+	}
+
+	user, err := svc.CreateUser(context.Background(), input)
+	require.NoError(t, err)
+	require.NotNil(t, user)
+	require.True(t, user.IsSales)
+	require.Equal(t, SalesCommissionModeTiered, user.SalesCommissionMode)
+	require.Equal(t, minMonthlySales, user.SalesCommissionMinMonthlySales)
+	require.Len(t, user.SalesCommissionTiers, 2)
+	require.Equal(t, 1, user.SalesCommissionTiers[0].SortOrder)
+	require.Equal(t, 2, user.SalesCommissionTiers[1].SortOrder)
+	require.Len(t, repo.created, 1)
+	require.Equal(t, SalesCommissionModeTiered, repo.created[0].SalesCommissionMode)
+	require.Equal(t, minMonthlySales, repo.created[0].SalesCommissionMinMonthlySales)
+	require.Len(t, repo.created[0].SalesCommissionTiers, 2)
+	require.Equal(t, 1, repo.created[0].SalesCommissionTiers[0].SortOrder)
+	require.Equal(t, 2, repo.created[0].SalesCommissionTiers[1].SortOrder)
+}
+
+func float64Ptr(v float64) *float64 {
+	return &v
+}

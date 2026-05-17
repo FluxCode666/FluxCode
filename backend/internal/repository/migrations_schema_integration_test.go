@@ -26,6 +26,8 @@ func TestMigrationsRunner_IsIdempotent_AndSchemaIsUpToDate(t *testing.T) {
 	requireColumn(t, tx, "users", "notes", "text", 0, false)
 	requireColumn(t, tx, "users", "is_sales", "boolean", 0, false)
 	requireColumn(t, tx, "users", "sales_commission_rate", "numeric", 0, false)
+	requireColumn(t, tx, "users", "sales_commission_mode", "character varying", 16, false)
+	requireColumn(t, tx, "users", "sales_commission_min_monthly_sales", "numeric", 0, false)
 	requireCheckConstraint(t, tx, "users", "chk_users_sales_commission_rate")
 
 	// accounts: schedulable and rate-limit fields
@@ -166,7 +168,7 @@ func TestMigrationsRunner_IsIdempotent_AndSchemaIsUpToDate(t *testing.T) {
 	requireColumn(t, tx, "sales_commission_records", "sales_user_id", "bigint", 0, false)
 	requireColumn(t, tx, "sales_commission_records", "referee_user_id", "bigint", 0, false)
 	requireColumn(t, tx, "sales_commission_records", "referral_id", "bigint", 0, false)
-	requireColumn(t, tx, "sales_commission_records", "payment_order_id", "bigint", 0, false)
+	requireColumn(t, tx, "sales_commission_records", "payment_order_id", "bigint", 0, true)
 	requireColumn(t, tx, "sales_commission_records", "order_pay_amount_cny", "numeric", 0, false)
 	requireColumn(t, tx, "sales_commission_records", "order_credited_amount", "numeric", 0, false)
 	requireColumn(t, tx, "sales_commission_records", "commission_rate", "numeric", 0, false)
@@ -176,18 +178,39 @@ func TestMigrationsRunner_IsIdempotent_AndSchemaIsUpToDate(t *testing.T) {
 	requireColumn(t, tx, "sales_commission_records", "settled_cny", "numeric", 0, false)
 	requireColumn(t, tx, "sales_commission_records", "status", "character varying", 32, false)
 	requireColumn(t, tx, "sales_commission_records", "note", "text", 0, false)
+	requireColumn(t, tx, "sales_commission_records", "commission_month", "date", 0, false)
+	requireColumn(t, tx, "sales_commission_records", "snapshot_id", "bigint", 0, true)
+	requireColumn(t, tx, "sales_commission_records", "commission_mode", "character varying", 16, false)
+	requireColumn(t, tx, "sales_commission_records", "commission_event_at", "timestamp with time zone", 0, true)
+	requireColumn(t, tx, "sales_commission_records", "monthly_sales_before_cny", "numeric", 0, false)
+	requireColumn(t, tx, "sales_commission_records", "monthly_sales_after_cny", "numeric", 0, false)
 	requireColumn(t, tx, "sales_commission_records", "created_at", "timestamp with time zone", 0, false)
 	requireColumn(t, tx, "sales_commission_records", "updated_at", "timestamp with time zone", 0, false)
 	requireIndex(t, tx, "sales_commission_records", "sales_commission_records_payment_order_id_key")
 	requireIndex(t, tx, "sales_commission_records", "idx_sales_commission_sales_user")
 	requireIndex(t, tx, "sales_commission_records", "idx_sales_commission_referee")
 	requireIndex(t, tx, "sales_commission_records", "idx_sales_commission_status")
+	requireIndex(t, tx, "sales_commission_records", "idx_sales_commission_records_month")
 	requireForeignKey(t, tx, "sales_commission_records", "fk_sales_commission_records_sales_user", "users")
 	requireForeignKey(t, tx, "sales_commission_records", "fk_sales_commission_records_referee_user", "users")
 	requireForeignKey(t, tx, "sales_commission_records", "fk_sales_commission_records_referral", "referrals")
 	requireForeignKey(t, tx, "sales_commission_records", "fk_sales_commission_records_payment_order", "payment_orders")
 	requireCheckConstraint(t, tx, "sales_commission_records", "chk_sales_commission_records_amounts")
 	requireCheckConstraint(t, tx, "sales_commission_records", "chk_sales_commission_records_status")
+
+	var tiersRegclass sql.NullString
+	require.NoError(t, tx.QueryRowContext(context.Background(), "SELECT to_regclass('public.sales_commission_tiers')").Scan(&tiersRegclass))
+	require.True(t, tiersRegclass.Valid, "expected sales_commission_tiers table to exist")
+	requireColumn(t, tx, "sales_commission_tiers", "month_sales_from_cny", "numeric", 0, false)
+	requireColumn(t, tx, "sales_commission_tiers", "month_sales_to_cny", "numeric", 0, true)
+	requireIndex(t, tx, "sales_commission_tiers", "idx_sales_commission_tiers_sales_user")
+
+	var snapshotsRegclass sql.NullString
+	require.NoError(t, tx.QueryRowContext(context.Background(), "SELECT to_regclass('public.sales_commission_monthly_snapshots')").Scan(&snapshotsRegclass))
+	require.True(t, snapshotsRegclass.Valid, "expected sales_commission_monthly_snapshots table to exist")
+	requireColumn(t, tx, "sales_commission_monthly_snapshots", "commission_month", "date", 0, false)
+	requireColumn(t, tx, "sales_commission_monthly_snapshots", "tiers_json", "jsonb", 0, false)
+	requireIndex(t, tx, "sales_commission_monthly_snapshots", "uq_sales_commission_monthly_snapshots")
 
 	var salesCommissionSettlementsRegclass sql.NullString
 	require.NoError(t, tx.QueryRowContext(context.Background(), "SELECT to_regclass('public.sales_commission_settlements')").Scan(&salesCommissionSettlementsRegclass))

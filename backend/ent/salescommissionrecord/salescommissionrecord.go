@@ -29,6 +29,18 @@ const (
 	FieldCommissionRate = "commission_rate"
 	// FieldCommissionTotalCny holds the string denoting the commission_total_cny field in the database.
 	FieldCommissionTotalCny = "commission_total_cny"
+	// FieldCommissionEventAt holds the string denoting the commission_event_at field in the database.
+	FieldCommissionEventAt = "commission_event_at"
+	// FieldCommissionMonth holds the string denoting the commission_month field in the database.
+	FieldCommissionMonth = "commission_month"
+	// FieldSnapshotID holds the string denoting the snapshot_id field in the database.
+	FieldSnapshotID = "snapshot_id"
+	// FieldCommissionMode holds the string denoting the commission_mode field in the database.
+	FieldCommissionMode = "commission_mode"
+	// FieldMonthlySalesBeforeCny holds the string denoting the monthly_sales_before_cny field in the database.
+	FieldMonthlySalesBeforeCny = "monthly_sales_before_cny"
+	// FieldMonthlySalesAfterCny holds the string denoting the monthly_sales_after_cny field in the database.
+	FieldMonthlySalesAfterCny = "monthly_sales_after_cny"
 	// FieldCreditedUsedAmount holds the string denoting the credited_used_amount field in the database.
 	FieldCreditedUsedAmount = "credited_used_amount"
 	// FieldUnlockedCny holds the string denoting the unlocked_cny field in the database.
@@ -58,6 +70,12 @@ var Columns = []string{
 	FieldOrderCreditedAmount,
 	FieldCommissionRate,
 	FieldCommissionTotalCny,
+	FieldCommissionEventAt,
+	FieldCommissionMonth,
+	FieldSnapshotID,
+	FieldCommissionMode,
+	FieldMonthlySalesBeforeCny,
+	FieldMonthlySalesAfterCny,
 	FieldCreditedUsedAmount,
 	FieldUnlockedCny,
 	FieldSettledCny,
@@ -86,6 +104,16 @@ var (
 	CommissionRateValidator func(float64) error
 	// CommissionTotalCnyValidator is a validator for the "commission_total_cny" field. It is called by the builders before save.
 	CommissionTotalCnyValidator func(float64) error
+	// DefaultCommissionMonth holds the default value on creation for the "commission_month" field.
+	DefaultCommissionMonth func() time.Time
+	// DefaultCommissionMode holds the default value on creation for the "commission_mode" field.
+	DefaultCommissionMode string
+	// CommissionModeValidator is a validator for the "commission_mode" field. It is called by the builders before save.
+	CommissionModeValidator func(string) error
+	// DefaultMonthlySalesBeforeCny holds the default value on creation for the "monthly_sales_before_cny" field.
+	DefaultMonthlySalesBeforeCny float64
+	// DefaultMonthlySalesAfterCny holds the default value on creation for the "monthly_sales_after_cny" field.
+	DefaultMonthlySalesAfterCny float64
 	// DefaultCreditedUsedAmount holds the default value on creation for the "credited_used_amount" field.
 	DefaultCreditedUsedAmount float64
 	// CreditedUsedAmountValidator is a validator for the "credited_used_amount" field. It is called by the builders before save.
@@ -158,6 +186,36 @@ func ByCommissionRate(opts ...sql.OrderTermOption) OrderOption {
 // ByCommissionTotalCny orders the results by the commission_total_cny field.
 func ByCommissionTotalCny(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldCommissionTotalCny, opts...).ToFunc()
+}
+
+// ByCommissionEventAt orders the results by the commission_event_at field.
+func ByCommissionEventAt(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldCommissionEventAt, opts...).ToFunc()
+}
+
+// ByCommissionMonth orders the results by the commission_month field.
+func ByCommissionMonth(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldCommissionMonth, opts...).ToFunc()
+}
+
+// BySnapshotID orders the results by the snapshot_id field.
+func BySnapshotID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldSnapshotID, opts...).ToFunc()
+}
+
+// ByCommissionMode orders the results by the commission_mode field.
+func ByCommissionMode(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldCommissionMode, opts...).ToFunc()
+}
+
+// ByMonthlySalesBeforeCny orders the results by the monthly_sales_before_cny field.
+func ByMonthlySalesBeforeCny(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldMonthlySalesBeforeCny, opts...).ToFunc()
+}
+
+// ByMonthlySalesAfterCny orders the results by the monthly_sales_after_cny field.
+func ByMonthlySalesAfterCny(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldMonthlySalesAfterCny, opts...).ToFunc()
 }
 
 // ByCreditedUsedAmount orders the results by the credited_used_amount field.

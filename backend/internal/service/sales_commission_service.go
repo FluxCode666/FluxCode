@@ -2,11 +2,13 @@ package service
 
 import (
 	"context"
+	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/payment"
-	"github.com/shopspring/decimal"
 )
+
+var salesCommissionMonthLocation = time.FixedZone("Asia/Shanghai", 8*60*60)
 
 type SalesCommissionService struct {
 	repo         SalesCommissionRepository
@@ -45,26 +47,26 @@ func (s *SalesCommissionService) HandleBalanceRechargeCompleted(ctx context.Cont
 	if err != nil {
 		return err
 	}
-	if referrer == nil || !referrer.IsSales || referrer.SalesCommissionRate <= 0 {
+	if !SalesCommissionUserEligible(referrer) {
 		return nil
 	}
 
-	commissionTotal, _ := decimal.NewFromFloat(order.PayAmount).
-		Mul(decimal.NewFromFloat(referrer.SalesCommissionRate)).
-		Div(decimal.NewFromInt(100)).
-		Round(2).
-		Float64()
+	eventAt := salesCommissionEventTimeFromOrder(order)
 
 	return s.repo.CreateForOrder(ctx, &SalesCommissionCreate{
-		SalesUserID:         ref.ReferrerID,
-		RefereeUserID:       order.UserID,
-		ReferralID:          ref.ID,
-		PaymentOrderID:      &order.ID,
-		OrderPayAmountCNY:   order.PayAmount,
-		OrderCreditedAmount: order.Amount,
-		CommissionRate:      referrer.SalesCommissionRate,
-		CommissionTotalCNY:  commissionTotal,
-		Note:                "Balance recharge commission",
+		SalesUserID:               ref.ReferrerID,
+		RefereeUserID:             order.UserID,
+		ReferralID:                ref.ID,
+		PaymentOrderID:            &order.ID,
+		OrderPayAmountCNY:         order.PayAmount,
+		OrderCreditedAmount:       order.Amount,
+		CommissionMode:            NormalizeSalesCommissionMode(referrer.SalesCommissionMode),
+		CommissionRate:            referrer.SalesCommissionRate,
+		CommissionMinMonthlySales: referrer.SalesCommissionMinMonthlySales,
+		CommissionTiers:           CloneSalesCommissionTiers(referrer.SalesCommissionTiers),
+		CommissionEventAt:         eventAt,
+		CommissionMonth:           salesCommissionMonthStart(eventAt),
+		Note:                      "Balance recharge commission",
 	})
 }
 
@@ -80,26 +82,26 @@ func (s *SalesCommissionService) HandleReferralManualCompletion(ctx context.Cont
 	if err != nil {
 		return err
 	}
-	if referrer == nil || !referrer.IsSales || referrer.SalesCommissionRate <= 0 {
+	if !SalesCommissionUserEligible(referrer) {
 		return nil
 	}
 
-	commissionTotal, _ := decimal.NewFromFloat(orderPayAmountCNY).
-		Mul(decimal.NewFromFloat(referrer.SalesCommissionRate)).
-		Div(decimal.NewFromInt(100)).
-		Round(2).
-		Float64()
+	eventAt := time.Now().UTC()
 
 	return s.repo.CreateForOrder(ctx, &SalesCommissionCreate{
-		SalesUserID:         ref.ReferrerID,
-		RefereeUserID:       ref.RefereeID,
-		ReferralID:          ref.ID,
-		PaymentOrderID:      nil,
-		OrderPayAmountCNY:   orderPayAmountCNY,
-		OrderCreditedAmount: orderCreditedAmount,
-		CommissionRate:      referrer.SalesCommissionRate,
-		CommissionTotalCNY:  commissionTotal,
-		Note:                "Referral manual completion: " + note,
+		SalesUserID:               ref.ReferrerID,
+		RefereeUserID:             ref.RefereeID,
+		ReferralID:                ref.ID,
+		PaymentOrderID:            nil,
+		OrderPayAmountCNY:         orderPayAmountCNY,
+		OrderCreditedAmount:       orderCreditedAmount,
+		CommissionMode:            NormalizeSalesCommissionMode(referrer.SalesCommissionMode),
+		CommissionRate:            referrer.SalesCommissionRate,
+		CommissionMinMonthlySales: referrer.SalesCommissionMinMonthlySales,
+		CommissionTiers:           CloneSalesCommissionTiers(referrer.SalesCommissionTiers),
+		CommissionEventAt:         eventAt,
+		CommissionMonth:           salesCommissionMonthStart(eventAt),
+		Note:                      "Referral manual completion: " + note,
 	})
 }
 
@@ -128,4 +130,25 @@ func (s *SalesCommissionService) CreateSettlement(ctx context.Context, input *Sa
 
 func (s *SalesCommissionService) ListSettlements(ctx context.Context, params SalesCommissionSettlementListParams) ([]SalesCommissionSettlement, int, error) {
 	return s.repo.ListSettlements(ctx, params)
+}
+
+func salesCommissionEventTimeFromOrder(order *dbent.PaymentOrder) time.Time {
+	if order == nil {
+		return time.Now().UTC()
+	}
+	if order.PaidAt != nil && !order.PaidAt.IsZero() {
+		return order.PaidAt.UTC()
+	}
+	if order.CompletedAt != nil && !order.CompletedAt.IsZero() {
+		return order.CompletedAt.UTC()
+	}
+	if !order.CreatedAt.IsZero() {
+		return order.CreatedAt.UTC()
+	}
+	return time.Now().UTC()
+}
+
+func salesCommissionMonthStart(eventAt time.Time) time.Time {
+	local := eventAt.In(salesCommissionMonthLocation)
+	return time.Date(local.Year(), local.Month(), 1, 0, 0, 0, 0, time.UTC)
 }

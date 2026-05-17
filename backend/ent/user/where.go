@@ -160,6 +160,16 @@ func SalesCommissionRate(v float64) predicate.User {
 	return predicate.User(sql.FieldEQ(FieldSalesCommissionRate, v))
 }
 
+// SalesCommissionMode applies equality check predicate on the "sales_commission_mode" field. It's identical to SalesCommissionModeEQ.
+func SalesCommissionMode(v string) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldSalesCommissionMode, v))
+}
+
+// SalesCommissionMinMonthlySales applies equality check predicate on the "sales_commission_min_monthly_sales" field. It's identical to SalesCommissionMinMonthlySalesEQ.
+func SalesCommissionMinMonthlySales(v float64) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldSalesCommissionMinMonthlySales, v))
+}
+
 // ReferralCode applies equality check predicate on the "referral_code" field. It's identical to ReferralCodeEQ.
 func ReferralCode(v string) predicate.User {
 	return predicate.User(sql.FieldEQ(FieldReferralCode, v))
@@ -1183,6 +1193,111 @@ func SalesCommissionRateLT(v float64) predicate.User {
 // SalesCommissionRateLTE applies the LTE predicate on the "sales_commission_rate" field.
 func SalesCommissionRateLTE(v float64) predicate.User {
 	return predicate.User(sql.FieldLTE(FieldSalesCommissionRate, v))
+}
+
+// SalesCommissionModeEQ applies the EQ predicate on the "sales_commission_mode" field.
+func SalesCommissionModeEQ(v string) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldSalesCommissionMode, v))
+}
+
+// SalesCommissionModeNEQ applies the NEQ predicate on the "sales_commission_mode" field.
+func SalesCommissionModeNEQ(v string) predicate.User {
+	return predicate.User(sql.FieldNEQ(FieldSalesCommissionMode, v))
+}
+
+// SalesCommissionModeIn applies the In predicate on the "sales_commission_mode" field.
+func SalesCommissionModeIn(vs ...string) predicate.User {
+	return predicate.User(sql.FieldIn(FieldSalesCommissionMode, vs...))
+}
+
+// SalesCommissionModeNotIn applies the NotIn predicate on the "sales_commission_mode" field.
+func SalesCommissionModeNotIn(vs ...string) predicate.User {
+	return predicate.User(sql.FieldNotIn(FieldSalesCommissionMode, vs...))
+}
+
+// SalesCommissionModeGT applies the GT predicate on the "sales_commission_mode" field.
+func SalesCommissionModeGT(v string) predicate.User {
+	return predicate.User(sql.FieldGT(FieldSalesCommissionMode, v))
+}
+
+// SalesCommissionModeGTE applies the GTE predicate on the "sales_commission_mode" field.
+func SalesCommissionModeGTE(v string) predicate.User {
+	return predicate.User(sql.FieldGTE(FieldSalesCommissionMode, v))
+}
+
+// SalesCommissionModeLT applies the LT predicate on the "sales_commission_mode" field.
+func SalesCommissionModeLT(v string) predicate.User {
+	return predicate.User(sql.FieldLT(FieldSalesCommissionMode, v))
+}
+
+// SalesCommissionModeLTE applies the LTE predicate on the "sales_commission_mode" field.
+func SalesCommissionModeLTE(v string) predicate.User {
+	return predicate.User(sql.FieldLTE(FieldSalesCommissionMode, v))
+}
+
+// SalesCommissionModeContains applies the Contains predicate on the "sales_commission_mode" field.
+func SalesCommissionModeContains(v string) predicate.User {
+	return predicate.User(sql.FieldContains(FieldSalesCommissionMode, v))
+}
+
+// SalesCommissionModeHasPrefix applies the HasPrefix predicate on the "sales_commission_mode" field.
+func SalesCommissionModeHasPrefix(v string) predicate.User {
+	return predicate.User(sql.FieldHasPrefix(FieldSalesCommissionMode, v))
+}
+
+// SalesCommissionModeHasSuffix applies the HasSuffix predicate on the "sales_commission_mode" field.
+func SalesCommissionModeHasSuffix(v string) predicate.User {
+	return predicate.User(sql.FieldHasSuffix(FieldSalesCommissionMode, v))
+}
+
+// SalesCommissionModeEqualFold applies the EqualFold predicate on the "sales_commission_mode" field.
+func SalesCommissionModeEqualFold(v string) predicate.User {
+	return predicate.User(sql.FieldEqualFold(FieldSalesCommissionMode, v))
+}
+
+// SalesCommissionModeContainsFold applies the ContainsFold predicate on the "sales_commission_mode" field.
+func SalesCommissionModeContainsFold(v string) predicate.User {
+	return predicate.User(sql.FieldContainsFold(FieldSalesCommissionMode, v))
+}
+
+// SalesCommissionMinMonthlySalesEQ applies the EQ predicate on the "sales_commission_min_monthly_sales" field.
+func SalesCommissionMinMonthlySalesEQ(v float64) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldSalesCommissionMinMonthlySales, v))
+}
+
+// SalesCommissionMinMonthlySalesNEQ applies the NEQ predicate on the "sales_commission_min_monthly_sales" field.
+func SalesCommissionMinMonthlySalesNEQ(v float64) predicate.User {
+	return predicate.User(sql.FieldNEQ(FieldSalesCommissionMinMonthlySales, v))
+}
+
+// SalesCommissionMinMonthlySalesIn applies the In predicate on the "sales_commission_min_monthly_sales" field.
+func SalesCommissionMinMonthlySalesIn(vs ...float64) predicate.User {
+	return predicate.User(sql.FieldIn(FieldSalesCommissionMinMonthlySales, vs...))
+}
+
+// SalesCommissionMinMonthlySalesNotIn applies the NotIn predicate on the "sales_commission_min_monthly_sales" field.
+func SalesCommissionMinMonthlySalesNotIn(vs ...float64) predicate.User {
+	return predicate.User(sql.FieldNotIn(FieldSalesCommissionMinMonthlySales, vs...))
+}
+
+// SalesCommissionMinMonthlySalesGT applies the GT predicate on the "sales_commission_min_monthly_sales" field.
+func SalesCommissionMinMonthlySalesGT(v float64) predicate.User {
+	return predicate.User(sql.FieldGT(FieldSalesCommissionMinMonthlySales, v))
+}
+
+// SalesCommissionMinMonthlySalesGTE applies the GTE predicate on the "sales_commission_min_monthly_sales" field.
+func SalesCommissionMinMonthlySalesGTE(v float64) predicate.User {
+	return predicate.User(sql.FieldGTE(FieldSalesCommissionMinMonthlySales, v))
+}
+
+// SalesCommissionMinMonthlySalesLT applies the LT predicate on the "sales_commission_min_monthly_sales" field.
+func SalesCommissionMinMonthlySalesLT(v float64) predicate.User {
+	return predicate.User(sql.FieldLT(FieldSalesCommissionMinMonthlySales, v))
+}
+
+// SalesCommissionMinMonthlySalesLTE applies the LTE predicate on the "sales_commission_min_monthly_sales" field.
+func SalesCommissionMinMonthlySalesLTE(v float64) predicate.User {
+	return predicate.User(sql.FieldLTE(FieldSalesCommissionMinMonthlySales, v))
 }
 
 // ReferralCodeEQ applies the EQ predicate on the "referral_code" field.

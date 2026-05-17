@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/payment"
@@ -26,13 +27,17 @@ func TestSalesCommissionService_HandleBalanceRechargeCompleted_CreatesFrozenComm
 	}
 	svc := NewSalesCommissionService(repo, refRepo, userRepo)
 
+	paidAt := time.Date(2026, 5, 31, 16, 30, 0, 0, time.UTC)
+
 	err := svc.HandleBalanceRechargeCompleted(ctx, &dbent.PaymentOrder{
-		ID:        99,
-		UserID:    20,
-		OrderType: payment.OrderTypeBalance,
-		Status:    payment.OrderStatusCompleted,
-		PayAmount: 123.456,
-		Amount:    200.12345678,
+		ID:          99,
+		UserID:      20,
+		OrderType:   payment.OrderTypeBalance,
+		Status:      payment.OrderStatusCompleted,
+		PayAmount:   123.456,
+		Amount:      200.12345678,
+		PaidAt:      &paidAt,
+		CompletedAt: &paidAt,
 	})
 
 	require.NoError(t, err)
@@ -43,10 +48,12 @@ func TestSalesCommissionService_HandleBalanceRechargeCompleted_CreatesFrozenComm
 	require.Equal(t, int64(7), repo.created[0].ReferralID)
 	require.Equal(t, 123.456, repo.created[0].OrderPayAmountCNY)
 	require.Equal(t, 200.12345678, repo.created[0].OrderCreditedAmount)
+	require.Equal(t, SalesCommissionModeFixed, repo.created[0].CommissionMode)
 	require.Equal(t, 12.5, repo.created[0].CommissionRate)
-	require.Equal(t, 15.43, repo.created[0].CommissionTotalCNY)
 	require.Equal(t, "Balance recharge commission", repo.created[0].Note)
 	require.Equal(t, int64(99), *repo.created[0].PaymentOrderID)
+	require.Equal(t, paidAt, repo.created[0].CommissionEventAt)
+	require.Equal(t, time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC), repo.created[0].CommissionMonth)
 }
 
 func TestSalesCommissionService_HandleReferralManualCompletion_CreatesCommissionRecord(t *testing.T) {
@@ -59,6 +66,8 @@ func TestSalesCommissionService_HandleReferralManualCompletion_CreatesCommission
 		},
 	}
 	svc := NewSalesCommissionService(repo, refRepo, userRepo)
+
+	before := time.Now()
 
 	err := svc.HandleReferralManualCompletion(ctx, &Referral{
 		ID:         7,
@@ -75,8 +84,76 @@ func TestSalesCommissionService_HandleReferralManualCompletion_CreatesCommission
 	require.Nil(t, repo.created[0].PaymentOrderID)
 	require.Equal(t, 123.456, repo.created[0].OrderPayAmountCNY)
 	require.Equal(t, 200.12345678, repo.created[0].OrderCreditedAmount)
-	require.Equal(t, 15.43, repo.created[0].CommissionTotalCNY)
+	require.Equal(t, SalesCommissionModeFixed, repo.created[0].CommissionMode)
 	require.Contains(t, repo.created[0].Note, "manual completion")
+	eventAt := repo.created[0].CommissionEventAt
+	after := time.Now()
+	require.False(t, eventAt.Before(before))
+	require.False(t, eventAt.After(after))
+	require.Equal(t, salesCommissionMonthStartForTest(eventAt), repo.created[0].CommissionMonth)
+}
+
+func TestSalesCommissionService_HandleBalanceRechargeCompleted_AllowsTieredSalesUserWithZeroFixedRate(t *testing.T) {
+	ctx := context.Background()
+	repo := &salesCommissionRepoStub{}
+	refRepo := &salesCommissionReferralRepoStub{
+		byReferee: map[int64]*Referral{
+			20: {ID: 7, ReferrerID: 10, RefereeID: 20},
+		},
+	}
+	userRepo := &salesCommissionUserRepoStub{
+		byID: map[int64]*User{
+			10: {
+				ID:                             10,
+				IsSales:                        true,
+				SalesCommissionMode:            SalesCommissionModeTiered,
+				SalesCommissionTiers:           []SalesCommissionTier{{MonthSalesFromCNY: 0, CommissionRate: 12}},
+				SalesCommissionRate:            0,
+				SalesCommissionMinMonthlySales: 0,
+			},
+		},
+	}
+	svc := NewSalesCommissionService(repo, refRepo, userRepo)
+
+	err := svc.HandleBalanceRechargeCompleted(ctx, completedBalanceOrder())
+
+	require.NoError(t, err)
+	require.Len(t, repo.created, 1)
+	require.Equal(t, SalesCommissionModeTiered, repo.created[0].CommissionMode)
+	require.Len(t, repo.created[0].CommissionTiers, 1)
+	require.Equal(t, 12.0, repo.created[0].CommissionTiers[0].CommissionRate)
+}
+
+func TestCalculateSalesCommission_TieredThresholdCrossing(t *testing.T) {
+	calc, err := CalculateSalesCommission(90, 60, SalesCommissionModeTiered, 0, 100, []SalesCommissionTier{
+		{MonthSalesFromCNY: 0, MonthSalesToCNY: float64Ptr(200), CommissionRate: 10},
+		{MonthSalesFromCNY: 200, CommissionRate: 20},
+	})
+
+	require.NoError(t, err)
+	require.InDelta(t, 5, calc.CommissionTotalCNY, 0.000001)
+	require.InDelta(t, 5.5556, calc.CommissionRate, 0.0001)
+	require.InDelta(t, 60, calc.MonthlySalesBeforeCNY, 0.000001)
+	require.InDelta(t, 150, calc.MonthlySalesAfterCNY, 0.000001)
+}
+
+func TestCalculateSalesCommission_FixedThresholdCrossing(t *testing.T) {
+	calc, err := CalculateSalesCommission(90, 60, SalesCommissionModeFixed, 12, 100, nil)
+
+	require.NoError(t, err)
+	require.InDelta(t, 6, calc.CommissionTotalCNY, 0.000001)
+	require.InDelta(t, 6.6667, calc.CommissionRate, 0.0001)
+	require.InDelta(t, 60, calc.MonthlySalesBeforeCNY, 0.000001)
+	require.InDelta(t, 150, calc.MonthlySalesAfterCNY, 0.000001)
+}
+
+func TestNormalizeSalesCommissionTiers_RejectsTiersAfterOpenEndedRange(t *testing.T) {
+	_, err := NormalizeSalesCommissionTiers([]SalesCommissionTier{
+		{MonthSalesFromCNY: 0, CommissionRate: 10},
+		{MonthSalesFromCNY: 500, CommissionRate: 20},
+	})
+
+	require.ErrorContains(t, err, "open-ended")
 }
 
 func TestSalesCommissionService_HandleBalanceRechargeCompleted_IgnoresIneligibleOrders(t *testing.T) {
@@ -237,13 +314,24 @@ func TestSalesCommissionService_ForwardsReadOperationsToRepository(t *testing.T)
 
 func completedBalanceOrder() *dbent.PaymentOrder {
 	return &dbent.PaymentOrder{
-		ID:        99,
-		UserID:    20,
-		OrderType: payment.OrderTypeBalance,
-		Status:    payment.OrderStatusCompleted,
-		PayAmount: 100,
-		Amount:    100,
+		ID:          99,
+		UserID:      20,
+		OrderType:   payment.OrderTypeBalance,
+		Status:      payment.OrderStatusCompleted,
+		PayAmount:   100,
+		Amount:      100,
+		CompletedAt: timePtr(time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC)),
 	}
+}
+
+func salesCommissionMonthStartForTest(eventAt time.Time) time.Time {
+	shanghai := time.FixedZone("Asia/Shanghai", 8*60*60)
+	local := eventAt.In(shanghai)
+	return time.Date(local.Year(), local.Month(), 1, 0, 0, 0, 0, time.UTC)
+}
+
+func timePtr(t time.Time) *time.Time {
+	return &t
 }
 
 type salesCommissionRepoStub struct {

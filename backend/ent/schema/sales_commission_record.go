@@ -12,6 +12,13 @@ import (
 	"entgo.io/ent/schema/index"
 )
 
+var salesCommissionMonthLocation = time.FixedZone("Asia/Shanghai", 8*60*60)
+
+func defaultSalesCommissionMonth() time.Time {
+	now := time.Now().In(salesCommissionMonthLocation)
+	return time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
+}
+
 type SalesCommissionRecord struct {
 	ent.Schema
 }
@@ -38,6 +45,21 @@ func (SalesCommissionRecord) Fields() []ent.Field {
 		field.Float("commission_total_cny").
 			SchemaType(map[string]string{dialect.Postgres: "decimal(20,2)"}).
 			Validate(validateNonNegativeSalesCommissionAmount("commission_total_cny")),
+		field.Time("commission_event_at").
+			Optional().
+			Nillable().
+			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
+		field.Time("commission_month").
+			SchemaType(map[string]string{dialect.Postgres: "date"}).
+			Default(defaultSalesCommissionMonth),
+		field.Int64("snapshot_id").Optional().Nillable(),
+		field.String("commission_mode").MaxLen(16).Default("fixed"),
+		field.Float("monthly_sales_before_cny").
+			SchemaType(map[string]string{dialect.Postgres: "decimal(20,2)"}).
+			Default(0),
+		field.Float("monthly_sales_after_cny").
+			SchemaType(map[string]string{dialect.Postgres: "decimal(20,2)"}).
+			Default(0),
 		field.Float("credited_used_amount").
 			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"}).
 			Validate(validateNonNegativeSalesCommissionAmount("credited_used_amount")).
@@ -100,5 +122,7 @@ func (SalesCommissionRecord) Indexes() []ent.Index {
 		index.Fields("sales_user_id", "created_at"),
 		index.Fields("referee_user_id", "id"),
 		index.Fields("status"),
+		index.Fields("sales_user_id", "commission_month", "commission_event_at", "id").
+			StorageKey("idx_sales_commission_records_month"),
 	}
 }

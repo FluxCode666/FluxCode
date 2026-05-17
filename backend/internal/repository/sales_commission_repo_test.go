@@ -31,13 +31,15 @@ func TestSalesCommissionRepositoryListRecordsSettleableRequiresCompletedAndUnblo
 		"referee_user_id", "referee_email", "referee_username",
 		"referral_id", "payment_order_id", "payment_order_status",
 		"order_pay_amount_cny", "order_credited_amount", "commission_rate",
+		"commission_event_at", "commission_month", "snapshot_id", "commission_mode",
+		"monthly_sales_before_cny", "monthly_sales_after_cny",
 		"commission_total_cny", "credited_used_amount", "frozen_cny",
 		"unlocked_cny", "settled_cny", "settleable_cny",
 		"status", "note", "created_at", "updated_at",
 	}).
-		AddRow(int64(1), int64(10), "sales@example.com", "sales", int64(20), "buyer@example.com", "buyer", int64(30), int64(40), payment.OrderStatusCompleted, dec("10"), dec("10"), dec("10"), dec("1"), dec("4"), dec("0.60"), dec("0.40"), dec("0.10"), dec("0.30"), service.SalesCommissionStatusPartialUnlocked, "", time.Now(), time.Now()).
-		AddRow(int64(2), int64(10), "sales@example.com", "sales", int64(21), "buyer2@example.com", "buyer2", int64(31), int64(41), payment.OrderStatusRefunded, dec("10"), dec("10"), dec("10"), dec("1"), dec("4"), dec("0.60"), dec("0.40"), dec("0.10"), dec("0"), service.SalesCommissionStatusPartialUnlocked, "", time.Now(), time.Now()).
-		AddRow(int64(3), int64(10), "sales@example.com", "sales", int64(22), "buyer3@example.com", "buyer3", int64(32), int64(42), payment.OrderStatusCompleted, dec("10"), dec("10"), dec("10"), dec("1"), dec("4"), dec("0.60"), dec("0.40"), dec("0.10"), dec("0"), service.SalesCommissionStatusSettlementBlocked, "", time.Now(), time.Now())
+		AddRow(int64(1), int64(10), "sales@example.com", "sales", int64(20), "buyer@example.com", "buyer", int64(30), int64(40), payment.OrderStatusCompleted, dec("10"), dec("10"), dec("10"), time.Date(2026, 6, 15, 8, 0, 0, 0, time.UTC), time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC), int64(51), service.SalesCommissionModeTiered, dec("90"), dec("100"), dec("1"), dec("4"), dec("0.60"), dec("0.40"), dec("0.10"), dec("0.30"), service.SalesCommissionStatusPartialUnlocked, "", time.Now(), time.Now()).
+		AddRow(int64(2), int64(10), "sales@example.com", "sales", int64(21), "buyer2@example.com", "buyer2", int64(31), int64(41), payment.OrderStatusRefunded, dec("10"), dec("10"), dec("10"), time.Date(2026, 6, 16, 8, 0, 0, 0, time.UTC), time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC), int64(51), service.SalesCommissionModeTiered, dec("100"), dec("110"), dec("1"), dec("4"), dec("0.60"), dec("0.40"), dec("0.10"), dec("0"), service.SalesCommissionStatusPartialUnlocked, "", time.Now(), time.Now()).
+		AddRow(int64(3), int64(10), "sales@example.com", "sales", int64(22), "buyer3@example.com", "buyer3", int64(32), int64(42), payment.OrderStatusCompleted, dec("10"), dec("10"), dec("10"), time.Date(2026, 6, 17, 8, 0, 0, 0, time.UTC), time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC), int64(51), service.SalesCommissionModeTiered, dec("110"), dec("120"), dec("1"), dec("4"), dec("0.60"), dec("0.40"), dec("0.10"), dec("0"), service.SalesCommissionStatusSettlementBlocked, "", time.Now(), time.Now())
 
 	mock.ExpectQuery(regexp.QuoteMeta("CASE WHEN (scr.payment_order_id IS NULL OR po.status = $2) AND scr.status <> $3 THEN scr.unlocked_cny - scr.settled_cny ELSE 0 END")).
 		WithArgs(int64(10), payment.OrderStatusCompleted, service.SalesCommissionStatusSettlementBlocked, 20, 0).
@@ -50,6 +52,13 @@ func TestSalesCommissionRepositoryListRecordsSettleableRequiresCompletedAndUnblo
 	require.InDelta(t, 0.30, records[0].SettleableCNY, 0.000001)
 	require.InDelta(t, 0, records[1].SettleableCNY, 0.000001)
 	require.InDelta(t, 0, records[2].SettleableCNY, 0.000001)
+	require.Equal(t, service.SalesCommissionModeTiered, records[0].CommissionMode)
+	require.NotNil(t, records[0].SnapshotID)
+	require.Equal(t, int64(51), *records[0].SnapshotID)
+	require.Equal(t, "2026-06-01", records[0].CommissionMonth.Format("2006-01-02"))
+	require.Equal(t, time.Date(2026, 6, 15, 8, 0, 0, 0, time.UTC), records[0].CommissionEventAt)
+	require.InDelta(t, 90, records[0].MonthlySalesBeforeCNY, 0.000001)
+	require.InDelta(t, 100, records[0].MonthlySalesAfterCNY, 0.000001)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 

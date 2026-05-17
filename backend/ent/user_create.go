@@ -309,6 +309,34 @@ func (_c *UserCreate) SetNillableSalesCommissionRate(v *float64) *UserCreate {
 	return _c
 }
 
+// SetSalesCommissionMode sets the "sales_commission_mode" field.
+func (_c *UserCreate) SetSalesCommissionMode(v string) *UserCreate {
+	_c.mutation.SetSalesCommissionMode(v)
+	return _c
+}
+
+// SetNillableSalesCommissionMode sets the "sales_commission_mode" field if the given value is not nil.
+func (_c *UserCreate) SetNillableSalesCommissionMode(v *string) *UserCreate {
+	if v != nil {
+		_c.SetSalesCommissionMode(*v)
+	}
+	return _c
+}
+
+// SetSalesCommissionMinMonthlySales sets the "sales_commission_min_monthly_sales" field.
+func (_c *UserCreate) SetSalesCommissionMinMonthlySales(v float64) *UserCreate {
+	_c.mutation.SetSalesCommissionMinMonthlySales(v)
+	return _c
+}
+
+// SetNillableSalesCommissionMinMonthlySales sets the "sales_commission_min_monthly_sales" field if the given value is not nil.
+func (_c *UserCreate) SetNillableSalesCommissionMinMonthlySales(v *float64) *UserCreate {
+	if v != nil {
+		_c.SetSalesCommissionMinMonthlySales(*v)
+	}
+	return _c
+}
+
 // SetReferralCode sets the "referral_code" field.
 func (_c *UserCreate) SetReferralCode(v string) *UserCreate {
 	_c.mutation.SetReferralCode(v)
@@ -590,6 +618,14 @@ func (_c *UserCreate) defaults() error {
 		v := user.DefaultSalesCommissionRate
 		_c.mutation.SetSalesCommissionRate(v)
 	}
+	if _, ok := _c.mutation.SalesCommissionMode(); !ok {
+		v := user.DefaultSalesCommissionMode
+		_c.mutation.SetSalesCommissionMode(v)
+	}
+	if _, ok := _c.mutation.SalesCommissionMinMonthlySales(); !ok {
+		v := user.DefaultSalesCommissionMinMonthlySales
+		_c.mutation.SetSalesCommissionMinMonthlySales(v)
+	}
 	if _, ok := _c.mutation.ReferralCode(); !ok {
 		v := user.DefaultReferralCode
 		_c.mutation.SetReferralCode(v)
@@ -679,6 +715,17 @@ func (_c *UserCreate) check() error {
 		if err := user.SalesCommissionRateValidator(v); err != nil {
 			return &ValidationError{Name: "sales_commission_rate", err: fmt.Errorf(`ent: validator failed for field "User.sales_commission_rate": %w`, err)}
 		}
+	}
+	if _, ok := _c.mutation.SalesCommissionMode(); !ok {
+		return &ValidationError{Name: "sales_commission_mode", err: errors.New(`ent: missing required field "User.sales_commission_mode"`)}
+	}
+	if v, ok := _c.mutation.SalesCommissionMode(); ok {
+		if err := user.SalesCommissionModeValidator(v); err != nil {
+			return &ValidationError{Name: "sales_commission_mode", err: fmt.Errorf(`ent: validator failed for field "User.sales_commission_mode": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.SalesCommissionMinMonthlySales(); !ok {
+		return &ValidationError{Name: "sales_commission_min_monthly_sales", err: errors.New(`ent: missing required field "User.sales_commission_min_monthly_sales"`)}
 	}
 	if _, ok := _c.mutation.ReferralCode(); !ok {
 		return &ValidationError{Name: "referral_code", err: errors.New(`ent: missing required field "User.referral_code"`)}
@@ -798,6 +845,14 @@ func (_c *UserCreate) createSpec() (*User, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.SalesCommissionRate(); ok {
 		_spec.SetField(user.FieldSalesCommissionRate, field.TypeFloat64, value)
 		_node.SalesCommissionRate = value
+	}
+	if value, ok := _c.mutation.SalesCommissionMode(); ok {
+		_spec.SetField(user.FieldSalesCommissionMode, field.TypeString, value)
+		_node.SalesCommissionMode = value
+	}
+	if value, ok := _c.mutation.SalesCommissionMinMonthlySales(); ok {
+		_spec.SetField(user.FieldSalesCommissionMinMonthlySales, field.TypeFloat64, value)
+		_node.SalesCommissionMinMonthlySales = value
 	}
 	if value, ok := _c.mutation.ReferralCode(); ok {
 		_spec.SetField(user.FieldReferralCode, field.TypeString, value)
@@ -1317,6 +1372,36 @@ func (u *UserUpsert) AddSalesCommissionRate(v float64) *UserUpsert {
 	return u
 }
 
+// SetSalesCommissionMode sets the "sales_commission_mode" field.
+func (u *UserUpsert) SetSalesCommissionMode(v string) *UserUpsert {
+	u.Set(user.FieldSalesCommissionMode, v)
+	return u
+}
+
+// UpdateSalesCommissionMode sets the "sales_commission_mode" field to the value that was provided on create.
+func (u *UserUpsert) UpdateSalesCommissionMode() *UserUpsert {
+	u.SetExcluded(user.FieldSalesCommissionMode)
+	return u
+}
+
+// SetSalesCommissionMinMonthlySales sets the "sales_commission_min_monthly_sales" field.
+func (u *UserUpsert) SetSalesCommissionMinMonthlySales(v float64) *UserUpsert {
+	u.Set(user.FieldSalesCommissionMinMonthlySales, v)
+	return u
+}
+
+// UpdateSalesCommissionMinMonthlySales sets the "sales_commission_min_monthly_sales" field to the value that was provided on create.
+func (u *UserUpsert) UpdateSalesCommissionMinMonthlySales() *UserUpsert {
+	u.SetExcluded(user.FieldSalesCommissionMinMonthlySales)
+	return u
+}
+
+// AddSalesCommissionMinMonthlySales adds v to the "sales_commission_min_monthly_sales" field.
+func (u *UserUpsert) AddSalesCommissionMinMonthlySales(v float64) *UserUpsert {
+	u.Add(user.FieldSalesCommissionMinMonthlySales, v)
+	return u
+}
+
 // SetReferralCode sets the "referral_code" field.
 func (u *UserUpsert) SetReferralCode(v string) *UserUpsert {
 	u.Set(user.FieldReferralCode, v)
@@ -1738,6 +1823,41 @@ func (u *UserUpsertOne) AddSalesCommissionRate(v float64) *UserUpsertOne {
 func (u *UserUpsertOne) UpdateSalesCommissionRate() *UserUpsertOne {
 	return u.Update(func(s *UserUpsert) {
 		s.UpdateSalesCommissionRate()
+	})
+}
+
+// SetSalesCommissionMode sets the "sales_commission_mode" field.
+func (u *UserUpsertOne) SetSalesCommissionMode(v string) *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.SetSalesCommissionMode(v)
+	})
+}
+
+// UpdateSalesCommissionMode sets the "sales_commission_mode" field to the value that was provided on create.
+func (u *UserUpsertOne) UpdateSalesCommissionMode() *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateSalesCommissionMode()
+	})
+}
+
+// SetSalesCommissionMinMonthlySales sets the "sales_commission_min_monthly_sales" field.
+func (u *UserUpsertOne) SetSalesCommissionMinMonthlySales(v float64) *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.SetSalesCommissionMinMonthlySales(v)
+	})
+}
+
+// AddSalesCommissionMinMonthlySales adds v to the "sales_commission_min_monthly_sales" field.
+func (u *UserUpsertOne) AddSalesCommissionMinMonthlySales(v float64) *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.AddSalesCommissionMinMonthlySales(v)
+	})
+}
+
+// UpdateSalesCommissionMinMonthlySales sets the "sales_commission_min_monthly_sales" field to the value that was provided on create.
+func (u *UserUpsertOne) UpdateSalesCommissionMinMonthlySales() *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateSalesCommissionMinMonthlySales()
 	})
 }
 
@@ -2334,6 +2454,41 @@ func (u *UserUpsertBulk) AddSalesCommissionRate(v float64) *UserUpsertBulk {
 func (u *UserUpsertBulk) UpdateSalesCommissionRate() *UserUpsertBulk {
 	return u.Update(func(s *UserUpsert) {
 		s.UpdateSalesCommissionRate()
+	})
+}
+
+// SetSalesCommissionMode sets the "sales_commission_mode" field.
+func (u *UserUpsertBulk) SetSalesCommissionMode(v string) *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.SetSalesCommissionMode(v)
+	})
+}
+
+// UpdateSalesCommissionMode sets the "sales_commission_mode" field to the value that was provided on create.
+func (u *UserUpsertBulk) UpdateSalesCommissionMode() *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateSalesCommissionMode()
+	})
+}
+
+// SetSalesCommissionMinMonthlySales sets the "sales_commission_min_monthly_sales" field.
+func (u *UserUpsertBulk) SetSalesCommissionMinMonthlySales(v float64) *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.SetSalesCommissionMinMonthlySales(v)
+	})
+}
+
+// AddSalesCommissionMinMonthlySales adds v to the "sales_commission_min_monthly_sales" field.
+func (u *UserUpsertBulk) AddSalesCommissionMinMonthlySales(v float64) *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.AddSalesCommissionMinMonthlySales(v)
+	})
+}
+
+// UpdateSalesCommissionMinMonthlySales sets the "sales_commission_min_monthly_sales" field to the value that was provided on create.
+func (u *UserUpsertBulk) UpdateSalesCommissionMinMonthlySales() *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateSalesCommissionMinMonthlySales()
 	})
 }
 

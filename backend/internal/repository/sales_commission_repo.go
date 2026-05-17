@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -15,6 +16,14 @@ import (
 
 type salesCommissionRepository struct {
 	db *sql.DB
+}
+
+type salesCommissionMonthlySnapshot struct {
+	ID                  int64
+	CommissionMode      string
+	FixedCommissionRate float64
+	MinMonthlySalesCNY  float64
+	Tiers               []service.SalesCommissionTier
 }
 
 func NewSalesCommissionRepository(sqlDB *sql.DB) service.SalesCommissionRepository {
@@ -38,19 +47,71 @@ func (r *salesCommissionRepository) CreateForOrder(ctx context.Context, input *s
 	if input == nil {
 		return errors.New("nil sales commission create input")
 	}
+	if input.CommissionEventAt.IsZero() {
+		return errors.New("sales commission create input missing commission_event_at")
+	}
+	if input.CommissionMonth.IsZero() {
+		return errors.New("sales commission create input missing commission_month")
+	}
 
-	_, err := r.db.ExecContext(ctx, `
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var lockedUserID int64
+	if err := tx.QueryRowContext(ctx, `
+		SELECT id
+		FROM users
+		WHERE id = $1
+		FOR UPDATE
+	`, input.SalesUserID).Scan(&lockedUserID); err != nil {
+		return err
+	}
+
+	snapshot, err := ensureSalesCommissionMonthlySnapshot(ctx, tx, input)
+	if err != nil {
+		return err
+	}
+
+	var monthlySalesBefore decimal.Decimal
+	if err := tx.QueryRowContext(ctx, `
+		SELECT COALESCE(SUM(order_pay_amount_cny), 0)
+		FROM sales_commission_records
+		WHERE sales_user_id = $1
+		  AND commission_month = $2
+	`, input.SalesUserID, input.CommissionMonth).Scan(&monthlySalesBefore); err != nil {
+		return err
+	}
+
+	calc, err := service.CalculateSalesCommission(
+		decimalFloat(cny(input.OrderPayAmountCNY)),
+		decimalFloat(monthlySalesBefore),
+		snapshot.CommissionMode,
+		snapshot.FixedCommissionRate,
+		snapshot.MinMonthlySalesCNY,
+		snapshot.Tiers,
+	)
+	if err != nil {
+		return err
+	}
+
+	_, err = tx.ExecContext(ctx, `
 		INSERT INTO sales_commission_records (
 			sales_user_id, referee_user_id, referral_id, payment_order_id,
-			order_pay_amount_cny, order_credited_amount, commission_rate, commission_total_cny,
+			order_pay_amount_cny, order_credited_amount, commission_mode, commission_rate, commission_total_cny,
+			commission_month, commission_event_at, snapshot_id, monthly_sales_before_cny, monthly_sales_after_cny,
 			credited_used_amount, unlocked_cny, status, note, created_at, updated_at
 		)
 		VALUES (
-			$1, $2, $3, $4, $5, $6, $7, $8,
+			$1, $2, $3, $4,
+			$5, $6, $7, $8, $9,
+			$10, $11, $12, $13, $14,
 			CASE WHEN $4 IS NULL THEN $6 ELSE 0 END,
-			CASE WHEN $4 IS NULL THEN $8 ELSE 0 END,
-			CASE WHEN $4 IS NULL THEN $10 ELSE $11 END,
-			$9, NOW(), NOW()
+			CASE WHEN $4 IS NULL THEN $9 ELSE 0 END,
+			CASE WHEN $4 IS NULL THEN $16 ELSE $17 END,
+			$15, NOW(), NOW()
 		)
 		ON CONFLICT DO NOTHING
 	`,
@@ -60,13 +121,23 @@ func (r *salesCommissionRepository) CreateForOrder(ctx context.Context, input *s
 		input.PaymentOrderID,
 		cny(input.OrderPayAmountCNY),
 		decimal.NewFromFloat(input.OrderCreditedAmount),
-		decimal.NewFromFloat(input.CommissionRate),
-		cny(input.CommissionTotalCNY),
+		snapshot.CommissionMode,
+		decimal.NewFromFloat(calc.CommissionRate).Round(4),
+		cny(calc.CommissionTotalCNY),
+		input.CommissionMonth,
+		input.CommissionEventAt,
+		snapshot.ID,
+		cny(calc.MonthlySalesBeforeCNY),
+		cny(calc.MonthlySalesAfterCNY),
 		input.Note,
 		service.SalesCommissionStatusUnlocked,
 		service.SalesCommissionStatusFrozen,
 	)
-	return err
+	if err != nil {
+		return err
+	}
+
+	return tx.Commit()
 }
 
 func (r *salesCommissionRepository) ListSummaries(ctx context.Context, params service.SalesCommissionSummaryListParams) ([]service.SalesCommissionSummary, int, error) {
@@ -213,6 +284,12 @@ func (r *salesCommissionRepository) ListRecords(ctx context.Context, params serv
 			scr.order_pay_amount_cny,
 			scr.order_credited_amount,
 			scr.commission_rate,
+			scr.commission_event_at,
+			scr.commission_month,
+			scr.snapshot_id,
+			scr.commission_mode,
+			scr.monthly_sales_before_cny,
+			scr.monthly_sales_after_cny,
 			scr.commission_total_cny,
 			scr.credited_used_amount,
 			scr.commission_total_cny - scr.unlocked_cny,
@@ -471,9 +548,11 @@ func salesRecordWhere(params service.SalesCommissionRecordListParams) (string, [
 
 func scanSalesCommissionRecord(rows *sql.Rows) (service.SalesCommissionRecord, error) {
 	var record service.SalesCommissionRecord
-	var orderPay, orderCredited, rate, total, creditedUsed, frozen, unlocked, settled, settleable decimal.Decimal
+	var orderPay, orderCredited, rate, monthlyBefore, monthlyAfter, total, creditedUsed, frozen, unlocked, settled, settleable decimal.Decimal
 	var paymentOrderID sql.NullInt64
 	var paymentOrderStatus sql.NullString
+	var snapshotID sql.NullInt64
+	var commissionEventAt sql.NullTime
 	err := rows.Scan(
 		&record.ID,
 		&record.SalesUserID,
@@ -488,6 +567,12 @@ func scanSalesCommissionRecord(rows *sql.Rows) (service.SalesCommissionRecord, e
 		&orderPay,
 		&orderCredited,
 		&rate,
+		&commissionEventAt,
+		&record.CommissionMonth,
+		&snapshotID,
+		&record.CommissionMode,
+		&monthlyBefore,
+		&monthlyAfter,
 		&total,
 		&creditedUsed,
 		&frozen,
@@ -508,9 +593,17 @@ func scanSalesCommissionRecord(rows *sql.Rows) (service.SalesCommissionRecord, e
 	if paymentOrderStatus.Valid {
 		record.PaymentOrderStatus = paymentOrderStatus.String
 	}
+	if commissionEventAt.Valid {
+		record.CommissionEventAt = commissionEventAt.Time
+	}
+	if snapshotID.Valid {
+		record.SnapshotID = &snapshotID.Int64
+	}
 	record.OrderPayAmountCNY = decimalFloat(orderPay)
 	record.OrderCreditedAmount = decimalFloat(orderCredited)
 	record.CommissionRate = decimalFloat(rate)
+	record.MonthlySalesBeforeCNY = decimalFloat(monthlyBefore)
+	record.MonthlySalesAfterCNY = decimalFloat(monthlyAfter)
 	record.CommissionTotalCNY = decimalFloat(total)
 	record.CreditedUsedAmount = decimalFloat(creditedUsed)
 	record.FrozenCNY = decimalFloat(frozen)
@@ -518,6 +611,73 @@ func scanSalesCommissionRecord(rows *sql.Rows) (service.SalesCommissionRecord, e
 	record.SettledCNY = decimalFloat(settled)
 	record.SettleableCNY = decimalFloat(settleable)
 	return record, nil
+}
+
+func ensureSalesCommissionMonthlySnapshot(ctx context.Context, tx *sql.Tx, input *service.SalesCommissionCreate) (*salesCommissionMonthlySnapshot, error) {
+	snapshot, err := loadSalesCommissionMonthlySnapshot(ctx, tx, input.SalesUserID, input.CommissionMonth)
+	if err == nil {
+		return snapshot, nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return nil, err
+	}
+
+	tiers := service.CloneSalesCommissionTiers(input.CommissionTiers)
+	tiersJSON, err := json.Marshal(tiers)
+	if err != nil {
+		return nil, err
+	}
+	mode := service.NormalizeSalesCommissionMode(input.CommissionMode)
+	_, err = tx.ExecContext(ctx, `
+		INSERT INTO sales_commission_monthly_snapshots (
+			sales_user_id, commission_month, timezone, commission_mode,
+			fixed_commission_rate, min_monthly_sales_cny, tiers_json, created_at, updated_at
+		)
+		VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, NOW(), NOW())
+		ON CONFLICT (sales_user_id, commission_month) DO NOTHING
+	`,
+		input.SalesUserID,
+		input.CommissionMonth,
+		"Asia/Shanghai",
+		mode,
+		decimal.NewFromFloat(input.CommissionRate).Round(4),
+		cny(input.CommissionMinMonthlySales),
+		string(tiersJSON),
+	)
+	if err != nil {
+		return nil, err
+	}
+	return loadSalesCommissionMonthlySnapshot(ctx, tx, input.SalesUserID, input.CommissionMonth)
+}
+
+func loadSalesCommissionMonthlySnapshot(ctx context.Context, tx *sql.Tx, salesUserID int64, commissionMonth any) (*salesCommissionMonthlySnapshot, error) {
+	var snapshot salesCommissionMonthlySnapshot
+	var fixedRate, minMonthlySales decimal.Decimal
+	var tiersJSON []byte
+	err := tx.QueryRowContext(ctx, `
+		SELECT id, commission_mode, fixed_commission_rate, min_monthly_sales_cny, tiers_json
+		FROM sales_commission_monthly_snapshots
+		WHERE sales_user_id = $1
+		  AND commission_month = $2
+	`, salesUserID, commissionMonth).Scan(
+		&snapshot.ID,
+		&snapshot.CommissionMode,
+		&fixedRate,
+		&minMonthlySales,
+		&tiersJSON,
+	)
+	if err != nil {
+		return nil, err
+	}
+	snapshot.CommissionMode = service.NormalizeSalesCommissionMode(snapshot.CommissionMode)
+	snapshot.FixedCommissionRate = decimalFloat(fixedRate)
+	snapshot.MinMonthlySalesCNY = decimalFloat(minMonthlySales)
+	if len(tiersJSON) > 0 {
+		if err := json.Unmarshal(tiersJSON, &snapshot.Tiers); err != nil {
+			return nil, err
+		}
+	}
+	return &snapshot, nil
 }
 
 func cny(amount float64) decimal.Decimal {

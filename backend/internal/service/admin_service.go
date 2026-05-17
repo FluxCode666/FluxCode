@@ -120,26 +120,34 @@ type accountListAdvancedRepository interface {
 
 // CreateUserInput represents input for creating a new user via admin operations.
 type CreateUserInput struct {
-	Email         string
-	Password      string
-	Username      string
-	Notes         string
-	Balance       float64
-	Concurrency   int
-	AllowedGroups []int64
+	Email                          string
+	Password                       string
+	Username                       string
+	Notes                          string
+	Balance                        float64
+	Concurrency                    int
+	AllowedGroups                  []int64
+	IsSales                        bool
+	SalesCommissionRate            float64
+	SalesCommissionMode            string
+	SalesCommissionMinMonthlySales float64
+	SalesCommissionTiers           []SalesCommissionTier
 }
 
 type UpdateUserInput struct {
-	Email               string
-	Password            string
-	Username            *string
-	Notes               *string
-	Balance             *float64 // 使用指针区分"未提供"和"设置为0"
-	Concurrency         *int     // 使用指针区分"未提供"和"设置为0"
-	Status              string
-	AllowedGroups       *[]int64 // 使用指针区分"未提供"和"设置为空数组"
-	IsSales             *bool
-	SalesCommissionRate *float64
+	Email                          string
+	Password                       string
+	Username                       *string
+	Notes                          *string
+	Balance                        *float64 // 使用指针区分"未提供"和"设置为0"
+	Concurrency                    *int     // 使用指针区分"未提供"和"设置为0"
+	Status                         string
+	AllowedGroups                  *[]int64 // 使用指针区分"未提供"和"设置为空数组"
+	IsSales                        *bool
+	SalesCommissionRate            *float64
+	SalesCommissionMode            *string
+	SalesCommissionMinMonthlySales *float64
+	SalesCommissionTiers           *[]SalesCommissionTier
 	// GroupRates 用户专属分组倍率配置
 	// map[groupID]*rate，nil 表示删除该分组的专属倍率
 	GroupRates map[int64]*float64
@@ -566,15 +574,31 @@ func (s *adminServiceImpl) GetUser(ctx context.Context, id int64) (*User, error)
 }
 
 func (s *adminServiceImpl) CreateUser(ctx context.Context, input *CreateUserInput) (*User, error) {
+	mode, tiers, err := normalizeAdminSalesCommissionConfig(
+		input.IsSales,
+		input.SalesCommissionMode,
+		input.SalesCommissionRate,
+		input.SalesCommissionMinMonthlySales,
+		input.SalesCommissionTiers,
+	)
+	if err != nil {
+		return nil, err
+	}
+
 	user := &User{
-		Email:         input.Email,
-		Username:      input.Username,
-		Notes:         input.Notes,
-		Role:          RoleUser, // Always create as regular user, never admin
-		Balance:       input.Balance,
-		Concurrency:   input.Concurrency,
-		Status:        StatusActive,
-		AllowedGroups: input.AllowedGroups,
+		Email:                          input.Email,
+		Username:                       input.Username,
+		Notes:                          input.Notes,
+		Role:                           RoleUser, // Always create as regular user, never admin
+		Balance:                        input.Balance,
+		Concurrency:                    input.Concurrency,
+		Status:                         StatusActive,
+		AllowedGroups:                  input.AllowedGroups,
+		IsSales:                        input.IsSales,
+		SalesCommissionRate:            input.SalesCommissionRate,
+		SalesCommissionMode:            mode,
+		SalesCommissionMinMonthlySales: input.SalesCommissionMinMonthlySales,
+		SalesCommissionTiers:           tiers,
 	}
 	if err := user.SetPassword(input.Password); err != nil {
 		return nil, err
@@ -645,9 +669,6 @@ func (s *adminServiceImpl) UpdateUser(ctx context.Context, id int64, input *Upda
 	if input.AllowedGroups != nil {
 		user.AllowedGroups = *input.AllowedGroups
 	}
-	if input.SalesCommissionRate != nil && (*input.SalesCommissionRate < 0 || *input.SalesCommissionRate > 100) {
-		return nil, infraerrors.BadRequest("INVALID_SALES_COMMISSION_RATE", "sales commission rate must be between 0 and 100")
-	}
 	effectiveIsSales := user.IsSales
 	if input.IsSales != nil {
 		effectiveIsSales = *input.IsSales
@@ -656,14 +677,51 @@ func (s *adminServiceImpl) UpdateUser(ctx context.Context, id int64, input *Upda
 	if input.SalesCommissionRate != nil {
 		effectiveSalesCommissionRate = *input.SalesCommissionRate
 	}
-	if effectiveIsSales && effectiveSalesCommissionRate <= 0 {
-		return nil, infraerrors.BadRequest("INVALID_SALES_COMMISSION_RATE", "sales commission rate must be greater than 0 for sales users")
+	effectiveSalesCommissionMode := user.SalesCommissionMode
+	if input.SalesCommissionMode != nil {
+		effectiveSalesCommissionMode = *input.SalesCommissionMode
+	}
+	effectiveSalesCommissionMinMonthlySales := user.SalesCommissionMinMonthlySales
+	if input.SalesCommissionMinMonthlySales != nil {
+		effectiveSalesCommissionMinMonthlySales = *input.SalesCommissionMinMonthlySales
+	}
+	effectiveSalesCommissionTiers := CloneSalesCommissionTiers(user.SalesCommissionTiers)
+	if input.SalesCommissionTiers != nil {
+		effectiveSalesCommissionTiers = CloneSalesCommissionTiers(*input.SalesCommissionTiers)
+	}
+	normalizedMode, normalizedTiers, err := normalizeAdminSalesCommissionConfig(
+		effectiveIsSales,
+		effectiveSalesCommissionMode,
+		effectiveSalesCommissionRate,
+		effectiveSalesCommissionMinMonthlySales,
+		effectiveSalesCommissionTiers,
+	)
+	if err != nil {
+		return nil, err
 	}
 	if input.IsSales != nil {
 		user.IsSales = effectiveIsSales
 	}
 	if input.SalesCommissionRate != nil {
 		user.SalesCommissionRate = effectiveSalesCommissionRate
+	}
+	if input.SalesCommissionMode != nil {
+		user.SalesCommissionMode = normalizedMode
+	}
+	if input.SalesCommissionMinMonthlySales != nil {
+		user.SalesCommissionMinMonthlySales = effectiveSalesCommissionMinMonthlySales
+	}
+	if input.SalesCommissionTiers != nil {
+		user.SalesCommissionTiers = normalizedTiers
+	}
+	if input.IsSales != nil && input.SalesCommissionMode == nil {
+		user.SalesCommissionMode = normalizedMode
+	}
+	if input.IsSales != nil && input.SalesCommissionTiers == nil {
+		user.SalesCommissionTiers = normalizedTiers
+	}
+	if input.IsSales != nil && input.SalesCommissionMinMonthlySales == nil {
+		user.SalesCommissionMinMonthlySales = effectiveSalesCommissionMinMonthlySales
 	}
 
 	if err := s.userRepo.Update(ctx, user); err != nil {
@@ -705,6 +763,36 @@ func (s *adminServiceImpl) UpdateUser(ctx context.Context, id int64, input *Upda
 	}
 
 	return user, nil
+}
+
+func normalizeAdminSalesCommissionConfig(isSales bool, mode string, fixedRate float64, minMonthlySales float64, tiers []SalesCommissionTier) (string, []SalesCommissionTier, error) {
+	if fixedRate < 0 || fixedRate > 100 {
+		return "", nil, infraerrors.BadRequest("INVALID_SALES_COMMISSION_RATE", "sales commission rate must be between 0 and 100")
+	}
+	if minMonthlySales < 0 {
+		return "", nil, infraerrors.BadRequest("INVALID_SALES_COMMISSION_MIN_MONTHLY_SALES", "sales commission min monthly sales must be greater than or equal to 0")
+	}
+
+	normalizedMode := NormalizeSalesCommissionMode(mode)
+	if normalizedMode != SalesCommissionModeFixed && normalizedMode != SalesCommissionModeTiered {
+		return "", nil, infraerrors.BadRequest("INVALID_SALES_COMMISSION_MODE", "sales commission mode must be fixed or tiered")
+	}
+
+	normalizedTiers, err := NormalizeSalesCommissionTiers(tiers)
+	if err != nil {
+		return "", nil, infraerrors.BadRequest("INVALID_SALES_COMMISSION_TIERS", err.Error())
+	}
+	if !isSales {
+		return normalizedMode, normalizedTiers, nil
+	}
+
+	if normalizedMode == SalesCommissionModeFixed && fixedRate <= 0 {
+		return "", nil, infraerrors.BadRequest("INVALID_SALES_COMMISSION_RATE", "sales commission rate must be greater than 0 for fixed mode sales users")
+	}
+	if normalizedMode == SalesCommissionModeTiered && len(normalizedTiers) == 0 {
+		return "", nil, infraerrors.BadRequest("INVALID_SALES_COMMISSION_TIERS", "tiered sales users must configure at least one sales commission tier")
+	}
+	return normalizedMode, normalizedTiers, nil
 }
 
 func (s *adminServiceImpl) DeleteUser(ctx context.Context, id int64) error {
