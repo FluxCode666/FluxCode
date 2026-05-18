@@ -160,7 +160,7 @@ func (h *PaymentHandler) CancelOrder(c *gin.Context) {
 	response.Success(c, gin.H{"message": msg})
 }
 
-// RetryFulfillment retries fulfillment for a paid order.
+// RetryFulfillment retries fulfillment for a paid order, or reconciles rewards for a completed balance order.
 // POST /api/v1/admin/payment/orders/:id/retry
 func (h *PaymentHandler) RetryFulfillment(c *gin.Context) {
 	orderID, ok := parseIDParam(c, "id")

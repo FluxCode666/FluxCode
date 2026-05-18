@@ -148,7 +148,7 @@ func (s *PaymentService) ExecuteBalanceFulfillment(ctx context.Context, oid int6
 		return infraerrors.NotFound("NOT_FOUND", "order not found")
 	}
 	if o.Status == OrderStatusCompleted {
-		s.handleSalesCommissionAfterBalanceCompleted(fulfillCtx, o)
+		s.handleBalanceRechargeRewards(fulfillCtx, o, false)
 		return nil
 	}
 	if psIsRefundStatus(o.Status) {
@@ -206,7 +206,7 @@ func (s *PaymentService) doBalance(ctx context.Context, o *dbent.PaymentOrder) e
 		if err := s.markCompleted(ctx, o, "RECHARGE_SUCCESS"); err != nil {
 			return err
 		}
-		s.handleSalesCommissionAfterBalanceCompleted(ctx, o)
+		s.handleBalanceRechargeRewards(ctx, o, false)
 		return nil
 	case redeemActionCreate:
 		rc := &RedeemCode{Code: o.RechargeCode, Type: RedeemTypeBalance, Value: o.Amount, Status: StatusUnused}
@@ -229,7 +229,12 @@ func (s *PaymentService) doBalance(ctx context.Context, o *dbent.PaymentOrder) e
 		return err
 	}
 
-	// 充值完成后触发推广奖励
+	s.handleBalanceRechargeRewards(ctx, o, isFirstRecharge)
+
+	return nil
+}
+
+func (s *PaymentService) handleBalanceRechargeRewards(ctx context.Context, o *dbent.PaymentOrder, isFirstRecharge bool) {
 	if s.referralService != nil {
 		if isFirstRecharge {
 			s.referralService.HandleInviterRewardOnFirstRecharge(ctx, o.UserID, o.Amount)
@@ -237,8 +242,6 @@ func (s *PaymentService) doBalance(ctx context.Context, o *dbent.PaymentOrder) e
 		s.referralService.HandleOngoingRewardOnRecharge(ctx, o.UserID, o.Amount, o.ID)
 	}
 	s.handleSalesCommissionAfterBalanceCompleted(ctx, o)
-
-	return nil
 }
 
 func (s *PaymentService) handleSalesCommissionAfterBalanceCompleted(ctx context.Context, o *dbent.PaymentOrder) {
@@ -414,6 +417,13 @@ func (s *PaymentService) RetryFulfillment(ctx context.Context, oid int64) error 
 	if err != nil {
 		return infraerrors.NotFound("NOT_FOUND", "order not found")
 	}
+	if o.Status == OrderStatusCompleted {
+		if o.OrderType != payment.OrderTypeBalance {
+			return infraerrors.BadRequest("INVALID_STATUS", "order already completed")
+		}
+		s.writeAuditLog(ctx, oid, "RECHARGE_RETRY", "admin", map[string]any{"detail": "admin reward reconciliation on completed order"})
+		return s.executeFulfillment(ctx, oid)
+	}
 	if o.PaidAt == nil {
 		return infraerrors.BadRequest("INVALID_STATUS", "order is not paid")
 	}
@@ -422,9 +432,6 @@ func (s *PaymentService) RetryFulfillment(ctx context.Context, oid int64) error 
 	}
 	if o.Status == OrderStatusRecharging {
 		return infraerrors.Conflict("CONFLICT", "order is being processed")
-	}
-	if o.Status == OrderStatusCompleted {
-		return infraerrors.BadRequest("INVALID_STATUS", "order already completed")
 	}
 	if o.Status != OrderStatusFailed && o.Status != OrderStatusPaid {
 		return infraerrors.BadRequest("INVALID_STATUS", "only paid and failed orders can retry")
