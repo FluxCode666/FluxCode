@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import UserEditModal from '../UserEditModal.vue'
 
 const mocks = vi.hoisted(() => ({
@@ -20,7 +20,7 @@ vi.mock('@/composables/useClipboard', () => ({ useClipboard: () => ({ copyToClip
 vi.mock('vue-i18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
 
 describe('UserEditModal sales fields', () => {
-  it('submits sales flag and commission rate', async () => {
+  it('submits tiered sales commission config', async () => {
     const wrapper = mount(UserEditModal, {
       props: {
         show: true,
@@ -39,8 +39,11 @@ describe('UserEditModal sales fields', () => {
           created_at: '2026-05-05T00:00:00Z',
           updated_at: '2026-05-05T00:00:00Z',
           notes: '',
-          is_sales: true,
-          sales_commission_rate: 10
+          is_sales: false,
+          sales_commission_rate: 0,
+          sales_commission_mode: 'fixed',
+          sales_commission_min_monthly_sales: 0,
+          sales_commission_tiers: []
         }
       },
       global: {
@@ -52,11 +55,37 @@ describe('UserEditModal sales fields', () => {
       }
     })
 
+    await wrapper.get('input[type="checkbox"]').setValue(true)
+    await wrapper.get('[data-testid="sales-mode-tiered"]').trigger('click')
+    await wrapper.get('input[name="sales_commission_min_monthly_sales"]').setValue('100')
+    await wrapper.get('input[name="sales_commission_tier_from_0"]').setValue('0')
+    await wrapper.get('input[name="sales_commission_tier_to_0"]').setValue('200')
+    await wrapper.get('input[name="sales_commission_tier_rate_0"]').setValue('10')
+    await wrapper.get('[data-testid="sales-add-tier"]').trigger('click')
+    await wrapper.get('input[name="sales_commission_tier_from_1"]').setValue('200')
+    await wrapper.get('input[name="sales_commission_tier_rate_1"]').setValue('20')
     await wrapper.find('form').trigger('submit.prevent')
+    await flushPromises()
 
     expect(mocks.update).toHaveBeenCalledWith(1, expect.objectContaining({
       is_sales: true,
-      sales_commission_rate: 10
+      sales_commission_rate: 0,
+      sales_commission_mode: 'tiered',
+      sales_commission_min_monthly_sales: 100,
+      sales_commission_tiers: [
+        {
+          month_sales_from_cny: 0,
+          month_sales_to_cny: 200,
+          commission_rate: 10,
+          sort_order: 1
+        },
+        {
+          month_sales_from_cny: 200,
+          month_sales_to_cny: null,
+          commission_rate: 20,
+          sort_order: 2
+        }
+      ]
     }))
   })
 })

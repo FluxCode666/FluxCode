@@ -45,6 +45,9 @@ export interface User {
   allowed_groups: number[] | null // Allowed group IDs (null = all non-exclusive groups)
   is_sales: boolean
   sales_commission_rate: number
+  sales_commission_mode?: SalesCommissionMode
+  sales_commission_min_monthly_sales?: number
+  sales_commission_tiers?: SalesCommissionTier[]
   balance_notify_enabled: boolean
   balance_notify_threshold: number | null
   balance_notify_extra_emails: NotifyEmailEntry[]
@@ -60,6 +63,15 @@ export interface AdminUser extends User {
   group_rates?: Record<number, number>
   // 当前并发数（仅管理员列表接口返回）
   current_concurrency?: number
+}
+
+export type SalesCommissionMode = 'fixed' | 'tiered'
+
+export interface SalesCommissionTier {
+  month_sales_from_cny: number
+  month_sales_to_cny?: number | null
+  commission_rate: number
+  sort_order?: number
 }
 
 export interface LoginRequest {
@@ -1315,6 +1327,9 @@ export interface UpdateUserRequest {
   allowed_groups?: number[] | null
   is_sales?: boolean
   sales_commission_rate?: number
+  sales_commission_mode?: SalesCommissionMode
+  sales_commission_min_monthly_sales?: number
+  sales_commission_tiers?: SalesCommissionTier[]
   // 用户专属分组倍率配置 (group_id -> rate_multiplier | null)
   // null 表示删除该分组的专属倍率
   group_rates?: Record<number, number | null>
@@ -1343,10 +1358,16 @@ export interface SalesCommissionRecord {
   referee_email: string
   referee_username: string
   referral_id: number
-  payment_order_id: number
-  payment_order_status: string
+  payment_order_id: number | null
+  payment_order_status: string | null
   order_pay_amount_cny: number
   order_credited_amount: number
+  commission_event_at: string
+  commission_month: string
+  snapshot_id: number | null
+  commission_mode: SalesCommissionMode
+  monthly_sales_before_cny: number
+  monthly_sales_after_cny: number
   commission_rate: number
   commission_total_cny: number
   credited_used_amount: number

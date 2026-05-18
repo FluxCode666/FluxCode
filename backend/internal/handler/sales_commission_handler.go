@@ -17,9 +17,8 @@ func NewSalesCommissionHandler(svc *service.SalesCommissionService) *SalesCommis
 }
 
 func (h *SalesCommissionHandler) GetSummary(c *gin.Context) {
-	userID, ok := currentSalesCommissionUserID(c)
+	userID, ok := h.authorizedSalesCommissionUserID(c)
 	if !ok {
-		response.Unauthorized(c, "User not authenticated")
 		return
 	}
 	summary, err := h.service.GetSummaryBySalesUser(c.Request.Context(), userID)
@@ -31,9 +30,8 @@ func (h *SalesCommissionHandler) GetSummary(c *gin.Context) {
 }
 
 func (h *SalesCommissionHandler) ListRecords(c *gin.Context) {
-	userID, ok := currentSalesCommissionUserID(c)
+	userID, ok := h.authorizedSalesCommissionUserID(c)
 	if !ok {
-		response.Unauthorized(c, "User not authenticated")
 		return
 	}
 	page, pageSize := response.ParsePagination(c)
@@ -48,6 +46,24 @@ func (h *SalesCommissionHandler) ListRecords(c *gin.Context) {
 		return
 	}
 	response.Paginated(c, items, int64(total), page, pageSize)
+}
+
+func (h *SalesCommissionHandler) authorizedSalesCommissionUserID(c *gin.Context) (int64, bool) {
+	userID, ok := currentSalesCommissionUserID(c)
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return 0, false
+	}
+	allowed, err := h.service.IsSalesUser(c.Request.Context(), userID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return 0, false
+	}
+	if !allowed {
+		response.Forbidden(c, "Sales access required")
+		return 0, false
+	}
+	return userID, true
 }
 
 func currentSalesCommissionUserID(c *gin.Context) (int64, bool) {

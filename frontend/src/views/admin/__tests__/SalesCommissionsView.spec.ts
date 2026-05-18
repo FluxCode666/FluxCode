@@ -39,6 +39,7 @@ describe('Admin SalesCommissionsView', () => {
           DataTable: { props: ['data'], template: '<div><span v-for="row in data" :key="row.sales_user_id">{{ row.sales_email }}</span></div>' },
           Pagination: true,
           BaseDialog: { template: '<div><slot /><slot name="footer" /></div>' },
+          Select: { template: '<div />' },
           Icon: true
         }
       }

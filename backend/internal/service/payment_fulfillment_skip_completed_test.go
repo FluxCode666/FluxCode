@@ -84,7 +84,8 @@ func TestPaymentBalanceFulfillment_SkipCompletedCreatesSalesCommission(t *testin
 	require.NoError(t, err)
 	require.False(t, paymentSvc.redeemService.redeemRepo.(*paymentFulfillmentRedeemRepoStub).used, "skip-completed path must not redeem again")
 	require.Len(t, commissionRepo.created, 1)
-	require.Equal(t, order.ID, commissionRepo.created[0].PaymentOrderID)
+	require.NotNil(t, commissionRepo.created[0].PaymentOrderID)
+	require.Equal(t, order.ID, *commissionRepo.created[0].PaymentOrderID)
 	require.Equal(t, user.ID, commissionRepo.created[0].RefereeUserID)
 
 	updated, err := entClient.PaymentOrder.Get(ctx, order.ID)
@@ -148,7 +149,8 @@ func TestPaymentBalanceFulfillment_CompletedOrderRetriesSalesCommission(t *testi
 
 	require.NoError(t, err)
 	require.Len(t, commissionRepo.created, 1)
-	require.Equal(t, order.ID, commissionRepo.created[0].PaymentOrderID)
+	require.NotNil(t, commissionRepo.created[0].PaymentOrderID)
+	require.Equal(t, order.ID, *commissionRepo.created[0].PaymentOrderID)
 	require.Equal(t, user.ID, commissionRepo.created[0].RefereeUserID)
 }
 

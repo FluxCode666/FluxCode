@@ -20,6 +20,12 @@ declare module 'vue-router' {
     requiresAdmin?: boolean
 
     /**
+     * Whether this route requires the current user to be a sales user
+     * @default false
+     */
+    requiresSales?: boolean
+
+    /**
      * Page title for this route
      */
     title?: string
@@ -48,6 +54,12 @@ declare module 'vue-router' {
      * @default false
      */
     requiresPayment?: boolean
+
+    /**
+     * Whether this route requires referral functionality to be enabled
+     * @default false
+     */
+    requiresReferral?: boolean
 
     /**
      * i18n key for the page title

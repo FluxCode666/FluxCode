@@ -101,6 +101,10 @@ func (h *UserHandler) List(c *gin.Context) {
 		GroupName:  strings.TrimSpace(c.Query("group_name")),
 		Attributes: parseAttributeFilters(c),
 	}
+	if raw, ok := c.GetQuery("is_sales"); ok {
+		isSales := parseBoolQueryWithDefault(raw, false)
+		filters.IsSales = &isSales
+	}
 	sortBy := c.DefaultQuery("sort_by", "created_at")
 	sortOrder := c.DefaultQuery("sort_order", "desc")
 	if raw, ok := c.GetQuery("include_subscriptions"); ok {

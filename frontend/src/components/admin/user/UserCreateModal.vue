@@ -2,7 +2,7 @@
   <BaseDialog
     :show="show"
     :title="t('admin.users.createUser')"
-    width="normal"
+    width="wide"
     @close="$emit('close')"
   >
     <form id="create-user-form" @submit.prevent="submit" class="space-y-5">
@@ -35,6 +35,8 @@
           <input v-model.number="form.concurrency" type="number" class="input" />
         </div>
       </div>
+
+      <SalesCommissionConfigFields :form="form" />
     </form>
     <template #footer>
       <div class="flex justify-end gap-3">
@@ -53,22 +55,61 @@ import { useI18n } from 'vue-i18n'; import { adminAPI } from '@/api/admin'
 import { useForm } from '@/composables/useForm'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Icon from '@/components/icons/Icon.vue'
+import SalesCommissionConfigFields from './SalesCommissionConfigFields.vue'
+import {
+  buildSalesCommissionPayload,
+  createSalesCommissionFormState,
+  validateSalesCommissionForm
+} from './salesCommissionForm'
 
 const props = defineProps<{ show: boolean }>()
 const emit = defineEmits(['close', 'success']); const { t } = useI18n()
 
-const form = reactive({ email: '', password: '', username: '', notes: '', balance: 0, concurrency: 1 })
+const form = reactive({
+  email: '',
+  password: '',
+  username: '',
+  notes: '',
+  balance: 0,
+  concurrency: 1,
+  ...createSalesCommissionFormState()
+})
 
 const { loading, submit } = useForm({
   form,
   submitFn: async (data) => {
-    await adminAPI.users.create(data)
+    const validationError = validateSalesCommissionForm(form, t)
+    if (validationError) {
+      throw new Error(validationError)
+    }
+
+    await adminAPI.users.create({
+      email: data.email,
+      password: data.password,
+      username: data.username,
+      notes: data.notes,
+      balance: data.balance,
+      concurrency: data.concurrency,
+      ...buildSalesCommissionPayload(form)
+    })
     emit('success'); emit('close')
   },
   successMsg: t('admin.users.userCreated')
 })
 
-watch(() => props.show, (v) => { if(v) Object.assign(form, { email: '', password: '', username: '', notes: '', balance: 0, concurrency: 1 }) })
+watch(() => props.show, (v) => {
+  if (v) {
+    Object.assign(form, {
+      email: '',
+      password: '',
+      username: '',
+      notes: '',
+      balance: 0,
+      concurrency: 1,
+      ...createSalesCommissionFormState()
+    })
+  }
+})
 
 const generateRandomPassword = () => {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$%^&*'

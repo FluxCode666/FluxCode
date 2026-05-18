@@ -10,13 +10,17 @@ import (
 
 var salesCommissionMonthLocation = time.FixedZone("Asia/Shanghai", 8*60*60)
 
+type salesCommissionUserRepository interface {
+	GetByID(ctx context.Context, id int64) (*User, error)
+}
+
 type SalesCommissionService struct {
 	repo         SalesCommissionRepository
 	referralRepo ReferralRepository
-	userRepo     UserRepository
+	userRepo     salesCommissionUserRepository
 }
 
-func NewSalesCommissionService(repo SalesCommissionRepository, referralRepo ReferralRepository, userRepo UserRepository) *SalesCommissionService {
+func NewSalesCommissionService(repo SalesCommissionRepository, referralRepo ReferralRepository, userRepo salesCommissionUserRepository) *SalesCommissionService {
 	return &SalesCommissionService{
 		repo:         repo,
 		referralRepo: referralRepo,
@@ -115,6 +119,17 @@ func (s *SalesCommissionService) GetSummaryBySalesUser(ctx context.Context, sale
 
 func (s *SalesCommissionService) GetSummary(ctx context.Context, salesUserID int64) (*SalesCommissionSummary, error) {
 	return s.GetSummaryBySalesUser(ctx, salesUserID)
+}
+
+func (s *SalesCommissionService) IsSalesUser(ctx context.Context, userID int64) (bool, error) {
+	if s == nil || s.userRepo == nil {
+		return false, nil
+	}
+	user, err := s.userRepo.GetByID(ctx, userID)
+	if err != nil {
+		return false, err
+	}
+	return user != nil && user.IsSales, nil
 }
 
 func (s *SalesCommissionService) ListRecords(ctx context.Context, params SalesCommissionRecordListParams) ([]SalesCommissionRecord, int, error) {

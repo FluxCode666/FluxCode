@@ -29,7 +29,8 @@ describe('User SalesCommissionsView', () => {
         stubs: {
           AppLayout: { template: '<div><slot /></div>' },
           DataTable: { props: ['data'], template: '<div><span v-for="row in data" :key="row.id">{{ row.referee_email }}</span></div>' },
-          Pagination: true
+          Pagination: true,
+          Select: { template: '<div />' }
         }
       }
     })

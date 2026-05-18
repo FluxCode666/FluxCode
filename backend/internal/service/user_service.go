@@ -31,6 +31,7 @@ const (
 type UserListFilters struct {
 	Status     string           // User status filter
 	Role       string           // User role filter
+	IsSales    *bool            // Filter by sales identity when specified
 	Search     string           // Search in email, username
 	GroupName  string           // Filter by allowed group name (fuzzy match)
 	Attributes map[int64]string // Custom attribute filters: attributeID -> value

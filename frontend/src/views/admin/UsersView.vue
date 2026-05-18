@@ -48,6 +48,15 @@
               />
             </div>
 
+            <!-- Sales Filter (visible when enabled) -->
+            <div v-if="visibleFilters.has('sales')" class="w-full sm:w-40">
+              <Select
+                v-model="filters.sales"
+                :options="salesFilterOptions"
+                @change="applyFilter"
+              />
+            </div>
+
             <!-- Group Filter (visible when enabled) -->
             <div v-if="visibleFilters.has('group')" class="w-full sm:w-44">
               <Select
@@ -296,6 +305,23 @@
             <span :class="['badge', value === 'admin' ? 'badge-purple' : 'badge-gray']">
               {{ t('admin.users.roles.' + value) }}
             </span>
+          </template>
+
+          <template #cell-sales_profile="{ row }">
+            <div class="space-y-1">
+              <span :class="['badge', row.is_sales ? 'badge-success' : 'badge-gray']">
+                {{ row.is_sales ? t('admin.users.sales.salesUser') : t('admin.users.sales.nonSales') }}
+              </span>
+              <div v-if="row.is_sales" class="text-xs text-gray-600 dark:text-dark-300">
+                {{ getSalesProfileSummary(row) }}
+              </div>
+              <div
+                v-if="row.is_sales && getSalesProfileSecondary(row)"
+                class="text-xs text-gray-400 dark:text-dark-500"
+              >
+                {{ getSalesProfileSecondary(row) }}
+              </div>
+            </div>
           </template>
 
           <template #cell-groups="{ row }">
@@ -685,6 +711,35 @@ const getAttributeValue = (userId: number, attrId: number): string => {
   return value
 }
 
+const formatPercent = (value: number | undefined): string =>
+  `${Number(value || 0).toFixed(2)}%`
+
+const formatCompactCNY = (value: number | undefined): string =>
+  `¥${Number(value || 0).toFixed(2)}`
+
+const getSalesProfileSummary = (user: AdminUser): string => {
+  if (!user.is_sales) {
+    return ''
+  }
+  if (user.sales_commission_mode === 'tiered') {
+    return t('admin.users.sales.tieredSummary', {
+      count: user.sales_commission_tiers?.length || 0
+    })
+  }
+  return t('admin.users.sales.fixedSummary', {
+    rate: formatPercent(user.sales_commission_rate)
+  })
+}
+
+const getSalesProfileSecondary = (user: AdminUser): string => {
+  if (!user.is_sales || user.sales_commission_mode !== 'tiered') {
+    return ''
+  }
+  return t('admin.users.sales.minMonthlySalesCompact', {
+    amount: formatCompactCNY(user.sales_commission_min_monthly_sales)
+  })
+}
+
 // All possible columns (for column settings)
 const allColumns = computed<Column[]>(() => [
   { key: 'email', label: t('admin.users.columns.user'), sortable: true },
@@ -694,6 +749,7 @@ const allColumns = computed<Column[]>(() => [
   // Dynamic attribute columns
   ...attributeColumns.value,
   { key: 'role', label: t('admin.users.columns.role'), sortable: true },
+  { key: 'sales_profile', label: t('admin.users.columns.sales'), sortable: false },
   { key: 'groups', label: t('admin.users.columns.groups'), sortable: false },
   { key: 'subscriptions', label: t('admin.users.columns.subscriptions'), sortable: false },
   { key: 'balance', label: t('admin.users.columns.balance'), sortable: true },
@@ -843,16 +899,23 @@ const groupFilterOptions = computed(() => {
   return options
 })
 
+const salesFilterOptions = computed(() => [
+  { value: '', label: t('admin.users.sales.allSalesStatus') },
+  { value: 'true', label: t('admin.users.sales.salesOnly') },
+  { value: 'false', label: t('admin.users.sales.nonSalesOnly') }
+])
+
 // Filter values (role, status, and custom attributes)
 const filters = reactive({
   role: '',
   status: '',
+  sales: '',
   group: ''  // group name for fuzzy match, '' = all
 })
 const activeAttributeFilters = reactive<Record<number, string>>({})
 
 // Visible filters tracking (which filters are shown in the UI)
-// Keys: 'role', 'status', 'attr_${id}'
+// Keys: 'role', 'status', 'sales', 'group', 'attr_${id}'
 const visibleFilters = reactive<Set<string>>(new Set())
 
 // Dropdown states
@@ -876,6 +939,7 @@ const filterableAttributes = computed(() =>
 const builtInFilters = computed(() => [
   { key: 'role', name: t('admin.users.columns.role'), type: 'select' as const },
   { key: 'status', name: t('admin.users.columns.status'), type: 'select' as const },
+  { key: 'sales', name: t('admin.users.columns.sales'), type: 'select' as const },
   { key: 'group', name: t('admin.users.columns.groups'), type: 'select' as const }
 ])
 
@@ -894,6 +958,7 @@ const loadSavedFilters = () => {
       const parsed = JSON.parse(savedValues)
       if (parsed.role) filters.role = parsed.role
       if (parsed.status) filters.status = parsed.status
+      if (parsed.sales) filters.sales = parsed.sales
       if (parsed.group) filters.group = parsed.group
       if (parsed.attributes) {
         Object.assign(activeAttributeFilters, parsed.attributes)
@@ -913,6 +978,7 @@ const saveFiltersToStorage = () => {
     const values = {
       role: filters.role,
       status: filters.status,
+      sales: filters.sales,
       group: filters.group,
       attributes: activeAttributeFilters
     }
@@ -1151,6 +1217,7 @@ const loadUsers = async () => {
       {
         role: filters.role as any,
         status: filters.status as any,
+        is_sales: filters.sales === '' ? undefined : filters.sales === 'true',
         search: searchQuery.value || undefined,
         group_name: filters.group || undefined,
         attributes: Object.keys(attrFilters).length > 0 ? attrFilters : undefined,
@@ -1228,12 +1295,13 @@ const getAttributeDefinitionName = (attrId: number): string => {
   return def?.name || String(attrId)
 }
 
-// Toggle a built-in filter (role/status)
+// Toggle a built-in filter (role/status/sales/group)
 const toggleBuiltInFilter = (key: string) => {
   if (visibleFilters.has(key)) {
     visibleFilters.delete(key)
     if (key === 'role') filters.role = ''
     if (key === 'status') filters.status = ''
+    if (key === 'sales') filters.sales = ''
     if (key === 'group') filters.group = ''
   } else {
     visibleFilters.add(key)
