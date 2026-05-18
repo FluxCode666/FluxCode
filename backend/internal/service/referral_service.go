@@ -139,10 +139,11 @@ func (s *ReferralService) HandleReferralOnRegister(ctx context.Context, newUserI
 
 	// 发放被邀请人注册奖励（如果配置了）
 	if cfg.InviteeRewardAmount > 0 {
-		s.grantGiftBalance(ctx, newUserID, cfg.InviteeRewardAmount, GiftBalanceSourceReferralInvitee, ref.ID, cfg.RewardExpiryDays,
-			fmt.Sprintf("注册奖励（推广人: %s）", referrer.Email))
-		if err := s.referralRepo.SetInviteeRewarded(ctx, ref.ID); err != nil {
-			slog.Error("set invitee rewarded", "referralID", ref.ID, "error", err)
+		if s.grantGiftBalance(ctx, newUserID, cfg.InviteeRewardAmount, GiftBalanceSourceReferralInvitee, ref.ID, cfg.RewardExpiryDays,
+			fmt.Sprintf("注册奖励（推广人: %s）", referrer.Email)) {
+			if err := s.referralRepo.SetInviteeRewarded(ctx, ref.ID); err != nil {
+				slog.Error("set invitee rewarded", "referralID", ref.ID, "error", err)
+			}
 		}
 	}
 
@@ -166,17 +167,18 @@ func (s *ReferralService) HandleInviterRewardOnFirstRecharge(ctx context.Context
 
 	// 发放推广人首充奖励
 	if cfg.InviterRewardAmount > 0 && ref.InviterRewardedAt == nil {
-		s.grantGiftBalance(ctx, ref.ReferrerID, cfg.InviterRewardAmount, GiftBalanceSourceReferralInviter, ref.ID, cfg.RewardExpiryDays,
-			fmt.Sprintf("被邀请人首充奖励（被邀请人ID: %d）", userID))
-		if err := s.referralRepo.SetInviterRewarded(ctx, ref.ID, cfg.InviterRewardAmount); err != nil {
-			slog.Error("set inviter rewarded", "referralID", ref.ID, "error", err)
+		if s.grantGiftBalance(ctx, ref.ReferrerID, cfg.InviterRewardAmount, GiftBalanceSourceReferralInviter, ref.ID, cfg.RewardExpiryDays,
+			fmt.Sprintf("被邀请人首充奖励（被邀请人ID: %d）", userID)) {
+			if err := s.referralRepo.SetInviterRewarded(ctx, ref.ID, cfg.InviterRewardAmount); err != nil {
+				slog.Error("set inviter rewarded", "referralID", ref.ID, "error", err)
+			}
+			slog.Info("inviter first-recharge reward granted", "referrerID", ref.ReferrerID, "refereeID", userID, "amount", cfg.InviterRewardAmount)
 		}
-		slog.Info("inviter first-recharge reward granted", "referrerID", ref.ReferrerID, "refereeID", userID, "amount", cfg.InviterRewardAmount)
 	}
 }
 
 // HandleOngoingRewardOnRecharge 被邀请人每次充值时触发持续奖励
-func (s *ReferralService) HandleOngoingRewardOnRecharge(ctx context.Context, userID int64, rechargeAmount float64) {
+func (s *ReferralService) HandleOngoingRewardOnRecharge(ctx context.Context, userID int64, rechargeAmount float64, paymentOrderID int64) {
 	ref, err := s.referralRepo.GetByRefereeID(ctx, userID)
 	if err != nil || ref == nil {
 		return
@@ -215,8 +217,13 @@ func (s *ReferralService) HandleOngoingRewardOnRecharge(ctx context.Context, use
 		return
 	}
 
-	s.grantGiftBalance(ctx, ref.ReferrerID, rewardAmount, GiftBalanceSourceReferralOngoing, ref.ID, cfg.RewardExpiryDays,
-		fmt.Sprintf("持续充值奖励（被邀请人ID: %d, 充值: %.2f）", userID, rechargeAmount))
+	// Use payment order ID as the idempotency key so each successful recharge can
+	// grant its own ongoing reward while duplicate fulfillment of the same order
+	// remains harmless.
+	if !s.grantGiftBalance(ctx, ref.ReferrerID, rewardAmount, GiftBalanceSourceReferralOngoing, paymentOrderID, cfg.RewardExpiryDays,
+		fmt.Sprintf("持续充值奖励（被邀请人ID: %d, 充值: %.2f）", userID, rechargeAmount)) {
+		return
+	}
 
 	if err := s.referralRepo.IncrementOngoingReward(ctx, ref.ID, rewardAmount); err != nil {
 		slog.Error("increment ongoing reward", "referralID", ref.ID, "error", err)
@@ -480,13 +487,13 @@ func (s *ReferralService) AdminBatchGrantGiftBalance(ctx context.Context, target
 
 // --- Internal helpers ---
 
-func (s *ReferralService) grantGiftBalance(ctx context.Context, userID int64, amount float64, source string, sourceRefID int64, expiryDays int, note string) {
+func (s *ReferralService) grantGiftBalance(ctx context.Context, userID int64, amount float64, source string, sourceRefID int64, expiryDays int, note string) bool {
 	// 幂等性检查
 	if sourceRefID > 0 {
 		exists, _ := s.giftBalanceRepo.ExistsBySourceRef(ctx, source, sourceRefID)
 		if exists {
 			slog.Info("gift balance already granted (idempotent)", "source", source, "sourceRefID", sourceRefID)
-			return
+			return false
 		}
 	}
 
@@ -512,7 +519,9 @@ func (s *ReferralService) grantGiftBalance(ctx context.Context, userID int64, am
 	}
 	if err := s.giftBalanceRepo.Create(ctx, record); err != nil {
 		slog.Error("grant gift balance", "userID", userID, "amount", amount, "source", source, "error", err)
+		return false
 	}
+	return true
 }
 
 func (s *ReferralService) isSalesReferrer(ctx context.Context, userID int64) bool {

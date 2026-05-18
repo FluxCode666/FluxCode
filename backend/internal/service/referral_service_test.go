@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -36,7 +37,7 @@ func TestReferralService_HandleOngoingRewardOnRecharge_SkipsSalesReferrer(t *tes
 		CreatedAt:  time.Now(),
 	})
 
-	svc.HandleOngoingRewardOnRecharge(context.Background(), 20, 100)
+	svc.HandleOngoingRewardOnRecharge(context.Background(), 20, 100, 101)
 
 	require.Empty(t, giftRepo.created)
 	require.Empty(t, referralRepo.ongoingRewardIncrements)
@@ -54,13 +55,33 @@ func TestReferralService_RechargeRewards_StillGrantForRegularReferrer(t *testing
 	})
 
 	svc.HandleInviterRewardOnFirstRecharge(context.Background(), 20, 100)
-	svc.HandleOngoingRewardOnRecharge(context.Background(), 20, 100)
+	svc.HandleOngoingRewardOnRecharge(context.Background(), 20, 100, 101)
 
 	require.Len(t, giftRepo.created, 2)
 	require.Equal(t, GiftBalanceSourceReferralInviter, giftRepo.created[0].Source)
 	require.Equal(t, GiftBalanceSourceReferralOngoing, giftRepo.created[1].Source)
 	require.Equal(t, []float64{20}, referralRepo.inviterRewarded)
 	require.Equal(t, []float64{5}, referralRepo.ongoingRewardIncrements)
+}
+
+func TestReferralService_HandleOngoingRewardOnRecharge_GrantsOncePerOrder(t *testing.T) {
+	t.Parallel()
+
+	svc, giftRepo, referralRepo := newReferralRewardTestService(&User{ID: 10, IsSales: false}, &Referral{
+		ID:         7,
+		ReferrerID: 10,
+		RefereeID:  20,
+		Status:     ReferralStatusCompleted,
+		CreatedAt:  time.Now(),
+	})
+
+	svc.HandleOngoingRewardOnRecharge(context.Background(), 20, 100, 201)
+	svc.HandleOngoingRewardOnRecharge(context.Background(), 20, 100, 201)
+	svc.HandleOngoingRewardOnRecharge(context.Background(), 20, 80, 202)
+
+	require.Len(t, giftRepo.created, 2)
+	require.Equal(t, []float64{5, 4}, referralRepo.ongoingRewardIncrements)
+	require.Len(t, giftRepo.existsChecks, 3)
 }
 
 func TestReferralService_AdminMarkReferralCompleted_GrantsInviterRewardOnly(t *testing.T) {
@@ -346,7 +367,8 @@ func (r *referralRepoStub) MarkCompleted(_ context.Context, id int64, rewardAmou
 }
 
 type referralGiftBalanceRepoStub struct {
-	created []*GiftBalanceRecord
+	created      []*GiftBalanceRecord
+	existsChecks []string
 }
 
 func (r *referralGiftBalanceRepoStub) Create(_ context.Context, record *GiftBalanceRecord) error {
@@ -370,7 +392,22 @@ func (r *referralGiftBalanceRepoStub) ExpireRecords(_ context.Context) (int, err
 func (r *referralGiftBalanceRepoStub) GetTotalRemainingByUserID(_ context.Context, _ int64) (float64, error) {
 	return 0, nil
 }
-func (r *referralGiftBalanceRepoStub) ExistsBySourceRef(_ context.Context, _ string, _ int64) (bool, error) {
+
+func giftBalanceKey(source string, sourceRefID int64) string {
+	return fmt.Sprintf("%s:%d", source, sourceRefID)
+}
+
+func (r *referralGiftBalanceRepoStub) ExistsBySourceRef(_ context.Context, source string, sourceRefID int64) (bool, error) {
+	key := giftBalanceKey(source, sourceRefID)
+	r.existsChecks = append(r.existsChecks, key)
+	for _, record := range r.created {
+		if record.Source != source || record.SourceRefID == nil {
+			continue
+		}
+		if *record.SourceRefID == sourceRefID {
+			return true, nil
+		}
+	}
 	return false, nil
 }
 func (r *referralGiftBalanceRepoStub) GetAdminStats(_ context.Context) (*AdminReferralStats, error) {

@@ -234,7 +234,7 @@ func (s *PaymentService) doBalance(ctx context.Context, o *dbent.PaymentOrder) e
 		if isFirstRecharge {
 			s.referralService.HandleInviterRewardOnFirstRecharge(ctx, o.UserID, o.Amount)
 		}
-		s.referralService.HandleOngoingRewardOnRecharge(ctx, o.UserID, o.Amount)
+		s.referralService.HandleOngoingRewardOnRecharge(ctx, o.UserID, o.Amount, o.ID)
 	}
 	s.handleSalesCommissionAfterBalanceCompleted(ctx, o)
 
