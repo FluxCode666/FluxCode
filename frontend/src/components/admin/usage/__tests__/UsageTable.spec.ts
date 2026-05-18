@@ -191,4 +191,46 @@ describe('admin UsageTable tooltip', () => {
     expect(text).toContain('Upstream Request ID')
     expect(text).toContain('req-upstream-1')
   })
+
+  it('wraps long request ids and models inside their cells', () => {
+    const row = {
+      trace_id: 'trace-admin-wrap-1',
+      request_id: 'req-upstream-wrap-0123456789abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz',
+      model: 'claude-sonnet-4-super-long-model-identifier-with-many-segments-and-suffixes',
+      actual_cost: 0,
+      total_cost: 0,
+      account_rate_multiplier: 1,
+      rate_multiplier: 1,
+      input_cost: 0,
+      output_cost: 0,
+      cache_creation_cost: 0,
+      cache_read_cost: 0,
+      input_tokens: 0,
+      output_tokens: 0,
+    }
+
+    const wrapper = mount(UsageTable, {
+      props: {
+        data: [row],
+        loading: false,
+        columns: [],
+      },
+      global: {
+        stubs: {
+          DataTable: DataTableStub,
+          EmptyState: true,
+          Icon: true,
+          Teleport: true,
+        },
+      },
+    })
+
+    const modelCell = wrapper.get('[data-test="usage-model-cell"]')
+    const requestCell = wrapper.get('[data-test="usage-request-id-cell"]')
+
+    expect(modelCell.classes()).toContain('whitespace-normal')
+    expect(requestCell.classes()).toContain('whitespace-normal')
+    expect(modelCell.find('.break-all').exists()).toBe(true)
+    expect(requestCell.find('.break-all').exists()).toBe(true)
+  })
 })

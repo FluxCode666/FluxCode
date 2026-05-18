@@ -520,14 +520,16 @@ const exportToExcel = async () => {
 const ALWAYS_VISIBLE = ['user', 'created_at']
 const DEFAULT_HIDDEN_COLUMNS = ['reasoning_effort', 'user_agent']
 const HIDDEN_COLUMNS_KEY = 'usage-hidden-columns'
+const longWrappedColumnClass = 'align-top whitespace-normal min-w-[15rem] max-w-[15rem]'
+const modelColumnClass = 'align-top whitespace-normal min-w-[16rem] max-w-[16rem]'
 
 const allColumns = computed(() => [
   { key: 'user', label: t('admin.usage.user'), sortable: false },
   { key: 'api_key', label: t('usage.apiKeyFilter'), sortable: false },
   { key: 'account', label: t('admin.usage.account'), sortable: false },
-  { key: 'trace_id', label: t('admin.usage.traceId'), sortable: false },
-  { key: 'request_id', label: t('admin.usage.upstreamRequestId'), sortable: false },
-  { key: 'model', label: t('usage.model'), sortable: true },
+  { key: 'trace_id', label: t('admin.usage.traceId'), sortable: false, class: longWrappedColumnClass },
+  { key: 'request_id', label: t('admin.usage.upstreamRequestId'), sortable: false, class: longWrappedColumnClass },
+  { key: 'model', label: t('usage.model'), sortable: true, class: modelColumnClass },
   { key: 'reasoning_effort', label: t('usage.reasoningEffort'), sortable: false },
   { key: 'endpoint', label: t('usage.endpoint'), sortable: false },
   { key: 'group', label: t('admin.usage.group'), sortable: false },

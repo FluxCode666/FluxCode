@@ -34,27 +34,40 @@
         </template>
 
         <template #cell-model="{ row }">
-          <div v-if="row.model_mapping_chain && row.model_mapping_chain.includes('→')" class="space-y-0.5 text-xs">
-            <div v-for="(step, i) in row.model_mapping_chain.split('→')" :key="i"
-                 class="break-all"
-                 :class="i === 0 ? 'font-medium text-gray-900 dark:text-white' : 'text-gray-500 dark:text-gray-400'"
-                 :style="i > 0 ? `padding-left: ${i * 0.75}rem` : ''">
-              <span v-if="i > 0" class="mr-0.5">↳</span>{{ step }}
-            </div>
-          </div>
-          <div v-else-if="row.upstream_model && row.upstream_model !== row.model" class="space-y-0.5 text-xs">
-            <div class="break-all font-medium text-gray-900 dark:text-white">
+          <div
+            data-test="usage-model-cell"
+            class="w-full min-w-0 max-w-full space-y-0.5 text-xs whitespace-normal"
+          >
+            <template v-if="row.model_mapping_chain && row.model_mapping_chain.includes('→')">
+              <div
+                v-for="(step, i) in row.model_mapping_chain.split('→')"
+                :key="i"
+                class="break-all"
+                :class="i === 0 ? 'font-medium text-gray-900 dark:text-white' : 'text-gray-500 dark:text-gray-400'"
+                :style="i > 0 ? `padding-left: ${i * 0.75}rem` : ''"
+              >
+                <span v-if="i > 0" class="mr-0.5">↳</span>{{ step }}
+              </div>
+            </template>
+            <template v-else-if="row.upstream_model && row.upstream_model !== row.model">
+              <div class="break-all font-medium text-gray-900 dark:text-white">
+                {{ row.model }}
+              </div>
+              <div class="break-all text-gray-500 dark:text-gray-400">
+                <span class="mr-0.5">↳</span>{{ row.upstream_model }}
+              </div>
+            </template>
+            <span v-else class="block break-all font-medium text-gray-900 dark:text-white">
               {{ row.model }}
-            </div>
-            <div class="break-all text-gray-500 dark:text-gray-400">
-              <span class="mr-0.5">↳</span>{{ row.upstream_model }}
-            </div>
+            </span>
           </div>
-          <span v-else class="font-medium text-gray-900 dark:text-white">{{ row.model }}</span>
         </template>
 
         <template #cell-trace_id="{ row }">
-          <div class="max-w-[240px] space-y-0.5 text-xs">
+          <div
+            data-test="usage-trace-id-cell"
+            class="w-full min-w-0 max-w-full space-y-0.5 text-xs whitespace-normal"
+          >
             <div class="text-[11px] font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
               {{ t('admin.usage.traceId') }}
             </div>
@@ -64,7 +77,10 @@
         </template>
 
         <template #cell-request_id="{ row }">
-          <div class="max-w-[240px] space-y-0.5 text-xs">
+          <div
+            data-test="usage-request-id-cell"
+            class="w-full min-w-0 max-w-full space-y-0.5 text-xs whitespace-normal"
+          >
             <div class="text-[11px] font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
               {{ t('admin.usage.upstreamRequestId') }}
             </div>

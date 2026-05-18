@@ -37,7 +37,11 @@
           inputmode="decimal"
           :value="customText"
           :placeholder="placeholderText"
-          class="input w-full py-3 pl-8 pr-4"
+          :aria-invalid="props.invalid ? 'true' : 'false'"
+          :class="[
+            'input w-full py-3 pl-8 pr-4',
+            props.invalid ? 'border-red-300 bg-red-50/70 text-red-900 placeholder:text-red-400 focus:border-red-500 focus:ring-red-500/20 dark:border-red-700 dark:bg-red-950/20 dark:text-red-100 dark:placeholder:text-red-500' : '',
+          ]"
           @input="handleInput"
         />
       </div>
@@ -54,10 +58,12 @@ const props = withDefaults(defineProps<{
   modelValue: number | null
   min?: number
   max?: number
+  invalid?: boolean
 }>(), {
   amounts: () => [10, 20, 50, 100, 200, 500, 1000, 2000, 5000],
   min: 0,
   max: 0,
+  invalid: false,
 })
 
 const emit = defineEmits<{

@@ -17,6 +17,11 @@ import (
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 )
 
+const (
+	paymentAmountBelowMinReason = "PAYMENT_AMOUNT_BELOW_MIN"
+	paymentAmountAboveMaxReason = "PAYMENT_AMOUNT_ABOVE_MAX"
+)
+
 // --- Order Creation ---
 
 func (s *PaymentService) CreateOrder(ctx context.Context, req CreateOrderRequest) (*CreateOrderResponse, error) {
@@ -155,11 +160,28 @@ func (s *PaymentService) validateOrderInput(ctx context.Context, req CreateOrder
 	if math.IsNaN(req.Amount) || math.IsInf(req.Amount, 0) || req.Amount <= 0 {
 		return nil, infraerrors.BadRequest("INVALID_AMOUNT", "amount must be a positive number")
 	}
-	if (cfg.MinAmount > 0 && req.Amount < cfg.MinAmount) || (cfg.MaxAmount > 0 && req.Amount > cfg.MaxAmount) {
-		return nil, infraerrors.BadRequest("INVALID_AMOUNT", "amount out of range").
-			WithMetadata(map[string]string{"min": fmt.Sprintf("%.2f", cfg.MinAmount), "max": fmt.Sprintf("%.2f", cfg.MaxAmount)})
+	if err := validateRechargeAmountRange(req.Amount, cfg.MinAmount, cfg.MaxAmount); err != nil {
+		return nil, err
 	}
 	return nil, nil
+}
+
+func validateRechargeAmountRange(amount, minAmount, maxAmount float64) error {
+	if minAmount > 0 && amount < minAmount {
+		return infraerrors.BadRequest(paymentAmountBelowMinReason, fmt.Sprintf("single recharge amount must be at least %.2f CNY", minAmount)).
+			WithMetadata(map[string]string{
+				"amount": fmt.Sprintf("%.2f", amount),
+				"min":    fmt.Sprintf("%.2f", minAmount),
+			})
+	}
+	if maxAmount > 0 && amount > maxAmount {
+		return infraerrors.BadRequest(paymentAmountAboveMaxReason, fmt.Sprintf("single recharge amount must not exceed %.2f CNY", maxAmount)).
+			WithMetadata(map[string]string{
+				"amount": fmt.Sprintf("%.2f", amount),
+				"max":    fmt.Sprintf("%.2f", maxAmount),
+			})
+	}
+	return nil
 }
 
 func (s *PaymentService) validateSubOrder(ctx context.Context, req CreateOrderRequest) (*dbent.SubscriptionPlan, error) {
@@ -399,6 +421,9 @@ func (s *PaymentService) PreviewPromotion(ctx context.Context, req CreateOrderRe
 	case payment.OrderTypeBalance:
 		if math.IsNaN(req.Amount) || math.IsInf(req.Amount, 0) || req.Amount <= 0 {
 			return nil, infraerrors.BadRequest("INVALID_AMOUNT", "amount must be a positive number")
+		}
+		if err := validateRechargeAmountRange(req.Amount, cfg.MinAmount, cfg.MaxAmount); err != nil {
+			return nil, err
 		}
 	default:
 		return nil, infraerrors.BadRequest("INVALID_ORDER_TYPE", "unsupported order_type")
