@@ -74,6 +74,24 @@ export interface SalesCommissionTier {
   sort_order?: number
 }
 
+export interface SalesCommissionMonthlyProgress {
+  sales_user_id: number
+  commission_month: string
+  commission_mode: SalesCommissionMode
+  fixed_commission_rate: number
+  min_monthly_sales_cny: number
+  tiers: SalesCommissionTier[]
+  monthly_sales_cny: number
+  monthly_commission_cny: number
+  threshold_met: boolean
+  to_threshold_cny: number
+  current_tier_index: number
+  next_tier_index: number
+  to_next_tier_cny: number
+  next_tier_rate: number
+  snapshot_frozen: boolean
+}
+
 export interface LoginRequest {
   email: string
   password: string

@@ -87,5 +87,8 @@ describe('UserEditModal sales fields', () => {
         }
       ]
     }))
+
+    // spec §8.4 提示：当 isSales 启用后应该展示 "配置仅影响下月" 横幅。
+    expect(wrapper.find('[data-testid="sales-monthly-snapshot-hint"]').exists()).toBe(true)
   })
 })

@@ -9,6 +9,8 @@
         <button type="button" class="btn btn-secondary" @click="loadAll">{{ t('common.refresh') }}</button>
       </div>
 
+      <SalesCommissionProgressCard v-if="progress" :progress="progress" />
+
       <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <div v-for="item in summaryCards" :key="item.label" class="rounded-lg border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-900">
           <div class="text-xs font-medium text-gray-500 dark:text-dark-400">{{ item.label }}</div>
@@ -65,15 +67,22 @@ import AppLayout from '@/components/layout/AppLayout.vue'
 import DataTable from '@/components/common/DataTable.vue'
 import Pagination from '@/components/common/Pagination.vue'
 import Select from '@/components/common/Select.vue'
-import type { SalesCommissionRecord, SalesCommissionSummary } from '@/types'
+import SalesCommissionProgressCard from '@/components/user/SalesCommissionProgressCard.vue'
+import type {
+  SalesCommissionMonthlyProgress,
+  SalesCommissionRecord,
+  SalesCommissionSummary
+} from '@/types'
 
 const { t } = useI18n()
 const appStore = useAppStore()
 
 const summary = ref<Partial<SalesCommissionSummary>>({})
 const records = ref<SalesCommissionRecord[]>([])
+const progress = ref<SalesCommissionMonthlyProgress | null>(null)
 const loadingSummary = ref(false)
 const loadingRecords = ref(false)
+const loadingProgress = ref(false)
 const pagination = reactive({ page: 1, page_size: 20, total: 0 })
 const statusFilter = ref('')
 
@@ -134,8 +143,23 @@ async function loadRecords() {
   }
 }
 
+async function loadProgress() {
+  loadingProgress.value = true
+  try {
+    progress.value = await salesCommissionsAPI.getMonthlyProgress()
+  } catch (error: any) {
+    // 静默：进度卡片只是展示用，加载失败不阻塞主表格。
+    progress.value = null
+    if (error?.message) {
+      console.warn('[salesCommissions] failed to load monthly progress:', error.message)
+    }
+  } finally {
+    loadingProgress.value = false
+  }
+}
+
 function loadAll() {
-  void Promise.all([loadSummary(), loadRecords()])
+  void Promise.all([loadSummary(), loadRecords(), loadProgress()])
 }
 
 function setPage(page: number) {

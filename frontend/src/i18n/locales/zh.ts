@@ -1023,6 +1023,34 @@ export default {
       unlocked: '已解冻',
       settled: '已结算',
       settlement_blocked: '暂不可结算'
+    },
+    monthlyProgress: {
+      title: '本月梯度进度',
+      currentMonth: '佣金归属月份',
+      monthlySales: '本月销售额',
+      monthlyCommission: '本月已计提佣金',
+      threshold: '门槛',
+      thresholdMet: '已达门槛',
+      thresholdNotMet: '未达门槛',
+      toThreshold: '距离门槛还差 ¥{amount}',
+      currentTier: '当前档位',
+      nextTier: '下一档位',
+      tierRange: '¥{from} ~ ¥{to}',
+      tierRangeOpen: '¥{from} 及以上',
+      tierRate: '{rate}%',
+      toNextTier: '距离下一档（{rate}%）还差 ¥{amount}',
+      atTopTier: '已达最高档位',
+      noTierConfigured: '当前账户暂未配置梯度返佣',
+      fixedRateMode: '固定费率模式',
+      fixedRateText: '当前费率 {rate}%（无梯度）',
+      fixedNoThreshold: '本月销售额每达到一笔即按 {rate}% 计提',
+      previewBadge: '预期规则（本月暂未触发，仅供参考）',
+      frozenBadge: '本月已冻结规则',
+      ruleEditedHint: '管理员对账户配置的修改仅在下个月生效，当月仍按已冻结规则结算（spec §8.4）',
+      tiersTitle: '梯度档位',
+      tierCurrent: '当前',
+      tierAchieved: '已跨过',
+      tierUpcoming: '未达'
     }
   },
 
@@ -1829,7 +1857,8 @@ export default {
         invalidTierTo: '第 {index} 条梯度的销售额上限必须大于销售额下限',
         invalidTierRate: '第 {index} 条梯度的提成比例必须在 0 到 100 之间',
         overlappingTier: '第 {index} 条梯度与上一条梯度区间重叠',
-        openEndedTierMustBeLast: '第 {index} 条梯度不能放在无上限梯度后面'
+        openEndedTierMustBeLast: '第 {index} 条梯度不能放在无上限梯度后面',
+        monthlySnapshotHint: '配置变更只对下一个佣金月（次月起）生效，本月已产生的佣金记录仍按当月已冻结的快照规则结算（spec §8.4）。'
       },
       soraStorageQuota: 'Sora 存储配额',
       soraStorageQuotaHint: '单位 GB，0 表示使用分组或系统默认配额',
