@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/shopspring/decimal"
 
@@ -75,29 +76,12 @@ func (r *salesCommissionRepository) CreateForOrder(ctx context.Context, input *s
 		return err
 	}
 
-	var monthlySalesBefore decimal.Decimal
-	if err := tx.QueryRowContext(ctx, `
-		SELECT COALESCE(SUM(order_pay_amount_cny), 0)
-		FROM sales_commission_records
-		WHERE sales_user_id = $1
-		  AND commission_month = $2
-	`, input.SalesUserID, input.CommissionMonth).Scan(&monthlySalesBefore); err != nil {
-		return err
-	}
-
-	calc, err := service.CalculateSalesCommission(
-		decimalFloat(cny(input.OrderPayAmountCNY)),
-		decimalFloat(monthlySalesBefore),
-		snapshot.CommissionMode,
-		snapshot.FixedCommissionRate,
-		snapshot.MinMonthlySalesCNY,
-		snapshot.Tiers,
-	)
-	if err != nil {
-		return err
-	}
-
-	_, err = tx.ExecContext(ctx, `
+	// spec §6.4：插入当前事件的基础字段，金额/比例/解锁先置 0；后续整月重算会回写。
+	// 手动完成（无 payment_order_id）按照 spec §6.8 把 credited_used_amount 初始化为
+	// order_credited_amount，使其在重算时直接 unlocked = commission_total。
+	// ON CONFLICT 显式针对 payment_order_id 的部分唯一索引（migration 113），
+	// 避免静默吞掉其它约束冲突。
+	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO sales_commission_records (
 			sales_user_id, referee_user_id, referral_id, payment_order_id,
 			order_pay_amount_cny, order_credited_amount, commission_mode, commission_rate, commission_total_cny,
@@ -106,14 +90,13 @@ func (r *salesCommissionRepository) CreateForOrder(ctx context.Context, input *s
 		)
 		VALUES (
 			$1, $2, $3, $4,
-			$5, $6, $7, $8, $9,
-			$10, $11, $12, $13, $14,
+			$5, $6, $7, 0, 0,
+			$8, $9, $10, 0, 0,
 			CASE WHEN $4 IS NULL THEN $6 ELSE 0 END,
-			CASE WHEN $4 IS NULL THEN $9 ELSE 0 END,
-			CASE WHEN $4 IS NULL THEN $16 ELSE $17 END,
-			$15, NOW(), NOW()
+			0,
+			$11, $12, NOW(), NOW()
 		)
-		ON CONFLICT DO NOTHING
+		ON CONFLICT ON CONSTRAINT sales_commission_records_payment_order_id_key DO NOTHING
 	`,
 		input.SalesUserID,
 		input.RefereeUserID,
@@ -122,22 +105,137 @@ func (r *salesCommissionRepository) CreateForOrder(ctx context.Context, input *s
 		cny(input.OrderPayAmountCNY),
 		decimal.NewFromFloat(input.OrderCreditedAmount),
 		snapshot.CommissionMode,
-		decimal.NewFromFloat(calc.CommissionRate).Round(4),
-		cny(calc.CommissionTotalCNY),
 		input.CommissionMonth,
 		input.CommissionEventAt,
 		snapshot.ID,
-		cny(calc.MonthlySalesBeforeCNY),
-		cny(calc.MonthlySalesAfterCNY),
-		input.Note,
-		service.SalesCommissionStatusUnlocked,
 		service.SalesCommissionStatusFrozen,
-	)
-	if err != nil {
+		input.Note,
+	); err != nil {
+		return err
+	}
+
+	// 始终触发整月重算：即便 INSERT 因 ON CONFLICT 静默跳过（重复 payment_order_id），
+	// reprice 仍是幂等的——这能修复 "首次 INSERT 成功但 reprice 失败回滚后再重试时
+	// 只走 ON CONFLICT 跳过路径，导致整月数据停留在 0" 的场景。
+	if err := repriceMonthlyCommissionRecordsTx(ctx, tx, snapshot, input.SalesUserID, input.CommissionMonth); err != nil {
 		return err
 	}
 
 	return tx.Commit()
+}
+
+// repriceMonthlyCommissionRecordsTx 在事务内对 (salesUserID, commissionMonth) 当月所有
+// sales_commission_records 执行 spec §6.5 / §6.6 的整月累进重算。
+//
+// 行为：
+//   - 锁住当月所有记录（FOR UPDATE）按 (commission_event_at ASC, id ASC) 顺序读取。
+//   - 调用 service.RecomputeMonthlyCommissionRecords 算出每条记录新的金额。
+//   - 批量 UPDATE：commission_total_cny / commission_rate /
+//     monthly_sales_before_cny / monthly_sales_after_cny / unlocked_cny / status。
+//   - settlement_blocked 状态保留不变；其他 status 按 commission_total / unlocked / settled
+//     关系重新推断，与现有 settlement 路径的 CASE 表达保持一致。
+func repriceMonthlyCommissionRecordsTx(ctx context.Context, tx *sql.Tx, snapshot *salesCommissionMonthlySnapshot, salesUserID int64, commissionMonth time.Time) error {
+	rows, err := tx.QueryContext(ctx, `
+		SELECT id, order_pay_amount_cny, order_credited_amount, credited_used_amount, payment_order_id
+		FROM sales_commission_records
+		WHERE sales_user_id = $1
+		  AND commission_month = $2
+		ORDER BY commission_event_at ASC, id ASC
+		FOR UPDATE
+	`, salesUserID, commissionMonth)
+	if err != nil {
+		return err
+	}
+
+	type repriceRow struct {
+		id              int64
+		hasPaymentOrder bool
+	}
+
+	var ordered []repriceRow
+	var inputs []service.SalesCommissionMonthlyRecordInput
+	for rows.Next() {
+		var (
+			id             int64
+			payAmount      decimal.Decimal
+			creditedAmount decimal.Decimal
+			creditedUsed   decimal.Decimal
+			paymentOrderID sql.NullInt64
+		)
+		if err := rows.Scan(&id, &payAmount, &creditedAmount, &creditedUsed, &paymentOrderID); err != nil {
+			_ = rows.Close()
+			return err
+		}
+		ordered = append(ordered, repriceRow{
+			id:              id,
+			hasPaymentOrder: paymentOrderID.Valid,
+		})
+		inputs = append(inputs, service.SalesCommissionMonthlyRecordInput{
+			OrderPayAmountCNY:   decimalFloat(payAmount),
+			OrderCreditedAmount: decimalFloat(creditedAmount),
+			CreditedUsedAmount:  decimalFloat(creditedUsed),
+			HasPaymentOrder:     paymentOrderID.Valid,
+		})
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if len(inputs) == 0 {
+		return nil
+	}
+
+	results, err := service.RecomputeMonthlyCommissionRecords(inputs, service.SalesCommissionSnapshot{
+		CommissionMode:      snapshot.CommissionMode,
+		FixedCommissionRate: snapshot.FixedCommissionRate,
+		MinMonthlySalesCNY:  snapshot.MinMonthlySalesCNY,
+		Tiers:               snapshot.Tiers,
+	})
+	if err != nil {
+		return err
+	}
+
+	// status 推断与 settlement 路径保持一致；额外保留 settlement_blocked，
+	// 并在 commission_total <= 0 时强制 frozen，避免被 settled_cny=0 视作 settled。
+	const updateSQL = `
+		UPDATE sales_commission_records
+		SET commission_total_cny = $1,
+		    commission_rate = $2,
+		    monthly_sales_before_cny = $3,
+		    monthly_sales_after_cny = $4,
+		    unlocked_cny = $5,
+		    status = CASE
+		        WHEN status = $6 THEN $6
+		        WHEN $1 <= 0 THEN $7
+		        WHEN settled_cny >= $1 THEN $8
+		        WHEN $5 >= $1 THEN $9
+		        WHEN $5 > 0 THEN $10
+		        ELSE $7
+		    END,
+		    updated_at = NOW()
+		WHERE id = $11
+	`
+	for i, row := range ordered {
+		result := results[i]
+		if _, err := tx.ExecContext(ctx, updateSQL,
+			cny(result.CommissionTotalCNY),
+			decimal.NewFromFloat(result.CommissionRate).Round(4),
+			cny(result.MonthlySalesBeforeCNY),
+			cny(result.MonthlySalesAfterCNY),
+			cny(result.UnlockedCNY),
+			service.SalesCommissionStatusSettlementBlocked,
+			service.SalesCommissionStatusFrozen,
+			service.SalesCommissionStatusSettled,
+			service.SalesCommissionStatusUnlocked,
+			service.SalesCommissionStatusPartialUnlocked,
+			row.id,
+		); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (r *salesCommissionRepository) ListSummaries(ctx context.Context, params service.SalesCommissionSummaryListParams) ([]service.SalesCommissionSummary, int, error) {
@@ -628,6 +726,12 @@ func ensureSalesCommissionMonthlySnapshot(ctx context.Context, tx *sql.Tx, input
 		return nil, err
 	}
 	mode := service.NormalizeSalesCommissionMode(input.CommissionMode)
+	// spec §5.1：tiered 模式允许 user.sales_commission_rate=0，且该字段不参与梯度计算。
+	// 写 snapshot 时强制 0，避免用户切换到梯度模式后仍把旧 fixed rate 留在快照里被误读。
+	fixedRate := input.CommissionRate
+	if mode == service.SalesCommissionModeTiered {
+		fixedRate = 0
+	}
 	_, err = tx.ExecContext(ctx, `
 		INSERT INTO sales_commission_monthly_snapshots (
 			sales_user_id, commission_month, timezone, commission_mode,
@@ -640,7 +744,7 @@ func ensureSalesCommissionMonthlySnapshot(ctx context.Context, tx *sql.Tx, input
 		input.CommissionMonth,
 		"Asia/Shanghai",
 		mode,
-		decimal.NewFromFloat(input.CommissionRate).Round(4),
+		decimal.NewFromFloat(fixedRate).Round(4),
 		cny(input.CommissionMinMonthlySales),
 		string(tiersJSON),
 	)
@@ -648,6 +752,61 @@ func ensureSalesCommissionMonthlySnapshot(ctx context.Context, tx *sql.Tx, input
 		return nil, err
 	}
 	return loadSalesCommissionMonthlySnapshot(ctx, tx, input.SalesUserID, input.CommissionMonth)
+}
+
+// GetMonthlyProgress 拉取销售用户当月梯度进度的原始数据，由 service 层做派生。
+//
+//   - snapshot 不存在 → Snapshot=nil，service 层用 user 当前规则做 "预期" 展示。
+//   - records 当月聚合用 SUM(order_pay_amount_cny) / SUM(commission_total_cny)，
+//     与 ListSummaries / GetSummaryBySalesUser 的口径一致。
+func (r *salesCommissionRepository) GetMonthlyProgress(ctx context.Context, salesUserID int64, commissionMonth time.Time) (*service.SalesCommissionMonthlyProgressData, error) {
+	data := &service.SalesCommissionMonthlyProgressData{}
+
+	var (
+		snapshotID                 int64
+		commissionMode             string
+		fixedRate, minMonthlySales decimal.Decimal
+		tiersJSON                  []byte
+	)
+	err := r.db.QueryRowContext(ctx, `
+		SELECT id, commission_mode, fixed_commission_rate, min_monthly_sales_cny, tiers_json
+		FROM sales_commission_monthly_snapshots
+		WHERE sales_user_id = $1
+		  AND commission_month = $2
+	`, salesUserID, commissionMonth).Scan(&snapshotID, &commissionMode, &fixedRate, &minMonthlySales, &tiersJSON)
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		// 当月还没有 snapshot —— 由 service 层 fallback 到 user 现行规则。
+	case err != nil:
+		return nil, err
+	default:
+		snap := &service.SalesCommissionSnapshot{
+			CommissionMode:      service.NormalizeSalesCommissionMode(commissionMode),
+			FixedCommissionRate: decimalFloat(fixedRate),
+			MinMonthlySalesCNY:  decimalFloat(minMonthlySales),
+		}
+		if len(tiersJSON) > 0 {
+			if err := json.Unmarshal(tiersJSON, &snap.Tiers); err != nil {
+				return nil, err
+			}
+		}
+		data.Snapshot = snap
+	}
+
+	var monthlySales, monthlyCommission decimal.Decimal
+	if err := r.db.QueryRowContext(ctx, `
+		SELECT
+			COALESCE(SUM(order_pay_amount_cny), 0),
+			COALESCE(SUM(commission_total_cny), 0)
+		FROM sales_commission_records
+		WHERE sales_user_id = $1
+		  AND commission_month = $2
+	`, salesUserID, commissionMonth).Scan(&monthlySales, &monthlyCommission); err != nil {
+		return nil, err
+	}
+	data.MonthlySalesCNY = decimalFloat(monthlySales)
+	data.MonthlyCommissionCNY = decimalFloat(monthlyCommission)
+	return data, nil
 }
 
 func loadSalesCommissionMonthlySnapshot(ctx context.Context, tx *sql.Tx, salesUserID int64, commissionMonth any) (*salesCommissionMonthlySnapshot, error) {

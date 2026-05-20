@@ -242,17 +242,23 @@ func TestSalesCommissionRepository_CreateForOrder_FreezesMonthlySnapshotAndReset
 	require.NoError(t, err)
 	require.Len(t, rows, 3)
 
+	// spec §6.5：梯度 0~200=>10%, 200~=>20%, threshold=100。
+	// 6 月第 1 笔 (90)：单笔时未达门槛，但第 2 笔 (100) 让月累计 190 跨过门槛，
+	// 整月重算后第 1 笔被补算到 P(90)-P(0)=9；rate=9/90=10%。
 	require.Equal(t, service.SalesCommissionModeTiered, rows[0].CommissionMode)
 	require.NotNil(t, rows[0].SnapshotID)
-	require.InDelta(t, 0, rows[0].CommissionTotalCNY, 0.000001)
+	require.InDelta(t, 9, rows[0].CommissionTotalCNY, 0.000001)
+	require.InDelta(t, 10, rows[0].CommissionRate, 0.0001)
 	require.InDelta(t, 0, rows[0].MonthlySalesBeforeCNY, 0.000001)
 	require.InDelta(t, 90, rows[0].MonthlySalesAfterCNY, 0.000001)
 
+	// 第 2 笔 (100)：P(190)-P(90)=19-9=10；rate=10/100=10%。
+	// 沿用首单冻结的 snapshot（即使 sales 已被改为 0% 单档配置）。
 	require.Equal(t, rows[0].SnapshotID, rows[1].SnapshotID)
-	require.InDelta(t, 18, rows[1].CommissionTotalCNY, 0.000001)
+	require.InDelta(t, 10, rows[1].CommissionTotalCNY, 0.000001)
 	require.InDelta(t, 90, rows[1].MonthlySalesBeforeCNY, 0.000001)
 	require.InDelta(t, 190, rows[1].MonthlySalesAfterCNY, 0.000001)
-	require.InDelta(t, 18, rows[1].CommissionRate, 0.0001)
+	require.InDelta(t, 10, rows[1].CommissionRate, 0.0001)
 
 	require.NotNil(t, rows[2].SnapshotID)
 	require.NotEqual(t, *rows[0].SnapshotID, *rows[2].SnapshotID)

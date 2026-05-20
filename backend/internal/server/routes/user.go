@@ -69,6 +69,7 @@ func RegisterUserRoutes(
 			{
 				salesCommissions.GET("/summary", h.SalesCommission.GetSummary)
 				salesCommissions.GET("/records", h.SalesCommission.ListRecords)
+				salesCommissions.GET("/monthly-progress", h.SalesCommission.GetMonthlyProgress)
 			}
 		}
 

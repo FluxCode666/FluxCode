@@ -29,6 +29,24 @@ func (h *SalesCommissionHandler) GetSummary(c *gin.Context) {
 	response.Success(c, summary)
 }
 
+// GetMonthlyProgress 返回销售用户当月梯度进度（spec §9）。
+//
+// 鉴权：必须是已登录销售用户（IsSales=true）。
+// 当月还没有销售返佣事件时返回基于 user 当前规则的预期画像（snapshot_frozen=false），
+// 当月已经有事件时返回基于已冻结 snapshot 的真实画像（snapshot_frozen=true）。
+func (h *SalesCommissionHandler) GetMonthlyProgress(c *gin.Context) {
+	userID, ok := h.authorizedSalesCommissionUserID(c)
+	if !ok {
+		return
+	}
+	progress, err := h.service.GetMonthlyProgress(c.Request.Context(), userID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, progress)
+}
+
 func (h *SalesCommissionHandler) ListRecords(c *gin.Context) {
 	userID, ok := h.authorizedSalesCommissionUserID(c)
 	if !ok {

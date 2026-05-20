@@ -524,12 +524,18 @@ func (s *ReferralService) grantGiftBalance(ctx context.Context, userID int64, am
 	return true
 }
 
+// isSalesReferrer 仅当 referrer 同时满足 IsSales 且销售返佣配置完整时返回 true。
+//
+// 这与 SalesCommissionUserEligible 保持一致，避免 "IsSales=true 但 fixed 模式 rate=0
+// 或 tiered 模式 tiers=[]" 的销售身份不完整用户走入 \"普通推广跳过 + 销售返佣跳过\"
+// 的双不发缝隙——这种用户应该回退到普通推广奖励路径，确保被邀请人首充/持续充值时
+// referrer 仍然能拿到 gift_balance 奖励。
 func (s *ReferralService) isSalesReferrer(ctx context.Context, userID int64) bool {
 	user, err := s.userRepo.GetByID(ctx, userID)
 	if err != nil || user == nil {
 		return false
 	}
-	return user.IsSales
+	return SalesCommissionUserEligible(user)
 }
 
 // generateUniqueCode 生成 6-8 位唯一推广码

@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"database/sql"
 	"regexp"
 	"testing"
 	"time"
@@ -144,4 +145,169 @@ func dec(v string) decimal.Decimal {
 		panic(err)
 	}
 	return d
+}
+
+// TestRepriceMonthlyCommissionRecordsTx_RepricesAllRecordsInOrderAfterCrossingThreshold
+// 验证仓储层 repriceMonthlyCommissionRecordsTx：
+//   - SELECT FOR UPDATE 按 (commission_event_at ASC, id ASC) 顺序读取当月记录；
+//   - 调用 service.RecomputeMonthlyCommissionRecords 计算后，每条记录都通过同一条 UPDATE 模板回写；
+//   - 跨门槛场景下整月所有记录都被补算（spec §6.5 / §6.6）。
+//
+// 这条测试用 sqlmock 保护 SQL 形态不被随意改坏；金额参数用 sqlmock.AnyArg 不直接比较，
+// 因为 decimal.Decimal 通过 driver.Value 编码出的具体值依赖于精度归一化，
+// 改动比较容易脆。
+func TestRepriceMonthlyCommissionRecordsTx_RepricesAllRecordsInOrderAfterCrossingThreshold(t *testing.T) {
+	db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherRegexp))
+	require.NoError(t, err)
+	defer db.Close()
+
+	ctx := context.Background()
+	mock.ExpectBegin()
+	tx, err := db.BeginTx(ctx, nil)
+	require.NoError(t, err)
+
+	salesUserID := int64(10)
+	commissionMonth := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+	snapshot := &salesCommissionMonthlySnapshot{
+		ID:                  999,
+		CommissionMode:      service.SalesCommissionModeTiered,
+		FixedCommissionRate: 0,
+		MinMonthlySalesCNY:  100,
+		Tiers: []service.SalesCommissionTier{
+			{MonthSalesFromCNY: 0, CommissionRate: 10},
+		},
+	}
+
+	// SELECT FOR UPDATE 按时间序返回 2 笔（60 + 90 = 150 跨过门槛 100）
+	mock.ExpectQuery(`FROM\s+sales_commission_records.*ORDER\s+BY\s+commission_event_at\s+ASC,\s+id\s+ASC.*FOR\s+UPDATE`).
+		WithArgs(salesUserID, commissionMonth).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"id", "order_pay_amount_cny", "order_credited_amount", "credited_used_amount", "payment_order_id",
+		}).
+			AddRow(int64(1), 60.0, 60.0, 30.0, int64(101)).
+			AddRow(int64(2), 90.0, 90.0, 0.0, int64(102)))
+
+	// 两条 UPDATE 都应该按新 status CASE 模板执行。
+	mock.ExpectExec(`UPDATE\s+sales_commission_records\s+SET\s+commission_total_cny\s*=`).
+		WithArgs(
+			sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(),
+			service.SalesCommissionStatusSettlementBlocked,
+			service.SalesCommissionStatusFrozen,
+			service.SalesCommissionStatusSettled,
+			service.SalesCommissionStatusUnlocked,
+			service.SalesCommissionStatusPartialUnlocked,
+			int64(1),
+		).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(`UPDATE\s+sales_commission_records\s+SET\s+commission_total_cny\s*=`).
+		WithArgs(
+			sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(),
+			service.SalesCommissionStatusSettlementBlocked,
+			service.SalesCommissionStatusFrozen,
+			service.SalesCommissionStatusSettled,
+			service.SalesCommissionStatusUnlocked,
+			service.SalesCommissionStatusPartialUnlocked,
+			int64(2),
+		).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectRollback()
+
+	require.NoError(t, repriceMonthlyCommissionRecordsTx(ctx, tx, snapshot, salesUserID, commissionMonth))
+	require.NoError(t, tx.Rollback())
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+// TestSalesCommissionRepository_GetMonthlyProgress_WithFrozenSnapshot 当月已存在 snapshot
+// 时，仓储层应该把 snapshot 字段 + 当月销售额/佣金 SUM 一起组装进 SalesCommissionMonthlyProgressData。
+func TestSalesCommissionRepository_GetMonthlyProgress_WithFrozenSnapshot(t *testing.T) {
+	db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherRegexp))
+	require.NoError(t, err)
+	defer db.Close()
+
+	repo := NewSalesCommissionRepository(db)
+	ctx := context.Background()
+	salesUserID := int64(10)
+	commissionMonth := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+
+	tiersJSON := []byte(`[{"month_sales_from_cny":0,"month_sales_to_cny":200,"commission_rate":5,"sort_order":1},{"month_sales_from_cny":200,"commission_rate":10,"sort_order":2}]`)
+	mock.ExpectQuery(`FROM\s+sales_commission_monthly_snapshots`).
+		WithArgs(salesUserID, commissionMonth).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"id", "commission_mode", "fixed_commission_rate", "min_monthly_sales_cny", "tiers_json",
+		}).AddRow(int64(999), "tiered", 0.0, 100.0, tiersJSON))
+	mock.ExpectQuery(`FROM\s+sales_commission_records`).
+		WithArgs(salesUserID, commissionMonth).
+		WillReturnRows(sqlmock.NewRows([]string{"sum_sales", "sum_commission"}).AddRow(150.0, 7.5))
+
+	data, err := repo.GetMonthlyProgress(ctx, salesUserID, commissionMonth)
+	require.NoError(t, err)
+	require.NotNil(t, data)
+	require.NotNil(t, data.Snapshot)
+	require.Equal(t, service.SalesCommissionModeTiered, data.Snapshot.CommissionMode)
+	require.InDelta(t, 100.0, data.Snapshot.MinMonthlySalesCNY, 0.0001)
+	require.Len(t, data.Snapshot.Tiers, 2)
+	require.InDelta(t, 5.0, data.Snapshot.Tiers[0].CommissionRate, 0.0001)
+	require.InDelta(t, 150.0, data.MonthlySalesCNY, 0.0001)
+	require.InDelta(t, 7.5, data.MonthlyCommissionCNY, 0.0001)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+// TestSalesCommissionRepository_GetMonthlyProgress_NoSnapshotReturnsAggregatesOnly 当月还没有
+// snapshot 时，仓储层应返回 Snapshot=nil 但仍提供销售额聚合（即使是 0），让 service 层
+// fallback 到 user 当前规则。
+func TestSalesCommissionRepository_GetMonthlyProgress_NoSnapshotReturnsAggregatesOnly(t *testing.T) {
+	db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherRegexp))
+	require.NoError(t, err)
+	defer db.Close()
+
+	repo := NewSalesCommissionRepository(db)
+	ctx := context.Background()
+	salesUserID := int64(10)
+	commissionMonth := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+
+	mock.ExpectQuery(`FROM\s+sales_commission_monthly_snapshots`).
+		WithArgs(salesUserID, commissionMonth).
+		WillReturnError(sql.ErrNoRows)
+	mock.ExpectQuery(`FROM\s+sales_commission_records`).
+		WithArgs(salesUserID, commissionMonth).
+		WillReturnRows(sqlmock.NewRows([]string{"sum_sales", "sum_commission"}).AddRow(0.0, 0.0))
+
+	data, err := repo.GetMonthlyProgress(ctx, salesUserID, commissionMonth)
+	require.NoError(t, err)
+	require.NotNil(t, data)
+	require.Nil(t, data.Snapshot)
+	require.InDelta(t, 0.0, data.MonthlySalesCNY, 0.0001)
+	require.InDelta(t, 0.0, data.MonthlyCommissionCNY, 0.0001)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+// TestRepriceMonthlyCommissionRecordsTx_NoRecordsIsNoop 当月份无记录时不应发出 UPDATE。
+func TestRepriceMonthlyCommissionRecordsTx_NoRecordsIsNoop(t *testing.T) {
+	db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherRegexp))
+	require.NoError(t, err)
+	defer db.Close()
+
+	ctx := context.Background()
+	mock.ExpectBegin()
+	tx, err := db.BeginTx(ctx, nil)
+	require.NoError(t, err)
+
+	salesUserID := int64(10)
+	commissionMonth := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+	snapshot := &salesCommissionMonthlySnapshot{
+		ID:                  100,
+		CommissionMode:      service.SalesCommissionModeFixed,
+		FixedCommissionRate: 10,
+	}
+
+	mock.ExpectQuery(`FROM\s+sales_commission_records.*FOR\s+UPDATE`).
+		WithArgs(salesUserID, commissionMonth).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"id", "order_pay_amount_cny", "order_credited_amount", "credited_used_amount", "payment_order_id",
+		}))
+	mock.ExpectRollback()
+
+	require.NoError(t, repriceMonthlyCommissionRecordsTx(ctx, tx, snapshot, salesUserID, commissionMonth))
+	require.NoError(t, tx.Rollback())
+	require.NoError(t, mock.ExpectationsWereMet())
 }
