@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
@@ -18,6 +19,7 @@ type SalesCommissionService struct {
 	repo         SalesCommissionRepository
 	referralRepo ReferralRepository
 	userRepo     salesCommissionUserRepository
+	nowFn        func() time.Time
 }
 
 func NewSalesCommissionService(repo SalesCommissionRepository, referralRepo ReferralRepository, userRepo salesCommissionUserRepository) *SalesCommissionService {
@@ -25,7 +27,23 @@ func NewSalesCommissionService(repo SalesCommissionRepository, referralRepo Refe
 		repo:         repo,
 		referralRepo: referralRepo,
 		userRepo:     userRepo,
+		nowFn:        func() time.Time { return time.Now().UTC() },
 	}
+}
+
+// SetNowFunc 仅用于测试，注入可控的当前时间函数。
+func (s *SalesCommissionService) SetNowFunc(fn func() time.Time) {
+	if s == nil {
+		return
+	}
+	s.nowFn = fn
+}
+
+func (s *SalesCommissionService) now() time.Time {
+	if s == nil || s.nowFn == nil {
+		return time.Now().UTC()
+	}
+	return s.nowFn()
 }
 
 func (s *SalesCommissionService) HandleBalanceRechargeCompleted(ctx context.Context, order *dbent.PaymentOrder) error {
@@ -136,13 +154,6 @@ func (s *SalesCommissionService) ListRecords(ctx context.Context, params SalesCo
 	return s.repo.ListRecords(ctx, params)
 }
 
-func (s *SalesCommissionService) CreateSettlement(ctx context.Context, input *SalesCommissionSettlementCreate) (*SalesCommissionSettlement, error) {
-	if input == nil || input.AmountCNY <= 0 {
-		return nil, ErrSalesCommissionInvalidAmount
-	}
-	return s.repo.CreateSettlement(ctx, input)
-}
-
 func (s *SalesCommissionService) ListSettlements(ctx context.Context, params SalesCommissionSettlementListParams) ([]SalesCommissionSettlement, int, error) {
 	return s.repo.ListSettlements(ctx, params)
 }
@@ -166,7 +177,7 @@ func (s *SalesCommissionService) GetMonthlyProgress(ctx context.Context, salesUs
 		return nil, nil
 	}
 
-	now := time.Now().UTC()
+	now := s.now()
 	commissionMonth := salesCommissionMonthStart(now)
 
 	data, err := s.repo.GetMonthlyProgress(ctx, salesUserID, commissionMonth)
@@ -282,4 +293,129 @@ func salesCommissionEventTimeFromOrder(order *dbent.PaymentOrder) time.Time {
 func salesCommissionMonthStart(eventAt time.Time) time.Time {
 	local := eventAt.In(salesCommissionMonthLocation)
 	return time.Date(local.Year(), local.Month(), 1, 0, 0, 0, 0, time.UTC)
+}
+
+// GetOverview 计算并返回 admin 端数据看板（spec §15）。
+//
+// 流程：
+//  1. 按 RangeKey 解析事件时间区间（custom 时需要 Start/End）。
+//  2. 用当前佣金月起算近 12 个月作为 trend 窗口。
+//  3. 调 repo.GetOverview 拿原始聚合，再按 12 月窗口补零成 monthly_trend。
+func (s *SalesCommissionService) GetOverview(ctx context.Context, params SalesCommissionOverviewParams) (*SalesCommissionOverview, error) {
+	if s == nil || s.repo == nil {
+		return nil, nil
+	}
+	rng, err := resolveSalesCommissionOverviewRange(params, s.now())
+	if err != nil {
+		return nil, err
+	}
+
+	trendEnd := salesCommissionMonthStart(s.now())
+	// 12 个月窗口：往前推 11 个月作为起点，保证含当月共 12 个月。
+	trendStart := salesCommissionMonthStart(trendEnd.AddDate(0, -11, 0))
+
+	data, err := s.repo.GetOverview(ctx, SalesCommissionOverviewQuery{
+		Start:             rng.Start,
+		End:               rng.End,
+		MonthlyTrendStart: trendStart,
+		MonthlyTrendEnd:   trendEnd,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return &SalesCommissionOverview{
+		Range:           rng,
+		KPI:             data.KPI,
+		MonthlyTrend:    fillSalesCommissionMonthlyTrend(trendStart, trendEnd, data.MonthlyTrend),
+		TopSales:        data.TopSales,
+		StatusBreakdown: data.StatusBreakdown,
+		ModeBreakdown:   data.ModeBreakdown,
+	}, nil
+}
+
+// resolveSalesCommissionOverviewRange 把 RangeKey 解析为闭区间 [start, end]。
+//
+// 所有边界以 Asia/Shanghai 时区计算然后转回 UTC，与 salesCommissionMonthStart 保持一致。
+func resolveSalesCommissionOverviewRange(params SalesCommissionOverviewParams, now time.Time) (SalesCommissionOverviewRange, error) {
+	loc := salesCommissionMonthLocation
+	local := now.In(loc)
+	key := strings.TrimSpace(params.RangeKey)
+	if key == "" {
+		key = SalesCommissionOverviewRangeThisMonth
+	}
+
+	var start, end time.Time
+	switch key {
+	case SalesCommissionOverviewRangeToday:
+		start = time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, loc)
+		end = start.Add(24 * time.Hour).Add(-time.Nanosecond)
+	case SalesCommissionOverviewRangeThisWeek:
+		// 周一为本周起点（符合中文场景）。
+		weekday := int(local.Weekday())
+		if weekday == 0 {
+			weekday = 7
+		}
+		monday := time.Date(local.Year(), local.Month(), local.Day()-(weekday-1), 0, 0, 0, 0, loc)
+		start = monday
+		end = monday.AddDate(0, 0, 7).Add(-time.Nanosecond)
+	case SalesCommissionOverviewRangeThisMonth:
+		start = time.Date(local.Year(), local.Month(), 1, 0, 0, 0, 0, loc)
+		end = start.AddDate(0, 1, 0).Add(-time.Nanosecond)
+	case SalesCommissionOverviewRangeQuarter:
+		quarterStartMonth := time.Month(((int(local.Month())-1)/3)*3 + 1)
+		start = time.Date(local.Year(), quarterStartMonth, 1, 0, 0, 0, 0, loc)
+		end = start.AddDate(0, 3, 0).Add(-time.Nanosecond)
+	case SalesCommissionOverviewRangeThisYear:
+		start = time.Date(local.Year(), 1, 1, 0, 0, 0, 0, loc)
+		end = start.AddDate(1, 0, 0).Add(-time.Nanosecond)
+	case SalesCommissionOverviewRangeLast30Days:
+		today := time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, loc)
+		end = today.Add(24 * time.Hour).Add(-time.Nanosecond)
+		start = today.AddDate(0, 0, -29)
+	case SalesCommissionOverviewRangeLast90Days:
+		today := time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, loc)
+		end = today.Add(24 * time.Hour).Add(-time.Nanosecond)
+		start = today.AddDate(0, 0, -89)
+	case SalesCommissionOverviewRangeCustom:
+		if params.Start == nil || params.End == nil {
+			return SalesCommissionOverviewRange{}, ErrSalesCommissionInvalidRange
+		}
+		s := params.Start.In(loc)
+		e := params.End.In(loc)
+		if e.Before(s) {
+			return SalesCommissionOverviewRange{}, ErrSalesCommissionInvalidRange
+		}
+		start = time.Date(s.Year(), s.Month(), s.Day(), 0, 0, 0, 0, loc)
+		end = time.Date(e.Year(), e.Month(), e.Day(), 23, 59, 59, int(time.Second-time.Nanosecond), loc)
+	default:
+		return SalesCommissionOverviewRange{}, ErrSalesCommissionInvalidRange
+	}
+
+	return SalesCommissionOverviewRange{Key: key, Start: start.UTC(), End: end.UTC()}, nil
+}
+
+// fillSalesCommissionMonthlyTrend 按 12 月窗口补零；返回值长度严格 = 月份数。
+func fillSalesCommissionMonthlyTrend(start, end time.Time, hits []SalesCommissionMonthlyTrend) []SalesCommissionMonthlyTrend {
+	indexByMonth := make(map[time.Time]SalesCommissionMonthlyTrend, len(hits))
+	for _, h := range hits {
+		key := salesCommissionMonthStart(h.Month)
+		indexByMonth[key] = SalesCommissionMonthlyTrend{
+			Month:                 key,
+			RelatedOrderAmountCNY: h.RelatedOrderAmountCNY,
+			CommissionTotalCNY:    h.CommissionTotalCNY,
+		}
+	}
+	out := make([]SalesCommissionMonthlyTrend, 0, 12)
+	cursor := salesCommissionMonthStart(start)
+	endMonth := salesCommissionMonthStart(end)
+	for !cursor.After(endMonth) {
+		if hit, ok := indexByMonth[cursor]; ok {
+			out = append(out, hit)
+		} else {
+			out = append(out, SalesCommissionMonthlyTrend{Month: cursor})
+		}
+		cursor = cursor.AddDate(0, 1, 0)
+	}
+	return out
 }

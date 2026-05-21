@@ -985,7 +985,7 @@ export default {
 
   salesCommissions: {
     title: '销售佣金',
-    adminDescription: '查看销售佣金冻结、解冻与手动结算状态',
+    adminDescription: '销售佣金数据看板：KPI、近 12 月趋势、Top10 与状态分布',
     userDescription: '查看您的邀请充值佣金与解冻进度',
     frozen: '冻结金额',
     unlocked: '已解冻',
@@ -995,8 +995,6 @@ export default {
     records: '佣金明细',
     summaries: '销售汇总',
     settlements: '结算记录',
-    createSettlement: '手动结算',
-    viewDetails: '查看明细',
     amount: '金额',
     note: '备注',
     status: '状态',
@@ -1013,10 +1011,57 @@ export default {
     monthlySales: '月销售额',
     createdAt: '创建时间',
     searchSales: '搜索销售邮箱或用户名',
-    invalidSettlement: '请输入有效的销售用户和结算金额',
-    settlementCreated: '结算记录已创建',
-    settlementFailed: '创建结算失败',
     loadFailed: '加载销售佣金数据失败',
+    detailsSection: '佣金明细 / 结算审计',
+    showDetails: '点击展开',
+    hideDetails: '点击收起',
+    range: {
+      today: '今日',
+      thisWeek: '本周',
+      thisMonth: '本月',
+      thisQuarter: '本季度',
+      thisYear: '本年',
+      last30d: '近 30 天',
+      last90d: '近 90 天',
+      custom: '自定义',
+      pickStart: '开始日期',
+      pickEnd: '结束日期'
+    },
+    kpi: {
+      relatedOrderAmount: '关联订单成交额',
+      commissionTotal: '佣金总额',
+      frozen: '冻结中',
+      settleable: '可结算',
+      settled: '已结算',
+      activeSalesUsers: '活跃销售人数',
+      thresholdMetUsers: '达门槛人数',
+      avgCommissionRate: '加权平均佣金率'
+    },
+    kpiHints: {
+      relatedOrderAmount: '区间内事件归属的订单成交额',
+      commissionTotal: '区间内计提的全部佣金',
+      frozen: '尚未解冻的佣金',
+      settleable: '可结算余额（订单已完成 / 未被 block）',
+      settled: '已落账的结算金额',
+      activeSalesUsers: '区间内有事件的销售用户数',
+      thresholdMetUsers: '区间覆盖月份内达月度门槛的销售用户数（仅梯度模式）',
+      avgCommissionRate: '∑佣金 / ∑关联订单 × 100'
+    },
+    charts: {
+      monthlyTrend: '近 12 个月佣金趋势',
+      monthlyTrendOrder: '关联订单成交额',
+      monthlyTrendCommission: '佣金总额',
+      statusBreakdown: '佣金状态分布',
+      topSales: 'Top 10 销售贡献',
+      modeBreakdown: '佣金模式占比',
+      noData: '当前范围暂无数据'
+    },
+    modeBreakdown: {
+      byCommission: '按佣金额',
+      byCount: '按记录数',
+      fixed: '固定费率',
+      tiered: '梯度返佣'
+    },
     statuses: {
       frozen: '冻结中',
       partial_unlocked: '部分解冻',

@@ -22,11 +22,6 @@ const (
 	SalesCommissionStatusSettlementBlocked = "settlement_blocked"
 )
 
-var (
-	ErrSalesCommissionSettleAmountExceeded = infraerrors.BadRequest("SALES_COMMISSION_SETTLE_AMOUNT_EXCEEDED", "settlement amount exceeds settleable commission")
-	ErrSalesCommissionInvalidAmount        = infraerrors.BadRequest("SALES_COMMISSION_INVALID_AMOUNT", "amount must be greater than 0")
-)
-
 type SalesCommissionCreate struct {
 	SalesUserID               int64
 	RefereeUserID             int64
@@ -524,12 +519,115 @@ type SalesCommissionMonthlyProgress struct {
 	SnapshotFrozen       bool                  `json:"snapshot_frozen"`
 }
 
+// SalesCommissionOverview admin 端数据看板（spec §15）。
+//
+// Range / KPI / monthly_trend / top_sales / status_breakdown / mode_breakdown 通过
+// 单次接口拉齐，避免前端多次往返。
+type SalesCommissionOverview struct {
+	Range           SalesCommissionOverviewRange   `json:"range"`
+	KPI             SalesCommissionOverviewKPI     `json:"kpi"`
+	MonthlyTrend    []SalesCommissionMonthlyTrend  `json:"monthly_trend"`
+	TopSales        []SalesCommissionTopSales      `json:"top_sales"`
+	StatusBreakdown SalesCommissionStatusBreakdown `json:"status_breakdown"`
+	ModeBreakdown   SalesCommissionModeBreakdown   `json:"mode_breakdown"`
+}
+
+type SalesCommissionOverviewRange struct {
+	Key   string    `json:"key"`
+	Start time.Time `json:"start"`
+	End   time.Time `json:"end"`
+}
+
+type SalesCommissionOverviewKPI struct {
+	RelatedOrderAmountCNY float64 `json:"related_order_amount_cny"`
+	CommissionTotalCNY    float64 `json:"commission_total_cny"`
+	FrozenCNY             float64 `json:"frozen_cny"`
+	SettleableCNY         float64 `json:"settleable_cny"`
+	SettledCNY            float64 `json:"settled_cny"`
+	ActiveSalesUsers      int     `json:"active_sales_users"`
+	ThresholdMetUsers     int     `json:"threshold_met_users"`
+	AvgCommissionRate     float64 `json:"avg_commission_rate"`
+}
+
+type SalesCommissionMonthlyTrend struct {
+	Month                 time.Time `json:"month"`
+	RelatedOrderAmountCNY float64   `json:"related_order_amount_cny"`
+	CommissionTotalCNY    float64   `json:"commission_total_cny"`
+}
+
+type SalesCommissionTopSales struct {
+	SalesUserID           int64   `json:"sales_user_id"`
+	SalesEmail            string  `json:"sales_email"`
+	SalesUsername         string  `json:"sales_username"`
+	RelatedOrderAmountCNY float64 `json:"related_order_amount_cny"`
+	CommissionTotalCNY    float64 `json:"commission_total_cny"`
+}
+
+type SalesCommissionStatusBreakdown struct {
+	FrozenCNY     float64 `json:"frozen_cny"`
+	SettleableCNY float64 `json:"settleable_cny"`
+	SettledCNY    float64 `json:"settled_cny"`
+}
+
+type SalesCommissionModeBreakdown struct {
+	FixedRecords        int     `json:"fixed_records"`
+	TieredRecords       int     `json:"tiered_records"`
+	FixedCommissionCNY  float64 `json:"fixed_commission_cny"`
+	TieredCommissionCNY float64 `json:"tiered_commission_cny"`
+}
+
+// SalesCommissionOverviewParams admin 端 overview 查询参数。
+type SalesCommissionOverviewParams struct {
+	RangeKey string
+	Start    *time.Time
+	End      *time.Time
+}
+
+// SalesCommissionOverviewQuery 仓储层 GetOverview 入参。
+//
+// [Start, End] 是事件时间闭区间，用于 KPI / Top10 / status / mode 聚合。
+// [MonthlyTrendStart, MonthlyTrendEnd] 是 commission_month 的闭区间窗口，
+// 用于按月聚合趋势图（service 层会按 12 月窗口补零）。
+type SalesCommissionOverviewQuery struct {
+	Start             time.Time
+	End               time.Time
+	MonthlyTrendStart time.Time
+	MonthlyTrendEnd   time.Time
+}
+
+// SalesCommissionOverviewData 仓储层 GetOverview 返回值。
+//
+// MonthlyTrend 仅返回数据库中实际命中的月份，service 层负责按 12 月窗口补零。
+// ThresholdMetUsers 写到 KPI.ThresholdMetUsers 中，不在顶层重复出现。
+type SalesCommissionOverviewData struct {
+	KPI             SalesCommissionOverviewKPI
+	MonthlyTrend    []SalesCommissionMonthlyTrend
+	TopSales        []SalesCommissionTopSales
+	StatusBreakdown SalesCommissionStatusBreakdown
+	ModeBreakdown   SalesCommissionModeBreakdown
+}
+
+// SalesCommissionOverviewRangeKey 支持的时间范围 key（spec §15.2）。
+const (
+	SalesCommissionOverviewRangeToday      = "today"
+	SalesCommissionOverviewRangeThisWeek   = "this_week"
+	SalesCommissionOverviewRangeThisMonth  = "this_month"
+	SalesCommissionOverviewRangeQuarter    = "this_quarter"
+	SalesCommissionOverviewRangeThisYear   = "this_year"
+	SalesCommissionOverviewRangeLast30Days = "last_30d"
+	SalesCommissionOverviewRangeLast90Days = "last_90d"
+	SalesCommissionOverviewRangeCustom     = "custom"
+)
+
+// ErrSalesCommissionInvalidRange 当 range key 非法或自定义区间缺失时返回。
+var ErrSalesCommissionInvalidRange = infraerrors.BadRequest("SALES_COMMISSION_INVALID_RANGE", "invalid time range parameters")
+
 type SalesCommissionRepository interface {
 	CreateForOrder(ctx context.Context, input *SalesCommissionCreate) error
 	ListSummaries(ctx context.Context, params SalesCommissionSummaryListParams) ([]SalesCommissionSummary, int, error)
 	GetSummaryBySalesUser(ctx context.Context, salesUserID int64) (*SalesCommissionSummary, error)
 	ListRecords(ctx context.Context, params SalesCommissionRecordListParams) ([]SalesCommissionRecord, int, error)
-	CreateSettlement(ctx context.Context, input *SalesCommissionSettlementCreate) (*SalesCommissionSettlement, error)
 	ListSettlements(ctx context.Context, params SalesCommissionSettlementListParams) ([]SalesCommissionSettlement, int, error)
 	GetMonthlyProgress(ctx context.Context, salesUserID int64, commissionMonth time.Time) (*SalesCommissionMonthlyProgressData, error)
+	GetOverview(ctx context.Context, query SalesCommissionOverviewQuery) (*SalesCommissionOverviewData, error)
 }

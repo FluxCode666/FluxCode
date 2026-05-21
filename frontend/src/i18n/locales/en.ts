@@ -990,7 +990,7 @@ export default {
 
   salesCommissions: {
     title: 'Sales Commissions',
-    adminDescription: 'Review frozen, unlocked, and manually settled sales commissions',
+    adminDescription: 'Sales commission dashboard: KPIs, 12-month trends, Top 10 and status breakdown',
     userDescription: 'Track your invited-user recharge commissions and unlock progress',
     frozen: 'Frozen',
     unlocked: 'Unlocked',
@@ -1000,8 +1000,6 @@ export default {
     records: 'Commission Records',
     summaries: 'Sales Summary',
     settlements: 'Settlements',
-    createSettlement: 'Create Settlement',
-    viewDetails: 'View Details',
     amount: 'Amount',
     note: 'Note',
     status: 'Status',
@@ -1018,10 +1016,57 @@ export default {
     monthlySales: 'Monthly Sales',
     createdAt: 'Created At',
     searchSales: 'Search sales email or username',
-    invalidSettlement: 'Enter a valid sales user and settlement amount',
-    settlementCreated: 'Settlement created',
-    settlementFailed: 'Failed to create settlement',
     loadFailed: 'Failed to load sales commission data',
+    detailsSection: 'Commission details / settlement audit',
+    showDetails: 'Click to expand',
+    hideDetails: 'Click to collapse',
+    range: {
+      today: 'Today',
+      thisWeek: 'This week',
+      thisMonth: 'This month',
+      thisQuarter: 'This quarter',
+      thisYear: 'This year',
+      last30d: 'Last 30 days',
+      last90d: 'Last 90 days',
+      custom: 'Custom',
+      pickStart: 'Start date',
+      pickEnd: 'End date'
+    },
+    kpi: {
+      relatedOrderAmount: 'Related order amount',
+      commissionTotal: 'Total commission',
+      frozen: 'Frozen',
+      settleable: 'Settleable',
+      settled: 'Settled',
+      activeSalesUsers: 'Active sales users',
+      thresholdMetUsers: 'Threshold met users',
+      avgCommissionRate: 'Weighted avg rate'
+    },
+    kpiHints: {
+      relatedOrderAmount: 'Order amount attributable to events in range',
+      commissionTotal: 'Total commission accrued in range',
+      frozen: 'Commission still locked',
+      settleable: 'Settleable balance (order completed, not blocked)',
+      settled: 'Amount already settled',
+      activeSalesUsers: 'Distinct sales users with events in range',
+      thresholdMetUsers: 'Tiered sales users who reached the monthly threshold',
+      avgCommissionRate: '∑commission / ∑related-order × 100'
+    },
+    charts: {
+      monthlyTrend: 'Last 12 months commission trend',
+      monthlyTrendOrder: 'Related order amount',
+      monthlyTrendCommission: 'Commission total',
+      statusBreakdown: 'Commission status',
+      topSales: 'Top 10 sales contribution',
+      modeBreakdown: 'Commission mode share',
+      noData: 'No data for the current range'
+    },
+    modeBreakdown: {
+      byCommission: 'By commission',
+      byCount: 'By records',
+      fixed: 'Fixed rate',
+      tiered: 'Tiered'
+    },
     monthlyProgress: {
       title: 'Tier Progress This Month',
       currentMonth: 'Commission Month',

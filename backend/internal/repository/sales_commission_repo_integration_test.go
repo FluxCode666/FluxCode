@@ -14,7 +14,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/service"
 )
 
-func TestSalesCommissionRepository_CreateListsAndSettles(t *testing.T) {
+func TestSalesCommissionRepository_CreateAndLists(t *testing.T) {
 	ctx := context.Background()
 	client := testEntClient(t)
 	repo := NewSalesCommissionRepository(integrationDB)
@@ -85,66 +85,19 @@ func TestSalesCommissionRepository_CreateListsAndSettles(t *testing.T) {
 	require.GreaterOrEqual(t, total, 1)
 	require.NotEmpty(t, summaries)
 
-	_, err = integrationDB.ExecContext(ctx, `
-		UPDATE sales_commission_records
-		SET unlocked_cny = CASE payment_order_id WHEN $1 THEN 0.40 WHEN $2 THEN 1.00 END,
-		    credited_used_amount = CASE payment_order_id WHEN $1 THEN 4 WHEN $2 THEN 10 END,
-		    status = 'partial_unlocked'
-		WHERE payment_order_id IN ($1, $2)
-	`, firstOrderID, secondOrderID)
-	require.NoError(t, err)
-
-	settlement, err := repo.CreateSettlement(ctx, &service.SalesCommissionSettlementCreate{
-		SalesUserID: sales.ID,
-		AmountCNY:   0.75,
-		Note:        "manual payout",
-		CreatedBy:   &sales.ID,
-	})
-	require.NoError(t, err)
-	require.Equal(t, sales.ID, settlement.SalesUserID)
-	require.InDelta(t, 0.75, settlement.AmountCNY, 0.000001)
-
 	records, total, err := repo.ListRecords(ctx, service.SalesCommissionRecordListParams{SalesUserID: sales.ID, Page: 1, PageSize: 20})
 	require.NoError(t, err)
 	require.Equal(t, 2, total)
 	require.Len(t, records, 2)
 	require.NotNil(t, records[0].PaymentOrderID)
 	require.Equal(t, firstOrderID, *records[0].PaymentOrderID)
-	require.InDelta(t, 0.40, records[0].SettledCNY, 0.000001)
-	require.InDelta(t, 0, records[0].SettleableCNY, 0.000001)
 	require.NotNil(t, records[1].PaymentOrderID)
 	require.Equal(t, secondOrderID, *records[1].PaymentOrderID)
-	require.InDelta(t, 0.35, records[1].SettledCNY, 0.000001)
-	require.InDelta(t, 0.65, records[1].SettleableCNY, 0.000001)
 
 	settlements, total, err := repo.ListSettlements(ctx, service.SalesCommissionSettlementListParams{SalesUserID: sales.ID, Page: 1, PageSize: 20})
 	require.NoError(t, err)
-	require.Equal(t, 1, total)
-	require.Len(t, settlements, 1)
-	require.InDelta(t, 0.75, settlements[0].AmountCNY, 0.000001)
-}
-
-func TestSalesCommissionRepository_CreateSettlementRejectsInvalidAmounts(t *testing.T) {
-	ctx := context.Background()
-	client := testEntClient(t)
-	repo := NewSalesCommissionRepository(integrationDB)
-
-	sales := mustCreateUser(t, client, &service.User{Email: "sales-invalid-" + uuid.NewString() + "@example.com"})
-
-	_, err := repo.CreateSettlement(ctx, &service.SalesCommissionSettlementCreate{
-		SalesUserID: sales.ID,
-		AmountCNY:   0,
-		Note:        "zero",
-	})
-	require.ErrorIs(t, err, service.ErrSalesCommissionInvalidAmount)
-
-	_, err = repo.CreateSettlement(ctx, &service.SalesCommissionSettlementCreate{
-		SalesUserID: sales.ID,
-		AmountCNY:   1,
-		Note:        "too much",
-	})
-	require.ErrorIs(t, err, service.ErrSalesCommissionSettleAmountExceeded)
-	require.WithinDuration(t, time.Now(), time.Now(), time.Second)
+	require.Equal(t, 0, total)
+	require.Empty(t, settlements)
 }
 
 func TestSalesCommissionRepository_CreateForOrder_FreezesMonthlySnapshotAndResetsNextMonth(t *testing.T) {

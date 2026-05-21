@@ -2,6 +2,7 @@ package admin
 
 import (
 	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -62,37 +63,43 @@ func (h *SalesCommissionHandler) ListSettlements(c *gin.Context) {
 	response.Paginated(c, items, int64(total), page, pageSize)
 }
 
-type createSalesCommissionSettlementRequest struct {
-	SalesUserID int64   `json:"sales_user_id"`
-	AmountCNY   float64 `json:"amount_cny"`
-	Note        string  `json:"note"`
-}
-
-func (h *SalesCommissionHandler) CreateSettlement(c *gin.Context) {
-	var req createSalesCommissionSettlementRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "Invalid request: "+err.Error())
-		return
+// GetOverview 返回 admin 端销售佣金数据看板（spec §15.3）。
+//
+// query string:
+//   - range: today|this_week|this_month|this_quarter|this_year|last_30d|last_90d|custom，默认 this_month
+//   - start, end: 当 range=custom 时必填，格式 YYYY-MM-DD（按 Asia/Shanghai 解析）
+func (h *SalesCommissionHandler) GetOverview(c *gin.Context) {
+	params := service.SalesCommissionOverviewParams{
+		RangeKey: c.Query("range"),
 	}
-	if req.SalesUserID <= 0 {
-		response.BadRequest(c, "sales_user_id is required")
-		return
+	if v := c.Query("start"); v != "" {
+		t, err := parseSalesCommissionDate(v)
+		if err != nil {
+			response.BadRequest(c, "invalid start date: "+err.Error())
+			return
+		}
+		params.Start = &t
 	}
-	if req.AmountCNY <= 0 {
-		response.BadRequest(c, "amount_cny must be greater than 0")
-		return
+	if v := c.Query("end"); v != "" {
+		t, err := parseSalesCommissionDate(v)
+		if err != nil {
+			response.BadRequest(c, "invalid end date: "+err.Error())
+			return
+		}
+		params.End = &t
 	}
-	result, err := h.service.CreateSettlement(c.Request.Context(), &service.SalesCommissionSettlementCreate{
-		SalesUserID: req.SalesUserID,
-		AmountCNY:   req.AmountCNY,
-		Note:        req.Note,
-		CreatedBy:   parseAdminUserID(c),
-	})
+	overview, err := h.service.GetOverview(c.Request.Context(), params)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
-	response.Success(c, result)
+	response.Success(c, overview)
+}
+
+var salesCommissionDashboardLocation = time.FixedZone("Asia/Shanghai", 8*60*60)
+
+func parseSalesCommissionDate(s string) (time.Time, error) {
+	return time.ParseInLocation("2006-01-02", s, salesCommissionDashboardLocation)
 }
 
 func parseInt64Query(c *gin.Context, key string) int64 {

@@ -655,9 +655,9 @@ func registerSalesCommissionRoutes(admin *gin.RouterGroup, h *handler.Handlers) 
 	}
 	commissions := admin.Group("/sales-commissions")
 	{
+		commissions.GET("/overview", h.Admin.SalesCommission.GetOverview)
 		commissions.GET("/summary", h.Admin.SalesCommission.ListSummaries)
 		commissions.GET("/records", h.Admin.SalesCommission.ListRecords)
 		commissions.GET("/settlements", h.Admin.SalesCommission.ListSettlements)
-		commissions.POST("/settlements", h.Admin.SalesCommission.CreateSettlement)
 	}
 }

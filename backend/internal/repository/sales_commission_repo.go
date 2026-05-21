@@ -427,145 +427,6 @@ func (r *salesCommissionRepository) ListRecords(ctx context.Context, params serv
 	return records, total, nil
 }
 
-func (r *salesCommissionRepository) CreateSettlement(ctx context.Context, input *service.SalesCommissionSettlementCreate) (*service.SalesCommissionSettlement, error) {
-	if input == nil || input.AmountCNY <= 0 {
-		return nil, service.ErrSalesCommissionInvalidAmount
-	}
-	requested := cny(input.AmountCNY)
-	if !requested.IsPositive() {
-		return nil, service.ErrSalesCommissionInvalidAmount
-	}
-
-	tx, err := r.db.BeginTx(ctx, nil)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = tx.Rollback() }()
-
-	rows, err := tx.QueryContext(ctx, `
-		SELECT scr.id, scr.unlocked_cny, scr.settled_cny
-		FROM sales_commission_records scr
-		LEFT JOIN payment_orders po ON po.id = scr.payment_order_id
-		WHERE scr.sales_user_id = $1
-		  AND (scr.payment_order_id IS NULL OR po.status = $2)
-		  AND scr.status <> $3
-		  AND scr.unlocked_cny > scr.settled_cny
-		ORDER BY scr.id ASC
-		FOR UPDATE
-	`, input.SalesUserID, payment.OrderStatusCompleted, service.SalesCommissionStatusSettlementBlocked)
-	if err != nil {
-		return nil, err
-	}
-
-	type settleableRecord struct {
-		id        int64
-		unlocked  decimal.Decimal
-		settled   decimal.Decimal
-		available decimal.Decimal
-	}
-	records := []settleableRecord{}
-	total := decimal.Zero
-	for rows.Next() {
-		var record settleableRecord
-		if err := rows.Scan(&record.id, &record.unlocked, &record.settled); err != nil {
-			_ = rows.Close()
-			return nil, err
-		}
-		record.available = record.unlocked.Sub(record.settled)
-		total = total.Add(record.available)
-		records = append(records, record)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	if requested.GreaterThan(total) {
-		return nil, service.ErrSalesCommissionSettleAmountExceeded
-	}
-
-	var settlement service.SalesCommissionSettlement
-	var createdBy sql.NullInt64
-	if input.CreatedBy != nil {
-		createdBy = sql.NullInt64{Int64: *input.CreatedBy, Valid: true}
-	}
-	err = tx.QueryRowContext(ctx, `
-		INSERT INTO sales_commission_settlements (sales_user_id, amount_cny, note, created_by, created_at)
-		VALUES ($1, $2, $3, $4, NOW())
-		RETURNING id, sales_user_id, amount_cny, note, created_by, created_at
-	`, input.SalesUserID, requested, input.Note, createdBy).Scan(
-		&settlement.ID,
-		&settlement.SalesUserID,
-		(*decimalFloatScanner)(&settlement.AmountCNY),
-		&settlement.Note,
-		&createdBy,
-		&settlement.CreatedAt,
-	)
-	if err != nil {
-		return nil, err
-	}
-	if createdBy.Valid {
-		settlement.CreatedBy = &createdBy.Int64
-	}
-
-	remaining := requested
-	for _, record := range records {
-		if !remaining.IsPositive() {
-			break
-		}
-		allocated := decimal.Min(remaining, record.available).Round(2)
-		if !allocated.IsPositive() {
-			continue
-		}
-
-		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO sales_commission_settlement_items (settlement_id, commission_record_id, amount_cny, created_at)
-			VALUES ($1, $2, $3, NOW())
-		`, settlement.ID, record.id, allocated); err != nil {
-			return nil, err
-		}
-
-		if _, err := tx.ExecContext(ctx, `
-			UPDATE sales_commission_records
-			SET settled_cny = settled_cny + $1,
-			    status = CASE
-			        WHEN settled_cny + $1 >= commission_total_cny THEN $2
-			        WHEN unlocked_cny >= commission_total_cny THEN $3
-			        WHEN unlocked_cny > 0 THEN $4
-			        ELSE $5
-			    END,
-			    updated_at = NOW()
-			WHERE id = $6
-		`,
-			allocated,
-			service.SalesCommissionStatusSettled,
-			service.SalesCommissionStatusUnlocked,
-			service.SalesCommissionStatusPartialUnlocked,
-			service.SalesCommissionStatusFrozen,
-			record.id,
-		); err != nil {
-			return nil, err
-		}
-		remaining = remaining.Sub(allocated)
-	}
-
-	if remaining.GreaterThan(decimal.NewFromFloat(0.004)) {
-		return nil, fmt.Errorf("settlement allocation remainder: %s", remaining.String())
-	}
-
-	if err := tx.QueryRowContext(ctx, `
-		SELECT COALESCE(email, '') FROM users WHERE id = $1
-	`, settlement.SalesUserID).Scan(&settlement.SalesEmail); err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return nil, err
-	}
-
-	if err := tx.Commit(); err != nil {
-		return nil, err
-	}
-	return &settlement, nil
-}
-
 func (r *salesCommissionRepository) ListSettlements(ctx context.Context, params service.SalesCommissionSettlementListParams) ([]service.SalesCommissionSettlement, int, error) {
 	page, pageSize := salesPage(params.Page, params.PageSize)
 	offset := (page - 1) * pageSize
@@ -857,4 +718,155 @@ func (s *decimalFloatScanner) Scan(src any) error {
 	}
 	*s = decimalFloatScanner(decimalFloat(d))
 	return nil
+}
+
+// GetOverview 拉取 admin 端数据看板所需的全部数据（spec §15.3）。
+//
+//   - KPI / status_breakdown / mode_breakdown 通过单条聚合 SQL 一次返回。
+//   - threshold_met_users 只统计 tiered 模式下且 min_monthly_sales > 0 的销售用户，
+//     fixed 模式没有 "门槛" 概念，避免被误算成 "全部活跃销售都达门槛"。
+//   - monthly_trend 按 commission_month 聚合 [MonthlyTrendStart, MonthlyTrendEnd]，
+//     未命中的月份由 service 层补零。
+//   - top_sales 按区间内 commission_total_cny 倒序 Top10。
+func (r *salesCommissionRepository) GetOverview(ctx context.Context, query service.SalesCommissionOverviewQuery) (*service.SalesCommissionOverviewData, error) {
+	data := &service.SalesCommissionOverviewData{}
+
+	// 1) KPI + status_breakdown + mode_breakdown 单次聚合
+	var (
+		relatedOrder, commissionTotal, frozen, settleable, settled decimal.Decimal
+		fixedCommission, tieredCommission                          decimal.Decimal
+		activeUsers, fixedRecords, tieredRecords                   int
+	)
+	err := r.db.QueryRowContext(ctx, `
+		SELECT
+			COALESCE(SUM(scr.order_pay_amount_cny), 0),
+			COALESCE(SUM(scr.commission_total_cny), 0),
+			COALESCE(SUM(scr.commission_total_cny - scr.unlocked_cny), 0),
+			COALESCE(SUM(CASE WHEN (scr.payment_order_id IS NULL OR po.status = $3)
+			                       AND scr.status <> $4
+			                  THEN scr.unlocked_cny - scr.settled_cny ELSE 0 END), 0),
+			COALESCE(SUM(scr.settled_cny), 0),
+			COUNT(DISTINCT scr.sales_user_id),
+			COALESCE(SUM(CASE WHEN scr.commission_mode = $5 THEN 1 ELSE 0 END), 0),
+			COALESCE(SUM(CASE WHEN scr.commission_mode = $6 THEN 1 ELSE 0 END), 0),
+			COALESCE(SUM(CASE WHEN scr.commission_mode = $5 THEN scr.commission_total_cny ELSE 0 END), 0),
+			COALESCE(SUM(CASE WHEN scr.commission_mode = $6 THEN scr.commission_total_cny ELSE 0 END), 0)
+		FROM sales_commission_records scr
+		LEFT JOIN payment_orders po ON po.id = scr.payment_order_id
+		WHERE scr.commission_event_at >= $1 AND scr.commission_event_at <= $2
+	`,
+		query.Start, query.End,
+		payment.OrderStatusCompleted,
+		service.SalesCommissionStatusSettlementBlocked,
+		service.SalesCommissionModeFixed,
+		service.SalesCommissionModeTiered,
+	).Scan(
+		&relatedOrder, &commissionTotal, &frozen, &settleable, &settled,
+		&activeUsers, &fixedRecords, &tieredRecords, &fixedCommission, &tieredCommission,
+	)
+	if err != nil {
+		return nil, err
+	}
+	data.KPI.RelatedOrderAmountCNY = decimalFloat(relatedOrder)
+	data.KPI.CommissionTotalCNY = decimalFloat(commissionTotal)
+	data.KPI.FrozenCNY = decimalFloat(frozen)
+	data.KPI.SettleableCNY = decimalFloat(settleable)
+	data.KPI.SettledCNY = decimalFloat(settled)
+	data.KPI.ActiveSalesUsers = activeUsers
+	data.StatusBreakdown.FrozenCNY = data.KPI.FrozenCNY
+	data.StatusBreakdown.SettleableCNY = data.KPI.SettleableCNY
+	data.StatusBreakdown.SettledCNY = data.KPI.SettledCNY
+	data.ModeBreakdown.FixedRecords = fixedRecords
+	data.ModeBreakdown.TieredRecords = tieredRecords
+	data.ModeBreakdown.FixedCommissionCNY = decimalFloat(fixedCommission)
+	data.ModeBreakdown.TieredCommissionCNY = decimalFloat(tieredCommission)
+
+	// 2) threshold_met_users
+	if err := r.db.QueryRowContext(ctx, `
+		SELECT COUNT(DISTINCT scr.sales_user_id)
+		FROM sales_commission_records scr
+		JOIN sales_commission_monthly_snapshots s
+		  ON s.sales_user_id = scr.sales_user_id AND s.commission_month = scr.commission_month
+		WHERE scr.commission_event_at >= $1 AND scr.commission_event_at <= $2
+		  AND s.commission_mode = $3
+		  AND s.min_monthly_sales_cny > 0
+		  AND scr.monthly_sales_after_cny >= s.min_monthly_sales_cny
+	`, query.Start, query.End, service.SalesCommissionModeTiered).Scan(&data.KPI.ThresholdMetUsers); err != nil {
+		return nil, err
+	}
+
+	// avg_commission_rate（在 SQL 之外计算，避免除零）
+	if data.KPI.RelatedOrderAmountCNY > 0 {
+		data.KPI.AvgCommissionRate = data.KPI.CommissionTotalCNY / data.KPI.RelatedOrderAmountCNY * 100
+	}
+
+	// 3) monthly_trend：按 commission_month 桶聚合（窗口由 service 决定）
+	monthlyRows, err := r.db.QueryContext(ctx, `
+		SELECT scr.commission_month,
+		       COALESCE(SUM(scr.order_pay_amount_cny), 0),
+		       COALESCE(SUM(scr.commission_total_cny), 0)
+		FROM sales_commission_records scr
+		WHERE scr.commission_month >= $1 AND scr.commission_month <= $2
+		GROUP BY scr.commission_month
+		ORDER BY scr.commission_month ASC
+	`, query.MonthlyTrendStart, query.MonthlyTrendEnd)
+	if err != nil {
+		return nil, err
+	}
+	defer monthlyRows.Close()
+	for monthlyRows.Next() {
+		var (
+			month        time.Time
+			relatedMonth decimal.Decimal
+			commMonth    decimal.Decimal
+		)
+		if err := monthlyRows.Scan(&month, &relatedMonth, &commMonth); err != nil {
+			return nil, err
+		}
+		data.MonthlyTrend = append(data.MonthlyTrend, service.SalesCommissionMonthlyTrend{
+			Month:                 month,
+			RelatedOrderAmountCNY: decimalFloat(relatedMonth),
+			CommissionTotalCNY:    decimalFloat(commMonth),
+		})
+	}
+	if err := monthlyRows.Err(); err != nil {
+		return nil, err
+	}
+
+	// 4) top_sales Top 10
+	topRows, err := r.db.QueryContext(ctx, `
+		SELECT scr.sales_user_id,
+		       COALESCE(u.email, ''),
+		       COALESCE(u.username, ''),
+		       COALESCE(SUM(scr.order_pay_amount_cny), 0),
+		       COALESCE(SUM(scr.commission_total_cny), 0)
+		FROM sales_commission_records scr
+		JOIN users u ON u.id = scr.sales_user_id
+		WHERE scr.commission_event_at >= $1 AND scr.commission_event_at <= $2
+		GROUP BY scr.sales_user_id, u.email, u.username
+		ORDER BY SUM(scr.commission_total_cny) DESC, scr.sales_user_id ASC
+		LIMIT 10
+	`, query.Start, query.End)
+	if err != nil {
+		return nil, err
+	}
+	defer topRows.Close()
+	for topRows.Next() {
+		var (
+			item     service.SalesCommissionTopSales
+			ordersum decimal.Decimal
+			commsum  decimal.Decimal
+		)
+		if err := topRows.Scan(&item.SalesUserID, &item.SalesEmail, &item.SalesUsername, &ordersum, &commsum); err != nil {
+			return nil, err
+		}
+		item.RelatedOrderAmountCNY = decimalFloat(ordersum)
+		item.CommissionTotalCNY = decimalFloat(commsum)
+		data.TopSales = append(data.TopSales, item)
+	}
+	if err := topRows.Err(); err != nil {
+		return nil, err
+	}
+
+	return data, nil
 }

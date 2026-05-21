@@ -1,5 +1,12 @@
 import { apiClient } from '../client'
-import type { BasePaginationResponse, SalesCommissionRecord, SalesCommissionSettlement, SalesCommissionSummary } from '@/types'
+import type {
+  BasePaginationResponse,
+  SalesCommissionOverview,
+  SalesCommissionOverviewRangeKey,
+  SalesCommissionRecord,
+  SalesCommissionSettlement,
+  SalesCommissionSummary
+} from '@/types'
 
 export interface SalesCommissionRecordParams {
   page?: number
@@ -8,6 +15,17 @@ export interface SalesCommissionRecordParams {
   referee_user_id?: number
   payment_order_id?: number
   status?: string
+}
+
+export interface SalesCommissionOverviewParams {
+  range?: SalesCommissionOverviewRangeKey
+  start?: string // YYYY-MM-DD（仅 range=custom 时使用）
+  end?: string
+}
+
+export async function getOverview(params?: SalesCommissionOverviewParams): Promise<SalesCommissionOverview> {
+  const { data } = await apiClient.get<SalesCommissionOverview>('/admin/sales-commissions/overview', { params })
+  return data
 }
 
 export async function listSummaries(params?: { page?: number; page_size?: number; search?: string }): Promise<BasePaginationResponse<SalesCommissionSummary>> {
@@ -25,9 +43,4 @@ export async function listSettlements(params?: { page?: number; page_size?: numb
   return data
 }
 
-export async function createSettlement(payload: { sales_user_id: number; amount_cny: number; note?: string }): Promise<SalesCommissionSettlement> {
-  const { data } = await apiClient.post<SalesCommissionSettlement>('/admin/sales-commissions/settlements', payload)
-  return data
-}
-
-export default { listSummaries, listRecords, listSettlements, createSettlement }
+export default { getOverview, listSummaries, listRecords, listSettlements }

@@ -92,6 +92,69 @@ export interface SalesCommissionMonthlyProgress {
   snapshot_frozen: boolean
 }
 
+export type SalesCommissionOverviewRangeKey =
+  | 'today'
+  | 'this_week'
+  | 'this_month'
+  | 'this_quarter'
+  | 'this_year'
+  | 'last_30d'
+  | 'last_90d'
+  | 'custom'
+
+export interface SalesCommissionOverviewRange {
+  key: SalesCommissionOverviewRangeKey
+  start: string
+  end: string
+}
+
+export interface SalesCommissionOverviewKPI {
+  related_order_amount_cny: number
+  commission_total_cny: number
+  frozen_cny: number
+  settleable_cny: number
+  settled_cny: number
+  active_sales_users: number
+  threshold_met_users: number
+  avg_commission_rate: number
+}
+
+export interface SalesCommissionMonthlyTrendItem {
+  month: string
+  related_order_amount_cny: number
+  commission_total_cny: number
+}
+
+export interface SalesCommissionTopSalesItem {
+  sales_user_id: number
+  sales_email: string
+  sales_username: string
+  related_order_amount_cny: number
+  commission_total_cny: number
+}
+
+export interface SalesCommissionStatusBreakdown {
+  frozen_cny: number
+  settleable_cny: number
+  settled_cny: number
+}
+
+export interface SalesCommissionModeBreakdown {
+  fixed_records: number
+  tiered_records: number
+  fixed_commission_cny: number
+  tiered_commission_cny: number
+}
+
+export interface SalesCommissionOverview {
+  range: SalesCommissionOverviewRange
+  kpi: SalesCommissionOverviewKPI
+  monthly_trend: SalesCommissionMonthlyTrendItem[]
+  top_sales: SalesCommissionTopSalesItem[]
+  status_breakdown: SalesCommissionStatusBreakdown
+  mode_breakdown: SalesCommissionModeBreakdown
+}
+
 export interface LoginRequest {
   email: string
   password: string

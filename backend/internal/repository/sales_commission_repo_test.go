@@ -116,29 +116,6 @@ func TestSalesCommissionRepositoryGetSummaryBySalesUserSettleableRequiresComplet
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
-func TestSalesCommissionRepositoryCreateSettlementSkipsBlockedRecords(t *testing.T) {
-	db, mock, err := sqlmock.New()
-	require.NoError(t, err)
-	defer db.Close()
-
-	repo := NewSalesCommissionRepository(db)
-	ctx := context.Background()
-
-	mock.ExpectBegin()
-	mock.ExpectQuery(regexp.QuoteMeta("AND scr.status <> $3")).
-		WithArgs(int64(10), payment.OrderStatusCompleted, service.SalesCommissionStatusSettlementBlocked).
-		WillReturnRows(sqlmock.NewRows([]string{"id", "unlocked_cny", "settled_cny"}))
-	mock.ExpectRollback()
-
-	_, err = repo.CreateSettlement(ctx, &service.SalesCommissionSettlementCreate{
-		SalesUserID: 10,
-		AmountCNY:   1,
-		Note:        "blocked records should not settle",
-	})
-	require.ErrorIs(t, err, service.ErrSalesCommissionSettleAmountExceeded)
-	require.NoError(t, mock.ExpectationsWereMet())
-}
-
 func dec(v string) decimal.Decimal {
 	d, err := decimal.NewFromString(v)
 	if err != nil {
@@ -309,5 +286,122 @@ func TestRepriceMonthlyCommissionRecordsTx_NoRecordsIsNoop(t *testing.T) {
 
 	require.NoError(t, repriceMonthlyCommissionRecordsTx(ctx, tx, snapshot, salesUserID, commissionMonth))
 	require.NoError(t, tx.Rollback())
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+// TestSalesCommissionRepository_GetOverview_AggregatesAllSections 验证 GetOverview
+// 按顺序发出 4 条 SQL（KPI 聚合 / threshold_met_users / monthly_trend / top_sales），
+// 并把行结果装配到 SalesCommissionOverviewData 上。
+func TestSalesCommissionRepository_GetOverview_AggregatesAllSections(t *testing.T) {
+	db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherRegexp))
+	require.NoError(t, err)
+	defer db.Close()
+
+	repo := NewSalesCommissionRepository(db)
+	ctx := context.Background()
+
+	start := time.Date(2026, 4, 30, 16, 0, 0, 0, time.UTC) // 2026-05-01 00:00 Shanghai
+	end := time.Date(2026, 5, 31, 15, 59, 59, int(time.Second-time.Nanosecond), time.UTC)
+	trendStart := time.Date(2025, 6, 1, 0, 0, 0, 0, time.UTC)
+	trendEnd := time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)
+
+	// 1) KPI / status / mode 单查
+	mock.ExpectQuery(`SUM\(scr\.order_pay_amount_cny\)`).
+		WithArgs(start, end, payment.OrderStatusCompleted, service.SalesCommissionStatusSettlementBlocked,
+			service.SalesCommissionModeFixed, service.SalesCommissionModeTiered).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"related", "commission_total", "frozen", "settleable", "settled",
+			"active_users", "fixed_records", "tiered_records", "fixed_commission", "tiered_commission",
+		}).AddRow(dec("1000"), dec("100"), dec("80"), dec("15"), dec("5"),
+			3, 2, 4, dec("30"), dec("70")))
+
+	// 2) threshold_met_users
+	mock.ExpectQuery(`COUNT\(DISTINCT scr\.sales_user_id\)\s+FROM sales_commission_records scr\s+JOIN sales_commission_monthly_snapshots`).
+		WithArgs(start, end, service.SalesCommissionModeTiered).
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(2))
+
+	// 3) monthly_trend
+	mock.ExpectQuery(`GROUP BY scr\.commission_month\s+ORDER BY scr\.commission_month ASC`).
+		WithArgs(trendStart, trendEnd).
+		WillReturnRows(sqlmock.NewRows([]string{"month", "related", "commission"}).
+			AddRow(time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC), dec("1000"), dec("100")))
+
+	// 4) top_sales
+	mock.ExpectQuery(`ORDER BY SUM\(scr\.commission_total_cny\) DESC, scr\.sales_user_id ASC\s+LIMIT 10`).
+		WithArgs(start, end).
+		WillReturnRows(sqlmock.NewRows([]string{"sales_user_id", "email", "username", "related", "commission"}).
+			AddRow(int64(1), "a@example.com", "a", dec("500"), dec("60")).
+			AddRow(int64(2), "b@example.com", "b", dec("500"), dec("40")))
+
+	overview, err := repo.GetOverview(ctx, service.SalesCommissionOverviewQuery{
+		Start: start, End: end, MonthlyTrendStart: trendStart, MonthlyTrendEnd: trendEnd,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, overview)
+
+	require.InDelta(t, 1000.0, overview.KPI.RelatedOrderAmountCNY, 0.0001)
+	require.InDelta(t, 100.0, overview.KPI.CommissionTotalCNY, 0.0001)
+	require.InDelta(t, 80.0, overview.KPI.FrozenCNY, 0.0001)
+	require.InDelta(t, 15.0, overview.KPI.SettleableCNY, 0.0001)
+	require.InDelta(t, 5.0, overview.KPI.SettledCNY, 0.0001)
+	require.Equal(t, 3, overview.KPI.ActiveSalesUsers)
+	require.Equal(t, 2, overview.KPI.ThresholdMetUsers)
+	require.InDelta(t, 10.0, overview.KPI.AvgCommissionRate, 0.0001) // 100 / 1000 * 100
+
+	require.Equal(t, 2, overview.ModeBreakdown.FixedRecords)
+	require.Equal(t, 4, overview.ModeBreakdown.TieredRecords)
+	require.InDelta(t, 30.0, overview.ModeBreakdown.FixedCommissionCNY, 0.0001)
+	require.InDelta(t, 70.0, overview.ModeBreakdown.TieredCommissionCNY, 0.0001)
+
+	require.InDelta(t, 80.0, overview.StatusBreakdown.FrozenCNY, 0.0001)
+	require.InDelta(t, 15.0, overview.StatusBreakdown.SettleableCNY, 0.0001)
+	require.InDelta(t, 5.0, overview.StatusBreakdown.SettledCNY, 0.0001)
+
+	require.Len(t, overview.MonthlyTrend, 1) // repo 只返回命中月份；service 层负责补零到 12 月
+	require.Equal(t, time.May, overview.MonthlyTrend[0].Month.Month())
+
+	require.Len(t, overview.TopSales, 2)
+	require.Equal(t, int64(1), overview.TopSales[0].SalesUserID)
+	require.Equal(t, "a@example.com", overview.TopSales[0].SalesEmail)
+	require.InDelta(t, 60.0, overview.TopSales[0].CommissionTotalCNY, 0.0001)
+
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+// TestSalesCommissionRepository_GetOverview_NoRowsReturnsZeros 当区间内无记录时，
+// 仓储层应返回各字段零值（含 AvgCommissionRate 防除零），并返回空 trend / top10。
+func TestSalesCommissionRepository_GetOverview_NoRowsReturnsZeros(t *testing.T) {
+	db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherRegexp))
+	require.NoError(t, err)
+	defer db.Close()
+
+	repo := NewSalesCommissionRepository(db)
+	ctx := context.Background()
+
+	start := time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2026, 5, 2, 0, 0, 0, 0, time.UTC)
+
+	mock.ExpectQuery(`SUM\(scr\.order_pay_amount_cny\)`).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"related", "commission_total", "frozen", "settleable", "settled",
+			"active_users", "fixed_records", "tiered_records", "fixed_commission", "tiered_commission",
+		}).AddRow(dec("0"), dec("0"), dec("0"), dec("0"), dec("0"), 0, 0, 0, dec("0"), dec("0")))
+	mock.ExpectQuery(`COUNT\(DISTINCT scr\.sales_user_id\)\s+FROM sales_commission_records scr\s+JOIN sales_commission_monthly_snapshots`).
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
+	mock.ExpectQuery(`GROUP BY scr\.commission_month`).
+		WillReturnRows(sqlmock.NewRows([]string{"month", "related", "commission"}))
+	mock.ExpectQuery(`LIMIT 10`).
+		WillReturnRows(sqlmock.NewRows([]string{"sales_user_id", "email", "username", "related", "commission"}))
+
+	overview, err := repo.GetOverview(ctx, service.SalesCommissionOverviewQuery{
+		Start: start, End: end, MonthlyTrendStart: start, MonthlyTrendEnd: end,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, overview)
+	require.InDelta(t, 0.0, overview.KPI.RelatedOrderAmountCNY, 0.0001)
+	require.InDelta(t, 0.0, overview.KPI.AvgCommissionRate, 0.0001)
+	require.Equal(t, 0, overview.KPI.ThresholdMetUsers)
+	require.Empty(t, overview.MonthlyTrend)
+	require.Empty(t, overview.TopSales)
 	require.NoError(t, mock.ExpectationsWereMet())
 }

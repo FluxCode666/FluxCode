@@ -503,21 +503,6 @@ func TestSalesCommissionService_HandleBalanceRechargeCompleted_IgnoresMissingOrN
 	}
 }
 
-func TestSalesCommissionService_CreateSettlement_RejectsInvalidAmount(t *testing.T) {
-	svc := NewSalesCommissionService(&salesCommissionRepoStub{}, &salesCommissionReferralRepoStub{}, &salesCommissionUserRepoStub{})
-
-	for _, input := range []*SalesCommissionSettlementCreate{
-		nil,
-		{SalesUserID: 10, AmountCNY: 0},
-		{SalesUserID: 10, AmountCNY: -1},
-	} {
-		got, err := svc.CreateSettlement(context.Background(), input)
-
-		require.Nil(t, got)
-		require.ErrorIs(t, err, ErrSalesCommissionInvalidAmount)
-	}
-}
-
 func TestSalesCommissionService_ForwardsReadOperationsToRepository(t *testing.T) {
 	ctx := context.Background()
 	repo := &salesCommissionRepoStub{
@@ -525,7 +510,6 @@ func TestSalesCommissionService_ForwardsReadOperationsToRepository(t *testing.T)
 		records:     []SalesCommissionRecord{{ID: 1}},
 		settlements: []SalesCommissionSettlement{{ID: 2}},
 		summary:     &SalesCommissionSummary{SalesUserID: 10},
-		settlement:  &SalesCommissionSettlement{ID: 3},
 	}
 	svc := NewSalesCommissionService(repo, &salesCommissionReferralRepoStub{}, &salesCommissionUserRepoStub{})
 
@@ -544,10 +528,6 @@ func TestSalesCommissionService_ForwardsReadOperationsToRepository(t *testing.T)
 	require.Equal(t, repo.records, records)
 	require.Equal(t, 1, total)
 	require.Equal(t, SalesCommissionRecordListParams{SalesUserID: 10, Page: 1, PageSize: 20}, repo.lastRecordParams)
-
-	settlement, err := svc.CreateSettlement(ctx, &SalesCommissionSettlementCreate{SalesUserID: 10, AmountCNY: 5})
-	require.NoError(t, err)
-	require.Equal(t, repo.settlement, settlement)
 
 	settlements, total, err := svc.ListSettlements(ctx, SalesCommissionSettlementListParams{SalesUserID: 10, Page: 1, PageSize: 20})
 	require.NoError(t, err)
@@ -723,6 +703,121 @@ func TestSalesCommissionService_GetMonthlyProgress_TieredAtTopOpenTierHasNoNext(
 	require.InDelta(t, 0.0, progress.ToNextTierCNY, 0.0001)
 }
 
+// fixedNow 是一个稳定的"当前时间"：2026-05-15 03:00 UTC = 2026-05-15 11:00 Asia/Shanghai。
+// 用于 GetOverview 类测试，避免依赖真实时钟。
+func fixedSalesOverviewNow() time.Time {
+	return time.Date(2026, 5, 15, 3, 0, 0, 0, time.UTC)
+}
+
+func TestSalesCommissionService_GetOverview_DefaultsToThisMonth(t *testing.T) {
+	ctx := context.Background()
+	repo := &salesCommissionRepoStub{
+		overview: &SalesCommissionOverviewData{
+			KPI: SalesCommissionOverviewKPI{
+				RelatedOrderAmountCNY: 1000,
+				CommissionTotalCNY:    100,
+				FrozenCNY:             80,
+				SettleableCNY:         15,
+				SettledCNY:            5,
+				ActiveSalesUsers:      3,
+				ThresholdMetUsers:     2,
+			},
+			TopSales: []SalesCommissionTopSales{
+				{SalesUserID: 1, SalesEmail: "a@example.com", CommissionTotalCNY: 60, RelatedOrderAmountCNY: 500},
+				{SalesUserID: 2, SalesEmail: "b@example.com", CommissionTotalCNY: 40, RelatedOrderAmountCNY: 500},
+			},
+			StatusBreakdown: SalesCommissionStatusBreakdown{FrozenCNY: 80, SettleableCNY: 15, SettledCNY: 5},
+			ModeBreakdown:   SalesCommissionModeBreakdown{FixedRecords: 2, TieredRecords: 4, FixedCommissionCNY: 30, TieredCommissionCNY: 70},
+			MonthlyTrend: []SalesCommissionMonthlyTrend{
+				{Month: salesCommissionMonthStartForTest(time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)), RelatedOrderAmountCNY: 1000, CommissionTotalCNY: 100},
+			},
+		},
+	}
+	svc := NewSalesCommissionService(repo, &salesCommissionReferralRepoStub{}, &salesCommissionUserRepoStub{})
+	svc.SetNowFunc(fixedSalesOverviewNow)
+
+	overview, err := svc.GetOverview(ctx, SalesCommissionOverviewParams{})
+	require.NoError(t, err)
+	require.NotNil(t, overview)
+
+	// range key 默认 this_month；start/end 应落在 2026-05-01 ~ 2026-05-31 (Asia/Shanghai)。
+	require.Equal(t, SalesCommissionOverviewRangeThisMonth, overview.Range.Key)
+	require.Equal(t, time.Date(2026, 4, 30, 16, 0, 0, 0, time.UTC), overview.Range.Start) // 5/1 00:00 Asia/Shanghai
+	require.Equal(t, time.Date(2026, 5, 31, 15, 59, 59, int(time.Second-time.Nanosecond), time.UTC), overview.Range.End)
+
+	// KPI / Top / breakdown 透传
+	require.InDelta(t, 1000.0, overview.KPI.RelatedOrderAmountCNY, 0.0001)
+	require.Equal(t, 2, overview.ModeBreakdown.FixedRecords)
+	require.Equal(t, 2, overview.KPI.ThresholdMetUsers)
+	require.Len(t, overview.TopSales, 2)
+	require.Equal(t, int64(1), overview.TopSales[0].SalesUserID)
+
+	// monthly_trend 严格补零成 12 个月，5 月命中数据，其它月份零值。
+	require.Len(t, overview.MonthlyTrend, 12)
+	last := overview.MonthlyTrend[len(overview.MonthlyTrend)-1]
+	require.Equal(t, 2026, last.Month.Year())
+	require.Equal(t, time.May, last.Month.Month())
+	require.InDelta(t, 1000.0, last.RelatedOrderAmountCNY, 0.0001)
+	for i := 0; i < len(overview.MonthlyTrend)-1; i++ {
+		require.InDelta(t, 0.0, overview.MonthlyTrend[i].RelatedOrderAmountCNY, 0.0001, "non-current month should be zero-filled at index %d", i)
+	}
+
+	// repo 应该收到正确的 query：trend 窗口含当月共 12 个月。
+	// salesCommissionMonthStart 返回 "Shanghai 年/月/1 00:00 UTC" 形式（与 commission_month 列保持一致）。
+	require.Equal(t, time.Date(2025, 6, 1, 0, 0, 0, 0, time.UTC), repo.lastOverviewQuery.MonthlyTrendStart)
+	require.Equal(t, time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC), repo.lastOverviewQuery.MonthlyTrendEnd)
+}
+
+func TestSalesCommissionService_GetOverview_RejectsInvalidRangeKey(t *testing.T) {
+	svc := NewSalesCommissionService(&salesCommissionRepoStub{}, &salesCommissionReferralRepoStub{}, &salesCommissionUserRepoStub{})
+	svc.SetNowFunc(fixedSalesOverviewNow)
+
+	_, err := svc.GetOverview(context.Background(), SalesCommissionOverviewParams{RangeKey: "yesterday"})
+	require.ErrorIs(t, err, ErrSalesCommissionInvalidRange)
+}
+
+func TestSalesCommissionService_GetOverview_RejectsCustomWithoutBounds(t *testing.T) {
+	svc := NewSalesCommissionService(&salesCommissionRepoStub{}, &salesCommissionReferralRepoStub{}, &salesCommissionUserRepoStub{})
+	svc.SetNowFunc(fixedSalesOverviewNow)
+
+	// custom 但缺少 start
+	end := time.Date(2026, 5, 10, 0, 0, 0, 0, time.UTC)
+	_, err := svc.GetOverview(context.Background(), SalesCommissionOverviewParams{
+		RangeKey: SalesCommissionOverviewRangeCustom,
+		End:      &end,
+	})
+	require.ErrorIs(t, err, ErrSalesCommissionInvalidRange)
+
+	// custom end 早于 start
+	start := time.Date(2026, 5, 20, 0, 0, 0, 0, time.UTC)
+	_, err = svc.GetOverview(context.Background(), SalesCommissionOverviewParams{
+		RangeKey: SalesCommissionOverviewRangeCustom,
+		Start:    &start,
+		End:      &end,
+	})
+	require.ErrorIs(t, err, ErrSalesCommissionInvalidRange)
+}
+
+func TestSalesCommissionService_GetOverview_Last30DaysWindow(t *testing.T) {
+	repo := &salesCommissionRepoStub{}
+	svc := NewSalesCommissionService(repo, &salesCommissionReferralRepoStub{}, &salesCommissionUserRepoStub{})
+	svc.SetNowFunc(fixedSalesOverviewNow)
+
+	overview, err := svc.GetOverview(context.Background(), SalesCommissionOverviewParams{
+		RangeKey: SalesCommissionOverviewRangeLast30Days,
+	})
+	require.NoError(t, err)
+	require.Equal(t, SalesCommissionOverviewRangeLast30Days, overview.Range.Key)
+
+	// last_30d 含今日：start = 今日 - 29d 0:00 Shanghai。今日（11:00 Shanghai）= 2026-05-15，
+	// 5/15 - 29 = 4/16。
+	expectedStart := time.Date(2026, 4, 16, 0, 0, 0, 0, time.FixedZone("Asia/Shanghai", 8*60*60)).UTC()
+	require.Equal(t, expectedStart, overview.Range.Start)
+	// end = 今日 23:59:59.999999999 Shanghai
+	expectedEnd := time.Date(2026, 5, 15, 23, 59, 59, int(time.Second-time.Nanosecond), time.FixedZone("Asia/Shanghai", 8*60*60)).UTC()
+	require.Equal(t, expectedEnd, overview.Range.End)
+}
+
 func completedBalanceOrder() *dbent.PaymentOrder {
 	return &dbent.PaymentOrder{
 		ID:          99,
@@ -750,16 +845,17 @@ type salesCommissionRepoStub struct {
 	summaries                 []SalesCommissionSummary
 	summary                   *SalesCommissionSummary
 	records                   []SalesCommissionRecord
-	settlement                *SalesCommissionSettlement
 	settlements               []SalesCommissionSettlement
 	monthlyProgress           *SalesCommissionMonthlyProgressData
 	monthlyProgressErr        error
+	overview                  *SalesCommissionOverviewData
+	overviewErr               error
 	lastSummaryParams         SalesCommissionSummaryListParams
 	lastRecordParams          SalesCommissionRecordListParams
 	lastSettlementParams      SalesCommissionSettlementListParams
 	lastMonthlyProgressUserID int64
 	lastMonthlyProgressMonth  time.Time
-	createSettlementInput     *SalesCommissionSettlementCreate
+	lastOverviewQuery         SalesCommissionOverviewQuery
 }
 
 func (r *salesCommissionRepoStub) CreateForOrder(_ context.Context, input *SalesCommissionCreate) error {
@@ -784,11 +880,6 @@ func (r *salesCommissionRepoStub) ListRecords(_ context.Context, params SalesCom
 	return r.records, len(r.records), nil
 }
 
-func (r *salesCommissionRepoStub) CreateSettlement(_ context.Context, input *SalesCommissionSettlementCreate) (*SalesCommissionSettlement, error) {
-	r.createSettlementInput = input
-	return r.settlement, nil
-}
-
 func (r *salesCommissionRepoStub) ListSettlements(_ context.Context, params SalesCommissionSettlementListParams) ([]SalesCommissionSettlement, int, error) {
 	r.lastSettlementParams = params
 	return r.settlements, len(r.settlements), nil
@@ -801,6 +892,17 @@ func (r *salesCommissionRepoStub) GetMonthlyProgress(_ context.Context, salesUse
 		return nil, r.monthlyProgressErr
 	}
 	return r.monthlyProgress, nil
+}
+
+func (r *salesCommissionRepoStub) GetOverview(_ context.Context, query SalesCommissionOverviewQuery) (*SalesCommissionOverviewData, error) {
+	r.lastOverviewQuery = query
+	if r.overviewErr != nil {
+		return nil, r.overviewErr
+	}
+	if r.overview != nil {
+		return r.overview, nil
+	}
+	return &SalesCommissionOverviewData{}, nil
 }
 
 type salesCommissionReferralRepoStub struct {
