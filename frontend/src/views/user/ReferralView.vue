@@ -204,7 +204,7 @@
                         invite.inviter_reward_amount.toFixed(2) }}</td>
                       <td class="py-3 text-right text-gray-700 dark:text-dark-200">
                         {{ invite.ongoing_reward_count > 0
-                          ? `${invite.ongoing_reward_count} ($${invite.ongoing_reward_total.toFixed(2)})`
+                          ? `${invite.ongoing_reward_count}笔 ($${invite.ongoing_reward_total.toFixed(2)})`
                           : '-' }}
                       </td>
                     </tr>

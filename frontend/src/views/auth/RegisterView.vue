@@ -180,11 +180,13 @@
               id="referral_code"
               v-model="formData.referral_code"
               type="text"
-              :disabled="isLoading"
+              :disabled="isLoading || referralCodeFromUrl"
+              :readonly="referralCodeFromUrl"
               class="input pl-11 pr-10"
               :class="{
                 'border-green-500 focus:border-green-500 focus:ring-green-500': referralValidation.valid,
-                'border-red-500 focus:border-red-500 focus:ring-red-500': referralValidation.invalid
+                'border-red-500 focus:border-red-500 focus:ring-red-500': referralValidation.invalid,
+                'bg-gray-100 dark:bg-dark-700 cursor-not-allowed': referralCodeFromUrl
               }"
               :placeholder="t('auth.referralCodePlaceholder')"
               @input="handleReferralCodeInput"
@@ -423,6 +425,7 @@ const invitationValidation = reactive({
 let invitationValidateTimeout: ReturnType<typeof setTimeout> | null = null
 
 // Referral code validation
+const referralCodeFromUrl = ref<boolean>(false)
 const referralValidating = ref<boolean>(false)
 const referralValidation = reactive({
   valid: false,
@@ -481,6 +484,7 @@ onMounted(async () => {
       const refParam = route.query.ref as string
       if (refParam) {
         formData.referral_code = refParam
+        referralCodeFromUrl.value = true
         // Validate the referral code from URL
         await validateReferralCodeDebounced(refParam)
       }
