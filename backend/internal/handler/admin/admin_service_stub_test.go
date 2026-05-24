@@ -58,6 +58,12 @@ type stubAdminService struct {
 		sortOrder string
 		calls     int
 	}
+	lastListUsers struct {
+		filters   service.UserListFilters
+		sortBy    string
+		sortOrder string
+		calls     int
+	}
 	mu sync.Mutex
 }
 
@@ -127,6 +133,10 @@ func newStubAdminService() *stubAdminService {
 }
 
 func (s *stubAdminService) ListUsers(ctx context.Context, page, pageSize int, filters service.UserListFilters, sortBy, sortOrder string) ([]service.User, int64, error) {
+	s.lastListUsers.filters = filters
+	s.lastListUsers.sortBy = sortBy
+	s.lastListUsers.sortOrder = sortOrder
+	s.lastListUsers.calls++
 	return s.users, int64(len(s.users)), nil
 }
 

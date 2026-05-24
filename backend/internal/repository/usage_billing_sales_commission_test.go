@@ -79,6 +79,37 @@ func TestUnlockSalesCommissionFIFO_AllocatesAcrossRecordsInOrder(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
+// TestUnlockSalesCommissionFIFO_BelowThresholdAdvancesUsedOnly 验证 spec §6.5：
+// 当记录所在月还未达门槛（commission_total = 0）时，FIFO 解锁路径仅推进
+// credited_used_amount，不动 unlocked_cny / status，避免被误标为 unlocked。
+// 跨门槛后 reprice 会按真实 used 比例补算 unlocked。
+func TestUnlockSalesCommissionFIFO_BelowThresholdAdvancesUsedOnly(t *testing.T) {
+	db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherRegexp))
+	require.NoError(t, err)
+	defer db.Close()
+
+	ctx := context.Background()
+	mock.ExpectBegin()
+	tx, err := db.BeginTx(ctx, nil)
+	require.NoError(t, err)
+
+	userID := int64(20)
+	mock.ExpectQuery("FROM sales_commission_records scr").
+		WithArgs(userID, service.OrderStatusCompleted, service.SalesCommissionStatusSettlementBlocked).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"id", "order_credited_amount", "credited_used_amount", "commission_total_cny", "unlocked_cny",
+		}).AddRow(int64(1), 10.0, 0.0, 0.0, 0.0))
+	// 关键：UPDATE 仅有 credited_used_amount + updated_at，不带 unlocked_cny / status。
+	mock.ExpectExec(`UPDATE sales_commission_records\s+SET credited_used_amount = \$1, updated_at = NOW\(\)\s+WHERE id = \$2`).
+		WithArgs(2.0, int64(1)).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectRollback()
+
+	require.NoError(t, unlockSalesCommissionFIFO(ctx, tx, userID, 2.0))
+	require.NoError(t, tx.Rollback())
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 func TestUnlockSalesCommissionFIFO_SkipsSettlementBlockedRecords(t *testing.T) {
 	db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherRegexp))
 	require.NoError(t, err)

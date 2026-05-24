@@ -17,6 +17,7 @@ const (
 	TypeCard         PaymentType = "card"
 	TypeLink         PaymentType = "link"
 	TypeEasyPay      PaymentType = "easypay"
+	TypeOffline      PaymentType = "offline" // 私账充值（线下转账）
 )
 
 // Order status constants shared across payment and service layers.

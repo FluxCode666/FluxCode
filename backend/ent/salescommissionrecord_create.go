@@ -46,6 +46,14 @@ func (_c *SalesCommissionRecordCreate) SetPaymentOrderID(v int64) *SalesCommissi
 	return _c
 }
 
+// SetNillablePaymentOrderID sets the "payment_order_id" field if the given value is not nil.
+func (_c *SalesCommissionRecordCreate) SetNillablePaymentOrderID(v *int64) *SalesCommissionRecordCreate {
+	if v != nil {
+		_c.SetPaymentOrderID(*v)
+	}
+	return _c
+}
+
 // SetOrderPayAmountCny sets the "order_pay_amount_cny" field.
 func (_c *SalesCommissionRecordCreate) SetOrderPayAmountCny(v float64) *SalesCommissionRecordCreate {
 	_c.mutation.SetOrderPayAmountCny(v)
@@ -67,6 +75,90 @@ func (_c *SalesCommissionRecordCreate) SetCommissionRate(v float64) *SalesCommis
 // SetCommissionTotalCny sets the "commission_total_cny" field.
 func (_c *SalesCommissionRecordCreate) SetCommissionTotalCny(v float64) *SalesCommissionRecordCreate {
 	_c.mutation.SetCommissionTotalCny(v)
+	return _c
+}
+
+// SetCommissionEventAt sets the "commission_event_at" field.
+func (_c *SalesCommissionRecordCreate) SetCommissionEventAt(v time.Time) *SalesCommissionRecordCreate {
+	_c.mutation.SetCommissionEventAt(v)
+	return _c
+}
+
+// SetNillableCommissionEventAt sets the "commission_event_at" field if the given value is not nil.
+func (_c *SalesCommissionRecordCreate) SetNillableCommissionEventAt(v *time.Time) *SalesCommissionRecordCreate {
+	if v != nil {
+		_c.SetCommissionEventAt(*v)
+	}
+	return _c
+}
+
+// SetCommissionMonth sets the "commission_month" field.
+func (_c *SalesCommissionRecordCreate) SetCommissionMonth(v time.Time) *SalesCommissionRecordCreate {
+	_c.mutation.SetCommissionMonth(v)
+	return _c
+}
+
+// SetNillableCommissionMonth sets the "commission_month" field if the given value is not nil.
+func (_c *SalesCommissionRecordCreate) SetNillableCommissionMonth(v *time.Time) *SalesCommissionRecordCreate {
+	if v != nil {
+		_c.SetCommissionMonth(*v)
+	}
+	return _c
+}
+
+// SetSnapshotID sets the "snapshot_id" field.
+func (_c *SalesCommissionRecordCreate) SetSnapshotID(v int64) *SalesCommissionRecordCreate {
+	_c.mutation.SetSnapshotID(v)
+	return _c
+}
+
+// SetNillableSnapshotID sets the "snapshot_id" field if the given value is not nil.
+func (_c *SalesCommissionRecordCreate) SetNillableSnapshotID(v *int64) *SalesCommissionRecordCreate {
+	if v != nil {
+		_c.SetSnapshotID(*v)
+	}
+	return _c
+}
+
+// SetCommissionMode sets the "commission_mode" field.
+func (_c *SalesCommissionRecordCreate) SetCommissionMode(v string) *SalesCommissionRecordCreate {
+	_c.mutation.SetCommissionMode(v)
+	return _c
+}
+
+// SetNillableCommissionMode sets the "commission_mode" field if the given value is not nil.
+func (_c *SalesCommissionRecordCreate) SetNillableCommissionMode(v *string) *SalesCommissionRecordCreate {
+	if v != nil {
+		_c.SetCommissionMode(*v)
+	}
+	return _c
+}
+
+// SetMonthlySalesBeforeCny sets the "monthly_sales_before_cny" field.
+func (_c *SalesCommissionRecordCreate) SetMonthlySalesBeforeCny(v float64) *SalesCommissionRecordCreate {
+	_c.mutation.SetMonthlySalesBeforeCny(v)
+	return _c
+}
+
+// SetNillableMonthlySalesBeforeCny sets the "monthly_sales_before_cny" field if the given value is not nil.
+func (_c *SalesCommissionRecordCreate) SetNillableMonthlySalesBeforeCny(v *float64) *SalesCommissionRecordCreate {
+	if v != nil {
+		_c.SetMonthlySalesBeforeCny(*v)
+	}
+	return _c
+}
+
+// SetMonthlySalesAfterCny sets the "monthly_sales_after_cny" field.
+func (_c *SalesCommissionRecordCreate) SetMonthlySalesAfterCny(v float64) *SalesCommissionRecordCreate {
+	_c.mutation.SetMonthlySalesAfterCny(v)
+	return _c
+}
+
+// SetNillableMonthlySalesAfterCny sets the "monthly_sales_after_cny" field if the given value is not nil.
+func (_c *SalesCommissionRecordCreate) SetNillableMonthlySalesAfterCny(v *float64) *SalesCommissionRecordCreate {
+	if v != nil {
+		_c.SetMonthlySalesAfterCny(*v)
+	}
 	return _c
 }
 
@@ -203,6 +295,22 @@ func (_c *SalesCommissionRecordCreate) ExecX(ctx context.Context) {
 
 // defaults sets the default values of the builder before save.
 func (_c *SalesCommissionRecordCreate) defaults() {
+	if _, ok := _c.mutation.CommissionMonth(); !ok {
+		v := salescommissionrecord.DefaultCommissionMonth()
+		_c.mutation.SetCommissionMonth(v)
+	}
+	if _, ok := _c.mutation.CommissionMode(); !ok {
+		v := salescommissionrecord.DefaultCommissionMode
+		_c.mutation.SetCommissionMode(v)
+	}
+	if _, ok := _c.mutation.MonthlySalesBeforeCny(); !ok {
+		v := salescommissionrecord.DefaultMonthlySalesBeforeCny
+		_c.mutation.SetMonthlySalesBeforeCny(v)
+	}
+	if _, ok := _c.mutation.MonthlySalesAfterCny(); !ok {
+		v := salescommissionrecord.DefaultMonthlySalesAfterCny
+		_c.mutation.SetMonthlySalesAfterCny(v)
+	}
 	if _, ok := _c.mutation.CreditedUsedAmount(); !ok {
 		v := salescommissionrecord.DefaultCreditedUsedAmount
 		_c.mutation.SetCreditedUsedAmount(v)
@@ -244,9 +352,6 @@ func (_c *SalesCommissionRecordCreate) check() error {
 	if _, ok := _c.mutation.ReferralID(); !ok {
 		return &ValidationError{Name: "referral_id", err: errors.New(`ent: missing required field "SalesCommissionRecord.referral_id"`)}
 	}
-	if _, ok := _c.mutation.PaymentOrderID(); !ok {
-		return &ValidationError{Name: "payment_order_id", err: errors.New(`ent: missing required field "SalesCommissionRecord.payment_order_id"`)}
-	}
 	if _, ok := _c.mutation.OrderPayAmountCny(); !ok {
 		return &ValidationError{Name: "order_pay_amount_cny", err: errors.New(`ent: missing required field "SalesCommissionRecord.order_pay_amount_cny"`)}
 	}
@@ -278,6 +383,23 @@ func (_c *SalesCommissionRecordCreate) check() error {
 		if err := salescommissionrecord.CommissionTotalCnyValidator(v); err != nil {
 			return &ValidationError{Name: "commission_total_cny", err: fmt.Errorf(`ent: validator failed for field "SalesCommissionRecord.commission_total_cny": %w`, err)}
 		}
+	}
+	if _, ok := _c.mutation.CommissionMonth(); !ok {
+		return &ValidationError{Name: "commission_month", err: errors.New(`ent: missing required field "SalesCommissionRecord.commission_month"`)}
+	}
+	if _, ok := _c.mutation.CommissionMode(); !ok {
+		return &ValidationError{Name: "commission_mode", err: errors.New(`ent: missing required field "SalesCommissionRecord.commission_mode"`)}
+	}
+	if v, ok := _c.mutation.CommissionMode(); ok {
+		if err := salescommissionrecord.CommissionModeValidator(v); err != nil {
+			return &ValidationError{Name: "commission_mode", err: fmt.Errorf(`ent: validator failed for field "SalesCommissionRecord.commission_mode": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.MonthlySalesBeforeCny(); !ok {
+		return &ValidationError{Name: "monthly_sales_before_cny", err: errors.New(`ent: missing required field "SalesCommissionRecord.monthly_sales_before_cny"`)}
+	}
+	if _, ok := _c.mutation.MonthlySalesAfterCny(); !ok {
+		return &ValidationError{Name: "monthly_sales_after_cny", err: errors.New(`ent: missing required field "SalesCommissionRecord.monthly_sales_after_cny"`)}
 	}
 	if _, ok := _c.mutation.CreditedUsedAmount(); !ok {
 		return &ValidationError{Name: "credited_used_amount", err: errors.New(`ent: missing required field "SalesCommissionRecord.credited_used_amount"`)}
@@ -361,7 +483,7 @@ func (_c *SalesCommissionRecordCreate) createSpec() (*SalesCommissionRecord, *sq
 	}
 	if value, ok := _c.mutation.PaymentOrderID(); ok {
 		_spec.SetField(salescommissionrecord.FieldPaymentOrderID, field.TypeInt64, value)
-		_node.PaymentOrderID = value
+		_node.PaymentOrderID = &value
 	}
 	if value, ok := _c.mutation.OrderPayAmountCny(); ok {
 		_spec.SetField(salescommissionrecord.FieldOrderPayAmountCny, field.TypeFloat64, value)
@@ -378,6 +500,30 @@ func (_c *SalesCommissionRecordCreate) createSpec() (*SalesCommissionRecord, *sq
 	if value, ok := _c.mutation.CommissionTotalCny(); ok {
 		_spec.SetField(salescommissionrecord.FieldCommissionTotalCny, field.TypeFloat64, value)
 		_node.CommissionTotalCny = value
+	}
+	if value, ok := _c.mutation.CommissionEventAt(); ok {
+		_spec.SetField(salescommissionrecord.FieldCommissionEventAt, field.TypeTime, value)
+		_node.CommissionEventAt = &value
+	}
+	if value, ok := _c.mutation.CommissionMonth(); ok {
+		_spec.SetField(salescommissionrecord.FieldCommissionMonth, field.TypeTime, value)
+		_node.CommissionMonth = value
+	}
+	if value, ok := _c.mutation.SnapshotID(); ok {
+		_spec.SetField(salescommissionrecord.FieldSnapshotID, field.TypeInt64, value)
+		_node.SnapshotID = &value
+	}
+	if value, ok := _c.mutation.CommissionMode(); ok {
+		_spec.SetField(salescommissionrecord.FieldCommissionMode, field.TypeString, value)
+		_node.CommissionMode = value
+	}
+	if value, ok := _c.mutation.MonthlySalesBeforeCny(); ok {
+		_spec.SetField(salescommissionrecord.FieldMonthlySalesBeforeCny, field.TypeFloat64, value)
+		_node.MonthlySalesBeforeCny = value
+	}
+	if value, ok := _c.mutation.MonthlySalesAfterCny(); ok {
+		_spec.SetField(salescommissionrecord.FieldMonthlySalesAfterCny, field.TypeFloat64, value)
+		_node.MonthlySalesAfterCny = value
 	}
 	if value, ok := _c.mutation.CreditedUsedAmount(); ok {
 		_spec.SetField(salescommissionrecord.FieldCreditedUsedAmount, field.TypeFloat64, value)
@@ -531,6 +677,12 @@ func (u *SalesCommissionRecordUpsert) AddPaymentOrderID(v int64) *SalesCommissio
 	return u
 }
 
+// ClearPaymentOrderID clears the value of the "payment_order_id" field.
+func (u *SalesCommissionRecordUpsert) ClearPaymentOrderID() *SalesCommissionRecordUpsert {
+	u.SetNull(salescommissionrecord.FieldPaymentOrderID)
+	return u
+}
+
 // SetOrderPayAmountCny sets the "order_pay_amount_cny" field.
 func (u *SalesCommissionRecordUpsert) SetOrderPayAmountCny(v float64) *SalesCommissionRecordUpsert {
 	u.Set(salescommissionrecord.FieldOrderPayAmountCny, v)
@@ -600,6 +752,108 @@ func (u *SalesCommissionRecordUpsert) UpdateCommissionTotalCny() *SalesCommissio
 // AddCommissionTotalCny adds v to the "commission_total_cny" field.
 func (u *SalesCommissionRecordUpsert) AddCommissionTotalCny(v float64) *SalesCommissionRecordUpsert {
 	u.Add(salescommissionrecord.FieldCommissionTotalCny, v)
+	return u
+}
+
+// SetCommissionEventAt sets the "commission_event_at" field.
+func (u *SalesCommissionRecordUpsert) SetCommissionEventAt(v time.Time) *SalesCommissionRecordUpsert {
+	u.Set(salescommissionrecord.FieldCommissionEventAt, v)
+	return u
+}
+
+// UpdateCommissionEventAt sets the "commission_event_at" field to the value that was provided on create.
+func (u *SalesCommissionRecordUpsert) UpdateCommissionEventAt() *SalesCommissionRecordUpsert {
+	u.SetExcluded(salescommissionrecord.FieldCommissionEventAt)
+	return u
+}
+
+// ClearCommissionEventAt clears the value of the "commission_event_at" field.
+func (u *SalesCommissionRecordUpsert) ClearCommissionEventAt() *SalesCommissionRecordUpsert {
+	u.SetNull(salescommissionrecord.FieldCommissionEventAt)
+	return u
+}
+
+// SetCommissionMonth sets the "commission_month" field.
+func (u *SalesCommissionRecordUpsert) SetCommissionMonth(v time.Time) *SalesCommissionRecordUpsert {
+	u.Set(salescommissionrecord.FieldCommissionMonth, v)
+	return u
+}
+
+// UpdateCommissionMonth sets the "commission_month" field to the value that was provided on create.
+func (u *SalesCommissionRecordUpsert) UpdateCommissionMonth() *SalesCommissionRecordUpsert {
+	u.SetExcluded(salescommissionrecord.FieldCommissionMonth)
+	return u
+}
+
+// SetSnapshotID sets the "snapshot_id" field.
+func (u *SalesCommissionRecordUpsert) SetSnapshotID(v int64) *SalesCommissionRecordUpsert {
+	u.Set(salescommissionrecord.FieldSnapshotID, v)
+	return u
+}
+
+// UpdateSnapshotID sets the "snapshot_id" field to the value that was provided on create.
+func (u *SalesCommissionRecordUpsert) UpdateSnapshotID() *SalesCommissionRecordUpsert {
+	u.SetExcluded(salescommissionrecord.FieldSnapshotID)
+	return u
+}
+
+// AddSnapshotID adds v to the "snapshot_id" field.
+func (u *SalesCommissionRecordUpsert) AddSnapshotID(v int64) *SalesCommissionRecordUpsert {
+	u.Add(salescommissionrecord.FieldSnapshotID, v)
+	return u
+}
+
+// ClearSnapshotID clears the value of the "snapshot_id" field.
+func (u *SalesCommissionRecordUpsert) ClearSnapshotID() *SalesCommissionRecordUpsert {
+	u.SetNull(salescommissionrecord.FieldSnapshotID)
+	return u
+}
+
+// SetCommissionMode sets the "commission_mode" field.
+func (u *SalesCommissionRecordUpsert) SetCommissionMode(v string) *SalesCommissionRecordUpsert {
+	u.Set(salescommissionrecord.FieldCommissionMode, v)
+	return u
+}
+
+// UpdateCommissionMode sets the "commission_mode" field to the value that was provided on create.
+func (u *SalesCommissionRecordUpsert) UpdateCommissionMode() *SalesCommissionRecordUpsert {
+	u.SetExcluded(salescommissionrecord.FieldCommissionMode)
+	return u
+}
+
+// SetMonthlySalesBeforeCny sets the "monthly_sales_before_cny" field.
+func (u *SalesCommissionRecordUpsert) SetMonthlySalesBeforeCny(v float64) *SalesCommissionRecordUpsert {
+	u.Set(salescommissionrecord.FieldMonthlySalesBeforeCny, v)
+	return u
+}
+
+// UpdateMonthlySalesBeforeCny sets the "monthly_sales_before_cny" field to the value that was provided on create.
+func (u *SalesCommissionRecordUpsert) UpdateMonthlySalesBeforeCny() *SalesCommissionRecordUpsert {
+	u.SetExcluded(salescommissionrecord.FieldMonthlySalesBeforeCny)
+	return u
+}
+
+// AddMonthlySalesBeforeCny adds v to the "monthly_sales_before_cny" field.
+func (u *SalesCommissionRecordUpsert) AddMonthlySalesBeforeCny(v float64) *SalesCommissionRecordUpsert {
+	u.Add(salescommissionrecord.FieldMonthlySalesBeforeCny, v)
+	return u
+}
+
+// SetMonthlySalesAfterCny sets the "monthly_sales_after_cny" field.
+func (u *SalesCommissionRecordUpsert) SetMonthlySalesAfterCny(v float64) *SalesCommissionRecordUpsert {
+	u.Set(salescommissionrecord.FieldMonthlySalesAfterCny, v)
+	return u
+}
+
+// UpdateMonthlySalesAfterCny sets the "monthly_sales_after_cny" field to the value that was provided on create.
+func (u *SalesCommissionRecordUpsert) UpdateMonthlySalesAfterCny() *SalesCommissionRecordUpsert {
+	u.SetExcluded(salescommissionrecord.FieldMonthlySalesAfterCny)
+	return u
+}
+
+// AddMonthlySalesAfterCny adds v to the "monthly_sales_after_cny" field.
+func (u *SalesCommissionRecordUpsert) AddMonthlySalesAfterCny(v float64) *SalesCommissionRecordUpsert {
+	u.Add(salescommissionrecord.FieldMonthlySalesAfterCny, v)
 	return u
 }
 
@@ -822,6 +1076,13 @@ func (u *SalesCommissionRecordUpsertOne) UpdatePaymentOrderID() *SalesCommission
 	})
 }
 
+// ClearPaymentOrderID clears the value of the "payment_order_id" field.
+func (u *SalesCommissionRecordUpsertOne) ClearPaymentOrderID() *SalesCommissionRecordUpsertOne {
+	return u.Update(func(s *SalesCommissionRecordUpsert) {
+		s.ClearPaymentOrderID()
+	})
+}
+
 // SetOrderPayAmountCny sets the "order_pay_amount_cny" field.
 func (u *SalesCommissionRecordUpsertOne) SetOrderPayAmountCny(v float64) *SalesCommissionRecordUpsertOne {
 	return u.Update(func(s *SalesCommissionRecordUpsert) {
@@ -903,6 +1164,125 @@ func (u *SalesCommissionRecordUpsertOne) AddCommissionTotalCny(v float64) *Sales
 func (u *SalesCommissionRecordUpsertOne) UpdateCommissionTotalCny() *SalesCommissionRecordUpsertOne {
 	return u.Update(func(s *SalesCommissionRecordUpsert) {
 		s.UpdateCommissionTotalCny()
+	})
+}
+
+// SetCommissionEventAt sets the "commission_event_at" field.
+func (u *SalesCommissionRecordUpsertOne) SetCommissionEventAt(v time.Time) *SalesCommissionRecordUpsertOne {
+	return u.Update(func(s *SalesCommissionRecordUpsert) {
+		s.SetCommissionEventAt(v)
+	})
+}
+
+// UpdateCommissionEventAt sets the "commission_event_at" field to the value that was provided on create.
+func (u *SalesCommissionRecordUpsertOne) UpdateCommissionEventAt() *SalesCommissionRecordUpsertOne {
+	return u.Update(func(s *SalesCommissionRecordUpsert) {
+		s.UpdateCommissionEventAt()
+	})
+}
+
+// ClearCommissionEventAt clears the value of the "commission_event_at" field.
+func (u *SalesCommissionRecordUpsertOne) ClearCommissionEventAt() *SalesCommissionRecordUpsertOne {
+	return u.Update(func(s *SalesCommissionRecordUpsert) {
+		s.ClearCommissionEventAt()
+	})
+}
+
+// SetCommissionMonth sets the "commission_month" field.
+func (u *SalesCommissionRecordUpsertOne) SetCommissionMonth(v time.Time) *SalesCommissionRecordUpsertOne {
+	return u.Update(func(s *SalesCommissionRecordUpsert) {
+		s.SetCommissionMonth(v)
+	})
+}
+
+// UpdateCommissionMonth sets the "commission_month" field to the value that was provided on create.
+func (u *SalesCommissionRecordUpsertOne) UpdateCommissionMonth() *SalesCommissionRecordUpsertOne {
+	return u.Update(func(s *SalesCommissionRecordUpsert) {
+		s.UpdateCommissionMonth()
+	})
+}
+
+// SetSnapshotID sets the "snapshot_id" field.
+func (u *SalesCommissionRecordUpsertOne) SetSnapshotID(v int64) *SalesCommissionRecordUpsertOne {
+	return u.Update(func(s *SalesCommissionRecordUpsert) {
+		s.SetSnapshotID(v)
+	})
+}
+
+// AddSnapshotID adds v to the "snapshot_id" field.
+func (u *SalesCommissionRecordUpsertOne) AddSnapshotID(v int64) *SalesCommissionRecordUpsertOne {
+	return u.Update(func(s *SalesCommissionRecordUpsert) {
+		s.AddSnapshotID(v)
+	})
+}
+
+// UpdateSnapshotID sets the "snapshot_id" field to the value that was provided on create.
+func (u *SalesCommissionRecordUpsertOne) UpdateSnapshotID() *SalesCommissionRecordUpsertOne {
+	return u.Update(func(s *SalesCommissionRecordUpsert) {
+		s.UpdateSnapshotID()
+	})
+}
+
+// ClearSnapshotID clears the value of the "snapshot_id" field.
+func (u *SalesCommissionRecordUpsertOne) ClearSnapshotID() *SalesCommissionRecordUpsertOne {
+	return u.Update(func(s *SalesCommissionRecordUpsert) {
+		s.ClearSnapshotID()
+	})
+}
+
+// SetCommissionMode sets the "commission_mode" field.
+func (u *SalesCommissionRecordUpsertOne) SetCommissionMode(v string) *SalesCommissionRecordUpsertOne {
+	return u.Update(func(s *SalesCommissionRecordUpsert) {
+		s.SetCommissionMode(v)
+	})
+}
+
+// UpdateCommissionMode sets the "commission_mode" field to the value that was provided on create.
+func (u *SalesCommissionRecordUpsertOne) UpdateCommissionMode() *SalesCommissionRecordUpsertOne {
+	return u.Update(func(s *SalesCommissionRecordUpsert) {
+		s.UpdateCommissionMode()
+	})
+}
+
+// SetMonthlySalesBeforeCny sets the "monthly_sales_before_cny" field.
+func (u *SalesCommissionRecordUpsertOne) SetMonthlySalesBeforeCny(v float64) *SalesCommissionRecordUpsertOne {
+	return u.Update(func(s *SalesCommissionRecordUpsert) {
+		s.SetMonthlySalesBeforeCny(v)
+	})
+}
+
+// AddMonthlySalesBeforeCny adds v to the "monthly_sales_before_cny" field.
+func (u *SalesCommissionRecordUpsertOne) AddMonthlySalesBeforeCny(v float64) *SalesCommissionRecordUpsertOne {
+	return u.Update(func(s *SalesCommissionRecordUpsert) {
+		s.AddMonthlySalesBeforeCny(v)
+	})
+}
+
+// UpdateMonthlySalesBeforeCny sets the "monthly_sales_before_cny" field to the value that was provided on create.
+func (u *SalesCommissionRecordUpsertOne) UpdateMonthlySalesBeforeCny() *SalesCommissionRecordUpsertOne {
+	return u.Update(func(s *SalesCommissionRecordUpsert) {
+		s.UpdateMonthlySalesBeforeCny()
+	})
+}
+
+// SetMonthlySalesAfterCny sets the "monthly_sales_after_cny" field.
+func (u *SalesCommissionRecordUpsertOne) SetMonthlySalesAfterCny(v float64) *SalesCommissionRecordUpsertOne {
+	return u.Update(func(s *SalesCommissionRecordUpsert) {
+		s.SetMonthlySalesAfterCny(v)
+	})
+}
+
+// AddMonthlySalesAfterCny adds v to the "monthly_sales_after_cny" field.
+func (u *SalesCommissionRecordUpsertOne) AddMonthlySalesAfterCny(v float64) *SalesCommissionRecordUpsertOne {
+	return u.Update(func(s *SalesCommissionRecordUpsert) {
+		s.AddMonthlySalesAfterCny(v)
+	})
+}
+
+// UpdateMonthlySalesAfterCny sets the "monthly_sales_after_cny" field to the value that was provided on create.
+func (u *SalesCommissionRecordUpsertOne) UpdateMonthlySalesAfterCny() *SalesCommissionRecordUpsertOne {
+	return u.Update(func(s *SalesCommissionRecordUpsert) {
+		s.UpdateMonthlySalesAfterCny()
 	})
 }
 
@@ -1306,6 +1686,13 @@ func (u *SalesCommissionRecordUpsertBulk) UpdatePaymentOrderID() *SalesCommissio
 	})
 }
 
+// ClearPaymentOrderID clears the value of the "payment_order_id" field.
+func (u *SalesCommissionRecordUpsertBulk) ClearPaymentOrderID() *SalesCommissionRecordUpsertBulk {
+	return u.Update(func(s *SalesCommissionRecordUpsert) {
+		s.ClearPaymentOrderID()
+	})
+}
+
 // SetOrderPayAmountCny sets the "order_pay_amount_cny" field.
 func (u *SalesCommissionRecordUpsertBulk) SetOrderPayAmountCny(v float64) *SalesCommissionRecordUpsertBulk {
 	return u.Update(func(s *SalesCommissionRecordUpsert) {
@@ -1387,6 +1774,125 @@ func (u *SalesCommissionRecordUpsertBulk) AddCommissionTotalCny(v float64) *Sale
 func (u *SalesCommissionRecordUpsertBulk) UpdateCommissionTotalCny() *SalesCommissionRecordUpsertBulk {
 	return u.Update(func(s *SalesCommissionRecordUpsert) {
 		s.UpdateCommissionTotalCny()
+	})
+}
+
+// SetCommissionEventAt sets the "commission_event_at" field.
+func (u *SalesCommissionRecordUpsertBulk) SetCommissionEventAt(v time.Time) *SalesCommissionRecordUpsertBulk {
+	return u.Update(func(s *SalesCommissionRecordUpsert) {
+		s.SetCommissionEventAt(v)
+	})
+}
+
+// UpdateCommissionEventAt sets the "commission_event_at" field to the value that was provided on create.
+func (u *SalesCommissionRecordUpsertBulk) UpdateCommissionEventAt() *SalesCommissionRecordUpsertBulk {
+	return u.Update(func(s *SalesCommissionRecordUpsert) {
+		s.UpdateCommissionEventAt()
+	})
+}
+
+// ClearCommissionEventAt clears the value of the "commission_event_at" field.
+func (u *SalesCommissionRecordUpsertBulk) ClearCommissionEventAt() *SalesCommissionRecordUpsertBulk {
+	return u.Update(func(s *SalesCommissionRecordUpsert) {
+		s.ClearCommissionEventAt()
+	})
+}
+
+// SetCommissionMonth sets the "commission_month" field.
+func (u *SalesCommissionRecordUpsertBulk) SetCommissionMonth(v time.Time) *SalesCommissionRecordUpsertBulk {
+	return u.Update(func(s *SalesCommissionRecordUpsert) {
+		s.SetCommissionMonth(v)
+	})
+}
+
+// UpdateCommissionMonth sets the "commission_month" field to the value that was provided on create.
+func (u *SalesCommissionRecordUpsertBulk) UpdateCommissionMonth() *SalesCommissionRecordUpsertBulk {
+	return u.Update(func(s *SalesCommissionRecordUpsert) {
+		s.UpdateCommissionMonth()
+	})
+}
+
+// SetSnapshotID sets the "snapshot_id" field.
+func (u *SalesCommissionRecordUpsertBulk) SetSnapshotID(v int64) *SalesCommissionRecordUpsertBulk {
+	return u.Update(func(s *SalesCommissionRecordUpsert) {
+		s.SetSnapshotID(v)
+	})
+}
+
+// AddSnapshotID adds v to the "snapshot_id" field.
+func (u *SalesCommissionRecordUpsertBulk) AddSnapshotID(v int64) *SalesCommissionRecordUpsertBulk {
+	return u.Update(func(s *SalesCommissionRecordUpsert) {
+		s.AddSnapshotID(v)
+	})
+}
+
+// UpdateSnapshotID sets the "snapshot_id" field to the value that was provided on create.
+func (u *SalesCommissionRecordUpsertBulk) UpdateSnapshotID() *SalesCommissionRecordUpsertBulk {
+	return u.Update(func(s *SalesCommissionRecordUpsert) {
+		s.UpdateSnapshotID()
+	})
+}
+
+// ClearSnapshotID clears the value of the "snapshot_id" field.
+func (u *SalesCommissionRecordUpsertBulk) ClearSnapshotID() *SalesCommissionRecordUpsertBulk {
+	return u.Update(func(s *SalesCommissionRecordUpsert) {
+		s.ClearSnapshotID()
+	})
+}
+
+// SetCommissionMode sets the "commission_mode" field.
+func (u *SalesCommissionRecordUpsertBulk) SetCommissionMode(v string) *SalesCommissionRecordUpsertBulk {
+	return u.Update(func(s *SalesCommissionRecordUpsert) {
+		s.SetCommissionMode(v)
+	})
+}
+
+// UpdateCommissionMode sets the "commission_mode" field to the value that was provided on create.
+func (u *SalesCommissionRecordUpsertBulk) UpdateCommissionMode() *SalesCommissionRecordUpsertBulk {
+	return u.Update(func(s *SalesCommissionRecordUpsert) {
+		s.UpdateCommissionMode()
+	})
+}
+
+// SetMonthlySalesBeforeCny sets the "monthly_sales_before_cny" field.
+func (u *SalesCommissionRecordUpsertBulk) SetMonthlySalesBeforeCny(v float64) *SalesCommissionRecordUpsertBulk {
+	return u.Update(func(s *SalesCommissionRecordUpsert) {
+		s.SetMonthlySalesBeforeCny(v)
+	})
+}
+
+// AddMonthlySalesBeforeCny adds v to the "monthly_sales_before_cny" field.
+func (u *SalesCommissionRecordUpsertBulk) AddMonthlySalesBeforeCny(v float64) *SalesCommissionRecordUpsertBulk {
+	return u.Update(func(s *SalesCommissionRecordUpsert) {
+		s.AddMonthlySalesBeforeCny(v)
+	})
+}
+
+// UpdateMonthlySalesBeforeCny sets the "monthly_sales_before_cny" field to the value that was provided on create.
+func (u *SalesCommissionRecordUpsertBulk) UpdateMonthlySalesBeforeCny() *SalesCommissionRecordUpsertBulk {
+	return u.Update(func(s *SalesCommissionRecordUpsert) {
+		s.UpdateMonthlySalesBeforeCny()
+	})
+}
+
+// SetMonthlySalesAfterCny sets the "monthly_sales_after_cny" field.
+func (u *SalesCommissionRecordUpsertBulk) SetMonthlySalesAfterCny(v float64) *SalesCommissionRecordUpsertBulk {
+	return u.Update(func(s *SalesCommissionRecordUpsert) {
+		s.SetMonthlySalesAfterCny(v)
+	})
+}
+
+// AddMonthlySalesAfterCny adds v to the "monthly_sales_after_cny" field.
+func (u *SalesCommissionRecordUpsertBulk) AddMonthlySalesAfterCny(v float64) *SalesCommissionRecordUpsertBulk {
+	return u.Update(func(s *SalesCommissionRecordUpsert) {
+		s.AddMonthlySalesAfterCny(v)
+	})
+}
+
+// UpdateMonthlySalesAfterCny sets the "monthly_sales_after_cny" field to the value that was provided on create.
+func (u *SalesCommissionRecordUpsertBulk) UpdateMonthlySalesAfterCny() *SalesCommissionRecordUpsertBulk {
+	return u.Update(func(s *SalesCommissionRecordUpsert) {
+		s.UpdateMonthlySalesAfterCny()
 	})
 }
 

@@ -112,6 +112,12 @@ func (_u *SalesCommissionRecordUpdate) AddPaymentOrderID(v int64) *SalesCommissi
 	return _u
 }
 
+// ClearPaymentOrderID clears the value of the "payment_order_id" field.
+func (_u *SalesCommissionRecordUpdate) ClearPaymentOrderID() *SalesCommissionRecordUpdate {
+	_u.mutation.ClearPaymentOrderID()
+	return _u
+}
+
 // SetOrderPayAmountCny sets the "order_pay_amount_cny" field.
 func (_u *SalesCommissionRecordUpdate) SetOrderPayAmountCny(v float64) *SalesCommissionRecordUpdate {
 	_u.mutation.ResetOrderPayAmountCny()
@@ -193,6 +199,123 @@ func (_u *SalesCommissionRecordUpdate) SetNillableCommissionTotalCny(v *float64)
 // AddCommissionTotalCny adds value to the "commission_total_cny" field.
 func (_u *SalesCommissionRecordUpdate) AddCommissionTotalCny(v float64) *SalesCommissionRecordUpdate {
 	_u.mutation.AddCommissionTotalCny(v)
+	return _u
+}
+
+// SetCommissionEventAt sets the "commission_event_at" field.
+func (_u *SalesCommissionRecordUpdate) SetCommissionEventAt(v time.Time) *SalesCommissionRecordUpdate {
+	_u.mutation.SetCommissionEventAt(v)
+	return _u
+}
+
+// SetNillableCommissionEventAt sets the "commission_event_at" field if the given value is not nil.
+func (_u *SalesCommissionRecordUpdate) SetNillableCommissionEventAt(v *time.Time) *SalesCommissionRecordUpdate {
+	if v != nil {
+		_u.SetCommissionEventAt(*v)
+	}
+	return _u
+}
+
+// ClearCommissionEventAt clears the value of the "commission_event_at" field.
+func (_u *SalesCommissionRecordUpdate) ClearCommissionEventAt() *SalesCommissionRecordUpdate {
+	_u.mutation.ClearCommissionEventAt()
+	return _u
+}
+
+// SetCommissionMonth sets the "commission_month" field.
+func (_u *SalesCommissionRecordUpdate) SetCommissionMonth(v time.Time) *SalesCommissionRecordUpdate {
+	_u.mutation.SetCommissionMonth(v)
+	return _u
+}
+
+// SetNillableCommissionMonth sets the "commission_month" field if the given value is not nil.
+func (_u *SalesCommissionRecordUpdate) SetNillableCommissionMonth(v *time.Time) *SalesCommissionRecordUpdate {
+	if v != nil {
+		_u.SetCommissionMonth(*v)
+	}
+	return _u
+}
+
+// SetSnapshotID sets the "snapshot_id" field.
+func (_u *SalesCommissionRecordUpdate) SetSnapshotID(v int64) *SalesCommissionRecordUpdate {
+	_u.mutation.ResetSnapshotID()
+	_u.mutation.SetSnapshotID(v)
+	return _u
+}
+
+// SetNillableSnapshotID sets the "snapshot_id" field if the given value is not nil.
+func (_u *SalesCommissionRecordUpdate) SetNillableSnapshotID(v *int64) *SalesCommissionRecordUpdate {
+	if v != nil {
+		_u.SetSnapshotID(*v)
+	}
+	return _u
+}
+
+// AddSnapshotID adds value to the "snapshot_id" field.
+func (_u *SalesCommissionRecordUpdate) AddSnapshotID(v int64) *SalesCommissionRecordUpdate {
+	_u.mutation.AddSnapshotID(v)
+	return _u
+}
+
+// ClearSnapshotID clears the value of the "snapshot_id" field.
+func (_u *SalesCommissionRecordUpdate) ClearSnapshotID() *SalesCommissionRecordUpdate {
+	_u.mutation.ClearSnapshotID()
+	return _u
+}
+
+// SetCommissionMode sets the "commission_mode" field.
+func (_u *SalesCommissionRecordUpdate) SetCommissionMode(v string) *SalesCommissionRecordUpdate {
+	_u.mutation.SetCommissionMode(v)
+	return _u
+}
+
+// SetNillableCommissionMode sets the "commission_mode" field if the given value is not nil.
+func (_u *SalesCommissionRecordUpdate) SetNillableCommissionMode(v *string) *SalesCommissionRecordUpdate {
+	if v != nil {
+		_u.SetCommissionMode(*v)
+	}
+	return _u
+}
+
+// SetMonthlySalesBeforeCny sets the "monthly_sales_before_cny" field.
+func (_u *SalesCommissionRecordUpdate) SetMonthlySalesBeforeCny(v float64) *SalesCommissionRecordUpdate {
+	_u.mutation.ResetMonthlySalesBeforeCny()
+	_u.mutation.SetMonthlySalesBeforeCny(v)
+	return _u
+}
+
+// SetNillableMonthlySalesBeforeCny sets the "monthly_sales_before_cny" field if the given value is not nil.
+func (_u *SalesCommissionRecordUpdate) SetNillableMonthlySalesBeforeCny(v *float64) *SalesCommissionRecordUpdate {
+	if v != nil {
+		_u.SetMonthlySalesBeforeCny(*v)
+	}
+	return _u
+}
+
+// AddMonthlySalesBeforeCny adds value to the "monthly_sales_before_cny" field.
+func (_u *SalesCommissionRecordUpdate) AddMonthlySalesBeforeCny(v float64) *SalesCommissionRecordUpdate {
+	_u.mutation.AddMonthlySalesBeforeCny(v)
+	return _u
+}
+
+// SetMonthlySalesAfterCny sets the "monthly_sales_after_cny" field.
+func (_u *SalesCommissionRecordUpdate) SetMonthlySalesAfterCny(v float64) *SalesCommissionRecordUpdate {
+	_u.mutation.ResetMonthlySalesAfterCny()
+	_u.mutation.SetMonthlySalesAfterCny(v)
+	return _u
+}
+
+// SetNillableMonthlySalesAfterCny sets the "monthly_sales_after_cny" field if the given value is not nil.
+func (_u *SalesCommissionRecordUpdate) SetNillableMonthlySalesAfterCny(v *float64) *SalesCommissionRecordUpdate {
+	if v != nil {
+		_u.SetMonthlySalesAfterCny(*v)
+	}
+	return _u
+}
+
+// AddMonthlySalesAfterCny adds value to the "monthly_sales_after_cny" field.
+func (_u *SalesCommissionRecordUpdate) AddMonthlySalesAfterCny(v float64) *SalesCommissionRecordUpdate {
+	_u.mutation.AddMonthlySalesAfterCny(v)
 	return _u
 }
 
@@ -356,6 +479,11 @@ func (_u *SalesCommissionRecordUpdate) check() error {
 			return &ValidationError{Name: "commission_total_cny", err: fmt.Errorf(`ent: validator failed for field "SalesCommissionRecord.commission_total_cny": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.CommissionMode(); ok {
+		if err := salescommissionrecord.CommissionModeValidator(v); err != nil {
+			return &ValidationError{Name: "commission_mode", err: fmt.Errorf(`ent: validator failed for field "SalesCommissionRecord.commission_mode": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.CreditedUsedAmount(); ok {
 		if err := salescommissionrecord.CreditedUsedAmountValidator(v); err != nil {
 			return &ValidationError{Name: "credited_used_amount", err: fmt.Errorf(`ent: validator failed for field "SalesCommissionRecord.credited_used_amount": %w`, err)}
@@ -415,6 +543,9 @@ func (_u *SalesCommissionRecordUpdate) sqlSave(ctx context.Context) (_node int, 
 	if value, ok := _u.mutation.AddedPaymentOrderID(); ok {
 		_spec.AddField(salescommissionrecord.FieldPaymentOrderID, field.TypeInt64, value)
 	}
+	if _u.mutation.PaymentOrderIDCleared() {
+		_spec.ClearField(salescommissionrecord.FieldPaymentOrderID, field.TypeInt64)
+	}
 	if value, ok := _u.mutation.OrderPayAmountCny(); ok {
 		_spec.SetField(salescommissionrecord.FieldOrderPayAmountCny, field.TypeFloat64, value)
 	}
@@ -438,6 +569,39 @@ func (_u *SalesCommissionRecordUpdate) sqlSave(ctx context.Context) (_node int, 
 	}
 	if value, ok := _u.mutation.AddedCommissionTotalCny(); ok {
 		_spec.AddField(salescommissionrecord.FieldCommissionTotalCny, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.CommissionEventAt(); ok {
+		_spec.SetField(salescommissionrecord.FieldCommissionEventAt, field.TypeTime, value)
+	}
+	if _u.mutation.CommissionEventAtCleared() {
+		_spec.ClearField(salescommissionrecord.FieldCommissionEventAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.CommissionMonth(); ok {
+		_spec.SetField(salescommissionrecord.FieldCommissionMonth, field.TypeTime, value)
+	}
+	if value, ok := _u.mutation.SnapshotID(); ok {
+		_spec.SetField(salescommissionrecord.FieldSnapshotID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedSnapshotID(); ok {
+		_spec.AddField(salescommissionrecord.FieldSnapshotID, field.TypeInt64, value)
+	}
+	if _u.mutation.SnapshotIDCleared() {
+		_spec.ClearField(salescommissionrecord.FieldSnapshotID, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.CommissionMode(); ok {
+		_spec.SetField(salescommissionrecord.FieldCommissionMode, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.MonthlySalesBeforeCny(); ok {
+		_spec.SetField(salescommissionrecord.FieldMonthlySalesBeforeCny, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedMonthlySalesBeforeCny(); ok {
+		_spec.AddField(salescommissionrecord.FieldMonthlySalesBeforeCny, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.MonthlySalesAfterCny(); ok {
+		_spec.SetField(salescommissionrecord.FieldMonthlySalesAfterCny, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedMonthlySalesAfterCny(); ok {
+		_spec.AddField(salescommissionrecord.FieldMonthlySalesAfterCny, field.TypeFloat64, value)
 	}
 	if value, ok := _u.mutation.CreditedUsedAmount(); ok {
 		_spec.SetField(salescommissionrecord.FieldCreditedUsedAmount, field.TypeFloat64, value)
@@ -570,6 +734,12 @@ func (_u *SalesCommissionRecordUpdateOne) AddPaymentOrderID(v int64) *SalesCommi
 	return _u
 }
 
+// ClearPaymentOrderID clears the value of the "payment_order_id" field.
+func (_u *SalesCommissionRecordUpdateOne) ClearPaymentOrderID() *SalesCommissionRecordUpdateOne {
+	_u.mutation.ClearPaymentOrderID()
+	return _u
+}
+
 // SetOrderPayAmountCny sets the "order_pay_amount_cny" field.
 func (_u *SalesCommissionRecordUpdateOne) SetOrderPayAmountCny(v float64) *SalesCommissionRecordUpdateOne {
 	_u.mutation.ResetOrderPayAmountCny()
@@ -651,6 +821,123 @@ func (_u *SalesCommissionRecordUpdateOne) SetNillableCommissionTotalCny(v *float
 // AddCommissionTotalCny adds value to the "commission_total_cny" field.
 func (_u *SalesCommissionRecordUpdateOne) AddCommissionTotalCny(v float64) *SalesCommissionRecordUpdateOne {
 	_u.mutation.AddCommissionTotalCny(v)
+	return _u
+}
+
+// SetCommissionEventAt sets the "commission_event_at" field.
+func (_u *SalesCommissionRecordUpdateOne) SetCommissionEventAt(v time.Time) *SalesCommissionRecordUpdateOne {
+	_u.mutation.SetCommissionEventAt(v)
+	return _u
+}
+
+// SetNillableCommissionEventAt sets the "commission_event_at" field if the given value is not nil.
+func (_u *SalesCommissionRecordUpdateOne) SetNillableCommissionEventAt(v *time.Time) *SalesCommissionRecordUpdateOne {
+	if v != nil {
+		_u.SetCommissionEventAt(*v)
+	}
+	return _u
+}
+
+// ClearCommissionEventAt clears the value of the "commission_event_at" field.
+func (_u *SalesCommissionRecordUpdateOne) ClearCommissionEventAt() *SalesCommissionRecordUpdateOne {
+	_u.mutation.ClearCommissionEventAt()
+	return _u
+}
+
+// SetCommissionMonth sets the "commission_month" field.
+func (_u *SalesCommissionRecordUpdateOne) SetCommissionMonth(v time.Time) *SalesCommissionRecordUpdateOne {
+	_u.mutation.SetCommissionMonth(v)
+	return _u
+}
+
+// SetNillableCommissionMonth sets the "commission_month" field if the given value is not nil.
+func (_u *SalesCommissionRecordUpdateOne) SetNillableCommissionMonth(v *time.Time) *SalesCommissionRecordUpdateOne {
+	if v != nil {
+		_u.SetCommissionMonth(*v)
+	}
+	return _u
+}
+
+// SetSnapshotID sets the "snapshot_id" field.
+func (_u *SalesCommissionRecordUpdateOne) SetSnapshotID(v int64) *SalesCommissionRecordUpdateOne {
+	_u.mutation.ResetSnapshotID()
+	_u.mutation.SetSnapshotID(v)
+	return _u
+}
+
+// SetNillableSnapshotID sets the "snapshot_id" field if the given value is not nil.
+func (_u *SalesCommissionRecordUpdateOne) SetNillableSnapshotID(v *int64) *SalesCommissionRecordUpdateOne {
+	if v != nil {
+		_u.SetSnapshotID(*v)
+	}
+	return _u
+}
+
+// AddSnapshotID adds value to the "snapshot_id" field.
+func (_u *SalesCommissionRecordUpdateOne) AddSnapshotID(v int64) *SalesCommissionRecordUpdateOne {
+	_u.mutation.AddSnapshotID(v)
+	return _u
+}
+
+// ClearSnapshotID clears the value of the "snapshot_id" field.
+func (_u *SalesCommissionRecordUpdateOne) ClearSnapshotID() *SalesCommissionRecordUpdateOne {
+	_u.mutation.ClearSnapshotID()
+	return _u
+}
+
+// SetCommissionMode sets the "commission_mode" field.
+func (_u *SalesCommissionRecordUpdateOne) SetCommissionMode(v string) *SalesCommissionRecordUpdateOne {
+	_u.mutation.SetCommissionMode(v)
+	return _u
+}
+
+// SetNillableCommissionMode sets the "commission_mode" field if the given value is not nil.
+func (_u *SalesCommissionRecordUpdateOne) SetNillableCommissionMode(v *string) *SalesCommissionRecordUpdateOne {
+	if v != nil {
+		_u.SetCommissionMode(*v)
+	}
+	return _u
+}
+
+// SetMonthlySalesBeforeCny sets the "monthly_sales_before_cny" field.
+func (_u *SalesCommissionRecordUpdateOne) SetMonthlySalesBeforeCny(v float64) *SalesCommissionRecordUpdateOne {
+	_u.mutation.ResetMonthlySalesBeforeCny()
+	_u.mutation.SetMonthlySalesBeforeCny(v)
+	return _u
+}
+
+// SetNillableMonthlySalesBeforeCny sets the "monthly_sales_before_cny" field if the given value is not nil.
+func (_u *SalesCommissionRecordUpdateOne) SetNillableMonthlySalesBeforeCny(v *float64) *SalesCommissionRecordUpdateOne {
+	if v != nil {
+		_u.SetMonthlySalesBeforeCny(*v)
+	}
+	return _u
+}
+
+// AddMonthlySalesBeforeCny adds value to the "monthly_sales_before_cny" field.
+func (_u *SalesCommissionRecordUpdateOne) AddMonthlySalesBeforeCny(v float64) *SalesCommissionRecordUpdateOne {
+	_u.mutation.AddMonthlySalesBeforeCny(v)
+	return _u
+}
+
+// SetMonthlySalesAfterCny sets the "monthly_sales_after_cny" field.
+func (_u *SalesCommissionRecordUpdateOne) SetMonthlySalesAfterCny(v float64) *SalesCommissionRecordUpdateOne {
+	_u.mutation.ResetMonthlySalesAfterCny()
+	_u.mutation.SetMonthlySalesAfterCny(v)
+	return _u
+}
+
+// SetNillableMonthlySalesAfterCny sets the "monthly_sales_after_cny" field if the given value is not nil.
+func (_u *SalesCommissionRecordUpdateOne) SetNillableMonthlySalesAfterCny(v *float64) *SalesCommissionRecordUpdateOne {
+	if v != nil {
+		_u.SetMonthlySalesAfterCny(*v)
+	}
+	return _u
+}
+
+// AddMonthlySalesAfterCny adds value to the "monthly_sales_after_cny" field.
+func (_u *SalesCommissionRecordUpdateOne) AddMonthlySalesAfterCny(v float64) *SalesCommissionRecordUpdateOne {
+	_u.mutation.AddMonthlySalesAfterCny(v)
 	return _u
 }
 
@@ -827,6 +1114,11 @@ func (_u *SalesCommissionRecordUpdateOne) check() error {
 			return &ValidationError{Name: "commission_total_cny", err: fmt.Errorf(`ent: validator failed for field "SalesCommissionRecord.commission_total_cny": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.CommissionMode(); ok {
+		if err := salescommissionrecord.CommissionModeValidator(v); err != nil {
+			return &ValidationError{Name: "commission_mode", err: fmt.Errorf(`ent: validator failed for field "SalesCommissionRecord.commission_mode": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.CreditedUsedAmount(); ok {
 		if err := salescommissionrecord.CreditedUsedAmountValidator(v); err != nil {
 			return &ValidationError{Name: "credited_used_amount", err: fmt.Errorf(`ent: validator failed for field "SalesCommissionRecord.credited_used_amount": %w`, err)}
@@ -903,6 +1195,9 @@ func (_u *SalesCommissionRecordUpdateOne) sqlSave(ctx context.Context) (_node *S
 	if value, ok := _u.mutation.AddedPaymentOrderID(); ok {
 		_spec.AddField(salescommissionrecord.FieldPaymentOrderID, field.TypeInt64, value)
 	}
+	if _u.mutation.PaymentOrderIDCleared() {
+		_spec.ClearField(salescommissionrecord.FieldPaymentOrderID, field.TypeInt64)
+	}
 	if value, ok := _u.mutation.OrderPayAmountCny(); ok {
 		_spec.SetField(salescommissionrecord.FieldOrderPayAmountCny, field.TypeFloat64, value)
 	}
@@ -926,6 +1221,39 @@ func (_u *SalesCommissionRecordUpdateOne) sqlSave(ctx context.Context) (_node *S
 	}
 	if value, ok := _u.mutation.AddedCommissionTotalCny(); ok {
 		_spec.AddField(salescommissionrecord.FieldCommissionTotalCny, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.CommissionEventAt(); ok {
+		_spec.SetField(salescommissionrecord.FieldCommissionEventAt, field.TypeTime, value)
+	}
+	if _u.mutation.CommissionEventAtCleared() {
+		_spec.ClearField(salescommissionrecord.FieldCommissionEventAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.CommissionMonth(); ok {
+		_spec.SetField(salescommissionrecord.FieldCommissionMonth, field.TypeTime, value)
+	}
+	if value, ok := _u.mutation.SnapshotID(); ok {
+		_spec.SetField(salescommissionrecord.FieldSnapshotID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedSnapshotID(); ok {
+		_spec.AddField(salescommissionrecord.FieldSnapshotID, field.TypeInt64, value)
+	}
+	if _u.mutation.SnapshotIDCleared() {
+		_spec.ClearField(salescommissionrecord.FieldSnapshotID, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.CommissionMode(); ok {
+		_spec.SetField(salescommissionrecord.FieldCommissionMode, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.MonthlySalesBeforeCny(); ok {
+		_spec.SetField(salescommissionrecord.FieldMonthlySalesBeforeCny, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedMonthlySalesBeforeCny(); ok {
+		_spec.AddField(salescommissionrecord.FieldMonthlySalesBeforeCny, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.MonthlySalesAfterCny(); ok {
+		_spec.SetField(salescommissionrecord.FieldMonthlySalesAfterCny, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedMonthlySalesAfterCny(); ok {
+		_spec.AddField(salescommissionrecord.FieldMonthlySalesAfterCny, field.TypeFloat64, value)
 	}
 	if value, ok := _u.mutation.CreditedUsedAmount(); ok {
 		_spec.SetField(salescommissionrecord.FieldCreditedUsedAmount, field.TypeFloat64, value)

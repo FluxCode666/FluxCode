@@ -78,6 +78,7 @@ describe('ReferralManageView', () => {
     })
     getConfig.mockResolvedValue({
       referral_enabled: true,
+      referral_invitee_reward_enabled: true,
       referral_invitee_reward: 10,
       referral_inviter_reward: 20,
       referral_max_invites: 0,
@@ -88,6 +89,14 @@ describe('ReferralManageView', () => {
       referral_ongoing_reward_value: 0,
       referral_ongoing_reward_max_count: 0,
       referral_ongoing_reward_duration_days: 0,
+      referral_sales_enabled: false,
+      referral_sales_invitee_reward_enabled: false,
+      referral_sales_invitee_reward: 0,
+      referral_sales_invitee_ongoing_reward_enabled: false,
+      referral_sales_invitee_ongoing_reward_type: 'fixed',
+      referral_sales_invitee_ongoing_reward_value: 0,
+      referral_sales_invitee_ongoing_reward_max_count: 0,
+      referral_sales_invitee_ongoing_reward_duration_days: 0,
     })
     listReferrals.mockResolvedValue({
       items: [{

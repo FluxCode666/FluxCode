@@ -14,7 +14,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/service"
 )
 
-func TestSalesCommissionRepository_CreateListsAndSettles(t *testing.T) {
+func TestSalesCommissionRepository_CreateAndLists(t *testing.T) {
 	ctx := context.Background()
 	client := testEntClient(t)
 	repo := NewSalesCommissionRepository(integrationDB)
@@ -30,32 +30,48 @@ func TestSalesCommissionRepository_CreateListsAndSettles(t *testing.T) {
 		SalesUserID:         sales.ID,
 		RefereeUserID:       referee.ID,
 		ReferralID:          referralID,
-		PaymentOrderID:      firstOrderID,
+		PaymentOrderID:      &firstOrderID,
 		OrderPayAmountCNY:   10,
 		OrderCreditedAmount: 10,
 		CommissionRate:      10,
 		CommissionTotalCNY:  1,
 		Note:                "first commission",
 	}
+	firstEventAt := time.Date(2026, 5, 31, 16, 30, 0, 0, time.UTC)
+	createInput.CommissionEventAt = firstEventAt
+	createInput.CommissionMonth = time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
 	require.NoError(t, repo.CreateForOrder(ctx, createInput))
 	require.NoError(t, repo.CreateForOrder(ctx, createInput), "duplicate payment_order_id should be ignored")
-	require.NoError(t, repo.CreateForOrder(ctx, &service.SalesCommissionCreate{
+	secondCreateInput := &service.SalesCommissionCreate{
 		SalesUserID:         sales.ID,
 		RefereeUserID:       referee.ID,
 		ReferralID:          referralID,
-		PaymentOrderID:      secondOrderID,
+		PaymentOrderID:      &secondOrderID,
 		OrderPayAmountCNY:   20,
 		OrderCreditedAmount: 20,
 		CommissionRate:      10,
 		CommissionTotalCNY:  2,
 		Note:                "second commission",
-	}))
+	}
+	secondCreateInput.CommissionEventAt = time.Date(2026, 6, 15, 8, 0, 0, 0, time.UTC)
+	secondCreateInput.CommissionMonth = time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+	require.NoError(t, repo.CreateForOrder(ctx, secondCreateInput))
 
 	var rowCount int
 	require.NoError(t, integrationDB.QueryRowContext(ctx, `
 		SELECT COUNT(*) FROM sales_commission_records WHERE payment_order_id = $1
 	`, firstOrderID).Scan(&rowCount))
 	require.Equal(t, 1, rowCount)
+
+	var storedEventAt time.Time
+	var storedMonth string
+	require.NoError(t, integrationDB.QueryRowContext(ctx, `
+		SELECT commission_event_at, commission_month::text
+		FROM sales_commission_records
+		WHERE payment_order_id = $1
+	`, firstOrderID).Scan(&storedEventAt, &storedMonth))
+	require.Equal(t, firstEventAt, storedEventAt)
+	require.Equal(t, "2026-06-01", storedMonth)
 
 	summary, err := repo.GetSummaryBySalesUser(ctx, sales.ID)
 	require.NoError(t, err)
@@ -69,64 +85,144 @@ func TestSalesCommissionRepository_CreateListsAndSettles(t *testing.T) {
 	require.GreaterOrEqual(t, total, 1)
 	require.NotEmpty(t, summaries)
 
-	_, err = integrationDB.ExecContext(ctx, `
-		UPDATE sales_commission_records
-		SET unlocked_cny = CASE payment_order_id WHEN $1 THEN 0.40 WHEN $2 THEN 1.00 END,
-		    credited_used_amount = CASE payment_order_id WHEN $1 THEN 4 WHEN $2 THEN 10 END,
-		    status = 'partial_unlocked'
-		WHERE payment_order_id IN ($1, $2)
-	`, firstOrderID, secondOrderID)
-	require.NoError(t, err)
-
-	settlement, err := repo.CreateSettlement(ctx, &service.SalesCommissionSettlementCreate{
-		SalesUserID: sales.ID,
-		AmountCNY:   0.75,
-		Note:        "manual payout",
-		CreatedBy:   &sales.ID,
-	})
-	require.NoError(t, err)
-	require.Equal(t, sales.ID, settlement.SalesUserID)
-	require.InDelta(t, 0.75, settlement.AmountCNY, 0.000001)
-
 	records, total, err := repo.ListRecords(ctx, service.SalesCommissionRecordListParams{SalesUserID: sales.ID, Page: 1, PageSize: 20})
 	require.NoError(t, err)
 	require.Equal(t, 2, total)
 	require.Len(t, records, 2)
-	require.Equal(t, firstOrderID, records[0].PaymentOrderID)
-	require.InDelta(t, 0.40, records[0].SettledCNY, 0.000001)
-	require.InDelta(t, 0, records[0].SettleableCNY, 0.000001)
-	require.Equal(t, secondOrderID, records[1].PaymentOrderID)
-	require.InDelta(t, 0.35, records[1].SettledCNY, 0.000001)
-	require.InDelta(t, 0.65, records[1].SettleableCNY, 0.000001)
+	require.NotNil(t, records[0].PaymentOrderID)
+	require.Equal(t, firstOrderID, *records[0].PaymentOrderID)
+	require.NotNil(t, records[1].PaymentOrderID)
+	require.Equal(t, secondOrderID, *records[1].PaymentOrderID)
 
 	settlements, total, err := repo.ListSettlements(ctx, service.SalesCommissionSettlementListParams{SalesUserID: sales.ID, Page: 1, PageSize: 20})
 	require.NoError(t, err)
-	require.Equal(t, 1, total)
-	require.Len(t, settlements, 1)
-	require.InDelta(t, 0.75, settlements[0].AmountCNY, 0.000001)
+	require.Equal(t, 0, total)
+	require.Empty(t, settlements)
 }
 
-func TestSalesCommissionRepository_CreateSettlementRejectsInvalidAmounts(t *testing.T) {
+func TestSalesCommissionRepository_CreateForOrder_FreezesMonthlySnapshotAndResetsNextMonth(t *testing.T) {
 	ctx := context.Background()
 	client := testEntClient(t)
+	userRepo := newUserRepositoryWithSQL(client, integrationDB)
 	repo := NewSalesCommissionRepository(integrationDB)
 
-	sales := mustCreateUser(t, client, &service.User{Email: "sales-invalid-" + uuid.NewString() + "@example.com"})
+	sales := &service.User{
+		Email:                          "sales-snapshot-" + uuid.NewString() + "@example.com",
+		Username:                       "sales-snapshot",
+		PasswordHash:                   "test-password-hash",
+		Role:                           service.RoleUser,
+		Status:                         service.StatusActive,
+		Concurrency:                    5,
+		IsSales:                        true,
+		SalesCommissionMode:            service.SalesCommissionModeTiered,
+		SalesCommissionMinMonthlySales: 100,
+		SalesCommissionTiers: []service.SalesCommissionTier{
+			{MonthSalesFromCNY: 0, MonthSalesToCNY: float64Ptr(200), CommissionRate: 10},
+			{MonthSalesFromCNY: 200, CommissionRate: 20},
+		},
+	}
+	require.NoError(t, userRepo.Create(ctx, sales))
 
-	_, err := repo.CreateSettlement(ctx, &service.SalesCommissionSettlementCreate{
-		SalesUserID: sales.ID,
-		AmountCNY:   0,
-		Note:        "zero",
-	})
-	require.ErrorIs(t, err, service.ErrSalesCommissionInvalidAmount)
+	referee := mustCreateUser(t, client, &service.User{Email: "buyer-snapshot-" + uuid.NewString() + "@example.com", Username: "buyer"})
+	referralID := mustCreateSalesCommissionReferral(t, ctx, sales.ID, referee.ID)
+	orderOneID := mustCreateCompletedBalanceOrder(t, ctx, referee.ID, 90, 90)
+	orderTwoID := mustCreateCompletedBalanceOrder(t, ctx, referee.ID, 100, 100)
+	orderThreeID := mustCreateCompletedBalanceOrder(t, ctx, referee.ID, 80, 80)
 
-	_, err = repo.CreateSettlement(ctx, &service.SalesCommissionSettlementCreate{
+	firstEventAt := time.Date(2026, 6, 10, 9, 0, 0, 0, time.UTC)
+	require.NoError(t, repo.CreateForOrder(ctx, &service.SalesCommissionCreate{
+		SalesUserID:               sales.ID,
+		RefereeUserID:             referee.ID,
+		ReferralID:                referralID,
+		PaymentOrderID:            &orderOneID,
+		OrderPayAmountCNY:         90,
+		OrderCreditedAmount:       90,
+		CommissionMode:            service.SalesCommissionModeTiered,
+		CommissionRate:            0,
+		CommissionMinMonthlySales: 100,
+		CommissionTiers:           sales.SalesCommissionTiers,
+		CommissionEventAt:         firstEventAt,
+		CommissionMonth:           time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC),
+		Note:                      "snapshot order 1",
+	}))
+
+	// 修改销售配置，但同月后续订单应该继续使用首单冻结下来的快照。
+	sales.SalesCommissionMinMonthlySales = 0
+	sales.SalesCommissionTiers = []service.SalesCommissionTier{
+		{MonthSalesFromCNY: 0, CommissionRate: 30},
+	}
+	require.NoError(t, userRepo.Update(ctx, sales))
+
+	secondEventAt := time.Date(2026, 6, 20, 9, 0, 0, 0, time.UTC)
+	require.NoError(t, repo.CreateForOrder(ctx, &service.SalesCommissionCreate{
+		SalesUserID:               sales.ID,
+		RefereeUserID:             referee.ID,
+		ReferralID:                referralID,
+		PaymentOrderID:            &orderTwoID,
+		OrderPayAmountCNY:         100,
+		OrderCreditedAmount:       100,
+		CommissionMode:            service.SalesCommissionModeTiered,
+		CommissionRate:            0,
+		CommissionMinMonthlySales: 0,
+		CommissionTiers:           sales.SalesCommissionTiers,
+		CommissionEventAt:         secondEventAt,
+		CommissionMonth:           time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC),
+		Note:                      "snapshot order 2",
+	}))
+
+	thirdEventAt := time.Date(2026, 7, 2, 9, 0, 0, 0, time.UTC)
+	require.NoError(t, repo.CreateForOrder(ctx, &service.SalesCommissionCreate{
+		SalesUserID:               sales.ID,
+		RefereeUserID:             referee.ID,
+		ReferralID:                referralID,
+		PaymentOrderID:            &orderThreeID,
+		OrderPayAmountCNY:         80,
+		OrderCreditedAmount:       80,
+		CommissionMode:            service.SalesCommissionModeTiered,
+		CommissionRate:            0,
+		CommissionMinMonthlySales: 0,
+		CommissionTiers:           sales.SalesCommissionTiers,
+		CommissionEventAt:         thirdEventAt,
+		CommissionMonth:           time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC),
+		Note:                      "snapshot order 3",
+	}))
+
+	rows, _, err := repo.ListRecords(ctx, service.SalesCommissionRecordListParams{
 		SalesUserID: sales.ID,
-		AmountCNY:   1,
-		Note:        "too much",
+		Page:        1,
+		PageSize:    20,
 	})
-	require.ErrorIs(t, err, service.ErrSalesCommissionSettleAmountExceeded)
-	require.WithinDuration(t, time.Now(), time.Now(), time.Second)
+	require.NoError(t, err)
+	require.Len(t, rows, 3)
+
+	// spec §6.5：梯度 0~200=>10%, 200~=>20%, threshold=100。
+	// 6 月第 1 笔 (90)：单笔时未达门槛，但第 2 笔 (100) 让月累计 190 跨过门槛，
+	// 整月重算后第 1 笔被补算到 P(90)-P(0)=9；rate=9/90=10%。
+	require.Equal(t, service.SalesCommissionModeTiered, rows[0].CommissionMode)
+	require.NotNil(t, rows[0].SnapshotID)
+	require.InDelta(t, 9, rows[0].CommissionTotalCNY, 0.000001)
+	require.InDelta(t, 10, rows[0].CommissionRate, 0.0001)
+	require.InDelta(t, 0, rows[0].MonthlySalesBeforeCNY, 0.000001)
+	require.InDelta(t, 90, rows[0].MonthlySalesAfterCNY, 0.000001)
+
+	// 第 2 笔 (100)：P(190)-P(90)=19-9=10；rate=10/100=10%。
+	// 沿用首单冻结的 snapshot（即使 sales 已被改为 0% 单档配置）。
+	require.Equal(t, rows[0].SnapshotID, rows[1].SnapshotID)
+	require.InDelta(t, 10, rows[1].CommissionTotalCNY, 0.000001)
+	require.InDelta(t, 90, rows[1].MonthlySalesBeforeCNY, 0.000001)
+	require.InDelta(t, 190, rows[1].MonthlySalesAfterCNY, 0.000001)
+	require.InDelta(t, 10, rows[1].CommissionRate, 0.0001)
+
+	require.NotNil(t, rows[2].SnapshotID)
+	require.NotEqual(t, *rows[0].SnapshotID, *rows[2].SnapshotID)
+	require.InDelta(t, 24, rows[2].CommissionTotalCNY, 0.000001)
+	require.InDelta(t, 0, rows[2].MonthlySalesBeforeCNY, 0.000001)
+	require.InDelta(t, 80, rows[2].MonthlySalesAfterCNY, 0.000001)
+	require.InDelta(t, 30, rows[2].CommissionRate, 0.0001)
+}
+
+func float64Ptr(v float64) *float64 {
+	return &v
 }
 
 func mustCreateSalesCommissionReferral(t *testing.T, ctx context.Context, salesUserID, refereeUserID int64) int64 {

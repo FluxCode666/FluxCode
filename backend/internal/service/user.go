@@ -38,8 +38,11 @@ type User struct {
 	TotalRecharged             float64
 
 	// 销售佣金
-	IsSales             bool
-	SalesCommissionRate float64
+	IsSales                        bool
+	SalesCommissionRate            float64
+	SalesCommissionMode            string
+	SalesCommissionMinMonthlySales float64
+	SalesCommissionTiers           []SalesCommissionTier
 
 	// 推广奖励
 	ReferralCode string // 用户的推广码

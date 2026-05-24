@@ -1,8 +1,11 @@
 <template>
   <AppLayout>
     <div class="mx-auto max-w-7xl space-y-6">
-      <div>
+      <div class="flex items-center justify-between">
         <h1 class="text-2xl font-bold text-gray-900 dark:text-white">{{ t('nav.referralManagement') }}</h1>
+        <button type="button" class="btn btn-primary" @click="showOfflineRechargeDialog = true">
+          {{ t('adminReferral.offlineRecharge.button') }}
+        </button>
       </div>
 
       <!-- Loading -->
@@ -109,74 +112,195 @@
 
           <!-- Config Tab -->
           <div v-if="activeTab === 'config'" class="p-6">
-            <div class="space-y-4 max-w-lg">
-              <div class="flex items-center justify-between">
-                <label class="text-sm font-medium text-gray-700 dark:text-dark-200">{{ t('adminReferral.referralEnabled') }}</label>
-                <button @click="config.referral_enabled = !config.referral_enabled" :class="[
-                  'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
-                  config.referral_enabled ? 'bg-primary-600' : 'bg-gray-300 dark:bg-dark-600'
-                ]">
-                  <span :class="[
-                    'inline-block h-4 w-4 transform rounded-full bg-white transition-transform',
-                    config.referral_enabled ? 'translate-x-6' : 'translate-x-1'
-                  ]" />
-                </button>
-              </div>
-              <div>
-                <label class="input-label">{{ t('adminReferral.inviteeReward') }}</label>
-                <input v-model.number="config.referral_invitee_reward" type="number" step="0.01" min="0" class="input mt-1" />
-              </div>
-              <div>
-                <label class="input-label">{{ t('adminReferral.inviterReward') }}</label>
-                <input v-model.number="config.referral_inviter_reward" type="number" step="0.01" min="0" class="input mt-1" />
-              </div>
-              <div>
-                <label class="input-label">{{ t('adminReferral.giftBalanceExpiry') }}</label>
-                <input v-model.number="config.referral_gift_balance_expiry_days" type="number" min="0" class="input mt-1" />
-              </div>
-              <div>
-                <label class="input-label">{{ t('adminReferral.maxInvites') }}</label>
-                <input v-model.number="config.referral_max_invites" type="number" min="0" class="input mt-1" />
-              </div>
-              <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <!-- 左栏：普通用户推广配置 -->
+              <div class="space-y-4">
+                <h4 class="text-sm font-semibold text-gray-800 dark:text-dark-100 mb-3">{{ t('adminReferral.regularReferralSection') }}</h4>
                 <div class="flex items-center justify-between">
-                  <label class="text-sm font-medium text-gray-700 dark:text-dark-200">{{ t('adminReferral.ongoingRewardEnabled') }}</label>
-                  <button @click="config.referral_ongoing_reward_enabled = !config.referral_ongoing_reward_enabled" :class="[
+                  <label class="text-sm font-medium text-gray-700 dark:text-dark-200">{{ t('adminReferral.referralEnabled') }}</label>
+                  <button @click="config.referral_enabled = !config.referral_enabled" :class="[
                     'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
-                    config.referral_ongoing_reward_enabled ? 'bg-primary-600' : 'bg-gray-300 dark:bg-dark-600'
+                    config.referral_enabled ? 'bg-primary-600' : 'bg-gray-300 dark:bg-dark-600'
                   ]">
                     <span :class="[
                       'inline-block h-4 w-4 transform rounded-full bg-white transition-transform',
-                      config.referral_ongoing_reward_enabled ? 'translate-x-6' : 'translate-x-1'
+                      config.referral_enabled ? 'translate-x-6' : 'translate-x-1'
                     ]" />
                   </button>
                 </div>
+                <div class="flex items-center justify-between">
+                  <label class="text-sm font-medium text-gray-700 dark:text-dark-200">{{ t('adminReferral.inviteeRewardEnabled') }}</label>
+                  <button @click="config.referral_invitee_reward_enabled = !config.referral_invitee_reward_enabled" :class="[
+                    'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
+                    config.referral_invitee_reward_enabled ? 'bg-primary-600' : 'bg-gray-300 dark:bg-dark-600'
+                  ]">
+                    <span :class="[
+                      'inline-block h-4 w-4 transform rounded-full bg-white transition-transform',
+                      config.referral_invitee_reward_enabled ? 'translate-x-6' : 'translate-x-1'
+                    ]" />
+                  </button>
+                </div>
+                <div>
+                  <label class="input-label">{{ t('adminReferral.inviteeReward') }}</label>
+                  <input v-model.number="config.referral_invitee_reward" type="number" step="0.01" min="0" class="input mt-1" />
+                </div>
+                <div>
+                  <label class="input-label">{{ t('adminReferral.inviterReward') }}</label>
+                  <input v-model.number="config.referral_inviter_reward" type="number" step="0.01" min="0" class="input mt-1" />
+                </div>
+                <div>
+                  <label class="input-label">{{ t('adminReferral.giftBalanceExpiry') }}</label>
+                  <input v-model.number="config.referral_gift_balance_expiry_days" type="number" min="0" class="input mt-1" />
+                </div>
+                <div>
+                  <label class="input-label">{{ t('adminReferral.maxInvites') }}</label>
+                  <input v-model.number="config.referral_max_invites" type="number" min="0" class="input mt-1" />
+                </div>
+                <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
+                  <div class="flex items-center justify-between">
+                    <label class="text-sm font-medium text-gray-700 dark:text-dark-200">{{ t('adminReferral.ongoingRewardEnabled') }}</label>
+                    <button @click="config.referral_ongoing_reward_enabled = !config.referral_ongoing_reward_enabled" :class="[
+                      'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
+                      config.referral_ongoing_reward_enabled ? 'bg-primary-600' : 'bg-gray-300 dark:bg-dark-600'
+                    ]">
+                      <span :class="[
+                        'inline-block h-4 w-4 transform rounded-full bg-white transition-transform',
+                        config.referral_ongoing_reward_enabled ? 'translate-x-6' : 'translate-x-1'
+                      ]" />
+                    </button>
+                  </div>
+                </div>
+                <template v-if="config.referral_ongoing_reward_enabled">
+                  <div>
+                    <label class="input-label">{{ t('adminReferral.ongoingRewardType') }}</label>
+                    <Select v-model="config.referral_ongoing_reward_type" :options="ongoingRewardTypeOptions" class="mt-1" />
+                  </div>
+                  <div>
+                    <label class="input-label">
+                      {{ t('adminReferral.ongoingRewardValue') }}
+                      <span v-if="config.referral_ongoing_reward_type === 'percentage'" class="text-gray-400">(%)</span>
+                    </label>
+                    <input v-model.number="config.referral_ongoing_reward_value" type="number" step="0.01" min="0" class="input mt-1" />
+                  </div>
+                  <div>
+                    <label class="input-label">{{ t('adminReferral.ongoingRewardMaxCount') }}</label>
+                    <input v-model.number="config.referral_ongoing_reward_max_count" type="number" min="0" class="input mt-1" />
+                  </div>
+                  <div>
+                    <label class="input-label">{{ t('adminReferral.ongoingRewardDurationDays') }}</label>
+                    <input v-model.number="config.referral_ongoing_reward_duration_days" type="number" min="0" class="input mt-1" />
+                  </div>
+                </template>
+                <!-- 被邀请人持续充值奖励 -->
+                <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
+                  <div class="flex items-center justify-between">
+                    <label class="text-sm font-medium text-gray-700 dark:text-dark-200">{{ t('adminReferral.inviteeOngoingRewardEnabled') }}</label>
+                    <button @click="config.referral_invitee_ongoing_reward_enabled = !config.referral_invitee_ongoing_reward_enabled" :class="[
+                      'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
+                      config.referral_invitee_ongoing_reward_enabled ? 'bg-primary-600' : 'bg-gray-300 dark:bg-dark-600'
+                    ]">
+                      <span :class="[
+                        'inline-block h-4 w-4 transform rounded-full bg-white transition-transform',
+                        config.referral_invitee_ongoing_reward_enabled ? 'translate-x-6' : 'translate-x-1'
+                      ]" />
+                    </button>
+                  </div>
+                </div>
+                <template v-if="config.referral_invitee_ongoing_reward_enabled">
+                  <div>
+                    <label class="input-label">{{ t('adminReferral.inviteeOngoingRewardType') }}</label>
+                    <Select v-model="config.referral_invitee_ongoing_reward_type" :options="ongoingRewardTypeOptions" class="mt-1" />
+                  </div>
+                  <div>
+                    <label class="input-label">
+                      {{ t('adminReferral.inviteeOngoingRewardValue') }}
+                      <span v-if="config.referral_invitee_ongoing_reward_type === 'percentage'" class="text-gray-400">(%)</span>
+                    </label>
+                    <input v-model.number="config.referral_invitee_ongoing_reward_value" type="number" step="0.01" min="0" class="input mt-1" />
+                  </div>
+                  <div>
+                    <label class="input-label">{{ t('adminReferral.inviteeOngoingRewardMaxCount') }}</label>
+                    <input v-model.number="config.referral_invitee_ongoing_reward_max_count" type="number" min="0" class="input mt-1" />
+                  </div>
+                  <div>
+                    <label class="input-label">{{ t('adminReferral.inviteeOngoingRewardDurationDays') }}</label>
+                    <input v-model.number="config.referral_invitee_ongoing_reward_duration_days" type="number" min="0" class="input mt-1" />
+                  </div>
+                </template>
               </div>
-              <template v-if="config.referral_ongoing_reward_enabled">
-                <div>
-                  <label class="input-label">{{ t('adminReferral.ongoingRewardType') }}</label>
-                  <Select v-model="config.referral_ongoing_reward_type" :options="ongoingRewardTypeOptions" class="mt-1" />
+
+              <!-- 右栏：销售用户推广配置 -->
+              <div class="space-y-4">
+                <h4 class="text-sm font-semibold text-gray-800 dark:text-dark-100 mb-3">{{ t('adminReferral.salesReferralSection') }}</h4>
+                <div class="flex items-center justify-between">
+                  <label class="text-sm font-medium text-gray-700 dark:text-dark-200">{{ t('adminReferral.salesReferralEnabled') }}</label>
+                  <button @click="config.referral_sales_enabled = !config.referral_sales_enabled" :class="[
+                    'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
+                    config.referral_sales_enabled ? 'bg-primary-600' : 'bg-gray-300 dark:bg-dark-600'
+                  ]">
+                    <span :class="[
+                      'inline-block h-4 w-4 transform rounded-full bg-white transition-transform',
+                      config.referral_sales_enabled ? 'translate-x-6' : 'translate-x-1'
+                    ]" />
+                  </button>
+                </div>
+                <div class="flex items-center justify-between">
+                  <label class="text-sm font-medium text-gray-700 dark:text-dark-200">{{ t('adminReferral.salesInviteeRewardEnabled') }}</label>
+                  <button @click="config.referral_sales_invitee_reward_enabled = !config.referral_sales_invitee_reward_enabled" :class="[
+                    'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
+                    config.referral_sales_invitee_reward_enabled ? 'bg-primary-600' : 'bg-gray-300 dark:bg-dark-600'
+                  ]">
+                    <span :class="[
+                      'inline-block h-4 w-4 transform rounded-full bg-white transition-transform',
+                      config.referral_sales_invitee_reward_enabled ? 'translate-x-6' : 'translate-x-1'
+                    ]" />
+                  </button>
                 </div>
                 <div>
-                  <label class="input-label">
-                    {{ t('adminReferral.ongoingRewardValue') }}
-                    <span v-if="config.referral_ongoing_reward_type === 'percentage'" class="text-gray-400">(%)</span>
-                  </label>
-                  <input v-model.number="config.referral_ongoing_reward_value" type="number" step="0.01" min="0" class="input mt-1" />
+                  <label class="input-label">{{ t('adminReferral.salesInviteeReward') }}</label>
+                  <input v-model.number="config.referral_sales_invitee_reward" type="number" step="0.01" min="0" class="input mt-1" />
                 </div>
-                <div>
-                  <label class="input-label">{{ t('adminReferral.ongoingRewardMaxCount') }}</label>
-                  <input v-model.number="config.referral_ongoing_reward_max_count" type="number" min="0" class="input mt-1" />
+                <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
+                  <div class="flex items-center justify-between">
+                    <label class="text-sm font-medium text-gray-700 dark:text-dark-200">{{ t('adminReferral.salesInviteeOngoingRewardEnabled') }}</label>
+                    <button @click="config.referral_sales_invitee_ongoing_reward_enabled = !config.referral_sales_invitee_ongoing_reward_enabled" :class="[
+                      'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
+                      config.referral_sales_invitee_ongoing_reward_enabled ? 'bg-primary-600' : 'bg-gray-300 dark:bg-dark-600'
+                    ]">
+                      <span :class="[
+                        'inline-block h-4 w-4 transform rounded-full bg-white transition-transform',
+                        config.referral_sales_invitee_ongoing_reward_enabled ? 'translate-x-6' : 'translate-x-1'
+                      ]" />
+                    </button>
+                  </div>
                 </div>
-                <div>
-                  <label class="input-label">{{ t('adminReferral.ongoingRewardDurationDays') }}</label>
-                  <input v-model.number="config.referral_ongoing_reward_duration_days" type="number" min="0" class="input mt-1" />
-                </div>
-              </template>
-              <button @click="saveConfig" :disabled="savingConfig" class="btn btn-primary">
-                {{ savingConfig ? t('adminReferral.saving') : t('adminReferral.saveConfig') }}
-              </button>
+                <template v-if="config.referral_sales_invitee_ongoing_reward_enabled">
+                  <div>
+                    <label class="input-label">{{ t('adminReferral.salesInviteeOngoingRewardType') }}</label>
+                    <Select v-model="config.referral_sales_invitee_ongoing_reward_type" :options="ongoingRewardTypeOptions" class="mt-1" />
+                  </div>
+                  <div>
+                    <label class="input-label">
+                      {{ t('adminReferral.salesInviteeOngoingRewardValue') }}
+                      <span v-if="config.referral_sales_invitee_ongoing_reward_type === 'percentage'" class="text-gray-400">(%)</span>
+                    </label>
+                    <input v-model.number="config.referral_sales_invitee_ongoing_reward_value" type="number" step="0.01" min="0" class="input mt-1" />
+                  </div>
+                  <div>
+                    <label class="input-label">{{ t('adminReferral.salesInviteeOngoingRewardMaxCount') }}</label>
+                    <input v-model.number="config.referral_sales_invitee_ongoing_reward_max_count" type="number" min="0" class="input mt-1" />
+                  </div>
+                  <div>
+                    <label class="input-label">{{ t('adminReferral.salesInviteeOngoingRewardDurationDays') }}</label>
+                    <input v-model.number="config.referral_sales_invitee_ongoing_reward_duration_days" type="number" min="0" class="input mt-1" />
+                  </div>
+                </template>
+              </div>
             </div>
+
+            <button @click="saveConfig" :disabled="savingConfig" class="btn btn-primary mt-6">
+              {{ savingConfig ? t('adminReferral.saving') : t('adminReferral.saveConfig') }}
+            </button>
           </div>
 
           <!-- Referral List Tab -->
@@ -401,6 +525,70 @@
         </div>
       </template>
     </div>
+    <!-- 录入私账充值弹窗 -->
+    <div v-if="showOfflineRechargeDialog" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+      <div class="w-full max-w-md rounded-lg bg-white p-6 shadow-xl dark:bg-dark-900">
+        <h3 class="text-lg font-semibold text-gray-900 dark:text-gray-100">{{ t('adminReferral.offlineRecharge.title') }}</h3>
+        <p class="mt-1 text-sm text-gray-500 dark:text-dark-400">{{ t('adminReferral.offlineRecharge.description') }}</p>
+        <div class="mt-4 space-y-3">
+          <div class="relative">
+            <label class="input-label">{{ t('adminReferral.offlineRecharge.userEmail') }}</label>
+            <input
+              v-model="offlineRechargeUserSearch"
+              type="text"
+              class="input mt-1"
+              :placeholder="t('adminReferral.offlineRecharge.userEmailPlaceholder')"
+              @input="onOfflineRechargeUserSearch"
+              @focus="offlineRechargeDropdownVisible = offlineRechargeUserResults.length > 0"
+            />
+            <div v-if="offlineRechargeForm.user_id" class="mt-1 text-xs text-green-600 dark:text-green-400">
+              {{ t('adminReferral.offlineRecharge.selectedUser') }}: ID {{ offlineRechargeForm.user_id }} — {{ offlineRechargeSelectedEmail }}
+            </div>
+            <ul
+              v-if="offlineRechargeDropdownVisible && offlineRechargeUserResults.length > 0"
+              class="absolute z-10 mt-1 max-h-48 w-full overflow-auto rounded-md border border-gray-200 bg-white shadow-lg dark:border-dark-600 dark:bg-dark-800"
+            >
+              <li
+                v-for="u in offlineRechargeUserResults"
+                :key="u.id"
+                class="cursor-pointer px-3 py-2 text-sm hover:bg-primary-50 dark:hover:bg-dark-700"
+                @mousedown.prevent="selectOfflineRechargeUser(u)"
+              >
+                <span class="font-medium">{{ u.email }}</span>
+                <span class="ml-2 text-xs text-gray-400">(ID: {{ u.id }})</span>
+              </li>
+            </ul>
+          </div>
+          <div>
+            <label class="input-label">{{ t('adminReferral.offlineRecharge.payAmount') }} (¥)</label>
+            <input v-model.number="offlineRechargeForm.pay_amount_cny" type="number" step="0.01" min="0.01" class="input mt-1" />
+          </div>
+          <div>
+            <label class="input-label">{{ t('adminReferral.offlineRecharge.creditedAmount') }}</label>
+            <input v-model.number="offlineRechargeForm.credited_amount" type="number" step="0.01" min="0.01" class="input mt-1" />
+          </div>
+          <div class="flex items-center gap-2">
+            <input id="credit-balance-check" v-model="offlineRechargeForm.credit_balance" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
+            <label for="credit-balance-check" class="text-sm text-gray-700 dark:text-dark-200">{{ t('adminReferral.offlineRecharge.creditBalance') }}</label>
+          </div>
+          <div>
+            <label class="input-label">{{ t('adminReferral.offlineRecharge.note') }}</label>
+            <input v-model="offlineRechargeForm.note" type="text" class="input mt-1" :placeholder="t('adminReferral.offlineRecharge.notePlaceholder')" />
+          </div>
+        </div>
+        <div class="mt-6 flex justify-end gap-3">
+          <button type="button" class="btn btn-secondary" @click="closeOfflineRechargeDialog">{{ t('common.cancel') }}</button>
+          <button
+            type="button"
+            class="btn btn-primary"
+            :disabled="offlineRechargeSubmitting || !offlineRechargeForm.user_id || !offlineRechargeForm.pay_amount_cny || !offlineRechargeForm.credited_amount"
+            @click="handleOfflineRecharge"
+          >
+            {{ offlineRechargeSubmitting ? t('common.loading') : t('adminReferral.offlineRecharge.submit') }}
+          </button>
+        </div>
+      </div>
+    </div>
   </AppLayout>
 </template>
 
@@ -423,6 +611,7 @@ import {
 } from 'chart.js'
 import { Line } from 'vue-chartjs'
 import adminReferralAPI from '@/api/admin/referral'
+import { list as listUsers } from '@/api/admin/users'
 import type {
   ReferralConfig,
   ReferralListItem,
@@ -445,6 +634,21 @@ const savingConfig = ref(false)
 const granting = ref(false)
 const batchGranting = ref(false)
 const completingReferralId = ref<number | null>(null)
+
+const showOfflineRechargeDialog = ref(false)
+const offlineRechargeSubmitting = ref(false)
+const offlineRechargeForm = reactive({
+  user_id: null as number | null,
+  pay_amount_cny: null as number | null,
+  credited_amount: null as number | null,
+  credit_balance: true,
+  note: '',
+})
+const offlineRechargeUserSearch = ref('')
+const offlineRechargeUserResults = ref<{ id: number; email: string }[]>([])
+const offlineRechargeDropdownVisible = ref(false)
+const offlineRechargeSelectedEmail = ref('')
+let offlineRechargeSearchTimer: ReturnType<typeof setTimeout> | null = null
 
 const dashboard = ref<AdminReferralDashboard | null>(null)
 const trendDays = ref<number | string | boolean | null>(30)
@@ -485,6 +689,7 @@ const userConfigRewardTypeOptions = computed(() => [
 
 const config = reactive<ReferralConfig>({
   referral_enabled: false,
+  referral_invitee_reward_enabled: false,
   referral_invitee_reward: 0,
   referral_inviter_reward: 0,
   referral_max_invites: 0,
@@ -495,6 +700,19 @@ const config = reactive<ReferralConfig>({
   referral_ongoing_reward_value: 0,
   referral_ongoing_reward_max_count: 0,
   referral_ongoing_reward_duration_days: 0,
+  referral_invitee_ongoing_reward_enabled: false,
+  referral_invitee_ongoing_reward_type: 'fixed',
+  referral_invitee_ongoing_reward_value: 0,
+  referral_invitee_ongoing_reward_max_count: 0,
+  referral_invitee_ongoing_reward_duration_days: 0,
+  referral_sales_enabled: false,
+  referral_sales_invitee_reward_enabled: false,
+  referral_sales_invitee_reward: 0,
+  referral_sales_invitee_ongoing_reward_enabled: false,
+  referral_sales_invitee_ongoing_reward_type: 'fixed',
+  referral_sales_invitee_ongoing_reward_value: 0,
+  referral_sales_invitee_ongoing_reward_max_count: 0,
+  referral_sales_invitee_ongoing_reward_duration_days: 0,
 })
 
 const referralList = ref<ReferralListItem[]>([])
@@ -810,6 +1028,79 @@ async function clearUserConfig() {
   } catch (error) {
     console.error('Failed to clear user config:', error)
     appStore.showError(t('adminReferral.clearOverrideFailed'))
+  }
+}
+
+function onOfflineRechargeUserSearch() {
+  offlineRechargeForm.user_id = null
+  offlineRechargeSelectedEmail.value = ''
+  if (offlineRechargeSearchTimer) clearTimeout(offlineRechargeSearchTimer)
+  const query = offlineRechargeUserSearch.value.trim()
+  if (!query) {
+    offlineRechargeUserResults.value = []
+    offlineRechargeDropdownVisible.value = false
+    return
+  }
+  offlineRechargeSearchTimer = setTimeout(async () => {
+    try {
+      const res = await listUsers(1, 10, { search: query })
+      offlineRechargeUserResults.value = (res.items || []).map((u: any) => ({ id: u.id, email: u.email }))
+      offlineRechargeDropdownVisible.value = offlineRechargeUserResults.value.length > 0
+    } catch {
+      offlineRechargeUserResults.value = []
+      offlineRechargeDropdownVisible.value = false
+    }
+  }, 300)
+}
+
+function selectOfflineRechargeUser(user: { id: number; email: string }) {
+  offlineRechargeForm.user_id = user.id
+  offlineRechargeSelectedEmail.value = user.email
+  offlineRechargeUserSearch.value = user.email
+  offlineRechargeUserResults.value = []
+  offlineRechargeDropdownVisible.value = false
+}
+
+function closeOfflineRechargeDialog() {
+  showOfflineRechargeDialog.value = false
+  offlineRechargeForm.user_id = null
+  offlineRechargeForm.pay_amount_cny = null
+  offlineRechargeForm.credited_amount = null
+  offlineRechargeForm.credit_balance = true
+  offlineRechargeForm.note = ''
+  offlineRechargeUserSearch.value = ''
+  offlineRechargeUserResults.value = []
+  offlineRechargeDropdownVisible.value = false
+  offlineRechargeSelectedEmail.value = ''
+}
+
+async function handleOfflineRecharge() {
+  if (!offlineRechargeForm.user_id || !offlineRechargeForm.pay_amount_cny || !offlineRechargeForm.credited_amount) return
+  offlineRechargeSubmitting.value = true
+  try {
+    const result = await adminReferralAPI.recordOfflineRecharge({
+      user_id: offlineRechargeForm.user_id,
+      pay_amount_cny: offlineRechargeForm.pay_amount_cny,
+      credited_amount: offlineRechargeForm.credited_amount,
+      credit_balance: offlineRechargeForm.credit_balance,
+      note: offlineRechargeForm.note || undefined,
+    })
+    const msg = t('adminReferral.offlineRecharge.success', {
+      referrer: result.referrer_email || result.referrer_id,
+      type: result.is_sales_referrer ? t('adminReferral.offlineRecharge.salesReferrer') : t('adminReferral.offlineRecharge.normalReferrer'),
+    })
+    appStore.showSuccess(msg)
+    closeOfflineRechargeDialog()
+    await loadDashboard()
+  } catch (error: any) {
+    const reason = error?.reason || error?.code || ''
+    if (reason === 'NO_REFERRAL') {
+      appStore.showError(t('adminReferral.offlineRecharge.errNoReferral'))
+    } else {
+      appStore.showError(error?.message || t('adminReferral.offlineRecharge.failed'))
+    }
+  } finally {
+    offlineRechargeSubmitting.value = false
   }
 }
 

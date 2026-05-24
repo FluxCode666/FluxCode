@@ -59,6 +59,10 @@ type User struct {
 	IsSales bool `json:"is_sales,omitempty"`
 	// SalesCommissionRate holds the value of the "sales_commission_rate" field.
 	SalesCommissionRate float64 `json:"sales_commission_rate,omitempty"`
+	// SalesCommissionMode holds the value of the "sales_commission_mode" field.
+	SalesCommissionMode string `json:"sales_commission_mode,omitempty"`
+	// SalesCommissionMinMonthlySales holds the value of the "sales_commission_min_monthly_sales" field.
+	SalesCommissionMinMonthlySales float64 `json:"sales_commission_min_monthly_sales,omitempty"`
 	// ReferralCode holds the value of the "referral_code" field.
 	ReferralCode string `json:"referral_code,omitempty"`
 	// ReferredBy holds the value of the "referred_by" field.
@@ -204,11 +208,11 @@ func (*User) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case user.FieldTotpEnabled, user.FieldBalanceNotifyEnabled, user.FieldIsSales:
 			values[i] = new(sql.NullBool)
-		case user.FieldBalance, user.FieldBalanceNotifyThreshold, user.FieldTotalRecharged, user.FieldSalesCommissionRate:
+		case user.FieldBalance, user.FieldBalanceNotifyThreshold, user.FieldTotalRecharged, user.FieldSalesCommissionRate, user.FieldSalesCommissionMinMonthlySales:
 			values[i] = new(sql.NullFloat64)
 		case user.FieldID, user.FieldConcurrency, user.FieldReferredBy:
 			values[i] = new(sql.NullInt64)
-		case user.FieldEmail, user.FieldPasswordHash, user.FieldRole, user.FieldStatus, user.FieldUsername, user.FieldNotes, user.FieldTotpSecretEncrypted, user.FieldBalanceNotifyThresholdType, user.FieldBalanceNotifyExtraEmails, user.FieldReferralCode:
+		case user.FieldEmail, user.FieldPasswordHash, user.FieldRole, user.FieldStatus, user.FieldUsername, user.FieldNotes, user.FieldTotpSecretEncrypted, user.FieldBalanceNotifyThresholdType, user.FieldBalanceNotifyExtraEmails, user.FieldSalesCommissionMode, user.FieldReferralCode:
 			values[i] = new(sql.NullString)
 		case user.FieldCreatedAt, user.FieldUpdatedAt, user.FieldDeletedAt, user.FieldTotpEnabledAt:
 			values[i] = new(sql.NullTime)
@@ -362,6 +366,18 @@ func (_m *User) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field sales_commission_rate", values[i])
 			} else if value.Valid {
 				_m.SalesCommissionRate = value.Float64
+			}
+		case user.FieldSalesCommissionMode:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field sales_commission_mode", values[i])
+			} else if value.Valid {
+				_m.SalesCommissionMode = value.String
+			}
+		case user.FieldSalesCommissionMinMonthlySales:
+			if value, ok := values[i].(*sql.NullFloat64); !ok {
+				return fmt.Errorf("unexpected type %T for field sales_commission_min_monthly_sales", values[i])
+			} else if value.Valid {
+				_m.SalesCommissionMinMonthlySales = value.Float64
 			}
 		case user.FieldReferralCode:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -537,6 +553,12 @@ func (_m *User) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("sales_commission_rate=")
 	builder.WriteString(fmt.Sprintf("%v", _m.SalesCommissionRate))
+	builder.WriteString(", ")
+	builder.WriteString("sales_commission_mode=")
+	builder.WriteString(_m.SalesCommissionMode)
+	builder.WriteString(", ")
+	builder.WriteString("sales_commission_min_monthly_sales=")
+	builder.WriteString(fmt.Sprintf("%v", _m.SalesCommissionMinMonthlySales))
 	builder.WriteString(", ")
 	builder.WriteString("referral_code=")
 	builder.WriteString(_m.ReferralCode)

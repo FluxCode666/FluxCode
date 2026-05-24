@@ -368,6 +368,41 @@ func (_u *UserUpdate) AddSalesCommissionRate(v float64) *UserUpdate {
 	return _u
 }
 
+// SetSalesCommissionMode sets the "sales_commission_mode" field.
+func (_u *UserUpdate) SetSalesCommissionMode(v string) *UserUpdate {
+	_u.mutation.SetSalesCommissionMode(v)
+	return _u
+}
+
+// SetNillableSalesCommissionMode sets the "sales_commission_mode" field if the given value is not nil.
+func (_u *UserUpdate) SetNillableSalesCommissionMode(v *string) *UserUpdate {
+	if v != nil {
+		_u.SetSalesCommissionMode(*v)
+	}
+	return _u
+}
+
+// SetSalesCommissionMinMonthlySales sets the "sales_commission_min_monthly_sales" field.
+func (_u *UserUpdate) SetSalesCommissionMinMonthlySales(v float64) *UserUpdate {
+	_u.mutation.ResetSalesCommissionMinMonthlySales()
+	_u.mutation.SetSalesCommissionMinMonthlySales(v)
+	return _u
+}
+
+// SetNillableSalesCommissionMinMonthlySales sets the "sales_commission_min_monthly_sales" field if the given value is not nil.
+func (_u *UserUpdate) SetNillableSalesCommissionMinMonthlySales(v *float64) *UserUpdate {
+	if v != nil {
+		_u.SetSalesCommissionMinMonthlySales(*v)
+	}
+	return _u
+}
+
+// AddSalesCommissionMinMonthlySales adds value to the "sales_commission_min_monthly_sales" field.
+func (_u *UserUpdate) AddSalesCommissionMinMonthlySales(v float64) *UserUpdate {
+	_u.mutation.AddSalesCommissionMinMonthlySales(v)
+	return _u
+}
+
 // SetReferralCode sets the "referral_code" field.
 func (_u *UserUpdate) SetReferralCode(v string) *UserUpdate {
 	_u.mutation.SetReferralCode(v)
@@ -848,6 +883,11 @@ func (_u *UserUpdate) check() error {
 			return &ValidationError{Name: "sales_commission_rate", err: fmt.Errorf(`ent: validator failed for field "User.sales_commission_rate": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.SalesCommissionMode(); ok {
+		if err := user.SalesCommissionModeValidator(v); err != nil {
+			return &ValidationError{Name: "sales_commission_mode", err: fmt.Errorf(`ent: validator failed for field "User.sales_commission_mode": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.ReferralCode(); ok {
 		if err := user.ReferralCodeValidator(v); err != nil {
 			return &ValidationError{Name: "referral_code", err: fmt.Errorf(`ent: validator failed for field "User.referral_code": %w`, err)}
@@ -954,6 +994,15 @@ func (_u *UserUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.AddedSalesCommissionRate(); ok {
 		_spec.AddField(user.FieldSalesCommissionRate, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.SalesCommissionMode(); ok {
+		_spec.SetField(user.FieldSalesCommissionMode, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.SalesCommissionMinMonthlySales(); ok {
+		_spec.SetField(user.FieldSalesCommissionMinMonthlySales, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedSalesCommissionMinMonthlySales(); ok {
+		_spec.AddField(user.FieldSalesCommissionMinMonthlySales, field.TypeFloat64, value)
 	}
 	if value, ok := _u.mutation.ReferralCode(); ok {
 		_spec.SetField(user.FieldReferralCode, field.TypeString, value)
@@ -1780,6 +1829,41 @@ func (_u *UserUpdateOne) AddSalesCommissionRate(v float64) *UserUpdateOne {
 	return _u
 }
 
+// SetSalesCommissionMode sets the "sales_commission_mode" field.
+func (_u *UserUpdateOne) SetSalesCommissionMode(v string) *UserUpdateOne {
+	_u.mutation.SetSalesCommissionMode(v)
+	return _u
+}
+
+// SetNillableSalesCommissionMode sets the "sales_commission_mode" field if the given value is not nil.
+func (_u *UserUpdateOne) SetNillableSalesCommissionMode(v *string) *UserUpdateOne {
+	if v != nil {
+		_u.SetSalesCommissionMode(*v)
+	}
+	return _u
+}
+
+// SetSalesCommissionMinMonthlySales sets the "sales_commission_min_monthly_sales" field.
+func (_u *UserUpdateOne) SetSalesCommissionMinMonthlySales(v float64) *UserUpdateOne {
+	_u.mutation.ResetSalesCommissionMinMonthlySales()
+	_u.mutation.SetSalesCommissionMinMonthlySales(v)
+	return _u
+}
+
+// SetNillableSalesCommissionMinMonthlySales sets the "sales_commission_min_monthly_sales" field if the given value is not nil.
+func (_u *UserUpdateOne) SetNillableSalesCommissionMinMonthlySales(v *float64) *UserUpdateOne {
+	if v != nil {
+		_u.SetSalesCommissionMinMonthlySales(*v)
+	}
+	return _u
+}
+
+// AddSalesCommissionMinMonthlySales adds value to the "sales_commission_min_monthly_sales" field.
+func (_u *UserUpdateOne) AddSalesCommissionMinMonthlySales(v float64) *UserUpdateOne {
+	_u.mutation.AddSalesCommissionMinMonthlySales(v)
+	return _u
+}
+
 // SetReferralCode sets the "referral_code" field.
 func (_u *UserUpdateOne) SetReferralCode(v string) *UserUpdateOne {
 	_u.mutation.SetReferralCode(v)
@@ -2273,6 +2357,11 @@ func (_u *UserUpdateOne) check() error {
 			return &ValidationError{Name: "sales_commission_rate", err: fmt.Errorf(`ent: validator failed for field "User.sales_commission_rate": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.SalesCommissionMode(); ok {
+		if err := user.SalesCommissionModeValidator(v); err != nil {
+			return &ValidationError{Name: "sales_commission_mode", err: fmt.Errorf(`ent: validator failed for field "User.sales_commission_mode": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.ReferralCode(); ok {
 		if err := user.ReferralCodeValidator(v); err != nil {
 			return &ValidationError{Name: "referral_code", err: fmt.Errorf(`ent: validator failed for field "User.referral_code": %w`, err)}
@@ -2396,6 +2485,15 @@ func (_u *UserUpdateOne) sqlSave(ctx context.Context) (_node *User, err error) {
 	}
 	if value, ok := _u.mutation.AddedSalesCommissionRate(); ok {
 		_spec.AddField(user.FieldSalesCommissionRate, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.SalesCommissionMode(); ok {
+		_spec.SetField(user.FieldSalesCommissionMode, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.SalesCommissionMinMonthlySales(); ok {
+		_spec.SetField(user.FieldSalesCommissionMinMonthlySales, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedSalesCommissionMinMonthlySales(); ok {
+		_spec.AddField(user.FieldSalesCommissionMinMonthlySales, field.TypeFloat64, value)
 	}
 	if value, ok := _u.mutation.ReferralCode(); ok {
 		_spec.SetField(user.FieldReferralCode, field.TypeString, value)

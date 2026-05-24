@@ -12,6 +12,7 @@ import (
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
 	dbgroup "github.com/Wei-Shaw/sub2api/ent/group"
+	dbsalescommissiontier "github.com/Wei-Shaw/sub2api/ent/salescommissiontier"
 	dbuser "github.com/Wei-Shaw/sub2api/ent/user"
 	"github.com/Wei-Shaw/sub2api/ent/userallowedgroup"
 	"github.com/Wei-Shaw/sub2api/ent/usersubscription"
@@ -66,12 +67,17 @@ func (r *userRepository) Create(ctx context.Context, userIn *service.User) error
 		SetStatus(userIn.Status).
 		SetIsSales(userIn.IsSales).
 		SetSalesCommissionRate(userIn.SalesCommissionRate).
+		SetSalesCommissionMode(service.NormalizeSalesCommissionMode(userIn.SalesCommissionMode)).
+		SetSalesCommissionMinMonthlySales(userIn.SalesCommissionMinMonthlySales).
 		Save(ctx)
 	if err != nil {
 		return translatePersistenceError(err, nil, service.ErrEmailExists)
 	}
 
 	if err := r.syncUserAllowedGroupsWithClient(ctx, txClient, created.ID, userIn.AllowedGroups); err != nil {
+		return err
+	}
+	if err := r.syncUserSalesCommissionTiersWithClient(ctx, txClient, created.ID, userIn.SalesCommissionTiers); err != nil {
 		return err
 	}
 
@@ -99,6 +105,13 @@ func (r *userRepository) GetByID(ctx context.Context, id int64) (*service.User, 
 	if v, ok := groups[id]; ok {
 		out.AllowedGroups = v
 	}
+	tiersByUserID, err := r.loadSalesCommissionTiers(ctx, []int64{id})
+	if err != nil {
+		return nil, err
+	}
+	if tiers, ok := tiersByUserID[id]; ok {
+		out.SalesCommissionTiers = tiers
+	}
 	return out, nil
 }
 
@@ -115,6 +128,13 @@ func (r *userRepository) GetByEmail(ctx context.Context, email string) (*service
 	}
 	if v, ok := groups[m.ID]; ok {
 		out.AllowedGroups = v
+	}
+	tiersByUserID, err := r.loadSalesCommissionTiers(ctx, []int64{m.ID})
+	if err != nil {
+		return nil, err
+	}
+	if tiers, ok := tiersByUserID[m.ID]; ok {
+		out.SalesCommissionTiers = tiers
 	}
 	return out, nil
 }
@@ -154,7 +174,9 @@ func (r *userRepository) Update(ctx context.Context, userIn *service.User) error
 		SetBalanceNotifyExtraEmails(marshalExtraEmails(userIn.BalanceNotifyExtraEmails)).
 		SetTotalRecharged(userIn.TotalRecharged).
 		SetIsSales(userIn.IsSales).
-		SetSalesCommissionRate(userIn.SalesCommissionRate)
+		SetSalesCommissionRate(userIn.SalesCommissionRate).
+		SetSalesCommissionMode(service.NormalizeSalesCommissionMode(userIn.SalesCommissionMode)).
+		SetSalesCommissionMinMonthlySales(userIn.SalesCommissionMinMonthlySales)
 	if userIn.BalanceNotifyThreshold == nil {
 		updateOp = updateOp.ClearBalanceNotifyThreshold()
 	}
@@ -164,6 +186,9 @@ func (r *userRepository) Update(ctx context.Context, userIn *service.User) error
 	}
 
 	if err := r.syncUserAllowedGroupsWithClient(ctx, txClient, updated.ID, userIn.AllowedGroups); err != nil {
+		return err
+	}
+	if err := r.syncUserSalesCommissionTiersWithClient(ctx, txClient, updated.ID, userIn.SalesCommissionTiers); err != nil {
 		return err
 	}
 
@@ -200,6 +225,9 @@ func (r *userRepository) ListWithFilters(ctx context.Context, params pagination.
 	}
 	if filters.Role != "" {
 		q = q.Where(dbuser.RoleEQ(filters.Role))
+	}
+	if filters.IsSales != nil {
+		q = q.Where(dbuser.IsSalesEQ(*filters.IsSales))
 	}
 	if filters.Search != "" {
 		q = q.Where(
@@ -292,6 +320,16 @@ func (r *userRepository) ListWithFilters(ctx context.Context, params pagination.
 	for id, u := range userMap {
 		if groups, ok := allowedGroupsByUser[id]; ok {
 			u.AllowedGroups = groups
+		}
+	}
+
+	tiersByUserID, err := r.loadSalesCommissionTiers(ctx, userIDs)
+	if err != nil {
+		return nil, nil, err
+	}
+	for id, u := range userMap {
+		if tiers, ok := tiersByUserID[id]; ok {
+			u.SalesCommissionTiers = tiers
 		}
 	}
 
@@ -562,8 +600,61 @@ func applyUserEntityToService(dst *service.User, src *dbent.User) {
 		return
 	}
 	dst.ID = src.ID
+	dst.SalesCommissionMode = src.SalesCommissionMode
+	dst.SalesCommissionMinMonthlySales = src.SalesCommissionMinMonthlySales
 	dst.CreatedAt = src.CreatedAt
 	dst.UpdatedAt = src.UpdatedAt
+}
+
+func (r *userRepository) syncUserSalesCommissionTiersWithClient(ctx context.Context, client *dbent.Client, userID int64, tiers []service.SalesCommissionTier) error {
+	if _, err := client.SalesCommissionTier.Delete().Where(dbsalescommissiontier.SalesUserIDEQ(userID)).Exec(ctx); err != nil {
+		return err
+	}
+	if len(tiers) == 0 {
+		return nil
+	}
+
+	normalizedTiers, err := service.NormalizeSalesCommissionTiers(tiers)
+	if err != nil {
+		return err
+	}
+	builders := make([]*dbent.SalesCommissionTierCreate, 0, len(normalizedTiers))
+	for _, tier := range normalizedTiers {
+		builder := client.SalesCommissionTier.Create().
+			SetSalesUserID(userID).
+			SetMonthSalesFromCny(tier.MonthSalesFromCNY).
+			SetCommissionRate(tier.CommissionRate).
+			SetSortOrder(tier.SortOrder)
+		if tier.MonthSalesToCNY != nil {
+			builder.SetMonthSalesToCny(*tier.MonthSalesToCNY)
+		}
+		builders = append(builders, builder)
+	}
+	return client.SalesCommissionTier.CreateBulk(builders...).Exec(ctx)
+}
+
+func (r *userRepository) loadSalesCommissionTiers(ctx context.Context, userIDs []int64) (map[int64][]service.SalesCommissionTier, error) {
+	result := make(map[int64][]service.SalesCommissionTier, len(userIDs))
+	if len(userIDs) == 0 {
+		return result, nil
+	}
+
+	tiers, err := r.client.SalesCommissionTier.Query().
+		Where(dbsalescommissiontier.SalesUserIDIn(userIDs...)).
+		Order(dbent.Asc(dbsalescommissiontier.FieldSalesUserID), dbent.Asc(dbsalescommissiontier.FieldSortOrder), dbent.Asc(dbsalescommissiontier.FieldID)).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, tier := range tiers {
+		result[tier.SalesUserID] = append(result[tier.SalesUserID], service.SalesCommissionTier{
+			MonthSalesFromCNY: tier.MonthSalesFromCny,
+			MonthSalesToCNY:   tier.MonthSalesToCny,
+			CommissionRate:    tier.CommissionRate,
+			SortOrder:         tier.SortOrder,
+		})
+	}
+	return result, nil
 }
 
 // marshalExtraEmails serializes notify email entries to JSON for storage.
@@ -628,7 +719,15 @@ func (r *userRepository) GetByReferralCode(ctx context.Context, code string) (*s
 		}
 		return nil, err
 	}
-	return userEntityToService(m), nil
+	out := userEntityToService(m)
+	tiersByUserID, err := r.loadSalesCommissionTiers(ctx, []int64{out.ID})
+	if err != nil {
+		return nil, err
+	}
+	if tiers, ok := tiersByUserID[out.ID]; ok {
+		out.SalesCommissionTiers = tiers
+	}
+	return out, nil
 }
 
 // UpdateReferralCode 更新用户推广码

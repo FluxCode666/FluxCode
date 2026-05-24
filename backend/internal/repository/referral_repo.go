@@ -28,12 +28,16 @@ func (r *referralRepository) GetByID(ctx context.Context, id int64) (*service.Re
 	var ref service.Referral
 	err := r.db.QueryRowContext(ctx,
 		`SELECT id, referrer_id, referee_id, referral_code, status, invitee_reward_amount, inviter_reward_amount,
-		        invitee_rewarded_at, inviter_rewarded_at, ongoing_reward_count, ongoing_reward_total, created_at, updated_at
+		        invitee_rewarded_at, inviter_rewarded_at, ongoing_reward_count, ongoing_reward_total,
+		        COALESCE(invitee_ongoing_reward_count, 0), COALESCE(invitee_ongoing_reward_total, 0),
+		        created_at, updated_at
 		 FROM referrals WHERE id = $1`, id,
 	).Scan(&ref.ID, &ref.ReferrerID, &ref.RefereeID, &ref.ReferralCode, &ref.Status,
 		&ref.InviteeRewardAmount, &ref.InviterRewardAmount,
 		&ref.InviteeRewardedAt, &ref.InviterRewardedAt,
-		&ref.OngoingRewardCount, &ref.OngoingRewardTotal, &ref.CreatedAt, &ref.UpdatedAt)
+		&ref.OngoingRewardCount, &ref.OngoingRewardTotal,
+		&ref.InviteeOngoingRewardCount, &ref.InviteeOngoingRewardTotal,
+		&ref.CreatedAt, &ref.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -47,12 +51,16 @@ func (r *referralRepository) GetByRefereeID(ctx context.Context, refereeID int64
 	var ref service.Referral
 	err := r.db.QueryRowContext(ctx,
 		`SELECT id, referrer_id, referee_id, referral_code, status, invitee_reward_amount, inviter_reward_amount,
-		        invitee_rewarded_at, inviter_rewarded_at, ongoing_reward_count, ongoing_reward_total, created_at, updated_at
+		        invitee_rewarded_at, inviter_rewarded_at, ongoing_reward_count, ongoing_reward_total,
+		        COALESCE(invitee_ongoing_reward_count, 0), COALESCE(invitee_ongoing_reward_total, 0),
+		        created_at, updated_at
 		 FROM referrals WHERE referee_id = $1`, refereeID,
 	).Scan(&ref.ID, &ref.ReferrerID, &ref.RefereeID, &ref.ReferralCode, &ref.Status,
 		&ref.InviteeRewardAmount, &ref.InviterRewardAmount,
 		&ref.InviteeRewardedAt, &ref.InviterRewardedAt,
-		&ref.OngoingRewardCount, &ref.OngoingRewardTotal, &ref.CreatedAt, &ref.UpdatedAt)
+		&ref.OngoingRewardCount, &ref.OngoingRewardTotal,
+		&ref.InviteeOngoingRewardCount, &ref.InviteeOngoingRewardTotal,
+		&ref.CreatedAt, &ref.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -72,7 +80,9 @@ func (r *referralRepository) GetByReferrerID(ctx context.Context, referrerID int
 		`SELECT r.id, r.referrer_id, r.referee_id, r.referral_code, r.status,
 		        r.invitee_reward_amount, r.inviter_reward_amount,
 		        r.invitee_rewarded_at, r.inviter_rewarded_at,
-		        r.ongoing_reward_count, r.ongoing_reward_total, r.created_at, r.updated_at,
+		        r.ongoing_reward_count, r.ongoing_reward_total,
+		        COALESCE(r.invitee_ongoing_reward_count, 0), COALESCE(r.invitee_ongoing_reward_total, 0),
+		        r.created_at, r.updated_at,
 		        COALESCE(ru.email, ''), COALESCE(ru.is_sales, FALSE), COALESCE(u.email, ''), COALESCE(u.username, '')
 		 FROM referrals r
 		 LEFT JOIN users u ON r.referee_id = u.id
@@ -89,7 +99,9 @@ func (r *referralRepository) GetByReferrerID(ctx context.Context, referrerID int
 		if err := rows.Scan(&ref.ID, &ref.ReferrerID, &ref.RefereeID, &ref.ReferralCode, &ref.Status,
 			&ref.InviteeRewardAmount, &ref.InviterRewardAmount,
 			&ref.InviteeRewardedAt, &ref.InviterRewardedAt,
-			&ref.OngoingRewardCount, &ref.OngoingRewardTotal, &ref.CreatedAt, &ref.UpdatedAt,
+			&ref.OngoingRewardCount, &ref.OngoingRewardTotal,
+			&ref.InviteeOngoingRewardCount, &ref.InviteeOngoingRewardTotal,
+			&ref.CreatedAt, &ref.UpdatedAt,
 			&ref.ReferrerEmail, &ref.ReferrerIsSales, &ref.RefereeEmail, &ref.RefereeUsername); err != nil {
 			return nil, 0, err
 		}
@@ -138,6 +150,13 @@ func (r *referralRepository) IncrementOngoingReward(ctx context.Context, id int6
 	return err
 }
 
+func (r *referralRepository) IncrementInviteeOngoingReward(ctx context.Context, id int64, amount float64) error {
+	_, err := r.db.ExecContext(ctx,
+		`UPDATE referrals SET invitee_ongoing_reward_count = COALESCE(invitee_ongoing_reward_count, 0) + 1, invitee_ongoing_reward_total = COALESCE(invitee_ongoing_reward_total, 0) + $1, updated_at = NOW() WHERE id = $2`,
+		amount, id)
+	return err
+}
+
 func (r *referralRepository) GetStatsByReferrerID(ctx context.Context, referrerID int64) (*service.ReferralStats, error) {
 	var stats service.ReferralStats
 	err := r.db.QueryRowContext(ctx,
@@ -159,7 +178,9 @@ func (r *referralRepository) ListAll(ctx context.Context, status string, offset,
 	listQuery := `SELECT r.id, r.referrer_id, r.referee_id, r.referral_code, r.status,
 		r.invitee_reward_amount, r.inviter_reward_amount,
 		r.invitee_rewarded_at, r.inviter_rewarded_at,
-		r.ongoing_reward_count, r.ongoing_reward_total, r.created_at, r.updated_at,
+		r.ongoing_reward_count, r.ongoing_reward_total,
+		COALESCE(r.invitee_ongoing_reward_count, 0), COALESCE(r.invitee_ongoing_reward_total, 0),
+		r.created_at, r.updated_at,
 		COALESCE(ru.email, ''), COALESCE(ru.is_sales, FALSE), COALESCE(u.email, ''), COALESCE(u.username, '')
 		FROM referrals r
 		LEFT JOIN users u ON r.referee_id = u.id
@@ -193,7 +214,9 @@ func (r *referralRepository) ListAll(ctx context.Context, status string, offset,
 		if err := rows.Scan(&ref.ID, &ref.ReferrerID, &ref.RefereeID, &ref.ReferralCode, &ref.Status,
 			&ref.InviteeRewardAmount, &ref.InviterRewardAmount,
 			&ref.InviteeRewardedAt, &ref.InviterRewardedAt,
-			&ref.OngoingRewardCount, &ref.OngoingRewardTotal, &ref.CreatedAt, &ref.UpdatedAt,
+			&ref.OngoingRewardCount, &ref.OngoingRewardTotal,
+			&ref.InviteeOngoingRewardCount, &ref.InviteeOngoingRewardTotal,
+			&ref.CreatedAt, &ref.UpdatedAt,
 			&ref.ReferrerEmail, &ref.ReferrerIsSales, &ref.RefereeEmail, &ref.RefereeUsername); err != nil {
 			return nil, 0, err
 		}

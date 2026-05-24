@@ -45,6 +45,9 @@ export interface User {
   allowed_groups: number[] | null // Allowed group IDs (null = all non-exclusive groups)
   is_sales: boolean
   sales_commission_rate: number
+  sales_commission_mode?: SalesCommissionMode
+  sales_commission_min_monthly_sales?: number
+  sales_commission_tiers?: SalesCommissionTier[]
   balance_notify_enabled: boolean
   balance_notify_threshold: number | null
   balance_notify_extra_emails: NotifyEmailEntry[]
@@ -60,6 +63,110 @@ export interface AdminUser extends User {
   group_rates?: Record<number, number>
   // 当前并发数（仅管理员列表接口返回）
   current_concurrency?: number
+}
+
+export type SalesCommissionMode = 'fixed' | 'tiered'
+
+export interface SalesCommissionTier {
+  month_sales_from_cny: number
+  month_sales_to_cny?: number | null
+  commission_rate: number
+  sort_order?: number
+}
+
+export interface SalesCommissionMonthlyProgress {
+  sales_user_id: number
+  commission_month: string
+  commission_mode: SalesCommissionMode
+  fixed_commission_rate: number
+  min_monthly_sales_cny: number
+  tiers: SalesCommissionTier[]
+  monthly_sales_cny: number
+  monthly_commission_cny: number
+  threshold_met: boolean
+  to_threshold_cny: number
+  current_tier_index: number
+  next_tier_index: number
+  to_next_tier_cny: number
+  next_tier_rate: number
+  snapshot_frozen: boolean
+}
+
+export type SalesCommissionOverviewRangeKey =
+  | 'today'
+  | 'this_week'
+  | 'this_month'
+  | 'this_quarter'
+  | 'this_year'
+  | 'last_30d'
+  | 'last_90d'
+  | 'custom'
+
+export interface SalesCommissionOverviewRange {
+  key: SalesCommissionOverviewRangeKey
+  start: string
+  end: string
+}
+
+export interface SalesCommissionOverviewKPI {
+  related_order_amount_cny: number
+  commission_total_cny: number
+  frozen_cny: number
+  settleable_cny: number
+  settled_cny: number
+  active_sales_users: number
+  threshold_met_users: number
+  avg_commission_rate: number
+}
+
+export interface SalesCommissionMonthlyTrendItem {
+  month: string
+  related_order_amount_cny: number
+  commission_total_cny: number
+}
+
+export interface SalesCommissionTopSalesItem {
+  sales_user_id: number
+  sales_email: string
+  sales_username: string
+  related_order_amount_cny: number
+  commission_total_cny: number
+}
+
+export interface SalesCommissionStatusBreakdown {
+  frozen_cny: number
+  settleable_cny: number
+  settled_cny: number
+}
+
+export interface SalesCommissionModeBreakdown {
+  fixed_records: number
+  tiered_records: number
+  fixed_commission_cny: number
+  tiered_commission_cny: number
+}
+
+export interface SalesCommissionOverview {
+  range: SalesCommissionOverviewRange
+  kpi: SalesCommissionOverviewKPI
+  monthly_trend: SalesCommissionMonthlyTrendItem[]
+  top_sales: SalesCommissionTopSalesItem[]
+  status_breakdown: SalesCommissionStatusBreakdown
+  mode_breakdown: SalesCommissionModeBreakdown
+}
+
+/**
+ * 后端 RecomputeMissingCommissions 的返回值。
+ * - scanned: 候选订单数（"应当存在但目前缺失"）
+ * - processed: 本次成功处理的订单数（不一定等于"新增 record 数"，因为 ON CONFLICT 可能静默 skip）
+ * - failed: 处理失败的订单数
+ * - failed_order_ids: 对应失败订单的 ID 列表
+ */
+export interface SalesCommissionRecomputeResult {
+  scanned: number
+  processed: number
+  failed: number
+  failed_order_ids?: number[]
 }
 
 export interface LoginRequest {
@@ -136,6 +243,7 @@ export interface PublicSettings {
   account_quota_notify_enabled: boolean
   balance_low_notify_threshold: number
   referral_enabled: boolean
+  referral_sales_enabled: boolean
 }
 
 export interface AuthResponse {
@@ -1315,6 +1423,9 @@ export interface UpdateUserRequest {
   allowed_groups?: number[] | null
   is_sales?: boolean
   sales_commission_rate?: number
+  sales_commission_mode?: SalesCommissionMode
+  sales_commission_min_monthly_sales?: number
+  sales_commission_tiers?: SalesCommissionTier[]
   // 用户专属分组倍率配置 (group_id -> rate_multiplier | null)
   // null 表示删除该分组的专属倍率
   group_rates?: Record<number, number | null>
@@ -1343,10 +1454,16 @@ export interface SalesCommissionRecord {
   referee_email: string
   referee_username: string
   referral_id: number
-  payment_order_id: number
-  payment_order_status: string
+  payment_order_id: number | null
+  payment_order_status: string | null
   order_pay_amount_cny: number
   order_credited_amount: number
+  commission_event_at: string
+  commission_month: string
+  snapshot_id: number | null
+  commission_mode: SalesCommissionMode
+  monthly_sales_before_cny: number
+  monthly_sales_after_cny: number
   commission_rate: number
   commission_total_cny: number
   credited_used_amount: number

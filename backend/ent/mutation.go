@@ -33,9 +33,11 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/proxy"
 	"github.com/Wei-Shaw/sub2api/ent/redeemcode"
 	"github.com/Wei-Shaw/sub2api/ent/referral"
+	"github.com/Wei-Shaw/sub2api/ent/salescommissionmonthlysnapshot"
 	"github.com/Wei-Shaw/sub2api/ent/salescommissionrecord"
 	"github.com/Wei-Shaw/sub2api/ent/salescommissionsettlement"
 	"github.com/Wei-Shaw/sub2api/ent/salescommissionsettlementitem"
+	"github.com/Wei-Shaw/sub2api/ent/salescommissiontier"
 	"github.com/Wei-Shaw/sub2api/ent/securitysecret"
 	"github.com/Wei-Shaw/sub2api/ent/setting"
 	"github.com/Wei-Shaw/sub2api/ent/subscriptiongrant"
@@ -61,42 +63,44 @@ const (
 	OpUpdateOne = ent.OpUpdateOne
 
 	// Node types.
-	TypeAPIKey                        = "APIKey"
-	TypeAccount                       = "Account"
-	TypeAccountGroup                  = "AccountGroup"
-	TypeAnnouncement                  = "Announcement"
-	TypeAnnouncementRead              = "AnnouncementRead"
-	TypeErrorPassthroughRule          = "ErrorPassthroughRule"
-	TypeGiftBalanceRecord             = "GiftBalanceRecord"
-	TypeGroup                         = "Group"
-	TypeIdempotencyRecord             = "IdempotencyRecord"
-	TypePaymentAuditLog               = "PaymentAuditLog"
-	TypePaymentOrder                  = "PaymentOrder"
-	TypePaymentProviderInstance       = "PaymentProviderInstance"
-	TypePromoCode                     = "PromoCode"
-	TypePromoCodeUsage                = "PromoCodeUsage"
-	TypePromotion                     = "Promotion"
-	TypePromotionPlanRule             = "PromotionPlanRule"
-	TypePromotionUsage                = "PromotionUsage"
-	TypeProxy                         = "Proxy"
-	TypeRedeemCode                    = "RedeemCode"
-	TypeReferral                      = "Referral"
-	TypeSalesCommissionRecord         = "SalesCommissionRecord"
-	TypeSalesCommissionSettlement     = "SalesCommissionSettlement"
-	TypeSalesCommissionSettlementItem = "SalesCommissionSettlementItem"
-	TypeSecuritySecret                = "SecuritySecret"
-	TypeSetting                       = "Setting"
-	TypeSubscriptionGrant             = "SubscriptionGrant"
-	TypeSubscriptionPlan              = "SubscriptionPlan"
-	TypeTLSFingerprintProfile         = "TLSFingerprintProfile"
-	TypeUsageCleanupTask              = "UsageCleanupTask"
-	TypeUsageLog                      = "UsageLog"
-	TypeUser                          = "User"
-	TypeUserAllowedGroup              = "UserAllowedGroup"
-	TypeUserAttributeDefinition       = "UserAttributeDefinition"
-	TypeUserAttributeValue            = "UserAttributeValue"
-	TypeUserReferralConfig            = "UserReferralConfig"
-	TypeUserSubscription              = "UserSubscription"
+	TypeAPIKey                         = "APIKey"
+	TypeAccount                        = "Account"
+	TypeAccountGroup                   = "AccountGroup"
+	TypeAnnouncement                   = "Announcement"
+	TypeAnnouncementRead               = "AnnouncementRead"
+	TypeErrorPassthroughRule           = "ErrorPassthroughRule"
+	TypeGiftBalanceRecord              = "GiftBalanceRecord"
+	TypeGroup                          = "Group"
+	TypeIdempotencyRecord              = "IdempotencyRecord"
+	TypePaymentAuditLog                = "PaymentAuditLog"
+	TypePaymentOrder                   = "PaymentOrder"
+	TypePaymentProviderInstance        = "PaymentProviderInstance"
+	TypePromoCode                      = "PromoCode"
+	TypePromoCodeUsage                 = "PromoCodeUsage"
+	TypePromotion                      = "Promotion"
+	TypePromotionPlanRule              = "PromotionPlanRule"
+	TypePromotionUsage                 = "PromotionUsage"
+	TypeProxy                          = "Proxy"
+	TypeRedeemCode                     = "RedeemCode"
+	TypeReferral                       = "Referral"
+	TypeSalesCommissionMonthlySnapshot = "SalesCommissionMonthlySnapshot"
+	TypeSalesCommissionRecord          = "SalesCommissionRecord"
+	TypeSalesCommissionSettlement      = "SalesCommissionSettlement"
+	TypeSalesCommissionSettlementItem  = "SalesCommissionSettlementItem"
+	TypeSalesCommissionTier            = "SalesCommissionTier"
+	TypeSecuritySecret                 = "SecuritySecret"
+	TypeSetting                        = "Setting"
+	TypeSubscriptionGrant              = "SubscriptionGrant"
+	TypeSubscriptionPlan               = "SubscriptionPlan"
+	TypeTLSFingerprintProfile          = "TLSFingerprintProfile"
+	TypeUsageCleanupTask               = "UsageCleanupTask"
+	TypeUsageLog                       = "UsageLog"
+	TypeUser                           = "User"
+	TypeUserAllowedGroup               = "UserAllowedGroup"
+	TypeUserAttributeDefinition        = "UserAttributeDefinition"
+	TypeUserAttributeValue             = "UserAttributeValue"
+	TypeUserReferralConfig             = "UserReferralConfig"
+	TypeUserSubscription               = "UserSubscription"
 )
 
 // APIKeyMutation represents an operation that mutates the APIKey nodes in the graph.
@@ -26402,42 +26406,927 @@ func (m *ReferralMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown Referral edge %s", name)
 }
 
-// SalesCommissionRecordMutation represents an operation that mutates the SalesCommissionRecord nodes in the graph.
-type SalesCommissionRecordMutation struct {
+// SalesCommissionMonthlySnapshotMutation represents an operation that mutates the SalesCommissionMonthlySnapshot nodes in the graph.
+type SalesCommissionMonthlySnapshotMutation struct {
 	config
 	op                       Op
 	typ                      string
 	id                       *int64
 	sales_user_id            *int64
 	addsales_user_id         *int64
-	referee_user_id          *int64
-	addreferee_user_id       *int64
-	referral_id              *int64
-	addreferral_id           *int64
-	payment_order_id         *int64
-	addpayment_order_id      *int64
-	order_pay_amount_cny     *float64
-	addorder_pay_amount_cny  *float64
-	order_credited_amount    *float64
-	addorder_credited_amount *float64
-	commission_rate          *float64
-	addcommission_rate       *float64
-	commission_total_cny     *float64
-	addcommission_total_cny  *float64
-	credited_used_amount     *float64
-	addcredited_used_amount  *float64
-	unlocked_cny             *float64
-	addunlocked_cny          *float64
-	settled_cny              *float64
-	addsettled_cny           *float64
-	status                   *string
-	note                     *string
+	commission_month         *time.Time
+	timezone                 *string
+	commission_mode          *string
+	fixed_commission_rate    *float64
+	addfixed_commission_rate *float64
+	min_monthly_sales_cny    *float64
+	addmin_monthly_sales_cny *float64
+	tiers_json               *[]map[string]interface{}
+	appendtiers_json         []map[string]interface{}
 	created_at               *time.Time
 	updated_at               *time.Time
 	clearedFields            map[string]struct{}
 	done                     bool
-	oldValue                 func(context.Context) (*SalesCommissionRecord, error)
-	predicates               []predicate.SalesCommissionRecord
+	oldValue                 func(context.Context) (*SalesCommissionMonthlySnapshot, error)
+	predicates               []predicate.SalesCommissionMonthlySnapshot
+}
+
+var _ ent.Mutation = (*SalesCommissionMonthlySnapshotMutation)(nil)
+
+// salescommissionmonthlysnapshotOption allows management of the mutation configuration using functional options.
+type salescommissionmonthlysnapshotOption func(*SalesCommissionMonthlySnapshotMutation)
+
+// newSalesCommissionMonthlySnapshotMutation creates new mutation for the SalesCommissionMonthlySnapshot entity.
+func newSalesCommissionMonthlySnapshotMutation(c config, op Op, opts ...salescommissionmonthlysnapshotOption) *SalesCommissionMonthlySnapshotMutation {
+	m := &SalesCommissionMonthlySnapshotMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeSalesCommissionMonthlySnapshot,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withSalesCommissionMonthlySnapshotID sets the ID field of the mutation.
+func withSalesCommissionMonthlySnapshotID(id int64) salescommissionmonthlysnapshotOption {
+	return func(m *SalesCommissionMonthlySnapshotMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *SalesCommissionMonthlySnapshot
+		)
+		m.oldValue = func(ctx context.Context) (*SalesCommissionMonthlySnapshot, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().SalesCommissionMonthlySnapshot.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withSalesCommissionMonthlySnapshot sets the old SalesCommissionMonthlySnapshot of the mutation.
+func withSalesCommissionMonthlySnapshot(node *SalesCommissionMonthlySnapshot) salescommissionmonthlysnapshotOption {
+	return func(m *SalesCommissionMonthlySnapshotMutation) {
+		m.oldValue = func(context.Context) (*SalesCommissionMonthlySnapshot, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m SalesCommissionMonthlySnapshotMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m SalesCommissionMonthlySnapshotMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *SalesCommissionMonthlySnapshotMutation) ID() (id int64, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *SalesCommissionMonthlySnapshotMutation) IDs(ctx context.Context) ([]int64, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int64{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().SalesCommissionMonthlySnapshot.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetSalesUserID sets the "sales_user_id" field.
+func (m *SalesCommissionMonthlySnapshotMutation) SetSalesUserID(i int64) {
+	m.sales_user_id = &i
+	m.addsales_user_id = nil
+}
+
+// SalesUserID returns the value of the "sales_user_id" field in the mutation.
+func (m *SalesCommissionMonthlySnapshotMutation) SalesUserID() (r int64, exists bool) {
+	v := m.sales_user_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSalesUserID returns the old "sales_user_id" field's value of the SalesCommissionMonthlySnapshot entity.
+// If the SalesCommissionMonthlySnapshot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SalesCommissionMonthlySnapshotMutation) OldSalesUserID(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSalesUserID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSalesUserID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSalesUserID: %w", err)
+	}
+	return oldValue.SalesUserID, nil
+}
+
+// AddSalesUserID adds i to the "sales_user_id" field.
+func (m *SalesCommissionMonthlySnapshotMutation) AddSalesUserID(i int64) {
+	if m.addsales_user_id != nil {
+		*m.addsales_user_id += i
+	} else {
+		m.addsales_user_id = &i
+	}
+}
+
+// AddedSalesUserID returns the value that was added to the "sales_user_id" field in this mutation.
+func (m *SalesCommissionMonthlySnapshotMutation) AddedSalesUserID() (r int64, exists bool) {
+	v := m.addsales_user_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetSalesUserID resets all changes to the "sales_user_id" field.
+func (m *SalesCommissionMonthlySnapshotMutation) ResetSalesUserID() {
+	m.sales_user_id = nil
+	m.addsales_user_id = nil
+}
+
+// SetCommissionMonth sets the "commission_month" field.
+func (m *SalesCommissionMonthlySnapshotMutation) SetCommissionMonth(t time.Time) {
+	m.commission_month = &t
+}
+
+// CommissionMonth returns the value of the "commission_month" field in the mutation.
+func (m *SalesCommissionMonthlySnapshotMutation) CommissionMonth() (r time.Time, exists bool) {
+	v := m.commission_month
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCommissionMonth returns the old "commission_month" field's value of the SalesCommissionMonthlySnapshot entity.
+// If the SalesCommissionMonthlySnapshot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SalesCommissionMonthlySnapshotMutation) OldCommissionMonth(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCommissionMonth is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCommissionMonth requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCommissionMonth: %w", err)
+	}
+	return oldValue.CommissionMonth, nil
+}
+
+// ResetCommissionMonth resets all changes to the "commission_month" field.
+func (m *SalesCommissionMonthlySnapshotMutation) ResetCommissionMonth() {
+	m.commission_month = nil
+}
+
+// SetTimezone sets the "timezone" field.
+func (m *SalesCommissionMonthlySnapshotMutation) SetTimezone(s string) {
+	m.timezone = &s
+}
+
+// Timezone returns the value of the "timezone" field in the mutation.
+func (m *SalesCommissionMonthlySnapshotMutation) Timezone() (r string, exists bool) {
+	v := m.timezone
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTimezone returns the old "timezone" field's value of the SalesCommissionMonthlySnapshot entity.
+// If the SalesCommissionMonthlySnapshot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SalesCommissionMonthlySnapshotMutation) OldTimezone(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTimezone is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTimezone requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTimezone: %w", err)
+	}
+	return oldValue.Timezone, nil
+}
+
+// ResetTimezone resets all changes to the "timezone" field.
+func (m *SalesCommissionMonthlySnapshotMutation) ResetTimezone() {
+	m.timezone = nil
+}
+
+// SetCommissionMode sets the "commission_mode" field.
+func (m *SalesCommissionMonthlySnapshotMutation) SetCommissionMode(s string) {
+	m.commission_mode = &s
+}
+
+// CommissionMode returns the value of the "commission_mode" field in the mutation.
+func (m *SalesCommissionMonthlySnapshotMutation) CommissionMode() (r string, exists bool) {
+	v := m.commission_mode
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCommissionMode returns the old "commission_mode" field's value of the SalesCommissionMonthlySnapshot entity.
+// If the SalesCommissionMonthlySnapshot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SalesCommissionMonthlySnapshotMutation) OldCommissionMode(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCommissionMode is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCommissionMode requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCommissionMode: %w", err)
+	}
+	return oldValue.CommissionMode, nil
+}
+
+// ResetCommissionMode resets all changes to the "commission_mode" field.
+func (m *SalesCommissionMonthlySnapshotMutation) ResetCommissionMode() {
+	m.commission_mode = nil
+}
+
+// SetFixedCommissionRate sets the "fixed_commission_rate" field.
+func (m *SalesCommissionMonthlySnapshotMutation) SetFixedCommissionRate(f float64) {
+	m.fixed_commission_rate = &f
+	m.addfixed_commission_rate = nil
+}
+
+// FixedCommissionRate returns the value of the "fixed_commission_rate" field in the mutation.
+func (m *SalesCommissionMonthlySnapshotMutation) FixedCommissionRate() (r float64, exists bool) {
+	v := m.fixed_commission_rate
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldFixedCommissionRate returns the old "fixed_commission_rate" field's value of the SalesCommissionMonthlySnapshot entity.
+// If the SalesCommissionMonthlySnapshot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SalesCommissionMonthlySnapshotMutation) OldFixedCommissionRate(ctx context.Context) (v float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldFixedCommissionRate is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldFixedCommissionRate requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldFixedCommissionRate: %w", err)
+	}
+	return oldValue.FixedCommissionRate, nil
+}
+
+// AddFixedCommissionRate adds f to the "fixed_commission_rate" field.
+func (m *SalesCommissionMonthlySnapshotMutation) AddFixedCommissionRate(f float64) {
+	if m.addfixed_commission_rate != nil {
+		*m.addfixed_commission_rate += f
+	} else {
+		m.addfixed_commission_rate = &f
+	}
+}
+
+// AddedFixedCommissionRate returns the value that was added to the "fixed_commission_rate" field in this mutation.
+func (m *SalesCommissionMonthlySnapshotMutation) AddedFixedCommissionRate() (r float64, exists bool) {
+	v := m.addfixed_commission_rate
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetFixedCommissionRate resets all changes to the "fixed_commission_rate" field.
+func (m *SalesCommissionMonthlySnapshotMutation) ResetFixedCommissionRate() {
+	m.fixed_commission_rate = nil
+	m.addfixed_commission_rate = nil
+}
+
+// SetMinMonthlySalesCny sets the "min_monthly_sales_cny" field.
+func (m *SalesCommissionMonthlySnapshotMutation) SetMinMonthlySalesCny(f float64) {
+	m.min_monthly_sales_cny = &f
+	m.addmin_monthly_sales_cny = nil
+}
+
+// MinMonthlySalesCny returns the value of the "min_monthly_sales_cny" field in the mutation.
+func (m *SalesCommissionMonthlySnapshotMutation) MinMonthlySalesCny() (r float64, exists bool) {
+	v := m.min_monthly_sales_cny
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldMinMonthlySalesCny returns the old "min_monthly_sales_cny" field's value of the SalesCommissionMonthlySnapshot entity.
+// If the SalesCommissionMonthlySnapshot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SalesCommissionMonthlySnapshotMutation) OldMinMonthlySalesCny(ctx context.Context) (v float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMinMonthlySalesCny is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMinMonthlySalesCny requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMinMonthlySalesCny: %w", err)
+	}
+	return oldValue.MinMonthlySalesCny, nil
+}
+
+// AddMinMonthlySalesCny adds f to the "min_monthly_sales_cny" field.
+func (m *SalesCommissionMonthlySnapshotMutation) AddMinMonthlySalesCny(f float64) {
+	if m.addmin_monthly_sales_cny != nil {
+		*m.addmin_monthly_sales_cny += f
+	} else {
+		m.addmin_monthly_sales_cny = &f
+	}
+}
+
+// AddedMinMonthlySalesCny returns the value that was added to the "min_monthly_sales_cny" field in this mutation.
+func (m *SalesCommissionMonthlySnapshotMutation) AddedMinMonthlySalesCny() (r float64, exists bool) {
+	v := m.addmin_monthly_sales_cny
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetMinMonthlySalesCny resets all changes to the "min_monthly_sales_cny" field.
+func (m *SalesCommissionMonthlySnapshotMutation) ResetMinMonthlySalesCny() {
+	m.min_monthly_sales_cny = nil
+	m.addmin_monthly_sales_cny = nil
+}
+
+// SetTiersJSON sets the "tiers_json" field.
+func (m *SalesCommissionMonthlySnapshotMutation) SetTiersJSON(value []map[string]interface{}) {
+	m.tiers_json = &value
+	m.appendtiers_json = nil
+}
+
+// TiersJSON returns the value of the "tiers_json" field in the mutation.
+func (m *SalesCommissionMonthlySnapshotMutation) TiersJSON() (r []map[string]interface{}, exists bool) {
+	v := m.tiers_json
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTiersJSON returns the old "tiers_json" field's value of the SalesCommissionMonthlySnapshot entity.
+// If the SalesCommissionMonthlySnapshot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SalesCommissionMonthlySnapshotMutation) OldTiersJSON(ctx context.Context) (v []map[string]interface{}, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTiersJSON is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTiersJSON requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTiersJSON: %w", err)
+	}
+	return oldValue.TiersJSON, nil
+}
+
+// AppendTiersJSON adds value to the "tiers_json" field.
+func (m *SalesCommissionMonthlySnapshotMutation) AppendTiersJSON(value []map[string]interface{}) {
+	m.appendtiers_json = append(m.appendtiers_json, value...)
+}
+
+// AppendedTiersJSON returns the list of values that were appended to the "tiers_json" field in this mutation.
+func (m *SalesCommissionMonthlySnapshotMutation) AppendedTiersJSON() ([]map[string]interface{}, bool) {
+	if len(m.appendtiers_json) == 0 {
+		return nil, false
+	}
+	return m.appendtiers_json, true
+}
+
+// ResetTiersJSON resets all changes to the "tiers_json" field.
+func (m *SalesCommissionMonthlySnapshotMutation) ResetTiersJSON() {
+	m.tiers_json = nil
+	m.appendtiers_json = nil
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *SalesCommissionMonthlySnapshotMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *SalesCommissionMonthlySnapshotMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the SalesCommissionMonthlySnapshot entity.
+// If the SalesCommissionMonthlySnapshot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SalesCommissionMonthlySnapshotMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *SalesCommissionMonthlySnapshotMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *SalesCommissionMonthlySnapshotMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *SalesCommissionMonthlySnapshotMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the SalesCommissionMonthlySnapshot entity.
+// If the SalesCommissionMonthlySnapshot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SalesCommissionMonthlySnapshotMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *SalesCommissionMonthlySnapshotMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// Where appends a list predicates to the SalesCommissionMonthlySnapshotMutation builder.
+func (m *SalesCommissionMonthlySnapshotMutation) Where(ps ...predicate.SalesCommissionMonthlySnapshot) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the SalesCommissionMonthlySnapshotMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *SalesCommissionMonthlySnapshotMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.SalesCommissionMonthlySnapshot, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *SalesCommissionMonthlySnapshotMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *SalesCommissionMonthlySnapshotMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (SalesCommissionMonthlySnapshot).
+func (m *SalesCommissionMonthlySnapshotMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *SalesCommissionMonthlySnapshotMutation) Fields() []string {
+	fields := make([]string, 0, 9)
+	if m.sales_user_id != nil {
+		fields = append(fields, salescommissionmonthlysnapshot.FieldSalesUserID)
+	}
+	if m.commission_month != nil {
+		fields = append(fields, salescommissionmonthlysnapshot.FieldCommissionMonth)
+	}
+	if m.timezone != nil {
+		fields = append(fields, salescommissionmonthlysnapshot.FieldTimezone)
+	}
+	if m.commission_mode != nil {
+		fields = append(fields, salescommissionmonthlysnapshot.FieldCommissionMode)
+	}
+	if m.fixed_commission_rate != nil {
+		fields = append(fields, salescommissionmonthlysnapshot.FieldFixedCommissionRate)
+	}
+	if m.min_monthly_sales_cny != nil {
+		fields = append(fields, salescommissionmonthlysnapshot.FieldMinMonthlySalesCny)
+	}
+	if m.tiers_json != nil {
+		fields = append(fields, salescommissionmonthlysnapshot.FieldTiersJSON)
+	}
+	if m.created_at != nil {
+		fields = append(fields, salescommissionmonthlysnapshot.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, salescommissionmonthlysnapshot.FieldUpdatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *SalesCommissionMonthlySnapshotMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case salescommissionmonthlysnapshot.FieldSalesUserID:
+		return m.SalesUserID()
+	case salescommissionmonthlysnapshot.FieldCommissionMonth:
+		return m.CommissionMonth()
+	case salescommissionmonthlysnapshot.FieldTimezone:
+		return m.Timezone()
+	case salescommissionmonthlysnapshot.FieldCommissionMode:
+		return m.CommissionMode()
+	case salescommissionmonthlysnapshot.FieldFixedCommissionRate:
+		return m.FixedCommissionRate()
+	case salescommissionmonthlysnapshot.FieldMinMonthlySalesCny:
+		return m.MinMonthlySalesCny()
+	case salescommissionmonthlysnapshot.FieldTiersJSON:
+		return m.TiersJSON()
+	case salescommissionmonthlysnapshot.FieldCreatedAt:
+		return m.CreatedAt()
+	case salescommissionmonthlysnapshot.FieldUpdatedAt:
+		return m.UpdatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *SalesCommissionMonthlySnapshotMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case salescommissionmonthlysnapshot.FieldSalesUserID:
+		return m.OldSalesUserID(ctx)
+	case salescommissionmonthlysnapshot.FieldCommissionMonth:
+		return m.OldCommissionMonth(ctx)
+	case salescommissionmonthlysnapshot.FieldTimezone:
+		return m.OldTimezone(ctx)
+	case salescommissionmonthlysnapshot.FieldCommissionMode:
+		return m.OldCommissionMode(ctx)
+	case salescommissionmonthlysnapshot.FieldFixedCommissionRate:
+		return m.OldFixedCommissionRate(ctx)
+	case salescommissionmonthlysnapshot.FieldMinMonthlySalesCny:
+		return m.OldMinMonthlySalesCny(ctx)
+	case salescommissionmonthlysnapshot.FieldTiersJSON:
+		return m.OldTiersJSON(ctx)
+	case salescommissionmonthlysnapshot.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case salescommissionmonthlysnapshot.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown SalesCommissionMonthlySnapshot field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *SalesCommissionMonthlySnapshotMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case salescommissionmonthlysnapshot.FieldSalesUserID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSalesUserID(v)
+		return nil
+	case salescommissionmonthlysnapshot.FieldCommissionMonth:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCommissionMonth(v)
+		return nil
+	case salescommissionmonthlysnapshot.FieldTimezone:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTimezone(v)
+		return nil
+	case salescommissionmonthlysnapshot.FieldCommissionMode:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCommissionMode(v)
+		return nil
+	case salescommissionmonthlysnapshot.FieldFixedCommissionRate:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetFixedCommissionRate(v)
+		return nil
+	case salescommissionmonthlysnapshot.FieldMinMonthlySalesCny:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetMinMonthlySalesCny(v)
+		return nil
+	case salescommissionmonthlysnapshot.FieldTiersJSON:
+		v, ok := value.([]map[string]interface{})
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTiersJSON(v)
+		return nil
+	case salescommissionmonthlysnapshot.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case salescommissionmonthlysnapshot.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown SalesCommissionMonthlySnapshot field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *SalesCommissionMonthlySnapshotMutation) AddedFields() []string {
+	var fields []string
+	if m.addsales_user_id != nil {
+		fields = append(fields, salescommissionmonthlysnapshot.FieldSalesUserID)
+	}
+	if m.addfixed_commission_rate != nil {
+		fields = append(fields, salescommissionmonthlysnapshot.FieldFixedCommissionRate)
+	}
+	if m.addmin_monthly_sales_cny != nil {
+		fields = append(fields, salescommissionmonthlysnapshot.FieldMinMonthlySalesCny)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *SalesCommissionMonthlySnapshotMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case salescommissionmonthlysnapshot.FieldSalesUserID:
+		return m.AddedSalesUserID()
+	case salescommissionmonthlysnapshot.FieldFixedCommissionRate:
+		return m.AddedFixedCommissionRate()
+	case salescommissionmonthlysnapshot.FieldMinMonthlySalesCny:
+		return m.AddedMinMonthlySalesCny()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *SalesCommissionMonthlySnapshotMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case salescommissionmonthlysnapshot.FieldSalesUserID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddSalesUserID(v)
+		return nil
+	case salescommissionmonthlysnapshot.FieldFixedCommissionRate:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddFixedCommissionRate(v)
+		return nil
+	case salescommissionmonthlysnapshot.FieldMinMonthlySalesCny:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddMinMonthlySalesCny(v)
+		return nil
+	}
+	return fmt.Errorf("unknown SalesCommissionMonthlySnapshot numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *SalesCommissionMonthlySnapshotMutation) ClearedFields() []string {
+	return nil
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *SalesCommissionMonthlySnapshotMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *SalesCommissionMonthlySnapshotMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown SalesCommissionMonthlySnapshot nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *SalesCommissionMonthlySnapshotMutation) ResetField(name string) error {
+	switch name {
+	case salescommissionmonthlysnapshot.FieldSalesUserID:
+		m.ResetSalesUserID()
+		return nil
+	case salescommissionmonthlysnapshot.FieldCommissionMonth:
+		m.ResetCommissionMonth()
+		return nil
+	case salescommissionmonthlysnapshot.FieldTimezone:
+		m.ResetTimezone()
+		return nil
+	case salescommissionmonthlysnapshot.FieldCommissionMode:
+		m.ResetCommissionMode()
+		return nil
+	case salescommissionmonthlysnapshot.FieldFixedCommissionRate:
+		m.ResetFixedCommissionRate()
+		return nil
+	case salescommissionmonthlysnapshot.FieldMinMonthlySalesCny:
+		m.ResetMinMonthlySalesCny()
+		return nil
+	case salescommissionmonthlysnapshot.FieldTiersJSON:
+		m.ResetTiersJSON()
+		return nil
+	case salescommissionmonthlysnapshot.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case salescommissionmonthlysnapshot.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown SalesCommissionMonthlySnapshot field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *SalesCommissionMonthlySnapshotMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *SalesCommissionMonthlySnapshotMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *SalesCommissionMonthlySnapshotMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *SalesCommissionMonthlySnapshotMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *SalesCommissionMonthlySnapshotMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *SalesCommissionMonthlySnapshotMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *SalesCommissionMonthlySnapshotMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown SalesCommissionMonthlySnapshot unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *SalesCommissionMonthlySnapshotMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown SalesCommissionMonthlySnapshot edge %s", name)
+}
+
+// SalesCommissionRecordMutation represents an operation that mutates the SalesCommissionRecord nodes in the graph.
+type SalesCommissionRecordMutation struct {
+	config
+	op                          Op
+	typ                         string
+	id                          *int64
+	sales_user_id               *int64
+	addsales_user_id            *int64
+	referee_user_id             *int64
+	addreferee_user_id          *int64
+	referral_id                 *int64
+	addreferral_id              *int64
+	payment_order_id            *int64
+	addpayment_order_id         *int64
+	order_pay_amount_cny        *float64
+	addorder_pay_amount_cny     *float64
+	order_credited_amount       *float64
+	addorder_credited_amount    *float64
+	commission_rate             *float64
+	addcommission_rate          *float64
+	commission_total_cny        *float64
+	addcommission_total_cny     *float64
+	commission_event_at         *time.Time
+	commission_month            *time.Time
+	snapshot_id                 *int64
+	addsnapshot_id              *int64
+	commission_mode             *string
+	monthly_sales_before_cny    *float64
+	addmonthly_sales_before_cny *float64
+	monthly_sales_after_cny     *float64
+	addmonthly_sales_after_cny  *float64
+	credited_used_amount        *float64
+	addcredited_used_amount     *float64
+	unlocked_cny                *float64
+	addunlocked_cny             *float64
+	settled_cny                 *float64
+	addsettled_cny              *float64
+	status                      *string
+	note                        *string
+	created_at                  *time.Time
+	updated_at                  *time.Time
+	clearedFields               map[string]struct{}
+	done                        bool
+	oldValue                    func(context.Context) (*SalesCommissionRecord, error)
+	predicates                  []predicate.SalesCommissionRecord
 }
 
 var _ ent.Mutation = (*SalesCommissionRecordMutation)(nil)
@@ -26724,7 +27613,7 @@ func (m *SalesCommissionRecordMutation) PaymentOrderID() (r int64, exists bool) 
 // OldPaymentOrderID returns the old "payment_order_id" field's value of the SalesCommissionRecord entity.
 // If the SalesCommissionRecord object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *SalesCommissionRecordMutation) OldPaymentOrderID(ctx context.Context) (v int64, err error) {
+func (m *SalesCommissionRecordMutation) OldPaymentOrderID(ctx context.Context) (v *int64, err error) {
 	if !m.op.Is(OpUpdateOne) {
 		return v, errors.New("OldPaymentOrderID is only allowed on UpdateOne operations")
 	}
@@ -26756,10 +27645,24 @@ func (m *SalesCommissionRecordMutation) AddedPaymentOrderID() (r int64, exists b
 	return *v, true
 }
 
+// ClearPaymentOrderID clears the value of the "payment_order_id" field.
+func (m *SalesCommissionRecordMutation) ClearPaymentOrderID() {
+	m.payment_order_id = nil
+	m.addpayment_order_id = nil
+	m.clearedFields[salescommissionrecord.FieldPaymentOrderID] = struct{}{}
+}
+
+// PaymentOrderIDCleared returns if the "payment_order_id" field was cleared in this mutation.
+func (m *SalesCommissionRecordMutation) PaymentOrderIDCleared() bool {
+	_, ok := m.clearedFields[salescommissionrecord.FieldPaymentOrderID]
+	return ok
+}
+
 // ResetPaymentOrderID resets all changes to the "payment_order_id" field.
 func (m *SalesCommissionRecordMutation) ResetPaymentOrderID() {
 	m.payment_order_id = nil
 	m.addpayment_order_id = nil
+	delete(m.clearedFields, salescommissionrecord.FieldPaymentOrderID)
 }
 
 // SetOrderPayAmountCny sets the "order_pay_amount_cny" field.
@@ -26984,6 +27887,309 @@ func (m *SalesCommissionRecordMutation) AddedCommissionTotalCny() (r float64, ex
 func (m *SalesCommissionRecordMutation) ResetCommissionTotalCny() {
 	m.commission_total_cny = nil
 	m.addcommission_total_cny = nil
+}
+
+// SetCommissionEventAt sets the "commission_event_at" field.
+func (m *SalesCommissionRecordMutation) SetCommissionEventAt(t time.Time) {
+	m.commission_event_at = &t
+}
+
+// CommissionEventAt returns the value of the "commission_event_at" field in the mutation.
+func (m *SalesCommissionRecordMutation) CommissionEventAt() (r time.Time, exists bool) {
+	v := m.commission_event_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCommissionEventAt returns the old "commission_event_at" field's value of the SalesCommissionRecord entity.
+// If the SalesCommissionRecord object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SalesCommissionRecordMutation) OldCommissionEventAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCommissionEventAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCommissionEventAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCommissionEventAt: %w", err)
+	}
+	return oldValue.CommissionEventAt, nil
+}
+
+// ClearCommissionEventAt clears the value of the "commission_event_at" field.
+func (m *SalesCommissionRecordMutation) ClearCommissionEventAt() {
+	m.commission_event_at = nil
+	m.clearedFields[salescommissionrecord.FieldCommissionEventAt] = struct{}{}
+}
+
+// CommissionEventAtCleared returns if the "commission_event_at" field was cleared in this mutation.
+func (m *SalesCommissionRecordMutation) CommissionEventAtCleared() bool {
+	_, ok := m.clearedFields[salescommissionrecord.FieldCommissionEventAt]
+	return ok
+}
+
+// ResetCommissionEventAt resets all changes to the "commission_event_at" field.
+func (m *SalesCommissionRecordMutation) ResetCommissionEventAt() {
+	m.commission_event_at = nil
+	delete(m.clearedFields, salescommissionrecord.FieldCommissionEventAt)
+}
+
+// SetCommissionMonth sets the "commission_month" field.
+func (m *SalesCommissionRecordMutation) SetCommissionMonth(t time.Time) {
+	m.commission_month = &t
+}
+
+// CommissionMonth returns the value of the "commission_month" field in the mutation.
+func (m *SalesCommissionRecordMutation) CommissionMonth() (r time.Time, exists bool) {
+	v := m.commission_month
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCommissionMonth returns the old "commission_month" field's value of the SalesCommissionRecord entity.
+// If the SalesCommissionRecord object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SalesCommissionRecordMutation) OldCommissionMonth(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCommissionMonth is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCommissionMonth requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCommissionMonth: %w", err)
+	}
+	return oldValue.CommissionMonth, nil
+}
+
+// ResetCommissionMonth resets all changes to the "commission_month" field.
+func (m *SalesCommissionRecordMutation) ResetCommissionMonth() {
+	m.commission_month = nil
+}
+
+// SetSnapshotID sets the "snapshot_id" field.
+func (m *SalesCommissionRecordMutation) SetSnapshotID(i int64) {
+	m.snapshot_id = &i
+	m.addsnapshot_id = nil
+}
+
+// SnapshotID returns the value of the "snapshot_id" field in the mutation.
+func (m *SalesCommissionRecordMutation) SnapshotID() (r int64, exists bool) {
+	v := m.snapshot_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSnapshotID returns the old "snapshot_id" field's value of the SalesCommissionRecord entity.
+// If the SalesCommissionRecord object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SalesCommissionRecordMutation) OldSnapshotID(ctx context.Context) (v *int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSnapshotID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSnapshotID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSnapshotID: %w", err)
+	}
+	return oldValue.SnapshotID, nil
+}
+
+// AddSnapshotID adds i to the "snapshot_id" field.
+func (m *SalesCommissionRecordMutation) AddSnapshotID(i int64) {
+	if m.addsnapshot_id != nil {
+		*m.addsnapshot_id += i
+	} else {
+		m.addsnapshot_id = &i
+	}
+}
+
+// AddedSnapshotID returns the value that was added to the "snapshot_id" field in this mutation.
+func (m *SalesCommissionRecordMutation) AddedSnapshotID() (r int64, exists bool) {
+	v := m.addsnapshot_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearSnapshotID clears the value of the "snapshot_id" field.
+func (m *SalesCommissionRecordMutation) ClearSnapshotID() {
+	m.snapshot_id = nil
+	m.addsnapshot_id = nil
+	m.clearedFields[salescommissionrecord.FieldSnapshotID] = struct{}{}
+}
+
+// SnapshotIDCleared returns if the "snapshot_id" field was cleared in this mutation.
+func (m *SalesCommissionRecordMutation) SnapshotIDCleared() bool {
+	_, ok := m.clearedFields[salescommissionrecord.FieldSnapshotID]
+	return ok
+}
+
+// ResetSnapshotID resets all changes to the "snapshot_id" field.
+func (m *SalesCommissionRecordMutation) ResetSnapshotID() {
+	m.snapshot_id = nil
+	m.addsnapshot_id = nil
+	delete(m.clearedFields, salescommissionrecord.FieldSnapshotID)
+}
+
+// SetCommissionMode sets the "commission_mode" field.
+func (m *SalesCommissionRecordMutation) SetCommissionMode(s string) {
+	m.commission_mode = &s
+}
+
+// CommissionMode returns the value of the "commission_mode" field in the mutation.
+func (m *SalesCommissionRecordMutation) CommissionMode() (r string, exists bool) {
+	v := m.commission_mode
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCommissionMode returns the old "commission_mode" field's value of the SalesCommissionRecord entity.
+// If the SalesCommissionRecord object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SalesCommissionRecordMutation) OldCommissionMode(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCommissionMode is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCommissionMode requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCommissionMode: %w", err)
+	}
+	return oldValue.CommissionMode, nil
+}
+
+// ResetCommissionMode resets all changes to the "commission_mode" field.
+func (m *SalesCommissionRecordMutation) ResetCommissionMode() {
+	m.commission_mode = nil
+}
+
+// SetMonthlySalesBeforeCny sets the "monthly_sales_before_cny" field.
+func (m *SalesCommissionRecordMutation) SetMonthlySalesBeforeCny(f float64) {
+	m.monthly_sales_before_cny = &f
+	m.addmonthly_sales_before_cny = nil
+}
+
+// MonthlySalesBeforeCny returns the value of the "monthly_sales_before_cny" field in the mutation.
+func (m *SalesCommissionRecordMutation) MonthlySalesBeforeCny() (r float64, exists bool) {
+	v := m.monthly_sales_before_cny
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldMonthlySalesBeforeCny returns the old "monthly_sales_before_cny" field's value of the SalesCommissionRecord entity.
+// If the SalesCommissionRecord object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SalesCommissionRecordMutation) OldMonthlySalesBeforeCny(ctx context.Context) (v float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMonthlySalesBeforeCny is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMonthlySalesBeforeCny requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMonthlySalesBeforeCny: %w", err)
+	}
+	return oldValue.MonthlySalesBeforeCny, nil
+}
+
+// AddMonthlySalesBeforeCny adds f to the "monthly_sales_before_cny" field.
+func (m *SalesCommissionRecordMutation) AddMonthlySalesBeforeCny(f float64) {
+	if m.addmonthly_sales_before_cny != nil {
+		*m.addmonthly_sales_before_cny += f
+	} else {
+		m.addmonthly_sales_before_cny = &f
+	}
+}
+
+// AddedMonthlySalesBeforeCny returns the value that was added to the "monthly_sales_before_cny" field in this mutation.
+func (m *SalesCommissionRecordMutation) AddedMonthlySalesBeforeCny() (r float64, exists bool) {
+	v := m.addmonthly_sales_before_cny
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetMonthlySalesBeforeCny resets all changes to the "monthly_sales_before_cny" field.
+func (m *SalesCommissionRecordMutation) ResetMonthlySalesBeforeCny() {
+	m.monthly_sales_before_cny = nil
+	m.addmonthly_sales_before_cny = nil
+}
+
+// SetMonthlySalesAfterCny sets the "monthly_sales_after_cny" field.
+func (m *SalesCommissionRecordMutation) SetMonthlySalesAfterCny(f float64) {
+	m.monthly_sales_after_cny = &f
+	m.addmonthly_sales_after_cny = nil
+}
+
+// MonthlySalesAfterCny returns the value of the "monthly_sales_after_cny" field in the mutation.
+func (m *SalesCommissionRecordMutation) MonthlySalesAfterCny() (r float64, exists bool) {
+	v := m.monthly_sales_after_cny
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldMonthlySalesAfterCny returns the old "monthly_sales_after_cny" field's value of the SalesCommissionRecord entity.
+// If the SalesCommissionRecord object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SalesCommissionRecordMutation) OldMonthlySalesAfterCny(ctx context.Context) (v float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMonthlySalesAfterCny is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMonthlySalesAfterCny requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMonthlySalesAfterCny: %w", err)
+	}
+	return oldValue.MonthlySalesAfterCny, nil
+}
+
+// AddMonthlySalesAfterCny adds f to the "monthly_sales_after_cny" field.
+func (m *SalesCommissionRecordMutation) AddMonthlySalesAfterCny(f float64) {
+	if m.addmonthly_sales_after_cny != nil {
+		*m.addmonthly_sales_after_cny += f
+	} else {
+		m.addmonthly_sales_after_cny = &f
+	}
+}
+
+// AddedMonthlySalesAfterCny returns the value that was added to the "monthly_sales_after_cny" field in this mutation.
+func (m *SalesCommissionRecordMutation) AddedMonthlySalesAfterCny() (r float64, exists bool) {
+	v := m.addmonthly_sales_after_cny
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetMonthlySalesAfterCny resets all changes to the "monthly_sales_after_cny" field.
+func (m *SalesCommissionRecordMutation) ResetMonthlySalesAfterCny() {
+	m.monthly_sales_after_cny = nil
+	m.addmonthly_sales_after_cny = nil
 }
 
 // SetCreditedUsedAmount sets the "credited_used_amount" field.
@@ -27332,7 +28538,7 @@ func (m *SalesCommissionRecordMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *SalesCommissionRecordMutation) Fields() []string {
-	fields := make([]string, 0, 15)
+	fields := make([]string, 0, 21)
 	if m.sales_user_id != nil {
 		fields = append(fields, salescommissionrecord.FieldSalesUserID)
 	}
@@ -27356,6 +28562,24 @@ func (m *SalesCommissionRecordMutation) Fields() []string {
 	}
 	if m.commission_total_cny != nil {
 		fields = append(fields, salescommissionrecord.FieldCommissionTotalCny)
+	}
+	if m.commission_event_at != nil {
+		fields = append(fields, salescommissionrecord.FieldCommissionEventAt)
+	}
+	if m.commission_month != nil {
+		fields = append(fields, salescommissionrecord.FieldCommissionMonth)
+	}
+	if m.snapshot_id != nil {
+		fields = append(fields, salescommissionrecord.FieldSnapshotID)
+	}
+	if m.commission_mode != nil {
+		fields = append(fields, salescommissionrecord.FieldCommissionMode)
+	}
+	if m.monthly_sales_before_cny != nil {
+		fields = append(fields, salescommissionrecord.FieldMonthlySalesBeforeCny)
+	}
+	if m.monthly_sales_after_cny != nil {
+		fields = append(fields, salescommissionrecord.FieldMonthlySalesAfterCny)
 	}
 	if m.credited_used_amount != nil {
 		fields = append(fields, salescommissionrecord.FieldCreditedUsedAmount)
@@ -27402,6 +28626,18 @@ func (m *SalesCommissionRecordMutation) Field(name string) (ent.Value, bool) {
 		return m.CommissionRate()
 	case salescommissionrecord.FieldCommissionTotalCny:
 		return m.CommissionTotalCny()
+	case salescommissionrecord.FieldCommissionEventAt:
+		return m.CommissionEventAt()
+	case salescommissionrecord.FieldCommissionMonth:
+		return m.CommissionMonth()
+	case salescommissionrecord.FieldSnapshotID:
+		return m.SnapshotID()
+	case salescommissionrecord.FieldCommissionMode:
+		return m.CommissionMode()
+	case salescommissionrecord.FieldMonthlySalesBeforeCny:
+		return m.MonthlySalesBeforeCny()
+	case salescommissionrecord.FieldMonthlySalesAfterCny:
+		return m.MonthlySalesAfterCny()
 	case salescommissionrecord.FieldCreditedUsedAmount:
 		return m.CreditedUsedAmount()
 	case salescommissionrecord.FieldUnlockedCny:
@@ -27441,6 +28677,18 @@ func (m *SalesCommissionRecordMutation) OldField(ctx context.Context, name strin
 		return m.OldCommissionRate(ctx)
 	case salescommissionrecord.FieldCommissionTotalCny:
 		return m.OldCommissionTotalCny(ctx)
+	case salescommissionrecord.FieldCommissionEventAt:
+		return m.OldCommissionEventAt(ctx)
+	case salescommissionrecord.FieldCommissionMonth:
+		return m.OldCommissionMonth(ctx)
+	case salescommissionrecord.FieldSnapshotID:
+		return m.OldSnapshotID(ctx)
+	case salescommissionrecord.FieldCommissionMode:
+		return m.OldCommissionMode(ctx)
+	case salescommissionrecord.FieldMonthlySalesBeforeCny:
+		return m.OldMonthlySalesBeforeCny(ctx)
+	case salescommissionrecord.FieldMonthlySalesAfterCny:
+		return m.OldMonthlySalesAfterCny(ctx)
 	case salescommissionrecord.FieldCreditedUsedAmount:
 		return m.OldCreditedUsedAmount(ctx)
 	case salescommissionrecord.FieldUnlockedCny:
@@ -27519,6 +28767,48 @@ func (m *SalesCommissionRecordMutation) SetField(name string, value ent.Value) e
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetCommissionTotalCny(v)
+		return nil
+	case salescommissionrecord.FieldCommissionEventAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCommissionEventAt(v)
+		return nil
+	case salescommissionrecord.FieldCommissionMonth:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCommissionMonth(v)
+		return nil
+	case salescommissionrecord.FieldSnapshotID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSnapshotID(v)
+		return nil
+	case salescommissionrecord.FieldCommissionMode:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCommissionMode(v)
+		return nil
+	case salescommissionrecord.FieldMonthlySalesBeforeCny:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetMonthlySalesBeforeCny(v)
+		return nil
+	case salescommissionrecord.FieldMonthlySalesAfterCny:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetMonthlySalesAfterCny(v)
 		return nil
 	case salescommissionrecord.FieldCreditedUsedAmount:
 		v, ok := value.(float64)
@@ -27601,6 +28891,15 @@ func (m *SalesCommissionRecordMutation) AddedFields() []string {
 	if m.addcommission_total_cny != nil {
 		fields = append(fields, salescommissionrecord.FieldCommissionTotalCny)
 	}
+	if m.addsnapshot_id != nil {
+		fields = append(fields, salescommissionrecord.FieldSnapshotID)
+	}
+	if m.addmonthly_sales_before_cny != nil {
+		fields = append(fields, salescommissionrecord.FieldMonthlySalesBeforeCny)
+	}
+	if m.addmonthly_sales_after_cny != nil {
+		fields = append(fields, salescommissionrecord.FieldMonthlySalesAfterCny)
+	}
 	if m.addcredited_used_amount != nil {
 		fields = append(fields, salescommissionrecord.FieldCreditedUsedAmount)
 	}
@@ -27634,6 +28933,12 @@ func (m *SalesCommissionRecordMutation) AddedField(name string) (ent.Value, bool
 		return m.AddedCommissionRate()
 	case salescommissionrecord.FieldCommissionTotalCny:
 		return m.AddedCommissionTotalCny()
+	case salescommissionrecord.FieldSnapshotID:
+		return m.AddedSnapshotID()
+	case salescommissionrecord.FieldMonthlySalesBeforeCny:
+		return m.AddedMonthlySalesBeforeCny()
+	case salescommissionrecord.FieldMonthlySalesAfterCny:
+		return m.AddedMonthlySalesAfterCny()
 	case salescommissionrecord.FieldCreditedUsedAmount:
 		return m.AddedCreditedUsedAmount()
 	case salescommissionrecord.FieldUnlockedCny:
@@ -27705,6 +29010,27 @@ func (m *SalesCommissionRecordMutation) AddField(name string, value ent.Value) e
 		}
 		m.AddCommissionTotalCny(v)
 		return nil
+	case salescommissionrecord.FieldSnapshotID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddSnapshotID(v)
+		return nil
+	case salescommissionrecord.FieldMonthlySalesBeforeCny:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddMonthlySalesBeforeCny(v)
+		return nil
+	case salescommissionrecord.FieldMonthlySalesAfterCny:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddMonthlySalesAfterCny(v)
+		return nil
 	case salescommissionrecord.FieldCreditedUsedAmount:
 		v, ok := value.(float64)
 		if !ok {
@@ -27733,7 +29059,17 @@ func (m *SalesCommissionRecordMutation) AddField(name string, value ent.Value) e
 // ClearedFields returns all nullable fields that were cleared during this
 // mutation.
 func (m *SalesCommissionRecordMutation) ClearedFields() []string {
-	return nil
+	var fields []string
+	if m.FieldCleared(salescommissionrecord.FieldPaymentOrderID) {
+		fields = append(fields, salescommissionrecord.FieldPaymentOrderID)
+	}
+	if m.FieldCleared(salescommissionrecord.FieldCommissionEventAt) {
+		fields = append(fields, salescommissionrecord.FieldCommissionEventAt)
+	}
+	if m.FieldCleared(salescommissionrecord.FieldSnapshotID) {
+		fields = append(fields, salescommissionrecord.FieldSnapshotID)
+	}
+	return fields
 }
 
 // FieldCleared returns a boolean indicating if a field with the given name was
@@ -27746,6 +29082,17 @@ func (m *SalesCommissionRecordMutation) FieldCleared(name string) bool {
 // ClearField clears the value of the field with the given name. It returns an
 // error if the field is not defined in the schema.
 func (m *SalesCommissionRecordMutation) ClearField(name string) error {
+	switch name {
+	case salescommissionrecord.FieldPaymentOrderID:
+		m.ClearPaymentOrderID()
+		return nil
+	case salescommissionrecord.FieldCommissionEventAt:
+		m.ClearCommissionEventAt()
+		return nil
+	case salescommissionrecord.FieldSnapshotID:
+		m.ClearSnapshotID()
+		return nil
+	}
 	return fmt.Errorf("unknown SalesCommissionRecord nullable field %s", name)
 }
 
@@ -27776,6 +29123,24 @@ func (m *SalesCommissionRecordMutation) ResetField(name string) error {
 		return nil
 	case salescommissionrecord.FieldCommissionTotalCny:
 		m.ResetCommissionTotalCny()
+		return nil
+	case salescommissionrecord.FieldCommissionEventAt:
+		m.ResetCommissionEventAt()
+		return nil
+	case salescommissionrecord.FieldCommissionMonth:
+		m.ResetCommissionMonth()
+		return nil
+	case salescommissionrecord.FieldSnapshotID:
+		m.ResetSnapshotID()
+		return nil
+	case salescommissionrecord.FieldCommissionMode:
+		m.ResetCommissionMode()
+		return nil
+	case salescommissionrecord.FieldMonthlySalesBeforeCny:
+		m.ResetMonthlySalesBeforeCny()
+		return nil
+	case salescommissionrecord.FieldMonthlySalesAfterCny:
+		m.ResetMonthlySalesAfterCny()
 		return nil
 	case salescommissionrecord.FieldCreditedUsedAmount:
 		m.ResetCreditedUsedAmount()
@@ -29105,6 +30470,847 @@ func (m *SalesCommissionSettlementItemMutation) ClearEdge(name string) error {
 // It returns an error if the edge is not defined in the schema.
 func (m *SalesCommissionSettlementItemMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown SalesCommissionSettlementItem edge %s", name)
+}
+
+// SalesCommissionTierMutation represents an operation that mutates the SalesCommissionTier nodes in the graph.
+type SalesCommissionTierMutation struct {
+	config
+	op                      Op
+	typ                     string
+	id                      *int64
+	sales_user_id           *int64
+	addsales_user_id        *int64
+	month_sales_from_cny    *float64
+	addmonth_sales_from_cny *float64
+	month_sales_to_cny      *float64
+	addmonth_sales_to_cny   *float64
+	commission_rate         *float64
+	addcommission_rate      *float64
+	sort_order              *int
+	addsort_order           *int
+	created_at              *time.Time
+	updated_at              *time.Time
+	clearedFields           map[string]struct{}
+	done                    bool
+	oldValue                func(context.Context) (*SalesCommissionTier, error)
+	predicates              []predicate.SalesCommissionTier
+}
+
+var _ ent.Mutation = (*SalesCommissionTierMutation)(nil)
+
+// salescommissiontierOption allows management of the mutation configuration using functional options.
+type salescommissiontierOption func(*SalesCommissionTierMutation)
+
+// newSalesCommissionTierMutation creates new mutation for the SalesCommissionTier entity.
+func newSalesCommissionTierMutation(c config, op Op, opts ...salescommissiontierOption) *SalesCommissionTierMutation {
+	m := &SalesCommissionTierMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeSalesCommissionTier,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withSalesCommissionTierID sets the ID field of the mutation.
+func withSalesCommissionTierID(id int64) salescommissiontierOption {
+	return func(m *SalesCommissionTierMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *SalesCommissionTier
+		)
+		m.oldValue = func(ctx context.Context) (*SalesCommissionTier, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().SalesCommissionTier.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withSalesCommissionTier sets the old SalesCommissionTier of the mutation.
+func withSalesCommissionTier(node *SalesCommissionTier) salescommissiontierOption {
+	return func(m *SalesCommissionTierMutation) {
+		m.oldValue = func(context.Context) (*SalesCommissionTier, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m SalesCommissionTierMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m SalesCommissionTierMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *SalesCommissionTierMutation) ID() (id int64, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *SalesCommissionTierMutation) IDs(ctx context.Context) ([]int64, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int64{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().SalesCommissionTier.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetSalesUserID sets the "sales_user_id" field.
+func (m *SalesCommissionTierMutation) SetSalesUserID(i int64) {
+	m.sales_user_id = &i
+	m.addsales_user_id = nil
+}
+
+// SalesUserID returns the value of the "sales_user_id" field in the mutation.
+func (m *SalesCommissionTierMutation) SalesUserID() (r int64, exists bool) {
+	v := m.sales_user_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSalesUserID returns the old "sales_user_id" field's value of the SalesCommissionTier entity.
+// If the SalesCommissionTier object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SalesCommissionTierMutation) OldSalesUserID(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSalesUserID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSalesUserID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSalesUserID: %w", err)
+	}
+	return oldValue.SalesUserID, nil
+}
+
+// AddSalesUserID adds i to the "sales_user_id" field.
+func (m *SalesCommissionTierMutation) AddSalesUserID(i int64) {
+	if m.addsales_user_id != nil {
+		*m.addsales_user_id += i
+	} else {
+		m.addsales_user_id = &i
+	}
+}
+
+// AddedSalesUserID returns the value that was added to the "sales_user_id" field in this mutation.
+func (m *SalesCommissionTierMutation) AddedSalesUserID() (r int64, exists bool) {
+	v := m.addsales_user_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetSalesUserID resets all changes to the "sales_user_id" field.
+func (m *SalesCommissionTierMutation) ResetSalesUserID() {
+	m.sales_user_id = nil
+	m.addsales_user_id = nil
+}
+
+// SetMonthSalesFromCny sets the "month_sales_from_cny" field.
+func (m *SalesCommissionTierMutation) SetMonthSalesFromCny(f float64) {
+	m.month_sales_from_cny = &f
+	m.addmonth_sales_from_cny = nil
+}
+
+// MonthSalesFromCny returns the value of the "month_sales_from_cny" field in the mutation.
+func (m *SalesCommissionTierMutation) MonthSalesFromCny() (r float64, exists bool) {
+	v := m.month_sales_from_cny
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldMonthSalesFromCny returns the old "month_sales_from_cny" field's value of the SalesCommissionTier entity.
+// If the SalesCommissionTier object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SalesCommissionTierMutation) OldMonthSalesFromCny(ctx context.Context) (v float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMonthSalesFromCny is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMonthSalesFromCny requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMonthSalesFromCny: %w", err)
+	}
+	return oldValue.MonthSalesFromCny, nil
+}
+
+// AddMonthSalesFromCny adds f to the "month_sales_from_cny" field.
+func (m *SalesCommissionTierMutation) AddMonthSalesFromCny(f float64) {
+	if m.addmonth_sales_from_cny != nil {
+		*m.addmonth_sales_from_cny += f
+	} else {
+		m.addmonth_sales_from_cny = &f
+	}
+}
+
+// AddedMonthSalesFromCny returns the value that was added to the "month_sales_from_cny" field in this mutation.
+func (m *SalesCommissionTierMutation) AddedMonthSalesFromCny() (r float64, exists bool) {
+	v := m.addmonth_sales_from_cny
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetMonthSalesFromCny resets all changes to the "month_sales_from_cny" field.
+func (m *SalesCommissionTierMutation) ResetMonthSalesFromCny() {
+	m.month_sales_from_cny = nil
+	m.addmonth_sales_from_cny = nil
+}
+
+// SetMonthSalesToCny sets the "month_sales_to_cny" field.
+func (m *SalesCommissionTierMutation) SetMonthSalesToCny(f float64) {
+	m.month_sales_to_cny = &f
+	m.addmonth_sales_to_cny = nil
+}
+
+// MonthSalesToCny returns the value of the "month_sales_to_cny" field in the mutation.
+func (m *SalesCommissionTierMutation) MonthSalesToCny() (r float64, exists bool) {
+	v := m.month_sales_to_cny
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldMonthSalesToCny returns the old "month_sales_to_cny" field's value of the SalesCommissionTier entity.
+// If the SalesCommissionTier object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SalesCommissionTierMutation) OldMonthSalesToCny(ctx context.Context) (v *float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMonthSalesToCny is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMonthSalesToCny requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMonthSalesToCny: %w", err)
+	}
+	return oldValue.MonthSalesToCny, nil
+}
+
+// AddMonthSalesToCny adds f to the "month_sales_to_cny" field.
+func (m *SalesCommissionTierMutation) AddMonthSalesToCny(f float64) {
+	if m.addmonth_sales_to_cny != nil {
+		*m.addmonth_sales_to_cny += f
+	} else {
+		m.addmonth_sales_to_cny = &f
+	}
+}
+
+// AddedMonthSalesToCny returns the value that was added to the "month_sales_to_cny" field in this mutation.
+func (m *SalesCommissionTierMutation) AddedMonthSalesToCny() (r float64, exists bool) {
+	v := m.addmonth_sales_to_cny
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearMonthSalesToCny clears the value of the "month_sales_to_cny" field.
+func (m *SalesCommissionTierMutation) ClearMonthSalesToCny() {
+	m.month_sales_to_cny = nil
+	m.addmonth_sales_to_cny = nil
+	m.clearedFields[salescommissiontier.FieldMonthSalesToCny] = struct{}{}
+}
+
+// MonthSalesToCnyCleared returns if the "month_sales_to_cny" field was cleared in this mutation.
+func (m *SalesCommissionTierMutation) MonthSalesToCnyCleared() bool {
+	_, ok := m.clearedFields[salescommissiontier.FieldMonthSalesToCny]
+	return ok
+}
+
+// ResetMonthSalesToCny resets all changes to the "month_sales_to_cny" field.
+func (m *SalesCommissionTierMutation) ResetMonthSalesToCny() {
+	m.month_sales_to_cny = nil
+	m.addmonth_sales_to_cny = nil
+	delete(m.clearedFields, salescommissiontier.FieldMonthSalesToCny)
+}
+
+// SetCommissionRate sets the "commission_rate" field.
+func (m *SalesCommissionTierMutation) SetCommissionRate(f float64) {
+	m.commission_rate = &f
+	m.addcommission_rate = nil
+}
+
+// CommissionRate returns the value of the "commission_rate" field in the mutation.
+func (m *SalesCommissionTierMutation) CommissionRate() (r float64, exists bool) {
+	v := m.commission_rate
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCommissionRate returns the old "commission_rate" field's value of the SalesCommissionTier entity.
+// If the SalesCommissionTier object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SalesCommissionTierMutation) OldCommissionRate(ctx context.Context) (v float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCommissionRate is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCommissionRate requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCommissionRate: %w", err)
+	}
+	return oldValue.CommissionRate, nil
+}
+
+// AddCommissionRate adds f to the "commission_rate" field.
+func (m *SalesCommissionTierMutation) AddCommissionRate(f float64) {
+	if m.addcommission_rate != nil {
+		*m.addcommission_rate += f
+	} else {
+		m.addcommission_rate = &f
+	}
+}
+
+// AddedCommissionRate returns the value that was added to the "commission_rate" field in this mutation.
+func (m *SalesCommissionTierMutation) AddedCommissionRate() (r float64, exists bool) {
+	v := m.addcommission_rate
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetCommissionRate resets all changes to the "commission_rate" field.
+func (m *SalesCommissionTierMutation) ResetCommissionRate() {
+	m.commission_rate = nil
+	m.addcommission_rate = nil
+}
+
+// SetSortOrder sets the "sort_order" field.
+func (m *SalesCommissionTierMutation) SetSortOrder(i int) {
+	m.sort_order = &i
+	m.addsort_order = nil
+}
+
+// SortOrder returns the value of the "sort_order" field in the mutation.
+func (m *SalesCommissionTierMutation) SortOrder() (r int, exists bool) {
+	v := m.sort_order
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSortOrder returns the old "sort_order" field's value of the SalesCommissionTier entity.
+// If the SalesCommissionTier object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SalesCommissionTierMutation) OldSortOrder(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSortOrder is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSortOrder requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSortOrder: %w", err)
+	}
+	return oldValue.SortOrder, nil
+}
+
+// AddSortOrder adds i to the "sort_order" field.
+func (m *SalesCommissionTierMutation) AddSortOrder(i int) {
+	if m.addsort_order != nil {
+		*m.addsort_order += i
+	} else {
+		m.addsort_order = &i
+	}
+}
+
+// AddedSortOrder returns the value that was added to the "sort_order" field in this mutation.
+func (m *SalesCommissionTierMutation) AddedSortOrder() (r int, exists bool) {
+	v := m.addsort_order
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetSortOrder resets all changes to the "sort_order" field.
+func (m *SalesCommissionTierMutation) ResetSortOrder() {
+	m.sort_order = nil
+	m.addsort_order = nil
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *SalesCommissionTierMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *SalesCommissionTierMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the SalesCommissionTier entity.
+// If the SalesCommissionTier object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SalesCommissionTierMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *SalesCommissionTierMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *SalesCommissionTierMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *SalesCommissionTierMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the SalesCommissionTier entity.
+// If the SalesCommissionTier object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SalesCommissionTierMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *SalesCommissionTierMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// Where appends a list predicates to the SalesCommissionTierMutation builder.
+func (m *SalesCommissionTierMutation) Where(ps ...predicate.SalesCommissionTier) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the SalesCommissionTierMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *SalesCommissionTierMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.SalesCommissionTier, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *SalesCommissionTierMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *SalesCommissionTierMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (SalesCommissionTier).
+func (m *SalesCommissionTierMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *SalesCommissionTierMutation) Fields() []string {
+	fields := make([]string, 0, 7)
+	if m.sales_user_id != nil {
+		fields = append(fields, salescommissiontier.FieldSalesUserID)
+	}
+	if m.month_sales_from_cny != nil {
+		fields = append(fields, salescommissiontier.FieldMonthSalesFromCny)
+	}
+	if m.month_sales_to_cny != nil {
+		fields = append(fields, salescommissiontier.FieldMonthSalesToCny)
+	}
+	if m.commission_rate != nil {
+		fields = append(fields, salescommissiontier.FieldCommissionRate)
+	}
+	if m.sort_order != nil {
+		fields = append(fields, salescommissiontier.FieldSortOrder)
+	}
+	if m.created_at != nil {
+		fields = append(fields, salescommissiontier.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, salescommissiontier.FieldUpdatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *SalesCommissionTierMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case salescommissiontier.FieldSalesUserID:
+		return m.SalesUserID()
+	case salescommissiontier.FieldMonthSalesFromCny:
+		return m.MonthSalesFromCny()
+	case salescommissiontier.FieldMonthSalesToCny:
+		return m.MonthSalesToCny()
+	case salescommissiontier.FieldCommissionRate:
+		return m.CommissionRate()
+	case salescommissiontier.FieldSortOrder:
+		return m.SortOrder()
+	case salescommissiontier.FieldCreatedAt:
+		return m.CreatedAt()
+	case salescommissiontier.FieldUpdatedAt:
+		return m.UpdatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *SalesCommissionTierMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case salescommissiontier.FieldSalesUserID:
+		return m.OldSalesUserID(ctx)
+	case salescommissiontier.FieldMonthSalesFromCny:
+		return m.OldMonthSalesFromCny(ctx)
+	case salescommissiontier.FieldMonthSalesToCny:
+		return m.OldMonthSalesToCny(ctx)
+	case salescommissiontier.FieldCommissionRate:
+		return m.OldCommissionRate(ctx)
+	case salescommissiontier.FieldSortOrder:
+		return m.OldSortOrder(ctx)
+	case salescommissiontier.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case salescommissiontier.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown SalesCommissionTier field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *SalesCommissionTierMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case salescommissiontier.FieldSalesUserID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSalesUserID(v)
+		return nil
+	case salescommissiontier.FieldMonthSalesFromCny:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetMonthSalesFromCny(v)
+		return nil
+	case salescommissiontier.FieldMonthSalesToCny:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetMonthSalesToCny(v)
+		return nil
+	case salescommissiontier.FieldCommissionRate:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCommissionRate(v)
+		return nil
+	case salescommissiontier.FieldSortOrder:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSortOrder(v)
+		return nil
+	case salescommissiontier.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case salescommissiontier.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown SalesCommissionTier field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *SalesCommissionTierMutation) AddedFields() []string {
+	var fields []string
+	if m.addsales_user_id != nil {
+		fields = append(fields, salescommissiontier.FieldSalesUserID)
+	}
+	if m.addmonth_sales_from_cny != nil {
+		fields = append(fields, salescommissiontier.FieldMonthSalesFromCny)
+	}
+	if m.addmonth_sales_to_cny != nil {
+		fields = append(fields, salescommissiontier.FieldMonthSalesToCny)
+	}
+	if m.addcommission_rate != nil {
+		fields = append(fields, salescommissiontier.FieldCommissionRate)
+	}
+	if m.addsort_order != nil {
+		fields = append(fields, salescommissiontier.FieldSortOrder)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *SalesCommissionTierMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case salescommissiontier.FieldSalesUserID:
+		return m.AddedSalesUserID()
+	case salescommissiontier.FieldMonthSalesFromCny:
+		return m.AddedMonthSalesFromCny()
+	case salescommissiontier.FieldMonthSalesToCny:
+		return m.AddedMonthSalesToCny()
+	case salescommissiontier.FieldCommissionRate:
+		return m.AddedCommissionRate()
+	case salescommissiontier.FieldSortOrder:
+		return m.AddedSortOrder()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *SalesCommissionTierMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case salescommissiontier.FieldSalesUserID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddSalesUserID(v)
+		return nil
+	case salescommissiontier.FieldMonthSalesFromCny:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddMonthSalesFromCny(v)
+		return nil
+	case salescommissiontier.FieldMonthSalesToCny:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddMonthSalesToCny(v)
+		return nil
+	case salescommissiontier.FieldCommissionRate:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddCommissionRate(v)
+		return nil
+	case salescommissiontier.FieldSortOrder:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddSortOrder(v)
+		return nil
+	}
+	return fmt.Errorf("unknown SalesCommissionTier numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *SalesCommissionTierMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(salescommissiontier.FieldMonthSalesToCny) {
+		fields = append(fields, salescommissiontier.FieldMonthSalesToCny)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *SalesCommissionTierMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *SalesCommissionTierMutation) ClearField(name string) error {
+	switch name {
+	case salescommissiontier.FieldMonthSalesToCny:
+		m.ClearMonthSalesToCny()
+		return nil
+	}
+	return fmt.Errorf("unknown SalesCommissionTier nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *SalesCommissionTierMutation) ResetField(name string) error {
+	switch name {
+	case salescommissiontier.FieldSalesUserID:
+		m.ResetSalesUserID()
+		return nil
+	case salescommissiontier.FieldMonthSalesFromCny:
+		m.ResetMonthSalesFromCny()
+		return nil
+	case salescommissiontier.FieldMonthSalesToCny:
+		m.ResetMonthSalesToCny()
+		return nil
+	case salescommissiontier.FieldCommissionRate:
+		m.ResetCommissionRate()
+		return nil
+	case salescommissiontier.FieldSortOrder:
+		m.ResetSortOrder()
+		return nil
+	case salescommissiontier.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case salescommissiontier.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown SalesCommissionTier field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *SalesCommissionTierMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *SalesCommissionTierMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *SalesCommissionTierMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *SalesCommissionTierMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *SalesCommissionTierMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *SalesCommissionTierMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *SalesCommissionTierMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown SalesCommissionTier unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *SalesCommissionTierMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown SalesCommissionTier edge %s", name)
 }
 
 // SecuritySecretMutation represents an operation that mutates the SecuritySecret nodes in the graph.
@@ -38074,72 +40280,75 @@ func (m *UsageLogMutation) ResetEdge(name string) error {
 // UserMutation represents an operation that mutates the User nodes in the graph.
 type UserMutation struct {
 	config
-	op                            Op
-	typ                           string
-	id                            *int64
-	created_at                    *time.Time
-	updated_at                    *time.Time
-	deleted_at                    *time.Time
-	email                         *string
-	password_hash                 *string
-	role                          *string
-	balance                       *float64
-	addbalance                    *float64
-	concurrency                   *int
-	addconcurrency                *int
-	status                        *string
-	username                      *string
-	notes                         *string
-	totp_secret_encrypted         *string
-	totp_enabled                  *bool
-	totp_enabled_at               *time.Time
-	balance_notify_enabled        *bool
-	balance_notify_threshold_type *string
-	balance_notify_threshold      *float64
-	addbalance_notify_threshold   *float64
-	balance_notify_extra_emails   *string
-	total_recharged               *float64
-	addtotal_recharged            *float64
-	is_sales                      *bool
-	sales_commission_rate         *float64
-	addsales_commission_rate      *float64
-	referral_code                 *string
-	referred_by                   *int64
-	addreferred_by                *int64
-	clearedFields                 map[string]struct{}
-	api_keys                      map[int64]struct{}
-	removedapi_keys               map[int64]struct{}
-	clearedapi_keys               bool
-	redeem_codes                  map[int64]struct{}
-	removedredeem_codes           map[int64]struct{}
-	clearedredeem_codes           bool
-	subscriptions                 map[int64]struct{}
-	removedsubscriptions          map[int64]struct{}
-	clearedsubscriptions          bool
-	assigned_subscriptions        map[int64]struct{}
-	removedassigned_subscriptions map[int64]struct{}
-	clearedassigned_subscriptions bool
-	announcement_reads            map[int64]struct{}
-	removedannouncement_reads     map[int64]struct{}
-	clearedannouncement_reads     bool
-	allowed_groups                map[int64]struct{}
-	removedallowed_groups         map[int64]struct{}
-	clearedallowed_groups         bool
-	usage_logs                    map[int64]struct{}
-	removedusage_logs             map[int64]struct{}
-	clearedusage_logs             bool
-	attribute_values              map[int64]struct{}
-	removedattribute_values       map[int64]struct{}
-	clearedattribute_values       bool
-	promo_code_usages             map[int64]struct{}
-	removedpromo_code_usages      map[int64]struct{}
-	clearedpromo_code_usages      bool
-	payment_orders                map[int64]struct{}
-	removedpayment_orders         map[int64]struct{}
-	clearedpayment_orders         bool
-	done                          bool
-	oldValue                      func(context.Context) (*User, error)
-	predicates                    []predicate.User
+	op                                    Op
+	typ                                   string
+	id                                    *int64
+	created_at                            *time.Time
+	updated_at                            *time.Time
+	deleted_at                            *time.Time
+	email                                 *string
+	password_hash                         *string
+	role                                  *string
+	balance                               *float64
+	addbalance                            *float64
+	concurrency                           *int
+	addconcurrency                        *int
+	status                                *string
+	username                              *string
+	notes                                 *string
+	totp_secret_encrypted                 *string
+	totp_enabled                          *bool
+	totp_enabled_at                       *time.Time
+	balance_notify_enabled                *bool
+	balance_notify_threshold_type         *string
+	balance_notify_threshold              *float64
+	addbalance_notify_threshold           *float64
+	balance_notify_extra_emails           *string
+	total_recharged                       *float64
+	addtotal_recharged                    *float64
+	is_sales                              *bool
+	sales_commission_rate                 *float64
+	addsales_commission_rate              *float64
+	sales_commission_mode                 *string
+	sales_commission_min_monthly_sales    *float64
+	addsales_commission_min_monthly_sales *float64
+	referral_code                         *string
+	referred_by                           *int64
+	addreferred_by                        *int64
+	clearedFields                         map[string]struct{}
+	api_keys                              map[int64]struct{}
+	removedapi_keys                       map[int64]struct{}
+	clearedapi_keys                       bool
+	redeem_codes                          map[int64]struct{}
+	removedredeem_codes                   map[int64]struct{}
+	clearedredeem_codes                   bool
+	subscriptions                         map[int64]struct{}
+	removedsubscriptions                  map[int64]struct{}
+	clearedsubscriptions                  bool
+	assigned_subscriptions                map[int64]struct{}
+	removedassigned_subscriptions         map[int64]struct{}
+	clearedassigned_subscriptions         bool
+	announcement_reads                    map[int64]struct{}
+	removedannouncement_reads             map[int64]struct{}
+	clearedannouncement_reads             bool
+	allowed_groups                        map[int64]struct{}
+	removedallowed_groups                 map[int64]struct{}
+	clearedallowed_groups                 bool
+	usage_logs                            map[int64]struct{}
+	removedusage_logs                     map[int64]struct{}
+	clearedusage_logs                     bool
+	attribute_values                      map[int64]struct{}
+	removedattribute_values               map[int64]struct{}
+	clearedattribute_values               bool
+	promo_code_usages                     map[int64]struct{}
+	removedpromo_code_usages              map[int64]struct{}
+	clearedpromo_code_usages              bool
+	payment_orders                        map[int64]struct{}
+	removedpayment_orders                 map[int64]struct{}
+	clearedpayment_orders                 bool
+	done                                  bool
+	oldValue                              func(context.Context) (*User, error)
+	predicates                            []predicate.User
 }
 
 var _ ent.Mutation = (*UserMutation)(nil)
@@ -39149,6 +41358,98 @@ func (m *UserMutation) ResetSalesCommissionRate() {
 	m.addsales_commission_rate = nil
 }
 
+// SetSalesCommissionMode sets the "sales_commission_mode" field.
+func (m *UserMutation) SetSalesCommissionMode(s string) {
+	m.sales_commission_mode = &s
+}
+
+// SalesCommissionMode returns the value of the "sales_commission_mode" field in the mutation.
+func (m *UserMutation) SalesCommissionMode() (r string, exists bool) {
+	v := m.sales_commission_mode
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSalesCommissionMode returns the old "sales_commission_mode" field's value of the User entity.
+// If the User object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserMutation) OldSalesCommissionMode(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSalesCommissionMode is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSalesCommissionMode requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSalesCommissionMode: %w", err)
+	}
+	return oldValue.SalesCommissionMode, nil
+}
+
+// ResetSalesCommissionMode resets all changes to the "sales_commission_mode" field.
+func (m *UserMutation) ResetSalesCommissionMode() {
+	m.sales_commission_mode = nil
+}
+
+// SetSalesCommissionMinMonthlySales sets the "sales_commission_min_monthly_sales" field.
+func (m *UserMutation) SetSalesCommissionMinMonthlySales(f float64) {
+	m.sales_commission_min_monthly_sales = &f
+	m.addsales_commission_min_monthly_sales = nil
+}
+
+// SalesCommissionMinMonthlySales returns the value of the "sales_commission_min_monthly_sales" field in the mutation.
+func (m *UserMutation) SalesCommissionMinMonthlySales() (r float64, exists bool) {
+	v := m.sales_commission_min_monthly_sales
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSalesCommissionMinMonthlySales returns the old "sales_commission_min_monthly_sales" field's value of the User entity.
+// If the User object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserMutation) OldSalesCommissionMinMonthlySales(ctx context.Context) (v float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSalesCommissionMinMonthlySales is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSalesCommissionMinMonthlySales requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSalesCommissionMinMonthlySales: %w", err)
+	}
+	return oldValue.SalesCommissionMinMonthlySales, nil
+}
+
+// AddSalesCommissionMinMonthlySales adds f to the "sales_commission_min_monthly_sales" field.
+func (m *UserMutation) AddSalesCommissionMinMonthlySales(f float64) {
+	if m.addsales_commission_min_monthly_sales != nil {
+		*m.addsales_commission_min_monthly_sales += f
+	} else {
+		m.addsales_commission_min_monthly_sales = &f
+	}
+}
+
+// AddedSalesCommissionMinMonthlySales returns the value that was added to the "sales_commission_min_monthly_sales" field in this mutation.
+func (m *UserMutation) AddedSalesCommissionMinMonthlySales() (r float64, exists bool) {
+	v := m.addsales_commission_min_monthly_sales
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetSalesCommissionMinMonthlySales resets all changes to the "sales_commission_min_monthly_sales" field.
+func (m *UserMutation) ResetSalesCommissionMinMonthlySales() {
+	m.sales_commission_min_monthly_sales = nil
+	m.addsales_commission_min_monthly_sales = nil
+}
+
 // SetReferralCode sets the "referral_code" field.
 func (m *UserMutation) SetReferralCode(s string) {
 	m.referral_code = &s
@@ -39829,7 +42130,7 @@ func (m *UserMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *UserMutation) Fields() []string {
-	fields := make([]string, 0, 23)
+	fields := make([]string, 0, 25)
 	if m.created_at != nil {
 		fields = append(fields, user.FieldCreatedAt)
 	}
@@ -39893,6 +42194,12 @@ func (m *UserMutation) Fields() []string {
 	if m.sales_commission_rate != nil {
 		fields = append(fields, user.FieldSalesCommissionRate)
 	}
+	if m.sales_commission_mode != nil {
+		fields = append(fields, user.FieldSalesCommissionMode)
+	}
+	if m.sales_commission_min_monthly_sales != nil {
+		fields = append(fields, user.FieldSalesCommissionMinMonthlySales)
+	}
 	if m.referral_code != nil {
 		fields = append(fields, user.FieldReferralCode)
 	}
@@ -39949,6 +42256,10 @@ func (m *UserMutation) Field(name string) (ent.Value, bool) {
 		return m.IsSales()
 	case user.FieldSalesCommissionRate:
 		return m.SalesCommissionRate()
+	case user.FieldSalesCommissionMode:
+		return m.SalesCommissionMode()
+	case user.FieldSalesCommissionMinMonthlySales:
+		return m.SalesCommissionMinMonthlySales()
 	case user.FieldReferralCode:
 		return m.ReferralCode()
 	case user.FieldReferredBy:
@@ -40004,6 +42315,10 @@ func (m *UserMutation) OldField(ctx context.Context, name string) (ent.Value, er
 		return m.OldIsSales(ctx)
 	case user.FieldSalesCommissionRate:
 		return m.OldSalesCommissionRate(ctx)
+	case user.FieldSalesCommissionMode:
+		return m.OldSalesCommissionMode(ctx)
+	case user.FieldSalesCommissionMinMonthlySales:
+		return m.OldSalesCommissionMinMonthlySales(ctx)
 	case user.FieldReferralCode:
 		return m.OldReferralCode(ctx)
 	case user.FieldReferredBy:
@@ -40164,6 +42479,20 @@ func (m *UserMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetSalesCommissionRate(v)
 		return nil
+	case user.FieldSalesCommissionMode:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSalesCommissionMode(v)
+		return nil
+	case user.FieldSalesCommissionMinMonthlySales:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSalesCommissionMinMonthlySales(v)
+		return nil
 	case user.FieldReferralCode:
 		v, ok := value.(string)
 		if !ok {
@@ -40201,6 +42530,9 @@ func (m *UserMutation) AddedFields() []string {
 	if m.addsales_commission_rate != nil {
 		fields = append(fields, user.FieldSalesCommissionRate)
 	}
+	if m.addsales_commission_min_monthly_sales != nil {
+		fields = append(fields, user.FieldSalesCommissionMinMonthlySales)
+	}
 	if m.addreferred_by != nil {
 		fields = append(fields, user.FieldReferredBy)
 	}
@@ -40222,6 +42554,8 @@ func (m *UserMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedTotalRecharged()
 	case user.FieldSalesCommissionRate:
 		return m.AddedSalesCommissionRate()
+	case user.FieldSalesCommissionMinMonthlySales:
+		return m.AddedSalesCommissionMinMonthlySales()
 	case user.FieldReferredBy:
 		return m.AddedReferredBy()
 	}
@@ -40267,6 +42601,13 @@ func (m *UserMutation) AddField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.AddSalesCommissionRate(v)
+		return nil
+	case user.FieldSalesCommissionMinMonthlySales:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddSalesCommissionMinMonthlySales(v)
 		return nil
 	case user.FieldReferredBy:
 		v, ok := value.(int64)
@@ -40397,6 +42738,12 @@ func (m *UserMutation) ResetField(name string) error {
 		return nil
 	case user.FieldSalesCommissionRate:
 		m.ResetSalesCommissionRate()
+		return nil
+	case user.FieldSalesCommissionMode:
+		m.ResetSalesCommissionMode()
+		return nil
+	case user.FieldSalesCommissionMinMonthlySales:
+		m.ResetSalesCommissionMinMonthlySales()
 		return nil
 	case user.FieldReferralCode:
 		m.ResetReferralCode()

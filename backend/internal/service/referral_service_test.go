@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -21,8 +22,86 @@ func TestReferralService_HandleInviterRewardOnFirstRecharge_SkipsSalesReferrer(t
 
 	svc.HandleInviterRewardOnFirstRecharge(context.Background(), 20, 100)
 
+	// 销售推广人不发 gift 奖励（走佣金路径），但 referral 必须被标 completed，
+	// 以便推广管理界面正确显示 “该被邀请人已达首充要求”。
 	require.Empty(t, giftRepo.created)
 	require.Empty(t, referralRepo.inviterRewarded)
+	require.Equal(t,
+		[]referralRepoStubStatusCall{{ID: 7, Status: ReferralStatusCompleted}},
+		referralRepo.updateStatusCalls,
+	)
+}
+
+func TestReferralService_HandleInviterRewardOnFirstRecharge_RegularReferrerMarksCompletedEvenWhenReferralDisabled(t *testing.T) {
+	t.Parallel()
+
+	settingRepo := &referralSettingRepoStub{
+		values: map[string]string{
+			SettingKeyReferralEnabled:                   "false",
+			SettingKeyReferralInviteeReward:             "10",
+			SettingKeyReferralInviterReward:             "20",
+			SettingKeyReferralMaxInvites:                "0",
+			SettingKeyReferralRewardExpiryDays:          "0",
+			SettingKeyReferralOngoingRewardEnabled:      "false",
+			SettingKeyReferralOngoingRewardType:         "fixed",
+			SettingKeyReferralOngoingRewardValue:        "0",
+			SettingKeyReferralOngoingRewardMaxCount:     "0",
+			SettingKeyReferralOngoingRewardDurationDays: "0",
+		},
+	}
+	userRepo := &referralUserRepoStub{byID: map[int64]*User{10: {ID: 10, IsSales: false}}}
+	referralRepo := &referralRepoStub{referralByReferee: map[int64]*Referral{
+		20: {ID: 7, ReferrerID: 10, RefereeID: 20, Status: ReferralStatusPending},
+	}}
+	giftRepo := &referralGiftBalanceRepoStub{}
+	resolver := NewReferralConfigResolver(settingRepo, &referralUserConfigRepoStub{})
+	svc := NewReferralService(userRepo, referralRepo, giftRepo, resolver, nil)
+
+	svc.HandleInviterRewardOnFirstRecharge(context.Background(), 20, 100)
+
+	// 推广全局未启用时，奖励不发；但被邀请人确实首充了，referral 必须 mark completed。
+	require.Empty(t, giftRepo.created)
+	require.Empty(t, referralRepo.inviterRewarded)
+	require.Equal(t,
+		[]referralRepoStubStatusCall{{ID: 7, Status: ReferralStatusCompleted}},
+		referralRepo.updateStatusCalls,
+	)
+}
+
+func TestReferralService_HandleInviterRewardOnFirstRecharge_RegularReferrerMarksCompletedWhenInviterRewardZero(t *testing.T) {
+	t.Parallel()
+
+	settingRepo := &referralSettingRepoStub{
+		values: map[string]string{
+			SettingKeyReferralEnabled:                   "true",
+			SettingKeyReferralInviteeReward:             "10",
+			SettingKeyReferralInviterReward:             "0",
+			SettingKeyReferralMaxInvites:                "0",
+			SettingKeyReferralRewardExpiryDays:          "0",
+			SettingKeyReferralOngoingRewardEnabled:      "false",
+			SettingKeyReferralOngoingRewardType:         "fixed",
+			SettingKeyReferralOngoingRewardValue:        "0",
+			SettingKeyReferralOngoingRewardMaxCount:     "0",
+			SettingKeyReferralOngoingRewardDurationDays: "0",
+		},
+	}
+	userRepo := &referralUserRepoStub{byID: map[int64]*User{10: {ID: 10, IsSales: false}}}
+	referralRepo := &referralRepoStub{referralByReferee: map[int64]*Referral{
+		20: {ID: 7, ReferrerID: 10, RefereeID: 20, Status: ReferralStatusPending},
+	}}
+	giftRepo := &referralGiftBalanceRepoStub{}
+	resolver := NewReferralConfigResolver(settingRepo, &referralUserConfigRepoStub{})
+	svc := NewReferralService(userRepo, referralRepo, giftRepo, resolver, nil)
+
+	svc.HandleInviterRewardOnFirstRecharge(context.Background(), 20, 100)
+
+	// 邀请人奖励额度=0，不发 gift，但 referral 必须 mark completed。
+	require.Empty(t, giftRepo.created)
+	require.Empty(t, referralRepo.inviterRewarded)
+	require.Equal(t,
+		[]referralRepoStubStatusCall{{ID: 7, Status: ReferralStatusCompleted}},
+		referralRepo.updateStatusCalls,
+	)
 }
 
 func TestReferralService_HandleOngoingRewardOnRecharge_SkipsSalesReferrer(t *testing.T) {
@@ -36,7 +115,7 @@ func TestReferralService_HandleOngoingRewardOnRecharge_SkipsSalesReferrer(t *tes
 		CreatedAt:  time.Now(),
 	})
 
-	svc.HandleOngoingRewardOnRecharge(context.Background(), 20, 100)
+	svc.HandleOngoingRewardOnRecharge(context.Background(), 20, 100, 101)
 
 	require.Empty(t, giftRepo.created)
 	require.Empty(t, referralRepo.ongoingRewardIncrements)
@@ -54,13 +133,33 @@ func TestReferralService_RechargeRewards_StillGrantForRegularReferrer(t *testing
 	})
 
 	svc.HandleInviterRewardOnFirstRecharge(context.Background(), 20, 100)
-	svc.HandleOngoingRewardOnRecharge(context.Background(), 20, 100)
+	svc.HandleOngoingRewardOnRecharge(context.Background(), 20, 100, 101)
 
 	require.Len(t, giftRepo.created, 2)
 	require.Equal(t, GiftBalanceSourceReferralInviter, giftRepo.created[0].Source)
 	require.Equal(t, GiftBalanceSourceReferralOngoing, giftRepo.created[1].Source)
 	require.Equal(t, []float64{20}, referralRepo.inviterRewarded)
 	require.Equal(t, []float64{5}, referralRepo.ongoingRewardIncrements)
+}
+
+func TestReferralService_HandleOngoingRewardOnRecharge_GrantsOncePerOrder(t *testing.T) {
+	t.Parallel()
+
+	svc, giftRepo, referralRepo := newReferralRewardTestService(&User{ID: 10, IsSales: false}, &Referral{
+		ID:         7,
+		ReferrerID: 10,
+		RefereeID:  20,
+		Status:     ReferralStatusCompleted,
+		CreatedAt:  time.Now(),
+	})
+
+	svc.HandleOngoingRewardOnRecharge(context.Background(), 20, 100, 201)
+	svc.HandleOngoingRewardOnRecharge(context.Background(), 20, 100, 201)
+	svc.HandleOngoingRewardOnRecharge(context.Background(), 20, 80, 202)
+
+	require.Len(t, giftRepo.created, 2)
+	require.Equal(t, []float64{5, 4}, referralRepo.ongoingRewardIncrements)
+	require.Len(t, giftRepo.existsChecks, 3)
 }
 
 func TestReferralService_AdminMarkReferralCompleted_GrantsInviterRewardOnly(t *testing.T) {
@@ -298,6 +397,12 @@ type referralRepoStub struct {
 	markCompletedID           int64
 	markCompletedRewardAmount float64
 	markCompletedNote         string
+	updateStatusCalls         []referralRepoStubStatusCall
+}
+
+type referralRepoStubStatusCall struct {
+	ID     int64
+	Status string
 }
 
 func (r *referralRepoStub) Create(_ context.Context, _ *Referral) error { return nil }
@@ -311,14 +416,28 @@ func (r *referralRepoStub) GetByReferrerID(_ context.Context, _ int64, _, _ int)
 	return nil, 0, nil
 }
 func (r *referralRepoStub) CountByReferrerID(_ context.Context, _ int64) (int, error) { return 0, nil }
-func (r *referralRepoStub) UpdateStatus(_ context.Context, _ int64, _ string) error   { return nil }
-func (r *referralRepoStub) SetInviteeRewarded(_ context.Context, _ int64) error       { return nil }
+func (r *referralRepoStub) UpdateStatus(_ context.Context, id int64, status string) error {
+	r.updateStatusCalls = append(r.updateStatusCalls, referralRepoStubStatusCall{ID: id, Status: status})
+	if ref, ok := r.referralByID[id]; ok && ref != nil {
+		ref.Status = status
+	}
+	for _, ref := range r.referralByReferee {
+		if ref != nil && ref.ID == id {
+			ref.Status = status
+		}
+	}
+	return nil
+}
+func (r *referralRepoStub) SetInviteeRewarded(_ context.Context, _ int64) error { return nil }
 func (r *referralRepoStub) SetInviterRewarded(_ context.Context, _ int64, rewardAmount float64) error {
 	r.inviterRewarded = append(r.inviterRewarded, rewardAmount)
 	return nil
 }
 func (r *referralRepoStub) IncrementOngoingReward(_ context.Context, _ int64, amount float64) error {
 	r.ongoingRewardIncrements = append(r.ongoingRewardIncrements, amount)
+	return nil
+}
+func (r *referralRepoStub) IncrementInviteeOngoingReward(_ context.Context, _ int64, _ float64) error {
 	return nil
 }
 func (r *referralRepoStub) GetStatsByReferrerID(_ context.Context, _ int64) (*ReferralStats, error) {
@@ -346,7 +465,8 @@ func (r *referralRepoStub) MarkCompleted(_ context.Context, id int64, rewardAmou
 }
 
 type referralGiftBalanceRepoStub struct {
-	created []*GiftBalanceRecord
+	created      []*GiftBalanceRecord
+	existsChecks []string
 }
 
 func (r *referralGiftBalanceRepoStub) Create(_ context.Context, record *GiftBalanceRecord) error {
@@ -370,7 +490,25 @@ func (r *referralGiftBalanceRepoStub) ExpireRecords(_ context.Context) (int, err
 func (r *referralGiftBalanceRepoStub) GetTotalRemainingByUserID(_ context.Context, _ int64) (float64, error) {
 	return 0, nil
 }
-func (r *referralGiftBalanceRepoStub) ExistsBySourceRef(_ context.Context, _ string, _ int64) (bool, error) {
+func (r *referralGiftBalanceRepoStub) GetNextExpiry(_ context.Context, _ int64) (*time.Time, float64, error) {
+	return nil, 0, nil
+}
+
+func giftBalanceKey(source string, sourceRefID int64) string {
+	return fmt.Sprintf("%s:%d", source, sourceRefID)
+}
+
+func (r *referralGiftBalanceRepoStub) ExistsBySourceRef(_ context.Context, source string, sourceRefID int64) (bool, error) {
+	key := giftBalanceKey(source, sourceRefID)
+	r.existsChecks = append(r.existsChecks, key)
+	for _, record := range r.created {
+		if record.Source != source || record.SourceRefID == nil {
+			continue
+		}
+		if *record.SourceRefID == sourceRefID {
+			return true, nil
+		}
+	}
 	return false, nil
 }
 func (r *referralGiftBalanceRepoStub) GetAdminStats(_ context.Context) (*AdminReferralStats, error) {

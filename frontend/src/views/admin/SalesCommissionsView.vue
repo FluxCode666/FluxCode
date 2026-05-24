@@ -6,162 +6,160 @@
           <h1 class="text-2xl font-semibold text-gray-900 dark:text-gray-100">{{ t('salesCommissions.title') }}</h1>
           <p class="mt-1 text-sm text-gray-500 dark:text-dark-400">{{ t('salesCommissions.adminDescription') }}</p>
         </div>
-        <div class="flex gap-2">
-          <input v-model="search" type="search" class="input w-full sm:w-64" :placeholder="t('salesCommissions.searchSales')" @keyup.enter="loadSummaries" />
-          <button type="button" class="btn btn-secondary" @click="loadAll">{{ t('common.refresh') }}</button>
+        <div class="flex flex-wrap items-center gap-2">
+          <RangePicker v-model="range" />
+          <button type="button" class="btn btn-secondary" :disabled="loadingOverview" @click="loadOverview">
+            {{ t('common.refresh') }}
+          </button>
+          <button
+            type="button"
+            class="btn btn-primary"
+            :disabled="recomputing"
+            :title="t('salesCommissions.recompute.tooltip')"
+            @click="showRecomputeDialog = true"
+          >
+            {{ recomputing ? t('salesCommissions.recompute.running') : t('salesCommissions.recompute.button') }}
+          </button>
         </div>
       </div>
 
-      <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <div v-for="item in totalCards" :key="item.label" class="rounded-lg border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-900">
-          <div class="text-xs font-medium text-gray-500 dark:text-dark-400">{{ item.label }}</div>
-          <div class="mt-2 text-2xl font-semibold text-gray-900 dark:text-gray-100">{{ formatCNY(item.value) }}</div>
-        </div>
+      <div v-if="loadingOverview && !overview" class="rounded-lg border border-dashed border-gray-200 p-10 text-center text-sm text-gray-500 dark:border-dark-700 dark:text-dark-400">
+        {{ t('common.loading') }}…
       </div>
 
-      <section class="space-y-3">
-        <div class="flex items-center justify-between">
-          <h2 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ t('salesCommissions.summaries') }}</h2>
-        </div>
-        <DataTable :columns="summaryColumns" :data="summaries" :loading="loadingSummaries">
-          <template #cell-sales_email="{ row }">
-            <div>
-              <div class="font-medium">{{ row.sales_email || '-' }}</div>
-              <div class="text-xs text-gray-500">{{ row.sales_username || `#${row.sales_user_id}` }}</div>
-            </div>
-          </template>
-          <template #cell-total_commission_cny="{ row }">{{ formatCNY(row.total_commission_cny) }}</template>
-          <template #cell-frozen_cny="{ row }">{{ formatCNY(row.frozen_cny) }}</template>
-          <template #cell-settleable_cny="{ row }">{{ formatCNY(row.settleable_cny) }}</template>
-          <template #cell-actions="{ row }">
-            <button type="button" class="btn btn-primary btn-sm" :disabled="row.settleable_cny <= 0" @click="openSettlement(row)">
-              {{ t('salesCommissions.createSettlement') }}
-            </button>
-          </template>
-        </DataTable>
-        <Pagination v-if="summaryPagination.total > 0" :page="summaryPagination.page" :total="summaryPagination.total" :page-size="summaryPagination.page_size" @update:page="setSummaryPage" />
-      </section>
+      <template v-else-if="overview">
+        <OverviewKPIGrid :kpi="overview.kpi" />
 
-      <section class="space-y-3">
-        <h2 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ t('salesCommissions.records') }}</h2>
-        <DataTable :columns="recordColumns" :data="records" :loading="loadingRecords">
-          <template #cell-referee_email="{ row }">{{ row.referee_email || `#${row.referee_user_id}` }}</template>
-          <template #cell-commission_total_cny="{ row }">{{ formatCNY(row.commission_total_cny) }}</template>
-          <template #cell-unlocked_cny="{ row }">{{ formatCNY(row.unlocked_cny) }}</template>
-          <template #cell-settled_cny="{ row }">{{ formatCNY(row.settled_cny) }}</template>
-          <template #cell-created_at="{ row }">{{ formatDate(row.created_at) }}</template>
-        </DataTable>
-        <Pagination v-if="recordPagination.total > 0" :page="recordPagination.page" :total="recordPagination.total" :page-size="recordPagination.page_size" @update:page="setRecordPage" />
-      </section>
-
-      <section class="space-y-3">
-        <h2 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ t('salesCommissions.settlements') }}</h2>
-        <DataTable :columns="settlementColumns" :data="settlements" :loading="loadingSettlements">
-          <template #cell-amount_cny="{ row }">{{ formatCNY(row.amount_cny) }}</template>
-          <template #cell-created_at="{ row }">{{ formatDate(row.created_at) }}</template>
-        </DataTable>
-      </section>
-    </div>
-
-    <BaseDialog :show="settlementDialog.open" :title="t('salesCommissions.createSettlement')" width="normal" @close="closeSettlement">
-      <div class="space-y-4">
-        <div>
-          <label class="input-label">{{ t('salesCommissions.salesUser') }}</label>
-          <input v-model.number="settlementDialog.salesUserID" type="number" class="input" />
-        </div>
-        <div>
-          <label class="input-label">{{ t('salesCommissions.amount') }}</label>
-          <input v-model.number="settlementDialog.amount" type="number" min="0.01" step="0.01" class="input" />
-        </div>
-        <div>
-          <label class="input-label">{{ t('salesCommissions.note') }}</label>
-          <textarea v-model="settlementDialog.note" rows="3" class="input"></textarea>
-        </div>
-      </div>
-      <template #footer>
-        <div class="flex justify-end gap-3">
-          <button type="button" class="btn btn-secondary" @click="closeSettlement">{{ t('common.cancel') }}</button>
-          <button type="button" class="btn btn-primary" :disabled="submittingSettlement" @click="submitSettlement">{{ t('common.confirm') }}</button>
+        <div class="grid gap-4 lg:grid-cols-2">
+          <MonthlyTrendChart :trend="overview.monthly_trend" />
+          <StatusBreakdownChart :data="overview.status_breakdown" />
+          <TopSalesChart :items="overview.top_sales" />
+          <ModeBreakdownChart :data="overview.mode_breakdown" />
         </div>
       </template>
-    </BaseDialog>
+
+      <SummaryTable
+        ref="summaryTableRef"
+        :items="summaries"
+        :loading="loadingSummaries"
+        :pagination="summaryPagination"
+        :search="summarySearch"
+        @update:page="setSummaryPage"
+        @update:search="setSummarySearch"
+        @settle="onSettle"
+      />
+
+      <DetailsCollapsible
+        :records="records"
+        :settlements="settlements"
+        :loading-records="loadingRecords"
+        :loading-settlements="loadingSettlements"
+        :record-pagination="recordPagination"
+        :settlement-pagination="settlementPagination"
+        :record-filters="recordFilters"
+        :record-sort-order="recordSortOrder"
+        @update:record-filters="updateRecordFilters"
+        @update:record-page="setRecordPage"
+        @update:record-sort="setRecordSortOrder"
+        @update:settlement-page="setSettlementPage"
+        @expand="ensureDetailsLoaded"
+      />
+
+      <ConfirmDialog
+        :show="showRecomputeDialog"
+        :title="t('salesCommissions.recompute.confirmTitle')"
+        :message="t('salesCommissions.recompute.confirmMessage')"
+        :confirm-text="t('salesCommissions.recompute.confirmButton')"
+        @confirm="onConfirmRecompute"
+        @cancel="showRecomputeDialog = false"
+      />
+    </div>
   </AppLayout>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { onMounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { adminAPI } from '@/api/admin'
 import { useAppStore } from '@/stores/app'
 import AppLayout from '@/components/layout/AppLayout.vue'
-import DataTable from '@/components/common/DataTable.vue'
-import Pagination from '@/components/common/Pagination.vue'
-import BaseDialog from '@/components/common/BaseDialog.vue'
-import type { SalesCommissionRecord, SalesCommissionSettlement, SalesCommissionSummary } from '@/types'
+import OverviewKPIGrid from '@/components/admin/salesCommissions/OverviewKPIGrid.vue'
+import MonthlyTrendChart from '@/components/admin/salesCommissions/MonthlyTrendChart.vue'
+import StatusBreakdownChart from '@/components/admin/salesCommissions/StatusBreakdownChart.vue'
+import TopSalesChart from '@/components/admin/salesCommissions/TopSalesChart.vue'
+import ModeBreakdownChart from '@/components/admin/salesCommissions/ModeBreakdownChart.vue'
+import SummaryTable from '@/components/admin/salesCommissions/SummaryTable.vue'
+import DetailsCollapsible, { type RecordFilters } from '@/components/admin/salesCommissions/DetailsCollapsible.vue'
+import RangePicker, { type RangeSelection } from '@/components/admin/salesCommissions/RangePicker.vue'
+import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
+import type {
+  SalesCommissionOverview,
+  SalesCommissionRecord,
+  SalesCommissionSettlement,
+  SalesCommissionSummary
+} from '@/types'
 
 const { t } = useI18n()
 const appStore = useAppStore()
 
-const search = ref('')
+const summaryTableRef = ref<InstanceType<typeof SummaryTable> | null>(null)
+
+const overview = ref<SalesCommissionOverview | null>(null)
+const loadingOverview = ref(false)
+
+const range = ref<RangeSelection>({ key: 'this_month' })
+watch(range, () => { void loadOverview() }, { deep: true })
+
 const summaries = ref<SalesCommissionSummary[]>([])
-const records = ref<SalesCommissionRecord[]>([])
-const settlements = ref<SalesCommissionSettlement[]>([])
 const loadingSummaries = ref(false)
-const loadingRecords = ref(false)
-const loadingSettlements = ref(false)
-const submittingSettlement = ref(false)
-
 const summaryPagination = reactive({ page: 1, page_size: 20, total: 0 })
+const summarySearch = ref('')
+
+const records = ref<SalesCommissionRecord[]>([])
+const loadingRecords = ref(false)
 const recordPagination = reactive({ page: 1, page_size: 20, total: 0 })
+const recordFilters = reactive<RecordFilters>({
+  salesUserID: '',
+  refereeUserID: '',
+  paymentOrderID: '',
+  status: ''
+})
+// 佣金明细排序方向，初始为 desc（最新在前）。点击列头会切换并触发 loadRecords。
+const recordSortOrder = ref<'asc' | 'desc'>('desc')
+const detailsTouched = ref(false)
 
-const settlementDialog = reactive({ open: false, salesUserID: 0, amount: 0, note: '' })
+const settlements = ref<SalesCommissionSettlement[]>([])
+const loadingSettlements = ref(false)
+const settlementPagination = reactive({ page: 1, page_size: 20, total: 0 })
 
-const summaryColumns = [
-  { key: 'sales_email', label: t('salesCommissions.salesUser') },
-  { key: 'total_commission_cny', label: t('salesCommissions.totalCommission') },
-  { key: 'frozen_cny', label: t('salesCommissions.frozen') },
-  { key: 'settleable_cny', label: t('salesCommissions.settleable') },
-  { key: 'records_count', label: t('salesCommissions.records') },
-  { key: 'actions', label: t('common.actions') }
-]
-
-const recordColumns = [
-  { key: 'sales_email', label: t('salesCommissions.salesUser') },
-  { key: 'referee_email', label: t('salesCommissions.refereeUser') },
-  { key: 'payment_order_id', label: t('salesCommissions.paymentOrder') },
-  { key: 'commission_total_cny', label: t('salesCommissions.totalCommission') },
-  { key: 'unlocked_cny', label: t('salesCommissions.unlocked') },
-  { key: 'settled_cny', label: t('salesCommissions.settled') },
-  { key: 'status', label: t('salesCommissions.status') },
-  { key: 'created_at', label: t('salesCommissions.createdAt') }
-]
-
-const settlementColumns = [
-  { key: 'sales_email', label: t('salesCommissions.salesUser') },
-  { key: 'amount_cny', label: t('salesCommissions.amount') },
-  { key: 'note', label: t('salesCommissions.note') },
-  { key: 'created_at', label: t('salesCommissions.createdAt') }
-]
-
-const totals = computed(() => summaries.value.reduce((acc, item) => {
-  acc.frozen += item.frozen_cny || 0
-  acc.unlocked += item.unlocked_cny || 0
-  acc.settleable += item.settleable_cny || 0
-  acc.settled += item.settled_cny || 0
-  return acc
-}, { frozen: 0, unlocked: 0, settleable: 0, settled: 0 }))
-
-const totalCards = computed(() => [
-  { label: t('salesCommissions.frozen'), value: totals.value.frozen },
-  { label: t('salesCommissions.unlocked'), value: totals.value.unlocked },
-  { label: t('salesCommissions.settleable'), value: totals.value.settleable },
-  { label: t('salesCommissions.settled'), value: totals.value.settled }
-])
+async function loadOverview() {
+  loadingOverview.value = true
+  try {
+    const params: Record<string, string> = { range: range.value.key }
+    if (range.value.key === 'custom') {
+      if (!range.value.start || !range.value.end) {
+        loadingOverview.value = false
+        return
+      }
+      params.start = range.value.start
+      params.end = range.value.end
+    }
+    overview.value = await adminAPI.salesCommissions.getOverview(params as any)
+  } catch (error: any) {
+    appStore.showError(error?.message || t('salesCommissions.loadFailed'))
+  } finally {
+    loadingOverview.value = false
+  }
+}
 
 async function loadSummaries() {
   loadingSummaries.value = true
   try {
-    const res = await adminAPI.salesCommissions.listSummaries({ page: summaryPagination.page, page_size: summaryPagination.page_size, search: search.value })
+    const res = await adminAPI.salesCommissions.listSummaries({
+      page: summaryPagination.page,
+      page_size: summaryPagination.page_size,
+      search: summarySearch.value || undefined
+    })
     summaries.value = res.items || []
     summaryPagination.total = res.total || 0
   } catch (error: any) {
@@ -171,10 +169,29 @@ async function loadSummaries() {
   }
 }
 
+function setSummaryPage(page: number) {
+  summaryPagination.page = page
+  void loadSummaries()
+}
+
+function setSummarySearch(value: string) {
+  summarySearch.value = value
+  summaryPagination.page = 1
+  void loadSummaries()
+}
+
 async function loadRecords() {
   loadingRecords.value = true
   try {
-    const res = await adminAPI.salesCommissions.listRecords({ page: recordPagination.page, page_size: recordPagination.page_size })
+    const res = await adminAPI.salesCommissions.listRecords({
+      page: recordPagination.page,
+      page_size: recordPagination.page_size,
+      sales_user_id: recordFilters.salesUserID ? Number(recordFilters.salesUserID) : undefined,
+      referee_user_id: recordFilters.refereeUserID ? Number(recordFilters.refereeUserID) : undefined,
+      payment_order_id: recordFilters.paymentOrderID ? Number(recordFilters.paymentOrderID) : undefined,
+      status: recordFilters.status || undefined,
+      sort_order: recordSortOrder.value
+    })
     records.value = res.items || []
     recordPagination.total = res.total || 0
   } catch (error: any) {
@@ -184,11 +201,34 @@ async function loadRecords() {
   }
 }
 
+function setRecordPage(page: number) {
+  recordPagination.page = page
+  void loadRecords()
+}
+
+function updateRecordFilters(value: RecordFilters) {
+  Object.assign(recordFilters, value)
+  recordPagination.page = 1
+  void loadRecords()
+}
+
+// 点击 created_at 列头切换排序方向：回到第一页（避免越界）+ 立即 reload。
+function setRecordSortOrder(order: 'asc' | 'desc') {
+  if (recordSortOrder.value === order) return
+  recordSortOrder.value = order
+  recordPagination.page = 1
+  void loadRecords()
+}
+
 async function loadSettlements() {
   loadingSettlements.value = true
   try {
-    const res = await adminAPI.salesCommissions.listSettlements({ page: 1, page_size: 20 })
+    const res = await adminAPI.salesCommissions.listSettlements({
+      page: settlementPagination.page,
+      page_size: settlementPagination.page_size
+    })
     settlements.value = res.items || []
+    settlementPagination.total = res.total || 0
   } catch (error: any) {
     appStore.showError(error?.message || t('salesCommissions.loadFailed'))
   } finally {
@@ -196,60 +236,84 @@ async function loadSettlements() {
   }
 }
 
-function loadAll() {
-  void Promise.all([loadSummaries(), loadRecords(), loadSettlements()])
+function setSettlementPage(page: number) {
+  settlementPagination.page = page
+  void loadSettlements()
 }
 
-function setSummaryPage(page: number) {
-  summaryPagination.page = page
-  void loadSummaries()
-}
-
-function setRecordPage(page: number) {
-  recordPagination.page = page
+// 明细折叠区是 lazy 加载，避免页面打开就发起 records / settlements 请求。
+function ensureDetailsLoaded() {
+  if (detailsTouched.value) return
+  detailsTouched.value = true
   void loadRecords()
+  void loadSettlements()
 }
 
-function openSettlement(row: SalesCommissionSummary) {
-  settlementDialog.salesUserID = row.sales_user_id
-  settlementDialog.amount = row.settleable_cny
-  settlementDialog.note = ''
-  settlementDialog.open = true
-}
-
-function closeSettlement() {
-  settlementDialog.open = false
-}
-
-async function submitSettlement() {
-  if (settlementDialog.salesUserID <= 0 || settlementDialog.amount <= 0) {
-    appStore.showError(t('salesCommissions.invalidSettlement'))
-    return
-  }
-  submittingSettlement.value = true
+async function onSettle(payload: { sales_user_id: number; amount_cny: number; note: string }) {
   try {
-    await adminAPI.salesCommissions.createSettlement({
-      sales_user_id: settlementDialog.salesUserID,
-      amount_cny: settlementDialog.amount,
-      note: settlementDialog.note
-    })
-    appStore.showSuccess(t('salesCommissions.settlementCreated'))
-    closeSettlement()
-    loadAll()
+    await adminAPI.salesCommissions.createSettlement(payload)
+    appStore.showSuccess(t('salesCommissions.settleSuccess'))
+    summaryTableRef.value?.closeSettleDialog()
+    void loadSummaries()
+    if (detailsTouched.value) {
+      void loadRecords()
+      void loadSettlements()
+    }
   } catch (error: any) {
-    appStore.showError(error?.message || t('salesCommissions.settlementFailed'))
+    const reason = error?.reason || error?.code || ''
+    if (reason === 'SALES_COMMISSION_NO_SETTLEABLE') {
+      appStore.showError(t('salesCommissions.settleErrNoSettleable'))
+    } else if (reason === 'SALES_COMMISSION_SETTLE_AMOUNT_EXCEEDS') {
+      appStore.showError(t('salesCommissions.settleErrAmountExceeds'))
+    } else {
+      appStore.showError(error?.message || t('salesCommissions.settleFailed'))
+    }
   } finally {
-    submittingSettlement.value = false
+    if (summaryTableRef.value) {
+      summaryTableRef.value.settling = false
+    }
   }
 }
 
-function formatCNY(value: number | undefined) {
-  return `¥${Number(value || 0).toFixed(2)}`
+// "重算缺失佣金" 兜底按钮：扫描 status=completed 的余额充值订单中
+// 那些应当存在销售佣金记录、但目前 sales_commission_records 里却没有的，
+// 复用 HandleBalanceRechargeCompleted 路径补写。后端幂等，重复点击安全。
+const showRecomputeDialog = ref(false)
+const recomputing = ref(false)
+
+async function onConfirmRecompute() {
+  showRecomputeDialog.value = false
+  if (recomputing.value) return
+  recomputing.value = true
+  try {
+    const res = await adminAPI.salesCommissions.recomputeMissingCommissions()
+    const summary = t('salesCommissions.recompute.resultSummary', {
+      scanned: res.scanned,
+      processed: res.processed,
+      failed: res.failed
+    })
+    if (res.failed > 0) {
+      appStore.showWarning(summary)
+    } else if (res.processed > 0) {
+      appStore.showSuccess(summary)
+    } else {
+      appStore.showInfo(t('salesCommissions.recompute.noMissing'))
+    }
+    // 重算后立即刷新概览 / 汇总，让管理员看到 frozen / total 的变化。
+    void loadOverview()
+    void loadSummaries()
+    if (detailsTouched.value) {
+      void loadRecords()
+    }
+  } catch (error: any) {
+    appStore.showError(error?.message || t('salesCommissions.recompute.failed'))
+  } finally {
+    recomputing.value = false
+  }
 }
 
-function formatDate(value: string | undefined) {
-  return value ? new Date(value).toLocaleString() : '-'
-}
-
-onMounted(loadAll)
+onMounted(() => {
+  void loadOverview()
+  void loadSummaries()
+})
 </script>

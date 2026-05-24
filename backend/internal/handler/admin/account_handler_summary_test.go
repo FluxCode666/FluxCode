@@ -26,7 +26,7 @@ func (s stubAccountSummaryAdminService) GetAccountSummary(ctx context.Context) (
 
 func newAccountSummaryTestRouter(adminSvc service.AdminService) *gin.Engine {
 	gin.SetMode(gin.TestMode)
-	h := NewAccountHandler(adminSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	h := NewAccountHandler(adminSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	r := gin.New()
 	r.GET("/api/v1/admin/accounts/summary", h.GetSummary)
 	return r

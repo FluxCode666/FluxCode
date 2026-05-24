@@ -162,6 +162,48 @@ func (s *UserRepoSuite) TestUserSalesCommissionFieldsPersist() {
 	s.Require().InDelta(0, updated.SalesCommissionRate, 0.000001)
 }
 
+func (s *UserRepoSuite) TestUserSalesCommissionTieredConfigPersists() {
+	user := s.mustCreateUser(&service.User{
+		Email:                         "sales-tiered@test.com",
+		IsSales:                       true,
+		SalesCommissionMode:           service.SalesCommissionModeTiered,
+		SalesCommissionMinMonthlySales: 100,
+		SalesCommissionTiers: []service.SalesCommissionTier{
+			{MonthSalesFromCNY: 0, MonthSalesToCNY: float64Ptr(500), CommissionRate: 10},
+			{MonthSalesFromCNY: 500, CommissionRate: 15},
+		},
+	})
+
+	got, err := s.repo.GetByID(s.ctx, user.ID)
+	s.Require().NoError(err)
+	s.Require().Equal(service.SalesCommissionModeTiered, got.SalesCommissionMode)
+	s.Require().InDelta(100, got.SalesCommissionMinMonthlySales, 0.000001)
+	s.Require().Len(got.SalesCommissionTiers, 2)
+	s.Require().InDelta(0, got.SalesCommissionTiers[0].MonthSalesFromCNY, 0.000001)
+	s.Require().NotNil(got.SalesCommissionTiers[0].MonthSalesToCNY)
+	s.Require().InDelta(500, *got.SalesCommissionTiers[0].MonthSalesToCNY, 0.000001)
+	s.Require().Equal(1, got.SalesCommissionTiers[0].SortOrder)
+	s.Require().Nil(got.SalesCommissionTiers[1].MonthSalesToCNY)
+	s.Require().Equal(2, got.SalesCommissionTiers[1].SortOrder)
+
+	got.SalesCommissionMode = service.SalesCommissionModeFixed
+	got.SalesCommissionRate = 18
+	got.SalesCommissionMinMonthlySales = 250
+	got.SalesCommissionTiers = []service.SalesCommissionTier{
+		{MonthSalesFromCNY: 250, CommissionRate: 18},
+	}
+	s.Require().NoError(s.repo.Update(s.ctx, got))
+
+	updated, err := s.repo.GetByID(s.ctx, user.ID)
+	s.Require().NoError(err)
+	s.Require().Equal(service.SalesCommissionModeFixed, updated.SalesCommissionMode)
+	s.Require().InDelta(18, updated.SalesCommissionRate, 0.000001)
+	s.Require().InDelta(250, updated.SalesCommissionMinMonthlySales, 0.000001)
+	s.Require().Len(updated.SalesCommissionTiers, 1)
+	s.Require().Equal(1, updated.SalesCommissionTiers[0].SortOrder)
+	s.Require().InDelta(250, updated.SalesCommissionTiers[0].MonthSalesFromCNY, 0.000001)
+}
+
 func (s *UserRepoSuite) TestDelete() {
 	user := s.mustCreateUser(&service.User{Email: "delete@test.com"})
 

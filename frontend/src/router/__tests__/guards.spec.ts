@@ -50,6 +50,7 @@ vi.mock('@/api/auth', () => ({
 interface MockAuthState {
   isAuthenticated: boolean
   isAdmin: boolean
+  isSales: boolean
   isSimpleMode: boolean
   backendModeEnabled: boolean
 }
@@ -64,6 +65,7 @@ function simulateGuard(
 ): string | null {
   const requiresAuth = toMeta.requiresAuth !== false
   const requiresAdmin = toMeta.requiresAdmin === true
+  const requiresSales = toMeta.requiresSales === true
 
   // 不需要认证的路由
   if (!requiresAuth) {
@@ -93,6 +95,10 @@ function simulateGuard(
   // 需要管理员但不是管理员
   if (requiresAdmin && !authState.isAdmin) {
     return '/dashboard'
+  }
+
+  if (requiresSales && !authState.isSales) {
+    return authState.isAdmin ? '/admin/sales-commissions' : '/dashboard'
   }
 
   // 简易模式限制
@@ -134,6 +140,7 @@ describe('路由守卫逻辑', () => {
     const authState: MockAuthState = {
       isAuthenticated: false,
       isAdmin: false,
+      isSales: false,
       isSimpleMode: false,
       backendModeEnabled: false,
     }
@@ -165,6 +172,7 @@ describe('路由守卫逻辑', () => {
     const authState: MockAuthState = {
       isAuthenticated: true,
       isAdmin: false,
+      isSales: false,
       isSimpleMode: false,
       backendModeEnabled: false,
     }
@@ -193,6 +201,11 @@ describe('路由守卫逻辑', () => {
       const redirect = simulateGuard('/admin/users', { requiresAdmin: true }, authState)
       expect(redirect).toBe('/dashboard')
     })
+
+    it('访问销售佣金页面被重定向到 /dashboard', () => {
+      const redirect = simulateGuard('/sales-commissions', { requiresSales: true }, authState)
+      expect(redirect).toBe('/dashboard')
+    })
   })
 
   // --- 已认证管理员 ---
@@ -201,6 +214,7 @@ describe('路由守卫逻辑', () => {
     const authState: MockAuthState = {
       isAuthenticated: true,
       isAdmin: true,
+      isSales: false,
       isSimpleMode: false,
       backendModeEnabled: false,
     }
@@ -219,6 +233,11 @@ describe('路由守卫逻辑', () => {
       const redirect = simulateGuard('/dashboard', {}, authState)
       expect(redirect).toBeNull()
     })
+
+    it('访问用户销售佣金页面跳转到管理页', () => {
+      const redirect = simulateGuard('/sales-commissions', { requiresSales: true }, authState)
+      expect(redirect).toBe('/admin/sales-commissions')
+    })
   })
 
   // --- 简易模式 ---
@@ -228,6 +247,7 @@ describe('路由守卫逻辑', () => {
       const authState: MockAuthState = {
         isAuthenticated: true,
         isAdmin: false,
+        isSales: false,
         isSimpleMode: true,
         backendModeEnabled: false,
       }
@@ -239,6 +259,7 @@ describe('路由守卫逻辑', () => {
       const authState: MockAuthState = {
         isAuthenticated: true,
         isAdmin: false,
+        isSales: false,
         isSimpleMode: true,
         backendModeEnabled: false,
       }
@@ -250,6 +271,7 @@ describe('路由守卫逻辑', () => {
       const authState: MockAuthState = {
         isAuthenticated: true,
         isAdmin: true,
+        isSales: false,
         isSimpleMode: true,
         backendModeEnabled: false,
       }
@@ -261,6 +283,7 @@ describe('路由守卫逻辑', () => {
       const authState: MockAuthState = {
         isAuthenticated: true,
         isAdmin: true,
+        isSales: false,
         isSimpleMode: true,
         backendModeEnabled: false,
       }
@@ -276,6 +299,7 @@ describe('路由守卫逻辑', () => {
       const authState: MockAuthState = {
         isAuthenticated: true,
         isAdmin: false,
+        isSales: false,
         isSimpleMode: true,
         backendModeEnabled: false,
       }
@@ -287,6 +311,7 @@ describe('路由守卫逻辑', () => {
       const authState: MockAuthState = {
         isAuthenticated: true,
         isAdmin: false,
+        isSales: false,
         isSimpleMode: true,
         backendModeEnabled: false,
       }
@@ -300,6 +325,7 @@ describe('路由守卫逻辑', () => {
       const authState: MockAuthState = {
         isAuthenticated: false,
         isAdmin: false,
+        isSales: false,
         isSimpleMode: false,
         backendModeEnabled: true,
       }
@@ -311,6 +337,7 @@ describe('路由守卫逻辑', () => {
       const authState: MockAuthState = {
         isAuthenticated: false,
         isAdmin: false,
+        isSales: false,
         isSimpleMode: false,
         backendModeEnabled: true,
       }
@@ -322,6 +349,7 @@ describe('路由守卫逻辑', () => {
       const authState: MockAuthState = {
         isAuthenticated: false,
         isAdmin: false,
+        isSales: false,
         isSimpleMode: false,
         backendModeEnabled: true,
       }
@@ -333,6 +361,7 @@ describe('路由守卫逻辑', () => {
       const authState: MockAuthState = {
         isAuthenticated: false,
         isAdmin: false,
+        isSales: false,
         isSimpleMode: false,
         backendModeEnabled: true,
       }
@@ -344,6 +373,7 @@ describe('路由守卫逻辑', () => {
       const authState: MockAuthState = {
         isAuthenticated: true,
         isAdmin: true,
+        isSales: false,
         isSimpleMode: false,
         backendModeEnabled: true,
       }
@@ -355,6 +385,7 @@ describe('路由守卫逻辑', () => {
       const authState: MockAuthState = {
         isAuthenticated: true,
         isAdmin: true,
+        isSales: false,
         isSimpleMode: false,
         backendModeEnabled: true,
       }
@@ -366,6 +397,7 @@ describe('路由守卫逻辑', () => {
       const authState: MockAuthState = {
         isAuthenticated: true,
         isAdmin: false,
+        isSales: false,
         isSimpleMode: false,
         backendModeEnabled: true,
       }
@@ -377,6 +409,7 @@ describe('路由守卫逻辑', () => {
       const authState: MockAuthState = {
         isAuthenticated: true,
         isAdmin: false,
+        isSales: false,
         isSimpleMode: false,
         backendModeEnabled: true,
       }
@@ -388,6 +421,7 @@ describe('路由守卫逻辑', () => {
       const authState: MockAuthState = {
         isAuthenticated: true,
         isAdmin: false,
+        isSales: false,
         isSimpleMode: false,
         backendModeEnabled: true,
       }

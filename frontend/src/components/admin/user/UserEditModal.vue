@@ -2,7 +2,7 @@
   <BaseDialog
     :show="show"
     :title="t('admin.users.editUser')"
-    width="normal"
+    width="wide"
     @close="$emit('close')"
   >
     <form v-if="user" id="edit-user-form" @submit.prevent="handleUpdateUser" class="space-y-5">
@@ -37,16 +37,7 @@
         <label class="input-label">{{ t('admin.users.columns.concurrency') }}</label>
         <input v-model.number="form.concurrency" type="number" class="input" />
       </div>
-      <div class="rounded-lg border border-gray-200 p-3 dark:border-dark-700">
-        <label class="flex items-center justify-between gap-3 text-sm font-medium text-gray-700 dark:text-gray-200">
-          <span>{{ t('admin.users.sales.isSales') }}</span>
-          <input v-model="form.isSales" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
-        </label>
-        <div v-if="form.isSales" class="mt-3">
-          <label class="input-label">{{ t('admin.users.sales.commissionRate') }}</label>
-          <input v-model.number="form.salesCommissionRate" type="number" min="0.01" max="100" step="0.01" class="input" />
-        </div>
-      </div>
+      <SalesCommissionConfigFields :form="form" />
       <UserAttributeForm v-model="form.customAttributes" :user-id="user?.id" />
     </form>
     <template #footer>
@@ -70,6 +61,12 @@ import type { AdminUser, UserAttributeValuesMap } from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import UserAttributeForm from '@/components/user/UserAttributeForm.vue'
 import Icon from '@/components/icons/Icon.vue'
+import SalesCommissionConfigFields from './SalesCommissionConfigFields.vue'
+import {
+  buildSalesCommissionPayload,
+  createSalesCommissionFormState,
+  validateSalesCommissionForm
+} from './salesCommissionForm'
 
 const props = defineProps<{ show: boolean, user: AdminUser | null }>()
 const emit = defineEmits(['close', 'success'])
@@ -82,8 +79,7 @@ const form = reactive({
   username: '',
   notes: '',
   concurrency: 1,
-  isSales: false,
-  salesCommissionRate: 0,
+  ...createSalesCommissionFormState(),
   customAttributes: {} as UserAttributeValuesMap
 })
 
@@ -95,8 +91,7 @@ watch(() => props.user, (u) => {
       username: u.username || '',
       notes: u.notes || '',
       concurrency: u.concurrency,
-      isSales: !!u.is_sales,
-      salesCommissionRate: u.sales_commission_rate || 0,
+      ...createSalesCommissionFormState(u),
       customAttributes: {}
     })
     passwordCopied.value = false
@@ -123,8 +118,9 @@ const handleUpdateUser = async () => {
     appStore.showError(t('admin.users.concurrencyMin'))
     return
   }
-  if (form.isSales && (form.salesCommissionRate <= 0 || form.salesCommissionRate > 100)) {
-    appStore.showError(t('admin.users.sales.invalidRate'))
+  const validationError = validateSalesCommissionForm(form, t)
+  if (validationError) {
+    appStore.showError(validationError)
     return
   }
   submitting.value = true
@@ -134,8 +130,7 @@ const handleUpdateUser = async () => {
       username: form.username,
       notes: form.notes,
       concurrency: form.concurrency,
-      is_sales: form.isSales,
-      sales_commission_rate: form.isSales ? form.salesCommissionRate : 0
+      ...buildSalesCommissionPayload(form)
     }
     if (form.password.trim()) data.password = form.password.trim()
     await adminAPI.users.update(props.user.id, data)

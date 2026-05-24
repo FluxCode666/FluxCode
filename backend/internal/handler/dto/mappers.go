@@ -13,24 +13,47 @@ func UserFromServiceShallow(u *service.User) *User {
 		return nil
 	}
 	return &User{
-		ID:                         u.ID,
-		Email:                      u.Email,
-		Username:                   u.Username,
-		Role:                       u.Role,
-		Balance:                    u.Balance,
-		Concurrency:                u.Concurrency,
-		Status:                     u.Status,
-		AllowedGroups:              u.AllowedGroups,
-		IsSales:                    u.IsSales,
-		SalesCommissionRate:        u.SalesCommissionRate,
-		CreatedAt:                  u.CreatedAt,
-		UpdatedAt:                  u.UpdatedAt,
-		BalanceNotifyEnabled:       u.BalanceNotifyEnabled,
-		BalanceNotifyThresholdType: u.BalanceNotifyThresholdType,
-		BalanceNotifyThreshold:     u.BalanceNotifyThreshold,
-		BalanceNotifyExtraEmails:   NotifyEmailEntriesFromService(u.BalanceNotifyExtraEmails),
-		TotalRecharged:             u.TotalRecharged,
+		ID:                             u.ID,
+		Email:                          u.Email,
+		Username:                       u.Username,
+		Role:                           u.Role,
+		Balance:                        u.Balance,
+		Concurrency:                    u.Concurrency,
+		Status:                         u.Status,
+		AllowedGroups:                  u.AllowedGroups,
+		IsSales:                        u.IsSales,
+		SalesCommissionRate:            u.SalesCommissionRate,
+		SalesCommissionMode:            u.SalesCommissionMode,
+		SalesCommissionMinMonthlySales: u.SalesCommissionMinMonthlySales,
+		SalesCommissionTiers:           salesCommissionTiersFromService(u.SalesCommissionTiers),
+		CreatedAt:                      u.CreatedAt,
+		UpdatedAt:                      u.UpdatedAt,
+		BalanceNotifyEnabled:           u.BalanceNotifyEnabled,
+		BalanceNotifyThresholdType:     u.BalanceNotifyThresholdType,
+		BalanceNotifyThreshold:         u.BalanceNotifyThreshold,
+		BalanceNotifyExtraEmails:       NotifyEmailEntriesFromService(u.BalanceNotifyExtraEmails),
+		TotalRecharged:                 u.TotalRecharged,
 	}
+}
+
+func salesCommissionTiersFromService(tiers []service.SalesCommissionTier) []SalesCommissionTier {
+	if len(tiers) == 0 {
+		return nil
+	}
+	out := make([]SalesCommissionTier, 0, len(tiers))
+	for _, tier := range tiers {
+		item := SalesCommissionTier{
+			MonthSalesFromCNY: tier.MonthSalesFromCNY,
+			CommissionRate:    tier.CommissionRate,
+			SortOrder:         tier.SortOrder,
+		}
+		if tier.MonthSalesToCNY != nil {
+			to := *tier.MonthSalesToCNY
+			item.MonthSalesToCNY = &to
+		}
+		out = append(out, item)
+	}
+	return out
 }
 
 func UserFromService(u *service.User) *User {

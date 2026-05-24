@@ -35,19 +35,21 @@ type GiftBalanceRecord struct {
 
 // Referral 推广关系记录
 type Referral struct {
-	ID                  int64      `json:"id"`
-	ReferrerID          int64      `json:"referrer_id"`
-	RefereeID           int64      `json:"referee_id"`
-	ReferralCode        string     `json:"referral_code"`
-	Status              string     `json:"status"`
-	InviteeRewardAmount float64    `json:"invitee_reward_amount"`
-	InviterRewardAmount float64    `json:"inviter_reward_amount"`
-	InviteeRewardedAt   *time.Time `json:"invitee_rewarded_at"`
-	InviterRewardedAt   *time.Time `json:"inviter_rewarded_at"`
-	OngoingRewardCount  int        `json:"ongoing_reward_count"`
-	OngoingRewardTotal  float64    `json:"ongoing_reward_total"`
-	CreatedAt           time.Time  `json:"created_at"`
-	UpdatedAt           time.Time  `json:"updated_at"`
+	ID                        int64      `json:"id"`
+	ReferrerID                int64      `json:"referrer_id"`
+	RefereeID                 int64      `json:"referee_id"`
+	ReferralCode              string     `json:"referral_code"`
+	Status                    string     `json:"status"`
+	InviteeRewardAmount       float64    `json:"invitee_reward_amount"`
+	InviterRewardAmount       float64    `json:"inviter_reward_amount"`
+	InviteeRewardedAt         *time.Time `json:"invitee_rewarded_at"`
+	InviterRewardedAt         *time.Time `json:"inviter_rewarded_at"`
+	OngoingRewardCount        int        `json:"ongoing_reward_count"`
+	OngoingRewardTotal        float64    `json:"ongoing_reward_total"`
+	InviteeOngoingRewardCount int        `json:"invitee_ongoing_reward_count"`
+	InviteeOngoingRewardTotal float64    `json:"invitee_ongoing_reward_total"`
+	CreatedAt                 time.Time  `json:"created_at"`
+	UpdatedAt                 time.Time  `json:"updated_at"`
 
 	// 附加字段（列表查询时填充）
 	ReferrerEmail   string `json:"referrer_email,omitempty"`
@@ -72,9 +74,15 @@ type UserReferralConfig struct {
 	OngoingRewardValue        *float64
 	OngoingRewardMaxCount     *int
 	OngoingRewardDurationDays *int
-	Notes                     string
-	CreatedAt                 time.Time
-	UpdatedAt                 time.Time
+	// 被邀请人持续充值奖励
+	InviteeOngoingRewardEnabled      *bool
+	InviteeOngoingRewardType         *string
+	InviteeOngoingRewardValue        *float64
+	InviteeOngoingRewardMaxCount     *int
+	InviteeOngoingRewardDurationDays *int
+	Notes                            string
+	CreatedAt                        time.Time
+	UpdatedAt                        time.Time
 }
 
 // ReferralGlobalConfig 全局推广配置（从 Settings 表读取）
@@ -82,7 +90,9 @@ type UserReferralConfig struct {
 // OngoingRewardType: "fixed" | "percentage"（空字符串视为 fixed）
 // OngoingRewardValue: 当 type=fixed 时单位为美元，type=percentage 时单位为百分点（0-100）
 type ReferralGlobalConfig struct {
+	// --- 普通用户推广 ---
 	Enabled                   bool
+	InviteeRewardEnabled      bool // 是否启用被邀请人注册奖励
 	InviteeRewardAmount       float64
 	InviterRewardAmount       float64
 	MaxInvites                int
@@ -92,6 +102,23 @@ type ReferralGlobalConfig struct {
 	OngoingRewardValue        float64
 	OngoingRewardMaxCount     int
 	OngoingRewardDurationDays int
+
+	// 普通推广：被邀请人持续充值奖励
+	InviteeOngoingRewardEnabled      bool
+	InviteeOngoingRewardType         string // fixed / percentage
+	InviteeOngoingRewardValue        float64
+	InviteeOngoingRewardMaxCount     int
+	InviteeOngoingRewardDurationDays int
+
+	// --- 销售用户推广 ---
+	SalesEnabled                          bool
+	SalesInviteeRewardEnabled             bool // 是否启用销售被邀请人注册奖励
+	SalesInviteeRewardAmount              float64
+	SalesInviteeOngoingRewardEnabled      bool   // 销售被邀请人持续充值奖励开关
+	SalesInviteeOngoingRewardType         string // fixed / percentage
+	SalesInviteeOngoingRewardValue        float64
+	SalesInviteeOngoingRewardMaxCount     int
+	SalesInviteeOngoingRewardDurationDays int
 }
 
 // EffectiveReferralConfig 最终生效的推广配置（全局 + 用户覆盖合并后）
@@ -106,6 +133,12 @@ type EffectiveReferralConfig struct {
 	OngoingRewardValue        float64
 	OngoingRewardMaxCount     int
 	OngoingRewardDurationDays int
+	// 被邀请人持续充值奖励
+	InviteeOngoingRewardEnabled      bool
+	InviteeOngoingRewardType         string
+	InviteeOngoingRewardValue        float64
+	InviteeOngoingRewardMaxCount     int
+	InviteeOngoingRewardDurationDays int
 }
 
 // ReferralStats 推广统计
@@ -169,6 +202,13 @@ type GiftBalanceSummary struct {
 	TotalExpired   float64 `json:"total_expired"`
 }
 
+// GiftBalanceOverview 余额概览（Header 下拉用）
+type GiftBalanceOverview struct {
+	GiftBalanceRemaining float64    `json:"gift_balance_remaining"`
+	NextExpiryAt         *time.Time `json:"next_expiry_at"`
+	NextExpiryAmount     float64    `json:"next_expiry_amount"`
+}
+
 // AdminReferralStats 管理端推广总览统计
 type AdminReferralStats struct {
 	TotalReferrals       int     `json:"total_referrals"`
@@ -209,6 +249,8 @@ type GiftBalanceRepository interface {
 	GetTotalRemainingByUserID(ctx context.Context, userID int64) (float64, error)
 	// ExistsBySourceRef 检查指定来源+引用ID的记录是否存在（幂等性）
 	ExistsBySourceRef(ctx context.Context, source string, sourceRefID int64) (bool, error)
+	// GetNextExpiry 获取用户最近一条即将过期的赠送余额（到期时间 + 该笔剩余金额）
+	GetNextExpiry(ctx context.Context, userID int64) (*time.Time, float64, error)
 	// GetAdminStats 获取管理端全局统计
 	GetAdminStats(ctx context.Context) (*AdminReferralStats, error)
 }
@@ -233,8 +275,10 @@ type ReferralRepository interface {
 	SetInviteeRewarded(ctx context.Context, id int64) error
 	// SetInviterRewarded 标记推广人已获得首充奖励
 	SetInviterRewarded(ctx context.Context, id int64, rewardAmount float64) error
-	// IncrementOngoingReward 增加持续奖励计数和金额
+	// IncrementOngoingReward 增加推广人持续奖励计数和金额
 	IncrementOngoingReward(ctx context.Context, id int64, amount float64) error
+	// IncrementInviteeOngoingReward 增加被邀请人持续奖励计数和金额
+	IncrementInviteeOngoingReward(ctx context.Context, id int64, amount float64) error
 	// GetStatsByReferrerID 获取推广人的推广统计
 	GetStatsByReferrerID(ctx context.Context, referrerID int64) (*ReferralStats, error)
 	// ListAll 管理端列表（分页，支持筛选）

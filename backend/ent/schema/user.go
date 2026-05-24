@@ -96,6 +96,12 @@ func (User) Fields() []ent.Field {
 			SchemaType(map[string]string{dialect.Postgres: "decimal(8,4)"}).
 			Validate(validateSalesCommissionRate).
 			Default(0),
+		field.String("sales_commission_mode").
+			MaxLen(16).
+			Default("fixed"),
+		field.Float("sales_commission_min_monthly_sales").
+			SchemaType(map[string]string{dialect.Postgres: "decimal(20,2)"}).
+			Default(0),
 
 		// 推广奖励字段
 		field.String("referral_code").

@@ -42,7 +42,7 @@ func (s stubAccountListAdminService) ListAccountsAdvanced(
 
 func newAccountListTestRouter(adminSvc service.AdminService) *gin.Engine {
 	gin.SetMode(gin.TestMode)
-	h := NewAccountHandler(adminSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	h := NewAccountHandler(adminSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	r := gin.New()
 	r.GET("/api/v1/admin/accounts", h.List)
 	return r

@@ -94,6 +94,36 @@ func CommissionTotalCny(v float64) predicate.SalesCommissionRecord {
 	return predicate.SalesCommissionRecord(sql.FieldEQ(FieldCommissionTotalCny, v))
 }
 
+// CommissionEventAt applies equality check predicate on the "commission_event_at" field. It's identical to CommissionEventAtEQ.
+func CommissionEventAt(v time.Time) predicate.SalesCommissionRecord {
+	return predicate.SalesCommissionRecord(sql.FieldEQ(FieldCommissionEventAt, v))
+}
+
+// CommissionMonth applies equality check predicate on the "commission_month" field. It's identical to CommissionMonthEQ.
+func CommissionMonth(v time.Time) predicate.SalesCommissionRecord {
+	return predicate.SalesCommissionRecord(sql.FieldEQ(FieldCommissionMonth, v))
+}
+
+// SnapshotID applies equality check predicate on the "snapshot_id" field. It's identical to SnapshotIDEQ.
+func SnapshotID(v int64) predicate.SalesCommissionRecord {
+	return predicate.SalesCommissionRecord(sql.FieldEQ(FieldSnapshotID, v))
+}
+
+// CommissionMode applies equality check predicate on the "commission_mode" field. It's identical to CommissionModeEQ.
+func CommissionMode(v string) predicate.SalesCommissionRecord {
+	return predicate.SalesCommissionRecord(sql.FieldEQ(FieldCommissionMode, v))
+}
+
+// MonthlySalesBeforeCny applies equality check predicate on the "monthly_sales_before_cny" field. It's identical to MonthlySalesBeforeCnyEQ.
+func MonthlySalesBeforeCny(v float64) predicate.SalesCommissionRecord {
+	return predicate.SalesCommissionRecord(sql.FieldEQ(FieldMonthlySalesBeforeCny, v))
+}
+
+// MonthlySalesAfterCny applies equality check predicate on the "monthly_sales_after_cny" field. It's identical to MonthlySalesAfterCnyEQ.
+func MonthlySalesAfterCny(v float64) predicate.SalesCommissionRecord {
+	return predicate.SalesCommissionRecord(sql.FieldEQ(FieldMonthlySalesAfterCny, v))
+}
+
 // CreditedUsedAmount applies equality check predicate on the "credited_used_amount" field. It's identical to CreditedUsedAmountEQ.
 func CreditedUsedAmount(v float64) predicate.SalesCommissionRecord {
 	return predicate.SalesCommissionRecord(sql.FieldEQ(FieldCreditedUsedAmount, v))
@@ -289,6 +319,16 @@ func PaymentOrderIDLTE(v int64) predicate.SalesCommissionRecord {
 	return predicate.SalesCommissionRecord(sql.FieldLTE(FieldPaymentOrderID, v))
 }
 
+// PaymentOrderIDIsNil applies the IsNil predicate on the "payment_order_id" field.
+func PaymentOrderIDIsNil() predicate.SalesCommissionRecord {
+	return predicate.SalesCommissionRecord(sql.FieldIsNull(FieldPaymentOrderID))
+}
+
+// PaymentOrderIDNotNil applies the NotNil predicate on the "payment_order_id" field.
+func PaymentOrderIDNotNil() predicate.SalesCommissionRecord {
+	return predicate.SalesCommissionRecord(sql.FieldNotNull(FieldPaymentOrderID))
+}
+
 // OrderPayAmountCnyEQ applies the EQ predicate on the "order_pay_amount_cny" field.
 func OrderPayAmountCnyEQ(v float64) predicate.SalesCommissionRecord {
 	return predicate.SalesCommissionRecord(sql.FieldEQ(FieldOrderPayAmountCny, v))
@@ -447,6 +487,291 @@ func CommissionTotalCnyLT(v float64) predicate.SalesCommissionRecord {
 // CommissionTotalCnyLTE applies the LTE predicate on the "commission_total_cny" field.
 func CommissionTotalCnyLTE(v float64) predicate.SalesCommissionRecord {
 	return predicate.SalesCommissionRecord(sql.FieldLTE(FieldCommissionTotalCny, v))
+}
+
+// CommissionEventAtEQ applies the EQ predicate on the "commission_event_at" field.
+func CommissionEventAtEQ(v time.Time) predicate.SalesCommissionRecord {
+	return predicate.SalesCommissionRecord(sql.FieldEQ(FieldCommissionEventAt, v))
+}
+
+// CommissionEventAtNEQ applies the NEQ predicate on the "commission_event_at" field.
+func CommissionEventAtNEQ(v time.Time) predicate.SalesCommissionRecord {
+	return predicate.SalesCommissionRecord(sql.FieldNEQ(FieldCommissionEventAt, v))
+}
+
+// CommissionEventAtIn applies the In predicate on the "commission_event_at" field.
+func CommissionEventAtIn(vs ...time.Time) predicate.SalesCommissionRecord {
+	return predicate.SalesCommissionRecord(sql.FieldIn(FieldCommissionEventAt, vs...))
+}
+
+// CommissionEventAtNotIn applies the NotIn predicate on the "commission_event_at" field.
+func CommissionEventAtNotIn(vs ...time.Time) predicate.SalesCommissionRecord {
+	return predicate.SalesCommissionRecord(sql.FieldNotIn(FieldCommissionEventAt, vs...))
+}
+
+// CommissionEventAtGT applies the GT predicate on the "commission_event_at" field.
+func CommissionEventAtGT(v time.Time) predicate.SalesCommissionRecord {
+	return predicate.SalesCommissionRecord(sql.FieldGT(FieldCommissionEventAt, v))
+}
+
+// CommissionEventAtGTE applies the GTE predicate on the "commission_event_at" field.
+func CommissionEventAtGTE(v time.Time) predicate.SalesCommissionRecord {
+	return predicate.SalesCommissionRecord(sql.FieldGTE(FieldCommissionEventAt, v))
+}
+
+// CommissionEventAtLT applies the LT predicate on the "commission_event_at" field.
+func CommissionEventAtLT(v time.Time) predicate.SalesCommissionRecord {
+	return predicate.SalesCommissionRecord(sql.FieldLT(FieldCommissionEventAt, v))
+}
+
+// CommissionEventAtLTE applies the LTE predicate on the "commission_event_at" field.
+func CommissionEventAtLTE(v time.Time) predicate.SalesCommissionRecord {
+	return predicate.SalesCommissionRecord(sql.FieldLTE(FieldCommissionEventAt, v))
+}
+
+// CommissionEventAtIsNil applies the IsNil predicate on the "commission_event_at" field.
+func CommissionEventAtIsNil() predicate.SalesCommissionRecord {
+	return predicate.SalesCommissionRecord(sql.FieldIsNull(FieldCommissionEventAt))
+}
+
+// CommissionEventAtNotNil applies the NotNil predicate on the "commission_event_at" field.
+func CommissionEventAtNotNil() predicate.SalesCommissionRecord {
+	return predicate.SalesCommissionRecord(sql.FieldNotNull(FieldCommissionEventAt))
+}
+
+// CommissionMonthEQ applies the EQ predicate on the "commission_month" field.
+func CommissionMonthEQ(v time.Time) predicate.SalesCommissionRecord {
+	return predicate.SalesCommissionRecord(sql.FieldEQ(FieldCommissionMonth, v))
+}
+
+// CommissionMonthNEQ applies the NEQ predicate on the "commission_month" field.
+func CommissionMonthNEQ(v time.Time) predicate.SalesCommissionRecord {
+	return predicate.SalesCommissionRecord(sql.FieldNEQ(FieldCommissionMonth, v))
+}
+
+// CommissionMonthIn applies the In predicate on the "commission_month" field.
+func CommissionMonthIn(vs ...time.Time) predicate.SalesCommissionRecord {
+	return predicate.SalesCommissionRecord(sql.FieldIn(FieldCommissionMonth, vs...))
+}
+
+// CommissionMonthNotIn applies the NotIn predicate on the "commission_month" field.
+func CommissionMonthNotIn(vs ...time.Time) predicate.SalesCommissionRecord {
+	return predicate.SalesCommissionRecord(sql.FieldNotIn(FieldCommissionMonth, vs...))
+}
+
+// CommissionMonthGT applies the GT predicate on the "commission_month" field.
+func CommissionMonthGT(v time.Time) predicate.SalesCommissionRecord {
+	return predicate.SalesCommissionRecord(sql.FieldGT(FieldCommissionMonth, v))
+}
+
+// CommissionMonthGTE applies the GTE predicate on the "commission_month" field.
+func CommissionMonthGTE(v time.Time) predicate.SalesCommissionRecord {
+	return predicate.SalesCommissionRecord(sql.FieldGTE(FieldCommissionMonth, v))
+}
+
+// CommissionMonthLT applies the LT predicate on the "commission_month" field.
+func CommissionMonthLT(v time.Time) predicate.SalesCommissionRecord {
+	return predicate.SalesCommissionRecord(sql.FieldLT(FieldCommissionMonth, v))
+}
+
+// CommissionMonthLTE applies the LTE predicate on the "commission_month" field.
+func CommissionMonthLTE(v time.Time) predicate.SalesCommissionRecord {
+	return predicate.SalesCommissionRecord(sql.FieldLTE(FieldCommissionMonth, v))
+}
+
+// SnapshotIDEQ applies the EQ predicate on the "snapshot_id" field.
+func SnapshotIDEQ(v int64) predicate.SalesCommissionRecord {
+	return predicate.SalesCommissionRecord(sql.FieldEQ(FieldSnapshotID, v))
+}
+
+// SnapshotIDNEQ applies the NEQ predicate on the "snapshot_id" field.
+func SnapshotIDNEQ(v int64) predicate.SalesCommissionRecord {
+	return predicate.SalesCommissionRecord(sql.FieldNEQ(FieldSnapshotID, v))
+}
+
+// SnapshotIDIn applies the In predicate on the "snapshot_id" field.
+func SnapshotIDIn(vs ...int64) predicate.SalesCommissionRecord {
+	return predicate.SalesCommissionRecord(sql.FieldIn(FieldSnapshotID, vs...))
+}
+
+// SnapshotIDNotIn applies the NotIn predicate on the "snapshot_id" field.
+func SnapshotIDNotIn(vs ...int64) predicate.SalesCommissionRecord {
+	return predicate.SalesCommissionRecord(sql.FieldNotIn(FieldSnapshotID, vs...))
+}
+
+// SnapshotIDGT applies the GT predicate on the "snapshot_id" field.
+func SnapshotIDGT(v int64) predicate.SalesCommissionRecord {
+	return predicate.SalesCommissionRecord(sql.FieldGT(FieldSnapshotID, v))
+}
+
+// SnapshotIDGTE applies the GTE predicate on the "snapshot_id" field.
+func SnapshotIDGTE(v int64) predicate.SalesCommissionRecord {
+	return predicate.SalesCommissionRecord(sql.FieldGTE(FieldSnapshotID, v))
+}
+
+// SnapshotIDLT applies the LT predicate on the "snapshot_id" field.
+func SnapshotIDLT(v int64) predicate.SalesCommissionRecord {
+	return predicate.SalesCommissionRecord(sql.FieldLT(FieldSnapshotID, v))
+}
+
+// SnapshotIDLTE applies the LTE predicate on the "snapshot_id" field.
+func SnapshotIDLTE(v int64) predicate.SalesCommissionRecord {
+	return predicate.SalesCommissionRecord(sql.FieldLTE(FieldSnapshotID, v))
+}
+
+// SnapshotIDIsNil applies the IsNil predicate on the "snapshot_id" field.
+func SnapshotIDIsNil() predicate.SalesCommissionRecord {
+	return predicate.SalesCommissionRecord(sql.FieldIsNull(FieldSnapshotID))
+}
+
+// SnapshotIDNotNil applies the NotNil predicate on the "snapshot_id" field.
+func SnapshotIDNotNil() predicate.SalesCommissionRecord {
+	return predicate.SalesCommissionRecord(sql.FieldNotNull(FieldSnapshotID))
+}
+
+// CommissionModeEQ applies the EQ predicate on the "commission_mode" field.
+func CommissionModeEQ(v string) predicate.SalesCommissionRecord {
+	return predicate.SalesCommissionRecord(sql.FieldEQ(FieldCommissionMode, v))
+}
+
+// CommissionModeNEQ applies the NEQ predicate on the "commission_mode" field.
+func CommissionModeNEQ(v string) predicate.SalesCommissionRecord {
+	return predicate.SalesCommissionRecord(sql.FieldNEQ(FieldCommissionMode, v))
+}
+
+// CommissionModeIn applies the In predicate on the "commission_mode" field.
+func CommissionModeIn(vs ...string) predicate.SalesCommissionRecord {
+	return predicate.SalesCommissionRecord(sql.FieldIn(FieldCommissionMode, vs...))
+}
+
+// CommissionModeNotIn applies the NotIn predicate on the "commission_mode" field.
+func CommissionModeNotIn(vs ...string) predicate.SalesCommissionRecord {
+	return predicate.SalesCommissionRecord(sql.FieldNotIn(FieldCommissionMode, vs...))
+}
+
+// CommissionModeGT applies the GT predicate on the "commission_mode" field.
+func CommissionModeGT(v string) predicate.SalesCommissionRecord {
+	return predicate.SalesCommissionRecord(sql.FieldGT(FieldCommissionMode, v))
+}
+
+// CommissionModeGTE applies the GTE predicate on the "commission_mode" field.
+func CommissionModeGTE(v string) predicate.SalesCommissionRecord {
+	return predicate.SalesCommissionRecord(sql.FieldGTE(FieldCommissionMode, v))
+}
+
+// CommissionModeLT applies the LT predicate on the "commission_mode" field.
+func CommissionModeLT(v string) predicate.SalesCommissionRecord {
+	return predicate.SalesCommissionRecord(sql.FieldLT(FieldCommissionMode, v))
+}
+
+// CommissionModeLTE applies the LTE predicate on the "commission_mode" field.
+func CommissionModeLTE(v string) predicate.SalesCommissionRecord {
+	return predicate.SalesCommissionRecord(sql.FieldLTE(FieldCommissionMode, v))
+}
+
+// CommissionModeContains applies the Contains predicate on the "commission_mode" field.
+func CommissionModeContains(v string) predicate.SalesCommissionRecord {
+	return predicate.SalesCommissionRecord(sql.FieldContains(FieldCommissionMode, v))
+}
+
+// CommissionModeHasPrefix applies the HasPrefix predicate on the "commission_mode" field.
+func CommissionModeHasPrefix(v string) predicate.SalesCommissionRecord {
+	return predicate.SalesCommissionRecord(sql.FieldHasPrefix(FieldCommissionMode, v))
+}
+
+// CommissionModeHasSuffix applies the HasSuffix predicate on the "commission_mode" field.
+func CommissionModeHasSuffix(v string) predicate.SalesCommissionRecord {
+	return predicate.SalesCommissionRecord(sql.FieldHasSuffix(FieldCommissionMode, v))
+}
+
+// CommissionModeEqualFold applies the EqualFold predicate on the "commission_mode" field.
+func CommissionModeEqualFold(v string) predicate.SalesCommissionRecord {
+	return predicate.SalesCommissionRecord(sql.FieldEqualFold(FieldCommissionMode, v))
+}
+
+// CommissionModeContainsFold applies the ContainsFold predicate on the "commission_mode" field.
+func CommissionModeContainsFold(v string) predicate.SalesCommissionRecord {
+	return predicate.SalesCommissionRecord(sql.FieldContainsFold(FieldCommissionMode, v))
+}
+
+// MonthlySalesBeforeCnyEQ applies the EQ predicate on the "monthly_sales_before_cny" field.
+func MonthlySalesBeforeCnyEQ(v float64) predicate.SalesCommissionRecord {
+	return predicate.SalesCommissionRecord(sql.FieldEQ(FieldMonthlySalesBeforeCny, v))
+}
+
+// MonthlySalesBeforeCnyNEQ applies the NEQ predicate on the "monthly_sales_before_cny" field.
+func MonthlySalesBeforeCnyNEQ(v float64) predicate.SalesCommissionRecord {
+	return predicate.SalesCommissionRecord(sql.FieldNEQ(FieldMonthlySalesBeforeCny, v))
+}
+
+// MonthlySalesBeforeCnyIn applies the In predicate on the "monthly_sales_before_cny" field.
+func MonthlySalesBeforeCnyIn(vs ...float64) predicate.SalesCommissionRecord {
+	return predicate.SalesCommissionRecord(sql.FieldIn(FieldMonthlySalesBeforeCny, vs...))
+}
+
+// MonthlySalesBeforeCnyNotIn applies the NotIn predicate on the "monthly_sales_before_cny" field.
+func MonthlySalesBeforeCnyNotIn(vs ...float64) predicate.SalesCommissionRecord {
+	return predicate.SalesCommissionRecord(sql.FieldNotIn(FieldMonthlySalesBeforeCny, vs...))
+}
+
+// MonthlySalesBeforeCnyGT applies the GT predicate on the "monthly_sales_before_cny" field.
+func MonthlySalesBeforeCnyGT(v float64) predicate.SalesCommissionRecord {
+	return predicate.SalesCommissionRecord(sql.FieldGT(FieldMonthlySalesBeforeCny, v))
+}
+
+// MonthlySalesBeforeCnyGTE applies the GTE predicate on the "monthly_sales_before_cny" field.
+func MonthlySalesBeforeCnyGTE(v float64) predicate.SalesCommissionRecord {
+	return predicate.SalesCommissionRecord(sql.FieldGTE(FieldMonthlySalesBeforeCny, v))
+}
+
+// MonthlySalesBeforeCnyLT applies the LT predicate on the "monthly_sales_before_cny" field.
+func MonthlySalesBeforeCnyLT(v float64) predicate.SalesCommissionRecord {
+	return predicate.SalesCommissionRecord(sql.FieldLT(FieldMonthlySalesBeforeCny, v))
+}
+
+// MonthlySalesBeforeCnyLTE applies the LTE predicate on the "monthly_sales_before_cny" field.
+func MonthlySalesBeforeCnyLTE(v float64) predicate.SalesCommissionRecord {
+	return predicate.SalesCommissionRecord(sql.FieldLTE(FieldMonthlySalesBeforeCny, v))
+}
+
+// MonthlySalesAfterCnyEQ applies the EQ predicate on the "monthly_sales_after_cny" field.
+func MonthlySalesAfterCnyEQ(v float64) predicate.SalesCommissionRecord {
+	return predicate.SalesCommissionRecord(sql.FieldEQ(FieldMonthlySalesAfterCny, v))
+}
+
+// MonthlySalesAfterCnyNEQ applies the NEQ predicate on the "monthly_sales_after_cny" field.
+func MonthlySalesAfterCnyNEQ(v float64) predicate.SalesCommissionRecord {
+	return predicate.SalesCommissionRecord(sql.FieldNEQ(FieldMonthlySalesAfterCny, v))
+}
+
+// MonthlySalesAfterCnyIn applies the In predicate on the "monthly_sales_after_cny" field.
+func MonthlySalesAfterCnyIn(vs ...float64) predicate.SalesCommissionRecord {
+	return predicate.SalesCommissionRecord(sql.FieldIn(FieldMonthlySalesAfterCny, vs...))
+}
+
+// MonthlySalesAfterCnyNotIn applies the NotIn predicate on the "monthly_sales_after_cny" field.
+func MonthlySalesAfterCnyNotIn(vs ...float64) predicate.SalesCommissionRecord {
+	return predicate.SalesCommissionRecord(sql.FieldNotIn(FieldMonthlySalesAfterCny, vs...))
+}
+
+// MonthlySalesAfterCnyGT applies the GT predicate on the "monthly_sales_after_cny" field.
+func MonthlySalesAfterCnyGT(v float64) predicate.SalesCommissionRecord {
+	return predicate.SalesCommissionRecord(sql.FieldGT(FieldMonthlySalesAfterCny, v))
+}
+
+// MonthlySalesAfterCnyGTE applies the GTE predicate on the "monthly_sales_after_cny" field.
+func MonthlySalesAfterCnyGTE(v float64) predicate.SalesCommissionRecord {
+	return predicate.SalesCommissionRecord(sql.FieldGTE(FieldMonthlySalesAfterCny, v))
+}
+
+// MonthlySalesAfterCnyLT applies the LT predicate on the "monthly_sales_after_cny" field.
+func MonthlySalesAfterCnyLT(v float64) predicate.SalesCommissionRecord {
+	return predicate.SalesCommissionRecord(sql.FieldLT(FieldMonthlySalesAfterCny, v))
+}
+
+// MonthlySalesAfterCnyLTE applies the LTE predicate on the "monthly_sales_after_cny" field.
+func MonthlySalesAfterCnyLTE(v float64) predicate.SalesCommissionRecord {
+	return predicate.SalesCommissionRecord(sql.FieldLTE(FieldMonthlySalesAfterCny, v))
 }
 
 // CreditedUsedAmountEQ applies the EQ predicate on the "credited_used_amount" field.

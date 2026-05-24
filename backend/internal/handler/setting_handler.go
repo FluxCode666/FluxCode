@@ -68,5 +68,6 @@ func (h *SettingHandler) GetPublicSettings(c *gin.Context) {
 		BalanceLowNotifyThreshold:        settings.BalanceLowNotifyThreshold,
 		BalanceLowNotifyRechargeURL:      settings.BalanceLowNotifyRechargeURL,
 		ReferralEnabled:                  settings.ReferralEnabled,
+		ReferralSalesEnabled:             settings.ReferralSalesEnabled,
 	})
 }

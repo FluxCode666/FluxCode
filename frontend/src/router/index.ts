@@ -212,6 +212,7 @@ const routes: RouteRecordRaw[] = [
     meta: {
       requiresAuth: true,
       requiresAdmin: false,
+      requiresSales: true,
       title: 'Sales Commissions',
       titleKey: 'nav.salesCommissions'
     }
@@ -676,6 +677,7 @@ router.beforeEach((to, _from, next) => {
   // Check if route requires authentication
   const requiresAuth = to.meta.requiresAuth !== false // Default to true
   const requiresAdmin = to.meta.requiresAdmin === true
+  const requiresSales = to.meta.requiresSales === true
 
   // If route doesn't require auth, allow access
   if (!requiresAuth) {
@@ -717,6 +719,11 @@ router.beforeEach((to, _from, next) => {
   if (requiresAdmin && !authStore.isAdmin) {
     // User is authenticated but not admin, redirect to user dashboard
     next('/dashboard')
+    return
+  }
+
+  if (requiresSales && !authStore.user?.is_sales) {
+    next(authStore.isAdmin ? '/admin/sales-commissions' : '/dashboard')
     return
   }
 

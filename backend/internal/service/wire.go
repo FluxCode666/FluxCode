@@ -729,6 +729,7 @@ func ProvidePaymentService(
 	)
 	paymentService.SetReferralService(referralService)
 	paymentService.SetSalesCommissionService(salesCommissionService)
+	referralService.SetPaymentService(paymentService)
 	return paymentService
 }
 

@@ -1001,17 +1001,49 @@ var (
 			},
 		},
 	}
+	// SalesCommissionMonthlySnapshotsColumns holds the columns for the "sales_commission_monthly_snapshots" table.
+	SalesCommissionMonthlySnapshotsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "sales_user_id", Type: field.TypeInt64},
+		{Name: "commission_month", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "date"}},
+		{Name: "timezone", Type: field.TypeString, Size: 64, Default: "Asia/Shanghai"},
+		{Name: "commission_mode", Type: field.TypeString, Size: 16},
+		{Name: "fixed_commission_rate", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(8,4)"}},
+		{Name: "min_monthly_sales_cny", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(20,2)"}},
+		{Name: "tiers_json", Type: field.TypeJSON, SchemaType: map[string]string{"postgres": "jsonb"}},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+	}
+	// SalesCommissionMonthlySnapshotsTable holds the schema information for the "sales_commission_monthly_snapshots" table.
+	SalesCommissionMonthlySnapshotsTable = &schema.Table{
+		Name:       "sales_commission_monthly_snapshots",
+		Columns:    SalesCommissionMonthlySnapshotsColumns,
+		PrimaryKey: []*schema.Column{SalesCommissionMonthlySnapshotsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "uq_sales_commission_monthly_snapshots",
+				Unique:  true,
+				Columns: []*schema.Column{SalesCommissionMonthlySnapshotsColumns[1], SalesCommissionMonthlySnapshotsColumns[2]},
+			},
+		},
+	}
 	// SalesCommissionRecordsColumns holds the columns for the "sales_commission_records" table.
 	SalesCommissionRecordsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt64, Increment: true},
 		{Name: "sales_user_id", Type: field.TypeInt64},
 		{Name: "referee_user_id", Type: field.TypeInt64},
 		{Name: "referral_id", Type: field.TypeInt64},
-		{Name: "payment_order_id", Type: field.TypeInt64},
+		{Name: "payment_order_id", Type: field.TypeInt64, Nullable: true},
 		{Name: "order_pay_amount_cny", Type: field.TypeFloat64, SchemaType: map[string]string{"postgres": "decimal(20,2)"}},
 		{Name: "order_credited_amount", Type: field.TypeFloat64, SchemaType: map[string]string{"postgres": "decimal(20,8)"}},
 		{Name: "commission_rate", Type: field.TypeFloat64, SchemaType: map[string]string{"postgres": "decimal(8,4)"}},
 		{Name: "commission_total_cny", Type: field.TypeFloat64, SchemaType: map[string]string{"postgres": "decimal(20,2)"}},
+		{Name: "commission_event_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "commission_month", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "date"}},
+		{Name: "snapshot_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "commission_mode", Type: field.TypeString, Size: 16, Default: "fixed"},
+		{Name: "monthly_sales_before_cny", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(20,2)"}},
+		{Name: "monthly_sales_after_cny", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(20,2)"}},
 		{Name: "credited_used_amount", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(20,8)"}},
 		{Name: "unlocked_cny", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(20,2)"}},
 		{Name: "settled_cny", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(20,2)"}},
@@ -1034,7 +1066,7 @@ var (
 			{
 				Name:    "salescommissionrecord_sales_user_id_created_at",
 				Unique:  false,
-				Columns: []*schema.Column{SalesCommissionRecordsColumns[1], SalesCommissionRecordsColumns[14]},
+				Columns: []*schema.Column{SalesCommissionRecordsColumns[1], SalesCommissionRecordsColumns[20]},
 			},
 			{
 				Name:    "salescommissionrecord_referee_user_id_id",
@@ -1044,7 +1076,12 @@ var (
 			{
 				Name:    "salescommissionrecord_status",
 				Unique:  false,
-				Columns: []*schema.Column{SalesCommissionRecordsColumns[12]},
+				Columns: []*schema.Column{SalesCommissionRecordsColumns[18]},
+			},
+			{
+				Name:    "idx_sales_commission_records_month",
+				Unique:  false,
+				Columns: []*schema.Column{SalesCommissionRecordsColumns[1], SalesCommissionRecordsColumns[10], SalesCommissionRecordsColumns[9], SalesCommissionRecordsColumns[0]},
 			},
 		},
 	}
@@ -1088,6 +1125,30 @@ var (
 				Name:    "salescommissionsettlementitem_commission_record_id",
 				Unique:  false,
 				Columns: []*schema.Column{SalesCommissionSettlementItemsColumns[2]},
+			},
+		},
+	}
+	// SalesCommissionTiersColumns holds the columns for the "sales_commission_tiers" table.
+	SalesCommissionTiersColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "sales_user_id", Type: field.TypeInt64},
+		{Name: "month_sales_from_cny", Type: field.TypeFloat64, SchemaType: map[string]string{"postgres": "decimal(20,2)"}},
+		{Name: "month_sales_to_cny", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "decimal(20,2)"}},
+		{Name: "commission_rate", Type: field.TypeFloat64, SchemaType: map[string]string{"postgres": "decimal(8,4)"}},
+		{Name: "sort_order", Type: field.TypeInt},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+	}
+	// SalesCommissionTiersTable holds the schema information for the "sales_commission_tiers" table.
+	SalesCommissionTiersTable = &schema.Table{
+		Name:       "sales_commission_tiers",
+		Columns:    SalesCommissionTiersColumns,
+		PrimaryKey: []*schema.Column{SalesCommissionTiersColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "idx_sales_commission_tiers_sales_user",
+				Unique:  false,
+				Columns: []*schema.Column{SalesCommissionTiersColumns[1], SalesCommissionTiersColumns[5], SalesCommissionTiersColumns[0]},
 			},
 		},
 	}
@@ -1435,6 +1496,8 @@ var (
 		{Name: "total_recharged", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(20,8)"}},
 		{Name: "is_sales", Type: field.TypeBool, Default: false},
 		{Name: "sales_commission_rate", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(8,4)"}},
+		{Name: "sales_commission_mode", Type: field.TypeString, Size: 16, Default: "fixed"},
+		{Name: "sales_commission_min_monthly_sales", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(20,2)"}},
 		{Name: "referral_code", Type: field.TypeString, Size: 20, Default: ""},
 		{Name: "referred_by", Type: field.TypeInt64, Nullable: true},
 	}
@@ -1716,9 +1779,11 @@ var (
 		ProxiesTable,
 		RedeemCodesTable,
 		ReferralsTable,
+		SalesCommissionMonthlySnapshotsTable,
 		SalesCommissionRecordsTable,
 		SalesCommissionSettlementsTable,
 		SalesCommissionSettlementItemsTable,
+		SalesCommissionTiersTable,
 		SecuritySecretsTable,
 		SettingsTable,
 		SubscriptionGrantsTable,
@@ -1810,6 +1875,9 @@ func init() {
 	ReferralsTable.Annotation = &entsql.Annotation{
 		Table: "referrals",
 	}
+	SalesCommissionMonthlySnapshotsTable.Annotation = &entsql.Annotation{
+		Table: "sales_commission_monthly_snapshots",
+	}
 	SalesCommissionRecordsTable.Annotation = &entsql.Annotation{
 		Table: "sales_commission_records",
 	}
@@ -1818,6 +1886,9 @@ func init() {
 	}
 	SalesCommissionSettlementItemsTable.Annotation = &entsql.Annotation{
 		Table: "sales_commission_settlement_items",
+	}
+	SalesCommissionTiersTable.Annotation = &entsql.Annotation{
+		Table: "sales_commission_tiers",
 	}
 	SecuritySecretsTable.Annotation = &entsql.Annotation{
 		Table: "security_secrets",

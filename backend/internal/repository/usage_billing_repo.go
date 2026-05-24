@@ -439,6 +439,22 @@ func unlockSalesCommissionFIFO(ctx context.Context, tx *sql.Tx, refereeUserID in
 		}
 		newUsed := alreadyUsed.Add(allocated).Round(8)
 		totalCommission := decimal.NewFromFloat(rec.commissionTotalCNY)
+
+		// spec §6.5：commission_total=0 表示该记录所在月还未达门槛。
+		// 此时只推进 credited_used_amount（保留比例信息以便跨门槛 reprice 时
+		// 按已用比例补算 unlocked），不动 unlocked / status。
+		if !totalCommission.IsPositive() {
+			if _, err := tx.ExecContext(ctx, `
+				UPDATE sales_commission_records
+				SET credited_used_amount = $1, updated_at = NOW()
+				WHERE id = $2
+			`, newUsed.InexactFloat64(), rec.id); err != nil {
+				return err
+			}
+			remaining = remaining.Sub(allocated)
+			continue
+		}
+
 		unlockDelta := allocated.Div(orderCredited).Mul(totalCommission).Round(2)
 		newUnlocked := decimal.NewFromFloat(rec.unlockedCNY).Add(unlockDelta).Round(2)
 		if newUsed.GreaterThanOrEqual(orderCredited) {

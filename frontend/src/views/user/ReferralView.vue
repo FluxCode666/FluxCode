@@ -204,7 +204,7 @@
                         invite.inviter_reward_amount.toFixed(2) }}</td>
                       <td class="py-3 text-right text-gray-700 dark:text-dark-200">
                         {{ invite.ongoing_reward_count > 0
-                          ? `${invite.ongoing_reward_count} ($${invite.ongoing_reward_total.toFixed(2)})`
+                          ? `${invite.ongoing_reward_count}笔 ($${invite.ongoing_reward_total.toFixed(2)})`
                           : '-' }}
                       </td>
                     </tr>
@@ -226,6 +226,8 @@
                       </th>
                       <th class="pb-3 pr-4 text-left font-medium text-gray-500 dark:text-dark-400">{{
                         t('referral.source') }}</th>
+                      <th class="pb-3 pr-4 text-left font-medium text-gray-500 dark:text-dark-400">{{
+                        t('referral.giftNote') }}</th>
                       <th class="pb-3 pr-4 text-right font-medium text-gray-500 dark:text-dark-400">{{
                         t('referral.amount') }}</th>
                       <th class="pb-3 pr-4 text-right font-medium text-gray-500 dark:text-dark-400">{{
@@ -238,6 +240,7 @@
                     <tr v-for="record in giftRecords" :key="record.id">
                       <td class="py-3 pr-4 text-gray-700 dark:text-dark-200">{{ formatDate(record.created_at) }}</td>
                       <td class="py-3 pr-4 text-gray-700 dark:text-dark-200">{{ getSourceLabel(record.source) }}</td>
+                      <td class="py-3 pr-4 text-gray-500 dark:text-dark-400 text-xs max-w-[200px] truncate" :title="record.note">{{ record.note || '-' }}</td>
                       <td class="py-3 pr-4 text-right text-gray-700 dark:text-dark-200">${{ record.amount.toFixed(2) }}
                       </td>
                       <td class="py-3 pr-4 text-right font-medium"

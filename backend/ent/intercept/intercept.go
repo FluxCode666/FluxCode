@@ -29,9 +29,11 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/proxy"
 	"github.com/Wei-Shaw/sub2api/ent/redeemcode"
 	"github.com/Wei-Shaw/sub2api/ent/referral"
+	"github.com/Wei-Shaw/sub2api/ent/salescommissionmonthlysnapshot"
 	"github.com/Wei-Shaw/sub2api/ent/salescommissionrecord"
 	"github.com/Wei-Shaw/sub2api/ent/salescommissionsettlement"
 	"github.com/Wei-Shaw/sub2api/ent/salescommissionsettlementitem"
+	"github.com/Wei-Shaw/sub2api/ent/salescommissiontier"
 	"github.com/Wei-Shaw/sub2api/ent/securitysecret"
 	"github.com/Wei-Shaw/sub2api/ent/setting"
 	"github.com/Wei-Shaw/sub2api/ent/subscriptiongrant"
@@ -643,6 +645,33 @@ func (f TraverseReferral) Traverse(ctx context.Context, q ent.Query) error {
 	return fmt.Errorf("unexpected query type %T. expect *ent.ReferralQuery", q)
 }
 
+// The SalesCommissionMonthlySnapshotFunc type is an adapter to allow the use of ordinary function as a Querier.
+type SalesCommissionMonthlySnapshotFunc func(context.Context, *ent.SalesCommissionMonthlySnapshotQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f SalesCommissionMonthlySnapshotFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.SalesCommissionMonthlySnapshotQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.SalesCommissionMonthlySnapshotQuery", q)
+}
+
+// The TraverseSalesCommissionMonthlySnapshot type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseSalesCommissionMonthlySnapshot func(context.Context, *ent.SalesCommissionMonthlySnapshotQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseSalesCommissionMonthlySnapshot) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseSalesCommissionMonthlySnapshot) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.SalesCommissionMonthlySnapshotQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.SalesCommissionMonthlySnapshotQuery", q)
+}
+
 // The SalesCommissionRecordFunc type is an adapter to allow the use of ordinary function as a Querier.
 type SalesCommissionRecordFunc func(context.Context, *ent.SalesCommissionRecordQuery) (ent.Value, error)
 
@@ -722,6 +751,33 @@ func (f TraverseSalesCommissionSettlementItem) Traverse(ctx context.Context, q e
 		return f(ctx, q)
 	}
 	return fmt.Errorf("unexpected query type %T. expect *ent.SalesCommissionSettlementItemQuery", q)
+}
+
+// The SalesCommissionTierFunc type is an adapter to allow the use of ordinary function as a Querier.
+type SalesCommissionTierFunc func(context.Context, *ent.SalesCommissionTierQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f SalesCommissionTierFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.SalesCommissionTierQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.SalesCommissionTierQuery", q)
+}
+
+// The TraverseSalesCommissionTier type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseSalesCommissionTier func(context.Context, *ent.SalesCommissionTierQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseSalesCommissionTier) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseSalesCommissionTier) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.SalesCommissionTierQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.SalesCommissionTierQuery", q)
 }
 
 // The SecuritySecretFunc type is an adapter to allow the use of ordinary function as a Querier.
@@ -1118,12 +1174,16 @@ func NewQuery(q ent.Query) (Query, error) {
 		return &query[*ent.RedeemCodeQuery, predicate.RedeemCode, redeemcode.OrderOption]{typ: ent.TypeRedeemCode, tq: q}, nil
 	case *ent.ReferralQuery:
 		return &query[*ent.ReferralQuery, predicate.Referral, referral.OrderOption]{typ: ent.TypeReferral, tq: q}, nil
+	case *ent.SalesCommissionMonthlySnapshotQuery:
+		return &query[*ent.SalesCommissionMonthlySnapshotQuery, predicate.SalesCommissionMonthlySnapshot, salescommissionmonthlysnapshot.OrderOption]{typ: ent.TypeSalesCommissionMonthlySnapshot, tq: q}, nil
 	case *ent.SalesCommissionRecordQuery:
 		return &query[*ent.SalesCommissionRecordQuery, predicate.SalesCommissionRecord, salescommissionrecord.OrderOption]{typ: ent.TypeSalesCommissionRecord, tq: q}, nil
 	case *ent.SalesCommissionSettlementQuery:
 		return &query[*ent.SalesCommissionSettlementQuery, predicate.SalesCommissionSettlement, salescommissionsettlement.OrderOption]{typ: ent.TypeSalesCommissionSettlement, tq: q}, nil
 	case *ent.SalesCommissionSettlementItemQuery:
 		return &query[*ent.SalesCommissionSettlementItemQuery, predicate.SalesCommissionSettlementItem, salescommissionsettlementitem.OrderOption]{typ: ent.TypeSalesCommissionSettlementItem, tq: q}, nil
+	case *ent.SalesCommissionTierQuery:
+		return &query[*ent.SalesCommissionTierQuery, predicate.SalesCommissionTier, salescommissiontier.OrderOption]{typ: ent.TypeSalesCommissionTier, tq: q}, nil
 	case *ent.SecuritySecretQuery:
 		return &query[*ent.SecuritySecretQuery, predicate.SecuritySecret, securitysecret.OrderOption]{typ: ent.TypeSecuritySecret, tq: q}, nil
 	case *ent.SettingQuery:

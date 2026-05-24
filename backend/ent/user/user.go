@@ -57,6 +57,10 @@ const (
 	FieldIsSales = "is_sales"
 	// FieldSalesCommissionRate holds the string denoting the sales_commission_rate field in the database.
 	FieldSalesCommissionRate = "sales_commission_rate"
+	// FieldSalesCommissionMode holds the string denoting the sales_commission_mode field in the database.
+	FieldSalesCommissionMode = "sales_commission_mode"
+	// FieldSalesCommissionMinMonthlySales holds the string denoting the sales_commission_min_monthly_sales field in the database.
+	FieldSalesCommissionMinMonthlySales = "sales_commission_min_monthly_sales"
 	// FieldReferralCode holds the string denoting the referral_code field in the database.
 	FieldReferralCode = "referral_code"
 	// FieldReferredBy holds the string denoting the referred_by field in the database.
@@ -186,6 +190,8 @@ var Columns = []string{
 	FieldTotalRecharged,
 	FieldIsSales,
 	FieldSalesCommissionRate,
+	FieldSalesCommissionMode,
+	FieldSalesCommissionMinMonthlySales,
 	FieldReferralCode,
 	FieldReferredBy,
 }
@@ -258,6 +264,12 @@ var (
 	DefaultSalesCommissionRate float64
 	// SalesCommissionRateValidator is a validator for the "sales_commission_rate" field. It is called by the builders before save.
 	SalesCommissionRateValidator func(float64) error
+	// DefaultSalesCommissionMode holds the default value on creation for the "sales_commission_mode" field.
+	DefaultSalesCommissionMode string
+	// SalesCommissionModeValidator is a validator for the "sales_commission_mode" field. It is called by the builders before save.
+	SalesCommissionModeValidator func(string) error
+	// DefaultSalesCommissionMinMonthlySales holds the default value on creation for the "sales_commission_min_monthly_sales" field.
+	DefaultSalesCommissionMinMonthlySales float64
 	// DefaultReferralCode holds the default value on creation for the "referral_code" field.
 	DefaultReferralCode string
 	// ReferralCodeValidator is a validator for the "referral_code" field. It is called by the builders before save.
@@ -375,6 +387,16 @@ func ByIsSales(opts ...sql.OrderTermOption) OrderOption {
 // BySalesCommissionRate orders the results by the sales_commission_rate field.
 func BySalesCommissionRate(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldSalesCommissionRate, opts...).ToFunc()
+}
+
+// BySalesCommissionMode orders the results by the sales_commission_mode field.
+func BySalesCommissionMode(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldSalesCommissionMode, opts...).ToFunc()
+}
+
+// BySalesCommissionMinMonthlySales orders the results by the sales_commission_min_monthly_sales field.
+func BySalesCommissionMinMonthlySales(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldSalesCommissionMinMonthlySales, opts...).ToFunc()
 }
 
 // ByReferralCode orders the results by the referral_code field.

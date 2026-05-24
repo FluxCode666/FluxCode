@@ -160,6 +160,7 @@ const UsageTableStub = {
         v-for="column in columns"
         :key="column.key"
         class="column-key"
+        :data-class="column.class || ''"
       >{{ column.key }}</span>
     </div>
   `,
@@ -317,6 +318,44 @@ describe('admin UsageView distribution metric toggles', () => {
     const columnKeys = wrapper.findAll('.column-key').map((node) => node.text())
     expect(columnKeys).toContain('trace_id')
     expect(columnKeys).toContain('request_id')
+  })
+
+  it('applies wrapped width classes to long text usage columns', async () => {
+    const wrapper = mount(UsageView, {
+      global: {
+        stubs: {
+          AppLayout: AppLayoutStub,
+          UsageStatsCards: true,
+          UsageFilters: UsageFiltersStub,
+          UsageTable: UsageTableStub,
+          UsageExportProgress: true,
+          UsageCleanupDialog: true,
+          UserBalanceHistoryModal: true,
+          Pagination: true,
+          Select: true,
+          DateRangePicker: true,
+          Icon: true,
+          TokenUsageTrend: true,
+          ModelDistributionChart: ModelDistributionChartStub,
+          GroupDistributionChart: GroupDistributionChartStub,
+        },
+      },
+    })
+
+    vi.advanceTimersByTime(120)
+    await flushPromises()
+
+    const columns = wrapper.findAll('.column-key')
+    const traceColumn = columns.find((node) => node.text() === 'trace_id')
+    const requestColumn = columns.find((node) => node.text() === 'request_id')
+    const modelColumn = columns.find((node) => node.text() === 'model')
+
+    expect(traceColumn?.attributes('data-class')).toContain('whitespace-normal')
+    expect(traceColumn?.attributes('data-class')).toContain('min-w-[15rem]')
+    expect(requestColumn?.attributes('data-class')).toContain('whitespace-normal')
+    expect(requestColumn?.attributes('data-class')).toContain('min-w-[15rem]')
+    expect(modelColumn?.attributes('data-class')).toContain('whitespace-normal')
+    expect(modelColumn?.attributes('data-class')).toContain('min-w-[16rem]')
   })
 
   it('exports trace id before upstream request id in usage rows', async () => {

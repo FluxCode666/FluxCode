@@ -139,6 +139,23 @@ func (r *giftBalanceRepository) GetTotalRemainingByUserID(ctx context.Context, u
 	return total, err
 }
 
+func (r *giftBalanceRepository) GetNextExpiry(ctx context.Context, userID int64) (*time.Time, float64, error) {
+	var expiresAt time.Time
+	var remaining float64
+	err := r.db.QueryRowContext(ctx,
+		`SELECT expires_at, remaining FROM gift_balance_records
+		 WHERE user_id = $1 AND remaining > 0 AND expires_at IS NOT NULL AND expires_at > NOW()
+		 ORDER BY expires_at ASC LIMIT 1`,
+		userID).Scan(&expiresAt, &remaining)
+	if err == sql.ErrNoRows {
+		return nil, 0, nil
+	}
+	if err != nil {
+		return nil, 0, err
+	}
+	return &expiresAt, remaining, nil
+}
+
 func (r *giftBalanceRepository) ExistsBySourceRef(ctx context.Context, source string, sourceRefID int64) (bool, error) {
 	var exists bool
 	err := r.db.QueryRowContext(ctx,

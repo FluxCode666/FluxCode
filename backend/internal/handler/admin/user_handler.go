@@ -22,6 +22,12 @@ type UserWithConcurrency struct {
 type UserHandler struct {
 	adminService       service.AdminService
 	concurrencyService *service.ConcurrencyService
+	paymentService     *service.PaymentService
+}
+
+// SetPaymentService 注入支付服务（避免循环依赖）
+func (h *UserHandler) SetPaymentService(svc *service.PaymentService) {
+	h.paymentService = svc
 }
 
 // NewUserHandler creates a new admin user handler
@@ -34,28 +40,36 @@ func NewUserHandler(adminService service.AdminService, concurrencyService *servi
 
 // CreateUserRequest represents admin create user request
 type CreateUserRequest struct {
-	Email         string  `json:"email" binding:"required,email"`
-	Password      string  `json:"password" binding:"required,min=6"`
-	Username      string  `json:"username"`
-	Notes         string  `json:"notes"`
-	Balance       float64 `json:"balance"`
-	Concurrency   int     `json:"concurrency"`
-	AllowedGroups []int64 `json:"allowed_groups"`
+	Email                          string                        `json:"email" binding:"required,email"`
+	Password                       string                        `json:"password" binding:"required,min=6"`
+	Username                       string                        `json:"username"`
+	Notes                          string                        `json:"notes"`
+	Balance                        float64                       `json:"balance"`
+	Concurrency                    int                           `json:"concurrency"`
+	AllowedGroups                  []int64                       `json:"allowed_groups"`
+	IsSales                        bool                          `json:"is_sales"`
+	SalesCommissionRate            float64                       `json:"sales_commission_rate"`
+	SalesCommissionMode            string                        `json:"sales_commission_mode"`
+	SalesCommissionMinMonthlySales float64                       `json:"sales_commission_min_monthly_sales"`
+	SalesCommissionTiers           []service.SalesCommissionTier `json:"sales_commission_tiers"`
 }
 
 // UpdateUserRequest represents admin update user request
 // 使用指针类型来区分"未提供"和"设置为0"
 type UpdateUserRequest struct {
-	Email               string   `json:"email" binding:"omitempty,email"`
-	Password            string   `json:"password" binding:"omitempty,min=6"`
-	Username            *string  `json:"username"`
-	Notes               *string  `json:"notes"`
-	Balance             *float64 `json:"balance"`
-	Concurrency         *int     `json:"concurrency"`
-	Status              string   `json:"status" binding:"omitempty,oneof=active disabled"`
-	AllowedGroups       *[]int64 `json:"allowed_groups"`
-	IsSales             *bool    `json:"is_sales"`
-	SalesCommissionRate *float64 `json:"sales_commission_rate"`
+	Email                          string                         `json:"email" binding:"omitempty,email"`
+	Password                       string                         `json:"password" binding:"omitempty,min=6"`
+	Username                       *string                        `json:"username"`
+	Notes                          *string                        `json:"notes"`
+	Balance                        *float64                       `json:"balance"`
+	Concurrency                    *int                           `json:"concurrency"`
+	Status                         string                         `json:"status" binding:"omitempty,oneof=active disabled"`
+	AllowedGroups                  *[]int64                       `json:"allowed_groups"`
+	IsSales                        *bool                          `json:"is_sales"`
+	SalesCommissionRate            *float64                       `json:"sales_commission_rate"`
+	SalesCommissionMode            *string                        `json:"sales_commission_mode"`
+	SalesCommissionMinMonthlySales *float64                       `json:"sales_commission_min_monthly_sales"`
+	SalesCommissionTiers           *[]service.SalesCommissionTier `json:"sales_commission_tiers"`
 	// GroupRates 用户专属分组倍率配置
 	// map[groupID]*rate，nil 表示删除该分组的专属倍率
 	GroupRates map[int64]*float64 `json:"group_rates"`
@@ -92,6 +106,10 @@ func (h *UserHandler) List(c *gin.Context) {
 		Search:     search,
 		GroupName:  strings.TrimSpace(c.Query("group_name")),
 		Attributes: parseAttributeFilters(c),
+	}
+	if raw, ok := c.GetQuery("is_sales"); ok {
+		isSales := parseBoolQueryWithDefault(raw, false)
+		filters.IsSales = &isSales
 	}
 	sortBy := c.DefaultQuery("sort_by", "created_at")
 	sortOrder := c.DefaultQuery("sort_order", "desc")
@@ -184,13 +202,18 @@ func (h *UserHandler) Create(c *gin.Context) {
 	}
 
 	user, err := h.adminService.CreateUser(c.Request.Context(), &service.CreateUserInput{
-		Email:         req.Email,
-		Password:      req.Password,
-		Username:      req.Username,
-		Notes:         req.Notes,
-		Balance:       req.Balance,
-		Concurrency:   req.Concurrency,
-		AllowedGroups: req.AllowedGroups,
+		Email:                          req.Email,
+		Password:                       req.Password,
+		Username:                       req.Username,
+		Notes:                          req.Notes,
+		Balance:                        req.Balance,
+		Concurrency:                    req.Concurrency,
+		AllowedGroups:                  req.AllowedGroups,
+		IsSales:                        req.IsSales,
+		SalesCommissionRate:            req.SalesCommissionRate,
+		SalesCommissionMode:            req.SalesCommissionMode,
+		SalesCommissionMinMonthlySales: req.SalesCommissionMinMonthlySales,
+		SalesCommissionTiers:           req.SalesCommissionTiers,
 	})
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -217,17 +240,20 @@ func (h *UserHandler) Update(c *gin.Context) {
 
 	// 使用指针类型直接传递，nil 表示未提供该字段
 	user, err := h.adminService.UpdateUser(c.Request.Context(), userID, &service.UpdateUserInput{
-		Email:               req.Email,
-		Password:            req.Password,
-		Username:            req.Username,
-		Notes:               req.Notes,
-		Balance:             req.Balance,
-		Concurrency:         req.Concurrency,
-		Status:              req.Status,
-		AllowedGroups:       req.AllowedGroups,
-		IsSales:             req.IsSales,
-		SalesCommissionRate: req.SalesCommissionRate,
-		GroupRates:          req.GroupRates,
+		Email:                          req.Email,
+		Password:                       req.Password,
+		Username:                       req.Username,
+		Notes:                          req.Notes,
+		Balance:                        req.Balance,
+		Concurrency:                    req.Concurrency,
+		Status:                         req.Status,
+		AllowedGroups:                  req.AllowedGroups,
+		IsSales:                        req.IsSales,
+		SalesCommissionRate:            req.SalesCommissionRate,
+		SalesCommissionMode:            req.SalesCommissionMode,
+		SalesCommissionMinMonthlySales: req.SalesCommissionMinMonthlySales,
+		SalesCommissionTiers:           req.SalesCommissionTiers,
+		GroupRates:                     req.GroupRates,
 	})
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -403,4 +429,25 @@ func (h *UserHandler) ReplaceGroup(c *gin.Context) {
 	response.Success(c, gin.H{
 		"migrated_keys": result.MigratedKeys,
 	})
+}
+
+// GetUserAuditLogs returns audit logs for a user's payment orders.
+// GET /api/v1/admin/users/:id/audit-logs
+func (h *UserHandler) GetUserAuditLogs(c *gin.Context) {
+	if h.paymentService == nil {
+		response.BadRequest(c, "payment service not available")
+		return
+	}
+	userID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid user ID")
+		return
+	}
+	page, pageSize := response.ParsePagination(c)
+	entries, total, err := h.paymentService.GetUserAuditLogs(c.Request.Context(), userID, page, pageSize)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Paginated(c, entries, int64(total), page, pageSize)
 }

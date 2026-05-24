@@ -84,7 +84,8 @@ func TestPaymentBalanceFulfillment_SkipCompletedCreatesSalesCommission(t *testin
 	require.NoError(t, err)
 	require.False(t, paymentSvc.redeemService.redeemRepo.(*paymentFulfillmentRedeemRepoStub).used, "skip-completed path must not redeem again")
 	require.Len(t, commissionRepo.created, 1)
-	require.Equal(t, order.ID, commissionRepo.created[0].PaymentOrderID)
+	require.NotNil(t, commissionRepo.created[0].PaymentOrderID)
+	require.Equal(t, order.ID, *commissionRepo.created[0].PaymentOrderID)
 	require.Equal(t, user.ID, commissionRepo.created[0].RefereeUserID)
 
 	updated, err := entClient.PaymentOrder.Get(ctx, order.ID)
@@ -94,6 +95,74 @@ func TestPaymentBalanceFulfillment_SkipCompletedCreatesSalesCommission(t *testin
 	var auditCount int
 	require.NoError(t, sqlDB.QueryRowContext(ctx, "SELECT COUNT(*) FROM payment_audit_logs WHERE action = 'RECHARGE_SUCCESS'").Scan(&auditCount))
 	require.Equal(t, 1, auditCount)
+}
+
+func TestPaymentBalanceFulfillment_SkipCompletedCreatesReferralOngoingReward(t *testing.T) {
+	ctx := context.Background()
+	entClient, _ := newPaymentFulfillmentEntClient(t)
+
+	user, err := entClient.User.Create().
+		SetEmail("skip-completed-referral@example.com").
+		SetPasswordHash("hash").
+		SetUsername("skip-completed-referral").
+		Save(ctx)
+	require.NoError(t, err)
+
+	order, err := entClient.PaymentOrder.Create().
+		SetUserID(user.ID).
+		SetUserEmail(user.Email).
+		SetUserName(user.Username).
+		SetAmount(100).
+		SetPayAmount(50).
+		SetRechargeCode("skip-completed-referral-code").
+		SetOutTradeNo("out-skip-completed-referral").
+		SetPaymentType(payment.TypeAlipay).
+		SetPaymentTradeNo("trade-skip-completed-referral").
+		SetOrderType(payment.OrderTypeBalance).
+		SetStatus(OrderStatusRecharging).
+		SetExpiresAt(time.Now().Add(time.Hour)).
+		SetClientIP("127.0.0.1").
+		SetSrcHost("example.com").
+		Save(ctx)
+	require.NoError(t, err)
+
+	referralSvc, giftRepo, referralRepo := newReferralRewardTestService(&User{ID: 10, IsSales: false}, &Referral{
+		ID:         78,
+		ReferrerID: 10,
+		RefereeID:  user.ID,
+		Status:     ReferralStatusCompleted,
+		CreatedAt:  time.Now(),
+	})
+	paymentSvc := &PaymentService{
+		entClient: entClient,
+		redeemService: NewRedeemService(
+			&paymentFulfillmentRedeemRepoStub{
+				code: &RedeemCode{
+					ID:     556,
+					Code:   "skip-completed-referral-code",
+					Type:   RedeemTypeBalance,
+					Value:  100,
+					Status: StatusUsed,
+				},
+			},
+			nil,
+			nil,
+			nil,
+			nil,
+			entClient,
+			nil,
+		),
+		referralService: referralSvc,
+	}
+
+	err = paymentSvc.doBalance(ctx, order)
+
+	require.NoError(t, err)
+	require.Len(t, giftRepo.created, 1)
+	require.Equal(t, GiftBalanceSourceReferralOngoing, giftRepo.created[0].Source)
+	require.NotNil(t, giftRepo.created[0].SourceRefID)
+	require.Equal(t, order.ID, *giftRepo.created[0].SourceRefID)
+	require.Equal(t, []float64{5}, referralRepo.ongoingRewardIncrements)
 }
 
 func TestPaymentBalanceFulfillment_CompletedOrderRetriesSalesCommission(t *testing.T) {
@@ -148,8 +217,114 @@ func TestPaymentBalanceFulfillment_CompletedOrderRetriesSalesCommission(t *testi
 
 	require.NoError(t, err)
 	require.Len(t, commissionRepo.created, 1)
-	require.Equal(t, order.ID, commissionRepo.created[0].PaymentOrderID)
+	require.NotNil(t, commissionRepo.created[0].PaymentOrderID)
+	require.Equal(t, order.ID, *commissionRepo.created[0].PaymentOrderID)
 	require.Equal(t, user.ID, commissionRepo.created[0].RefereeUserID)
+}
+
+func TestPaymentBalanceFulfillment_CompletedOrderRetriesReferralOngoingReward(t *testing.T) {
+	ctx := context.Background()
+	entClient, _ := newPaymentFulfillmentEntClient(t)
+
+	user, err := entClient.User.Create().
+		SetEmail("referral-buyer@example.com").
+		SetPasswordHash("hash").
+		SetUsername("referral-buyer").
+		Save(ctx)
+	require.NoError(t, err)
+
+	order, err := entClient.PaymentOrder.Create().
+		SetUserID(user.ID).
+		SetUserEmail(user.Email).
+		SetUserName(user.Username).
+		SetAmount(100).
+		SetPayAmount(100).
+		SetRechargeCode("completed-referral-retry-code").
+		SetOutTradeNo("out-completed-referral-retry").
+		SetPaymentType(payment.TypeAlipay).
+		SetPaymentTradeNo("trade-completed-referral-retry").
+		SetOrderType(payment.OrderTypeBalance).
+		SetStatus(OrderStatusCompleted).
+		SetExpiresAt(time.Now().Add(time.Hour)).
+		SetCompletedAt(time.Now()).
+		SetClientIP("127.0.0.1").
+		SetSrcHost("example.com").
+		Save(ctx)
+	require.NoError(t, err)
+
+	referralSvc, giftRepo, referralRepo := newReferralRewardTestService(&User{ID: 10, IsSales: false}, &Referral{
+		ID:         79,
+		ReferrerID: 10,
+		RefereeID:  user.ID,
+		Status:     ReferralStatusCompleted,
+		CreatedAt:  time.Now(),
+	})
+	paymentSvc := &PaymentService{
+		entClient:              entClient,
+		referralService:        referralSvc,
+		salesCommissionService: nil,
+	}
+
+	err = paymentSvc.ExecuteBalanceFulfillment(ctx, order.ID)
+
+	require.NoError(t, err)
+	require.Len(t, giftRepo.created, 1)
+	require.Equal(t, GiftBalanceSourceReferralOngoing, giftRepo.created[0].Source)
+	require.NotNil(t, giftRepo.created[0].SourceRefID)
+	require.Equal(t, order.ID, *giftRepo.created[0].SourceRefID)
+	require.Equal(t, []float64{5}, referralRepo.ongoingRewardIncrements)
+}
+
+func TestPaymentService_RetryFulfillment_AllowsCompletedBalanceRewardReconciliation(t *testing.T) {
+	ctx := context.Background()
+	entClient, sqlDB := newPaymentFulfillmentEntClient(t)
+
+	user, err := entClient.User.Create().
+		SetEmail("retry-completed-buyer@example.com").
+		SetPasswordHash("hash").
+		SetUsername("retry-completed-buyer").
+		Save(ctx)
+	require.NoError(t, err)
+
+	order, err := entClient.PaymentOrder.Create().
+		SetUserID(user.ID).
+		SetUserEmail(user.Email).
+		SetUserName(user.Username).
+		SetAmount(100).
+		SetPayAmount(100).
+		SetRechargeCode("retry-completed-reward-code").
+		SetOutTradeNo("out-retry-completed-reward").
+		SetPaymentType(payment.TypeAlipay).
+		SetPaymentTradeNo("trade-retry-completed-reward").
+		SetOrderType(payment.OrderTypeBalance).
+		SetStatus(OrderStatusCompleted).
+		SetExpiresAt(time.Now().Add(time.Hour)).
+		SetCompletedAt(time.Now()).
+		SetClientIP("127.0.0.1").
+		SetSrcHost("example.com").
+		Save(ctx)
+	require.NoError(t, err)
+
+	referralSvc, giftRepo, _ := newReferralRewardTestService(&User{ID: 10, IsSales: false}, &Referral{
+		ID:         80,
+		ReferrerID: 10,
+		RefereeID:  user.ID,
+		Status:     ReferralStatusCompleted,
+		CreatedAt:  time.Now(),
+	})
+	paymentSvc := &PaymentService{
+		entClient:       entClient,
+		referralService: referralSvc,
+	}
+
+	err = paymentSvc.RetryFulfillment(ctx, order.ID)
+
+	require.NoError(t, err)
+	require.Len(t, giftRepo.created, 1)
+
+	var auditCount int
+	require.NoError(t, sqlDB.QueryRowContext(ctx, "SELECT COUNT(*) FROM payment_audit_logs WHERE action = 'RECHARGE_RETRY'").Scan(&auditCount))
+	require.Equal(t, 1, auditCount)
 }
 
 func newPaymentFulfillmentEntClient(t *testing.T) (*dbent.Client, *sql.DB) {

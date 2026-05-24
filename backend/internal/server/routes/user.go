@@ -60,6 +60,7 @@ func RegisterUserRoutes(
 				referral.GET("/stats", h.Referral.GetMyStats)
 				referral.GET("/gift-balance", h.Referral.GetMyGiftBalanceRecords)
 				referral.GET("/gift-balance/remaining", h.Referral.GetGiftBalanceRemaining)
+				referral.GET("/gift-balance/overview", h.Referral.GetGiftBalanceOverview)
 				referral.GET("/gift-balance/summary", h.Referral.GetMyGiftBalanceSummary)
 			}
 		}
@@ -69,6 +70,7 @@ func RegisterUserRoutes(
 			{
 				salesCommissions.GET("/summary", h.SalesCommission.GetSummary)
 				salesCommissions.GET("/records", h.SalesCommission.ListRecords)
+				salesCommissions.GET("/monthly-progress", h.SalesCommission.GetMonthlyProgress)
 			}
 		}
 

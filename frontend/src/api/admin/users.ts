@@ -4,7 +4,14 @@
  */
 
 import { apiClient } from '../client'
-import type { AdminUser, UpdateUserRequest, PaginatedResponse, ApiKey } from '@/types'
+import type {
+  AdminUser,
+  UpdateUserRequest,
+  PaginatedResponse,
+  ApiKey,
+  SalesCommissionMode,
+  SalesCommissionTier
+} from '@/types'
 
 /**
  * List all users with pagination
@@ -20,6 +27,7 @@ export async function list(
   filters?: {
     status?: 'active' | 'disabled'
     role?: 'admin' | 'user'
+    is_sales?: boolean
     search?: string
     group_name?: string         // fuzzy filter by allowed group name
     attributes?: Record<number, string>  // attributeId -> value
@@ -37,6 +45,7 @@ export async function list(
     page_size: pageSize,
     status: filters?.status,
     role: filters?.role,
+    is_sales: filters?.is_sales,
     search: filters?.search,
     group_name: filters?.group_name,
     include_subscriptions: filters?.include_subscriptions,
@@ -77,9 +86,16 @@ export async function getById(id: number): Promise<AdminUser> {
 export async function create(userData: {
   email: string
   password: string
+  username?: string
+  notes?: string
   balance?: number
   concurrency?: number
   allowed_groups?: number[] | null
+  is_sales?: boolean
+  sales_commission_rate?: number
+  sales_commission_mode?: SalesCommissionMode
+  sales_commission_min_monthly_sales?: number
+  sales_commission_tiers?: SalesCommissionTier[]
 }): Promise<AdminUser> {
   const { data } = await apiClient.post<AdminUser>('/admin/users', userData)
   return data
@@ -248,6 +264,48 @@ export async function replaceGroup(
   return data
 }
 
+/**
+ * Audit log entry for a payment order
+ */
+export interface AuditLogDetail {
+  id: number
+  order_id: string
+  action: string
+  detail: string
+  operator: string
+  created_at: string
+}
+
+/**
+ * User audit log entry (order + audit logs)
+ */
+export interface UserAuditLogEntry {
+  order_id: number
+  order_type: string
+  payment_type: string
+  amount: number
+  pay_amount: number
+  status: string
+  created_at: string
+  completed_at?: string
+  audit_logs: AuditLogDetail[]
+}
+
+/**
+ * Get user's audit logs (payment orders + audit logs)
+ */
+export async function getUserAuditLogs(
+  id: number,
+  page: number = 1,
+  pageSize: number = 15
+): Promise<PaginatedResponse<UserAuditLogEntry>> {
+  const { data } = await apiClient.get<PaginatedResponse<UserAuditLogEntry>>(
+    `/admin/users/${id}/audit-logs`,
+    { params: { page, page_size: pageSize } }
+  )
+  return data
+}
+
 export const usersAPI = {
   list,
   getById,
@@ -260,6 +318,7 @@ export const usersAPI = {
   getUserApiKeys,
   getUserUsageStats,
   getUserBalanceHistory,
+  getUserAuditLogs,
   replaceGroup
 }
 

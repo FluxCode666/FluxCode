@@ -57,10 +57,14 @@
               <AmountInput
                 v-model="amount"
                 :amounts="[10, 20, 50, 100, 200, 500, 1000, 2000, 5000]"
-                :min="globalMinAmount"
-                :max="globalMaxAmount"
+                :min="effectiveRechargeMin"
+                :max="effectiveRechargeMax"
+                :invalid="Boolean(amountError)"
               />
-              <p v-if="amountError" class="mt-2 text-xs text-amber-600 dark:text-amber-300">{{ amountError }}</p>
+              <p v-if="rechargeAmountHint" class="mt-3 text-xs text-gray-500 dark:text-gray-400">{{ rechargeAmountHint }}</p>
+              <div v-if="amountError" class="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-sm font-medium text-red-700 dark:border-red-800/60 dark:bg-red-950/20 dark:text-red-300">
+                {{ amountError }}
+              </div>
             </div>
             <div v-if="enabledMethods.length >= 1" class="card p-6">
               <PaymentMethodSelector
@@ -427,6 +431,7 @@ import { paymentAPI } from '@/api/payment'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import { isMobileDevice } from '@/utils/device'
 import type { SubscriptionPlan, CheckoutInfoResponse, OrderType, PromotionPreview, AvailablePromotion } from '@/types/payment'
+import { amountFitsMethodLimit, resolveRechargeMaxAmount, resolveRechargeMinAmount, validateRechargeAmount } from './paymentAmountValidation'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import AmountInput from '@/components/payment/AmountInput.vue'
 import PaymentMethodSelector from '@/components/payment/PaymentMethodSelector.vue'
@@ -540,6 +545,7 @@ async function refreshAfterPayment() {
 // All checkout data from single API call
 const checkout = ref<CheckoutInfoResponse>({
   methods: {}, global_min: 0, global_max: 0,
+  config_min_amount: 0, config_max_amount: 0,
   plans: [], balance_disabled: false, balance_recharge_multiplier: 1, recharge_fee_rate: 0, help_text: '', help_image_url: '', stripe_publishable_key: '',
 })
 
@@ -565,22 +571,54 @@ const planGridClass = computed(() => {
   return 'grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3'
 })
 
-// Check if an amount fits a method's [min, max]. 0 = no limit.
-function amountFitsMethod(amt: number, methodType: string): boolean {
-  if (amt <= 0) return true
-  const ml = checkout.value.methods[methodType]
-  if (!ml) return false
-  if (ml.single_min > 0 && amt < ml.single_min) return false
-  if (ml.single_max > 0 && amt > ml.single_max) return false
-  return true
-}
-
 // Global range for AmountInput (union of all methods, precomputed by backend)
 const globalMinAmount = computed(() => checkout.value.global_min)
 const globalMaxAmount = computed(() => checkout.value.global_max)
+const configMinAmount = computed(() => checkout.value.config_min_amount || 0)
+const configMaxAmount = computed(() => checkout.value.config_max_amount || 0)
+const effectiveRechargeMin = computed(() => resolveRechargeMinAmount(configMinAmount.value, globalMinAmount.value))
+const effectiveRechargeMax = computed(() => resolveRechargeMaxAmount(configMaxAmount.value, globalMaxAmount.value))
 
 // Selected method's limits (for validation and error messages)
 const selectedLimit = computed(() => checkout.value.methods[selectedMethod.value])
+
+const formatRechargeAmount = (value: number): string => `¥${value.toFixed(2)}`
+
+const amountFitsRechargeConfig = (amt: number): boolean => {
+  if (amt <= 0) return true
+  if (effectiveRechargeMin.value > 0 && amt < effectiveRechargeMin.value) return false
+  if (effectiveRechargeMax.value > 0 && amt > effectiveRechargeMax.value) return false
+  return true
+}
+
+const amountFitsAnyMethod = (amt: number): boolean =>
+  enabledMethods.value.some((type) => amountFitsMethodLimit(amt, checkout.value.methods[type]))
+
+const rechargeAmountValidation = computed(() => validateRechargeAmount({
+  amount: validAmount.value,
+  configMin: configMinAmount.value,
+  configMax: configMaxAmount.value,
+  methodGlobalMin: globalMinAmount.value,
+  methodGlobalMax: globalMaxAmount.value,
+  methods: checkout.value.methods,
+  selectedMethod: selectedMethod.value,
+}))
+
+const rechargeAmountHint = computed(() => {
+  if (effectiveRechargeMin.value > 0 && effectiveRechargeMax.value > 0) {
+    return t('payment.rechargeAmountRangeHint', {
+      min: formatRechargeAmount(effectiveRechargeMin.value),
+      max: formatRechargeAmount(effectiveRechargeMax.value),
+    })
+  }
+  if (effectiveRechargeMax.value > 0) {
+    return t('payment.rechargeAmountMaxHint', { max: formatRechargeAmount(effectiveRechargeMax.value) })
+  }
+  if (effectiveRechargeMin.value > 0) {
+    return t('payment.rechargeAmountMinHint', { min: formatRechargeAmount(effectiveRechargeMin.value) })
+  }
+  return ''
+})
 
 const methodOptions = computed<PaymentMethodOption[]>(() =>
   enabledMethods.value.map((type) => {
@@ -588,7 +626,7 @@ const methodOptions = computed<PaymentMethodOption[]>(() =>
     return {
       type,
       fee_rate: ml?.fee_rate ?? 0,
-      available: ml?.available !== false && amountFitsMethod(validAmount.value, type),
+      available: ml?.available !== false && amountFitsRechargeConfig(validAmount.value) && amountFitsMethodLimit(validAmount.value, ml),
     }
   })
 )
@@ -607,22 +645,40 @@ const totalAmount = computed(() =>
 
 const amountError = computed(() => {
   if (validAmount.value <= 0) return ''
-  // No method can handle this amount
-  if (!enabledMethods.value.some((m) => amountFitsMethod(validAmount.value, m))) {
-    return t('payment.amountNoMethod')
+  switch (rechargeAmountValidation.value.code) {
+    case 'config_min':
+      return t('payment.amountBelowRechargeMin', {
+        amount: formatRechargeAmount(validAmount.value),
+        min: formatRechargeAmount(rechargeAmountValidation.value.min ?? effectiveRechargeMin.value),
+      })
+    case 'config_max':
+      return t('payment.amountExceedsRechargeMax', {
+        amount: formatRechargeAmount(validAmount.value),
+        max: formatRechargeAmount(rechargeAmountValidation.value.max ?? effectiveRechargeMax.value),
+      })
+    case 'method_min':
+    case 'selected_method_min':
+      return t('payment.methodAmountTooLow', {
+        min: formatRechargeAmount(rechargeAmountValidation.value.min ?? globalMinAmount.value),
+      })
+    case 'method_max':
+    case 'selected_method_max':
+      return t('payment.methodAmountTooHigh', {
+        max: formatRechargeAmount(rechargeAmountValidation.value.max ?? globalMaxAmount.value),
+      })
+    case 'no_method':
+      return t('payment.amountNoMethod')
+    default:
+      return ''
   }
-  // Selected method can't handle this amount (but others can)
-  const ml = selectedLimit.value
-  if (ml) {
-    if (ml.single_min > 0 && validAmount.value < ml.single_min) return t('payment.amountTooLow', { min: ml.single_min })
-    if (ml.single_max > 0 && validAmount.value > ml.single_max) return t('payment.amountTooHigh', { max: ml.single_max })
-  }
-  return ''
 })
 
 const canSubmit = computed(() =>
   validAmount.value > 0
-    && amountFitsMethod(validAmount.value, selectedMethod.value)
+    && Boolean(selectedMethod.value)
+    && rechargeAmountValidation.value.code === 'none'
+    && amountFitsRechargeConfig(validAmount.value)
+    && amountFitsMethodLimit(validAmount.value, selectedLimit.value)
     && selectedLimit.value?.available !== false
 )
 
@@ -634,7 +690,7 @@ const subMethodOptions = computed<PaymentMethodOption[]>(() => {
     return {
       type,
       fee_rate: ml?.fee_rate ?? 0,
-      available: ml?.available !== false && amountFitsMethod(planPrice, type),
+      available: ml?.available !== false && amountFitsMethodLimit(planPrice, ml),
     }
   })
 })
@@ -678,15 +734,17 @@ const subButtonAmount = computed(() => {
 
 const canSubmitSubscription = computed(() =>
   selectedPlan.value !== null
-    && amountFitsMethod(selectedPlan.value.price, selectedMethod.value)
+    && Boolean(selectedMethod.value)
+    && amountFitsMethodLimit(selectedPlan.value.price, selectedLimit.value)
     && selectedLimit.value?.available !== false
     && (!needsModeChoice.value || subscriptionMode.value !== '')
 )
 
 // Auto-switch to first available method when current selection can't handle the amount
 watch(() => [validAmount.value, selectedMethod.value] as const, ([amt, method]) => {
-  if (amt <= 0 || amountFitsMethod(amt, method)) return
-  const available = enabledMethods.value.find((m) => amountFitsMethod(amt, m))
+  if (amt <= 0 || !method || !amountFitsRechargeConfig(amt)) return
+  if (!['selected_method_min', 'selected_method_max'].includes(rechargeAmountValidation.value.code)) return
+  const available = enabledMethods.value.find((type) => amountFitsMethodLimit(amt, checkout.value.methods[type]))
   if (available) selectedMethod.value = available
 })
 
@@ -712,7 +770,7 @@ async function fetchSubAvailablePromotions(planId: number) {
 let promoDebounceTimer: ReturnType<typeof setTimeout> | null = null
 
 async function fetchRechargePromoPreview(amt: number, promotionId: number | null) {
-  if (amt <= 0 || !promotionId) {
+  if (amt <= 0 || !promotionId || !amountFitsRechargeConfig(amt) || !amountFitsAnyMethod(amt)) {
     promoPreview.value = null
     return
   }
@@ -908,9 +966,21 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
     }
   } catch (err: unknown) {
     const apiErr = err as Record<string, unknown>
+    const metadata = apiErr.metadata as Record<string, unknown> | undefined
     if (apiErr.reason === 'TOO_MANY_PENDING') {
-      const metadata = apiErr.metadata as Record<string, unknown> | undefined
       errorMessage.value = t('payment.errors.tooManyPending', { max: metadata?.max || '' })
+    } else if (apiErr.reason === 'PAYMENT_AMOUNT_BELOW_MIN') {
+      const min = Number(metadata?.min ?? effectiveRechargeMin.value)
+      errorMessage.value = t('payment.amountBelowRechargeMin', {
+        amount: formatRechargeAmount(orderAmount),
+        min: formatRechargeAmount(min),
+      })
+    } else if (apiErr.reason === 'PAYMENT_AMOUNT_ABOVE_MAX') {
+      const max = Number(metadata?.max ?? effectiveRechargeMax.value)
+      errorMessage.value = t('payment.amountExceedsRechargeMax', {
+        amount: formatRechargeAmount(orderAmount),
+        max: formatRechargeAmount(max),
+      })
     } else if (apiErr.reason === 'CANCEL_RATE_LIMITED') {
       errorMessage.value = t('payment.errors.cancelRateLimited')
     } else {
