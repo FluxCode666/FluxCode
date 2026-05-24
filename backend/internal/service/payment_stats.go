@@ -189,3 +189,86 @@ func (s *PaymentService) writeAuditLog(ctx context.Context, oid int64, action, o
 func (s *PaymentService) GetOrderAuditLogs(ctx context.Context, oid int64) ([]*dbent.PaymentAuditLog, error) {
 	return s.entClient.PaymentAuditLog.Query().Where(paymentauditlog.OrderIDEQ(strconv.FormatInt(oid, 10))).Order(paymentauditlog.ByCreatedAt()).All(ctx)
 }
+
+// UserAuditLogEntry 用户审计日志条目（订单信息 + 审计日志列表）
+type UserAuditLogEntry struct {
+	OrderID     int64                    `json:"order_id"`
+	OrderType   string                   `json:"order_type"`
+	PaymentType string                   `json:"payment_type"`
+	Amount      float64                  `json:"amount"`
+	PayAmount   float64                  `json:"pay_amount"`
+	Status      string                   `json:"status"`
+	CreatedAt   time.Time                `json:"created_at"`
+	CompletedAt *time.Time               `json:"completed_at,omitempty"`
+	AuditLogs   []*dbent.PaymentAuditLog `json:"audit_logs"`
+}
+
+// GetUserAuditLogs 按用户 ID 查询其所有订单的审计日志
+func (s *PaymentService) GetUserAuditLogs(ctx context.Context, userID int64, page, pageSize int) ([]UserAuditLogEntry, int, error) {
+	// 查询用户订单总数
+	total, err := s.entClient.PaymentOrder.Query().
+		Where(paymentorder.UserIDEQ(userID)).
+		Count(ctx)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	// 分页查询订单（按创建时间倒序）
+	offset := (page - 1) * pageSize
+	orders, err := s.entClient.PaymentOrder.Query().
+		Where(paymentorder.UserIDEQ(userID)).
+		Order(dbent.Desc(paymentorder.FieldCreatedAt)).
+		Offset(offset).
+		Limit(pageSize).
+		All(ctx)
+	if err != nil {
+		return nil, 0, err
+	}
+	if len(orders) == 0 {
+		return []UserAuditLogEntry{}, total, nil
+	}
+
+	// 批量查询所有相关订单的审计日志
+	orderIDs := make([]string, 0, len(orders))
+	for _, o := range orders {
+		orderIDs = append(orderIDs, strconv.FormatInt(o.ID, 10))
+	}
+	logs, err := s.entClient.PaymentAuditLog.Query().
+		Where(paymentauditlog.OrderIDIn(orderIDs...)).
+		Order(paymentauditlog.ByCreatedAt()).
+		All(ctx)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	// 按 order_id 分组
+	logMap := make(map[string][]*dbent.PaymentAuditLog)
+	for _, l := range logs {
+		logMap[l.OrderID] = append(logMap[l.OrderID], l)
+	}
+
+	// 组装结果
+	entries := make([]UserAuditLogEntry, 0, len(orders))
+	for _, o := range orders {
+		oidStr := strconv.FormatInt(o.ID, 10)
+		entry := UserAuditLogEntry{
+			OrderID:     o.ID,
+			OrderType:   o.OrderType,
+			PaymentType: o.PaymentType,
+			Amount:      o.Amount,
+			PayAmount:   o.PayAmount,
+			Status:      o.Status,
+			CreatedAt:   o.CreatedAt,
+		}
+		if o.CompletedAt != nil {
+			entry.CompletedAt = o.CompletedAt
+		}
+		if al, ok := logMap[oidStr]; ok {
+			entry.AuditLogs = al
+		} else {
+			entry.AuditLogs = []*dbent.PaymentAuditLog{}
+		}
+		entries = append(entries, entry)
+	}
+	return entries, total, nil
+}

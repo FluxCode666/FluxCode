@@ -245,12 +245,15 @@ func (s *PaymentService) handleBalanceRechargeRewards(ctx context.Context, o *db
 }
 
 func (s *PaymentService) handleSalesCommissionAfterBalanceCompleted(ctx context.Context, o *dbent.PaymentOrder) {
-	if s.salesCommissionService != nil {
-		completedOrder := *o
-		completedOrder.Status = OrderStatusCompleted
-		if err := s.salesCommissionService.HandleBalanceRechargeCompleted(ctx, &completedOrder); err != nil {
-			slog.Warn("[PaymentService] create sales commission failed", "orderID", o.ID, "error", err)
-		}
+	if s.salesCommissionService == nil {
+		slog.Warn("[PaymentService] sales commission hook skipped: service not wired", "orderID", o.ID)
+		return
+	}
+	slog.Info("[PaymentService] sales commission hook fired", "orderID", o.ID, "userID", o.UserID, "orderType", o.OrderType, "status", o.Status)
+	completedOrder := *o
+	completedOrder.Status = OrderStatusCompleted
+	if err := s.salesCommissionService.HandleBalanceRechargeCompleted(ctx, &completedOrder); err != nil {
+		slog.Warn("[PaymentService] create sales commission failed", "orderID", o.ID, "error", err)
 	}
 }
 
@@ -410,6 +413,83 @@ func (s *PaymentService) markFailed(ctx context.Context, oid int64, cause error)
 	if c > 0 {
 		s.writeAuditLog(failCtx, oid, "FULFILLMENT_FAILED", "system", map[string]any{"reason": r})
 	}
+}
+
+// OfflineRechargeRequest 私账充值（线下转账）请求参数
+type OfflineRechargeRequest struct {
+	UserID         int64   // 被充值用户 ID
+	PayAmountCNY   float64 // 实付金额（CNY）
+	CreditedAmount float64 // 到账金额（加到用户余额）
+	CreditBalance  bool    // 是否实际给用户加余额
+	Note           string  // 管理员备注
+}
+
+// CreateOfflineRechargeOrder 创建私账充值订单记录，直接标记为 COMPLETED，并写审计日志。
+// 返回创建的 order ID，供推广奖励等后续流程使用。
+func (s *PaymentService) CreateOfflineRechargeOrder(ctx context.Context, req *OfflineRechargeRequest) (int64, error) {
+	user, err := s.userRepo.GetByID(ctx, req.UserID)
+	if err != nil {
+		return 0, fmt.Errorf("get user: %w", err)
+	}
+	if user == nil {
+		return 0, infraerrors.NotFound("USER_NOT_FOUND", "user not found")
+	}
+
+	now := time.Now()
+	outTradeNo := generateOutTradeNo("offline_")
+
+	// 创建订单（状态直接设为 COMPLETED）
+	order, err := s.entClient.PaymentOrder.Create().
+		SetUserID(req.UserID).
+		SetUserEmail(user.Email).
+		SetUserName(user.Username).
+		SetNillableUserNotes(psNilIfEmpty(user.Notes)).
+		SetAmount(req.CreditedAmount).
+		SetPayAmount(req.PayAmountCNY).
+		SetFeeRate(0).
+		SetRechargeCode("OFFLINE-" + outTradeNo).
+		SetOutTradeNo(outTradeNo).
+		SetPaymentType(payment.TypeOffline).
+		SetPaymentTradeNo("").
+		SetOrderType(payment.OrderTypeBalance).
+		SetStatus(OrderStatusCompleted).
+		SetExpiresAt(now).
+		SetPaidAt(now).
+		SetCompletedAt(now).
+		SetClientIP("admin").
+		SetSrcHost("admin").
+		SetOriginalAmount(req.PayAmountCNY).
+		SetDiscountAmount(0).
+		SetBonusAmount(0).
+		Save(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("create offline order: %w", err)
+	}
+
+	// 给用户加余额
+	if req.CreditBalance {
+		if err := s.userRepo.UpdateBalance(ctx, req.UserID, req.CreditedAmount); err != nil {
+			slog.Error("[OfflineRecharge] credit balance failed", "orderID", order.ID, "userID", req.UserID, "error", err)
+			return order.ID, fmt.Errorf("credit balance: %w", err)
+		}
+	}
+
+	// 写审计日志
+	s.writeAuditLog(ctx, order.ID, "OFFLINE_RECHARGE_COMPLETED", "admin", map[string]any{
+		"userID":         req.UserID,
+		"userEmail":      user.Email,
+		"payAmountCNY":   req.PayAmountCNY,
+		"creditedAmount": req.CreditedAmount,
+		"creditBalance":  req.CreditBalance,
+		"note":           req.Note,
+	})
+
+	slog.Info("[OfflineRecharge] order created",
+		"orderID", order.ID, "userID", req.UserID,
+		"payAmountCNY", req.PayAmountCNY, "creditedAmount", req.CreditedAmount,
+		"creditBalance", req.CreditBalance)
+
+	return order.ID, nil
 }
 
 func (s *PaymentService) RetryFulfillment(ctx context.Context, oid int64) error {

@@ -652,10 +652,10 @@ const userNavItems = computed((): NavItem[] => {
         ]
       : []),
     { path: '/redeem', label: t('nav.redeem'), icon: GiftIcon, hideInSimpleMode: true },
-    ...(appStore.cachedPublicSettings?.referral_enabled
+    ...((authStore.user?.is_sales ? appStore.cachedPublicSettings?.referral_sales_enabled : appStore.cachedPublicSettings?.referral_enabled)
       ? [{ path: '/referral', label: t('nav.referral'), icon: ShareIcon, hideInSimpleMode: true }]
       : []),
-    ...(authStore.user?.is_sales
+    ...(authStore.user?.is_sales && appStore.cachedPublicSettings?.referral_sales_enabled
       ? [{ path: '/sales-commissions', label: t('nav.salesCommissions'), icon: CurrencyYenIcon, hideInSimpleMode: true }]
       : []),
     { path: '/profile', label: t('nav.profile'), icon: UserIcon },
@@ -696,10 +696,10 @@ const personalNavItems = computed((): NavItem[] => {
         ]
       : []),
     { path: '/redeem', label: t('nav.redeem'), icon: GiftIcon, hideInSimpleMode: true },
-    ...(appStore.cachedPublicSettings?.referral_enabled
+    ...((authStore.user?.is_sales ? appStore.cachedPublicSettings?.referral_sales_enabled : appStore.cachedPublicSettings?.referral_enabled)
       ? [{ path: '/referral', label: t('nav.referral'), icon: ShareIcon, hideInSimpleMode: true }]
       : []),
-    ...(authStore.user?.is_sales
+    ...(authStore.user?.is_sales && appStore.cachedPublicSettings?.referral_sales_enabled
       ? [{ path: '/sales-commissions', label: t('nav.salesCommissions'), icon: CurrencyYenIcon, hideInSimpleMode: true }]
       : []),
     { path: '/profile', label: t('nav.profile'), icon: UserIcon },

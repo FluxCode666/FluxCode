@@ -719,7 +719,15 @@ func (r *userRepository) GetByReferralCode(ctx context.Context, code string) (*s
 		}
 		return nil, err
 	}
-	return userEntityToService(m), nil
+	out := userEntityToService(m)
+	tiersByUserID, err := r.loadSalesCommissionTiers(ctx, []int64{out.ID})
+	if err != nil {
+		return nil, err
+	}
+	if tiers, ok := tiersByUserID[out.ID]; ok {
+		out.SalesCommissionTiers = tiers
+	}
+	return out, nil
 }
 
 // UpdateReferralCode 更新用户推广码

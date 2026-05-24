@@ -351,6 +351,7 @@ export const useAppStore = defineStore('app', () => {
         account_quota_notify_enabled: false,
         balance_low_notify_threshold: 0,
         referral_enabled: false,
+        referral_sales_enabled: false,
       }
     }
 

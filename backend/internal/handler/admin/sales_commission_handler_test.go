@@ -3,6 +3,7 @@ package admin
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -33,4 +34,20 @@ func TestSalesCommissionHandler_GetOverview_RejectsBadDates(t *testing.T) {
 			require.Equal(t, http.StatusBadRequest, w.Code)
 		})
 	}
+}
+
+// TestSalesCommissionHandler_RecomputeMissing_RejectsInvalidJSONBody 当请求体不是合法 JSON 时
+// handler 应当直接 400，不进入 service。
+func TestSalesCommissionHandler_RecomputeMissing_RejectsInvalidJSONBody(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	h := NewSalesCommissionHandler(&service.SalesCommissionService{})
+	r := gin.New()
+	r.POST("/admin/sales-commissions/recompute", h.RecomputeMissing)
+
+	req := httptest.NewRequest(http.MethodPost, "/admin/sales-commissions/recompute",
+		strings.NewReader(`{"limit": "not-a-number"}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	require.Equal(t, http.StatusBadRequest, w.Code)
 }

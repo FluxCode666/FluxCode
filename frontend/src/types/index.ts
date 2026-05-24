@@ -155,6 +155,20 @@ export interface SalesCommissionOverview {
   mode_breakdown: SalesCommissionModeBreakdown
 }
 
+/**
+ * 后端 RecomputeMissingCommissions 的返回值。
+ * - scanned: 候选订单数（"应当存在但目前缺失"）
+ * - processed: 本次成功处理的订单数（不一定等于"新增 record 数"，因为 ON CONFLICT 可能静默 skip）
+ * - failed: 处理失败的订单数
+ * - failed_order_ids: 对应失败订单的 ID 列表
+ */
+export interface SalesCommissionRecomputeResult {
+  scanned: number
+  processed: number
+  failed: number
+  failed_order_ids?: number[]
+}
+
 export interface LoginRequest {
   email: string
   password: string
@@ -229,6 +243,7 @@ export interface PublicSettings {
   account_quota_notify_enabled: boolean
   balance_low_notify_threshold: number
   referral_enabled: boolean
+  referral_sales_enabled: boolean
 }
 
 export interface AuthResponse {

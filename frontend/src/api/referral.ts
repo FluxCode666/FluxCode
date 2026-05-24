@@ -65,6 +65,12 @@ export interface GiftBalanceSummary {
   total_expired: number
 }
 
+export interface GiftBalanceOverview {
+  gift_balance_remaining: number
+  next_expiry_at: string | null
+  next_expiry_amount: number
+}
+
 export interface ReferralTrendPoint {
   date: string
   invitations: number
@@ -147,6 +153,14 @@ export async function getMyReferralStats(days: number = 30): Promise<ReferralTre
   return data
 }
 
+/**
+ * Get current user's gift balance overview (remaining + next expiry)
+ */
+export async function getGiftBalanceOverview(): Promise<GiftBalanceOverview> {
+  const { data } = await apiClient.get<GiftBalanceOverview>('/referral/gift-balance/overview')
+  return data
+}
+
 export const referralAPI = {
   getReferralInfo,
   generateReferralCode,
@@ -154,6 +168,7 @@ export const referralAPI = {
   getMyGiftBalanceRecords,
   getGiftBalanceRemaining,
   getGiftBalanceSummary,
+  getGiftBalanceOverview,
   getMyReferralStats,
 }
 

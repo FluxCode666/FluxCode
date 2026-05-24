@@ -236,6 +236,7 @@ func registerUserManagementRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		users.GET("/:id/api-keys", h.Admin.User.GetUserAPIKeys)
 		users.GET("/:id/usage", h.Admin.User.GetUserUsage)
 		users.GET("/:id/balance-history", h.Admin.User.GetBalanceHistory)
+		users.GET("/:id/audit-logs", h.Admin.User.GetUserAuditLogs)
 		users.POST("/:id/replace-group", h.Admin.User.ReplaceGroup)
 
 		// User attribute values
@@ -646,6 +647,7 @@ func registerReferralRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		referral.GET("/user-config/:userId", h.Admin.Referral.GetUserConfig)
 		referral.PUT("/user-config/:userId", h.Admin.Referral.UpsertUserConfig)
 		referral.DELETE("/user-config/:userId", h.Admin.Referral.DeleteUserConfig)
+		referral.POST("/offline-recharge", h.Admin.Referral.RecordOfflineRecharge)
 	}
 }
 
@@ -659,5 +661,7 @@ func registerSalesCommissionRoutes(admin *gin.RouterGroup, h *handler.Handlers) 
 		commissions.GET("/summary", h.Admin.SalesCommission.ListSummaries)
 		commissions.GET("/records", h.Admin.SalesCommission.ListRecords)
 		commissions.GET("/settlements", h.Admin.SalesCommission.ListSettlements)
+		commissions.POST("/settlements", h.Admin.SalesCommission.CreateSettlement)
+		commissions.POST("/recompute", h.Admin.SalesCommission.RecomputeMissing)
 	}
 }

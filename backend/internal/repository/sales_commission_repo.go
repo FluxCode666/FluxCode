@@ -11,6 +11,7 @@ import (
 
 	"github.com/shopspring/decimal"
 
+	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/payment"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 )
@@ -89,14 +90,14 @@ func (r *salesCommissionRepository) CreateForOrder(ctx context.Context, input *s
 			credited_used_amount, unlocked_cny, status, note, created_at, updated_at
 		)
 		VALUES (
-			$1, $2, $3, $4,
+			$1, $2, $3, $4::bigint,
 			$5, $6, $7, 0, 0,
 			$8, $9, $10, 0, 0,
-			CASE WHEN $4 IS NULL THEN $6 ELSE 0 END,
+			CASE WHEN $4::bigint IS NULL THEN $6 ELSE 0::numeric END,
 			0,
 			$11, $12, NOW(), NOW()
 		)
-		ON CONFLICT ON CONSTRAINT sales_commission_records_payment_order_id_key DO NOTHING
+		ON CONFLICT (payment_order_id) WHERE payment_order_id IS NOT NULL DO NOTHING
 	`,
 		input.SalesUserID,
 		input.RefereeUserID,
@@ -208,10 +209,10 @@ func repriceMonthlyCommissionRecordsTx(ctx context.Context, tx *sql.Tx, snapshot
 		    unlocked_cny = $5,
 		    status = CASE
 		        WHEN status = $6 THEN $6
-		        WHEN $1 <= 0 THEN $7
+		        WHEN $1 <= 0::numeric THEN $7
 		        WHEN settled_cny >= $1 THEN $8
 		        WHEN $5 >= $1 THEN $9
-		        WHEN $5 > 0 THEN $10
+		        WHEN $5 > 0::numeric THEN $10
 		        ELSE $7
 		    END,
 		    updated_at = NOW()
@@ -367,6 +368,16 @@ func (r *salesCommissionRepository) ListRecords(ctx context.Context, params serv
 	completedStatusArg := len(queryArgs) + 1
 	blockedStatusArg := len(queryArgs) + 2
 	queryArgs = append(queryArgs, payment.OrderStatusCompleted, service.SalesCommissionStatusSettlementBlocked, pageSize, offset)
+
+	// 排序方向由 service.NormalizeSalesCommissionRecordSortOrder 兜底成合法常量；这里直接
+	// 拼接 SQL 关键字而不是占位符（PostgreSQL 不接受 ORDER BY 用 $N 占位）。
+	// 第二排序键用同方向的 scr.id：当 created_at 在毫秒粒度内冲突时仍能给出稳定顺序，
+	// 避免分页 OFFSET 时同一行漏出或重复。
+	sortDir := "DESC"
+	if service.NormalizeSalesCommissionRecordSortOrder(params.SortOrder) == service.SalesCommissionRecordSortAsc {
+		sortDir = "ASC"
+	}
+
 	query := fmt.Sprintf(`
 		SELECT
 			scr.id,
@@ -403,9 +414,9 @@ func (r *salesCommissionRepository) ListRecords(ctx context.Context, params serv
 		JOIN users ru ON ru.id = scr.referee_user_id
 		LEFT JOIN payment_orders po ON po.id = scr.payment_order_id
 		%s
-		ORDER BY scr.id ASC
+		ORDER BY scr.created_at %s, scr.id %s
 		LIMIT $%d OFFSET $%d
-	`, completedStatusArg, blockedStatusArg, where, len(queryArgs)-1, len(queryArgs))
+	`, completedStatusArg, blockedStatusArg, where, sortDir, sortDir, len(queryArgs)-1, len(queryArgs))
 
 	rows, err := r.db.QueryContext(ctx, query, queryArgs...)
 	if err != nil {
@@ -481,6 +492,103 @@ func (r *salesCommissionRepository) ListSettlements(ctx context.Context, params 
 		return nil, 0, err
 	}
 	return settlements, total, nil
+}
+
+func (r *salesCommissionRepository) CreateSettlement(ctx context.Context, input *service.SalesCommissionSettlementCreate) (*service.SalesCommissionSettlement, error) {
+	if input == nil {
+		return nil, errors.New("nil settlement create input")
+	}
+
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	// 1. 事务内锁定并查出实际可结算总额（FOR UPDATE 防止并发结算）
+	//    注意：PostgreSQL 不允许 FOR UPDATE 与聚合函数并用，
+	//    所以先在子查询中锁行，外层再做 SUM。
+	var actualSettleable decimal.Decimal
+	err = tx.QueryRowContext(ctx, `
+		SELECT COALESCE(SUM(
+			CASE WHEN (locked.payment_order_id IS NULL OR po.status = $2) AND locked.status <> $3
+			     THEN locked.unlocked_cny - locked.settled_cny
+			     ELSE 0
+			END
+		), 0)
+		FROM (
+			SELECT id, payment_order_id, status, unlocked_cny, settled_cny
+			FROM sales_commission_records
+			WHERE sales_user_id = $1
+			FOR UPDATE
+		) locked
+		LEFT JOIN payment_orders po ON po.id = locked.payment_order_id
+	`, input.SalesUserID, payment.OrderStatusCompleted, service.SalesCommissionStatusSettlementBlocked).Scan(&actualSettleable)
+	if err != nil {
+		return nil, err
+	}
+
+	actualSettleableF := decimalFloat(actualSettleable)
+	if actualSettleableF <= 0 {
+		return nil, service.ErrSalesCommissionNoSettleable
+	}
+	if input.AmountCNY > actualSettleableF {
+		return nil, service.ErrSalesCommissionSettleAmountExceeds
+	}
+
+	// 2. 按入参金额分配结算到各条记录（按创建时间从早到晚逐条消耗）
+	//    settleable = unlocked_cny - settled_cny（计算值，非物理列）
+	//    frozen = commission_total_cny - unlocked_cny（计算值，非物理列）
+	_, err = tx.ExecContext(ctx, `
+		WITH ordered AS (
+			SELECT scr.id,
+			       scr.unlocked_cny - scr.settled_cny AS available,
+			       SUM(scr.unlocked_cny - scr.settled_cny) OVER (ORDER BY scr.created_at, scr.id) AS cumulative
+			FROM sales_commission_records scr
+			LEFT JOIN payment_orders po ON po.id = scr.payment_order_id
+			WHERE scr.sales_user_id = $1
+			  AND scr.status <> $2
+			  AND (scr.payment_order_id IS NULL OR po.status = $3)
+			  AND scr.unlocked_cny > scr.settled_cny
+		),
+		allocation AS (
+			SELECT id,
+			       LEAST(available, GREATEST($4 - (cumulative - available), 0)) AS to_settle
+			FROM ordered
+			WHERE cumulative - available < $4
+		)
+		UPDATE sales_commission_records scr
+		SET settled_cny = scr.settled_cny + a.to_settle,
+		    status = CASE
+		        WHEN (scr.settled_cny + a.to_settle) >= scr.unlocked_cny
+		             AND scr.commission_total_cny = scr.unlocked_cny THEN 'settled'
+		        ELSE scr.status
+		    END,
+		    updated_at = NOW()
+		FROM allocation a
+		WHERE scr.id = a.id
+	`, input.SalesUserID, service.SalesCommissionStatusSettlementBlocked, payment.OrderStatusCompleted, input.AmountCNY)
+	if err != nil {
+		return nil, err
+	}
+
+	// 3. 创建结算记录（金额使用入参，已通过上面的校验）
+	var settlement service.SalesCommissionSettlement
+	err = tx.QueryRowContext(ctx, `
+		INSERT INTO sales_commission_settlements (sales_user_id, amount_cny, note, created_by, created_at)
+		VALUES ($1, $2, $3, $4, NOW())
+		RETURNING id, sales_user_id, amount_cny, note, created_by, created_at
+	`, input.SalesUserID, input.AmountCNY, input.Note, input.CreatedBy).Scan(
+		&settlement.ID, &settlement.SalesUserID, &settlement.AmountCNY, &settlement.Note, &settlement.CreatedBy, &settlement.CreatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return &settlement, nil
 }
 
 func salesRecordWhere(params service.SalesCommissionRecordListParams) (string, []any) {
@@ -598,7 +706,7 @@ func ensureSalesCommissionMonthlySnapshot(ctx context.Context, tx *sql.Tx, input
 			sales_user_id, commission_month, timezone, commission_mode,
 			fixed_commission_rate, min_monthly_sales_cny, tiers_json, created_at, updated_at
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, NOW(), NOW())
+		VALUES ($1::bigint, $2::date, $3::varchar, $4::varchar, $5::numeric, $6::numeric, $7::jsonb, NOW(), NOW())
 		ON CONFLICT (sales_user_id, commission_month) DO NOTHING
 	`,
 		input.SalesUserID,
@@ -869,4 +977,74 @@ func (r *salesCommissionRepository) GetOverview(ctx context.Context, query servi
 	}
 
 	return data, nil
+}
+
+// ListMissingCommissionPaymentOrders 实现 SalesCommissionRepository 同名接口。
+//
+// 仅选取 service.HandleBalanceRechargeCompleted 入参所需字段，避免拉无关列。
+// 排序按 po.id ASC，确保多次调用结果稳定且 limit 截断有意义。
+func (r *salesCommissionRepository) ListMissingCommissionPaymentOrders(ctx context.Context, limit int) ([]*dbent.PaymentOrder, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT
+			po.id,
+			po.user_id,
+			po.order_type,
+			po.status,
+			po.pay_amount,
+			po.amount,
+			po.paid_at,
+			po.completed_at,
+			po.created_at
+		FROM payment_orders po
+		WHERE po.status = $1
+		  AND po.order_type = $2
+		  AND po.pay_amount > 0
+		  AND po.amount > 0
+		  AND NOT EXISTS (
+		    SELECT 1
+		    FROM sales_commission_records r
+		    WHERE r.payment_order_id = po.id
+		  )
+		ORDER BY po.id ASC
+		LIMIT $3
+	`, payment.OrderStatusCompleted, payment.OrderTypeBalance, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var orders []*dbent.PaymentOrder
+	for rows.Next() {
+		var (
+			po          dbent.PaymentOrder
+			paidAt      sql.NullTime
+			completedAt sql.NullTime
+		)
+		if err := rows.Scan(
+			&po.ID,
+			&po.UserID,
+			&po.OrderType,
+			&po.Status,
+			&po.PayAmount,
+			&po.Amount,
+			&paidAt,
+			&completedAt,
+			&po.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		if paidAt.Valid {
+			t := paidAt.Time
+			po.PaidAt = &t
+		}
+		if completedAt.Valid {
+			t := completedAt.Time
+			po.CompletedAt = &t
+		}
+		orders = append(orders, &po)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return orders, nil
 }

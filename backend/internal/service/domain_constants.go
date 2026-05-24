@@ -299,16 +299,35 @@ const (
 	// 推广奖励系统 (Referral Reward)
 	// =========================
 
-	SettingKeyReferralEnabled                   = "referral_enabled"                      // 是否启用推广奖励功能
-	SettingKeyReferralInviteeReward             = "referral_invitee_reward"               // 被邀请人注册奖励金额
-	SettingKeyReferralInviterReward             = "referral_inviter_reward"               // 推广人首充奖励金额
-	SettingKeyReferralMaxInvites                = "referral_max_invites"                  // 每人最大邀请数（0=无限）
+	// --- 普通用户推广（非销售）---
+	SettingKeyReferralEnabled                   = "referral_enabled"                      // 普通推广开关：控制非销售用户的推广功能
+	SettingKeyReferralInviteeRewardEnabled      = "referral_invitee_reward_enabled"       // 普通推广：是否启用被邀请人注册奖励
+	SettingKeyReferralInviteeReward             = "referral_invitee_reward"               // 被邀请人注册奖励金额（普通推广人邀请的新用户）
+	SettingKeyReferralInviterReward             = "referral_inviter_reward"               // 普通推广人首充奖励金额（gift balance）
+	SettingKeyReferralMaxInvites                = "referral_max_invites"                  // 普通推广人最大邀请数（0=无限）
 	SettingKeyReferralRewardExpiryDays          = "referral_reward_expiry_days"           // 赠送余额过期天数（0=永不过期）
-	SettingKeyReferralOngoingRewardEnabled      = "referral_ongoing_reward_enabled"       // 是否启用持续奖励
-	SettingKeyReferralOngoingRewardType         = "referral_ongoing_reward_type"          // 持续奖励类型：fixed=固定金额，percentage=按充值百分比
-	SettingKeyReferralOngoingRewardValue        = "referral_ongoing_reward_value"         // 持续奖励数值：fixed 时单位为美元，percentage 时单位为百分点（0-100）
-	SettingKeyReferralOngoingRewardMaxCount     = "referral_ongoing_reward_max_count"     // 每条推广关系最多触发持续奖励次数（0=不限）
-	SettingKeyReferralOngoingRewardDurationDays = "referral_ongoing_reward_duration_days" // 持续奖励有效期：注册后N天内充值才触发（0=永久有效）
+	SettingKeyReferralOngoingRewardEnabled      = "referral_ongoing_reward_enabled"       // 普通推广人持续奖励开关
+	SettingKeyReferralOngoingRewardType         = "referral_ongoing_reward_type"          // 普通推广人持续奖励类型：fixed=固定金额，percentage=按充值百分比
+	SettingKeyReferralOngoingRewardValue        = "referral_ongoing_reward_value"         // 普通推广人持续奖励数值：fixed 时单位为美元，percentage 时单位为百分点（0-100）
+	SettingKeyReferralOngoingRewardMaxCount     = "referral_ongoing_reward_max_count"     // 普通推广人每条推广关系最多触发持续奖励次数（0=不限）
+	SettingKeyReferralOngoingRewardDurationDays = "referral_ongoing_reward_duration_days" // 普通推广人持续奖励有效期：注册后N天内充值才触发（0=永久有效）
+
+	// 普通推广：被邀请人持续充值奖励（发给被邀请人自己）
+	SettingKeyReferralInviteeOngoingRewardEnabled      = "referral_invitee_ongoing_reward_enabled"       // 普通推广：被邀请人持续充值奖励开关
+	SettingKeyReferralInviteeOngoingRewardType         = "referral_invitee_ongoing_reward_type"          // 普通推广：被邀请人持续奖励类型 fixed/percentage
+	SettingKeyReferralInviteeOngoingRewardValue        = "referral_invitee_ongoing_reward_value"         // 普通推广：被邀请人持续奖励数值
+	SettingKeyReferralInviteeOngoingRewardMaxCount     = "referral_invitee_ongoing_reward_max_count"     // 普通推广：被邀请人持续奖励最大次数（0=不限）
+	SettingKeyReferralInviteeOngoingRewardDurationDays = "referral_invitee_ongoing_reward_duration_days" // 普通推广：被邀请人持续奖励有效期天数（0=永久）
+
+	// --- 销售用户推广 ---
+	SettingKeyReferralSalesEnabled                          = "referral_sales_enabled"                              // 销售推广开关：控制销售用户的推广功能（佣金路径）
+	SettingKeyReferralSalesInviteeRewardEnabled             = "referral_sales_invitee_reward_enabled"               // 销售推广：是否启用被邀请人注册奖励
+	SettingKeyReferralSalesInviteeReward                    = "referral_sales_invitee_reward"                       // 被邀请人注册奖励金额（销售用户邀请的新用户）
+	SettingKeyReferralSalesInviteeOngoingRewardEnabled      = "referral_sales_invitee_ongoing_reward_enabled"       // 销售推广：被邀请人持续充值奖励开关
+	SettingKeyReferralSalesInviteeOngoingRewardType         = "referral_sales_invitee_ongoing_reward_type"          // 销售推广：被邀请人持续奖励类型 fixed/percentage
+	SettingKeyReferralSalesInviteeOngoingRewardValue        = "referral_sales_invitee_ongoing_reward_value"         // 销售推广：被邀请人持续奖励数值
+	SettingKeyReferralSalesInviteeOngoingRewardMaxCount     = "referral_sales_invitee_ongoing_reward_max_count"     // 销售推广：被邀请人持续奖励最大次数（0=不限）
+	SettingKeyReferralSalesInviteeOngoingRewardDurationDays = "referral_sales_invitee_ongoing_reward_duration_days" // 销售推广：被邀请人持续奖励有效期天数（0=永久）
 
 	// Codex CLI User-Agent 配置
 	// SettingKeyCodexCLIUserAgent 发往 OpenAI 上游的 User-Agent 头（默认 "codex_cli_rs/1.0.0"）

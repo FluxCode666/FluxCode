@@ -11,6 +11,15 @@
           <button type="button" class="btn btn-secondary" :disabled="loadingOverview" @click="loadOverview">
             {{ t('common.refresh') }}
           </button>
+          <button
+            type="button"
+            class="btn btn-primary"
+            :disabled="recomputing"
+            :title="t('salesCommissions.recompute.tooltip')"
+            @click="showRecomputeDialog = true"
+          >
+            {{ recomputing ? t('salesCommissions.recompute.running') : t('salesCommissions.recompute.button') }}
+          </button>
         </div>
       </div>
 
@@ -30,12 +39,14 @@
       </template>
 
       <SummaryTable
+        ref="summaryTableRef"
         :items="summaries"
         :loading="loadingSummaries"
         :pagination="summaryPagination"
         :search="summarySearch"
         @update:page="setSummaryPage"
         @update:search="setSummarySearch"
+        @settle="onSettle"
       />
 
       <DetailsCollapsible
@@ -46,10 +57,21 @@
         :record-pagination="recordPagination"
         :settlement-pagination="settlementPagination"
         :record-filters="recordFilters"
+        :record-sort-order="recordSortOrder"
         @update:record-filters="updateRecordFilters"
         @update:record-page="setRecordPage"
+        @update:record-sort="setRecordSortOrder"
         @update:settlement-page="setSettlementPage"
         @expand="ensureDetailsLoaded"
+      />
+
+      <ConfirmDialog
+        :show="showRecomputeDialog"
+        :title="t('salesCommissions.recompute.confirmTitle')"
+        :message="t('salesCommissions.recompute.confirmMessage')"
+        :confirm-text="t('salesCommissions.recompute.confirmButton')"
+        @confirm="onConfirmRecompute"
+        @cancel="showRecomputeDialog = false"
       />
     </div>
   </AppLayout>
@@ -69,6 +91,7 @@ import ModeBreakdownChart from '@/components/admin/salesCommissions/ModeBreakdow
 import SummaryTable from '@/components/admin/salesCommissions/SummaryTable.vue'
 import DetailsCollapsible, { type RecordFilters } from '@/components/admin/salesCommissions/DetailsCollapsible.vue'
 import RangePicker, { type RangeSelection } from '@/components/admin/salesCommissions/RangePicker.vue'
+import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import type {
   SalesCommissionOverview,
   SalesCommissionRecord,
@@ -78,6 +101,8 @@ import type {
 
 const { t } = useI18n()
 const appStore = useAppStore()
+
+const summaryTableRef = ref<InstanceType<typeof SummaryTable> | null>(null)
 
 const overview = ref<SalesCommissionOverview | null>(null)
 const loadingOverview = ref(false)
@@ -99,6 +124,8 @@ const recordFilters = reactive<RecordFilters>({
   paymentOrderID: '',
   status: ''
 })
+// 佣金明细排序方向，初始为 desc（最新在前）。点击列头会切换并触发 loadRecords。
+const recordSortOrder = ref<'asc' | 'desc'>('desc')
 const detailsTouched = ref(false)
 
 const settlements = ref<SalesCommissionSettlement[]>([])
@@ -162,7 +189,8 @@ async function loadRecords() {
       sales_user_id: recordFilters.salesUserID ? Number(recordFilters.salesUserID) : undefined,
       referee_user_id: recordFilters.refereeUserID ? Number(recordFilters.refereeUserID) : undefined,
       payment_order_id: recordFilters.paymentOrderID ? Number(recordFilters.paymentOrderID) : undefined,
-      status: recordFilters.status || undefined
+      status: recordFilters.status || undefined,
+      sort_order: recordSortOrder.value
     })
     records.value = res.items || []
     recordPagination.total = res.total || 0
@@ -180,6 +208,14 @@ function setRecordPage(page: number) {
 
 function updateRecordFilters(value: RecordFilters) {
   Object.assign(recordFilters, value)
+  recordPagination.page = 1
+  void loadRecords()
+}
+
+// 点击 created_at 列头切换排序方向：回到第一页（避免越界）+ 立即 reload。
+function setRecordSortOrder(order: 'asc' | 'desc') {
+  if (recordSortOrder.value === order) return
+  recordSortOrder.value = order
   recordPagination.page = 1
   void loadRecords()
 }
@@ -211,6 +247,69 @@ function ensureDetailsLoaded() {
   detailsTouched.value = true
   void loadRecords()
   void loadSettlements()
+}
+
+async function onSettle(payload: { sales_user_id: number; amount_cny: number; note: string }) {
+  try {
+    await adminAPI.salesCommissions.createSettlement(payload)
+    appStore.showSuccess(t('salesCommissions.settleSuccess'))
+    summaryTableRef.value?.closeSettleDialog()
+    void loadSummaries()
+    if (detailsTouched.value) {
+      void loadRecords()
+      void loadSettlements()
+    }
+  } catch (error: any) {
+    const reason = error?.reason || error?.code || ''
+    if (reason === 'SALES_COMMISSION_NO_SETTLEABLE') {
+      appStore.showError(t('salesCommissions.settleErrNoSettleable'))
+    } else if (reason === 'SALES_COMMISSION_SETTLE_AMOUNT_EXCEEDS') {
+      appStore.showError(t('salesCommissions.settleErrAmountExceeds'))
+    } else {
+      appStore.showError(error?.message || t('salesCommissions.settleFailed'))
+    }
+  } finally {
+    if (summaryTableRef.value) {
+      summaryTableRef.value.settling = false
+    }
+  }
+}
+
+// "重算缺失佣金" 兜底按钮：扫描 status=completed 的余额充值订单中
+// 那些应当存在销售佣金记录、但目前 sales_commission_records 里却没有的，
+// 复用 HandleBalanceRechargeCompleted 路径补写。后端幂等，重复点击安全。
+const showRecomputeDialog = ref(false)
+const recomputing = ref(false)
+
+async function onConfirmRecompute() {
+  showRecomputeDialog.value = false
+  if (recomputing.value) return
+  recomputing.value = true
+  try {
+    const res = await adminAPI.salesCommissions.recomputeMissingCommissions()
+    const summary = t('salesCommissions.recompute.resultSummary', {
+      scanned: res.scanned,
+      processed: res.processed,
+      failed: res.failed
+    })
+    if (res.failed > 0) {
+      appStore.showWarning(summary)
+    } else if (res.processed > 0) {
+      appStore.showSuccess(summary)
+    } else {
+      appStore.showInfo(t('salesCommissions.recompute.noMissing'))
+    }
+    // 重算后立即刷新概览 / 汇总，让管理员看到 frozen / total 的变化。
+    void loadOverview()
+    void loadSummaries()
+    if (detailsTouched.value) {
+      void loadRecords()
+    }
+  } catch (error: any) {
+    appStore.showError(error?.message || t('salesCommissions.recompute.failed'))
+  } finally {
+    recomputing.value = false
+  }
 }
 
 onMounted(() => {

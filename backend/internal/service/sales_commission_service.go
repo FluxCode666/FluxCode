@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"errors"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -48,34 +50,63 @@ func (s *SalesCommissionService) now() time.Time {
 
 func (s *SalesCommissionService) HandleBalanceRechargeCompleted(ctx context.Context, order *dbent.PaymentOrder) error {
 	if s == nil || s.repo == nil || s.referralRepo == nil || s.userRepo == nil || order == nil {
+		slog.Warn("[SalesCommission] handle skipped: nil dependency", "serviceNil", s == nil, "orderNil", order == nil)
 		return nil
 	}
+	slog.Info("[SalesCommission] handle entry",
+		"orderID", order.ID, "userID", order.UserID,
+		"orderType", order.OrderType, "status", order.Status,
+		"payAmount", order.PayAmount, "amount", order.Amount)
 	if order.OrderType != payment.OrderTypeBalance ||
 		order.Status != payment.OrderStatusCompleted ||
 		order.PayAmount <= 0 ||
 		order.Amount <= 0 {
+		slog.Info("[SalesCommission] skip: order does not qualify",
+			"orderID", order.ID, "orderType", order.OrderType, "status", order.Status,
+			"payAmount", order.PayAmount, "amount", order.Amount)
 		return nil
 	}
 
 	ref, err := s.referralRepo.GetByRefereeID(ctx, order.UserID)
 	if err != nil {
+		slog.Warn("[SalesCommission] referral lookup error", "orderID", order.ID, "userID", order.UserID, "error", err)
 		return err
 	}
 	if ref == nil {
+		slog.Info("[SalesCommission] skip: no referral for referee", "orderID", order.ID, "refereeUserID", order.UserID)
 		return nil
 	}
 
 	referrer, err := s.userRepo.GetByID(ctx, ref.ReferrerID)
 	if err != nil {
+		slog.Warn("[SalesCommission] referrer lookup error", "orderID", order.ID, "referrerID", ref.ReferrerID, "error", err)
 		return err
 	}
 	if !SalesCommissionUserEligible(referrer) {
+		mode := ""
+		var rate float64
+		tiers := 0
+		var isSales bool
+		if referrer != nil {
+			isSales = referrer.IsSales
+			mode = string(NormalizeSalesCommissionMode(referrer.SalesCommissionMode))
+			rate = referrer.SalesCommissionRate
+			tiers = len(referrer.SalesCommissionTiers)
+		}
+		slog.Info("[SalesCommission] skip: referrer not eligible (treated as normal referral)",
+			"orderID", order.ID, "referrerID", ref.ReferrerID,
+			"isSales", isSales, "mode", mode, "rate", rate, "tiersCount", tiers)
 		return nil
 	}
 
 	eventAt := salesCommissionEventTimeFromOrder(order)
 
-	return s.repo.CreateForOrder(ctx, &SalesCommissionCreate{
+	slog.Info("[SalesCommission] dispatch CreateForOrder",
+		"orderID", order.ID, "salesUserID", ref.ReferrerID, "refereeUserID", order.UserID,
+		"mode", string(NormalizeSalesCommissionMode(referrer.SalesCommissionMode)),
+		"tiersCount", len(referrer.SalesCommissionTiers),
+		"eventAt", eventAt)
+	if err := s.repo.CreateForOrder(ctx, &SalesCommissionCreate{
 		SalesUserID:               ref.ReferrerID,
 		RefereeUserID:             order.UserID,
 		ReferralID:                ref.ID,
@@ -89,7 +120,12 @@ func (s *SalesCommissionService) HandleBalanceRechargeCompleted(ctx context.Cont
 		CommissionEventAt:         eventAt,
 		CommissionMonth:           salesCommissionMonthStart(eventAt),
 		Note:                      "Balance recharge commission",
-	})
+	}); err != nil {
+		slog.Error("[SalesCommission] CreateForOrder failed", "orderID", order.ID, "salesUserID", ref.ReferrerID, "error", err)
+		return err
+	}
+	slog.Info("[SalesCommission] CreateForOrder ok", "orderID", order.ID, "salesUserID", ref.ReferrerID)
+	return nil
 }
 
 func (s *SalesCommissionService) HandleReferralManualCompletion(ctx context.Context, ref *Referral, orderPayAmountCNY float64, orderCreditedAmount float64, note string) error {
@@ -127,6 +163,61 @@ func (s *SalesCommissionService) HandleReferralManualCompletion(ctx context.Cont
 	})
 }
 
+// salesCommissionRecomputeDefaultLimit 控制"重算缺失佣金"单次调用最多扫多少条候选订单。
+//
+// 这个值在前端按钮单次点击就能完成的体感上限（几秒内）和 PG 单次查询健康范围之间取折中：
+// 实际生产环境历史数据通常 < 1000 条，调一次就清空；运维需要补更多时多点几下即可。
+const salesCommissionRecomputeDefaultLimit = 500
+const salesCommissionRecomputeMaxLimit = 2000
+
+func (s *SalesCommissionService) RecomputeMissingCommissions(ctx context.Context, limit int) (*SalesCommissionRecomputeResult, error) {
+	if s == nil || s.repo == nil {
+		return nil, errors.New("sales commission service not initialized")
+	}
+	limit = normalizeRecomputeLimit(limit)
+
+	orders, err := s.repo.ListMissingCommissionPaymentOrders(ctx, limit)
+	if err != nil {
+		slog.Error("[SalesCommission] recompute: list missing failed", "error", err, "limit", limit)
+		return nil, err
+	}
+
+	res := &SalesCommissionRecomputeResult{Scanned: len(orders)}
+	if len(orders) == 0 {
+		slog.Info("[SalesCommission] recompute: no missing commissions found", "limit", limit)
+		return res, nil
+	}
+
+	slog.Info("[SalesCommission] recompute: start", "candidates", len(orders), "limit", limit)
+	for _, order := range orders {
+		if order == nil {
+			continue
+		}
+		if err := s.HandleBalanceRechargeCompleted(ctx, order); err != nil {
+			res.Failed++
+			res.FailedOrderIDs = append(res.FailedOrderIDs, order.ID)
+			slog.Warn("[SalesCommission] recompute: order failed",
+				"orderID", order.ID, "userID", order.UserID, "error", err)
+			continue
+		}
+		res.Processed++
+	}
+	slog.Info("[SalesCommission] recompute: done",
+		"scanned", res.Scanned, "processed", res.Processed,
+		"failed", res.Failed, "failedOrderIDs", res.FailedOrderIDs)
+	return res, nil
+}
+
+func normalizeRecomputeLimit(limit int) int {
+	if limit <= 0 {
+		return salesCommissionRecomputeDefaultLimit
+	}
+	if limit > salesCommissionRecomputeMaxLimit {
+		return salesCommissionRecomputeMaxLimit
+	}
+	return limit
+}
+
 func (s *SalesCommissionService) ListSummaries(ctx context.Context, params SalesCommissionSummaryListParams) ([]SalesCommissionSummary, int, error) {
 	return s.repo.ListSummaries(ctx, params)
 }
@@ -156,6 +247,29 @@ func (s *SalesCommissionService) ListRecords(ctx context.Context, params SalesCo
 
 func (s *SalesCommissionService) ListSettlements(ctx context.Context, params SalesCommissionSettlementListParams) ([]SalesCommissionSettlement, int, error) {
 	return s.repo.ListSettlements(ctx, params)
+}
+
+func (s *SalesCommissionService) CreateSettlement(ctx context.Context, input *SalesCommissionSettlementCreate) (*SalesCommissionSettlement, error) {
+	if s == nil || s.repo == nil {
+		return nil, errors.New("sales commission service not initialized")
+	}
+	if input == nil || input.SalesUserID <= 0 || input.AmountCNY <= 0 {
+		return nil, errors.New("invalid settlement input: sales_user_id and amount_cny are required")
+	}
+
+	// 校验结算金额不超过实际可结算余额
+	summary, err := s.repo.GetSummaryBySalesUser(ctx, input.SalesUserID)
+	if err != nil {
+		return nil, err
+	}
+	if summary.SettleableCNY <= 0 {
+		return nil, ErrSalesCommissionNoSettleable
+	}
+	if input.AmountCNY > summary.SettleableCNY {
+		return nil, ErrSalesCommissionSettleAmountExceeds
+	}
+
+	return s.repo.CreateSettlement(ctx, input)
 }
 
 // GetMonthlyProgress 返回销售用户当月梯度进度（spec §9）。

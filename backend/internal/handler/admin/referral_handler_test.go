@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -224,6 +225,9 @@ func (r *referralAdminReferralRepoStub) SetInviterRewarded(_ context.Context, _ 
 func (r *referralAdminReferralRepoStub) IncrementOngoingReward(_ context.Context, _ int64, _ float64) error {
 	return nil
 }
+func (r *referralAdminReferralRepoStub) IncrementInviteeOngoingReward(_ context.Context, _ int64, _ float64) error {
+	return nil
+}
 func (r *referralAdminReferralRepoStub) GetStatsByReferrerID(_ context.Context, _ int64) (*service.ReferralStats, error) {
 	return nil, nil
 }
@@ -267,6 +271,9 @@ func (r *referralAdminGiftRepoStub) GetTotalRemainingByUserID(_ context.Context,
 }
 func (r *referralAdminGiftRepoStub) ExistsBySourceRef(_ context.Context, _ string, _ int64) (bool, error) {
 	return false, nil
+}
+func (r *referralAdminGiftRepoStub) GetNextExpiry(_ context.Context, _ int64) (*time.Time, float64, error) {
+	return nil, 0, nil
 }
 func (r *referralAdminGiftRepoStub) GetAdminStats(_ context.Context) (*service.AdminReferralStats, error) {
 	return nil, nil

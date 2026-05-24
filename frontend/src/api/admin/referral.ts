@@ -17,7 +17,9 @@ export interface ReferralStats {
 }
 
 export interface ReferralConfig {
+  // --- 普通用户推广 ---
   referral_enabled: boolean
+  referral_invitee_reward_enabled: boolean
   referral_invitee_reward: number
   referral_inviter_reward: number
   referral_max_invites: number
@@ -28,6 +30,21 @@ export interface ReferralConfig {
   referral_ongoing_reward_value: number
   referral_ongoing_reward_max_count: number
   referral_ongoing_reward_duration_days: number
+  // --- 普通推广：被邀请人持续奖励 ---
+  referral_invitee_ongoing_reward_enabled: boolean
+  referral_invitee_ongoing_reward_type: string
+  referral_invitee_ongoing_reward_value: number
+  referral_invitee_ongoing_reward_max_count: number
+  referral_invitee_ongoing_reward_duration_days: number
+  // --- 销售用户推广 ---
+  referral_sales_enabled: boolean
+  referral_sales_invitee_reward_enabled: boolean
+  referral_sales_invitee_reward: number
+  referral_sales_invitee_ongoing_reward_enabled: boolean
+  referral_sales_invitee_ongoing_reward_type: string
+  referral_sales_invitee_ongoing_reward_value: number
+  referral_sales_invitee_ongoing_reward_max_count: number
+  referral_sales_invitee_ongoing_reward_duration_days: number
 }
 
 export interface ReferralListItem {
@@ -89,6 +106,11 @@ export interface UserReferralConfig {
   ongoing_reward_value?: number | null
   ongoing_reward_max_count?: number | null
   ongoing_reward_duration_days?: number | null
+  invitee_ongoing_reward_enabled?: boolean | null
+  invitee_ongoing_reward_type?: string | null
+  invitee_ongoing_reward_value?: number | null
+  invitee_ongoing_reward_max_count?: number | null
+  invitee_ongoing_reward_duration_days?: number | null
   notes?: string
   created_at?: string
   updated_at?: string
@@ -105,6 +127,11 @@ export interface EffectiveReferralConfig {
   ongoing_reward_value: number
   ongoing_reward_max_count: number
   ongoing_reward_duration_days: number
+  invitee_ongoing_reward_enabled: boolean
+  invitee_ongoing_reward_type: string
+  invitee_ongoing_reward_value: number
+  invitee_ongoing_reward_max_count: number
+  invitee_ongoing_reward_duration_days: number
 }
 
 export interface UserConfigResponse {
@@ -236,6 +263,34 @@ export async function deleteUserConfig(userId: number): Promise<{ message: strin
   return data
 }
 
+export interface OfflineRechargePayload {
+  user_id: number
+  pay_amount_cny: number
+  credited_amount: number
+  credit_balance: boolean
+  note?: string
+}
+
+export interface OfflineRechargeResult {
+  user_id: number
+  referrer_id: number
+  referrer_email: string
+  is_sales_referrer: boolean
+  balance_credited: boolean
+  credited_amount: number
+  rewards_triggered: boolean
+}
+
+export async function recordOfflineRecharge(
+  payload: OfflineRechargePayload
+): Promise<OfflineRechargeResult> {
+  const { data } = await apiClient.post<OfflineRechargeResult>(
+    '/admin/referral/offline-recharge',
+    payload
+  )
+  return data
+}
+
 const adminReferralAPI = {
   getStats,
   getDashboard,
@@ -249,6 +304,7 @@ const adminReferralAPI = {
   getUserConfig,
   upsertUserConfig,
   deleteUserConfig,
+  recordOfflineRecharge,
 }
 
 export default adminReferralAPI

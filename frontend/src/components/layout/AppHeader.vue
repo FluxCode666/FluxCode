@@ -44,27 +44,68 @@
         <!-- Subscription Progress (for users with active subscriptions) -->
         <SubscriptionProgressMini v-if="user" />
 
-        <!-- Balance Display -->
+        <!-- Balance Display with Hover Dropdown (Desktop) -->
         <div
           v-if="user"
-          class="hidden items-center gap-2 rounded-xl bg-primary-50 px-3 py-1.5 dark:bg-primary-900/20 sm:flex"
+          class="relative hidden sm:block"
+          ref="balanceRef"
+          @mouseenter="showBalanceDropdown"
+          @mouseleave="startBalanceHideTimer"
         >
-          <svg
-            class="h-4 w-4 text-primary-600 dark:text-primary-400"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            stroke-width="1.5"
+          <div
+            class="flex cursor-pointer items-center gap-2 rounded-xl bg-primary-50 px-3 py-1.5 dark:bg-primary-900/20"
           >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 00-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 01-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 003 15h-.75M15 10.5a3 3 0 11-6 0 3 3 0 016 0zm3 0h.008v.008H18V10.5zm-12 0h.008v.008H6V10.5z"
-            />
-          </svg>
-          <span class="text-sm font-semibold text-primary-700 dark:text-primary-300">
-            ${{ user.balance?.toFixed(2) || '0.00' }}
-          </span>
+            <svg
+              class="h-4 w-4 text-primary-600 dark:text-primary-400"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              stroke-width="1.5"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 00-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 01-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 003 15h-.75M15 10.5a3 3 0 11-6 0 3 3 0 016 0zm3 0h.008v.008H18V10.5zm-12 0h.008v.008H6V10.5z"
+              />
+            </svg>
+            <span class="text-sm font-semibold text-primary-700 dark:text-primary-300">
+              ${{ totalBalance.toFixed(2) }}
+            </span>
+          </div>
+          <!-- Balance Detail Dropdown -->
+          <transition name="dropdown">
+            <div
+              v-if="balanceDropdownOpen"
+              class="absolute right-0 mt-2 w-60 rounded-xl border border-gray-200/60 bg-white p-3 shadow-lg dark:border-dark-700/60 dark:bg-dark-900"
+              @mouseenter="cancelBalanceHideTimer"
+              @mouseleave="startBalanceHideTimer"
+            >
+              <div class="mb-2 text-xs font-medium uppercase tracking-wider text-gray-400 dark:text-dark-500">
+                {{ t('common.totalBalance') }}
+              </div>
+              <div class="mb-3 text-lg font-bold text-gray-900 dark:text-white">
+                ${{ totalBalance.toFixed(2) }}
+              </div>
+              <div class="space-y-2 border-t border-gray-100 pt-2 dark:border-dark-700">
+                <div class="flex items-center justify-between text-sm">
+                  <span class="text-gray-500 dark:text-dark-400">{{ t('common.rechargeBalance') }}</span>
+                  <span class="font-medium text-gray-900 dark:text-white">${{ (user.balance || 0).toFixed(2) }}</span>
+                </div>
+                <div class="flex items-center justify-between text-sm">
+                  <span class="text-gray-500 dark:text-dark-400">{{ t('common.giftBalance') }}</span>
+                  <span class="font-medium text-emerald-600 dark:text-emerald-400">${{ giftBalanceRemaining.toFixed(2) }}</span>
+                </div>
+              </div>
+              <div v-if="nextExpiryAt" class="mt-2 border-t border-gray-100 pt-2 dark:border-dark-700">
+                <div class="flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400">
+                  <svg class="h-3.5 w-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <span>${{ nextExpiryAmount.toFixed(2) }} {{ t('common.nextExpiry') }}: {{ formatExpiryDate(nextExpiryAt) }}</span>
+                </div>
+              </div>
+            </div>
+          </transition>
         </div>
 
         <!-- User Dropdown -->
@@ -101,14 +142,46 @@
                 <div class="text-xs text-gray-500 dark:text-dark-400">{{ user.email }}</div>
               </div>
 
-              <!-- Balance (mobile only) -->
-              <div class="border-b border-gray-100 px-4 py-2 dark:border-dark-700 sm:hidden">
-                <div class="text-xs text-gray-500 dark:text-dark-400">
-                  {{ t('common.balance') }}
+              <!-- Balance (mobile only, click to expand) -->
+              <div class="border-b border-gray-100 dark:border-dark-700 sm:hidden">
+                <div
+                  class="flex cursor-pointer items-center justify-between px-4 py-2"
+                  @click.stop="mobileBalanceExpanded = !mobileBalanceExpanded"
+                >
+                  <div>
+                    <div class="text-xs text-gray-500 dark:text-dark-400">
+                      {{ t('common.totalBalance') }}
+                    </div>
+                    <div class="text-sm font-semibold text-primary-600 dark:text-primary-400">
+                      ${{ totalBalance.toFixed(2) }}
+                    </div>
+                  </div>
+                  <svg
+                    class="h-4 w-4 text-gray-400 transition-transform"
+                    :class="{ 'rotate-180': mobileBalanceExpanded }"
+                    fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"
+                  >
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+                  </svg>
                 </div>
-                <div class="text-sm font-semibold text-primary-600 dark:text-primary-400">
-                  ${{ user.balance?.toFixed(2) || '0.00' }}
-                </div>
+                <transition name="dropdown">
+                  <div v-if="mobileBalanceExpanded" class="space-y-1.5 px-4 pb-2">
+                    <div class="flex items-center justify-between text-xs">
+                      <span class="text-gray-500 dark:text-dark-400">{{ t('common.rechargeBalance') }}</span>
+                      <span class="font-medium text-gray-900 dark:text-white">${{ (user.balance || 0).toFixed(2) }}</span>
+                    </div>
+                    <div class="flex items-center justify-between text-xs">
+                      <span class="text-gray-500 dark:text-dark-400">{{ t('common.giftBalance') }}</span>
+                      <span class="font-medium text-emerald-600 dark:text-emerald-400">${{ giftBalanceRemaining.toFixed(2) }}</span>
+                    </div>
+                    <div v-if="nextExpiryAt" class="flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400">
+                      <svg class="h-3 w-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <span>${{ nextExpiryAmount.toFixed(2) }} {{ t('common.nextExpiry') }}: {{ formatExpiryDate(nextExpiryAt) }}</span>
+                    </div>
+                  </div>
+                </transition>
               </div>
 
               <div class="py-1">
@@ -209,11 +282,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useAppStore, useAuthStore, useOnboardingStore } from '@/stores'
 import { useAdminSettingsStore } from '@/stores/adminSettings'
+import { getGiftBalanceOverview } from '@/api/referral'
 import LocaleSwitcher from '@/components/common/LocaleSwitcher.vue'
 import SubscriptionProgressMini from '@/components/common/SubscriptionProgressMini.vue'
 import AnnouncementBell from '@/components/common/AnnouncementBell.vue'
@@ -232,6 +306,61 @@ const dropdownOpen = ref(false)
 const dropdownRef = ref<HTMLElement | null>(null)
 const contactInfo = computed(() => appStore.contactInfo)
 const docUrl = computed(() => appStore.docUrl)
+
+// ---- Balance dropdown state ----
+const balanceRef = ref<HTMLElement | null>(null)
+const balanceDropdownOpen = ref(false)
+const mobileBalanceExpanded = ref(false)
+let balanceHideTimer: ReturnType<typeof setTimeout> | null = null
+let balanceRefreshTimer: ReturnType<typeof setInterval> | null = null
+
+const giftBalanceRemaining = ref(0)
+const nextExpiryAt = ref<string | null>(null)
+const nextExpiryAmount = ref(0)
+
+const totalBalance = computed(() => {
+  return (user.value?.balance || 0) + giftBalanceRemaining.value
+})
+
+function showBalanceDropdown() {
+  cancelBalanceHideTimer()
+  balanceDropdownOpen.value = true
+}
+
+function startBalanceHideTimer() {
+  cancelBalanceHideTimer()
+  balanceHideTimer = setTimeout(() => {
+    balanceDropdownOpen.value = false
+  }, 200)
+}
+
+function cancelBalanceHideTimer() {
+  if (balanceHideTimer) {
+    clearTimeout(balanceHideTimer)
+    balanceHideTimer = null
+  }
+}
+
+function formatExpiryDate(dateStr: string | null): string {
+  if (!dateStr) return ''
+  const d = new Date(dateStr)
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+}
+
+async function fetchBalanceOverview() {
+  if (!user.value) return
+  try {
+    const data = await getGiftBalanceOverview()
+    giftBalanceRemaining.value = data.gift_balance_remaining || 0
+    nextExpiryAt.value = data.next_expiry_at
+    nextExpiryAmount.value = data.next_expiry_amount || 0
+  } catch {
+    // 推广未启用或接口不可用时静默忽略
+    giftBalanceRemaining.value = 0
+    nextExpiryAt.value = null
+    nextExpiryAmount.value = 0
+  }
+}
 
 // 只在标准模式的管理员下显示新手引导按钮
 const showOnboardingButton = computed(() => {
@@ -315,12 +444,32 @@ function handleClickOutside(event: MouseEvent) {
   }
 }
 
+// 用户登录时立刻获取赠送余额，同时随 auth store 定时刷新
+watch(user, (val) => {
+  if (val) {
+    fetchBalanceOverview()
+  } else {
+    giftBalanceRemaining.value = 0
+    nextExpiryAt.value = null
+    nextExpiryAmount.value = 0
+  }
+}, { immediate: true })
+
 onMounted(() => {
   document.addEventListener('click', handleClickOutside)
+  // 每 60 秒刷新赠送余额（与 auth store 的 refreshUser 频率一致）
+  balanceRefreshTimer = setInterval(() => {
+    if (user.value) fetchBalanceOverview()
+  }, 60_000)
 })
 
 onBeforeUnmount(() => {
   document.removeEventListener('click', handleClickOutside)
+  if (balanceRefreshTimer) {
+    clearInterval(balanceRefreshTimer)
+    balanceRefreshTimer = null
+  }
+  cancelBalanceHideTimer()
 })
 </script>
 

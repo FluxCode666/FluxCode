@@ -176,6 +176,7 @@ type PublicSettings struct {
 	BalanceLowNotifyThreshold   float64
 	BalanceLowNotifyRechargeURL string
 	ReferralEnabled             bool `json:"referral_enabled"`
+	ReferralSalesEnabled        bool `json:"referral_sales_enabled"`
 }
 
 // StreamTimeoutSettings 流超时处理配置（仅控制超时后的处理方式，超时判定由网关配置控制）

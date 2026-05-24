@@ -22,6 +22,12 @@ type UserWithConcurrency struct {
 type UserHandler struct {
 	adminService       service.AdminService
 	concurrencyService *service.ConcurrencyService
+	paymentService     *service.PaymentService
+}
+
+// SetPaymentService 注入支付服务（避免循环依赖）
+func (h *UserHandler) SetPaymentService(svc *service.PaymentService) {
+	h.paymentService = svc
 }
 
 // NewUserHandler creates a new admin user handler
@@ -423,4 +429,25 @@ func (h *UserHandler) ReplaceGroup(c *gin.Context) {
 	response.Success(c, gin.H{
 		"migrated_keys": result.MigratedKeys,
 	})
+}
+
+// GetUserAuditLogs returns audit logs for a user's payment orders.
+// GET /api/v1/admin/users/:id/audit-logs
+func (h *UserHandler) GetUserAuditLogs(c *gin.Context) {
+	if h.paymentService == nil {
+		response.BadRequest(c, "payment service not available")
+		return
+	}
+	userID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid user ID")
+		return
+	}
+	page, pageSize := response.ParsePagination(c)
+	entries, total, err := h.paymentService.GetUserAuditLogs(c.Request.Context(), userID, page, pageSize)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Paginated(c, entries, int64(total), page, pageSize)
 }

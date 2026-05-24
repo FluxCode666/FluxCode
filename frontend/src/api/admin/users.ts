@@ -264,6 +264,48 @@ export async function replaceGroup(
   return data
 }
 
+/**
+ * Audit log entry for a payment order
+ */
+export interface AuditLogDetail {
+  id: number
+  order_id: string
+  action: string
+  detail: string
+  operator: string
+  created_at: string
+}
+
+/**
+ * User audit log entry (order + audit logs)
+ */
+export interface UserAuditLogEntry {
+  order_id: number
+  order_type: string
+  payment_type: string
+  amount: number
+  pay_amount: number
+  status: string
+  created_at: string
+  completed_at?: string
+  audit_logs: AuditLogDetail[]
+}
+
+/**
+ * Get user's audit logs (payment orders + audit logs)
+ */
+export async function getUserAuditLogs(
+  id: number,
+  page: number = 1,
+  pageSize: number = 15
+): Promise<PaginatedResponse<UserAuditLogEntry>> {
+  const { data } = await apiClient.get<PaginatedResponse<UserAuditLogEntry>>(
+    `/admin/users/${id}/audit-logs`,
+    { params: { page, page_size: pageSize } }
+  )
+  return data
+}
+
 export const usersAPI = {
   list,
   getById,
@@ -276,6 +318,7 @@ export const usersAPI = {
   getUserApiKeys,
   getUserUsageStats,
   getUserBalanceHistory,
+  getUserAuditLogs,
   replaceGroup
 }
 

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	dbent "github.com/Wei-Shaw/sub2api/ent"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/shopspring/decimal"
 )
@@ -127,6 +128,29 @@ type SalesCommissionRecordListParams struct {
 	Status         string
 	Page           int
 	PageSize       int
+	// SortOrder 控制按 created_at 的排序方向。合法值为 "asc" / "desc"，
+	// 空字符串或其他任何值都会被 NormalizeSalesCommissionRecordSortOrder 归一化为 "desc"（默认倒序）。
+	SortOrder string
+}
+
+// 销售佣金明细排序方向常量。前端可点击 created_at 列头切换；
+// 后端 SQL 层会对未识别值兜底成 desc，确保不会发生 SQL 注入。
+const (
+	SalesCommissionRecordSortAsc  = "asc"
+	SalesCommissionRecordSortDesc = "desc"
+)
+
+// NormalizeSalesCommissionRecordSortOrder 把任意输入归一化为合法的 "asc" / "desc"。
+//
+// 用 ToLower + 严格枚举判断，确保 repo 层拼到 SQL 里的方向标识永远只能是这两个安全常量；
+// 任何非法值（包括 SQL 注入尝试）一律落到默认 desc。
+func NormalizeSalesCommissionRecordSortOrder(v string) string {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case SalesCommissionRecordSortAsc:
+		return SalesCommissionRecordSortAsc
+	default:
+		return SalesCommissionRecordSortDesc
+	}
 }
 
 type SalesCommissionSettlementListParams struct {
@@ -622,12 +646,44 @@ const (
 // ErrSalesCommissionInvalidRange 当 range key 非法或自定义区间缺失时返回。
 var ErrSalesCommissionInvalidRange = infraerrors.BadRequest("SALES_COMMISSION_INVALID_RANGE", "invalid time range parameters")
 
+// ErrSalesCommissionNoSettleable 当销售用户没有可结算金额时返回。
+var ErrSalesCommissionNoSettleable = infraerrors.BadRequest("SALES_COMMISSION_NO_SETTLEABLE", "no settleable amount for this sales user")
+
+// ErrSalesCommissionSettleAmountExceeds 当请求结算金额超过可结算余额时返回。
+var ErrSalesCommissionSettleAmountExceeds = infraerrors.BadRequest("SALES_COMMISSION_SETTLE_AMOUNT_EXCEEDS", "settlement amount exceeds available settleable balance")
+
 type SalesCommissionRepository interface {
 	CreateForOrder(ctx context.Context, input *SalesCommissionCreate) error
 	ListSummaries(ctx context.Context, params SalesCommissionSummaryListParams) ([]SalesCommissionSummary, int, error)
 	GetSummaryBySalesUser(ctx context.Context, salesUserID int64) (*SalesCommissionSummary, error)
 	ListRecords(ctx context.Context, params SalesCommissionRecordListParams) ([]SalesCommissionRecord, int, error)
 	ListSettlements(ctx context.Context, params SalesCommissionSettlementListParams) ([]SalesCommissionSettlement, int, error)
+	CreateSettlement(ctx context.Context, input *SalesCommissionSettlementCreate) (*SalesCommissionSettlement, error)
 	GetMonthlyProgress(ctx context.Context, salesUserID int64, commissionMonth time.Time) (*SalesCommissionMonthlyProgressData, error)
 	GetOverview(ctx context.Context, query SalesCommissionOverviewQuery) (*SalesCommissionOverviewData, error)
+	// ListMissingCommissionPaymentOrders 返回那些「按规则应当存在销售佣金记录但目前缺失」的支付订单候选。
+	//
+	// 入选条件（与 HandleBalanceRechargeCompleted 内部判定保持一致）：
+	//   - status = 'completed'
+	//   - order_type = 'balance'
+	//   - pay_amount > 0 AND amount > 0
+	//   - 不存在对应的 sales_commission_records.payment_order_id
+	//
+	// 返回的 *dbent.PaymentOrder 仅保证 service 层调用 HandleBalanceRechargeCompleted 所需的字段
+	// （ID/UserID/OrderType/Status/PayAmount/Amount/PaidAt/CompletedAt/CreatedAt）被填充。
+	ListMissingCommissionPaymentOrders(ctx context.Context, limit int) ([]*dbent.PaymentOrder, error)
+}
+
+// SalesCommissionRecomputeResult 描述一次 RecomputeMissingCommissions 调用的处理结果。
+type SalesCommissionRecomputeResult struct {
+	// Scanned 是本次扫描到的候选订单数（即"应当存在但目前缺失"的订单数）。
+	Scanned int `json:"scanned"`
+	// Processed 是本次成功调入 HandleBalanceRechargeCompleted 的订单数。
+	// 注意：实际是否在 sales_commission_records 中产生新行依赖 ON CONFLICT，
+	// 因此 Processed 不等于"新增 record 数"，而是"本次重算调用未报错的订单数"。
+	Processed int `json:"processed"`
+	// Failed 是 HandleBalanceRechargeCompleted 返回 error 的订单数。
+	Failed int `json:"failed"`
+	// FailedOrderIDs 列出 Failed 对应的订单 ID，方便运维定位个例。
+	FailedOrderIDs []int64 `json:"failed_order_ids,omitempty"`
 }

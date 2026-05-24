@@ -405,3 +405,162 @@ func TestSalesCommissionRepository_GetOverview_NoRowsReturnsZeros(t *testing.T) 
 	require.Empty(t, overview.TopSales)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
+
+// TestSalesCommissionRepository_ListMissingCommissionPaymentOrders_FiltersAndMapsRows 验证：
+//   - 传入正确的过滤条件（status=completed + order_type=balance + 金额>0 + NOT EXISTS sales_commission_records）
+//   - 把每行映射成填充了必要字段的 *dbent.PaymentOrder
+//   - limit 透传到 SQL 占位
+func TestSalesCommissionRepository_ListMissingCommissionPaymentOrders_FiltersAndMapsRows(t *testing.T) {
+	db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherRegexp))
+	require.NoError(t, err)
+	defer db.Close()
+
+	repo := NewSalesCommissionRepository(db)
+	ctx := context.Background()
+
+	paid1 := time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC)
+	completed1 := time.Date(2026, 5, 1, 12, 5, 0, 0, time.UTC)
+	created1 := time.Date(2026, 5, 1, 11, 55, 0, 0, time.UTC)
+
+	rows := sqlmock.NewRows([]string{
+		"id", "user_id", "order_type", "status", "pay_amount", "amount",
+		"paid_at", "completed_at", "created_at",
+	}).
+		AddRow(int64(101), int64(20), payment.OrderTypeBalance, payment.OrderStatusCompleted,
+			100.0, 100.0, paid1, completed1, created1).
+		// 第二行 paid_at NULL，验证 nullable 字段处理
+		AddRow(int64(102), int64(21), payment.OrderTypeBalance, payment.OrderStatusCompleted,
+			200.0, 200.0, nil, completed1, created1)
+
+	mock.ExpectQuery(`FROM\s+payment_orders\s+po.*WHERE\s+po\.status\s*=\s*\$1.*AND\s+po\.order_type\s*=\s*\$2.*NOT\s+EXISTS.*FROM\s+sales_commission_records.*WHERE\s+r\.payment_order_id\s*=\s*po\.id.*ORDER\s+BY\s+po\.id\s+ASC.*LIMIT\s+\$3`).
+		WithArgs(payment.OrderStatusCompleted, payment.OrderTypeBalance, 50).
+		WillReturnRows(rows)
+
+	orders, err := repo.ListMissingCommissionPaymentOrders(ctx, 50)
+	require.NoError(t, err)
+	require.Len(t, orders, 2)
+
+	require.Equal(t, int64(101), orders[0].ID)
+	require.Equal(t, int64(20), orders[0].UserID)
+	require.Equal(t, payment.OrderTypeBalance, orders[0].OrderType)
+	require.Equal(t, payment.OrderStatusCompleted, orders[0].Status)
+	require.InDelta(t, 100.0, orders[0].PayAmount, 0.0001)
+	require.InDelta(t, 100.0, orders[0].Amount, 0.0001)
+	require.NotNil(t, orders[0].PaidAt)
+	require.True(t, orders[0].PaidAt.Equal(paid1))
+	require.NotNil(t, orders[0].CompletedAt)
+	require.True(t, orders[0].CreatedAt.Equal(created1))
+
+	// 第二行 paid_at 应当解析成 nil（保持与 ent 实体语义一致）
+	require.Nil(t, orders[1].PaidAt)
+	require.Equal(t, int64(102), orders[1].ID)
+
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+// TestSalesCommissionRepository_ListRecords_DefaultsToCreatedAtDesc 默认排序应当按 created_at DESC,
+// 第二排序键用同方向的 id 保证分页结果稳定（避免同一毫秒下 ORDER BY 不确定导致分页跳行）。
+//
+// 这条测试是 spec 「佣金明细默认按创建时间倒序」的回归保护，破坏 SQL 形态会立即报错。
+func TestSalesCommissionRepository_ListRecords_DefaultsToCreatedAtDesc(t *testing.T) {
+	db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherRegexp))
+	require.NoError(t, err)
+	defer db.Close()
+
+	repo := NewSalesCommissionRepository(db)
+	ctx := context.Background()
+
+	mock.ExpectQuery(`SELECT COUNT\(\*\)\s+FROM sales_commission_records scr`).
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
+
+	// 主查询里必须出现 ORDER BY scr.created_at DESC, scr.id DESC，这是默认排序契约。
+	mock.ExpectQuery(`ORDER BY scr\.created_at DESC, scr\.id DESC`).
+		WithArgs(payment.OrderStatusCompleted, service.SalesCommissionStatusSettlementBlocked, 20, 0).
+		WillReturnRows(emptySalesCommissionRecordRows())
+
+	// 不传 SortOrder，应当走默认 DESC。
+	_, _, err = repo.ListRecords(ctx, service.SalesCommissionRecordListParams{Page: 1, PageSize: 20})
+	require.NoError(t, err)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+// TestSalesCommissionRepository_ListRecords_HonorsAscSortOrder 当显式传 SortOrder="asc" 时切到正序。
+func TestSalesCommissionRepository_ListRecords_HonorsAscSortOrder(t *testing.T) {
+	db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherRegexp))
+	require.NoError(t, err)
+	defer db.Close()
+
+	repo := NewSalesCommissionRepository(db)
+	ctx := context.Background()
+
+	mock.ExpectQuery(`SELECT COUNT\(\*\)\s+FROM sales_commission_records scr`).
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
+	mock.ExpectQuery(`ORDER BY scr\.created_at ASC, scr\.id ASC`).
+		WithArgs(payment.OrderStatusCompleted, service.SalesCommissionStatusSettlementBlocked, 20, 0).
+		WillReturnRows(emptySalesCommissionRecordRows())
+
+	_, _, err = repo.ListRecords(ctx, service.SalesCommissionRecordListParams{Page: 1, PageSize: 20, SortOrder: "asc"})
+	require.NoError(t, err)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+// TestSalesCommissionRepository_ListRecords_NormalizesInvalidSortOrder 非法 SortOrder 应当回退到 DESC，
+// 这是 SQL 注入兜底（即使 service 层已经做了 normalize，repo 层也必须独立安全）。
+func TestSalesCommissionRepository_ListRecords_NormalizesInvalidSortOrder(t *testing.T) {
+	db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherRegexp))
+	require.NoError(t, err)
+	defer db.Close()
+
+	repo := NewSalesCommissionRepository(db)
+	ctx := context.Background()
+
+	mock.ExpectQuery(`SELECT COUNT\(\*\)\s+FROM sales_commission_records scr`).
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
+	mock.ExpectQuery(`ORDER BY scr\.created_at DESC, scr\.id DESC`).
+		WithArgs(payment.OrderStatusCompleted, service.SalesCommissionStatusSettlementBlocked, 20, 0).
+		WillReturnRows(emptySalesCommissionRecordRows())
+
+	_, _, err = repo.ListRecords(ctx, service.SalesCommissionRecordListParams{
+		Page: 1, PageSize: 20,
+		SortOrder: "'; DROP TABLE sales_commission_records; --",
+	})
+	require.NoError(t, err)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+// emptySalesCommissionRecordRows 是上面三个测试共用的空结果集，列与 scanSalesCommissionRecord 期望的 29 列一致。
+func emptySalesCommissionRecordRows() *sqlmock.Rows {
+	return sqlmock.NewRows([]string{
+		"id", "sales_user_id", "sales_email", "sales_username",
+		"referee_user_id", "referee_email", "referee_username",
+		"referral_id", "payment_order_id", "payment_order_status",
+		"order_pay_amount_cny", "order_credited_amount", "commission_rate",
+		"commission_event_at", "commission_month", "snapshot_id", "commission_mode",
+		"monthly_sales_before_cny", "monthly_sales_after_cny",
+		"commission_total_cny", "credited_used_amount", "frozen_cny",
+		"unlocked_cny", "settled_cny", "settleable_cny",
+		"status", "note", "created_at", "updated_at",
+	})
+}
+
+// TestSalesCommissionRepository_ListMissingCommissionPaymentOrders_NoRowsReturnsEmpty 没候选时返回空切片 + nil error。
+func TestSalesCommissionRepository_ListMissingCommissionPaymentOrders_NoRowsReturnsEmpty(t *testing.T) {
+	db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherRegexp))
+	require.NoError(t, err)
+	defer db.Close()
+
+	repo := NewSalesCommissionRepository(db)
+	ctx := context.Background()
+
+	mock.ExpectQuery(`FROM\s+payment_orders`).
+		WithArgs(payment.OrderStatusCompleted, payment.OrderTypeBalance, 100).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"id", "user_id", "order_type", "status", "pay_amount", "amount",
+			"paid_at", "completed_at", "created_at",
+		}))
+
+	orders, err := repo.ListMissingCommissionPaymentOrders(ctx, 100)
+	require.NoError(t, err)
+	require.Empty(t, orders)
+	require.NoError(t, mock.ExpectationsWereMet())
+}

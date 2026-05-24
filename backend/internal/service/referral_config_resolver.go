@@ -136,7 +136,9 @@ func (r *ReferralConfigResolver) getUserConfig(ctx context.Context, userID int64
 // loadGlobalConfigFromDB 从 settings 表读取全局推广配置
 func (r *ReferralConfigResolver) loadGlobalConfigFromDB(ctx context.Context) *ReferralGlobalConfig {
 	keys := []string{
+		// 普通推广
 		SettingKeyReferralEnabled,
+		SettingKeyReferralInviteeRewardEnabled,
 		SettingKeyReferralInviteeReward,
 		SettingKeyReferralInviterReward,
 		SettingKeyReferralMaxInvites,
@@ -146,6 +148,21 @@ func (r *ReferralConfigResolver) loadGlobalConfigFromDB(ctx context.Context) *Re
 		SettingKeyReferralOngoingRewardValue,
 		SettingKeyReferralOngoingRewardMaxCount,
 		SettingKeyReferralOngoingRewardDurationDays,
+		// 普通推广：被邀请人持续奖励
+		SettingKeyReferralInviteeOngoingRewardEnabled,
+		SettingKeyReferralInviteeOngoingRewardType,
+		SettingKeyReferralInviteeOngoingRewardValue,
+		SettingKeyReferralInviteeOngoingRewardMaxCount,
+		SettingKeyReferralInviteeOngoingRewardDurationDays,
+		// 销售推广
+		SettingKeyReferralSalesEnabled,
+		SettingKeyReferralSalesInviteeRewardEnabled,
+		SettingKeyReferralSalesInviteeReward,
+		SettingKeyReferralSalesInviteeOngoingRewardEnabled,
+		SettingKeyReferralSalesInviteeOngoingRewardType,
+		SettingKeyReferralSalesInviteeOngoingRewardValue,
+		SettingKeyReferralSalesInviteeOngoingRewardMaxCount,
+		SettingKeyReferralSalesInviteeOngoingRewardDurationDays,
 	}
 
 	values, err := r.settingRepo.GetMultiple(ctx, keys)
@@ -155,7 +172,9 @@ func (r *ReferralConfigResolver) loadGlobalConfigFromDB(ctx context.Context) *Re
 	}
 
 	cfg := &ReferralGlobalConfig{
+		// 普通推广
 		Enabled:                   parseBool(values[SettingKeyReferralEnabled]),
+		InviteeRewardEnabled:      parseBool(values[SettingKeyReferralInviteeRewardEnabled]),
 		InviteeRewardAmount:       parseFloat(values[SettingKeyReferralInviteeReward]),
 		InviterRewardAmount:       parseFloat(values[SettingKeyReferralInviterReward]),
 		MaxInvites:                parseInt(values[SettingKeyReferralMaxInvites]),
@@ -165,10 +184,31 @@ func (r *ReferralConfigResolver) loadGlobalConfigFromDB(ctx context.Context) *Re
 		OngoingRewardValue:        parseFloat(values[SettingKeyReferralOngoingRewardValue]),
 		OngoingRewardMaxCount:     parseInt(values[SettingKeyReferralOngoingRewardMaxCount]),
 		OngoingRewardDurationDays: parseInt(values[SettingKeyReferralOngoingRewardDurationDays]),
+		// 普通推广：被邀请人持续奖励
+		InviteeOngoingRewardEnabled:      parseBool(values[SettingKeyReferralInviteeOngoingRewardEnabled]),
+		InviteeOngoingRewardType:         values[SettingKeyReferralInviteeOngoingRewardType],
+		InviteeOngoingRewardValue:        parseFloat(values[SettingKeyReferralInviteeOngoingRewardValue]),
+		InviteeOngoingRewardMaxCount:     parseInt(values[SettingKeyReferralInviteeOngoingRewardMaxCount]),
+		InviteeOngoingRewardDurationDays: parseInt(values[SettingKeyReferralInviteeOngoingRewardDurationDays]),
+		// 销售推广
+		SalesEnabled:                          parseBool(values[SettingKeyReferralSalesEnabled]),
+		SalesInviteeRewardEnabled:             parseBool(values[SettingKeyReferralSalesInviteeRewardEnabled]),
+		SalesInviteeRewardAmount:              parseFloat(values[SettingKeyReferralSalesInviteeReward]),
+		SalesInviteeOngoingRewardEnabled:      parseBool(values[SettingKeyReferralSalesInviteeOngoingRewardEnabled]),
+		SalesInviteeOngoingRewardType:         values[SettingKeyReferralSalesInviteeOngoingRewardType],
+		SalesInviteeOngoingRewardValue:        parseFloat(values[SettingKeyReferralSalesInviteeOngoingRewardValue]),
+		SalesInviteeOngoingRewardMaxCount:     parseInt(values[SettingKeyReferralSalesInviteeOngoingRewardMaxCount]),
+		SalesInviteeOngoingRewardDurationDays: parseInt(values[SettingKeyReferralSalesInviteeOngoingRewardDurationDays]),
 	}
 	// 默认 type 为 fixed（空字符串、未设置时）
 	if cfg.OngoingRewardType == "" {
 		cfg.OngoingRewardType = "fixed"
+	}
+	if cfg.InviteeOngoingRewardType == "" {
+		cfg.InviteeOngoingRewardType = "fixed"
+	}
+	if cfg.SalesInviteeOngoingRewardType == "" {
+		cfg.SalesInviteeOngoingRewardType = "fixed"
 	}
 	return cfg
 }
@@ -176,16 +216,21 @@ func (r *ReferralConfigResolver) loadGlobalConfigFromDB(ctx context.Context) *Re
 // mergeConfig 将用户覆盖配置合并到全局配置
 func mergeConfig(global *ReferralGlobalConfig, user *UserReferralConfig) *EffectiveReferralConfig {
 	eff := &EffectiveReferralConfig{
-		Enabled:                   global.Enabled,
-		InviteeRewardAmount:       global.InviteeRewardAmount,
-		InviterRewardAmount:       global.InviterRewardAmount,
-		MaxInvites:                global.MaxInvites,
-		RewardExpiryDays:          global.RewardExpiryDays,
-		OngoingRewardEnabled:      global.OngoingRewardEnabled,
-		OngoingRewardType:         global.OngoingRewardType,
-		OngoingRewardValue:        global.OngoingRewardValue,
-		OngoingRewardMaxCount:     global.OngoingRewardMaxCount,
-		OngoingRewardDurationDays: global.OngoingRewardDurationDays,
+		Enabled:                          global.Enabled,
+		InviteeRewardAmount:              global.InviteeRewardAmount,
+		InviterRewardAmount:              global.InviterRewardAmount,
+		MaxInvites:                       global.MaxInvites,
+		RewardExpiryDays:                 global.RewardExpiryDays,
+		OngoingRewardEnabled:             global.OngoingRewardEnabled,
+		OngoingRewardType:                global.OngoingRewardType,
+		OngoingRewardValue:               global.OngoingRewardValue,
+		OngoingRewardMaxCount:            global.OngoingRewardMaxCount,
+		OngoingRewardDurationDays:        global.OngoingRewardDurationDays,
+		InviteeOngoingRewardEnabled:      global.InviteeOngoingRewardEnabled,
+		InviteeOngoingRewardType:         global.InviteeOngoingRewardType,
+		InviteeOngoingRewardValue:        global.InviteeOngoingRewardValue,
+		InviteeOngoingRewardMaxCount:     global.InviteeOngoingRewardMaxCount,
+		InviteeOngoingRewardDurationDays: global.InviteeOngoingRewardDurationDays,
 	}
 	if user == nil {
 		return eff
@@ -216,6 +261,21 @@ func mergeConfig(global *ReferralGlobalConfig, user *UserReferralConfig) *Effect
 	}
 	if user.OngoingRewardDurationDays != nil {
 		eff.OngoingRewardDurationDays = *user.OngoingRewardDurationDays
+	}
+	if user.InviteeOngoingRewardEnabled != nil {
+		eff.InviteeOngoingRewardEnabled = *user.InviteeOngoingRewardEnabled
+	}
+	if user.InviteeOngoingRewardType != nil && *user.InviteeOngoingRewardType != "" {
+		eff.InviteeOngoingRewardType = *user.InviteeOngoingRewardType
+	}
+	if user.InviteeOngoingRewardValue != nil {
+		eff.InviteeOngoingRewardValue = *user.InviteeOngoingRewardValue
+	}
+	if user.InviteeOngoingRewardMaxCount != nil {
+		eff.InviteeOngoingRewardMaxCount = *user.InviteeOngoingRewardMaxCount
+	}
+	if user.InviteeOngoingRewardDurationDays != nil {
+		eff.InviteeOngoingRewardDurationDays = *user.InviteeOngoingRewardDurationDays
 	}
 	return eff
 }

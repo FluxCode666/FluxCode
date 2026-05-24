@@ -23,15 +23,23 @@
           <div class="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between">
             <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ t('salesCommissions.records') }}</h3>
             <div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-[repeat(4,minmax(0,1fr))_auto_auto]">
-              <input v-model.trim="recordFiltersLocal.salesUserID" type="number" min="1" class="input" :placeholder="t('salesCommissions.salesUserId')" @keyup.enter="submitRecordFilters" />
-              <input v-model.trim="recordFiltersLocal.refereeUserID" type="number" min="1" class="input" :placeholder="t('salesCommissions.refereeUserId')" @keyup.enter="submitRecordFilters" />
+              <UserSearchSelect v-model="recordFiltersLocal.salesUserID" :placeholder="t('salesCommissions.salesUserId')" />
+              <UserSearchSelect v-model="recordFiltersLocal.refereeUserID" :placeholder="t('salesCommissions.refereeUserId')" />
               <input v-model.trim="recordFiltersLocal.paymentOrderID" type="number" min="1" class="input" :placeholder="t('salesCommissions.paymentOrderId')" @keyup.enter="submitRecordFilters" />
               <Select v-model="recordFiltersLocal.status" :options="recordStatusOptions" />
               <button type="button" class="btn btn-secondary" @click="resetRecordFilters">{{ t('common.reset') }}</button>
               <button type="button" class="btn btn-primary" @click="submitRecordFilters">{{ t('common.apply') }}</button>
             </div>
           </div>
-          <DataTable :columns="recordColumns" :data="records" :loading="loadingRecords">
+          <DataTable
+            :columns="recordColumns"
+            :data="records"
+            :loading="loadingRecords"
+            :server-side-sort="true"
+            default-sort-key="created_at"
+            :default-sort-order="recordSortOrder"
+            @sort="onRecordSort"
+          >
             <template #cell-sales_email="{ row }">
               <div>
                 <div class="font-medium">{{ row.sales_email || '-' }}</div>
@@ -75,6 +83,7 @@ import { useI18n } from 'vue-i18n'
 import DataTable from '@/components/common/DataTable.vue'
 import Pagination from '@/components/common/Pagination.vue'
 import Select from '@/components/common/Select.vue'
+import UserSearchSelect from '@/components/common/UserSearchSelect.vue'
 import type { SalesCommissionRecord, SalesCommissionSettlement } from '@/types'
 
 export interface RecordFilters {
@@ -84,7 +93,7 @@ export interface RecordFilters {
   status: string
 }
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   records: SalesCommissionRecord[]
   settlements: SalesCommissionSettlement[]
   loadingRecords: boolean
@@ -92,14 +101,30 @@ const props = defineProps<{
   recordPagination: { page: number; page_size: number; total: number }
   settlementPagination: { page: number; page_size: number; total: number }
   recordFilters: RecordFilters
-}>()
+  /**
+   * 佣金明细按 created_at 的排序方向。
+   * 父组件持有真实状态并在 emit('update:recordSort', ...) 后切换它；
+   * DataTable 仅在挂载时把它当作初始 defaultSortOrder。
+   */
+  recordSortOrder?: 'asc' | 'desc'
+}>(), {
+  recordSortOrder: 'desc'
+})
 
 const emit = defineEmits<{
   (e: 'update:recordFilters', value: RecordFilters): void
   (e: 'update:recordPage', page: number): void
   (e: 'update:settlementPage', page: number): void
+  (e: 'update:recordSort', order: 'asc' | 'desc'): void
   (e: 'expand'): void
 }>()
+
+// DataTable 在 serverSideSort 模式下，每次点击列头都会 emit (key, order)。
+// 我们只让 created_at 列可排序（recordColumns 已限定 sortable），所以这里无需再校验 key。
+// 当 order 与父组件当前 prop 一致时也照常透传——避免点同方向时 UI 状态与父组件 desync。
+function onRecordSort(_key: string, order: 'asc' | 'desc') {
+  emit('update:recordSort', order)
+}
 
 const { t } = useI18n()
 const open = ref(false)
@@ -138,7 +163,9 @@ const recordColumns = computed(() => [
   { key: 'settleable_cny', label: t('salesCommissions.settleable') },
   { key: 'settled_cny', label: t('salesCommissions.settled') },
   { key: 'status', label: t('salesCommissions.status') },
-  { key: 'created_at', label: t('salesCommissions.createdAt') }
+  // 唯一可排序列：服务端按 created_at + id 双键排序，DataTable serverSideSort 模式下
+  // 点击表头会 emit `sort` 事件，由父组件 SalesCommissionsView 接收后重新发请求。
+  { key: 'created_at', label: t('salesCommissions.createdAt'), sortable: true }
 ])
 
 const settlementColumns = computed(() => [

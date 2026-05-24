@@ -818,6 +818,108 @@ func TestSalesCommissionService_GetOverview_Last30DaysWindow(t *testing.T) {
 	require.Equal(t, expectedEnd, overview.Range.End)
 }
 
+func TestSalesCommissionService_RecomputeMissingCommissions_NoCandidatesIsNoop(t *testing.T) {
+	t.Parallel()
+
+	repo := &salesCommissionRepoStub{}
+	svc := NewSalesCommissionService(repo, &salesCommissionReferralRepoStub{}, &salesCommissionUserRepoStub{})
+
+	res, err := svc.RecomputeMissingCommissions(context.Background(), 0)
+	require.NoError(t, err)
+	require.NotNil(t, res)
+	require.Equal(t, 0, res.Scanned)
+	require.Equal(t, 0, res.Processed)
+	require.Equal(t, 0, res.Failed)
+	require.Empty(t, res.FailedOrderIDs)
+	// 默认 limit 应当被规整到一个非零默认值。
+	require.Greater(t, repo.lastMissingLimit, 0)
+}
+
+func TestSalesCommissionService_RecomputeMissingCommissions_ProcessesAllCandidates(t *testing.T) {
+	t.Parallel()
+
+	orders := []*dbent.PaymentOrder{
+		{ID: 101, UserID: 20, OrderType: payment.OrderTypeBalance, Status: payment.OrderStatusCompleted, PayAmount: 100, Amount: 100, PaidAt: timePtr(time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC))},
+		{ID: 102, UserID: 21, OrderType: payment.OrderTypeBalance, Status: payment.OrderStatusCompleted, PayAmount: 200, Amount: 200, PaidAt: timePtr(time.Date(2026, 5, 2, 12, 0, 0, 0, time.UTC))},
+		{ID: 103, UserID: 22, OrderType: payment.OrderTypeBalance, Status: payment.OrderStatusCompleted, PayAmount: 300, Amount: 300, PaidAt: timePtr(time.Date(2026, 5, 3, 12, 0, 0, 0, time.UTC))},
+	}
+	repo := &salesCommissionRepoStub{missingOrders: orders}
+	refRepo := &salesCommissionReferralRepoStub{
+		byReferee: map[int64]*Referral{
+			20: {ID: 1, ReferrerID: 10, RefereeID: 20},
+			21: {ID: 2, ReferrerID: 10, RefereeID: 21},
+			22: {ID: 3, ReferrerID: 10, RefereeID: 22},
+		},
+	}
+	userRepo := &salesCommissionUserRepoStub{
+		byID: map[int64]*User{
+			10: {ID: 10, IsSales: true, SalesCommissionRate: 12.5},
+		},
+	}
+	svc := NewSalesCommissionService(repo, refRepo, userRepo)
+
+	res, err := svc.RecomputeMissingCommissions(context.Background(), 50)
+	require.NoError(t, err)
+	require.Equal(t, 3, res.Scanned)
+	require.Equal(t, 3, res.Processed)
+	require.Equal(t, 0, res.Failed)
+	require.Empty(t, res.FailedOrderIDs)
+	require.Equal(t, 50, repo.lastMissingLimit)
+	// 三条都进入了 CreateForOrder。
+	require.Len(t, repo.created, 3)
+	require.ElementsMatch(t,
+		[]int64{101, 102, 103},
+		[]int64{*repo.created[0].PaymentOrderID, *repo.created[1].PaymentOrderID, *repo.created[2].PaymentOrderID},
+	)
+}
+
+func TestSalesCommissionService_RecomputeMissingCommissions_FailedOrderDoesNotAbortBatch(t *testing.T) {
+	t.Parallel()
+
+	orders := []*dbent.PaymentOrder{
+		{ID: 201, UserID: 20, OrderType: payment.OrderTypeBalance, Status: payment.OrderStatusCompleted, PayAmount: 100, Amount: 100, PaidAt: timePtr(time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC))},
+		{ID: 202, UserID: 21, OrderType: payment.OrderTypeBalance, Status: payment.OrderStatusCompleted, PayAmount: 200, Amount: 200, PaidAt: timePtr(time.Date(2026, 5, 2, 0, 0, 0, 0, time.UTC))},
+		{ID: 203, UserID: 22, OrderType: payment.OrderTypeBalance, Status: payment.OrderStatusCompleted, PayAmount: 300, Amount: 300, PaidAt: timePtr(time.Date(2026, 5, 3, 0, 0, 0, 0, time.UTC))},
+	}
+	repo := &salesCommissionRepoStub{
+		missingOrders:              orders,
+		createForOrderErrByOrderID: map[int64]error{202: errors.New("simulated insert failure")},
+	}
+	refRepo := &salesCommissionReferralRepoStub{
+		byReferee: map[int64]*Referral{
+			20: {ID: 1, ReferrerID: 10, RefereeID: 20},
+			21: {ID: 2, ReferrerID: 10, RefereeID: 21},
+			22: {ID: 3, ReferrerID: 10, RefereeID: 22},
+		},
+	}
+	userRepo := &salesCommissionUserRepoStub{
+		byID: map[int64]*User{
+			10: {ID: 10, IsSales: true, SalesCommissionRate: 12.5},
+		},
+	}
+	svc := NewSalesCommissionService(repo, refRepo, userRepo)
+
+	res, err := svc.RecomputeMissingCommissions(context.Background(), 0)
+	require.NoError(t, err) // 单条失败不应当让整个批处理报错。
+	require.Equal(t, 3, res.Scanned)
+	require.Equal(t, 2, res.Processed)
+	require.Equal(t, 1, res.Failed)
+	require.Equal(t, []int64{202}, res.FailedOrderIDs)
+	// 201 与 203 的 CreateForOrder 实际成功；202 因注入错误未进入 created。
+	require.Len(t, repo.created, 2)
+}
+
+func TestSalesCommissionService_RecomputeMissingCommissions_PropagatesRepoError(t *testing.T) {
+	t.Parallel()
+
+	repo := &salesCommissionRepoStub{missingOrdersErr: errors.New("db down")}
+	svc := NewSalesCommissionService(repo, &salesCommissionReferralRepoStub{}, &salesCommissionUserRepoStub{})
+
+	res, err := svc.RecomputeMissingCommissions(context.Background(), 0)
+	require.Error(t, err)
+	require.Nil(t, res)
+}
+
 func completedBalanceOrder() *dbent.PaymentOrder {
 	return &dbent.PaymentOrder{
 		ID:          99,
@@ -841,26 +943,43 @@ func timePtr(t time.Time) *time.Time {
 }
 
 type salesCommissionRepoStub struct {
-	created                   []*SalesCommissionCreate
-	summaries                 []SalesCommissionSummary
-	summary                   *SalesCommissionSummary
-	records                   []SalesCommissionRecord
-	settlements               []SalesCommissionSettlement
-	monthlyProgress           *SalesCommissionMonthlyProgressData
-	monthlyProgressErr        error
-	overview                  *SalesCommissionOverviewData
-	overviewErr               error
-	lastSummaryParams         SalesCommissionSummaryListParams
-	lastRecordParams          SalesCommissionRecordListParams
-	lastSettlementParams      SalesCommissionSettlementListParams
-	lastMonthlyProgressUserID int64
-	lastMonthlyProgressMonth  time.Time
-	lastOverviewQuery         SalesCommissionOverviewQuery
+	created                    []*SalesCommissionCreate
+	createForOrderErrByOrderID map[int64]error
+	missingOrders              []*dbent.PaymentOrder
+	missingOrdersErr           error
+	lastMissingLimit           int
+	summaries                  []SalesCommissionSummary
+	summary                    *SalesCommissionSummary
+	records                    []SalesCommissionRecord
+	settlements                []SalesCommissionSettlement
+	monthlyProgress            *SalesCommissionMonthlyProgressData
+	monthlyProgressErr         error
+	overview                   *SalesCommissionOverviewData
+	overviewErr                error
+	lastSummaryParams          SalesCommissionSummaryListParams
+	lastRecordParams           SalesCommissionRecordListParams
+	lastSettlementParams       SalesCommissionSettlementListParams
+	lastMonthlyProgressUserID  int64
+	lastMonthlyProgressMonth   time.Time
+	lastOverviewQuery          SalesCommissionOverviewQuery
 }
 
 func (r *salesCommissionRepoStub) CreateForOrder(_ context.Context, input *SalesCommissionCreate) error {
+	if input != nil && input.PaymentOrderID != nil {
+		if err, ok := r.createForOrderErrByOrderID[*input.PaymentOrderID]; ok {
+			return err
+		}
+	}
 	r.created = append(r.created, input)
 	return nil
+}
+
+func (r *salesCommissionRepoStub) ListMissingCommissionPaymentOrders(_ context.Context, limit int) ([]*dbent.PaymentOrder, error) {
+	r.lastMissingLimit = limit
+	if r.missingOrdersErr != nil {
+		return nil, r.missingOrdersErr
+	}
+	return r.missingOrders, nil
 }
 
 func (r *salesCommissionRepoStub) ListSummaries(_ context.Context, params SalesCommissionSummaryListParams) ([]SalesCommissionSummary, int, error) {
@@ -883,6 +1002,16 @@ func (r *salesCommissionRepoStub) ListRecords(_ context.Context, params SalesCom
 func (r *salesCommissionRepoStub) ListSettlements(_ context.Context, params SalesCommissionSettlementListParams) ([]SalesCommissionSettlement, int, error) {
 	r.lastSettlementParams = params
 	return r.settlements, len(r.settlements), nil
+}
+
+func (r *salesCommissionRepoStub) CreateSettlement(_ context.Context, input *SalesCommissionSettlementCreate) (*SalesCommissionSettlement, error) {
+	return &SalesCommissionSettlement{
+		ID:          1,
+		SalesUserID: input.SalesUserID,
+		AmountCNY:   input.AmountCNY,
+		Note:        input.Note,
+		CreatedBy:   input.CreatedBy,
+	}, nil
 }
 
 func (r *salesCommissionRepoStub) GetMonthlyProgress(_ context.Context, salesUserID int64, commissionMonth time.Time) (*SalesCommissionMonthlyProgressData, error) {
@@ -950,6 +1079,9 @@ func (r *salesCommissionReferralRepoStub) SetInviterRewarded(context.Context, in
 }
 
 func (r *salesCommissionReferralRepoStub) IncrementOngoingReward(context.Context, int64, float64) error {
+	return nil
+}
+func (r *salesCommissionReferralRepoStub) IncrementInviteeOngoingReward(context.Context, int64, float64) error {
 	return nil
 }
 

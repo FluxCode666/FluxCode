@@ -211,6 +211,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyBalanceLowNotifyRechargeURL,
 		SettingKeyAccountQuotaNotifyEnabled,
 		SettingKeyReferralEnabled,
+		SettingKeyReferralSalesEnabled,
 	}
 
 	settings, err := s.settingRepo.GetMultiple(ctx, keys)
@@ -290,6 +291,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		BalanceLowNotifyThreshold:        balanceLowNotifyThreshold,
 		BalanceLowNotifyRechargeURL:      settings[SettingKeyBalanceLowNotifyRechargeURL],
 		ReferralEnabled:                  settings[SettingKeyReferralEnabled] == "true",
+		ReferralSalesEnabled:             settings[SettingKeyReferralSalesEnabled] == "true",
 	}, nil
 }
 

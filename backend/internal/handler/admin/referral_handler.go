@@ -44,7 +44,9 @@ func (h *ReferralHandler) GetStats(c *gin.Context) {
 
 // adminConfigDTO 管理端推广配置（API 契约：使用 type+value 模式）
 type adminConfigDTO struct {
+	// --- 普通用户推广 ---
 	ReferralEnabled                   bool    `json:"referral_enabled"`
+	ReferralInviteeRewardEnabled      bool    `json:"referral_invitee_reward_enabled"`
 	ReferralInviteeReward             float64 `json:"referral_invitee_reward"`
 	ReferralInviterReward             float64 `json:"referral_inviter_reward"`
 	ReferralMaxInvites                int     `json:"referral_max_invites"`
@@ -55,6 +57,21 @@ type adminConfigDTO struct {
 	ReferralOngoingRewardValue        float64 `json:"referral_ongoing_reward_value"`
 	ReferralOngoingRewardMaxCount     int     `json:"referral_ongoing_reward_max_count"`
 	ReferralOngoingRewardDurationDays int     `json:"referral_ongoing_reward_duration_days"`
+	// --- 普通推广：被邀请人持续奖励 ---
+	ReferralInviteeOngoingRewardEnabled      bool    `json:"referral_invitee_ongoing_reward_enabled"`
+	ReferralInviteeOngoingRewardType         string  `json:"referral_invitee_ongoing_reward_type"`
+	ReferralInviteeOngoingRewardValue        float64 `json:"referral_invitee_ongoing_reward_value"`
+	ReferralInviteeOngoingRewardMaxCount     int     `json:"referral_invitee_ongoing_reward_max_count"`
+	ReferralInviteeOngoingRewardDurationDays int     `json:"referral_invitee_ongoing_reward_duration_days"`
+	// --- 销售用户推广 ---
+	ReferralSalesEnabled                          bool    `json:"referral_sales_enabled"`
+	ReferralSalesInviteeRewardEnabled             bool    `json:"referral_sales_invitee_reward_enabled"`
+	ReferralSalesInviteeReward                    float64 `json:"referral_sales_invitee_reward"`
+	ReferralSalesInviteeOngoingRewardEnabled      bool    `json:"referral_sales_invitee_ongoing_reward_enabled"`
+	ReferralSalesInviteeOngoingRewardType         string  `json:"referral_sales_invitee_ongoing_reward_type"`
+	ReferralSalesInviteeOngoingRewardValue        float64 `json:"referral_sales_invitee_ongoing_reward_value"`
+	ReferralSalesInviteeOngoingRewardMaxCount     int     `json:"referral_sales_invitee_ongoing_reward_max_count"`
+	ReferralSalesInviteeOngoingRewardDurationDays int     `json:"referral_sales_invitee_ongoing_reward_duration_days"`
 }
 
 // GetConfig 获取全局推广配置
@@ -67,25 +84,51 @@ func (h *ReferralHandler) GetConfig(c *gin.Context) {
 		rewardType = "fixed"
 	}
 
+	salesOngoingType := cfg.SalesInviteeOngoingRewardType
+	if salesOngoingType == "" {
+		salesOngoingType = "fixed"
+	}
+
+	inviteeOngoingType := cfg.InviteeOngoingRewardType
+	if inviteeOngoingType == "" {
+		inviteeOngoingType = "fixed"
+	}
+
 	response.Success(c, adminConfigDTO{
-		ReferralEnabled:                   cfg.Enabled,
-		ReferralInviteeReward:             cfg.InviteeRewardAmount,
-		ReferralInviterReward:             cfg.InviterRewardAmount,
-		ReferralMaxInvites:                cfg.MaxInvites,
-		ReferralRewardExpiryDays:          cfg.RewardExpiryDays,
-		ReferralGiftBalanceExpiryDays:     cfg.RewardExpiryDays,
-		ReferralOngoingRewardEnabled:      cfg.OngoingRewardEnabled,
-		ReferralOngoingRewardType:         rewardType,
-		ReferralOngoingRewardValue:        cfg.OngoingRewardValue,
-		ReferralOngoingRewardMaxCount:     cfg.OngoingRewardMaxCount,
-		ReferralOngoingRewardDurationDays: cfg.OngoingRewardDurationDays,
+		ReferralEnabled:                               cfg.Enabled,
+		ReferralInviteeRewardEnabled:                  cfg.InviteeRewardEnabled,
+		ReferralInviteeReward:                         cfg.InviteeRewardAmount,
+		ReferralInviterReward:                         cfg.InviterRewardAmount,
+		ReferralMaxInvites:                            cfg.MaxInvites,
+		ReferralRewardExpiryDays:                      cfg.RewardExpiryDays,
+		ReferralGiftBalanceExpiryDays:                 cfg.RewardExpiryDays,
+		ReferralOngoingRewardEnabled:                  cfg.OngoingRewardEnabled,
+		ReferralOngoingRewardType:                     rewardType,
+		ReferralOngoingRewardValue:                    cfg.OngoingRewardValue,
+		ReferralOngoingRewardMaxCount:                 cfg.OngoingRewardMaxCount,
+		ReferralOngoingRewardDurationDays:             cfg.OngoingRewardDurationDays,
+		ReferralInviteeOngoingRewardEnabled:           cfg.InviteeOngoingRewardEnabled,
+		ReferralInviteeOngoingRewardType:              inviteeOngoingType,
+		ReferralInviteeOngoingRewardValue:             cfg.InviteeOngoingRewardValue,
+		ReferralInviteeOngoingRewardMaxCount:          cfg.InviteeOngoingRewardMaxCount,
+		ReferralInviteeOngoingRewardDurationDays:      cfg.InviteeOngoingRewardDurationDays,
+		ReferralSalesEnabled:                          cfg.SalesEnabled,
+		ReferralSalesInviteeRewardEnabled:             cfg.SalesInviteeRewardEnabled,
+		ReferralSalesInviteeReward:                    cfg.SalesInviteeRewardAmount,
+		ReferralSalesInviteeOngoingRewardEnabled:      cfg.SalesInviteeOngoingRewardEnabled,
+		ReferralSalesInviteeOngoingRewardType:         salesOngoingType,
+		ReferralSalesInviteeOngoingRewardValue:        cfg.SalesInviteeOngoingRewardValue,
+		ReferralSalesInviteeOngoingRewardMaxCount:     cfg.SalesInviteeOngoingRewardMaxCount,
+		ReferralSalesInviteeOngoingRewardDurationDays: cfg.SalesInviteeOngoingRewardDurationDays,
 	})
 }
 
 // updateConfigRequest 更新全局推广配置请求
 // 使用 *T 指针字段：nil = 不修改对应配置
 type updateConfigRequest struct {
+	// --- 普通用户推广 ---
 	ReferralEnabled                   *bool    `json:"referral_enabled"`
+	ReferralInviteeRewardEnabled      *bool    `json:"referral_invitee_reward_enabled"`
 	ReferralInviteeReward             *float64 `json:"referral_invitee_reward"`
 	ReferralInviterReward             *float64 `json:"referral_inviter_reward"`
 	ReferralMaxInvites                *int     `json:"referral_max_invites"`
@@ -96,6 +139,21 @@ type updateConfigRequest struct {
 	ReferralOngoingRewardValue        *float64 `json:"referral_ongoing_reward_value"`
 	ReferralOngoingRewardMaxCount     *int     `json:"referral_ongoing_reward_max_count"`
 	ReferralOngoingRewardDurationDays *int     `json:"referral_ongoing_reward_duration_days"`
+	// --- 普通推广：被邀请人持续奖励 ---
+	ReferralInviteeOngoingRewardEnabled      *bool    `json:"referral_invitee_ongoing_reward_enabled"`
+	ReferralInviteeOngoingRewardType         *string  `json:"referral_invitee_ongoing_reward_type"`
+	ReferralInviteeOngoingRewardValue        *float64 `json:"referral_invitee_ongoing_reward_value"`
+	ReferralInviteeOngoingRewardMaxCount     *int     `json:"referral_invitee_ongoing_reward_max_count"`
+	ReferralInviteeOngoingRewardDurationDays *int     `json:"referral_invitee_ongoing_reward_duration_days"`
+	// --- 销售用户推广 ---
+	ReferralSalesEnabled                          *bool    `json:"referral_sales_enabled"`
+	ReferralSalesInviteeRewardEnabled             *bool    `json:"referral_sales_invitee_reward_enabled"`
+	ReferralSalesInviteeReward                    *float64 `json:"referral_sales_invitee_reward"`
+	ReferralSalesInviteeOngoingRewardEnabled      *bool    `json:"referral_sales_invitee_ongoing_reward_enabled"`
+	ReferralSalesInviteeOngoingRewardType         *string  `json:"referral_sales_invitee_ongoing_reward_type"`
+	ReferralSalesInviteeOngoingRewardValue        *float64 `json:"referral_sales_invitee_ongoing_reward_value"`
+	ReferralSalesInviteeOngoingRewardMaxCount     *int     `json:"referral_sales_invitee_ongoing_reward_max_count"`
+	ReferralSalesInviteeOngoingRewardDurationDays *int     `json:"referral_sales_invitee_ongoing_reward_duration_days"`
 }
 
 // UpdateConfig 更新全局推广配置
@@ -145,6 +203,59 @@ func (h *ReferralHandler) UpdateConfig(c *gin.Context) {
 	}
 	if req.ReferralOngoingRewardValue != nil {
 		settings[service.SettingKeyReferralOngoingRewardValue] = strconv.FormatFloat(*req.ReferralOngoingRewardValue, 'f', -1, 64)
+	}
+	// --- 普通推广注册奖励开关 ---
+	if req.ReferralInviteeRewardEnabled != nil {
+		settings[service.SettingKeyReferralInviteeRewardEnabled] = strconv.FormatBool(*req.ReferralInviteeRewardEnabled)
+	}
+	// --- 普通推广：被邀请人持续奖励 ---
+	if req.ReferralInviteeOngoingRewardEnabled != nil {
+		settings[service.SettingKeyReferralInviteeOngoingRewardEnabled] = strconv.FormatBool(*req.ReferralInviteeOngoingRewardEnabled)
+	}
+	if req.ReferralInviteeOngoingRewardType != nil {
+		t := strings.ToLower(strings.TrimSpace(*req.ReferralInviteeOngoingRewardType))
+		if t != "percentage" {
+			t = "fixed"
+		}
+		settings[service.SettingKeyReferralInviteeOngoingRewardType] = t
+	}
+	if req.ReferralInviteeOngoingRewardValue != nil {
+		settings[service.SettingKeyReferralInviteeOngoingRewardValue] = strconv.FormatFloat(*req.ReferralInviteeOngoingRewardValue, 'f', -1, 64)
+	}
+	if req.ReferralInviteeOngoingRewardMaxCount != nil {
+		settings[service.SettingKeyReferralInviteeOngoingRewardMaxCount] = strconv.Itoa(*req.ReferralInviteeOngoingRewardMaxCount)
+	}
+	if req.ReferralInviteeOngoingRewardDurationDays != nil {
+		settings[service.SettingKeyReferralInviteeOngoingRewardDurationDays] = strconv.Itoa(*req.ReferralInviteeOngoingRewardDurationDays)
+	}
+	// --- 销售用户推广 ---
+	if req.ReferralSalesEnabled != nil {
+		settings[service.SettingKeyReferralSalesEnabled] = strconv.FormatBool(*req.ReferralSalesEnabled)
+	}
+	if req.ReferralSalesInviteeRewardEnabled != nil {
+		settings[service.SettingKeyReferralSalesInviteeRewardEnabled] = strconv.FormatBool(*req.ReferralSalesInviteeRewardEnabled)
+	}
+	if req.ReferralSalesInviteeReward != nil {
+		settings[service.SettingKeyReferralSalesInviteeReward] = strconv.FormatFloat(*req.ReferralSalesInviteeReward, 'f', -1, 64)
+	}
+	if req.ReferralSalesInviteeOngoingRewardEnabled != nil {
+		settings[service.SettingKeyReferralSalesInviteeOngoingRewardEnabled] = strconv.FormatBool(*req.ReferralSalesInviteeOngoingRewardEnabled)
+	}
+	if req.ReferralSalesInviteeOngoingRewardType != nil {
+		st := strings.ToLower(strings.TrimSpace(*req.ReferralSalesInviteeOngoingRewardType))
+		if st != "percentage" {
+			st = "fixed"
+		}
+		settings[service.SettingKeyReferralSalesInviteeOngoingRewardType] = st
+	}
+	if req.ReferralSalesInviteeOngoingRewardValue != nil {
+		settings[service.SettingKeyReferralSalesInviteeOngoingRewardValue] = strconv.FormatFloat(*req.ReferralSalesInviteeOngoingRewardValue, 'f', -1, 64)
+	}
+	if req.ReferralSalesInviteeOngoingRewardMaxCount != nil {
+		settings[service.SettingKeyReferralSalesInviteeOngoingRewardMaxCount] = strconv.Itoa(*req.ReferralSalesInviteeOngoingRewardMaxCount)
+	}
+	if req.ReferralSalesInviteeOngoingRewardDurationDays != nil {
+		settings[service.SettingKeyReferralSalesInviteeOngoingRewardDurationDays] = strconv.Itoa(*req.ReferralSalesInviteeOngoingRewardDurationDays)
 	}
 
 	if len(settings) > 0 {
@@ -410,4 +521,36 @@ func (h *ReferralHandler) DeleteUserConfig(c *gin.Context) {
 	}
 	h.configResolver.InvalidateUserCache(userID)
 	response.Success(c, gin.H{"message": "ok"})
+}
+
+// offlineRechargeRequest 录入私账充值请求
+type offlineRechargeRequest struct {
+	UserID         int64   `json:"user_id" binding:"required,min=1"`
+	PayAmountCNY   float64 `json:"pay_amount_cny" binding:"required,gt=0"`
+	CreditedAmount float64 `json:"credited_amount" binding:"required,gt=0"`
+	CreditBalance  bool    `json:"credit_balance"`
+	Note           string  `json:"note"`
+}
+
+// RecordOfflineRecharge 录入私账充值
+// POST /api/v1/admin/referral/offline-recharge
+func (h *ReferralHandler) RecordOfflineRecharge(c *gin.Context) {
+	var req offlineRechargeRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+
+	result, err := h.referralService.RecordOfflineRecharge(c.Request.Context(), &service.OfflineRechargeInput{
+		UserID:         req.UserID,
+		PayAmountCNY:   req.PayAmountCNY,
+		CreditedAmount: req.CreditedAmount,
+		CreditBalance:  req.CreditBalance,
+		Note:           req.Note,
+	})
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, result)
 }

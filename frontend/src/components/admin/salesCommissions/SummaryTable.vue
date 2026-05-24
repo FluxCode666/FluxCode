@@ -21,6 +21,16 @@
       <template #cell-frozen_cny="{ row }">{{ formatCNY(row.frozen_cny) }}</template>
       <template #cell-settleable_cny="{ row }">{{ formatCNY(row.settleable_cny) }}</template>
       <template #cell-settled_cny="{ row }">{{ formatCNY(row.settled_cny) }}</template>
+      <template #cell-actions="{ row }">
+        <button
+          type="button"
+          class="btn btn-sm btn-primary"
+          :disabled="!row.settleable_cny || row.settleable_cny <= 0"
+          @click="openSettleDialog(row)"
+        >
+          {{ t('salesCommissions.settle') }}
+        </button>
+      </template>
     </DataTable>
     <Pagination
       v-if="pagination.total > 0"
@@ -29,11 +39,38 @@
       :page-size="pagination.page_size"
       @update:page="(p) => emit('update:page', p)"
     />
+
+    <!-- 结算弹窗 -->
+    <div v-if="settleDialogVisible" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50" >
+      <div class="w-full max-w-md rounded-lg bg-white p-6 shadow-xl dark:bg-dark-900">
+        <h3 class="text-lg font-semibold text-gray-900 dark:text-gray-100">{{ t('salesCommissions.settleTitle') }}</h3>
+        <p class="mt-2 text-sm text-gray-600 dark:text-dark-300">
+          {{ t('salesCommissions.settleFor') }}: <strong>{{ settleTarget?.sales_email }}</strong>
+        </p>
+        <div class="mt-4 space-y-3">
+          <div>
+            <label class="input-label">{{ t('salesCommissions.settleAmount') }} (¥)</label>
+            <input v-model.number="settleForm.amount_cny" type="number" step="0.01" min="0.01" :max="settleTarget?.settleable_cny" class="input mt-1" />
+            <p class="mt-1 text-xs text-gray-500">{{ t('salesCommissions.settleMax') }}: {{ formatCNY(settleTarget?.settleable_cny) }}</p>
+          </div>
+          <div>
+            <label class="input-label">{{ t('salesCommissions.settleNote') }}</label>
+            <input v-model="settleForm.note" type="text" class="input mt-1" :placeholder="t('salesCommissions.settleNotePlaceholder')" />
+          </div>
+        </div>
+        <div class="mt-6 flex justify-end gap-3">
+          <button type="button" class="btn btn-secondary" @click="closeSettleDialog">{{ t('common.cancel') }}</button>
+          <button type="button" class="btn btn-primary" :disabled="settling || !settleForm.amount_cny || settleForm.amount_cny <= 0" @click="confirmSettle">
+            {{ settling ? t('common.loading') : t('salesCommissions.settleConfirm') }}
+          </button>
+        </div>
+      </div>
+    </div>
   </section>
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import DataTable from '@/components/common/DataTable.vue'
 import Pagination from '@/components/common/Pagination.vue'
@@ -48,6 +85,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'update:page', page: number): void
   (e: 'update:search', value: string): void
+  (e: 'settle', payload: { sales_user_id: number; amount_cny: number; note: string }): void
 }>()
 
 const { t } = useI18n()
@@ -69,6 +107,37 @@ const columns = computed(() => [
   { key: 'frozen_cny', label: t('salesCommissions.frozen') },
   { key: 'settleable_cny', label: t('salesCommissions.settleable') },
   { key: 'settled_cny', label: t('salesCommissions.settled') },
-  { key: 'records_count', label: t('salesCommissions.records') }
+  { key: 'records_count', label: t('salesCommissions.records') },
+  { key: 'actions', label: t('salesCommissions.actions') }
 ])
+
+// 结算弹窗逻辑
+const settleDialogVisible = ref(false)
+const settleTarget = ref<SalesCommissionSummary | null>(null)
+const settleForm = reactive({ amount_cny: 0, note: '' })
+const settling = ref(false)
+
+function openSettleDialog(row: SalesCommissionSummary) {
+  settleTarget.value = row
+  settleForm.amount_cny = row.settleable_cny || 0
+  settleForm.note = ''
+  settleDialogVisible.value = true
+}
+
+function closeSettleDialog() {
+  settleDialogVisible.value = false
+  settleTarget.value = null
+}
+
+function confirmSettle() {
+  if (!settleTarget.value || settleForm.amount_cny <= 0) return
+  settling.value = true
+  emit('settle', {
+    sales_user_id: settleTarget.value.sales_user_id,
+    amount_cny: settleForm.amount_cny,
+    note: settleForm.note
+  })
+}
+
+defineExpose({ closeSettleDialog, settling })
 </script>

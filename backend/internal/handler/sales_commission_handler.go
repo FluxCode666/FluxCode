@@ -56,8 +56,10 @@ func (h *SalesCommissionHandler) ListRecords(c *gin.Context) {
 	items, total, err := h.service.ListRecords(c.Request.Context(), service.SalesCommissionRecordListParams{
 		SalesUserID: userID,
 		Status:      c.Query("status"),
-		Page:        page,
-		PageSize:    pageSize,
+		// sort_order 仅接受 "asc" / "desc"，其余值由 service 归一化为 "desc"（默认倒序）。
+		SortOrder: c.Query("sort_order"),
+		Page:      page,
+		PageSize:  pageSize,
 	})
 	if err != nil {
 		response.ErrorFrom(c, err)

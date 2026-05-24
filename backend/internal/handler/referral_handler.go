@@ -146,6 +146,22 @@ func (h *ReferralHandler) GetMyGiftBalanceSummary(c *gin.Context) {
 	response.Success(c, summary)
 }
 
+// GetGiftBalanceOverview 获取赠送余额概览（Header 余额下拉用）
+// GET /api/v1/referral/gift-balance/overview
+func (h *ReferralHandler) GetGiftBalanceOverview(c *gin.Context) {
+	subject, ok := middleware.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+	overview, err := h.referralService.GetGiftBalanceOverview(c.Request.Context(), subject.UserID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, overview)
+}
+
 // GetMyStats 获取我的推广趋势数据
 // GET /api/v1/referral/stats
 func (h *ReferralHandler) GetMyStats(c *gin.Context) {
