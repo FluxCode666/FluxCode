@@ -144,7 +144,7 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 			zap.String("compat_prompt_cache_key_sha256", hashSensitiveValueForLog(promptCacheKey)),
 		)
 	}
-	logger.L().Debug("openai chat_completions: model mapping applied", logFields...)
+	logger.FromContext(c.Request.Context()).Debug("openai chat_completions: model mapping applied", logFields...)
 
 	if account.Type == AccountTypeOAuth {
 		var reqBody map[string]any
@@ -314,7 +314,7 @@ func (s *OpenAIGatewayService) handleChatBufferedStreamingResponse(
 
 		var event apicompat.ResponsesStreamEvent
 		if err := json.Unmarshal([]byte(payload), &event); err != nil {
-			logger.L().Warn("openai chat_completions buffered: failed to parse event",
+			logger.FromContext(c.Request.Context()).Warn("openai chat_completions buffered: failed to parse event",
 				zap.Error(err),
 				zap.String("request_id", requestID),
 			)
@@ -342,7 +342,7 @@ func (s *OpenAIGatewayService) handleChatBufferedStreamingResponse(
 
 	if err := scanner.Err(); err != nil {
 		if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
-			logger.L().Warn("openai chat_completions buffered: read error",
+			logger.FromContext(c.Request.Context()).Warn("openai chat_completions buffered: read error",
 				zap.Error(err),
 				zap.String("request_id", requestID),
 			)
@@ -435,7 +435,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 
 		var event apicompat.ResponsesStreamEvent
 		if err := json.Unmarshal([]byte(payload), &event); err != nil {
-			logger.L().Warn("openai chat_completions stream: failed to parse event",
+			logger.FromContext(c.Request.Context()).Warn("openai chat_completions stream: failed to parse event",
 				zap.Error(err),
 				zap.String("request_id", requestID),
 			)
@@ -458,14 +458,14 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 		for _, chunk := range chunks {
 			sse, err := apicompat.ChatChunkToSSE(chunk)
 			if err != nil {
-				logger.L().Warn("openai chat_completions stream: failed to marshal chunk",
+				logger.FromContext(c.Request.Context()).Warn("openai chat_completions stream: failed to marshal chunk",
 					zap.Error(err),
 					zap.String("request_id", requestID),
 				)
 				continue
 			}
 			if _, err := fmt.Fprint(c.Writer, sse); err != nil {
-				logger.L().Info("openai chat_completions stream: client disconnected",
+				logger.FromContext(c.Request.Context()).Info("openai chat_completions stream: client disconnected",
 					zap.String("request_id", requestID),
 				)
 				return true
@@ -495,7 +495,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 
 	handleScanErr := func(err error) {
 		if err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
-			logger.L().Warn("openai chat_completions stream: read error",
+			logger.FromContext(c.Request.Context()).Warn("openai chat_completions stream: read error",
 				zap.Error(err),
 				zap.String("request_id", requestID),
 			)
@@ -580,7 +580,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 			}
 			// Send SSE comment as keepalive
 			if _, err := fmt.Fprint(c.Writer, ":\n\n"); err != nil {
-				logger.L().Info("openai chat_completions stream: client disconnected during keepalive",
+				logger.FromContext(c.Request.Context()).Info("openai chat_completions stream: client disconnected during keepalive",
 					zap.String("request_id", requestID),
 				)
 				return resultWithUsage(), nil
@@ -592,10 +592,14 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 
 // writeChatCompletionsError writes an error response in OpenAI Chat Completions format.
 func writeChatCompletionsError(c *gin.Context, statusCode int, errType, message string) {
-	c.JSON(statusCode, gin.H{
+	resp := gin.H{
 		"error": gin.H{
 			"type":    errType,
 			"message": message,
 		},
-	})
+	}
+	if tid := serviceTraceID(c); tid != "" {
+		resp["trace_id"] = tid
+	}
+	c.JSON(statusCode, resp)
 }

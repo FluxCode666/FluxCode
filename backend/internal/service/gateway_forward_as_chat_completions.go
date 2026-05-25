@@ -72,7 +72,7 @@ func (s *GatewayService) ForwardAsChatCompletions(
 	}
 	anthropicReq.Model = mappedModel
 
-	logger.L().Debug("gateway forward_as_chat_completions: model mapping applied",
+	logger.FromContext(c.Request.Context()).Debug("gateway forward_as_chat_completions: model mapping applied",
 		zap.Int64("account_id", account.ID),
 		zap.String("original_model", originalModel),
 		zap.String("mapped_model", mappedModel),
@@ -280,7 +280,7 @@ func (s *GatewayService) handleCCBufferedFromAnthropic(
 
 	if err := scanner.Err(); err != nil {
 		if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
-			logger.L().Warn("forward_as_cc buffered: read error",
+			logger.FromContext(c.Request.Context()).Warn("forward_as_cc buffered: read error",
 				zap.Error(err),
 				zap.String("request_id", requestID),
 			)
@@ -443,7 +443,7 @@ func (s *GatewayService) handleCCStreamingFromAnthropic(
 
 	if err := scanner.Err(); err != nil {
 		if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
-			logger.L().Warn("forward_as_cc stream: read error",
+			logger.FromContext(c.Request.Context()).Warn("forward_as_cc stream: read error",
 				zap.Error(err),
 				zap.String("request_id", requestID),
 			)
@@ -473,10 +473,22 @@ func (s *GatewayService) handleCCStreamingFromAnthropic(
 // writeGatewayCCError writes an error in OpenAI Chat Completions format for
 // the Anthropic-upstream CC forwarding path.
 func writeGatewayCCError(c *gin.Context, statusCode int, errType, message string) {
-	c.JSON(statusCode, gin.H{
+	resp := gin.H{
 		"error": gin.H{
 			"type":    errType,
 			"message": message,
 		},
-	})
+	}
+	if tid := serviceTraceID(c); tid != "" {
+		resp["trace_id"] = tid
+	}
+	c.JSON(statusCode, resp)
+}
+
+// serviceTraceID extracts trace_id from the response header set by RequestLogger middleware.
+func serviceTraceID(c *gin.Context) string {
+	if c == nil || c.Writer == nil {
+		return ""
+	}
+	return c.Writer.Header().Get("X-Trace-ID")
 }

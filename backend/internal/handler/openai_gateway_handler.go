@@ -405,7 +405,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 				APIKeyService:      h.apiKeyService,
 				ChannelUsageFields: channelMapping.ToUsageFields(reqModel, result.UpstreamModel),
 			}); err != nil {
-				logger.L().With(
+				logger.FromContext(c.Request.Context()).With(
 					zap.String("component", "handler.openai_gateway.responses"),
 					zap.Int64("user_id", subject.UserID),
 					zap.Int64("api_key_id", apiKey.ID),
@@ -776,7 +776,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 				APIKeyService:      h.apiKeyService,
 				ChannelUsageFields: channelMappingMsg.ToUsageFields(reqModel, result.UpstreamModel),
 			}); err != nil {
-				logger.L().With(
+				logger.FromContext(c.Request.Context()).With(
 					zap.String("component", "handler.openai_gateway.messages"),
 					zap.Int64("user_id", subject.UserID),
 					zap.Int64("api_key_id", apiKey.ID),
@@ -796,13 +796,17 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 
 // anthropicErrorResponse writes an error in Anthropic Messages API format.
 func (h *OpenAIGatewayHandler) anthropicErrorResponse(c *gin.Context, status int, errType, message string) {
-	c.JSON(status, gin.H{
+	resp := gin.H{
 		"type": "error",
 		"error": gin.H{
 			"type":    errType,
 			"message": message,
 		},
-	})
+	}
+	if tid := gatewayTraceID(c); tid != "" {
+		resp["trace_id"] = tid
+	}
+	c.JSON(status, resp)
 }
 
 // anthropicStreamingAwareError handles errors that may occur during streaming,
@@ -811,13 +815,17 @@ func (h *OpenAIGatewayHandler) anthropicStreamingAwareError(c *gin.Context, stat
 	if streamStarted {
 		flusher, ok := c.Writer.(http.Flusher)
 		if ok {
-			errPayload, _ := json.Marshal(gin.H{
+			payload := gin.H{
 				"type": "error",
 				"error": gin.H{
 					"type":    errType,
 					"message": message,
 				},
-			})
+			}
+			if tid := gatewayTraceID(c); tid != "" {
+				payload["trace_id"] = tid
+			}
+			errPayload, _ := json.Marshal(payload)
 			fmt.Fprintf(c.Writer, "event: error\ndata: %s\n\n", errPayload) //nolint:errcheck
 			flusher.Flush()
 		}
@@ -1434,7 +1442,7 @@ func (h *OpenAIGatewayHandler) submitUsageRecordTask(baseCtx context.Context, ta
 	defer cancel()
 	defer func() {
 		if recovered := recover(); recovered != nil {
-			logger.L().With(
+			logger.FromContext(ctx).With(
 				zap.String("component", "handler.openai_gateway.responses"),
 				zap.Any("panic", recovered),
 			).Error("openai.usage_record_task_panic_recovered")
@@ -1517,7 +1525,12 @@ func (h *OpenAIGatewayHandler) handleStreamingAwareError(c *gin.Context, status 
 		flusher, ok := c.Writer.(http.Flusher)
 		if ok {
 			// SSE 错误事件固定 schema，使用 Quote 直拼可避免额外 Marshal 分配。
-			errorEvent := "event: error\ndata: " + `{"error":{"type":` + strconv.Quote(errType) + `,"message":` + strconv.Quote(message) + `}}` + "\n\n"
+			tid := gatewayTraceID(c)
+			traceField := ""
+			if tid != "" {
+				traceField = `,"trace_id":` + strconv.Quote(tid)
+			}
+			errorEvent := "event: error\ndata: " + `{"error":{"type":` + strconv.Quote(errType) + `,"message":` + strconv.Quote(message) + `}` + traceField + `}` + "\n\n"
 			if _, err := fmt.Fprint(c.Writer, errorEvent); err != nil {
 				_ = c.Error(err)
 			}
@@ -1551,12 +1564,16 @@ func shouldLogOpenAIForwardFailureAsWarn(c *gin.Context, wroteFallback bool) boo
 
 // errorResponse returns OpenAI API format error response
 func (h *OpenAIGatewayHandler) errorResponse(c *gin.Context, status int, errType, message string) {
-	c.JSON(status, gin.H{
+	resp := gin.H{
 		"error": gin.H{
 			"type":    errType,
 			"message": message,
 		},
-	})
+	}
+	if tid := gatewayTraceID(c); tid != "" {
+		resp["trace_id"] = tid
+	}
+	c.JSON(status, resp)
 }
 
 func setOpenAIClientTransportHTTP(c *gin.Context) {

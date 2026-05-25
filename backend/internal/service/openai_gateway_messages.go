@@ -65,7 +65,7 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 	upstreamModel := normalizeOpenAIModelForUpstream(account, billingModel)
 	responsesReq.Model = upstreamModel
 
-	logger.L().Debug("openai messages: model mapping applied",
+	logger.FromContext(c.Request.Context()).Debug("openai messages: model mapping applied",
 		zap.Int64("account_id", account.ID),
 		zap.String("original_model", originalModel),
 		zap.String("normalized_model", normalizedModel),
@@ -301,7 +301,7 @@ func (s *OpenAIGatewayService) handleAnthropicBufferedStreamingResponse(
 
 		var event apicompat.ResponsesStreamEvent
 		if err := json.Unmarshal([]byte(payload), &event); err != nil {
-			logger.L().Warn("openai messages buffered: failed to parse event",
+			logger.FromContext(c.Request.Context()).Warn("openai messages buffered: failed to parse event",
 				zap.Error(err),
 				zap.String("request_id", requestID),
 			)
@@ -330,7 +330,7 @@ func (s *OpenAIGatewayService) handleAnthropicBufferedStreamingResponse(
 
 	if err := scanner.Err(); err != nil {
 		if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
-			logger.L().Warn("openai messages buffered: read error",
+			logger.FromContext(c.Request.Context()).Warn("openai messages buffered: read error",
 				zap.Error(err),
 				zap.String("request_id", requestID),
 			)
@@ -426,7 +426,7 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 
 		var event apicompat.ResponsesStreamEvent
 		if err := json.Unmarshal([]byte(payload), &event); err != nil {
-			logger.L().Warn("openai messages stream: failed to parse event",
+			logger.FromContext(c.Request.Context()).Warn("openai messages stream: failed to parse event",
 				zap.Error(err),
 				zap.String("request_id", requestID),
 			)
@@ -450,14 +450,14 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 		for _, evt := range events {
 			sse, err := apicompat.ResponsesAnthropicEventToSSE(evt)
 			if err != nil {
-				logger.L().Warn("openai messages stream: failed to marshal event",
+				logger.FromContext(c.Request.Context()).Warn("openai messages stream: failed to marshal event",
 					zap.Error(err),
 					zap.String("request_id", requestID),
 				)
 				continue
 			}
 			if _, err := fmt.Fprint(c.Writer, sse); err != nil {
-				logger.L().Info("openai messages stream: client disconnected",
+				logger.FromContext(c.Request.Context()).Info("openai messages stream: client disconnected",
 					zap.String("request_id", requestID),
 				)
 				return true
@@ -487,7 +487,7 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 	// handleScanErr logs scanner errors if meaningful.
 	handleScanErr := func(err error) {
 		if err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
-			logger.L().Warn("openai messages stream: read error",
+			logger.FromContext(c.Request.Context()).Warn("openai messages stream: read error",
 				zap.Error(err),
 				zap.String("request_id", requestID),
 			)
@@ -574,7 +574,7 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 			// Send Anthropic-format ping event
 			if _, err := fmt.Fprint(c.Writer, "event: ping\ndata: {\"type\":\"ping\"}\n\n"); err != nil {
 				// Client disconnected
-				logger.L().Info("openai messages stream: client disconnected during keepalive",
+				logger.FromContext(c.Request.Context()).Info("openai messages stream: client disconnected during keepalive",
 					zap.String("request_id", requestID),
 				)
 				return resultWithUsage(), nil
@@ -586,11 +586,15 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 
 // writeAnthropicError writes an error response in Anthropic Messages API format.
 func writeAnthropicError(c *gin.Context, statusCode int, errType, message string) {
-	c.JSON(statusCode, gin.H{
+	resp := gin.H{
 		"type": "error",
 		"error": gin.H{
 			"type":    errType,
 			"message": message,
 		},
-	})
+	}
+	if tid := serviceTraceID(c); tid != "" {
+		resp["trace_id"] = tid
+	}
+	c.JSON(statusCode, resp)
 }

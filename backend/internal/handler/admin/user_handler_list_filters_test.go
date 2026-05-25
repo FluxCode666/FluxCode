@@ -12,7 +12,7 @@ import (
 func TestUserHandlerList_ForwardsIsSalesFilter(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	adminSvc := newStubAdminService()
-	h := NewUserHandler(adminSvc, nil)
+	h := NewUserHandler(adminSvc, nil, nil)
 	r := gin.New()
 	r.GET("/api/v1/admin/users", h.List)
 

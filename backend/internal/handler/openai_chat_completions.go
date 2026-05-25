@@ -279,7 +279,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 				APIKeyService:      h.apiKeyService,
 				ChannelUsageFields: channelMapping.ToUsageFields(reqModel, result.UpstreamModel),
 			}); err != nil {
-				logger.L().With(
+				logger.FromContext(c.Request.Context()).With(
 					zap.String("component", "handler.openai_gateway.chat_completions"),
 					zap.Int64("user_id", subject.UserID),
 					zap.Int64("api_key_id", apiKey.ID),

@@ -532,7 +532,7 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 				APIKeyService:         h.apiKeyService,
 				ChannelUsageFields:    channelMapping.ToUsageFields(reqModel, result.UpstreamModel),
 			}); err != nil {
-				logger.L().With(
+				logger.FromContext(c.Request.Context()).With(
 					zap.String("component", "handler.gemini_v1beta.models"),
 					zap.Int64("user_id", authSubject.UserID),
 					zap.Int64("api_key_id", apiKey.ID),

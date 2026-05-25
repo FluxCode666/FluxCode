@@ -69,7 +69,7 @@ func (s *GatewayService) ForwardAsResponses(
 	}
 	anthropicReq.Model = mappedModel
 
-	logger.L().Debug("gateway forward_as_responses: model mapping applied",
+	logger.FromContext(c.Request.Context()).Debug("gateway forward_as_responses: model mapping applied",
 		zap.Int64("account_id", account.ID),
 		zap.String("original_model", originalModel),
 		zap.String("mapped_model", mappedModel),
@@ -254,7 +254,7 @@ func (s *GatewayService) handleResponsesBufferedStreamingResponse(
 
 		var event apicompat.AnthropicStreamEvent
 		if err := json.Unmarshal([]byte(payload), &event); err != nil {
-			logger.L().Warn("forward_as_responses buffered: failed to parse event",
+			logger.FromContext(c.Request.Context()).Warn("forward_as_responses buffered: failed to parse event",
 				zap.Error(err),
 				zap.String("request_id", requestID),
 				zap.String("event_type", eventType),
@@ -299,7 +299,7 @@ func (s *GatewayService) handleResponsesBufferedStreamingResponse(
 
 	if err := scanner.Err(); err != nil {
 		if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
-			logger.L().Warn("forward_as_responses buffered: read error",
+			logger.FromContext(c.Request.Context()).Warn("forward_as_responses buffered: read error",
 				zap.Error(err),
 				zap.String("request_id", requestID),
 			)
@@ -410,14 +410,14 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 		for _, evt := range events {
 			sse, err := apicompat.ResponsesEventToSSE(evt)
 			if err != nil {
-				logger.L().Warn("forward_as_responses stream: failed to marshal event",
+				logger.FromContext(c.Request.Context()).Warn("forward_as_responses stream: failed to marshal event",
 					zap.Error(err),
 					zap.String("request_id", requestID),
 				)
 				continue
 			}
 			if _, err := fmt.Fprint(c.Writer, sse); err != nil {
-				logger.L().Info("forward_as_responses stream: client disconnected",
+				logger.FromContext(c.Request.Context()).Info("forward_as_responses stream: client disconnected",
 					zap.String("request_id", requestID),
 				)
 				return true // client disconnected
@@ -463,7 +463,7 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 
 		var event apicompat.AnthropicStreamEvent
 		if err := json.Unmarshal([]byte(payload), &event); err != nil {
-			logger.L().Warn("forward_as_responses stream: failed to parse event",
+			logger.FromContext(c.Request.Context()).Warn("forward_as_responses stream: failed to parse event",
 				zap.Error(err),
 				zap.String("request_id", requestID),
 				zap.String("event_type", eventType),
@@ -478,7 +478,7 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 
 	if err := scanner.Err(); err != nil {
 		if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
-			logger.L().Warn("forward_as_responses stream: read error",
+			logger.FromContext(c.Request.Context()).Warn("forward_as_responses stream: read error",
 				zap.Error(err),
 				zap.String("request_id", requestID),
 			)
@@ -498,12 +498,16 @@ func appendRawJSON(existing json.RawMessage, fragment string) json.RawMessage {
 
 // writeResponsesError writes an error response in OpenAI Responses API format.
 func writeResponsesError(c *gin.Context, statusCode int, code, message string) {
-	c.JSON(statusCode, gin.H{
+	resp := gin.H{
 		"error": gin.H{
 			"code":    code,
 			"message": message,
 		},
-	})
+	}
+	if tid := serviceTraceID(c); tid != "" {
+		resp["trace_id"] = tid
+	}
+	c.JSON(statusCode, resp)
 }
 
 // mapUpstreamStatusCode maps upstream HTTP status codes to appropriate client-facing codes.

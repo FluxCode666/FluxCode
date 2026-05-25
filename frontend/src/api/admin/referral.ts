@@ -25,6 +25,13 @@ export interface ReferralConfig {
   referral_max_invites: number
   referral_reward_expiry_days: number
   referral_gift_balance_expiry_days: number
+  // --- 普通推广：首充奖励 ---
+  referral_inviter_first_charge_reward_enabled: boolean
+  referral_inviter_first_charge_reward_type: string // 'fixed' | 'percentage'
+  referral_inviter_first_charge_reward_value: number
+  referral_invitee_first_charge_reward_enabled: boolean
+  referral_invitee_first_charge_reward_type: string // 'fixed' | 'percentage'
+  referral_invitee_first_charge_reward_value: number
   referral_ongoing_reward_enabled: boolean
   referral_ongoing_reward_type: string // 'fixed' | 'percentage'
   referral_ongoing_reward_value: number
@@ -40,6 +47,9 @@ export interface ReferralConfig {
   referral_sales_enabled: boolean
   referral_sales_invitee_reward_enabled: boolean
   referral_sales_invitee_reward: number
+  referral_sales_invitee_first_charge_reward_enabled: boolean
+  referral_sales_invitee_first_charge_reward_type: string
+  referral_sales_invitee_first_charge_reward_value: number
   referral_sales_invitee_ongoing_reward_enabled: boolean
   referral_sales_invitee_ongoing_reward_type: string
   referral_sales_invitee_ongoing_reward_value: number
@@ -101,6 +111,12 @@ export interface UserReferralConfig {
   inviter_reward_amount?: number | null
   max_invites?: number | null
   reward_expiry_days?: number | null
+  inviter_first_charge_reward_enabled?: boolean | null
+  inviter_first_charge_reward_type?: string | null
+  inviter_first_charge_reward_value?: number | null
+  invitee_first_charge_reward_enabled?: boolean | null
+  invitee_first_charge_reward_type?: string | null
+  invitee_first_charge_reward_value?: number | null
   ongoing_reward_enabled?: boolean | null
   ongoing_reward_type?: string | null
   ongoing_reward_value?: number | null
@@ -122,6 +138,12 @@ export interface EffectiveReferralConfig {
   inviter_reward_amount: number
   max_invites: number
   reward_expiry_days: number
+  inviter_first_charge_reward_enabled: boolean
+  inviter_first_charge_reward_type: string
+  inviter_first_charge_reward_value: number
+  invitee_first_charge_reward_enabled: boolean
+  invitee_first_charge_reward_type: string
+  invitee_first_charge_reward_value: number
   ongoing_reward_enabled: boolean
   ongoing_reward_type: string
   ongoing_reward_value: number
@@ -145,6 +167,12 @@ export interface UserConfigPayload {
   inviter_reward?: number | null
   max_invites?: number | null
   reward_expiry_days?: number | null
+  inviter_first_charge_reward_enabled?: boolean | null
+  inviter_first_charge_reward_type?: string
+  inviter_first_charge_reward_value?: number | null
+  invitee_first_charge_reward_enabled?: boolean | null
+  invitee_first_charge_reward_type?: string
+  invitee_first_charge_reward_value?: number | null
   ongoing_reward_enabled?: boolean | null
   ongoing_reward_type?: string
   ongoing_reward_value?: number | null

@@ -156,6 +156,62 @@
                   <label class="input-label">{{ t('adminReferral.maxInvites') }}</label>
                   <input v-model.number="config.referral_max_invites" type="number" min="0" class="input mt-1" />
                 </div>
+                <!-- 首充奖励配置 -->
+                <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
+                  <h5 class="text-xs font-semibold text-gray-600 dark:text-dark-300 mb-3 uppercase tracking-wide">{{ t('adminReferral.firstChargeSection') }}</h5>
+                  <!-- 邀请人首充奖励 -->
+                  <div class="flex items-center justify-between">
+                    <label class="text-sm font-medium text-gray-700 dark:text-dark-200">{{ t('adminReferral.inviterFirstChargeRewardEnabled') }}</label>
+                    <button @click="config.referral_inviter_first_charge_reward_enabled = !config.referral_inviter_first_charge_reward_enabled" :class="[
+                      'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
+                      config.referral_inviter_first_charge_reward_enabled ? 'bg-primary-600' : 'bg-gray-300 dark:bg-dark-600'
+                    ]">
+                      <span :class="[
+                        'inline-block h-4 w-4 transform rounded-full bg-white transition-transform',
+                        config.referral_inviter_first_charge_reward_enabled ? 'translate-x-6' : 'translate-x-1'
+                      ]" />
+                    </button>
+                  </div>
+                  <template v-if="config.referral_inviter_first_charge_reward_enabled">
+                    <div class="mt-3">
+                      <label class="input-label">{{ t('adminReferral.inviterFirstChargeRewardType') }}</label>
+                      <Select v-model="config.referral_inviter_first_charge_reward_type" :options="firstChargeRewardTypeOptions" class="mt-1" />
+                    </div>
+                    <div class="mt-3">
+                      <label class="input-label">
+                        {{ t('adminReferral.inviterFirstChargeRewardValue') }}
+                        <span v-if="config.referral_inviter_first_charge_reward_type === 'percentage'" class="text-gray-400">(%)</span>
+                      </label>
+                      <input v-model.number="config.referral_inviter_first_charge_reward_value" type="number" step="0.01" min="0" class="input mt-1" />
+                    </div>
+                  </template>
+                  <!-- 被邀请人首充奖励 -->
+                  <div class="mt-3 flex items-center justify-between">
+                    <label class="text-sm font-medium text-gray-700 dark:text-dark-200">{{ t('adminReferral.inviteeFirstChargeRewardEnabled') }}</label>
+                    <button @click="config.referral_invitee_first_charge_reward_enabled = !config.referral_invitee_first_charge_reward_enabled" :class="[
+                      'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
+                      config.referral_invitee_first_charge_reward_enabled ? 'bg-primary-600' : 'bg-gray-300 dark:bg-dark-600'
+                    ]">
+                      <span :class="[
+                        'inline-block h-4 w-4 transform rounded-full bg-white transition-transform',
+                        config.referral_invitee_first_charge_reward_enabled ? 'translate-x-6' : 'translate-x-1'
+                      ]" />
+                    </button>
+                  </div>
+                  <template v-if="config.referral_invitee_first_charge_reward_enabled">
+                    <div class="mt-3">
+                      <label class="input-label">{{ t('adminReferral.inviteeFirstChargeRewardType') }}</label>
+                      <Select v-model="config.referral_invitee_first_charge_reward_type" :options="firstChargeRewardTypeOptions" class="mt-1" />
+                    </div>
+                    <div class="mt-3">
+                      <label class="input-label">
+                        {{ t('adminReferral.inviteeFirstChargeRewardValue') }}
+                        <span v-if="config.referral_invitee_first_charge_reward_type === 'percentage'" class="text-gray-400">(%)</span>
+                      </label>
+                      <input v-model.number="config.referral_invitee_first_charge_reward_value" type="number" step="0.01" min="0" class="input mt-1" />
+                    </div>
+                  </template>
+                </div>
                 <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
                   <div class="flex items-center justify-between">
                     <label class="text-sm font-medium text-gray-700 dark:text-dark-200">{{ t('adminReferral.ongoingRewardEnabled') }}</label>
@@ -260,6 +316,34 @@
                   <label class="input-label">{{ t('adminReferral.salesInviteeReward') }}</label>
                   <input v-model.number="config.referral_sales_invitee_reward" type="number" step="0.01" min="0" class="input mt-1" />
                 </div>
+                <!-- 销售推广：被邀请人首充奖励 -->
+                <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
+                  <div class="flex items-center justify-between">
+                    <label class="text-sm font-medium text-gray-700 dark:text-dark-200">{{ t('adminReferral.salesInviteeFirstChargeRewardEnabled') }}</label>
+                    <button @click="config.referral_sales_invitee_first_charge_reward_enabled = !config.referral_sales_invitee_first_charge_reward_enabled" :class="[
+                      'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
+                      config.referral_sales_invitee_first_charge_reward_enabled ? 'bg-primary-600' : 'bg-gray-300 dark:bg-dark-600'
+                    ]">
+                      <span :class="[
+                        'inline-block h-4 w-4 transform rounded-full bg-white transition-transform',
+                        config.referral_sales_invitee_first_charge_reward_enabled ? 'translate-x-6' : 'translate-x-1'
+                      ]" />
+                    </button>
+                  </div>
+                </div>
+                <template v-if="config.referral_sales_invitee_first_charge_reward_enabled">
+                  <div>
+                    <label class="input-label">{{ t('adminReferral.salesInviteeFirstChargeRewardType') }}</label>
+                    <Select v-model="config.referral_sales_invitee_first_charge_reward_type" :options="firstChargeRewardTypeOptions" class="mt-1" />
+                  </div>
+                  <div>
+                    <label class="input-label">
+                      {{ t('adminReferral.salesInviteeFirstChargeRewardValue') }}
+                      <span v-if="config.referral_sales_invitee_first_charge_reward_type === 'percentage'" class="text-gray-400">(%)</span>
+                    </label>
+                    <input v-model.number="config.referral_sales_invitee_first_charge_reward_value" type="number" step="0.01" min="0" class="input mt-1" />
+                  </div>
+                </template>
                 <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
                   <div class="flex items-center justify-between">
                     <label class="text-sm font-medium text-gray-700 dark:text-dark-200">{{ t('adminReferral.salesInviteeOngoingRewardEnabled') }}</label>
@@ -664,6 +748,11 @@ const ongoingRewardTypeOptions = computed(() => [
   { value: 'percentage', label: t('adminReferral.percentage') },
 ])
 
+const firstChargeRewardTypeOptions = computed(() => [
+  { value: 'fixed', label: t('adminReferral.fixedAmount') },
+  { value: 'percentage', label: t('adminReferral.percentage') },
+])
+
 const listStatusOptions = computed(() => [
   { value: '', label: t('adminReferral.allStatus') },
   { value: 'pending', label: t('referral.pending') },
@@ -695,6 +784,12 @@ const config = reactive<ReferralConfig>({
   referral_max_invites: 0,
   referral_reward_expiry_days: 0,
   referral_gift_balance_expiry_days: 0,
+  referral_inviter_first_charge_reward_enabled: false,
+  referral_inviter_first_charge_reward_type: 'fixed',
+  referral_inviter_first_charge_reward_value: 0,
+  referral_invitee_first_charge_reward_enabled: false,
+  referral_invitee_first_charge_reward_type: 'fixed',
+  referral_invitee_first_charge_reward_value: 0,
   referral_ongoing_reward_enabled: false,
   referral_ongoing_reward_type: 'fixed',
   referral_ongoing_reward_value: 0,
@@ -708,6 +803,9 @@ const config = reactive<ReferralConfig>({
   referral_sales_enabled: false,
   referral_sales_invitee_reward_enabled: false,
   referral_sales_invitee_reward: 0,
+  referral_sales_invitee_first_charge_reward_enabled: false,
+  referral_sales_invitee_first_charge_reward_type: 'fixed',
+  referral_sales_invitee_first_charge_reward_value: 0,
   referral_sales_invitee_ongoing_reward_enabled: false,
   referral_sales_invitee_ongoing_reward_type: 'fixed',
   referral_sales_invitee_ongoing_reward_value: 0,

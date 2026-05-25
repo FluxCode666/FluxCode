@@ -2,6 +2,7 @@ package admin
 
 import (
 	"context"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -23,6 +24,7 @@ type UserHandler struct {
 	adminService       service.AdminService
 	concurrencyService *service.ConcurrencyService
 	paymentService     *service.PaymentService
+	giftBalanceRepo    service.GiftBalanceRepository
 }
 
 // SetPaymentService 注入支付服务（避免循环依赖）
@@ -31,10 +33,11 @@ func (h *UserHandler) SetPaymentService(svc *service.PaymentService) {
 }
 
 // NewUserHandler creates a new admin user handler
-func NewUserHandler(adminService service.AdminService, concurrencyService *service.ConcurrencyService) *UserHandler {
+func NewUserHandler(adminService service.AdminService, concurrencyService *service.ConcurrencyService, giftBalanceRepo service.GiftBalanceRepository) *UserHandler {
 	return &UserHandler{
 		adminService:       adminService,
 		concurrencyService: concurrencyService,
+		giftBalanceRepo:    giftBalanceRepo,
 	}
 }
 
@@ -77,9 +80,10 @@ type UpdateUserRequest struct {
 
 // UpdateBalanceRequest represents balance update request
 type UpdateBalanceRequest struct {
-	Balance   float64 `json:"balance" binding:"required,gt=0"`
-	Operation string  `json:"operation" binding:"required,oneof=set add subtract"`
-	Notes     string  `json:"notes"`
+	Balance     float64 `json:"balance" binding:"required,gt=0"`
+	Operation   string  `json:"operation" binding:"required,oneof=set add subtract"`
+	Notes       string  `json:"notes"`
+	CreateOrder bool    `json:"create_order"`
 }
 
 // List handles listing all users with pagination
@@ -308,6 +312,16 @@ func (h *UserHandler) UpdateBalance(c *gin.Context) {
 		if execErr != nil {
 			return nil, execErr
 		}
+		// 当请求创建订单且为充值操作时，创建私账订单 + 审计日志
+		if req.CreateOrder && req.Operation == "add" && h.paymentService != nil {
+			_, _ = h.paymentService.CreateOfflineRechargeOrder(ctx, &service.OfflineRechargeRequest{
+				UserID:         userID,
+				PayAmountCNY:   req.Balance,
+				CreditedAmount: req.Balance,
+				CreditBalance:  false, // 余额已由 UpdateUserBalance 处理，不重复加
+				Note:           req.Notes,
+			})
+		}
 		return dto.UserFromServiceAdmin(user), nil
 	})
 }
@@ -431,23 +445,94 @@ func (h *UserHandler) ReplaceGroup(c *gin.Context) {
 	})
 }
 
-// GetUserAuditLogs returns audit logs for a user's payment orders.
+// timelineItem 统一审计时间线条目
+type timelineItem struct {
+	EntryType string      `json:"type"` // "payment" or "gift_balance"
+	Payment   interface{} `json:"payment,omitempty"`
+	Gift      interface{} `json:"gift_balance,omitempty"`
+	SortTime  int64       `json:"-"`
+}
+
+type giftBalanceAuditEntry struct {
+	ID        int64   `json:"id"`
+	Amount    float64 `json:"amount"`
+	Remaining float64 `json:"remaining"`
+	Source    string  `json:"source"`
+	Note      string  `json:"note"`
+	ExpiresAt *string `json:"expires_at,omitempty"`
+	CreatedAt string  `json:"created_at"`
+}
+
+// GetUserAuditLogs returns a unified timeline of payment orders + gift balance records.
 // GET /api/v1/admin/users/:id/audit-logs
 func (h *UserHandler) GetUserAuditLogs(c *gin.Context) {
-	if h.paymentService == nil {
-		response.BadRequest(c, "payment service not available")
-		return
-	}
 	userID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
 		response.BadRequest(c, "Invalid user ID")
 		return
 	}
 	page, pageSize := response.ParsePagination(c)
-	entries, total, err := h.paymentService.GetUserAuditLogs(c.Request.Context(), userID, page, pageSize)
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
+
+	var items []timelineItem
+	var totalCount int64
+
+	// 1) Payment orders
+	if h.paymentService != nil {
+		entries, total, err := h.paymentService.GetUserAuditLogs(c.Request.Context(), userID, 1, 1000)
+		if err == nil {
+			totalCount += int64(total)
+			for i := range entries {
+				items = append(items, timelineItem{
+					EntryType: "payment",
+					Payment:   &entries[i],
+					SortTime:  entries[i].CreatedAt.UnixMilli(),
+				})
+			}
+		}
 	}
-	response.Paginated(c, entries, int64(total), page, pageSize)
+
+	// 2) Gift balance records
+	if h.giftBalanceRepo != nil {
+		records, total, err := h.giftBalanceRepo.GetByUserID(c.Request.Context(), userID, 0, 1000)
+		if err == nil {
+			totalCount += int64(total)
+			for _, rec := range records {
+				entry := giftBalanceAuditEntry{
+					ID:        rec.ID,
+					Amount:    rec.Amount,
+					Remaining: rec.Remaining,
+					Source:    rec.Source,
+					Note:      rec.Note,
+					CreatedAt: rec.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+				}
+				if rec.ExpiresAt != nil {
+					s := rec.ExpiresAt.Format("2006-01-02T15:04:05Z07:00")
+					entry.ExpiresAt = &s
+				}
+				items = append(items, timelineItem{
+					EntryType: "gift_balance",
+					Gift:      &entry,
+					SortTime:  rec.CreatedAt.UnixMilli(),
+				})
+			}
+		}
+	}
+
+	// Sort by time descending
+	sort.Slice(items, func(i, j int) bool {
+		return items[i].SortTime > items[j].SortTime
+	})
+
+	// Paginate
+	start := (page - 1) * pageSize
+	end := start + pageSize
+	if start > len(items) {
+		start = len(items)
+	}
+	if end > len(items) {
+		end = len(items)
+	}
+	paged := items[start:end]
+
+	response.Paginated(c, paged, totalCount, page, pageSize)
 }

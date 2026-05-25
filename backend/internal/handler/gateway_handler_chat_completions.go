@@ -276,12 +276,16 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 
 // chatCompletionsErrorResponse writes an error in OpenAI Chat Completions format.
 func (h *GatewayHandler) chatCompletionsErrorResponse(c *gin.Context, status int, errType, message string) {
-	c.JSON(status, gin.H{
+	resp := gin.H{
 		"error": gin.H{
 			"type":    errType,
 			"message": message,
 		},
-	})
+	}
+	if tid := gatewayTraceID(c); tid != "" {
+		resp["trace_id"] = tid
+	}
+	c.JSON(status, resp)
 }
 
 // handleCCFailoverExhausted writes a failover-exhausted error in CC format.

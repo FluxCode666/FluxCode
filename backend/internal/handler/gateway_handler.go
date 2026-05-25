@@ -487,7 +487,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 					APIKeyService:      h.apiKeyService,
 					ChannelUsageFields: channelMapping.ToUsageFields(reqModel, result.UpstreamModel),
 				}); err != nil {
-					logger.L().With(
+					logger.FromContext(c.Request.Context()).With(
 						zap.String("component", "handler.gateway.messages"),
 						zap.Int64("user_id", subject.UserID),
 						zap.Int64("api_key_id", apiKey.ID),
@@ -829,7 +829,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 					APIKeyService:      h.apiKeyService,
 					ChannelUsageFields: channelMapping.ToUsageFields(reqModel, result.UpstreamModel),
 				}); err != nil {
-					logger.L().With(
+					logger.FromContext(c.Request.Context()).With(
 						zap.String("component", "handler.gateway.messages"),
 						zap.Int64("user_id", subject.UserID),
 						zap.Int64("api_key_id", currentAPIKey.ID),
@@ -1296,7 +1296,12 @@ func (h *GatewayHandler) handleStreamingAwareError(c *gin.Context, status int, e
 		flusher, ok := c.Writer.(http.Flusher)
 		if ok {
 			// SSE 错误事件固定 schema，使用 Quote 直拼可避免额外 Marshal 分配。
-			errorEvent := `data: {"type":"error","error":{"type":` + strconv.Quote(errType) + `,"message":` + strconv.Quote(message) + `}}` + "\n\n"
+			tid := gatewayTraceID(c)
+			traceField := ""
+			if tid != "" {
+				traceField = `,"trace_id":` + strconv.Quote(tid)
+			}
+			errorEvent := `data: {"type":"error","error":{"type":` + strconv.Quote(errType) + `,"message":` + strconv.Quote(message) + `}` + traceField + `}` + "\n\n"
 			if _, err := fmt.Fprint(c.Writer, errorEvent); err != nil {
 				_ = c.Error(err)
 			}
@@ -1364,13 +1369,17 @@ func (h *GatewayHandler) checkClaudeCodeVersion(c *gin.Context) bool {
 
 // errorResponse 返回Claude API格式的错误响应
 func (h *GatewayHandler) errorResponse(c *gin.Context, status int, errType, message string) {
-	c.JSON(status, gin.H{
+	resp := gin.H{
 		"type": "error",
 		"error": gin.H{
 			"type":    errType,
 			"message": message,
 		},
-	})
+	}
+	if tid := gatewayTraceID(c); tid != "" {
+		resp["trace_id"] = tid
+	}
+	c.JSON(status, resp)
 }
 
 // CountTokens handles token counting endpoint
@@ -1752,7 +1761,7 @@ func (h *GatewayHandler) submitUsageRecordTask(baseCtx context.Context, task ser
 	defer cancel()
 	defer func() {
 		if recovered := recover(); recovered != nil {
-			logger.L().With(
+			logger.FromContext(ctx).With(
 				zap.String("component", "handler.gateway.messages"),
 				zap.Any("panic", recovered),
 			).Error("gateway.usage_record_task_panic_recovered")
