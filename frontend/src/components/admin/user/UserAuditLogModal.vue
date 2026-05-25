@@ -47,118 +47,155 @@
 
       <!-- Audit log entries -->
       <div v-else class="max-h-[32rem] space-y-3 overflow-y-auto">
-        <div
-          v-for="entry in entries"
-          :key="entry.order_id"
-          class="rounded-xl border border-gray-200 bg-white dark:border-dark-600 dark:bg-dark-800"
-        >
-          <!-- Order header (clickable to toggle) -->
-          <button
-            class="flex w-full items-center justify-between px-4 py-3 text-left transition-colors hover:bg-gray-50 dark:hover:bg-dark-750"
-            :class="{ 'border-b border-gray-100 dark:border-dark-700': expandedOrders.has(entry.order_id) }"
-            @click="toggleOrder(entry.order_id)"
+        <template v-for="(entry, idx) in entries" :key="idx">
+          <!-- Payment order entry -->
+          <div
+            v-if="entry.type === 'payment' && entry.payment"
+            class="rounded-xl border border-gray-200 bg-white dark:border-dark-600 dark:bg-dark-800"
           >
-            <div class="flex items-center gap-3">
-              <Icon
-                name="chevronRight"
-                size="sm"
-                class="h-4 w-4 flex-shrink-0 text-gray-400 transition-transform duration-150"
-                :class="{ 'rotate-90': expandedOrders.has(entry.order_id) }"
-              />
-              <div
-                :class="[
-                  'flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg',
-                  getPaymentTypeBg(entry.payment_type)
-                ]"
-              >
-                <Icon name="dollar" size="sm" :class="getPaymentTypeColor(entry.payment_type)" />
-              </div>
-              <div>
-                <div class="flex items-center gap-2">
-                  <span class="text-sm font-medium text-gray-900 dark:text-white">#{{ entry.order_id }}</span>
-                  <span :class="['inline-flex rounded-full px-2 py-0.5 text-xs font-medium', getStatusClass(entry.status)]">
-                    {{ t('payment.status.' + entry.status.toLowerCase(), entry.status) }}
-                  </span>
-                  <span class="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-600 dark:bg-dark-600 dark:text-gray-400">
-                    {{ t('payment.methods.' + entry.payment_type, entry.payment_type) }}
-                  </span>
-                </div>
-                <p class="text-xs text-gray-400 dark:text-dark-500">
-                  {{ formatDateTime(entry.created_at) }}
-                </p>
-              </div>
-            </div>
-            <div class="flex items-center gap-3">
-              <span v-if="entry.audit_logs.length > 0" class="rounded-full bg-blue-50 px-2 py-0.5 text-xs text-blue-600 dark:bg-blue-900/20 dark:text-blue-400">
-                {{ entry.audit_logs.length }}
-              </span>
-              <div class="text-right">
-                <p class="text-sm font-semibold text-gray-900 dark:text-white">${{ entry.amount.toFixed(2) }}</p>
-                <p v-if="entry.pay_amount !== entry.amount" class="text-xs text-gray-400 dark:text-dark-500">
-                  {{ t('admin.users.auditPayAmount') }}: ¥{{ entry.pay_amount.toFixed(2) }}
-                </p>
-              </div>
-            </div>
-          </button>
-
-          <!-- Audit logs for this order (collapsible) -->
-          <div v-if="expandedOrders.has(entry.order_id) && entry.audit_logs.length > 0" class="divide-y divide-gray-50 dark:divide-dark-700">
-            <div
-              v-for="log in entry.audit_logs"
-              :key="log.id"
-              class="px-4 py-2.5"
+            <button
+              class="flex w-full items-center justify-between px-4 py-3 text-left transition-colors hover:bg-gray-50 dark:hover:bg-dark-750"
+              :class="{ 'border-b border-gray-100 dark:border-dark-700': expandedOrders.has(entry.payment.order_id) }"
+              @click="toggleOrder(entry.payment.order_id)"
             >
-              <div class="flex items-start gap-3">
-                <button
-                  v-if="formatDetail(log.detail)"
-                  class="mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-blue-50 transition-colors hover:bg-blue-100 dark:bg-blue-900/20 dark:hover:bg-blue-900/40"
-                  @click="toggleDetail(log.id)"
+              <div class="flex items-center gap-3">
+                <Icon
+                  name="chevronRight"
+                  size="sm"
+                  class="h-4 w-4 flex-shrink-0 text-gray-400 transition-transform duration-150"
+                  :class="{ 'rotate-90': expandedOrders.has(entry.payment.order_id) }"
+                />
+                <div
+                  :class="[
+                    'flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg',
+                    getPaymentTypeBg(entry.payment.payment_type)
+                  ]"
                 >
-                  <Icon
-                    name="chevronRight"
-                    size="xs"
-                    class="h-3 w-3 text-blue-500 transition-transform duration-150"
-                    :class="{ 'rotate-90': expandedLogs.has(log.id) }"
-                  />
-                </button>
-                <div v-else class="mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-blue-50 dark:bg-blue-900/20">
-                  <div class="h-1.5 w-1.5 rounded-full bg-blue-500"></div>
+                  <Icon name="dollar" size="sm" :class="getPaymentTypeColor(entry.payment.payment_type)" />
                 </div>
-                <div class="min-w-0 flex-1">
+                <div>
                   <div class="flex items-center gap-2">
-                    <span class="text-xs font-medium text-gray-700 dark:text-gray-300">{{ log.action }}</span>
-                    <span class="text-xs text-gray-400 dark:text-dark-500">{{ log.operator }}</span>
+                    <span class="text-sm font-medium text-gray-900 dark:text-white">#{{ entry.payment.order_id }}</span>
+                    <span :class="['inline-flex rounded-full px-2 py-0.5 text-xs font-medium', getStatusClass(entry.payment.status)]">
+                      {{ t('payment.status.' + entry.payment.status.toLowerCase(), entry.payment.status) }}
+                    </span>
+                    <span class="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-600 dark:bg-dark-600 dark:text-gray-400">
+                      {{ t('payment.methods.' + entry.payment.payment_type, entry.payment.payment_type) }}
+                    </span>
                   </div>
-                  <!-- Collapsed: single-line summary -->
-                  <p
-                    v-if="formatDetail(log.detail) && !expandedLogs.has(log.id)"
-                    class="mt-0.5 max-w-full cursor-pointer truncate text-xs text-gray-500 dark:text-dark-400"
+                  <p class="text-xs text-gray-400 dark:text-dark-500">
+                    {{ formatDateTime(entry.payment.created_at) }}
+                  </p>
+                </div>
+              </div>
+              <div class="flex items-center gap-3">
+                <span v-if="entry.payment.audit_logs.length > 0" class="rounded-full bg-blue-50 px-2 py-0.5 text-xs text-blue-600 dark:bg-blue-900/20 dark:text-blue-400">
+                  {{ entry.payment.audit_logs.length }}
+                </span>
+                <div class="text-right">
+                  <p class="text-sm font-semibold text-gray-900 dark:text-white">${{ entry.payment.amount.toFixed(2) }}</p>
+                  <p v-if="entry.payment.pay_amount !== entry.payment.amount" class="text-xs text-gray-400 dark:text-dark-500">
+                    {{ t('admin.users.auditPayAmount') }}: ¥{{ entry.payment.pay_amount.toFixed(2) }}
+                  </p>
+                </div>
+              </div>
+            </button>
+
+            <div v-if="expandedOrders.has(entry.payment.order_id) && entry.payment.audit_logs.length > 0" class="divide-y divide-gray-50 dark:divide-dark-700">
+              <div
+                v-for="log in entry.payment.audit_logs"
+                :key="log.id"
+                class="px-4 py-2.5"
+              >
+                <div class="flex items-start gap-3">
+                  <button
+                    v-if="formatDetail(log.detail)"
+                    class="mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-blue-50 transition-colors hover:bg-blue-100 dark:bg-blue-900/20 dark:hover:bg-blue-900/40"
                     @click="toggleDetail(log.id)"
                   >
-                    {{ formatDetailSummary(log.detail) }}
-                  </p>
-                  <p class="mt-0.5 text-xs text-gray-400 dark:text-dark-500">{{ formatDateTime(log.created_at) }}</p>
+                    <Icon
+                      name="chevronRight"
+                      size="xs"
+                      class="h-3 w-3 text-blue-500 transition-transform duration-150"
+                      :class="{ 'rotate-90': expandedLogs.has(log.id) }"
+                    />
+                  </button>
+                  <div v-else class="mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-blue-50 dark:bg-blue-900/20">
+                    <div class="h-1.5 w-1.5 rounded-full bg-blue-500"></div>
+                  </div>
+                  <div class="min-w-0 flex-1">
+                    <div class="flex items-center gap-2">
+                      <span class="text-xs font-medium text-gray-700 dark:text-gray-300">{{ log.action }}</span>
+                      <span class="text-xs text-gray-400 dark:text-dark-500">{{ log.operator }}</span>
+                    </div>
+                    <p
+                      v-if="formatDetail(log.detail) && !expandedLogs.has(log.id)"
+                      class="mt-0.5 max-w-full cursor-pointer truncate text-xs text-gray-500 dark:text-dark-400"
+                      @click="toggleDetail(log.id)"
+                    >
+                      {{ formatDetailSummary(log.detail) }}
+                    </p>
+                    <p class="mt-0.5 text-xs text-gray-400 dark:text-dark-500">{{ formatDateTime(log.created_at) }}</p>
+                  </div>
+                </div>
+                <div
+                  v-if="expandedLogs.has(log.id)"
+                  class="ml-8 mt-2 rounded-lg bg-gray-50 p-3 dark:bg-dark-700"
+                >
+                  <dl class="space-y-1">
+                    <div v-for="(value, key) in parseDetail(log.detail)" :key="String(key)" class="flex gap-2 text-xs">
+                      <dt class="flex-shrink-0 font-medium text-gray-600 dark:text-gray-400">{{ key }}:</dt>
+                      <dd class="break-all text-gray-500 dark:text-dark-400">{{ value }}</dd>
+                    </div>
+                  </dl>
+                  <p v-if="!parseDetail(log.detail)" class="whitespace-pre-wrap break-all text-xs text-gray-500 dark:text-dark-400">{{ log.detail }}</p>
                 </div>
               </div>
-              <!-- Expanded: full detail -->
-              <div
-                v-if="expandedLogs.has(log.id)"
-                class="ml-8 mt-2 rounded-lg bg-gray-50 p-3 dark:bg-dark-700"
-              >
-                <dl class="space-y-1">
-                  <div v-for="(value, key) in parseDetail(log.detail)" :key="String(key)" class="flex gap-2 text-xs">
-                    <dt class="flex-shrink-0 font-medium text-gray-600 dark:text-gray-400">{{ key }}:</dt>
-                    <dd class="break-all text-gray-500 dark:text-dark-400">{{ value }}</dd>
-                  </div>
-                </dl>
-                <p v-if="!parseDetail(log.detail)" class="whitespace-pre-wrap break-all text-xs text-gray-500 dark:text-dark-400">{{ log.detail }}</p>
-              </div>
+            </div>
+            <div v-else-if="expandedOrders.has(entry.payment.order_id)" class="px-4 py-2.5">
+              <p class="text-xs text-gray-400 dark:text-dark-500 italic">{{ t('admin.users.noAuditLogs') }}</p>
             </div>
           </div>
-          <div v-else-if="expandedOrders.has(entry.order_id)" class="px-4 py-2.5">
-            <p class="text-xs text-gray-400 dark:text-dark-500 italic">{{ t('admin.users.noAuditLogs') }}</p>
+
+          <!-- Gift balance entry -->
+          <div
+            v-else-if="entry.type === 'gift_balance' && entry.gift_balance"
+            class="rounded-xl border border-purple-200 bg-white dark:border-purple-800/40 dark:bg-dark-800"
+          >
+            <div class="flex items-center justify-between px-4 py-3">
+              <div class="flex items-center gap-3">
+                <div class="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-purple-100 dark:bg-purple-900/30">
+                  <Icon name="gift" size="sm" class="text-purple-600 dark:text-purple-400" />
+                </div>
+                <div>
+                  <div class="flex items-center gap-2">
+                    <span class="text-sm font-medium text-gray-900 dark:text-white">{{ t('admin.users.giftBalance') }}</span>
+                    <span class="rounded bg-purple-100 px-1.5 py-0.5 text-xs text-purple-600 dark:bg-purple-900/20 dark:text-purple-400">
+                      {{ getSourceLabel(entry.gift_balance.source) }}
+                    </span>
+                  </div>
+                  <p class="text-xs text-gray-400 dark:text-dark-500">
+                    {{ formatDateTime(entry.gift_balance.created_at) }}
+                  </p>
+                </div>
+              </div>
+              <div class="text-right">
+                <p class="text-sm font-semibold text-purple-700 dark:text-purple-300">+${{ entry.gift_balance.amount.toFixed(2) }}</p>
+                <p class="text-xs text-gray-400 dark:text-dark-500">
+                  {{ t('admin.users.giftRemaining') }}: ${{ entry.gift_balance.remaining.toFixed(2) }}
+                </p>
+              </div>
+            </div>
+            <div v-if="entry.gift_balance.note" class="border-t border-gray-100 px-4 py-2 dark:border-dark-700">
+              <p class="text-xs text-gray-500 dark:text-dark-400">{{ entry.gift_balance.note }}</p>
+            </div>
+            <div v-if="entry.gift_balance.expires_at" class="border-t border-gray-100 px-4 py-2 dark:border-dark-700">
+              <p class="text-xs text-gray-400 dark:text-dark-500">
+                {{ t('admin.users.giftExpiresAt') }}: {{ formatDateTime(entry.gift_balance.expires_at) }}
+              </p>
+            </div>
           </div>
-        </div>
+        </template>
       </div>
 
       <!-- Pagination -->
@@ -188,7 +225,7 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { adminAPI, type UserAuditLogEntry } from '@/api/admin'
+import { adminAPI, type TimelineItem } from '@/api/admin'
 import { formatDateTime } from '@/utils/format'
 import type { AdminUser } from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
@@ -198,7 +235,7 @@ const props = defineProps<{ show: boolean; user: AdminUser | null }>()
 defineEmits(['close'])
 const { t } = useI18n()
 
-const entries = ref<UserAuditLogEntry[]>([])
+const entries = ref<TimelineItem[]>([])
 const loading = ref(false)
 const expandedLogs = ref<Set<number>>(new Set())
 const expandedOrders = ref<Set<number>>(new Set())
@@ -270,6 +307,20 @@ const getStatusClass = (status: string) => {
   if (s === 'expired' || s === 'cancelled') return 'bg-gray-100 text-gray-600 dark:bg-dark-600 dark:text-gray-400'
   if (s.includes('refund')) return 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
   return 'bg-gray-100 text-gray-600 dark:bg-dark-600 dark:text-gray-400'
+}
+
+const sourceLabels: Record<string, string> = {
+  referral_invitee: 'referral_invitee',
+  referral_inviter: 'referral_inviter',
+  referral_ongoing: 'referral_ongoing',
+  referral_invitee_first_charge: 'referral_invitee_first_charge',
+  admin_grant: 'admin_grant',
+}
+
+const getSourceLabel = (source: string): string => {
+  const key = `admin.users.giftSource.${source}`
+  const translated = t(key)
+  return translated !== key ? translated : (sourceLabels[source] || source)
 }
 
 const formatDetail = (detail: string): string => {

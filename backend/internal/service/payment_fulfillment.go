@@ -238,8 +238,9 @@ func (s *PaymentService) handleBalanceRechargeRewards(ctx context.Context, o *db
 	if s.referralService != nil {
 		if isFirstRecharge {
 			s.referralService.HandleInviterRewardOnFirstRecharge(ctx, o.UserID, o.Amount)
+			s.referralService.HandleInviteeRewardOnFirstRecharge(ctx, o.UserID, o.Amount, o.ID)
 		}
-		s.referralService.HandleOngoingRewardOnRecharge(ctx, o.UserID, o.Amount, o.ID)
+		s.referralService.HandleOngoingRewardOnRecharge(ctx, o.UserID, o.Amount, o.ID, isFirstRecharge)
 	}
 	s.handleSalesCommissionAfterBalanceCompleted(ctx, o)
 }

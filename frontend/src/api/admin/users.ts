@@ -134,12 +134,14 @@ export async function updateBalance(
   id: number,
   balance: number,
   operation: 'set' | 'add' | 'subtract' = 'set',
-  notes?: string
+  notes?: string,
+  createOrder?: boolean
 ): Promise<AdminUser> {
   const { data } = await apiClient.post<AdminUser>(`/admin/users/${id}/balance`, {
     balance,
     operation,
-    notes: notes || ''
+    notes: notes || '',
+    create_order: createOrder || false
   })
   return data
 }
@@ -292,14 +294,36 @@ export interface UserAuditLogEntry {
 }
 
 /**
- * Get user's audit logs (payment orders + audit logs)
+ * Gift balance audit entry
+ */
+export interface GiftBalanceAuditEntry {
+  id: number
+  amount: number
+  remaining: number
+  source: string
+  note: string
+  expires_at?: string
+  created_at: string
+}
+
+/**
+ * Unified timeline item (payment or gift_balance)
+ */
+export interface TimelineItem {
+  type: 'payment' | 'gift_balance'
+  payment?: UserAuditLogEntry
+  gift_balance?: GiftBalanceAuditEntry
+}
+
+/**
+ * Get user's audit logs (unified timeline: payment orders + gift balance records)
  */
 export async function getUserAuditLogs(
   id: number,
   page: number = 1,
   pageSize: number = 15
-): Promise<PaginatedResponse<UserAuditLogEntry>> {
-  const { data } = await apiClient.get<PaginatedResponse<UserAuditLogEntry>>(
+): Promise<PaginatedResponse<TimelineItem>> {
+  const { data } = await apiClient.get<PaginatedResponse<TimelineItem>>(
     `/admin/users/${id}/audit-logs`,
     { params: { page, page_size: pageSize } }
   )

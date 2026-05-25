@@ -404,7 +404,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 				APIKeyService:      h.apiKeyService,
 				ChannelUsageFields: channelMapping.ToUsageFields(reqModel, result.UpstreamModel),
 			}); err != nil {
-				logger.L().With(
+				logger.FromContext(c.Request.Context()).With(
 					zap.String("component", "handler.openai_gateway.responses"),
 					zap.Int64("user_id", subject.UserID),
 					zap.Int64("api_key_id", apiKey.ID),
@@ -775,7 +775,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 				APIKeyService:      h.apiKeyService,
 				ChannelUsageFields: channelMappingMsg.ToUsageFields(reqModel, result.UpstreamModel),
 			}); err != nil {
-				logger.L().With(
+				logger.FromContext(c.Request.Context()).With(
 					zap.String("component", "handler.openai_gateway.messages"),
 					zap.Int64("user_id", subject.UserID),
 					zap.Int64("api_key_id", apiKey.ID),
@@ -795,13 +795,15 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 
 // anthropicErrorResponse writes an error in Anthropic Messages API format.
 func (h *OpenAIGatewayHandler) anthropicErrorResponse(c *gin.Context, status int, errType, message string) {
-	c.JSON(status, gin.H{
+	payload := gin.H{
 		"type": "error",
 		"error": gin.H{
 			"type":    errType,
 			"message": message,
 		},
-	})
+	}
+	addErrorCorrelationFields(c, payload)
+	c.JSON(status, payload)
 }
 
 // anthropicStreamingAwareError handles errors that may occur during streaming,
@@ -810,13 +812,15 @@ func (h *OpenAIGatewayHandler) anthropicStreamingAwareError(c *gin.Context, stat
 	if streamStarted {
 		flusher, ok := c.Writer.(http.Flusher)
 		if ok {
-			errPayload, _ := json.Marshal(gin.H{
+			payload := gin.H{
 				"type": "error",
 				"error": gin.H{
 					"type":    errType,
 					"message": message,
 				},
-			})
+			}
+			addErrorCorrelationFields(c, payload)
+			errPayload, _ := json.Marshal(payload)
 			fmt.Fprintf(c.Writer, "event: error\ndata: %s\n\n", errPayload) //nolint:errcheck
 			flusher.Flush()
 		}
@@ -1433,7 +1437,7 @@ func (h *OpenAIGatewayHandler) submitUsageRecordTask(baseCtx context.Context, ta
 	defer cancel()
 	defer func() {
 		if recovered := recover(); recovered != nil {
-			logger.L().With(
+			logger.FromContext(ctx).With(
 				zap.String("component", "handler.openai_gateway.responses"),
 				zap.Any("panic", recovered),
 			).Error("openai.usage_record_task_panic_recovered")

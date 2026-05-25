@@ -82,6 +82,13 @@ func ErrorWithDetails(c *gin.Context, statusCode int, message, reason string, me
 	})
 }
 
+// TraceIDFromGinContext extracts trace_id from the gin request context or
+// response header. Exported so that handler/service/middleware layers can
+// embed trace_id in error responses consistently.
+func TraceIDFromGinContext(c *gin.Context) string {
+	return traceIDFromContext(c)
+}
+
 func traceIDFromContext(c *gin.Context) string {
 	if c == nil {
 		return ""

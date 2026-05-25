@@ -213,23 +213,39 @@ func (s *ReferralService) HandleInviterRewardOnFirstRecharge(ctx context.Context
 	}
 
 	cfg := s.configResolver.Resolve(ctx, ref.ReferrerID)
-	if !cfg.Enabled || cfg.InviterRewardAmount <= 0 || ref.InviterRewardedAt != nil {
+
+	if !cfg.Enabled || !cfg.InviterFirstChargeRewardEnabled || ref.InviterRewardedAt != nil {
+		// 没有 gift 奖励要发，但首充事件已经发生，仍要让 referral 状态完成。
+		s.markReferralCompletedOnFirstRecharge(ctx, ref.ID)
+		return
+	}
+
+	// 计算邀请人首充奖励金额：根据 type 判断单位
+	var inviterRewardAmount float64
+	switch cfg.InviterFirstChargeRewardType {
+	case "percentage":
+		inviterRewardAmount = rechargeAmount * cfg.InviterFirstChargeRewardValue / 100
+	default: // "fixed" 或未设置
+		inviterRewardAmount = cfg.InviterFirstChargeRewardValue
+	}
+
+	if inviterRewardAmount <= 0 {
 		// 没有 gift 奖励要发，但首充事件已经发生，仍要让 referral 状态完成。
 		s.markReferralCompletedOnFirstRecharge(ctx, ref.ID)
 		return
 	}
 
 	// 发放推广人首充 gift 奖励；SetInviterRewarded 内部已经把 status 设为 completed。
-	if !s.grantGiftBalance(ctx, ref.ReferrerID, cfg.InviterRewardAmount, GiftBalanceSourceReferralInviter, ref.ID, cfg.RewardExpiryDays,
-		fmt.Sprintf("下线首充赠送余额（被邀请人ID: %d, 充值: %.2f）", userID, rechargeAmount)) {
+	if !s.grantGiftBalance(ctx, ref.ReferrerID, inviterRewardAmount, GiftBalanceSourceReferralInviter, ref.ID, cfg.RewardExpiryDays,
+		s.buildRewardNote(ctx, "下线首充赠送余额", userID, rechargeAmount, 0)) {
 		// gift 创建失败时仍标 completed，避免管理界面停在 pending 误导运维。
 		s.markReferralCompletedOnFirstRecharge(ctx, ref.ID)
 		return
 	}
-	if err := s.referralRepo.SetInviterRewarded(ctx, ref.ID, cfg.InviterRewardAmount); err != nil {
+	if err := s.referralRepo.SetInviterRewarded(ctx, ref.ID, inviterRewardAmount); err != nil {
 		slog.Error("set inviter rewarded", "referralID", ref.ID, "error", err)
 	}
-	slog.Info("inviter first-recharge reward granted", "referrerID", ref.ReferrerID, "refereeID", userID, "amount", cfg.InviterRewardAmount)
+	slog.Info("inviter first-recharge reward granted", "referrerID", ref.ReferrerID, "refereeID", userID, "amount", inviterRewardAmount)
 }
 
 // markReferralCompletedOnFirstRecharge 仅修改 referrals.status，
@@ -241,8 +257,51 @@ func (s *ReferralService) markReferralCompletedOnFirstRecharge(ctx context.Conte
 	}
 }
 
+// HandleInviteeRewardOnFirstRecharge 被邀请人首充后触发被邀请人首充奖励
+func (s *ReferralService) HandleInviteeRewardOnFirstRecharge(ctx context.Context, userID int64, rechargeAmount float64, paymentOrderID int64) {
+	ref, err := s.referralRepo.GetByRefereeID(ctx, userID)
+	if err != nil || ref == nil {
+		return
+	}
+
+	// 销售推广人不走普通首充被邀请人奖励路径
+	if s.isSalesReferrer(ctx, ref.ReferrerID) {
+		return
+	}
+
+	cfg := s.configResolver.Resolve(ctx, ref.ReferrerID)
+	if !cfg.Enabled || !cfg.InviteeFirstChargeRewardEnabled {
+		return
+	}
+
+	// 计算被邀请人首充奖励金额
+	var rewardAmount float64
+	switch cfg.InviteeFirstChargeRewardType {
+	case "percentage":
+		rewardAmount = rechargeAmount * cfg.InviteeFirstChargeRewardValue / 100
+	default:
+		rewardAmount = cfg.InviteeFirstChargeRewardValue
+	}
+	if rewardAmount <= 0 {
+		return
+	}
+
+	// 使用负值 paymentOrderID 作为幂等键，避免与推广人奖励冲突
+	idempotencyKey := -paymentOrderID
+	if idempotencyKey == 0 {
+		idempotencyKey = -2
+	}
+	if !s.grantGiftBalance(ctx, userID, rewardAmount, GiftBalanceSourceReferralInviteeFirstCharge, idempotencyKey, cfg.RewardExpiryDays,
+		s.buildRewardNote(ctx, "首充赠送余额 - 被邀请人首充奖励", userID, rechargeAmount, ref.ReferrerID)) {
+		return
+	}
+	slog.Info("invitee first-recharge reward granted", "refereeID", userID, "amount", rewardAmount, "referrerID", ref.ReferrerID)
+}
+
 // HandleOngoingRewardOnRecharge 被邀请人每次充值时触发持续奖励
-func (s *ReferralService) HandleOngoingRewardOnRecharge(ctx context.Context, userID int64, rechargeAmount float64, paymentOrderID int64) {
+// isFirstRecharge=true 时，普通推广的持续奖励被跳过（由首充专用方法处理），
+// 但销售推广人的被邀请人持续奖励不受影响。
+func (s *ReferralService) HandleOngoingRewardOnRecharge(ctx context.Context, userID int64, rechargeAmount float64, paymentOrderID int64, isFirstRecharge bool) {
 	ref, err := s.referralRepo.GetByRefereeID(ctx, userID)
 	if err != nil || ref == nil {
 		return
@@ -251,12 +310,21 @@ func (s *ReferralService) HandleOngoingRewardOnRecharge(ctx context.Context, use
 	isSales := s.isSalesReferrer(ctx, ref.ReferrerID)
 
 	if isSales {
-		// 销售推广：给被邀请人发放持续充值奖励
-		s.handleSalesInviteeOngoingReward(ctx, ref, userID, rechargeAmount, paymentOrderID)
+		if isFirstRecharge {
+			// 销售推广：被邀请人首充奖励
+			s.handleSalesInviteeFirstChargeReward(ctx, ref, userID, rechargeAmount, paymentOrderID)
+		} else {
+			// 销售推广：被邀请人持续充值奖励（首充走首充路径，不重复发放持续奖励）
+			s.handleSalesInviteeOngoingReward(ctx, ref, userID, rechargeAmount, paymentOrderID)
+		}
 		return
 	}
 
-	// 普通推广
+	// 普通推广：首充时跳过持续奖励，首充奖励由 HandleInviter/InviteeRewardOnFirstRecharge 处理
+	if isFirstRecharge {
+		return
+	}
+
 	cfg := s.configResolver.Resolve(ctx, ref.ReferrerID)
 	if !cfg.Enabled {
 		return
@@ -304,7 +372,7 @@ func (s *ReferralService) handleInviterOngoingReward(ctx context.Context, cfg *E
 	// grant its own ongoing reward while duplicate fulfillment of the same order
 	// remains harmless.
 	if !s.grantGiftBalance(ctx, ref.ReferrerID, rewardAmount, GiftBalanceSourceReferralOngoing, paymentOrderID, cfg.RewardExpiryDays,
-		fmt.Sprintf("下线充值赠送余额 - 推广人持续奖励（被邀请人ID: %d, 充值: %.2f）", userID, rechargeAmount)) {
+		s.buildRewardNote(ctx, "下线充值赠送余额 - 推广人持续奖励", userID, rechargeAmount, 0)) {
 		return
 	}
 
@@ -351,7 +419,7 @@ func (s *ReferralService) handleInviteeOngoingReward(ctx context.Context, cfg *E
 		inviteeIdempotencyKey = -1
 	}
 	if !s.grantGiftBalance(ctx, userID, rewardAmount, GiftBalanceSourceReferralOngoing, inviteeIdempotencyKey, cfg.RewardExpiryDays,
-		fmt.Sprintf("下线充值赠送余额 - 被邀请人持续奖励（充值: %.2f, 推广人ID: %d）", rechargeAmount, ref.ReferrerID)) {
+		s.buildRewardNote(ctx, "下线充值赠送余额 - 被邀请人持续奖励", userID, rechargeAmount, ref.ReferrerID)) {
 		return
 	}
 
@@ -359,6 +427,36 @@ func (s *ReferralService) handleInviteeOngoingReward(ctx context.Context, cfg *E
 		slog.Error("increment invitee ongoing reward", "referralID", ref.ID, "error", err)
 	}
 	slog.Info("invitee ongoing reward granted", "refereeID", userID, "amount", rewardAmount)
+}
+
+// handleSalesInviteeFirstChargeReward 销售推广：被邀请人首充时获得首充奖励
+func (s *ReferralService) handleSalesInviteeFirstChargeReward(ctx context.Context, ref *Referral, userID int64, rechargeAmount float64, paymentOrderID int64) {
+	globalCfg := s.configResolver.GetGlobalConfig(ctx)
+	if !globalCfg.SalesInviteeFirstChargeRewardEnabled {
+		return
+	}
+
+	var rewardAmount float64
+	switch globalCfg.SalesInviteeFirstChargeRewardType {
+	case "percentage":
+		rewardAmount = rechargeAmount * globalCfg.SalesInviteeFirstChargeRewardValue / 100
+	default:
+		rewardAmount = globalCfg.SalesInviteeFirstChargeRewardValue
+	}
+	if rewardAmount <= 0 {
+		return
+	}
+
+	// 使用负值 paymentOrderID 做幂等，source 区分
+	idempotencyKey := -paymentOrderID
+	if idempotencyKey == 0 {
+		idempotencyKey = -2
+	}
+	if !s.grantGiftBalance(ctx, userID, rewardAmount, GiftBalanceSourceReferralInviteeFirstCharge, idempotencyKey, 0,
+		s.buildRewardNote(ctx, "首充赠送余额 - 销售推广被邀请人首充奖励", userID, rechargeAmount, ref.ReferrerID)) {
+		return
+	}
+	slog.Info("sales invitee first-recharge reward granted", "referrerID", ref.ReferrerID, "refereeID", userID, "amount", rewardAmount)
 }
 
 // handleSalesInviteeOngoingReward 销售推广：被邀请人每次充值时获得持续奖励（发放给被邀请人自己）
@@ -395,7 +493,7 @@ func (s *ReferralService) handleSalesInviteeOngoingReward(ctx context.Context, r
 
 	// 给被邀请人自己发放奖励（使用 paymentOrderID 做幂等）
 	if !s.grantGiftBalance(ctx, userID, rewardAmount, GiftBalanceSourceReferralOngoing, paymentOrderID, 0,
-		fmt.Sprintf("下线充值赠送余额 - 销售推广持续奖励（充值: %.2f, 推广人ID: %d）", rechargeAmount, ref.ReferrerID)) {
+		s.buildRewardNote(ctx, "下线充值赠送余额 - 销售推广持续奖励", userID, rechargeAmount, ref.ReferrerID)) {
 		return
 	}
 
@@ -543,9 +641,10 @@ func (s *ReferralService) RecordOfflineRecharge(ctx context.Context, input *Offl
 	// 3. 触发推广奖励
 	if isFirstRecharge {
 		s.HandleInviterRewardOnFirstRecharge(ctx, input.UserID, input.CreditedAmount)
+		s.HandleInviteeRewardOnFirstRecharge(ctx, input.UserID, input.CreditedAmount, orderID)
 	}
 
-	s.HandleOngoingRewardOnRecharge(ctx, input.UserID, input.CreditedAmount, orderID)
+	s.HandleOngoingRewardOnRecharge(ctx, input.UserID, input.CreditedAmount, orderID, isFirstRecharge)
 
 	// 4. 销售佣金（仅当推广人是销售时触发）
 	if isSales && s.salesCommissionService != nil {
@@ -853,6 +952,22 @@ func (s *ReferralService) isSalesReferrer(ctx context.Context, userID int64) boo
 		return false
 	}
 	return SalesCommissionUserEligible(user)
+}
+
+// buildRewardNote 构建赠送余额备注，包含被邀请人邮箱(ID)、充值金额、推广人邮箱(ID)
+func (s *ReferralService) buildRewardNote(ctx context.Context, prefix string, inviteeID int64, rechargeAmount float64, referrerID int64) string {
+	inviteeEmail := ""
+	if user, err := s.userRepo.GetByID(ctx, inviteeID); err == nil && user != nil {
+		inviteeEmail = user.Email
+	}
+	if referrerID > 0 {
+		referrerEmail := ""
+		if user, err := s.userRepo.GetByID(ctx, referrerID); err == nil && user != nil {
+			referrerEmail = user.Email
+		}
+		return fmt.Sprintf("%s（被邀请人: %s(%d), 充值: %.2f, 推广人: %s(%d)）", prefix, inviteeEmail, inviteeID, rechargeAmount, referrerEmail, referrerID)
+	}
+	return fmt.Sprintf("%s（被邀请人: %s(%d), 充值: %.2f）", prefix, inviteeEmail, inviteeID, rechargeAmount)
 }
 
 // generateUniqueCode 生成 6-8 位唯一推广码

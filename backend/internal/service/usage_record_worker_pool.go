@@ -322,7 +322,7 @@ func (p *UsageRecordWorkerPool) execute(baseCtx context.Context, task UsageRecor
 
 	defer func() {
 		if recovered := recover(); recovered != nil {
-			logger.L().With(
+			logger.FromContext(ctx).With(
 				zap.String("component", "service.usage_record_worker_pool"),
 				zap.Any("panic", recovered),
 			).Error("usage_record.task_panic")

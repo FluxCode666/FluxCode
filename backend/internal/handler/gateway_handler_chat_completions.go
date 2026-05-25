@@ -276,12 +276,14 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 
 // chatCompletionsErrorResponse writes an error in OpenAI Chat Completions format.
 func (h *GatewayHandler) chatCompletionsErrorResponse(c *gin.Context, status int, errType, message string) {
-	c.JSON(status, gin.H{
+	payload := gin.H{
 		"error": gin.H{
 			"type":    errType,
 			"message": message,
 		},
-	})
+	}
+	addErrorCorrelationFields(c, payload)
+	c.JSON(status, payload)
 }
 
 // handleCCFailoverExhausted writes a failover-exhausted error in CC format.

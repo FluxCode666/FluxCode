@@ -45,18 +45,25 @@ func (h *ReferralHandler) GetStats(c *gin.Context) {
 // adminConfigDTO 管理端推广配置（API 契约：使用 type+value 模式）
 type adminConfigDTO struct {
 	// --- 普通用户推广 ---
-	ReferralEnabled                   bool    `json:"referral_enabled"`
-	ReferralInviteeRewardEnabled      bool    `json:"referral_invitee_reward_enabled"`
-	ReferralInviteeReward             float64 `json:"referral_invitee_reward"`
-	ReferralInviterReward             float64 `json:"referral_inviter_reward"`
-	ReferralMaxInvites                int     `json:"referral_max_invites"`
-	ReferralRewardExpiryDays          int     `json:"referral_reward_expiry_days"`
-	ReferralGiftBalanceExpiryDays     int     `json:"referral_gift_balance_expiry_days"` // 别名
-	ReferralOngoingRewardEnabled      bool    `json:"referral_ongoing_reward_enabled"`
-	ReferralOngoingRewardType         string  `json:"referral_ongoing_reward_type"`
-	ReferralOngoingRewardValue        float64 `json:"referral_ongoing_reward_value"`
-	ReferralOngoingRewardMaxCount     int     `json:"referral_ongoing_reward_max_count"`
-	ReferralOngoingRewardDurationDays int     `json:"referral_ongoing_reward_duration_days"`
+	ReferralEnabled               bool    `json:"referral_enabled"`
+	ReferralInviteeRewardEnabled  bool    `json:"referral_invitee_reward_enabled"`
+	ReferralInviteeReward         float64 `json:"referral_invitee_reward"`
+	ReferralInviterReward         float64 `json:"referral_inviter_reward"`
+	ReferralMaxInvites            int     `json:"referral_max_invites"`
+	ReferralRewardExpiryDays      int     `json:"referral_reward_expiry_days"`
+	ReferralGiftBalanceExpiryDays int     `json:"referral_gift_balance_expiry_days"` // 别名
+	// --- 普通推广：首充奖励 ---
+	ReferralInviterFirstChargeRewardEnabled bool    `json:"referral_inviter_first_charge_reward_enabled"`
+	ReferralInviterFirstChargeRewardType    string  `json:"referral_inviter_first_charge_reward_type"`
+	ReferralInviterFirstChargeRewardValue   float64 `json:"referral_inviter_first_charge_reward_value"`
+	ReferralInviteeFirstChargeRewardEnabled bool    `json:"referral_invitee_first_charge_reward_enabled"`
+	ReferralInviteeFirstChargeRewardType    string  `json:"referral_invitee_first_charge_reward_type"`
+	ReferralInviteeFirstChargeRewardValue   float64 `json:"referral_invitee_first_charge_reward_value"`
+	ReferralOngoingRewardEnabled            bool    `json:"referral_ongoing_reward_enabled"`
+	ReferralOngoingRewardType               string  `json:"referral_ongoing_reward_type"`
+	ReferralOngoingRewardValue              float64 `json:"referral_ongoing_reward_value"`
+	ReferralOngoingRewardMaxCount           int     `json:"referral_ongoing_reward_max_count"`
+	ReferralOngoingRewardDurationDays       int     `json:"referral_ongoing_reward_duration_days"`
 	// --- 普通推广：被邀请人持续奖励 ---
 	ReferralInviteeOngoingRewardEnabled      bool    `json:"referral_invitee_ongoing_reward_enabled"`
 	ReferralInviteeOngoingRewardType         string  `json:"referral_invitee_ongoing_reward_type"`
@@ -67,6 +74,9 @@ type adminConfigDTO struct {
 	ReferralSalesEnabled                          bool    `json:"referral_sales_enabled"`
 	ReferralSalesInviteeRewardEnabled             bool    `json:"referral_sales_invitee_reward_enabled"`
 	ReferralSalesInviteeReward                    float64 `json:"referral_sales_invitee_reward"`
+	ReferralSalesInviteeFirstChargeRewardEnabled  bool    `json:"referral_sales_invitee_first_charge_reward_enabled"`
+	ReferralSalesInviteeFirstChargeRewardType     string  `json:"referral_sales_invitee_first_charge_reward_type"`
+	ReferralSalesInviteeFirstChargeRewardValue    float64 `json:"referral_sales_invitee_first_charge_reward_value"`
 	ReferralSalesInviteeOngoingRewardEnabled      bool    `json:"referral_sales_invitee_ongoing_reward_enabled"`
 	ReferralSalesInviteeOngoingRewardType         string  `json:"referral_sales_invitee_ongoing_reward_type"`
 	ReferralSalesInviteeOngoingRewardValue        float64 `json:"referral_sales_invitee_ongoing_reward_value"`
@@ -94,6 +104,15 @@ func (h *ReferralHandler) GetConfig(c *gin.Context) {
 		inviteeOngoingType = "fixed"
 	}
 
+	inviterFirstChargeType := cfg.InviterFirstChargeRewardType
+	if inviterFirstChargeType == "" {
+		inviterFirstChargeType = "fixed"
+	}
+	inviteeFirstChargeType := cfg.InviteeFirstChargeRewardType
+	if inviteeFirstChargeType == "" {
+		inviteeFirstChargeType = "fixed"
+	}
+
 	response.Success(c, adminConfigDTO{
 		ReferralEnabled:                               cfg.Enabled,
 		ReferralInviteeRewardEnabled:                  cfg.InviteeRewardEnabled,
@@ -102,6 +121,12 @@ func (h *ReferralHandler) GetConfig(c *gin.Context) {
 		ReferralMaxInvites:                            cfg.MaxInvites,
 		ReferralRewardExpiryDays:                      cfg.RewardExpiryDays,
 		ReferralGiftBalanceExpiryDays:                 cfg.RewardExpiryDays,
+		ReferralInviterFirstChargeRewardEnabled:       cfg.InviterFirstChargeRewardEnabled,
+		ReferralInviterFirstChargeRewardType:          inviterFirstChargeType,
+		ReferralInviterFirstChargeRewardValue:         cfg.InviterFirstChargeRewardValue,
+		ReferralInviteeFirstChargeRewardEnabled:       cfg.InviteeFirstChargeRewardEnabled,
+		ReferralInviteeFirstChargeRewardType:          inviteeFirstChargeType,
+		ReferralInviteeFirstChargeRewardValue:         cfg.InviteeFirstChargeRewardValue,
 		ReferralOngoingRewardEnabled:                  cfg.OngoingRewardEnabled,
 		ReferralOngoingRewardType:                     rewardType,
 		ReferralOngoingRewardValue:                    cfg.OngoingRewardValue,
@@ -115,6 +140,9 @@ func (h *ReferralHandler) GetConfig(c *gin.Context) {
 		ReferralSalesEnabled:                          cfg.SalesEnabled,
 		ReferralSalesInviteeRewardEnabled:             cfg.SalesInviteeRewardEnabled,
 		ReferralSalesInviteeReward:                    cfg.SalesInviteeRewardAmount,
+		ReferralSalesInviteeFirstChargeRewardEnabled:  cfg.SalesInviteeFirstChargeRewardEnabled,
+		ReferralSalesInviteeFirstChargeRewardType:     cfg.SalesInviteeFirstChargeRewardType,
+		ReferralSalesInviteeFirstChargeRewardValue:    cfg.SalesInviteeFirstChargeRewardValue,
 		ReferralSalesInviteeOngoingRewardEnabled:      cfg.SalesInviteeOngoingRewardEnabled,
 		ReferralSalesInviteeOngoingRewardType:         salesOngoingType,
 		ReferralSalesInviteeOngoingRewardValue:        cfg.SalesInviteeOngoingRewardValue,
@@ -127,18 +155,25 @@ func (h *ReferralHandler) GetConfig(c *gin.Context) {
 // 使用 *T 指针字段：nil = 不修改对应配置
 type updateConfigRequest struct {
 	// --- 普通用户推广 ---
-	ReferralEnabled                   *bool    `json:"referral_enabled"`
-	ReferralInviteeRewardEnabled      *bool    `json:"referral_invitee_reward_enabled"`
-	ReferralInviteeReward             *float64 `json:"referral_invitee_reward"`
-	ReferralInviterReward             *float64 `json:"referral_inviter_reward"`
-	ReferralMaxInvites                *int     `json:"referral_max_invites"`
-	ReferralRewardExpiryDays          *int     `json:"referral_reward_expiry_days"`
-	ReferralGiftBalanceExpiryDays     *int     `json:"referral_gift_balance_expiry_days"` // 别名
-	ReferralOngoingRewardEnabled      *bool    `json:"referral_ongoing_reward_enabled"`
-	ReferralOngoingRewardType         *string  `json:"referral_ongoing_reward_type"`
-	ReferralOngoingRewardValue        *float64 `json:"referral_ongoing_reward_value"`
-	ReferralOngoingRewardMaxCount     *int     `json:"referral_ongoing_reward_max_count"`
-	ReferralOngoingRewardDurationDays *int     `json:"referral_ongoing_reward_duration_days"`
+	ReferralEnabled               *bool    `json:"referral_enabled"`
+	ReferralInviteeRewardEnabled  *bool    `json:"referral_invitee_reward_enabled"`
+	ReferralInviteeReward         *float64 `json:"referral_invitee_reward"`
+	ReferralInviterReward         *float64 `json:"referral_inviter_reward"`
+	ReferralMaxInvites            *int     `json:"referral_max_invites"`
+	ReferralRewardExpiryDays      *int     `json:"referral_reward_expiry_days"`
+	ReferralGiftBalanceExpiryDays *int     `json:"referral_gift_balance_expiry_days"` // 别名
+	// --- 普通推广：首充奖励 ---
+	ReferralInviterFirstChargeRewardEnabled *bool    `json:"referral_inviter_first_charge_reward_enabled"`
+	ReferralInviterFirstChargeRewardType    *string  `json:"referral_inviter_first_charge_reward_type"`
+	ReferralInviterFirstChargeRewardValue   *float64 `json:"referral_inviter_first_charge_reward_value"`
+	ReferralInviteeFirstChargeRewardEnabled *bool    `json:"referral_invitee_first_charge_reward_enabled"`
+	ReferralInviteeFirstChargeRewardType    *string  `json:"referral_invitee_first_charge_reward_type"`
+	ReferralInviteeFirstChargeRewardValue   *float64 `json:"referral_invitee_first_charge_reward_value"`
+	ReferralOngoingRewardEnabled            *bool    `json:"referral_ongoing_reward_enabled"`
+	ReferralOngoingRewardType               *string  `json:"referral_ongoing_reward_type"`
+	ReferralOngoingRewardValue              *float64 `json:"referral_ongoing_reward_value"`
+	ReferralOngoingRewardMaxCount           *int     `json:"referral_ongoing_reward_max_count"`
+	ReferralOngoingRewardDurationDays       *int     `json:"referral_ongoing_reward_duration_days"`
 	// --- 普通推广：被邀请人持续奖励 ---
 	ReferralInviteeOngoingRewardEnabled      *bool    `json:"referral_invitee_ongoing_reward_enabled"`
 	ReferralInviteeOngoingRewardType         *string  `json:"referral_invitee_ongoing_reward_type"`
@@ -149,6 +184,9 @@ type updateConfigRequest struct {
 	ReferralSalesEnabled                          *bool    `json:"referral_sales_enabled"`
 	ReferralSalesInviteeRewardEnabled             *bool    `json:"referral_sales_invitee_reward_enabled"`
 	ReferralSalesInviteeReward                    *float64 `json:"referral_sales_invitee_reward"`
+	ReferralSalesInviteeFirstChargeRewardEnabled  *bool    `json:"referral_sales_invitee_first_charge_reward_enabled"`
+	ReferralSalesInviteeFirstChargeRewardType     *string  `json:"referral_sales_invitee_first_charge_reward_type"`
+	ReferralSalesInviteeFirstChargeRewardValue    *float64 `json:"referral_sales_invitee_first_charge_reward_value"`
 	ReferralSalesInviteeOngoingRewardEnabled      *bool    `json:"referral_sales_invitee_ongoing_reward_enabled"`
 	ReferralSalesInviteeOngoingRewardType         *string  `json:"referral_sales_invitee_ongoing_reward_type"`
 	ReferralSalesInviteeOngoingRewardValue        *float64 `json:"referral_sales_invitee_ongoing_reward_value"`
@@ -183,6 +221,33 @@ func (h *ReferralHandler) UpdateConfig(c *gin.Context) {
 		settings[service.SettingKeyReferralRewardExpiryDays] = strconv.Itoa(*req.ReferralRewardExpiryDays)
 	} else if req.ReferralGiftBalanceExpiryDays != nil {
 		settings[service.SettingKeyReferralRewardExpiryDays] = strconv.Itoa(*req.ReferralGiftBalanceExpiryDays)
+	}
+	// --- 首充奖励 ---
+	if req.ReferralInviterFirstChargeRewardEnabled != nil {
+		settings[service.SettingKeyReferralInviterFirstChargeRewardEnabled] = strconv.FormatBool(*req.ReferralInviterFirstChargeRewardEnabled)
+	}
+	if req.ReferralInviterFirstChargeRewardType != nil {
+		t := strings.ToLower(strings.TrimSpace(*req.ReferralInviterFirstChargeRewardType))
+		if t != "percentage" {
+			t = "fixed"
+		}
+		settings[service.SettingKeyReferralInviterFirstChargeRewardType] = t
+	}
+	if req.ReferralInviterFirstChargeRewardValue != nil {
+		settings[service.SettingKeyReferralInviterFirstChargeRewardValue] = strconv.FormatFloat(*req.ReferralInviterFirstChargeRewardValue, 'f', -1, 64)
+	}
+	if req.ReferralInviteeFirstChargeRewardEnabled != nil {
+		settings[service.SettingKeyReferralInviteeFirstChargeRewardEnabled] = strconv.FormatBool(*req.ReferralInviteeFirstChargeRewardEnabled)
+	}
+	if req.ReferralInviteeFirstChargeRewardType != nil {
+		t := strings.ToLower(strings.TrimSpace(*req.ReferralInviteeFirstChargeRewardType))
+		if t != "percentage" {
+			t = "fixed"
+		}
+		settings[service.SettingKeyReferralInviteeFirstChargeRewardType] = t
+	}
+	if req.ReferralInviteeFirstChargeRewardValue != nil {
+		settings[service.SettingKeyReferralInviteeFirstChargeRewardValue] = strconv.FormatFloat(*req.ReferralInviteeFirstChargeRewardValue, 'f', -1, 64)
 	}
 	if req.ReferralOngoingRewardEnabled != nil {
 		settings[service.SettingKeyReferralOngoingRewardEnabled] = strconv.FormatBool(*req.ReferralOngoingRewardEnabled)
@@ -237,6 +302,19 @@ func (h *ReferralHandler) UpdateConfig(c *gin.Context) {
 	}
 	if req.ReferralSalesInviteeReward != nil {
 		settings[service.SettingKeyReferralSalesInviteeReward] = strconv.FormatFloat(*req.ReferralSalesInviteeReward, 'f', -1, 64)
+	}
+	if req.ReferralSalesInviteeFirstChargeRewardEnabled != nil {
+		settings[service.SettingKeyReferralSalesInviteeFirstChargeRewardEnabled] = strconv.FormatBool(*req.ReferralSalesInviteeFirstChargeRewardEnabled)
+	}
+	if req.ReferralSalesInviteeFirstChargeRewardType != nil {
+		st := strings.ToLower(strings.TrimSpace(*req.ReferralSalesInviteeFirstChargeRewardType))
+		if st != "percentage" {
+			st = "fixed"
+		}
+		settings[service.SettingKeyReferralSalesInviteeFirstChargeRewardType] = st
+	}
+	if req.ReferralSalesInviteeFirstChargeRewardValue != nil {
+		settings[service.SettingKeyReferralSalesInviteeFirstChargeRewardValue] = strconv.FormatFloat(*req.ReferralSalesInviteeFirstChargeRewardValue, 'f', -1, 64)
 	}
 	if req.ReferralSalesInviteeOngoingRewardEnabled != nil {
 		settings[service.SettingKeyReferralSalesInviteeOngoingRewardEnabled] = strconv.FormatBool(*req.ReferralSalesInviteeOngoingRewardEnabled)
@@ -447,16 +525,22 @@ func (h *ReferralHandler) GetUserConfig(c *gin.Context) {
 
 // userConfigRequest 用户级推广配置请求（type+value 模式）
 type userConfigRequest struct {
-	InviteeReward             *float64 `json:"invitee_reward"`
-	InviterReward             *float64 `json:"inviter_reward"`
-	MaxInvites                *int     `json:"max_invites"`
-	RewardExpiryDays          *int     `json:"reward_expiry_days"`
-	OngoingRewardEnabled      *bool    `json:"ongoing_reward_enabled"`
-	OngoingRewardType         *string  `json:"ongoing_reward_type"`
-	OngoingRewardValue        *float64 `json:"ongoing_reward_value"`
-	OngoingRewardMaxCount     *int     `json:"ongoing_reward_max_count"`
-	OngoingRewardDurationDays *int     `json:"ongoing_reward_duration_days"`
-	Notes                     string   `json:"notes"`
+	InviteeReward                   *float64 `json:"invitee_reward"`
+	InviterReward                   *float64 `json:"inviter_reward"`
+	MaxInvites                      *int     `json:"max_invites"`
+	RewardExpiryDays                *int     `json:"reward_expiry_days"`
+	InviterFirstChargeRewardEnabled *bool    `json:"inviter_first_charge_reward_enabled"`
+	InviterFirstChargeRewardType    *string  `json:"inviter_first_charge_reward_type"`
+	InviterFirstChargeRewardValue   *float64 `json:"inviter_first_charge_reward_value"`
+	InviteeFirstChargeRewardEnabled *bool    `json:"invitee_first_charge_reward_enabled"`
+	InviteeFirstChargeRewardType    *string  `json:"invitee_first_charge_reward_type"`
+	InviteeFirstChargeRewardValue   *float64 `json:"invitee_first_charge_reward_value"`
+	OngoingRewardEnabled            *bool    `json:"ongoing_reward_enabled"`
+	OngoingRewardType               *string  `json:"ongoing_reward_type"`
+	OngoingRewardValue              *float64 `json:"ongoing_reward_value"`
+	OngoingRewardMaxCount           *int     `json:"ongoing_reward_max_count"`
+	OngoingRewardDurationDays       *int     `json:"ongoing_reward_duration_days"`
+	Notes                           string   `json:"notes"`
 }
 
 // UpsertUserConfig 设置用户个性化推广配置
@@ -475,15 +559,21 @@ func (h *ReferralHandler) UpsertUserConfig(c *gin.Context) {
 	}
 
 	cfg := &service.UserReferralConfig{
-		UserID:                    userID,
-		InviteeRewardAmount:       req.InviteeReward,
-		InviterRewardAmount:       req.InviterReward,
-		MaxInvites:                req.MaxInvites,
-		RewardExpiryDays:          req.RewardExpiryDays,
-		OngoingRewardEnabled:      req.OngoingRewardEnabled,
-		OngoingRewardMaxCount:     req.OngoingRewardMaxCount,
-		OngoingRewardDurationDays: req.OngoingRewardDurationDays,
-		Notes:                     req.Notes,
+		UserID:                          userID,
+		InviteeRewardAmount:             req.InviteeReward,
+		InviterRewardAmount:             req.InviterReward,
+		MaxInvites:                      req.MaxInvites,
+		RewardExpiryDays:                req.RewardExpiryDays,
+		InviterFirstChargeRewardEnabled: req.InviterFirstChargeRewardEnabled,
+		InviterFirstChargeRewardType:    req.InviterFirstChargeRewardType,
+		InviterFirstChargeRewardValue:   req.InviterFirstChargeRewardValue,
+		InviteeFirstChargeRewardEnabled: req.InviteeFirstChargeRewardEnabled,
+		InviteeFirstChargeRewardType:    req.InviteeFirstChargeRewardType,
+		InviteeFirstChargeRewardValue:   req.InviteeFirstChargeRewardValue,
+		OngoingRewardEnabled:            req.OngoingRewardEnabled,
+		OngoingRewardMaxCount:           req.OngoingRewardMaxCount,
+		OngoingRewardDurationDays:       req.OngoingRewardDurationDays,
+		Notes:                           req.Notes,
 	}
 
 	if req.OngoingRewardType != nil {

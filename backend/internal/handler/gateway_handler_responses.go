@@ -282,12 +282,14 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 
 // responsesErrorResponse writes an error in OpenAI Responses API format.
 func (h *GatewayHandler) responsesErrorResponse(c *gin.Context, status int, code, message string) {
-	c.JSON(status, gin.H{
+	payload := gin.H{
 		"error": gin.H{
 			"code":    code,
 			"message": message,
 		},
-	})
+	}
+	addErrorCorrelationFields(c, payload)
+	c.JSON(status, payload)
 }
 
 // handleResponsesFailoverExhausted writes a failover-exhausted error in Responses format.

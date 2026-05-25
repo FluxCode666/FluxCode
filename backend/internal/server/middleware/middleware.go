@@ -59,6 +59,7 @@ func GetForcePlatformFromContext(c *gin.Context) (string, bool) {
 type ErrorResponse struct {
 	Code    string `json:"code"`
 	Message string `json:"message"`
+	TraceID string `json:"trace_id,omitempty"`
 }
 
 // NewErrorResponse 创建错误响应
@@ -71,7 +72,9 @@ func NewErrorResponse(code, message string) ErrorResponse {
 
 // AbortWithError 中断请求并返回JSON错误
 func AbortWithError(c *gin.Context, statusCode int, code, message string) {
-	c.JSON(statusCode, NewErrorResponse(code, message))
+	resp := NewErrorResponse(code, message)
+	resp.TraceID = middlewareTraceID(c)
+	c.JSON(statusCode, resp)
 	c.Abort()
 }
 
@@ -84,21 +87,37 @@ type GatewayErrorWriter func(c *gin.Context, status int, message string)
 
 // AnthropicErrorWriter 按 Anthropic API 规范输出错误
 func AnthropicErrorWriter(c *gin.Context, status int, message string) {
-	c.JSON(status, gin.H{
+	resp := gin.H{
 		"type":  "error",
 		"error": gin.H{"type": "permission_error", "message": message},
-	})
+	}
+	if tid := middlewareTraceID(c); tid != "" {
+		resp["trace_id"] = tid
+	}
+	c.JSON(status, resp)
 }
 
 // GoogleErrorWriter 按 Google API 规范输出错误
 func GoogleErrorWriter(c *gin.Context, status int, message string) {
-	c.JSON(status, gin.H{
+	resp := gin.H{
 		"error": gin.H{
 			"code":    status,
 			"message": message,
 			"status":  googleapi.HTTPStatusToGoogleStatus(status),
 		},
-	})
+	}
+	if tid := middlewareTraceID(c); tid != "" {
+		resp["trace_id"] = tid
+	}
+	c.JSON(status, resp)
+}
+
+// middlewareTraceID extracts trace_id from the response header set by RequestLogger middleware.
+func middlewareTraceID(c *gin.Context) string {
+	if c == nil || c.Writer == nil {
+		return ""
+	}
+	return c.Writer.Header().Get(traceIDHeader)
 }
 
 // RequireGroupAssignment 检查 API Key 是否已分配到分组，

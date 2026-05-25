@@ -312,6 +312,16 @@ const (
 	SettingKeyReferralOngoingRewardMaxCount     = "referral_ongoing_reward_max_count"     // 普通推广人每条推广关系最多触发持续奖励次数（0=不限）
 	SettingKeyReferralOngoingRewardDurationDays = "referral_ongoing_reward_duration_days" // 普通推广人持续奖励有效期：注册后N天内充值才触发（0=永久有效）
 
+	// 普通推广：邀请人首充奖励
+	SettingKeyReferralInviterFirstChargeRewardEnabled = "referral_inviter_first_charge_reward_enabled" // 邀请人首充奖励开关
+	SettingKeyReferralInviterFirstChargeRewardType    = "referral_inviter_first_charge_reward_type"    // 邀请人首充奖励类型：fixed=固定金额，percentage=按充值百分比
+	SettingKeyReferralInviterFirstChargeRewardValue   = "referral_inviter_first_charge_reward_value"   // 邀请人首充奖励数值
+
+	// 普通推广：被邀请人首充奖励（全新）
+	SettingKeyReferralInviteeFirstChargeRewardEnabled = "referral_invitee_first_charge_reward_enabled" // 被邀请人首充奖励开关
+	SettingKeyReferralInviteeFirstChargeRewardType    = "referral_invitee_first_charge_reward_type"    // 被邀请人首充奖励类型 fixed/percentage
+	SettingKeyReferralInviteeFirstChargeRewardValue   = "referral_invitee_first_charge_reward_value"   // 被邀请人首充奖励数值
+
 	// 普通推广：被邀请人持续充值奖励（发给被邀请人自己）
 	SettingKeyReferralInviteeOngoingRewardEnabled      = "referral_invitee_ongoing_reward_enabled"       // 普通推广：被邀请人持续充值奖励开关
 	SettingKeyReferralInviteeOngoingRewardType         = "referral_invitee_ongoing_reward_type"          // 普通推广：被邀请人持续奖励类型 fixed/percentage
@@ -320,9 +330,14 @@ const (
 	SettingKeyReferralInviteeOngoingRewardDurationDays = "referral_invitee_ongoing_reward_duration_days" // 普通推广：被邀请人持续奖励有效期天数（0=永久）
 
 	// --- 销售用户推广 ---
-	SettingKeyReferralSalesEnabled                          = "referral_sales_enabled"                              // 销售推广开关：控制销售用户的推广功能（佣金路径）
-	SettingKeyReferralSalesInviteeRewardEnabled             = "referral_sales_invitee_reward_enabled"               // 销售推广：是否启用被邀请人注册奖励
-	SettingKeyReferralSalesInviteeReward                    = "referral_sales_invitee_reward"                       // 被邀请人注册奖励金额（销售用户邀请的新用户）
+	SettingKeyReferralSalesEnabled              = "referral_sales_enabled"                // 销售推广开关：控制销售用户的推广功能（佣金路径）
+	SettingKeyReferralSalesInviteeRewardEnabled = "referral_sales_invitee_reward_enabled" // 销售推广：是否启用被邀请人注册奖励
+	SettingKeyReferralSalesInviteeReward        = "referral_sales_invitee_reward"         // 被邀请人注册奖励金额（销售用户邀请的新用户）
+	// 销售推广：被邀请人首充奖励
+	SettingKeyReferralSalesInviteeFirstChargeRewardEnabled = "referral_sales_invitee_first_charge_reward_enabled" // 销售推广：被邀请人首充奖励开关
+	SettingKeyReferralSalesInviteeFirstChargeRewardType    = "referral_sales_invitee_first_charge_reward_type"    // 销售推广：被邀请人首充奖励类型 fixed/percentage
+	SettingKeyReferralSalesInviteeFirstChargeRewardValue   = "referral_sales_invitee_first_charge_reward_value"   // 销售推广：被邀请人首充奖励数值
+
 	SettingKeyReferralSalesInviteeOngoingRewardEnabled      = "referral_sales_invitee_ongoing_reward_enabled"       // 销售推广：被邀请人持续充值奖励开关
 	SettingKeyReferralSalesInviteeOngoingRewardType         = "referral_sales_invitee_ongoing_reward_type"          // 销售推广：被邀请人持续奖励类型 fixed/percentage
 	SettingKeyReferralSalesInviteeOngoingRewardValue        = "referral_sales_invitee_ongoing_reward_value"         // 销售推广：被邀请人持续奖励数值

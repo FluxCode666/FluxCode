@@ -7,10 +7,11 @@ import (
 
 // GiftBalanceSource 赠送余额来源类型
 const (
-	GiftBalanceSourceReferralInvitee = "referral_invitee" // 被邀请人注册奖励
-	GiftBalanceSourceReferralInviter = "referral_inviter" // 推广人首充奖励
-	GiftBalanceSourceReferralOngoing = "referral_ongoing" // 推广人持续奖励
-	GiftBalanceSourceAdminGrant      = "admin_grant"      // 管理员手动发放
+	GiftBalanceSourceReferralInvitee            = "referral_invitee"              // 被邀请人注册奖励
+	GiftBalanceSourceReferralInviter            = "referral_inviter"              // 推广人首充奖励
+	GiftBalanceSourceReferralOngoing            = "referral_ongoing"              // 推广人持续奖励
+	GiftBalanceSourceReferralInviteeFirstCharge = "referral_invitee_first_charge" // 被邀请人首充奖励
+	GiftBalanceSourceAdminGrant                 = "admin_grant"                   // 管理员手动发放
 )
 
 // ReferralStatus 推广关系状态
@@ -63,12 +64,21 @@ type Referral struct {
 // OngoingRewardType: "fixed" | "percentage"
 // OngoingRewardValue: 当 type=fixed 时单位为美元，type=percentage 时单位为百分点（0-100）
 type UserReferralConfig struct {
-	ID                        int64
-	UserID                    int64
-	InviteeRewardAmount       *float64
-	InviterRewardAmount       *float64
-	MaxInvites                *int
-	RewardExpiryDays          *int
+	ID                  int64
+	UserID              int64
+	InviteeRewardAmount *float64
+	InviterRewardAmount *float64
+	MaxInvites          *int
+	RewardExpiryDays    *int
+	// 邀请人首充奖励
+	InviterFirstChargeRewardEnabled *bool
+	InviterFirstChargeRewardType    *string
+	InviterFirstChargeRewardValue   *float64
+	// 被邀请人首充奖励
+	InviteeFirstChargeRewardEnabled *bool
+	InviteeFirstChargeRewardType    *string
+	InviteeFirstChargeRewardValue   *float64
+
 	OngoingRewardEnabled      *bool
 	OngoingRewardType         *string
 	OngoingRewardValue        *float64
@@ -91,12 +101,22 @@ type UserReferralConfig struct {
 // OngoingRewardValue: 当 type=fixed 时单位为美元，type=percentage 时单位为百分点（0-100）
 type ReferralGlobalConfig struct {
 	// --- 普通用户推广 ---
-	Enabled                   bool
-	InviteeRewardEnabled      bool // 是否启用被邀请人注册奖励
-	InviteeRewardAmount       float64
-	InviterRewardAmount       float64
-	MaxInvites                int
-	RewardExpiryDays          int
+	Enabled              bool
+	InviteeRewardEnabled bool // 是否启用被邀请人注册奖励
+	InviteeRewardAmount  float64
+	InviterRewardAmount  float64
+	MaxInvites           int
+	RewardExpiryDays     int
+	// 普通推广：邀请人首充奖励
+	InviterFirstChargeRewardEnabled bool
+	InviterFirstChargeRewardType    string // fixed / percentage（空=fixed）
+	InviterFirstChargeRewardValue   float64
+
+	// 普通推广：被邀请人首充奖励
+	InviteeFirstChargeRewardEnabled bool
+	InviteeFirstChargeRewardType    string // fixed / percentage
+	InviteeFirstChargeRewardValue   float64
+
 	OngoingRewardEnabled      bool
 	OngoingRewardType         string
 	OngoingRewardValue        float64
@@ -111,9 +131,14 @@ type ReferralGlobalConfig struct {
 	InviteeOngoingRewardDurationDays int
 
 	// --- 销售用户推广 ---
-	SalesEnabled                          bool
-	SalesInviteeRewardEnabled             bool // 是否启用销售被邀请人注册奖励
-	SalesInviteeRewardAmount              float64
+	SalesEnabled              bool
+	SalesInviteeRewardEnabled bool // 是否启用销售被邀请人注册奖励
+	SalesInviteeRewardAmount  float64
+	// 销售推广：被邀请人首充奖励
+	SalesInviteeFirstChargeRewardEnabled bool
+	SalesInviteeFirstChargeRewardType    string // fixed / percentage
+	SalesInviteeFirstChargeRewardValue   float64
+
 	SalesInviteeOngoingRewardEnabled      bool   // 销售被邀请人持续充值奖励开关
 	SalesInviteeOngoingRewardType         string // fixed / percentage
 	SalesInviteeOngoingRewardValue        float64
@@ -123,11 +148,20 @@ type ReferralGlobalConfig struct {
 
 // EffectiveReferralConfig 最终生效的推广配置（全局 + 用户覆盖合并后）
 type EffectiveReferralConfig struct {
-	Enabled                   bool
-	InviteeRewardAmount       float64
-	InviterRewardAmount       float64
-	MaxInvites                int
-	RewardExpiryDays          int
+	Enabled             bool
+	InviteeRewardAmount float64
+	InviterRewardAmount float64
+	MaxInvites          int
+	RewardExpiryDays    int
+	// 邀请人首充奖励
+	InviterFirstChargeRewardEnabled bool
+	InviterFirstChargeRewardType    string
+	InviterFirstChargeRewardValue   float64
+	// 被邀请人首充奖励
+	InviteeFirstChargeRewardEnabled bool
+	InviteeFirstChargeRewardType    string
+	InviteeFirstChargeRewardValue   float64
+
 	OngoingRewardEnabled      bool
 	OngoingRewardType         string
 	OngoingRewardValue        float64

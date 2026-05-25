@@ -487,7 +487,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 					APIKeyService:      h.apiKeyService,
 					ChannelUsageFields: channelMapping.ToUsageFields(reqModel, result.UpstreamModel),
 				}); err != nil {
-					logger.L().With(
+					logger.FromContext(c.Request.Context()).With(
 						zap.String("component", "handler.gateway.messages"),
 						zap.Int64("user_id", subject.UserID),
 						zap.Int64("api_key_id", apiKey.ID),
@@ -829,7 +829,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 					APIKeyService:      h.apiKeyService,
 					ChannelUsageFields: channelMapping.ToUsageFields(reqModel, result.UpstreamModel),
 				}); err != nil {
-					logger.L().With(
+					logger.FromContext(c.Request.Context()).With(
 						zap.String("component", "handler.gateway.messages"),
 						zap.Int64("user_id", subject.UserID),
 						zap.Int64("api_key_id", currentAPIKey.ID),
@@ -1762,7 +1762,7 @@ func (h *GatewayHandler) submitUsageRecordTask(baseCtx context.Context, task ser
 	defer cancel()
 	defer func() {
 		if recovered := recover(); recovered != nil {
-			logger.L().With(
+			logger.FromContext(ctx).With(
 				zap.String("component", "handler.gateway.messages"),
 				zap.Any("panic", recovered),
 			).Error("gateway.usage_record_task_panic_recovered")
