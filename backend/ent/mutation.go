@@ -115,6 +115,8 @@ type APIKeyMutation struct {
 	key                *string
 	name               *string
 	status             *string
+	system_prompt      *string
+	system_prompt_mode *string
 	last_used_at       *time.Time
 	ip_whitelist       *[]string
 	appendip_whitelist []string
@@ -563,6 +565,78 @@ func (m *APIKeyMutation) OldStatus(ctx context.Context) (v string, err error) {
 // ResetStatus resets all changes to the "status" field.
 func (m *APIKeyMutation) ResetStatus() {
 	m.status = nil
+}
+
+// SetSystemPrompt sets the "system_prompt" field.
+func (m *APIKeyMutation) SetSystemPrompt(s string) {
+	m.system_prompt = &s
+}
+
+// SystemPrompt returns the value of the "system_prompt" field in the mutation.
+func (m *APIKeyMutation) SystemPrompt() (r string, exists bool) {
+	v := m.system_prompt
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSystemPrompt returns the old "system_prompt" field's value of the APIKey entity.
+// If the APIKey object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *APIKeyMutation) OldSystemPrompt(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSystemPrompt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSystemPrompt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSystemPrompt: %w", err)
+	}
+	return oldValue.SystemPrompt, nil
+}
+
+// ResetSystemPrompt resets all changes to the "system_prompt" field.
+func (m *APIKeyMutation) ResetSystemPrompt() {
+	m.system_prompt = nil
+}
+
+// SetSystemPromptMode sets the "system_prompt_mode" field.
+func (m *APIKeyMutation) SetSystemPromptMode(s string) {
+	m.system_prompt_mode = &s
+}
+
+// SystemPromptMode returns the value of the "system_prompt_mode" field in the mutation.
+func (m *APIKeyMutation) SystemPromptMode() (r string, exists bool) {
+	v := m.system_prompt_mode
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSystemPromptMode returns the old "system_prompt_mode" field's value of the APIKey entity.
+// If the APIKey object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *APIKeyMutation) OldSystemPromptMode(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSystemPromptMode is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSystemPromptMode requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSystemPromptMode: %w", err)
+	}
+	return oldValue.SystemPromptMode, nil
+}
+
+// ResetSystemPromptMode resets all changes to the "system_prompt_mode" field.
+func (m *APIKeyMutation) ResetSystemPromptMode() {
+	m.system_prompt_mode = nil
 }
 
 // SetLastUsedAt sets the "last_used_at" field.
@@ -1530,7 +1604,7 @@ func (m *APIKeyMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *APIKeyMutation) Fields() []string {
-	fields := make([]string, 0, 23)
+	fields := make([]string, 0, 25)
 	if m.created_at != nil {
 		fields = append(fields, apikey.FieldCreatedAt)
 	}
@@ -1554,6 +1628,12 @@ func (m *APIKeyMutation) Fields() []string {
 	}
 	if m.status != nil {
 		fields = append(fields, apikey.FieldStatus)
+	}
+	if m.system_prompt != nil {
+		fields = append(fields, apikey.FieldSystemPrompt)
+	}
+	if m.system_prompt_mode != nil {
+		fields = append(fields, apikey.FieldSystemPromptMode)
 	}
 	if m.last_used_at != nil {
 		fields = append(fields, apikey.FieldLastUsedAt)
@@ -1624,6 +1704,10 @@ func (m *APIKeyMutation) Field(name string) (ent.Value, bool) {
 		return m.GroupID()
 	case apikey.FieldStatus:
 		return m.Status()
+	case apikey.FieldSystemPrompt:
+		return m.SystemPrompt()
+	case apikey.FieldSystemPromptMode:
+		return m.SystemPromptMode()
 	case apikey.FieldLastUsedAt:
 		return m.LastUsedAt()
 	case apikey.FieldIPWhitelist:
@@ -1679,6 +1763,10 @@ func (m *APIKeyMutation) OldField(ctx context.Context, name string) (ent.Value, 
 		return m.OldGroupID(ctx)
 	case apikey.FieldStatus:
 		return m.OldStatus(ctx)
+	case apikey.FieldSystemPrompt:
+		return m.OldSystemPrompt(ctx)
+	case apikey.FieldSystemPromptMode:
+		return m.OldSystemPromptMode(ctx)
 	case apikey.FieldLastUsedAt:
 		return m.OldLastUsedAt(ctx)
 	case apikey.FieldIPWhitelist:
@@ -1773,6 +1861,20 @@ func (m *APIKeyMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetStatus(v)
+		return nil
+	case apikey.FieldSystemPrompt:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSystemPrompt(v)
+		return nil
+	case apikey.FieldSystemPromptMode:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSystemPromptMode(v)
 		return nil
 	case apikey.FieldLastUsedAt:
 		v, ok := value.(time.Time)
@@ -2107,6 +2209,12 @@ func (m *APIKeyMutation) ResetField(name string) error {
 		return nil
 	case apikey.FieldStatus:
 		m.ResetStatus()
+		return nil
+	case apikey.FieldSystemPrompt:
+		m.ResetSystemPrompt()
+		return nil
+	case apikey.FieldSystemPromptMode:
+		m.ResetSystemPromptMode()
 		return nil
 	case apikey.FieldLastUsedAt:
 		m.ResetLastUsedAt()
@@ -9181,6 +9289,8 @@ type GroupMutation struct {
 	addrate_multiplier                      *float64
 	is_exclusive                            *bool
 	status                                  *string
+	system_prompt                           *string
+	system_prompt_mode                      *string
 	platform                                *string
 	subscription_type                       *string
 	daily_limit_usd                         *float64
@@ -9668,6 +9778,78 @@ func (m *GroupMutation) OldStatus(ctx context.Context) (v string, err error) {
 // ResetStatus resets all changes to the "status" field.
 func (m *GroupMutation) ResetStatus() {
 	m.status = nil
+}
+
+// SetSystemPrompt sets the "system_prompt" field.
+func (m *GroupMutation) SetSystemPrompt(s string) {
+	m.system_prompt = &s
+}
+
+// SystemPrompt returns the value of the "system_prompt" field in the mutation.
+func (m *GroupMutation) SystemPrompt() (r string, exists bool) {
+	v := m.system_prompt
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSystemPrompt returns the old "system_prompt" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldSystemPrompt(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSystemPrompt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSystemPrompt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSystemPrompt: %w", err)
+	}
+	return oldValue.SystemPrompt, nil
+}
+
+// ResetSystemPrompt resets all changes to the "system_prompt" field.
+func (m *GroupMutation) ResetSystemPrompt() {
+	m.system_prompt = nil
+}
+
+// SetSystemPromptMode sets the "system_prompt_mode" field.
+func (m *GroupMutation) SetSystemPromptMode(s string) {
+	m.system_prompt_mode = &s
+}
+
+// SystemPromptMode returns the value of the "system_prompt_mode" field in the mutation.
+func (m *GroupMutation) SystemPromptMode() (r string, exists bool) {
+	v := m.system_prompt_mode
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSystemPromptMode returns the old "system_prompt_mode" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldSystemPromptMode(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSystemPromptMode is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSystemPromptMode requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSystemPromptMode: %w", err)
+	}
+	return oldValue.SystemPromptMode, nil
+}
+
+// ResetSystemPromptMode resets all changes to the "system_prompt_mode" field.
+func (m *GroupMutation) ResetSystemPromptMode() {
+	m.system_prompt_mode = nil
 }
 
 // SetPlatform sets the "platform" field.
@@ -11160,7 +11342,7 @@ func (m *GroupMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GroupMutation) Fields() []string {
-	fields := make([]string, 0, 30)
+	fields := make([]string, 0, 32)
 	if m.created_at != nil {
 		fields = append(fields, group.FieldCreatedAt)
 	}
@@ -11184,6 +11366,12 @@ func (m *GroupMutation) Fields() []string {
 	}
 	if m.status != nil {
 		fields = append(fields, group.FieldStatus)
+	}
+	if m.system_prompt != nil {
+		fields = append(fields, group.FieldSystemPrompt)
+	}
+	if m.system_prompt_mode != nil {
+		fields = append(fields, group.FieldSystemPromptMode)
 	}
 	if m.platform != nil {
 		fields = append(fields, group.FieldPlatform)
@@ -11275,6 +11463,10 @@ func (m *GroupMutation) Field(name string) (ent.Value, bool) {
 		return m.IsExclusive()
 	case group.FieldStatus:
 		return m.Status()
+	case group.FieldSystemPrompt:
+		return m.SystemPrompt()
+	case group.FieldSystemPromptMode:
+		return m.SystemPromptMode()
 	case group.FieldPlatform:
 		return m.Platform()
 	case group.FieldSubscriptionType:
@@ -11344,6 +11536,10 @@ func (m *GroupMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldIsExclusive(ctx)
 	case group.FieldStatus:
 		return m.OldStatus(ctx)
+	case group.FieldSystemPrompt:
+		return m.OldSystemPrompt(ctx)
+	case group.FieldSystemPromptMode:
+		return m.OldSystemPromptMode(ctx)
 	case group.FieldPlatform:
 		return m.OldPlatform(ctx)
 	case group.FieldSubscriptionType:
@@ -11452,6 +11648,20 @@ func (m *GroupMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetStatus(v)
+		return nil
+	case group.FieldSystemPrompt:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSystemPrompt(v)
+		return nil
+	case group.FieldSystemPromptMode:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSystemPromptMode(v)
 		return nil
 	case group.FieldPlatform:
 		v, ok := value.(string)
@@ -11883,6 +12093,12 @@ func (m *GroupMutation) ResetField(name string) error {
 		return nil
 	case group.FieldStatus:
 		m.ResetStatus()
+		return nil
+	case group.FieldSystemPrompt:
+		m.ResetSystemPrompt()
+		return nil
+	case group.FieldSystemPromptMode:
+		m.ResetSystemPromptMode()
 		return nil
 	case group.FieldPlatform:
 		m.ResetPlatform()

@@ -32,6 +32,10 @@ const (
 	FieldIsExclusive = "is_exclusive"
 	// FieldStatus holds the string denoting the status field in the database.
 	FieldStatus = "status"
+	// FieldSystemPrompt holds the string denoting the system_prompt field in the database.
+	FieldSystemPrompt = "system_prompt"
+	// FieldSystemPromptMode holds the string denoting the system_prompt_mode field in the database.
+	FieldSystemPromptMode = "system_prompt_mode"
 	// FieldPlatform holds the string denoting the platform field in the database.
 	FieldPlatform = "platform"
 	// FieldSubscriptionType holds the string denoting the subscription_type field in the database.
@@ -159,6 +163,8 @@ var Columns = []string{
 	FieldRateMultiplier,
 	FieldIsExclusive,
 	FieldStatus,
+	FieldSystemPrompt,
+	FieldSystemPromptMode,
 	FieldPlatform,
 	FieldSubscriptionType,
 	FieldDailyLimitUsd,
@@ -226,6 +232,12 @@ var (
 	DefaultStatus string
 	// StatusValidator is a validator for the "status" field. It is called by the builders before save.
 	StatusValidator func(string) error
+	// DefaultSystemPrompt holds the default value on creation for the "system_prompt" field.
+	DefaultSystemPrompt string
+	// DefaultSystemPromptMode holds the default value on creation for the "system_prompt_mode" field.
+	DefaultSystemPromptMode string
+	// SystemPromptModeValidator is a validator for the "system_prompt_mode" field. It is called by the builders before save.
+	SystemPromptModeValidator func(string) error
 	// DefaultPlatform holds the default value on creation for the "platform" field.
 	DefaultPlatform string
 	// PlatformValidator is a validator for the "platform" field. It is called by the builders before save.
@@ -306,6 +318,16 @@ func ByIsExclusive(opts ...sql.OrderTermOption) OrderOption {
 // ByStatus orders the results by the status field.
 func ByStatus(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldStatus, opts...).ToFunc()
+}
+
+// BySystemPrompt orders the results by the system_prompt field.
+func BySystemPrompt(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldSystemPrompt, opts...).ToFunc()
+}
+
+// BySystemPromptMode orders the results by the system_prompt_mode field.
+func BySystemPromptMode(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldSystemPromptMode, opts...).ToFunc()
 }
 
 // ByPlatform orders the results by the platform field.

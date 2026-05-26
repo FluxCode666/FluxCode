@@ -47,6 +47,14 @@ func (APIKey) Fields() []ent.Field {
 		field.String("status").
 			MaxLen(20).
 			Default(domain.StatusActive),
+		field.String("system_prompt").
+			SchemaType(map[string]string{dialect.Postgres: "text"}).
+			Default("").
+			Comment("API key level system prompt"),
+		field.String("system_prompt_mode").
+			MaxLen(20).
+			Default("inherit").
+			Comment("API key level system prompt mode"),
 		field.Time("last_used_at").
 			Optional().
 			Nillable().
