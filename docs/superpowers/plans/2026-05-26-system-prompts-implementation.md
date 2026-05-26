@@ -1,72 +1,72 @@
-# System Prompt Configuration Implementation Plan
+# 系统提示词配置实施计划
 
-> **For Claude:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **给执行 Agent：** 必须使用子技能：按任务逐项执行时，使用 `superpowers:subagent-driven-development`（推荐）或 `superpowers:executing-plans`。步骤使用复选框（`- [ ]`）语法跟踪进度。
 
-**Goal:** Add hierarchical system prompt configuration for system settings, groups, and API keys with cached resolution and platform-specific request injection.
+**目标：** 增加分层系统提示词配置，支持系统设置、分组和 APIKey，并提供缓存解析与按平台注入请求能力。
 
-**Architecture:** Store APIKey and Group prompt config on their tables and include both in the existing API key auth cache snapshot. Store platform-level defaults in settings, read them through a 7-day `SettingService` in-process cache refreshed by `UpdateSettings`, then resolve `APIKey > Group > platform settings`. Apply prompts through a shared helper at the handler/service boundary before upstream forwarding so Anthropic, OpenAI Responses/Messages/WS, Gemini native, and Antigravity paths share the same mode semantics.
+**架构：** APIKey 和 Group 的提示词配置分别存储在各自表中，并写入现有 APIKey 鉴权缓存快照。平台级默认配置存储在 settings 中，通过 `SettingService` 的进程内缓存读取，缓存默认 7 天，并在 `UpdateSettings` 后刷新；最终按 `APIKey > Group > 平台设置` 解析生效配置。在 handler/service 边界通过共享 helper 注入提示词，再转发到上游，使 Anthropic、OpenAI Responses/Messages/WS、Gemini native 和 Antigravity 链路共享同一套模式语义。
 
-**Tech Stack:** Go 1.26.2, ent, PostgreSQL SQL migrations, Gin handlers, `atomic.Value` + `singleflight` caching, `gjson/sjson`, wire, Vue 3, TypeScript, pnpm, Vitest.
+**技术栈：** Go 1.26.2、ent、PostgreSQL SQL migrations、Gin handlers、`atomic.Value` + `singleflight` caching、`gjson/sjson`、wire、Vue 3、TypeScript、pnpm、Vitest。
 
 ---
 
-## File Structure
+## 文件结构
 
-- Create `backend/migrations/116_add_system_prompt_configuration.sql`: add prompt columns to `api_keys` and `groups`, plus settings defaults.
-- Modify `backend/ent/schema/api_key.go`: add `system_prompt` and `system_prompt_mode`.
-- Modify `backend/ent/schema/group.go`: add `system_prompt` and `system_prompt_mode`.
-- Regenerate ent files under `backend/ent/*` using `go generate ./ent`.
-- Modify `backend/internal/service/domain_constants.go`: add mode constants and setting keys.
-- Create `backend/internal/service/system_prompt.go`: mode validation, effective config resolution, and request injection helpers.
-- Create `backend/internal/service/system_prompt_test.go`: resolver and injection unit tests.
-- Modify `backend/internal/service/settings_view.go`: add platform prompt fields.
-- Modify `backend/internal/service/setting_service.go`: persist settings fields, add 7-day cache, refresh cache on update.
-- Create `backend/internal/service/setting_service_system_prompt_test.go`: platform settings cache tests.
-- Modify `backend/internal/service/api_key.go`: add APIKey fields.
-- Modify `backend/internal/service/group.go`: add Group fields.
-- Modify `backend/internal/service/api_key_auth_cache.go`: add fields to snapshots.
-- Modify `backend/internal/service/api_key_auth_cache_impl.go`: snapshot mapping and version bump.
-- Modify `backend/internal/service/api_key_service.go`: create/update validation and persistence.
-- Modify `backend/internal/service/admin_service.go`: group create/update validation and persistence.
-- Modify `backend/internal/service/gemini_messages_compat_service.go`: keep native Gemini requests compatible with injected system prompts.
-- Modify `backend/internal/repository/api_key_repo.go`: persist/select/map APIKey fields, auth query fields.
-- Modify `backend/internal/repository/group_repo.go`: persist/select/map Group fields.
-- Modify `backend/internal/repository/api_key_repo_messages_dispatch_unit_test.go`: add auth-path field preservation assertions.
-- Modify `backend/internal/repository/api_key_repo_integration_test.go`: add repository round-trip assertions.
-- Modify `backend/internal/repository/group_repo_integration_test.go`: add repository round-trip assertions.
-- Modify `backend/internal/handler/dto/types.go`: expose prompt fields on DTOs.
-- Modify `backend/internal/handler/dto/mappers.go`: map prompt fields.
-- Modify `backend/internal/handler/dto/api_key_mapper_last_used_test.go`: add DTO field assertion.
-- Modify `backend/internal/handler/api_key_handler.go`: accept user APIKey prompt fields.
-- Modify `backend/internal/handler/admin/group_handler.go`: accept admin Group prompt fields.
-- Modify `backend/internal/handler/admin/setting_handler.go`: accept/return platform prompt fields and audit diffs.
-- Modify `backend/internal/handler/gateway_handler.go`: inject effective prompt for Anthropic/Gemini/Antigravity compatible bodies before forwarding.
-- Modify `backend/internal/handler/openai_gateway_handler.go`: inject effective prompt into OpenAI Responses HTTP and WebSocket first payload, and add `SettingService` dependency.
-- Modify `backend/internal/handler/gemini_v1beta_handler.go`: inject effective prompt into Gemini native REST bodies before `ForwardNative`/`ForwardGemini`.
-- Modify `backend/internal/service/openai_gateway_messages.go`: ensure Anthropic-to-OpenAI conversion path preserves configured prompt precedence.
-- Modify `backend/internal/service/openai_gateway_chat_completions.go`: ensure Chat Completions OpenAI-compatible conversion applies prompt helper.
-- Modify `backend/internal/service/gateway_forward_as_chat_completions.go`: ensure Chat Completions to Anthropic path applies prompt helper.
-- Modify `backend/internal/service/antigravity_gateway_service.go`: keep identity patch first and business prompt after it for Antigravity native `systemInstruction`.
-- Modify `backend/cmd/server/wire_gen.go`: regenerate constructor wiring after `OpenAIGatewayHandler` gains `SettingService`.
-- Modify `frontend/src/api/admin/settings.ts`: add platform prompt fields and modes.
-- Modify `frontend/src/api/admin/groups.ts`: add group prompt fields and modes.
-- Modify `frontend/src/api/keys.ts`: add APIKey prompt fields and modes.
-- Modify `frontend/src/types/index.ts`: add shared prompt mode and DTO fields.
-- Modify `frontend/src/views/admin/SettingsView.vue`: add platform prompt controls in gateway settings.
-- Modify `frontend/src/views/admin/GroupsView.vue`: add group prompt controls in create/edit forms.
-- Modify `frontend/src/views/user/KeysView.vue`: add APIKey prompt controls in create/edit forms.
-- Create frontend tests only if existing component seams allow small focused coverage; otherwise rely on `pnpm -C frontend typecheck` and `pnpm -C frontend build`.
+- 新建 `backend/migrations/116_add_system_prompt_configuration.sql`：为 `api_keys` 和 `groups` 增加提示词字段，并写入 settings 默认值。
+- 修改 `backend/ent/schema/api_key.go`：增加 `system_prompt` 和 `system_prompt_mode`。
+- 修改 `backend/ent/schema/group.go`：增加 `system_prompt` 和 `system_prompt_mode`。
+- 使用 `go generate ./ent` 重新生成 `backend/ent/*` 下的 ent 文件。
+- 修改 `backend/internal/service/domain_constants.go`：增加模式常量和 settings key。
+- 新建 `backend/internal/service/system_prompt.go`：提供模式校验、生效配置解析和请求注入 helper。
+- 新建 `backend/internal/service/system_prompt_test.go`：覆盖解析器和注入逻辑的 unit 测试。
+- 修改 `backend/internal/service/settings_view.go`：增加平台提示词字段。
+- 修改 `backend/internal/service/setting_service.go`：持久化 settings 字段，增加 7 天缓存，并在更新时刷新缓存。
+- 新建 `backend/internal/service/setting_service_system_prompt_test.go`：覆盖平台 settings 缓存。
+- 修改 `backend/internal/service/api_key.go`：增加 APIKey 字段。
+- 修改 `backend/internal/service/group.go`：增加 Group 字段。
+- 修改 `backend/internal/service/api_key_auth_cache.go`：在快照中增加字段。
+- 修改 `backend/internal/service/api_key_auth_cache_impl.go`：补齐快照映射并提升版本。
+- 修改 `backend/internal/service/api_key_service.go`：处理 create/update 校验与持久化。
+- 修改 `backend/internal/service/admin_service.go`：处理 group create/update 校验与持久化。
+- 修改 `backend/internal/service/gemini_messages_compat_service.go`：保持 native Gemini 请求与已注入系统提示词兼容。
+- 修改 `backend/internal/repository/api_key_repo.go`：持久化、查询、映射 APIKey 字段和鉴权查询字段。
+- 修改 `backend/internal/repository/group_repo.go`：持久化、查询、映射 Group 字段。
+- 修改 `backend/internal/repository/api_key_repo_messages_dispatch_unit_test.go`：增加鉴权路径字段保留断言。
+- 修改 `backend/internal/repository/api_key_repo_integration_test.go`：增加 repository 往返断言。
+- 修改 `backend/internal/repository/group_repo_integration_test.go`：增加 repository 往返断言。
+- 修改 `backend/internal/handler/dto/types.go`：在 DTO 上暴露提示词字段。
+- 修改 `backend/internal/handler/dto/mappers.go`：映射提示词字段。
+- 修改 `backend/internal/handler/dto/api_key_mapper_last_used_test.go`：增加 DTO 字段断言。
+- 修改 `backend/internal/handler/api_key_handler.go`：接收用户 APIKey 提示词字段。
+- 修改 `backend/internal/handler/admin/group_handler.go`：接收管理员 Group 提示词字段。
+- 修改 `backend/internal/handler/admin/setting_handler.go`：接收/返回平台提示词字段，并记录审计 diff。
+- 修改 `backend/internal/handler/gateway_handler.go`：在转发前为 Anthropic/Gemini/Antigravity 兼容请求体注入生效提示词。
+- 修改 `backend/internal/handler/openai_gateway_handler.go`：向 OpenAI Responses HTTP 和 WebSocket 首个 payload 注入生效提示词，并增加 `SettingService` 依赖。
+- 修改 `backend/internal/handler/gemini_v1beta_handler.go`：在 `ForwardNative`/`ForwardGemini` 前向 Gemini native REST 请求体注入生效提示词。
+- 修改 `backend/internal/service/openai_gateway_messages.go`：确保 Anthropic-to-OpenAI 转换链路保留配置的提示词优先级。
+- 修改 `backend/internal/service/openai_gateway_chat_completions.go`：确保 Chat Completions OpenAI-compatible 转换应用提示词 helper。
+- 修改 `backend/internal/service/gateway_forward_as_chat_completions.go`：确保 Chat Completions to Anthropic 链路应用提示词 helper。
+- 修改 `backend/internal/service/antigravity_gateway_service.go`：确保 Antigravity native `systemInstruction` 中 identity patch 在前，业务提示词在后。
+- 修改 `backend/cmd/server/wire_gen.go`：`OpenAIGatewayHandler` 增加 `SettingService` 后重新生成构造 wiring。
+- 修改 `frontend/src/api/admin/settings.ts`：增加平台提示词字段和模式。
+- 修改 `frontend/src/api/admin/groups.ts`：增加 group 提示词字段和模式。
+- 修改 `frontend/src/api/keys.ts`：增加 APIKey 提示词字段和模式。
+- 修改 `frontend/src/types/index.ts`：增加共享提示词模式和 DTO 字段。
+- 修改 `frontend/src/views/admin/SettingsView.vue`：在 gateway settings 中增加平台提示词控件。
+- 修改 `frontend/src/views/admin/GroupsView.vue`：在 create/edit 表单中增加 group 提示词控件。
+- 修改 `frontend/src/views/user/KeysView.vue`：在 create/edit 表单中增加 APIKey 提示词控件。
+- 仅当现有组件边界允许小范围聚焦覆盖时创建前端测试；否则依赖 `pnpm -C frontend typecheck` 和 `pnpm -C frontend build`。
 
-## Task 1: Domain Model and Prompt Helper Tests
+## 任务 1：领域模型和提示词 Helper 测试
 
-**Files:**
-- Create: `backend/internal/service/system_prompt.go`
-- Create: `backend/internal/service/system_prompt_test.go`
-- Modify: `backend/internal/service/domain_constants.go`
+**文件：**
+- 新建：`backend/internal/service/system_prompt.go`
+- 新建：`backend/internal/service/system_prompt_test.go`
+- 修改：`backend/internal/service/domain_constants.go`
 
-- [ ] **Step 1: Write failing resolver tests**
+- [ ] **步骤 1：编写失败的解析器测试**
 
-Add `backend/internal/service/system_prompt_test.go`:
+新增 `backend/internal/service/system_prompt_test.go`：
 
 ```go
 //go:build unit
@@ -135,19 +135,19 @@ func TestResolveEffectiveSystemPrompt_AllInheritReturnsDisabled(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run resolver tests to verify RED**
+- [ ] **步骤 2：运行解析器测试，确认 RED**
 
-Run:
+运行：
 
 ```bash
 cd backend && go test -tags unit ./internal/service -run 'TestResolveEffectiveSystemPrompt' -count=1
 ```
 
-Expected: FAIL because `EffectiveSystemPrompt`, `SystemPromptModeAppend`, and `ResolveEffectiveSystemPrompt` do not exist.
+预期：FAIL，因为 `EffectiveSystemPrompt`、`SystemPromptModeAppend` 和 `ResolveEffectiveSystemPrompt` 尚不存在。
 
-- [ ] **Step 3: Implement mode constants and resolver**
+- [ ] **步骤 3：实现模式常量和解析器**
 
-Add constants to `backend/internal/service/domain_constants.go`:
+向 `backend/internal/service/domain_constants.go` 增加常量：
 
 ```go
 const (
@@ -163,7 +163,7 @@ const (
 )
 ```
 
-Add `backend/internal/service/system_prompt.go`:
+新增 `backend/internal/service/system_prompt.go`：
 
 ```go
 package service
@@ -243,32 +243,32 @@ func promptFromLayer(prompt, mode, source string) EffectiveSystemPrompt {
 }
 ```
 
-- [ ] **Step 4: Run resolver tests to verify GREEN**
+- [ ] **步骤 4：运行解析器测试，确认 GREEN**
 
-Run:
+运行：
 
 ```bash
 cd backend && go test -tags unit ./internal/service -run 'TestResolveEffectiveSystemPrompt' -count=1
 ```
 
-Expected: PASS.
+预期：PASS。
 
-- [ ] **Step 5: Commit**
+- [ ] **步骤 5：提交**
 
 ```bash
 git add backend/internal/service/domain_constants.go backend/internal/service/system_prompt.go backend/internal/service/system_prompt_test.go
 git commit -m "feat: add system prompt resolver"
 ```
 
-## Task 2: Request Injection Helper
+## 任务 2：请求注入 Helper
 
-**Files:**
-- Modify: `backend/internal/service/system_prompt.go`
-- Modify: `backend/internal/service/system_prompt_test.go`
+**文件：**
+- 修改：`backend/internal/service/system_prompt.go`
+- 修改：`backend/internal/service/system_prompt_test.go`
 
-- [ ] **Step 1: Write failing injection tests**
+- [ ] **步骤 1：编写失败的注入测试**
 
-Append to `backend/internal/service/system_prompt_test.go`:
+追加到 `backend/internal/service/system_prompt_test.go`：
 
 ```go
 func TestApplySystemPromptToAnthropic_AppendStringSystem(t *testing.T) {
@@ -316,19 +316,19 @@ func TestApplySystemPromptToGemini_AppendSystemInstruction(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run injection tests to verify RED**
+- [ ] **步骤 2：运行注入测试，确认 RED**
 
-Run:
+运行：
 
 ```bash
 cd backend && go test -tags unit ./internal/service -run 'TestApplySystemPrompt' -count=1
 ```
 
-Expected: FAIL because `ApplySystemPromptToJSON` and `ApplySystemPromptToChatCompletionsJSON` do not exist.
+预期：FAIL，因为 `ApplySystemPromptToJSON` 和 `ApplySystemPromptToChatCompletionsJSON` 尚不存在。
 
-- [ ] **Step 3: Implement injection helpers**
+- [ ] **步骤 3：实现注入 helper**
 
-In `backend/internal/service/system_prompt.go`, add helpers that unmarshal to `map[string]any`, mutate the relevant fields, and marshal back:
+在 `backend/internal/service/system_prompt.go` 中增加 helper：先 unmarshal 到 `map[string]any`，修改相关字段，再 marshal 回去：
 
 ```go
 func ApplySystemPromptToJSON(body []byte, platform string, prompt EffectiveSystemPrompt) ([]byte, bool, error) {
@@ -379,37 +379,37 @@ func ApplySystemPromptToChatCompletionsJSON(body []byte, prompt EffectiveSystemP
 }
 ```
 
-Also implement `applySystemPromptToAnthropic`, `applySystemPromptToOpenAIResponses`, and `applySystemPromptToGemini` in the same file using the behavior from the design spec. Import `encoding/json`.
+同时在同一文件中根据设计语义实现 `applySystemPromptToAnthropic`、`applySystemPromptToOpenAIResponses` 和 `applySystemPromptToGemini`，并 import `encoding/json`。
 
-- [ ] **Step 4: Run injection tests to verify GREEN**
+- [ ] **步骤 4：运行注入测试，确认 GREEN**
 
-Run:
+运行：
 
 ```bash
 cd backend && go test -tags unit ./internal/service -run 'TestApplySystemPrompt' -count=1
 ```
 
-Expected: PASS.
+预期：PASS。
 
-- [ ] **Step 5: Commit**
+- [ ] **步骤 5：提交**
 
 ```bash
 git add backend/internal/service/system_prompt.go backend/internal/service/system_prompt_test.go
 git commit -m "feat: add system prompt injection helpers"
 ```
 
-## Task 3: Database Schema and ent Fields
+## 任务 3：数据库 Schema 和 ent 字段
 
-**Files:**
-- Create: `backend/migrations/116_add_system_prompt_configuration.sql`
-- Modify: `backend/ent/schema/api_key.go`
-- Modify: `backend/ent/schema/group.go`
-- Generated: `backend/ent/*`
-- Test: `backend/internal/repository/migrations_schema_integration_test.go`
+**文件：**
+- 新建：`backend/migrations/116_add_system_prompt_configuration.sql`
+- 修改：`backend/ent/schema/api_key.go`
+- 修改：`backend/ent/schema/group.go`
+- 生成：`backend/ent/*`
+- 测试：`backend/internal/repository/migrations_schema_integration_test.go`
 
-- [ ] **Step 1: Write failing migration schema assertions**
+- [ ] **步骤 1：编写失败的 migration schema 断言**
 
-Add assertions to `backend/internal/repository/migrations_schema_integration_test.go`:
+向 `backend/internal/repository/migrations_schema_integration_test.go` 增加断言：
 
 ```go
 requireColumn(t, tx, "api_keys", "system_prompt")
@@ -418,7 +418,7 @@ requireColumn(t, tx, "groups", "system_prompt")
 requireColumn(t, tx, "groups", "system_prompt_mode")
 ```
 
-Use the existing helper style in that file. If only table checks exist, add a helper:
+沿用该文件中已有的 helper 风格。如果当前只有表检查，则增加 helper：
 
 ```go
 func requireColumn(t *testing.T, tx *sql.Tx, table, column string) {
@@ -434,19 +434,19 @@ func requireColumn(t *testing.T, tx *sql.Tx, table, column string) {
 }
 ```
 
-- [ ] **Step 2: Run migration schema test to verify RED**
+- [ ] **步骤 2：运行 migration schema 测试，确认 RED**
 
-Run:
+运行：
 
 ```bash
 cd backend && go test -tags integration ./internal/repository -run TestMigrationsSchema -count=1
 ```
 
-Expected: FAIL because the new columns do not exist.
+预期：FAIL，因为新字段尚不存在。
 
-- [ ] **Step 3: Add migration**
+- [ ] **步骤 3：增加 migration**
 
-Create `backend/migrations/116_add_system_prompt_configuration.sql`:
+新建 `backend/migrations/116_add_system_prompt_configuration.sql`：
 
 ```sql
 -- 116_add_system_prompt_configuration.sql
@@ -473,9 +473,9 @@ VALUES
 ON CONFLICT (key) DO NOTHING;
 ```
 
-- [ ] **Step 4: Add ent schema fields and generate**
+- [ ] **步骤 4：增加 ent schema 字段并生成代码**
 
-In `backend/ent/schema/api_key.go`, add:
+在 `backend/ent/schema/api_key.go` 中增加：
 
 ```go
 field.String("system_prompt").
@@ -488,7 +488,7 @@ field.String("system_prompt_mode").
 	Comment("API key level system prompt mode"),
 ```
 
-In `backend/ent/schema/group.go`, add:
+在 `backend/ent/schema/group.go` 中增加：
 
 ```go
 field.String("system_prompt").
@@ -501,50 +501,50 @@ field.String("system_prompt_mode").
 	Comment("Group level system prompt mode"),
 ```
 
-Run:
+运行：
 
 ```bash
 cd backend && go generate ./ent
 ```
 
-Expected: ent generated files update without errors.
+预期：ent 生成文件更新且没有错误。
 
-- [ ] **Step 5: Run migration schema test to verify GREEN**
+- [ ] **步骤 5：运行 migration schema 测试，确认 GREEN**
 
-Run:
+运行：
 
 ```bash
 cd backend && go test -tags integration ./internal/repository -run TestMigrationsSchema -count=1
 ```
 
-Expected: PASS.
+预期：PASS。
 
-- [ ] **Step 6: Commit**
+- [ ] **步骤 6：提交**
 
 ```bash
 git add backend/migrations/116_add_system_prompt_configuration.sql backend/ent backend/internal/repository/migrations_schema_integration_test.go
 git commit -m "feat: add system prompt database fields"
 ```
 
-## Task 4: Persistence, DTOs, and Auth Cache Snapshot
+## 任务 4：持久化、DTO 和鉴权缓存快照
 
-**Files:**
-- Modify: `backend/internal/service/api_key.go`
-- Modify: `backend/internal/service/group.go`
-- Modify: `backend/internal/service/api_key_auth_cache.go`
-- Modify: `backend/internal/service/api_key_auth_cache_impl.go`
-- Modify: `backend/internal/repository/api_key_repo.go`
-- Modify: `backend/internal/repository/group_repo.go`
-- Modify: `backend/internal/handler/dto/types.go`
-- Modify: `backend/internal/handler/dto/mappers.go`
-- Modify: `backend/internal/repository/api_key_repo_messages_dispatch_unit_test.go`
-- Modify: `backend/internal/repository/api_key_repo_integration_test.go`
-- Modify: `backend/internal/repository/group_repo_integration_test.go`
-- Modify: `backend/internal/handler/dto/api_key_mapper_last_used_test.go`
+**文件：**
+- 修改：`backend/internal/service/api_key.go`
+- 修改：`backend/internal/service/group.go`
+- 修改：`backend/internal/service/api_key_auth_cache.go`
+- 修改：`backend/internal/service/api_key_auth_cache_impl.go`
+- 修改：`backend/internal/repository/api_key_repo.go`
+- 修改：`backend/internal/repository/group_repo.go`
+- 修改：`backend/internal/handler/dto/types.go`
+- 修改：`backend/internal/handler/dto/mappers.go`
+- 修改：`backend/internal/repository/api_key_repo_messages_dispatch_unit_test.go`
+- 修改：`backend/internal/repository/api_key_repo_integration_test.go`
+- 修改：`backend/internal/repository/group_repo_integration_test.go`
+- 修改：`backend/internal/handler/dto/api_key_mapper_last_used_test.go`
 
-- [ ] **Step 1: Write failing repository and mapper assertions**
+- [ ] **步骤 1：编写失败的 repository 和 mapper 断言**
 
-Add assertions:
+增加断言：
 
 ```go
 require.Equal(t, "group prompt", got.Group.SystemPrompt)
@@ -553,16 +553,16 @@ require.Equal(t, "key prompt", got.SystemPrompt)
 require.Equal(t, service.SystemPromptModeOverride, got.SystemPromptMode)
 ```
 
-Place them in:
+放入以下位置：
 
 - `TestAPIKeyRepository_GetByKeyForAuth_PreservesMessagesDispatchModelConfig_SQLite`
 - `APIKeyRepoSuite.TestGetByKeyForAuth_PreservesMessagesDispatchModelConfig`
-- a new `GroupRepoSuite.TestSystemPromptRoundTrip`
+- 新增 `GroupRepoSuite.TestSystemPromptRoundTrip`
 - `TestAPIKeyFromService_MapsLastUsedAt`
 
-- [ ] **Step 2: Run focused tests to verify RED**
+- [ ] **步骤 2：运行聚焦测试，确认 RED**
 
-Run:
+运行：
 
 ```bash
 cd backend && go test -tags unit ./internal/repository -run 'TestAPIKeyRepository_GetByKeyForAuth_PreservesMessagesDispatchModelConfig_SQLite' -count=1
@@ -570,68 +570,68 @@ cd backend && go test -tags integration ./internal/repository -run 'TestAPIKeyRe
 cd backend && go test -tags unit ./internal/handler/dto -run TestAPIKeyFromService_MapsLastUsedAt -count=1
 ```
 
-Expected: FAIL because service, ent, repo, cache, and DTO fields are not mapped.
+预期：FAIL，因为 service、ent、repo、cache 和 DTO 字段尚未映射。
 
-- [ ] **Step 3: Add service and DTO fields**
+- [ ] **步骤 3：增加 service 和 DTO 字段**
 
-Add to `service.APIKey`, `service.Group`, `dto.APIKey`, and `dto.Group`:
+向 `service.APIKey`、`service.Group`、`dto.APIKey` 和 `dto.Group` 增加：
 
 ```go
 SystemPrompt     string `json:"system_prompt"`
 SystemPromptMode string `json:"system_prompt_mode"`
 ```
 
-For service structs omit JSON tags if the surrounding struct does not use them.
+如果周边 service struct 未使用 JSON tag，则 service struct 中可省略 JSON tag。
 
-- [ ] **Step 4: Map repository create/update/select**
+- [ ] **步骤 4：映射 repository create/update/select**
 
-In `api_key_repo.go`:
+在 `api_key_repo.go` 中：
 
-- `Create`: call `SetSystemPrompt(key.SystemPrompt)` and `SetSystemPromptMode(NormalizeSystemPromptMode(key.SystemPromptMode))`.
-- `GetByKeyForAuth.Select`: include `apikey.FieldSystemPrompt` and `apikey.FieldSystemPromptMode`.
-- `Update`: set both fields.
-- `apiKeyEntityToService`: copy both fields.
+- `Create`：调用 `SetSystemPrompt(key.SystemPrompt)` 和 `SetSystemPromptMode(NormalizeSystemPromptMode(key.SystemPromptMode))`。
+- `GetByKeyForAuth.Select`：包含 `apikey.FieldSystemPrompt` 和 `apikey.FieldSystemPromptMode`。
+- `Update`：设置这两个字段。
+- `apiKeyEntityToService`：复制这两个字段。
 
-In `group_repo.go`:
+在 `group_repo.go` 中：
 
-- `Create`: call `SetSystemPrompt(groupIn.SystemPrompt)` and `SetSystemPromptMode(NormalizeSystemPromptMode(groupIn.SystemPromptMode))`.
-- `Update`: set both fields.
-- `groupEntityToService`: copy both fields.
+- `Create`：调用 `SetSystemPrompt(groupIn.SystemPrompt)` 和 `SetSystemPromptMode(NormalizeSystemPromptMode(groupIn.SystemPromptMode))`。
+- `Update`：设置这两个字段。
+- `groupEntityToService`：复制这两个字段。
 
-- [ ] **Step 5: Map auth cache snapshot**
+- [ ] **步骤 5：映射鉴权缓存快照**
 
-In `api_key_auth_cache.go`, add APIKey and Group fields to snapshots:
+在 `api_key_auth_cache.go` 中，将 APIKey 和 Group 字段加入快照：
 
 ```go
 SystemPrompt     string `json:"system_prompt,omitempty"`
 SystemPromptMode string `json:"system_prompt_mode,omitempty"`
 ```
 
-In `api_key_auth_cache_impl.go`:
+在 `api_key_auth_cache_impl.go` 中：
 
-- bump `apiKeyAuthSnapshotVersion`.
-- copy fields in `snapshotFromAPIKey`.
-- copy fields in `snapshotToAPIKey`.
+- 提升 `apiKeyAuthSnapshotVersion`。
+- 在 `snapshotFromAPIKey` 中复制字段。
+- 在 `snapshotToAPIKey` 中复制字段。
 
-- [ ] **Step 6: Map DTOs**
+- [ ] **步骤 6：映射 DTO**
 
-In `dto/mappers.go`, set:
+在 `dto/mappers.go` 中设置：
 
 ```go
 SystemPrompt:     k.SystemPrompt,
 SystemPromptMode: k.SystemPromptMode,
 ```
 
-and in `groupFromServiceBase`:
+以及在 `groupFromServiceBase` 中：
 
 ```go
 SystemPrompt:     g.SystemPrompt,
 SystemPromptMode: g.SystemPromptMode,
 ```
 
-- [ ] **Step 7: Run focused tests to verify GREEN**
+- [ ] **步骤 7：运行聚焦测试，确认 GREEN**
 
-Run:
+运行：
 
 ```bash
 cd backend && go test -tags unit ./internal/repository -run 'TestAPIKeyRepository_GetByKeyForAuth_PreservesMessagesDispatchModelConfig_SQLite' -count=1
@@ -640,28 +640,28 @@ cd backend && go test -tags unit ./internal/handler/dto -run TestAPIKeyFromServi
 cd backend && go test -tags unit ./internal/service -run TestAPIKeyService_GetByKey_UsesL2Cache -count=1
 ```
 
-Expected: PASS.
+预期：PASS。
 
-- [ ] **Step 8: Commit**
+- [ ] **步骤 8：提交**
 
 ```bash
 git add backend/internal/service/api_key.go backend/internal/service/group.go backend/internal/service/api_key_auth_cache.go backend/internal/service/api_key_auth_cache_impl.go backend/internal/repository/api_key_repo.go backend/internal/repository/group_repo.go backend/internal/handler/dto/types.go backend/internal/handler/dto/mappers.go backend/internal/repository/*api_key*test.go backend/internal/repository/group_repo_integration_test.go backend/internal/handler/dto/api_key_mapper_last_used_test.go
 git commit -m "feat: persist system prompt settings on keys and groups"
 ```
 
-## Task 5: Settings Fields and 7-Day Cache
+## 任务 5：Settings 字段和 7 天缓存
 
-**Files:**
-- Modify: `backend/internal/service/settings_view.go`
-- Modify: `backend/internal/service/setting_service.go`
-- Modify: `backend/internal/service/domain_constants.go`
-- Create: `backend/internal/service/setting_service_system_prompt_test.go`
-- Modify: `backend/internal/handler/dto/settings.go`
-- Modify: `backend/internal/handler/admin/setting_handler.go`
+**文件：**
+- 修改：`backend/internal/service/settings_view.go`
+- 修改：`backend/internal/service/setting_service.go`
+- 修改：`backend/internal/service/domain_constants.go`
+- 新建：`backend/internal/service/setting_service_system_prompt_test.go`
+- 修改：`backend/internal/handler/dto/settings.go`
+- 修改：`backend/internal/handler/admin/setting_handler.go`
 
-- [ ] **Step 1: Write failing cache tests**
+- [ ] **步骤 1：编写失败的缓存测试**
 
-Create `backend/internal/service/setting_service_system_prompt_test.go`:
+新建 `backend/internal/service/setting_service_system_prompt_test.go`：
 
 ```go
 //go:build unit
@@ -785,21 +785,21 @@ func TestSettingService_UpdateSettings_RefreshesSystemPromptCache(t *testing.T) 
 }
 ```
 
-Do not use a nonexistent `newSettingRepoStub`; either keep the local `settingPromptRepoStub` above, or adapt the existing `settingPublicRepoStub`/`settingUpdateRepoStub` patterns in the same package. Count only system-prompt `GetMultiple` calls so the existing Codex CLI cache warmup goroutine cannot make the cache assertion flaky.
+不要使用不存在的 `newSettingRepoStub`；可以保留上面的本地 `settingPromptRepoStub`，也可以沿用同包内已有的 `settingPublicRepoStub`/`settingUpdateRepoStub` 模式。只统计 system-prompt 相关的 `GetMultiple` 调用，避免现有 Codex CLI 缓存预热 goroutine 让缓存断言变得不稳定。
 
-- [ ] **Step 2: Run cache tests to verify RED**
+- [ ] **步骤 2：运行缓存测试，确认 RED**
 
-Run:
+运行：
 
 ```bash
 cd backend && go test -tags unit ./internal/service -run 'TestSettingService_.*SystemPrompt' -count=1
 ```
 
-Expected: FAIL because setting keys, fields, and cache method do not exist.
+预期：FAIL，因为 setting keys、字段和缓存方法尚不存在。
 
-- [ ] **Step 3: Add setting keys and settings fields**
+- [ ] **步骤 3：增加 setting keys 和 settings 字段**
 
-In `domain_constants.go`, add:
+在 `domain_constants.go` 中增加：
 
 ```go
 SettingKeySystemPromptAnthropic       = "system_prompt_anthropic"
@@ -812,61 +812,61 @@ SettingKeySystemPromptAntigravity     = "system_prompt_antigravity"
 SettingKeySystemPromptModeAntigravity = "system_prompt_mode_antigravity"
 ```
 
-In `settings_view.go` and `dto/settings.go`, add the 8 fields.
+在 `settings_view.go` 和 `dto/settings.go` 中增加这 8 个字段。
 
-- [ ] **Step 4: Implement settings persistence and cache**
+- [ ] **步骤 4：实现 settings 持久化和缓存**
 
-In `setting_service.go`:
+在 `setting_service.go` 中：
 
-- add `cachedSystemPromptSettings`, `systemPromptSettingsCache`, `systemPromptSettingsSF`, `systemPromptSettingsCacheTTL = 7 * 24 * time.Hour`, `systemPromptSettingsErrorTTL = 5 * time.Second`, and DB timeout.
-- add `GetSystemPromptSettings(ctx context.Context) map[string]EffectiveSystemPrompt`.
-- read the 8 keys through `GetMultiple`.
-- normalize mode with `NormalizeSystemPromptMode`.
-- store a copy in `atomic.Value`.
-- update `UpdateSettings` to persist the 8 keys.
-- update `UpdateSettings` to refresh the cache with latest saved settings after `SetMultiple` succeeds.
-- update `parseSettings` defaults to `inherit`.
+- 增加 `cachedSystemPromptSettings`、`systemPromptSettingsCache`、`systemPromptSettingsSF`、`systemPromptSettingsCacheTTL = 7 * 24 * time.Hour`、`systemPromptSettingsErrorTTL = 5 * time.Second` 和 DB timeout。
+- 增加 `GetSystemPromptSettings(ctx context.Context) map[string]EffectiveSystemPrompt`。
+- 通过 `GetMultiple` 读取 8 个 key。
+- 使用 `NormalizeSystemPromptMode` 归一化 mode。
+- 在 `atomic.Value` 中存储副本。
+- 更新 `UpdateSettings`，持久化这 8 个 key。
+- 更新 `UpdateSettings`，在 `SetMultiple` 成功后用最新保存的 settings 刷新缓存。
+- 更新 `parseSettings` 的默认值为 `inherit`。
 
-- [ ] **Step 5: Add handler request/response mapping**
+- [ ] **步骤 5：增加 handler 请求/响应映射**
 
-In `admin/setting_handler.go`:
+在 `admin/setting_handler.go` 中：
 
-- add request fields for all 8 keys.
-- map request to `service.SystemSettings`.
-- include all 8 fields in the success DTO.
-- add diff entries for audit when any field changes.
+- 为所有 8 个 key 增加 request 字段。
+- 将 request 映射到 `service.SystemSettings`。
+- 在成功 DTO 中包含全部 8 个字段。
+- 任一字段变更时，增加用于审计的 diff entries。
 
-- [ ] **Step 6: Run settings tests to verify GREEN**
+- [ ] **步骤 6：运行 settings 测试，确认 GREEN**
 
-Run:
+运行：
 
 ```bash
 cd backend && go test -tags unit ./internal/service -run 'TestSettingService_.*SystemPrompt|TestSettingService_UpdateSettings' -count=1
 cd backend && go test -tags unit ./internal/handler/admin -run Test.*Settings -count=1
 ```
 
-Expected: PASS for service tests. If no handler settings tests exist, the second command should report no matching tests without package compile errors.
+预期：service 测试 PASS。如果不存在 handler settings 测试，第二个命令可以报告没有匹配测试，但 package compile 不能出错。
 
-- [ ] **Step 7: Commit**
+- [ ] **步骤 7：提交**
 
 ```bash
 git add backend/internal/service/settings_view.go backend/internal/service/setting_service.go backend/internal/service/domain_constants.go backend/internal/service/setting_service_system_prompt_test.go backend/internal/handler/dto/settings.go backend/internal/handler/admin/setting_handler.go
 git commit -m "feat: cache platform system prompt settings"
 ```
 
-## Task 6: API Request Validation for APIKey and Group
+## 任务 6：APIKey 和 Group 的 API 请求校验
 
-**Files:**
-- Modify: `backend/internal/service/api_key_service.go`
-- Modify: `backend/internal/service/admin_service.go`
-- Modify: `backend/internal/handler/api_key_handler.go`
-- Modify: `backend/internal/handler/admin/group_handler.go`
-- Modify: `backend/internal/service/api_key_service_cache_test.go`
-- Modify: `backend/internal/service/admin_service_group_test.go`
+**文件：**
+- 修改：`backend/internal/service/api_key_service.go`
+- 修改：`backend/internal/service/admin_service.go`
+- 修改：`backend/internal/handler/api_key_handler.go`
+- 修改：`backend/internal/handler/admin/group_handler.go`
+- 修改：`backend/internal/service/api_key_service_cache_test.go`
+- 修改：`backend/internal/service/admin_service_group_test.go`
 
-- [ ] **Step 1: Write failing service validation tests**
+- [ ] **步骤 1：编写失败的 service 校验测试**
 
-Append validation tests to `system_prompt_test.go` and add the `infraerrors` import if it is not already present:
+向 `system_prompt_test.go` 追加校验测试；如果还没有 `infraerrors` import，则补充该 import：
 
 ```go
 func TestValidateSystemPromptConfig_RejectsInvalidMode(t *testing.T) {
@@ -889,7 +889,7 @@ func TestValidateSystemPromptConfig_DefaultsBlankModeToInherit(t *testing.T) {
 }
 ```
 
-Add to `api_key_service_cache_test.go` or a new focused API key service test:
+追加到 `api_key_service_cache_test.go`，或新建一个聚焦的 API key service 测试：
 
 ```go
 func TestAPIKeyService_Create_RejectsPromptModeWithoutPrompt(t *testing.T) {
@@ -905,7 +905,7 @@ func TestAPIKeyService_Create_RejectsPromptModeWithoutPrompt(t *testing.T) {
 }
 ```
 
-Add to `admin_service_group_test.go`:
+追加到 `admin_service_group_test.go`：
 
 ```go
 func TestAdminService_CreateGroup_PersistsSystemPromptConfig(t *testing.T) {
@@ -927,28 +927,28 @@ func TestAdminService_CreateGroup_PersistsSystemPromptConfig(t *testing.T) {
 }
 ```
 
-Use real stubs that already exist in the package: `authRepoStub`, `authCacheStub`, `userRepoStub`, and `groupRepoStubForAdmin`. Add imports only where needed, for example `config` in `api_key_service_cache_test.go`.
+使用包内已经存在的真实 stub：`authRepoStub`、`authCacheStub`、`userRepoStub` 和 `groupRepoStubForAdmin`。只在需要的位置增加 import，例如 `api_key_service_cache_test.go` 中的 `config`。
 
-- [ ] **Step 2: Run service validation tests to verify RED**
+- [ ] **步骤 2：运行 service 校验测试，确认 RED**
 
-Run:
+运行：
 
 ```bash
 cd backend && go test -tags unit ./internal/service -run 'TestAPIKeyService_Create_RejectsPromptModeWithoutPrompt|TestAdminService_CreateGroup_PersistsSystemPromptConfig|TestValidateSystemPromptConfig' -count=1
 ```
 
-Expected: FAIL because request structs and validation are missing.
+预期：FAIL，因为 request structs 和校验逻辑尚未补齐。
 
-- [ ] **Step 3: Add request fields and validation**
+- [ ] **步骤 3：增加请求字段和校验**
 
-Add to service request structs:
+向 service request structs 增加：
 
 ```go
 SystemPrompt     string `json:"system_prompt"`
 SystemPromptMode string `json:"system_prompt_mode"`
 ```
 
-Add validation helper in `system_prompt.go`:
+在 `system_prompt.go` 中增加校验 helper：
 
 ```go
 func ValidateSystemPromptConfig(prompt, mode string) (string, string, error) {
@@ -973,19 +973,19 @@ func ValidateSystemPromptConfig(prompt, mode string) (string, string, error) {
 }
 ```
 
-Import `infraerrors` in `system_prompt.go`.
+在 `system_prompt.go` 中 import `infraerrors`。
 
-Use it in APIKey create/update and Group create/update before persistence. Add `TestValidateSystemPromptConfig_RejectsInvalidMode` to prove invalid modes are not normalized into `inherit`.
+在 APIKey create/update 和 Group create/update 持久化前使用该 helper。增加 `TestValidateSystemPromptConfig_RejectsInvalidMode`，证明非法 mode 不会被错误地归一化成 `inherit`。
 
-- [ ] **Step 4: Add handler DTO fields**
+- [ ] **步骤 4：增加 handler DTO 字段**
 
-In `api_key_handler.go`, add fields to create/update request structs and map them to service request structs.
+在 `api_key_handler.go` 中，为 create/update request structs 增加字段，并映射到 service request structs。
 
-In `admin/group_handler.go`, add fields to create/update request structs and map them to service input structs.
+在 `admin/group_handler.go` 中，为 create/update request structs 增加字段，并映射到 service input structs。
 
-- [ ] **Step 5: Run validation tests to verify GREEN**
+- [ ] **步骤 5：运行校验测试，确认 GREEN**
 
-Run:
+运行：
 
 ```bash
 cd backend && go test -tags unit ./internal/service -run 'TestAPIKeyService_Create_RejectsPromptModeWithoutPrompt|TestAdminService_CreateGroup_PersistsSystemPromptConfig|TestValidateSystemPromptConfig' -count=1
@@ -993,34 +993,34 @@ cd backend && go test -tags unit ./internal/handler -run Test.*APIKey -count=1
 cd backend && go test -tags unit ./internal/handler/admin -run TestGroupHandlerEndpoints -count=1
 ```
 
-Expected: PASS or no matching handler tests with successful package compile.
+预期：PASS；如果没有匹配的 handler 测试，也必须保证 package compile 成功。
 
-- [ ] **Step 6: Commit**
+- [ ] **步骤 6：提交**
 
 ```bash
 git add backend/internal/service/api_key_service.go backend/internal/service/admin_service.go backend/internal/service/system_prompt.go backend/internal/handler/api_key_handler.go backend/internal/handler/admin/group_handler.go backend/internal/service/*test.go
 git commit -m "feat: validate system prompt config inputs"
 ```
 
-## Task 7: Gateway Integration
+## 任务 7：网关集成
 
-**Files:**
-- Modify: `backend/internal/handler/gateway_handler.go`
-- Modify: `backend/internal/handler/openai_gateway_handler.go`
-- Modify: `backend/internal/handler/gemini_v1beta_handler.go`
-- Modify: `backend/internal/service/openai_gateway_messages.go`
-- Modify: `backend/internal/service/openai_gateway_chat_completions.go`
-- Modify: `backend/internal/service/gateway_forward_as_chat_completions.go`
-- Modify: `backend/internal/service/gemini_messages_compat_service.go`
-- Modify: `backend/internal/service/antigravity_gateway_service.go`
-- Modify: `backend/internal/handler/openai_gateway_handler_test.go`
-- Modify: `backend/internal/handler/gemini_v1beta_handler_test.go`
-- Modify: `backend/internal/service/gateway_prompt_test.go`
-- Modify: `backend/cmd/server/wire_gen.go`
+**文件：**
+- 修改：`backend/internal/handler/gateway_handler.go`
+- 修改：`backend/internal/handler/openai_gateway_handler.go`
+- 修改：`backend/internal/handler/gemini_v1beta_handler.go`
+- 修改：`backend/internal/service/openai_gateway_messages.go`
+- 修改：`backend/internal/service/openai_gateway_chat_completions.go`
+- 修改：`backend/internal/service/gateway_forward_as_chat_completions.go`
+- 修改：`backend/internal/service/gemini_messages_compat_service.go`
+- 修改：`backend/internal/service/antigravity_gateway_service.go`
+- 修改：`backend/internal/handler/openai_gateway_handler_test.go`
+- 修改：`backend/internal/handler/gemini_v1beta_handler_test.go`
+- 修改：`backend/internal/service/gateway_prompt_test.go`
+- 修改：`backend/cmd/server/wire_gen.go`
 
-- [ ] **Step 1: Write failing integration-level gateway tests**
+- [ ] **步骤 1：编写失败的集成级网关测试**
 
-Add a focused handler test for OpenAI Responses body mutation in `openai_gateway_handler_test.go`:
+在 `openai_gateway_handler_test.go` 中增加一个聚焦的 handler 测试，覆盖 OpenAI Responses 请求体变更：
 
 ```go
 func TestOpenAIResponses_AppliesAPIKeySystemPromptBeforeForward(t *testing.T) {
@@ -1041,173 +1041,173 @@ func TestOpenAIResponses_AppliesAPIKeySystemPromptBeforeForward(t *testing.T) {
 }
 ```
 
-This starts as a service helper guard and becomes a regression test for the handler once injection is called before `Forward`.
+这个测试先作为 service helper 防护；等 handler 在 `Forward` 前调用注入逻辑后，它会成为 handler 回归测试。
 
-Add a focused handler test for Gemini native REST bodies in `gemini_v1beta_handler_test.go` that proves the body handed to `ForwardNative` / `ForwardGemini` already contains the resolved system prompt.
+在 `gemini_v1beta_handler_test.go` 中增加一个聚焦的 handler 测试，证明传给 `ForwardNative` / `ForwardGemini` 的 body 已经包含解析后的系统提示词。
 
-- [ ] **Step 2: Run gateway tests to verify RED if handler-specific assertion is added**
+- [ ] **步骤 2：运行网关测试；如果增加了 handler 专属断言，则确认 RED**
 
-Run:
+运行：
 
 ```bash
 cd backend && go test -tags unit ./internal/handler -run TestOpenAIResponses_AppliesAPIKeySystemPromptBeforeForward -count=1
 cd backend && go test -tags unit ./internal/handler -run 'TestGeminiV1Beta.*SystemPrompt' -count=1
 ```
 
-Expected: FAIL if the test uses the handler and captures forwarded body; PASS if the test only verifies helper behavior. If it passes as helper-only, add the handler capture before moving to implementation.
+预期：如果测试使用 handler 并捕获 forwarded body，则 FAIL；如果只验证 helper 行为，则可能 PASS。若它只是 helper-only 且已经 PASS，在进入实现前要补上 handler capture。
 
-- [ ] **Step 3: Add handler-level injection before forwarding**
+- [ ] **步骤 3：在转发前增加 handler 级注入**
 
-In `gateway_handler.go`:
+在 `gateway_handler.go` 中：
 
-- after fallback group resolution and before `c.Set("parsed_request", parsedReq)`, resolve effective prompt using `currentAPIKey`, current group platform, and `h.settingService`.
-- for Antigravity OAuth `body`, call `ApplySystemPromptToJSON(body, service.PlatformAntigravity, prompt)`.
-- for Anthropic parsed request, update both `parsedReq.Body` and `body`, then re-parse if the body changed so `parsedReq.System` remains consistent.
+- fallback group 解析之后、`c.Set("parsed_request", parsedReq)` 之前，使用 `currentAPIKey`、当前 group platform 和 `h.settingService` 解析生效提示词。
+- 对 Antigravity OAuth `body` 调用 `ApplySystemPromptToJSON(body, service.PlatformAntigravity, prompt)`。
+- 对 Anthropic parsed request 同时更新 `parsedReq.Body` 和 `body`；如果 body 发生变化，则重新 parse，保证 `parsedReq.System` 保持一致。
 
-In `openai_gateway_handler.go`:
+在 `openai_gateway_handler.go` 中：
 
-- in `Responses`, resolve prompt from APIKey and `resolveOpenAICompatibleGroupPlatform(apiKey)`, mutate `body` before channel model mapping and session hash if prompt should influence session hash.
-- in `Messages`, mutate Anthropic `body` before `ForwardAsAnthropic`.
-- in `ResponsesWebSocket`, mutate `firstMessage` before session hash and channel model mapping.
+- 在 `Responses` 中，根据 APIKey 和 `resolveOpenAICompatibleGroupPlatform(apiKey)` 解析提示词；如果提示词需要影响 session hash，则在 channel model mapping 和 session hash 前修改 `body`。
+- 在 `Messages` 中，在 `ForwardAsAnthropic` 前修改 Anthropic `body`。
+- 在 `ResponsesWebSocket` 中，在 session hash 和 channel model mapping 前修改 `firstMessage`。
 
-In `gemini_v1beta_handler.go`:
+在 `gemini_v1beta_handler.go` 中：
 
-- resolve the effective prompt with `h.settingService` before `setOpsRequestContext` / `ParseGatewayRequest`.
-- mutate the raw `body` before any session hash or forward call so `ForwardNative` and `ForwardGemini` see the injected prompt.
+- 在 `setOpsRequestContext` / `ParseGatewayRequest` 前通过 `h.settingService` 解析生效提示词。
+- 在任何 session hash 或 forward call 前修改原始 `body`，确保 `ForwardNative` 和 `ForwardGemini` 看到已经注入的提示词。
 
-In `gemini_messages_compat_service.go`:
+在 `gemini_messages_compat_service.go` 中：
 
-- keep `ForwardNative` as a transport-only path that preserves the already injected body.
+- 保持 `ForwardNative` 只作为 transport-only 路径，保留已经注入的 body。
 
-- [ ] **Step 4: Add service-level conversion safeguards**
+- [ ] **步骤 4：增加 service 级转换兜底**
 
-In OpenAI and Chat Completions conversion services, apply helpers before marshalling upstream bodies when the raw handler path cannot cover that format:
+在 OpenAI 和 Chat Completions 转换服务中，如果 raw handler 路径无法覆盖对应格式，则在 marshal 上游 body 前应用 helper：
 
-- `openai_gateway_messages.go`: ensure configured prompt is included before `AnthropicToResponses`.
-- `openai_gateway_chat_completions.go`: apply `ApplySystemPromptToChatCompletionsJSON` before `ChatCompletionsToResponses`.
-- `gateway_forward_as_chat_completions.go`: apply `ApplySystemPromptToChatCompletionsJSON` before Chat Completions to Anthropic conversion.
-- `antigravity_gateway_service.go`: split the Gemini prompt injection so the identity patch stays first and the business prompt is inserted immediately after it, before schema cleanup and wrapping.
+- `openai_gateway_messages.go`：确保配置提示词在 `AnthropicToResponses` 前被包含。
+- `openai_gateway_chat_completions.go`：在 `ChatCompletionsToResponses` 前应用 `ApplySystemPromptToChatCompletionsJSON`。
+- `gateway_forward_as_chat_completions.go`：在 Chat Completions to Anthropic 转换前应用 `ApplySystemPromptToChatCompletionsJSON`。
+- `antigravity_gateway_service.go`：拆分 Gemini 提示词注入，确保 identity patch 保持第一位，业务提示词紧随其后插入，并发生在 schema cleanup 和 wrapping 之前。
 
-After these edits, run `cd backend && go generate ./cmd/server` so `backend/cmd/server/wire_gen.go` picks up the `SettingService` constructor change on `NewOpenAIGatewayHandler`.
+完成这些编辑后，运行 `cd backend && go generate ./cmd/server`，让 `backend/cmd/server/wire_gen.go` 获取 `NewOpenAIGatewayHandler` 上 `SettingService` 构造参数的变化。
 
-- [ ] **Step 5: Run gateway prompt tests**
+- [ ] **步骤 5：运行网关提示词测试**
 
-Run:
+运行：
 
 ```bash
 cd backend && go test -tags unit ./internal/service -run 'TestApplySystemPrompt|TestGatewayPrompt|TestOpenAI.*Instructions|TestGemini.*SystemInstruction' -count=1
 cd backend && go test -tags unit ./internal/handler -run 'TestOpenAIResponses|TestOpenAIHandler_InstructionsInjection|TestGeminiV1Beta.*SystemPrompt' -count=1
 ```
 
-Expected: PASS.
+预期：PASS。
 
-- [ ] **Step 6: Commit**
+- [ ] **步骤 6：提交**
 
 ```bash
 git add backend/internal/handler/gateway_handler.go backend/internal/handler/openai_gateway_handler.go backend/internal/handler/gemini_v1beta_handler.go backend/internal/service/openai_gateway_messages.go backend/internal/service/openai_gateway_chat_completions.go backend/internal/service/gateway_forward_as_chat_completions.go backend/internal/service/gemini_messages_compat_service.go backend/internal/service/antigravity_gateway_service.go backend/internal/handler/openai_gateway_handler_test.go backend/internal/handler/gemini_v1beta_handler_test.go backend/internal/service/gateway_prompt_test.go backend/cmd/server/wire_gen.go
 git commit -m "feat: inject effective system prompts in gateways"
 ```
 
-## Task 8: Frontend API Types and Forms
+## 任务 8：前端 API 类型和表单
 
-**Files:**
-- Modify: `frontend/src/types/index.ts`
-- Modify: `frontend/src/api/admin/settings.ts`
-- Modify: `frontend/src/api/admin/groups.ts`
-- Modify: `frontend/src/api/keys.ts`
-- Modify: `frontend/src/views/admin/SettingsView.vue`
-- Modify: `frontend/src/views/admin/GroupsView.vue`
-- Modify: `frontend/src/views/user/KeysView.vue`
+**文件：**
+- 修改：`frontend/src/types/index.ts`
+- 修改：`frontend/src/api/admin/settings.ts`
+- 修改：`frontend/src/api/admin/groups.ts`
+- 修改：`frontend/src/api/keys.ts`
+- 修改：`frontend/src/views/admin/SettingsView.vue`
+- 修改：`frontend/src/views/admin/GroupsView.vue`
+- 修改：`frontend/src/views/user/KeysView.vue`
 
-- [ ] **Step 1: Add TypeScript types first**
+- [ ] **步骤 1：先增加 TypeScript 类型**
 
-Add to `frontend/src/types/index.ts`:
+向 `frontend/src/types/index.ts` 增加：
 
 ```ts
 export type SystemPromptMode = 'inherit' | 'passthrough' | 'override' | 'append'
 ```
 
-Add `system_prompt?: string` and `system_prompt_mode?: SystemPromptMode` to APIKey and Group types.
+向 APIKey 和 Group 类型增加 `system_prompt?: string` 与 `system_prompt_mode?: SystemPromptMode`。
 
-- [ ] **Step 2: Run typecheck to verify RED**
+- [ ] **步骤 2：运行 typecheck，确认 RED**
 
-Run:
+运行：
 
 ```bash
 pnpm -C frontend typecheck
 ```
 
-Expected: FAIL after API usage is updated in the next step if component fields are missing. If it passes here, continue.
+预期：下一步更新 API 使用后，如果组件字段缺失会 FAIL。如果这里已经 PASS，继续执行。
 
-- [ ] **Step 3: Add API request fields**
+- [ ] **步骤 3：增加 API 请求字段**
 
-In `frontend/src/api/admin/settings.ts`, add the 8 settings fields to `SystemSettings` and `UpdateSettingsRequest`.
+在 `frontend/src/api/admin/settings.ts` 中，将 8 个 settings 字段加入 `SystemSettings` 和 `UpdateSettingsRequest`。
 
-In `frontend/src/api/admin/groups.ts`, add:
+在 `frontend/src/api/admin/groups.ts` 中增加：
 
 ```ts
 system_prompt?: string
 system_prompt_mode?: SystemPromptMode
 ```
 
-to create/update payload types.
+加入 create/update payload 类型。
 
-In `frontend/src/api/keys.ts`, include `system_prompt` and `system_prompt_mode` in create/update payloads.
+在 `frontend/src/api/keys.ts` 中，将 `system_prompt` 和 `system_prompt_mode` 加入 create/update payload。
 
-- [ ] **Step 4: Add UI controls in SettingsView**
+- [ ] **步骤 4：在 SettingsView 中增加 UI 控件**
 
-In `SettingsView.vue`:
+在 `SettingsView.vue` 中：
 
-- initialize all 8 form fields with `inherit` and empty prompt values.
-- in the gateway settings section, add one compact textarea row per platform.
-- use a select with options: `不配置`, `透传`, `覆盖`, `追加`.
-- disable or visually de-emphasize textarea when mode is `inherit`.
-- include all 8 fields in the save payload.
+- 初始化全部 8 个表单字段，mode 默认为 `inherit`，prompt 默认为空。
+- 在 gateway settings 区域中，每个平台增加一行紧凑的 textarea。
+- select 选项使用：`不配置`、`透传`、`覆盖`、`追加`。
+- 当 mode 为 `inherit` 时禁用 textarea 或降低其视觉强调。
+- 保存 payload 中包含全部 8 个字段。
 
-- [ ] **Step 5: Add UI controls in GroupsView**
+- [ ] **步骤 5：在 GroupsView 中增加 UI 控件**
 
-In `GroupsView.vue`:
+在 `GroupsView.vue` 中：
 
-- add `system_prompt: ''` and `system_prompt_mode: 'inherit'` to create and edit form state.
-- in create/edit modals, add a select and textarea near platform/routing settings.
-- include both fields in `handleCreateGroup` and `handleUpdateGroup` payloads.
-- populate both fields in `openEditGroup`.
+- 向 create 和 edit form state 增加 `system_prompt: ''` 与 `system_prompt_mode: 'inherit'`。
+- 在 create/edit modals 中，将 select 和 textarea 放在 platform/routing settings 附近。
+- 在 `handleCreateGroup` 和 `handleUpdateGroup` payload 中包含这两个字段。
+- 在 `openEditGroup` 中回填这两个字段。
 
-- [ ] **Step 6: Add UI controls in KeysView**
+- [ ] **步骤 6：在 KeysView 中增加 UI 控件**
 
-In `KeysView.vue`:
+在 `KeysView.vue` 中：
 
-- add `system_prompt: ''` and `system_prompt_mode: 'inherit'` to form state.
-- show select and textarea in create/edit modal.
-- include both fields in create/update API calls.
-- reset both fields when modal closes.
+- 向 form state 增加 `system_prompt: ''` 与 `system_prompt_mode: 'inherit'`。
+- 在 create/edit modal 中展示 select 和 textarea。
+- 在 create/update API calls 中包含这两个字段。
+- modal 关闭时重置这两个字段。
 
-- [ ] **Step 7: Run frontend verification**
+- [ ] **步骤 7：运行前端验证**
 
-Run:
+运行：
 
 ```bash
 pnpm -C frontend typecheck
 pnpm -C frontend build
 ```
 
-Expected: PASS.
+预期：PASS。
 
-- [ ] **Step 8: Commit**
+- [ ] **步骤 8：提交**
 
 ```bash
 git add frontend/src/types/index.ts frontend/src/api/admin/settings.ts frontend/src/api/admin/groups.ts frontend/src/api/keys.ts frontend/src/views/admin/SettingsView.vue frontend/src/views/admin/GroupsView.vue frontend/src/views/user/KeysView.vue
 git commit -m "feat: add system prompt controls"
 ```
 
-## Task 9: Final Verification and Audit
+## 任务 9：最终验证与审计
 
-**Files:**
-- Modify only if verification reveals a defect.
+**文件：**
+- 仅当验证发现缺陷时修改文件。
 
-- [ ] **Step 1: Run focused backend suites**
+- [ ] **步骤 1：运行聚焦后端套件**
 
-Run:
+运行：
 
 ```bash
 cd backend && go test -tags unit ./internal/service -run 'SystemPrompt|SettingService_.*SystemPrompt|APIKeyService|AdminService_CreateGroup|AdminService_UpdateGroup' -count=1
@@ -1215,33 +1215,33 @@ cd backend && go test -tags integration ./internal/repository -run 'APIKey|Group
 cd backend && go test -tags unit ./internal/handler ./internal/handler/admin ./internal/handler/dto -run 'APIKey|Group|Settings|SystemPrompt|OpenAIResponses|GeminiV1Beta' -count=1
 ```
 
-Expected: PASS.
+预期：PASS。
 
-- [ ] **Step 2: Run broader backend compile test**
+- [ ] **步骤 2：运行更广的后端编译测试**
 
-Run:
+运行：
 
 ```bash
 cd backend && go test -tags unit ./internal/service ./internal/handler ./internal/handler/admin ./internal/handler/dto -count=1
 cd backend && go test -tags integration ./internal/repository -count=1
 ```
 
-Expected: PASS.
+预期：PASS。
 
-- [ ] **Step 3: Run frontend verification**
+- [ ] **步骤 3：运行前端验证**
 
-Run:
+运行：
 
 ```bash
 pnpm -C frontend typecheck
 pnpm -C frontend build
 ```
 
-Expected: PASS.
+预期：PASS。
 
-- [ ] **Step 4: Inspect git diff**
+- [ ] **步骤 4：检查 git diff**
 
-Run:
+运行：
 
 ```bash
 git status --short
@@ -1249,31 +1249,31 @@ git diff --stat
 git diff --check
 ```
 
-Expected: only planned files changed, no whitespace errors.
+预期：只改动计划内文件，并且没有空白字符错误。
 
-- [ ] **Step 5: Request code review**
+- [ ] **步骤 5：请求代码审查**
 
-Use the `requesting-code-review` skill. Ask the reviewer to focus on:
+使用 `requesting-code-review` 技能。请 reviewer 重点关注：
 
-- mode semantics and inheritance behavior
-- cache correctness and update refresh
-- auth cache snapshot version and invalidation
-- request injection order for OpenAI Codex/Antigravity identity patch
-- migration safety and default compatibility
-- frontend payload completeness
+- mode 语义和继承行为
+- 缓存正确性与更新刷新
+- 鉴权缓存快照版本和失效逻辑
+- OpenAI Codex/Antigravity identity patch 的请求注入顺序
+- migration 安全性与默认兼容性
+- 前端 payload 完整性
 
-- [ ] **Step 6: Apply review fixes, rerun verification, and commit**
+- [ ] **步骤 6：应用 review 修复，重新验证并提交**
 
-Run the same verification commands after fixes, then:
+修复后运行同样的验证命令，然后：
 
 ```bash
 git add backend frontend docs
 git commit -m "feat: support hierarchical system prompts"
 ```
 
-## Self-Review
+## 自查
 
-- Spec coverage: The plan covers database fields, settings keys, 7-day settings cache, auth cache snapshot, API/DTO fields, resolver priority, injection modes, Gemini/OpenAI/Anthropic/Antigravity entry points, frontend controls, and verification.
-- Execution safety: The test commands now separate `unit` and `integration` tags so no suite is skipped by accident.
-- Placeholder scan: The plan no longer uses fake helpers like `newSettingRepoStub`, `newAPIKeyServiceForCacheTest`, or `newAdminServiceWithGroupRepoForTest`; their only mention is an explicit warning.
-- Type consistency: The same names are used throughout: `system_prompt`, `system_prompt_mode`, `SystemPromptModeInherit`, `SystemPromptModePassthrough`, `SystemPromptModeOverride`, `SystemPromptModeAppend`, `EffectiveSystemPrompt`.
+- 需求覆盖：计划覆盖数据库字段、settings keys、7 天 settings 缓存、鉴权缓存快照、API/DTO 字段、解析优先级、注入模式、Gemini/OpenAI/Anthropic/Antigravity 入口点、前端控件和验证。
+- 执行安全：测试命令已经区分 `unit` 和 `integration` tags，避免意外跳过套件。
+- 占位符扫描：计划不再使用 `newSettingRepoStub`、`newAPIKeyServiceForCacheTest` 或 `newAdminServiceWithGroupRepoForTest` 这类虚构 helper；唯一出现的位置是明确警告。
+- 类型一致性：全文使用一致命名：`system_prompt`、`system_prompt_mode`、`SystemPromptModeInherit`、`SystemPromptModePassthrough`、`SystemPromptModeOverride`、`SystemPromptModeAppend`、`EffectiveSystemPrompt`。
