@@ -115,7 +115,7 @@ func TestReferralService_HandleOngoingRewardOnRecharge_SkipsSalesReferrer(t *tes
 		CreatedAt:  time.Now(),
 	})
 
-	svc.HandleOngoingRewardOnRecharge(context.Background(), 20, 100, 101)
+	svc.HandleOngoingRewardOnRecharge(context.Background(), 20, 100, 101, false)
 
 	require.Empty(t, giftRepo.created)
 	require.Empty(t, referralRepo.ongoingRewardIncrements)
@@ -133,7 +133,7 @@ func TestReferralService_RechargeRewards_StillGrantForRegularReferrer(t *testing
 	})
 
 	svc.HandleInviterRewardOnFirstRecharge(context.Background(), 20, 100)
-	svc.HandleOngoingRewardOnRecharge(context.Background(), 20, 100, 101)
+	svc.HandleOngoingRewardOnRecharge(context.Background(), 20, 100, 101, false)
 
 	require.Len(t, giftRepo.created, 2)
 	require.Equal(t, GiftBalanceSourceReferralInviter, giftRepo.created[0].Source)
@@ -153,9 +153,9 @@ func TestReferralService_HandleOngoingRewardOnRecharge_GrantsOncePerOrder(t *tes
 		CreatedAt:  time.Now(),
 	})
 
-	svc.HandleOngoingRewardOnRecharge(context.Background(), 20, 100, 201)
-	svc.HandleOngoingRewardOnRecharge(context.Background(), 20, 100, 201)
-	svc.HandleOngoingRewardOnRecharge(context.Background(), 20, 80, 202)
+	svc.HandleOngoingRewardOnRecharge(context.Background(), 20, 100, 201, false)
+	svc.HandleOngoingRewardOnRecharge(context.Background(), 20, 100, 201, false)
+	svc.HandleOngoingRewardOnRecharge(context.Background(), 20, 80, 202, false)
 
 	require.Len(t, giftRepo.created, 2)
 	require.Equal(t, []float64{5, 4}, referralRepo.ongoingRewardIncrements)

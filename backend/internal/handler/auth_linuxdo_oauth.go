@@ -252,13 +252,13 @@ type completeLinuxDoOAuthRequest struct {
 func (h *AuthHandler) CompleteLinuxDoOAuthRegistration(c *gin.Context) {
 	var req completeLinuxDoOAuthRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "INVALID_REQUEST", "message": err.Error()})
+		c.JSON(http.StatusBadRequest, response.WithErrorCorrelation(c, gin.H{"error": "INVALID_REQUEST", "message": err.Error()}))
 		return
 	}
 
 	email, username, err := h.authService.VerifyPendingOAuthToken(req.PendingOAuthToken)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "INVALID_TOKEN", "message": "invalid or expired registration token"})
+		c.JSON(http.StatusUnauthorized, response.WithErrorCorrelation(c, gin.H{"error": "INVALID_TOKEN", "message": "invalid or expired registration token"}))
 		return
 	}
 

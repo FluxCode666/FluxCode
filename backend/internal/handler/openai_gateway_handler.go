@@ -14,6 +14,7 @@ import (
 	pkghttputil "github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
@@ -1372,12 +1373,12 @@ func (h *OpenAIGatewayHandler) ensureResponsesDependencies(c *gin.Context, reqLo
 	reqLog.Error("openai.handler_dependencies_missing", zap.Strings("missing_dependencies", missing))
 
 	if c != nil && c.Writer != nil && !c.Writer.Written() {
-		c.JSON(http.StatusServiceUnavailable, gin.H{
+		c.JSON(http.StatusServiceUnavailable, response.WithErrorCorrelation(c, gin.H{
 			"error": gin.H{
 				"type":    "api_error",
 				"message": "Service temporarily unavailable",
 			},
-		})
+		}))
 	}
 	return false
 }

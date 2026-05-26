@@ -17,6 +17,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	coderws "github.com/coder/websocket"
 	"github.com/gin-gonic/gin"
@@ -2199,12 +2200,12 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 				emitStreamMessage(message, true)
 			}
 			if !reqStream {
-				c.JSON(statusCode, gin.H{
+				c.JSON(statusCode, response.WithErrorCorrelation(c, gin.H{
 					"error": gin.H{
 						"type":    "upstream_error",
 						"message": errMsg,
 					},
-				})
+				}))
 			}
 			return nil, fmt.Errorf("openai ws error event: %s", errMsg)
 		}

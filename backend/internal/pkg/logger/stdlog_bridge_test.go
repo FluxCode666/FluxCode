@@ -1,11 +1,14 @@
 package logger
 
 import (
+	"context"
 	"io"
 	"log"
 	"os"
 	"strings"
 	"testing"
+
+	"go.uber.org/zap"
 )
 
 func TestInferStdLogLevel(t *testing.T) {
@@ -162,5 +165,50 @@ func TestLegacyPrintfRoutesLevels(t *testing.T) {
 	}
 	if !strings.Contains(stderrText, "\"component\":\"service.test\"") {
 		t.Fatalf("stderr missing component field: %s", stderrText)
+	}
+}
+
+func TestLegacyPrintfContextUsesRequestLogger(t *testing.T) {
+	origStdout := os.Stdout
+	stdoutR, stdoutW, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("create stdout pipe: %v", err)
+	}
+	os.Stdout = stdoutW
+	t.Cleanup(func() {
+		os.Stdout = origStdout
+		_ = stdoutR.Close()
+		_ = stdoutW.Close()
+	})
+
+	if err := Init(InitOptions{
+		Level:       "debug",
+		Format:      "json",
+		ServiceName: "sub2api",
+		Environment: "test",
+		Output: OutputOptions{
+			ToStdout: true,
+			ToFile:   false,
+		},
+		Sampling: SamplingOptions{Enabled: false},
+	}); err != nil {
+		t.Fatalf("Init() error: %v", err)
+	}
+
+	ctx := IntoContext(context.Background(), L().With(zap.String("trace_id", "trace-context-1")))
+	LegacyPrintfContext(ctx, "service.test", "request started")
+
+	_ = stdoutW.Close()
+	stdoutBytes, _ := io.ReadAll(stdoutR)
+	stdoutText := string(stdoutBytes)
+
+	if !strings.Contains(stdoutText, "request started") {
+		t.Fatalf("stdout missing info log: %s", stdoutText)
+	}
+	if !strings.Contains(stdoutText, "\"trace_id\":\"trace-context-1\"") {
+		t.Fatalf("stdout missing trace_id field: %s", stdoutText)
+	}
+	if !strings.Contains(stdoutText, "\"component\":\"service.test\"") {
+		t.Fatalf("stdout missing component field: %s", stdoutText)
 	}
 }

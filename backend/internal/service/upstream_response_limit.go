@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/gin-gonic/gin"
 )
 
@@ -61,21 +62,21 @@ func ReadUpstreamResponseBody(reader io.Reader, cfg *config.Config, c *gin.Conte
 
 // anthropicTooLargeError 以 Anthropic Messages API 格式写入超限错误。
 func anthropicTooLargeError(c *gin.Context) {
-	c.JSON(http.StatusBadGateway, gin.H{
+	c.JSON(http.StatusBadGateway, response.WithErrorCorrelation(c, gin.H{
 		"type": "error",
 		"error": gin.H{
 			"type":    "upstream_error",
 			"message": "Upstream response too large",
 		},
-	})
+	}))
 }
 
 // openAITooLargeError 以 OpenAI / Gemini 格式写入超限错误。
 func openAITooLargeError(c *gin.Context) {
-	c.JSON(http.StatusBadGateway, gin.H{
+	c.JSON(http.StatusBadGateway, response.WithErrorCorrelation(c, gin.H{
 		"error": gin.H{
 			"type":    "upstream_error",
 			"message": "Upstream response too large",
 		},
-	})
+	}))
 }

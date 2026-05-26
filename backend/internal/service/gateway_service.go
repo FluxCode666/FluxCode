@@ -26,6 +26,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
@@ -4111,7 +4112,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 	tlsProfile := s.tlsFPProfileService.ResolveTLSProfile(account)
 
 	// 调试日志：记录即将转发的账号信息
-	logger.LegacyPrintf("service.gateway", "[Forward] Using account: ID=%d Name=%s Platform=%s Type=%s TLSFingerprint=%v Proxy=%s",
+	logger.LegacyPrintfContext(ctx, "service.gateway", "[Forward] Using account: ID=%d Name=%s Platform=%s Type=%s TLSFingerprint=%v Proxy=%s",
 		account.ID, account.Name, account.Platform, account.Type, tlsProfile, proxyURL)
 	// Pre-filter: strip empty text blocks (including nested in tool_result) to prevent upstream 400.
 	body = StripEmptyTextBlocks(body)
@@ -4149,13 +4150,13 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 				Kind:               "request_error",
 				Message:            safeErr,
 			})
-			c.JSON(http.StatusBadGateway, gin.H{
+			c.JSON(http.StatusBadGateway, response.WithErrorCorrelation(c, gin.H{
 				"type": "error",
 				"error": gin.H{
 					"type":    "upstream_error",
 					"message": "Upstream request failed",
 				},
-			})
+			}))
 			return nil, fmt.Errorf("upstream request failed: %s", safeErr)
 		}
 
@@ -4198,7 +4199,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 						resp.Body = io.NopCloser(bytes.NewReader(respBody))
 						break
 					}
-					logger.LegacyPrintf("service.gateway", "[warn] Account %d: thinking blocks have invalid signature, retrying with filtered blocks", account.ID)
+					logger.LegacyPrintfContext(ctx, "service.gateway", "[warn] Account %d: thinking blocks have invalid signature, retrying with filtered blocks", account.ID)
 
 					// Conservative two-stage fallback:
 					// 1) Disable thinking + thinking->text (preserve content)
@@ -4370,7 +4371,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 						return ""
 					}(),
 				})
-				logger.LegacyPrintf("service.gateway", "Account %d: upstream error %d, retry %d/%d after %v (elapsed=%v/%v)",
+				logger.LegacyPrintfContext(ctx, "service.gateway", "Account %d: upstream error %d, retry %d/%d after %v (elapsed=%v/%v)",
 					account.ID, resp.StatusCode, attempt, maxRetryAttempts, delay, elapsed, maxRetryElapsed)
 				if err := sleepWithContext(ctx, delay); err != nil {
 					return nil, err
@@ -4404,7 +4405,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 			resp.Body = io.NopCloser(bytes.NewReader(respBody))
 
 			// 调试日志：打印重试耗尽后的错误响应
-			logger.LegacyPrintf("service.gateway", "[Forward] Upstream error (retry exhausted, failover): Account=%d(%s) Status=%d RequestID=%s Body=%s",
+			logger.LegacyPrintfContext(ctx, "service.gateway", "[Forward] Upstream error (retry exhausted, failover): Account=%d(%s) Status=%d RequestID=%s Body=%s",
 				account.ID, account.Name, resp.StatusCode, resp.Header.Get("x-request-id"), truncateString(string(respBody), 1000))
 
 			s.handleRetryExhaustedSideEffects(ctx, resp, account, respBody)
@@ -4439,7 +4440,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 		resp.Body = io.NopCloser(bytes.NewReader(respBody))
 
 		// 调试日志：打印上游错误响应
-		logger.LegacyPrintf("service.gateway", "[Forward] Upstream error (failover): Account=%d(%s) Status=%d RequestID=%s Body=%s",
+		logger.LegacyPrintfContext(ctx, "service.gateway", "[Forward] Upstream error (failover): Account=%d(%s) Status=%d RequestID=%s Body=%s",
 			account.ID, account.Name, resp.StatusCode, resp.Header.Get("x-request-id"), truncateString(string(respBody), 1000))
 
 		s.handleFailoverSideEffects(ctx, resp, account, respBody)
@@ -4636,13 +4637,13 @@ func (s *GatewayService) forwardAnthropicAPIKeyPassthroughWithInput(
 				Kind:               "request_error",
 				Message:            safeErr,
 			})
-			c.JSON(http.StatusBadGateway, gin.H{
+			c.JSON(http.StatusBadGateway, response.WithErrorCorrelation(c, gin.H{
 				"type": "error",
 				"error": gin.H{
 					"type":    "upstream_error",
 					"message": "Upstream request failed",
 				},
-			})
+			}))
 			return nil, fmt.Errorf("upstream request failed: %s", safeErr)
 		}
 
@@ -4682,7 +4683,7 @@ func (s *GatewayService) forwardAnthropicAPIKeyPassthroughWithInput(
 						return ""
 					}(),
 				})
-				logger.LegacyPrintf("service.gateway", "Anthropic passthrough account %d: upstream error %d, retry %d/%d after %v (elapsed=%v/%v)",
+				logger.LegacyPrintfContext(ctx, "service.gateway", "Anthropic passthrough account %d: upstream error %d, retry %d/%d after %v (elapsed=%v/%v)",
 					account.ID, resp.StatusCode, attempt, maxRetryAttempts, delay, elapsed, maxRetryElapsed)
 				if err := sleepWithContext(ctx, delay); err != nil {
 					return nil, err
@@ -5340,13 +5341,13 @@ func (s *GatewayService) executeBedrockUpstream(
 				Kind:               "request_error",
 				Message:            safeErr,
 			})
-			c.JSON(http.StatusBadGateway, gin.H{
+			c.JSON(http.StatusBadGateway, response.WithErrorCorrelation(c, gin.H{
 				"type": "error",
 				"error": gin.H{
 					"type":    "upstream_error",
 					"message": "Upstream request failed",
 				},
-			})
+			}))
 			return nil, fmt.Errorf("upstream request failed: %s", safeErr)
 		}
 
@@ -5383,7 +5384,7 @@ func (s *GatewayService) executeBedrockUpstream(
 						return ""
 					}(),
 				})
-				logger.LegacyPrintf("service.gateway", "[Bedrock] account %d: upstream error %d, retry %d/%d after %v",
+				logger.LegacyPrintfContext(ctx, "service.gateway", "[Bedrock] account %d: upstream error %d, retry %d/%d after %v",
 					account.ID, resp.StatusCode, attempt, maxRetryAttempts, delay)
 				if err := sleepWithContext(ctx, delay); err != nil {
 					return nil, err
@@ -6344,7 +6345,7 @@ func (s *GatewayService) handleErrorResponse(ctx context.Context, resp *http.Res
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
 
 	// 调试日志：打印上游错误响应
-	logger.LegacyPrintf("service.gateway", "[Forward] Upstream error (non-retryable): Account=%d(%s) Status=%d RequestID=%s Body=%s",
+	logger.LegacyPrintfContext(ctx, "service.gateway", "[Forward] Upstream error (non-retryable): Account=%d(%s) Status=%d RequestID=%s Body=%s",
 		account.ID, account.Name, resp.StatusCode, resp.Header.Get("x-request-id"), truncateString(string(body), 1000))
 
 	upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(body))
@@ -6415,13 +6416,13 @@ func (s *GatewayService) handleErrorResponse(ctx context.Context, resp *http.Res
 		"upstream_error",
 		"Upstream request failed",
 	); matched {
-		c.JSON(status, gin.H{
+		c.JSON(status, response.WithErrorCorrelation(c, gin.H{
 			"type": "error",
 			"error": gin.H{
 				"type":    errType,
 				"message": errMsg,
 			},
-		})
+		}))
 
 		summary := upstreamMsg
 		if summary == "" {
@@ -6475,13 +6476,13 @@ func (s *GatewayService) handleErrorResponse(ctx context.Context, resp *http.Res
 	}
 
 	// 返回自定义错误响应
-	c.JSON(statusCode, gin.H{
+	c.JSON(statusCode, response.WithErrorCorrelation(c, gin.H{
 		"type": "error",
 		"error": gin.H{
 			"type":    errType,
 			"message": errMsg,
 		},
-	})
+	}))
 
 	if upstreamMsg == "" {
 		return nil, fmt.Errorf("upstream error: %d", resp.StatusCode)
@@ -6495,10 +6496,10 @@ func (s *GatewayService) handleRetryExhaustedSideEffects(ctx context.Context, re
 	// OAuth/Setup Token 账号的 403：标记账号异常
 	if account.IsOAuth() && statusCode == 403 {
 		s.rateLimitService.HandleUpstreamError(ctx, account, statusCode, resp.Header, body)
-		logger.LegacyPrintf("service.gateway", "Account %d: marked as error after %d retries for status %d", account.ID, maxRetryAttempts, statusCode)
+		logger.LegacyPrintfContext(ctx, "service.gateway", "Account %d: marked as error after %d retries for status %d", account.ID, maxRetryAttempts, statusCode)
 	} else {
 		// API Key 未配置错误码：不标记账号状态
-		logger.LegacyPrintf("service.gateway", "Account %d: upstream error %d after %d retries (not marking account)", account.ID, statusCode, maxRetryAttempts)
+		logger.LegacyPrintfContext(ctx, "service.gateway", "Account %d: upstream error %d after %d retries (not marking account)", account.ID, statusCode, maxRetryAttempts)
 	}
 }
 
@@ -6571,13 +6572,13 @@ func (s *GatewayService) handleRetryExhaustedError(ctx context.Context, resp *ht
 		"upstream_error",
 		"Upstream request failed after retries",
 	); matched {
-		c.JSON(status, gin.H{
+		c.JSON(status, response.WithErrorCorrelation(c, gin.H{
 			"type": "error",
 			"error": gin.H{
 				"type":    errType,
 				"message": errMsg,
 			},
-		})
+		}))
 
 		summary := upstreamMsg
 		if summary == "" {
@@ -6590,13 +6591,13 @@ func (s *GatewayService) handleRetryExhaustedError(ctx context.Context, resp *ht
 	}
 
 	// 返回统一的重试耗尽错误响应
-	c.JSON(http.StatusBadGateway, gin.H{
+	c.JSON(http.StatusBadGateway, response.WithErrorCorrelation(c, gin.H{
 		"type": "error",
 		"error": gin.H{
 			"type":    "upstream_error",
 			"message": "Upstream request failed after retries",
 		},
-	})
+	}))
 
 	if upstreamMsg == "" {
 		return nil, fmt.Errorf("upstream error: %d (retries exhausted)", resp.StatusCode)
@@ -8364,7 +8365,7 @@ func (s *GatewayService) ForwardCountTokens(ctx context.Context, c *gin.Context,
 
 	// 检测 thinking block 签名错误（400）并重试一次（过滤 thinking blocks）
 	if resp.StatusCode == 400 && s.shouldRectifySignatureError(ctx, account, respBody) {
-		logger.LegacyPrintf("service.gateway", "Account %d: detected thinking block signature error on count_tokens, retrying with filtered thinking blocks", account.ID)
+		logger.LegacyPrintfContext(ctx, "service.gateway", "Account %d: detected thinking block signature error on count_tokens, retrying with filtered thinking blocks", account.ID)
 
 		filteredBody := FilterThinkingBlocksForRetry(body)
 		retryReq, buildErr := s.buildCountTokensRequest(ctx, c, account, filteredBody, token, tokenType, reqModel, shouldMimicClaudeCode)
@@ -8403,7 +8404,7 @@ func (s *GatewayService) ForwardCountTokens(ctx context.Context, c *gin.Context,
 
 		// 记录上游错误摘要便于排障（不回显请求内容）
 		if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
-			logger.LegacyPrintf("service.gateway",
+			logger.LegacyPrintfContext(ctx, "service.gateway",
 				"count_tokens upstream error %d (account=%d platform=%s type=%s): %s",
 				resp.StatusCode,
 				account.ID,
@@ -8753,13 +8754,13 @@ func (s *GatewayService) buildCountTokensRequest(ctx context.Context, c *gin.Con
 
 // countTokensError 返回 count_tokens 错误响应
 func (s *GatewayService) countTokensError(c *gin.Context, status int, errType, message string) {
-	c.JSON(status, gin.H{
+	c.JSON(status, response.WithErrorCorrelation(c, gin.H{
 		"type": "error",
 		"error": gin.H{
 			"type":    errType,
 			"message": message,
 		},
-	})
+	}))
 }
 
 // buildCustomRelayURL 构建自定义中继转发 URL

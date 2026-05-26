@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
@@ -316,7 +317,7 @@ func (h *OpsHandler) QPSWSHandler(c *gin.Context) {
 	clientIP := requestClientIP(c.Request)
 
 	if h == nil || h.opsService == nil {
-		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "ops service not initialized"})
+		c.JSON(http.StatusServiceUnavailable, response.WithErrorCorrelation(c, gin.H{"error": "ops service not initialized"}))
 		return
 	}
 
@@ -325,7 +326,7 @@ func (h *OpsHandler) QPSWSHandler(c *gin.Context) {
 	if !h.opsService.IsRealtimeMonitoringEnabled(c.Request.Context()) {
 		conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 		if err != nil {
-			c.JSON(http.StatusNotFound, gin.H{"error": "ops realtime monitoring is disabled"})
+			c.JSON(http.StatusNotFound, response.WithErrorCorrelation(c, gin.H{"error": "ops realtime monitoring is disabled"}))
 			return
 		}
 		closeWS(conn, opsWSCloseRealtimeDisabled, "realtime_disabled")
@@ -340,7 +341,7 @@ func (h *OpsHandler) QPSWSHandler(c *gin.Context) {
 	// Reserve a global slot before upgrading the connection to keep the limit strict.
 	if !tryAcquireOpsWSTotalSlot(opsWSLimits.MaxConns) {
 		logger.LegacyPrintf("handler.admin.ops_ws", "[OpsWS] connection limit reached: %d/%d", wsConnCount.Load(), opsWSLimits.MaxConns)
-		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "too many connections"})
+		c.JSON(http.StatusServiceUnavailable, response.WithErrorCorrelation(c, gin.H{"error": "too many connections"}))
 		return
 	}
 	defer func() {
@@ -352,7 +353,7 @@ func (h *OpsHandler) QPSWSHandler(c *gin.Context) {
 	if opsWSLimits.MaxConnsPerIP > 0 && clientIP != "" {
 		if !tryAcquireOpsWSIPSlot(clientIP, opsWSLimits.MaxConnsPerIP) {
 			logger.LegacyPrintf("handler.admin.ops_ws", "[OpsWS] per-ip connection limit reached: ip=%s limit=%d", clientIP, opsWSLimits.MaxConnsPerIP)
-			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "too many connections"})
+			c.JSON(http.StatusServiceUnavailable, response.WithErrorCorrelation(c, gin.H{"error": "too many connections"}))
 			return
 		}
 		defer releaseOpsWSIPSlot(clientIP)

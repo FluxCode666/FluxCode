@@ -732,10 +732,10 @@ func (h *AccountHandler) Create(c *gin.Context) {
 		var mixedErr *service.MixedChannelError
 		if errors.As(err, &mixedErr) {
 			// 创建接口仅返回最小必要字段，详细信息由专门检查接口提供
-			c.JSON(409, gin.H{
+			c.JSON(409, response.WithErrorCorrelation(c, gin.H{
 				"error":   "mixed_channel_warning",
 				"message": mixedErr.Error(),
-			})
+			}))
 			return
 		}
 
@@ -798,10 +798,10 @@ func (h *AccountHandler) Update(c *gin.Context) {
 		var mixedErr *service.MixedChannelError
 		if errors.As(err, &mixedErr) {
 			// 更新接口仅返回最小必要字段，详细信息由专门检查接口提供
-			c.JSON(409, gin.H{
+			c.JSON(409, response.WithErrorCorrelation(c, gin.H{
 				"error":   "mixed_channel_warning",
 				"message": mixedErr.Error(),
-			})
+			}))
 			return
 		}
 
@@ -1591,7 +1591,7 @@ func (h *AccountHandler) BulkUpdate(c *gin.Context) {
 	if err != nil {
 		var mixedErr *service.MixedChannelError
 		if errors.As(err, &mixedErr) {
-			c.JSON(409, gin.H{
+			c.JSON(409, response.WithErrorCorrelation(c, gin.H{
 				"error":   "mixed_channel_warning",
 				"message": mixedErr.Error(),
 				"details": gin.H{
@@ -1600,7 +1600,7 @@ func (h *AccountHandler) BulkUpdate(c *gin.Context) {
 					"current_platform": mixedErr.CurrentPlatform,
 					"other_platform":   mixedErr.OtherPlatform,
 				},
-			})
+			}))
 			return
 		}
 		response.ErrorFrom(c, err)

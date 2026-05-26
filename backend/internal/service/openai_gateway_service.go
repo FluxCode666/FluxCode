@@ -24,6 +24,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
 	"github.com/cespare/xxhash/v2"
@@ -761,12 +762,12 @@ func (s *OpenAIGatewayService) writeOpenAIWSFallbackErrorResponse(c *gin.Context
 			Message:            upstreamMessage,
 		})
 	}
-	c.JSON(statusCode, gin.H{
+	c.JSON(statusCode, response.WithErrorCorrelation(c, gin.H{
 		"error": gin.H{
 			"type":    errType,
 			"message": clientMessage,
 		},
-	})
+	}))
 	return true
 }
 
@@ -1960,12 +1961,12 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	apiKeyID := getAPIKeyIDFromContext(c)
 	logCodexCLIOnlyDetection(ctx, c, account, apiKeyID, restrictionResult, body)
 	if restrictionResult.Enabled && !restrictionResult.Matched {
-		c.JSON(http.StatusForbidden, gin.H{
+		c.JSON(http.StatusForbidden, response.WithErrorCorrelation(c, gin.H{
 			"error": gin.H{
 				"type":    "forbidden_error",
 				"message": "This account only allows Codex official clients",
 			},
-		})
+		}))
 		return nil, errors.New("codex_cli_only restriction: only codex official clients are allowed")
 	}
 
@@ -1996,12 +1997,12 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	// 当前仅支持 WSv2；WSv1 命中时直接返回错误，避免出现“配置可开但行为不确定”。
 	if wsDecision.Transport == OpenAIUpstreamTransportResponsesWebsocket {
 		if c != nil {
-			c.JSON(http.StatusBadRequest, gin.H{
+			c.JSON(http.StatusBadRequest, response.WithErrorCorrelation(c, gin.H{
 				"error": gin.H{
 					"type":    "invalid_request_error",
 					"message": "OpenAI WSv1 is temporarily unsupported. Please enable responses_websockets_v2.",
 				},
-			})
+			}))
 		}
 		return nil, errors.New("openai ws v1 is temporarily unsupported; use ws v2")
 	}
@@ -2091,24 +2092,24 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	if isCodexCLI && ensureOpenAIResponsesImageGenerationTool(reqBody) {
 		bodyModified = true
 		disablePatch()
-		logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Injected /responses image_generation tool for Codex client")
+		logger.LegacyPrintfContext(ctx, "service.openai_gateway", "[OpenAI] Injected /responses image_generation tool for Codex client")
 	}
 
 	if normalizeOpenAIResponsesImageGenerationTools(reqBody) {
 		bodyModified = true
 		disablePatch()
-		logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Normalized /responses image_generation tool payload")
+		logger.LegacyPrintfContext(ctx, "service.openai_gateway", "[OpenAI] Normalized /responses image_generation tool payload")
 	}
 	if isCodexCLI && applyCodexImageGenerationBridgeInstructions(reqBody) {
 		bodyModified = true
 		disablePatch()
-		logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Added Codex image_generation bridge instructions")
+		logger.LegacyPrintfContext(ctx, "service.openai_gateway", "[OpenAI] Added Codex image_generation bridge instructions")
 	}
 
 	// 对所有请求执行模型映射（包含 Codex CLI）。
 	billingModel := account.GetMappedModel(reqModel)
 	if billingModel != reqModel {
-		logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Model mapping applied: %s -> %s (account: %s, isCodexCLI: %v)", reqModel, billingModel, account.Name, isCodexCLI)
+		logger.LegacyPrintfContext(ctx, "service.openai_gateway", "[OpenAI] Model mapping applied: %s -> %s (account: %s, isCodexCLI: %v)", reqModel, billingModel, account.Name, isCodexCLI)
 		reqBody["model"] = billingModel
 		bodyModified = true
 		markPatchSet("model", billingModel)
@@ -2118,7 +2119,8 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	if normalizeOpenAIResponsesImageOnlyModel(reqBody) {
 		bodyModified = true
 		disablePatch()
-		logger.LegacyPrintf(
+		logger.LegacyPrintfContext(
+			ctx,
 			"service.openai_gateway",
 			"[OpenAI] Normalized /responses image-only model request inbound_model=%s image_model=%s upstream_model=%s",
 			reqModel,
@@ -2128,17 +2130,18 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	}
 	if err := validateOpenAIResponsesImageModel(reqBody, upstreamModel); err != nil {
 		setOpsUpstreamError(c, http.StatusBadRequest, err.Error(), "")
-		c.JSON(http.StatusBadRequest, gin.H{
+		c.JSON(http.StatusBadRequest, response.WithErrorCorrelation(c, gin.H{
 			"error": gin.H{
 				"type":    "invalid_request_error",
 				"message": err.Error(),
 				"param":   "model",
 			},
-		})
+		}))
 		return nil, err
 	}
 	if hasOpenAIImageGenerationTool(reqBody) {
-		logger.LegacyPrintf(
+		logger.LegacyPrintfContext(
+			ctx,
 			"service.openai_gateway",
 			"[OpenAI] /responses image_generation request inbound_model=%s mapped_model=%s account_type=%s",
 			reqModel,
@@ -2148,13 +2151,13 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	}
 	if err := validateCodexSparkInput(reqBody, upstreamModel); err != nil {
 		setOpsUpstreamError(c, http.StatusBadRequest, err.Error(), "")
-		c.JSON(http.StatusBadRequest, gin.H{
+		c.JSON(http.StatusBadRequest, response.WithErrorCorrelation(c, gin.H{
 			"error": gin.H{
 				"type":    "invalid_request_error",
 				"message": err.Error(),
 				"param":   "input",
 			},
-		})
+		}))
 		return nil, err
 	}
 
@@ -2164,7 +2167,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	if model, ok := reqBody["model"].(string); ok {
 		upstreamModel = normalizeOpenAIModelForUpstream(account, model)
 		if upstreamModel != "" && upstreamModel != model {
-			logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Upstream model resolved: %s -> %s (account: %s, type: %s, isCodexCLI: %v)",
+			logger.LegacyPrintfContext(ctx, "service.openai_gateway", "[OpenAI] Upstream model resolved: %s -> %s (account: %s, type: %s, isCodexCLI: %v)",
 				model, upstreamModel, account.Name, account.Type, isCodexCLI)
 			reqBody["model"] = upstreamModel
 			bodyModified = true
@@ -2186,7 +2189,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			reasoning["effort"] = "none"
 			bodyModified = true
 			markPatchSet("reasoning.effort", "none")
-			logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Normalized reasoning.effort: minimal -> none (account: %s)", account.Name)
+			logger.LegacyPrintfContext(ctx, "service.openai_gateway", "[OpenAI] Normalized reasoning.effort: minimal -> none (account: %s)", account.Name)
 		}
 	}
 
@@ -2561,12 +2564,12 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 				Kind:               "request_error",
 				Message:            safeErr,
 			})
-			c.JSON(http.StatusBadGateway, gin.H{
+			c.JSON(http.StatusBadGateway, response.WithErrorCorrelation(c, gin.H{
 				"error": gin.H{
 					"type":    "upstream_error",
 					"message": "Upstream request failed",
 				},
-			})
+			}))
 			return nil, fmt.Errorf("upstream request failed: %s", safeErr)
 		}
 
@@ -2587,10 +2590,10 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 					}
 					setOpsUpstreamRequestBody(c, body)
 					httpInvalidEncryptedContentRetryTried = true
-					logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Retrying non-WSv2 request once after invalid_encrypted_content (account: %s)", account.Name)
+					logger.LegacyPrintfContext(ctx, "service.openai_gateway", "[OpenAI] Retrying non-WSv2 request once after invalid_encrypted_content (account: %s)", account.Name)
 					continue
 				}
-				logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Skip non-WSv2 invalid_encrypted_content retry because encrypted reasoning items are missing (account: %s)", account.Name)
+				logger.LegacyPrintfContext(ctx, "service.openai_gateway", "[OpenAI] Skip non-WSv2 invalid_encrypted_content retry because encrypted reasoning items are missing (account: %s)", account.Name)
 			}
 			if s.shouldFailoverOpenAIUpstreamResponse(resp.StatusCode, upstreamMsg, respBody) {
 				upstreamDetail := ""
@@ -2697,12 +2700,12 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 				Detail:             rejectReason,
 			})
 			logOpenAIPassthroughInstructionsRejected(ctx, c, account, reqModel, rejectReason, body)
-			c.JSON(http.StatusForbidden, gin.H{
+			c.JSON(http.StatusForbidden, response.WithErrorCorrelation(c, gin.H{
 				"error": gin.H{
 					"type":    "forbidden_error",
 					"message": rejectMsg,
 				},
-			})
+			}))
 			return nil, fmt.Errorf("openai passthrough rejected before upstream: %s", rejectReason)
 		}
 
@@ -2724,7 +2727,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		body = sanitizedBody
 	}
 
-	logger.LegacyPrintf("service.openai_gateway",
+	logger.LegacyPrintfContext(ctx, "service.openai_gateway",
 		"[OpenAI 自动透传] 命中自动透传分支: account=%d name=%s type=%s model=%s stream=%v",
 		account.ID,
 		account.Name,
@@ -2783,12 +2786,12 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 			Kind:               "request_error",
 			Message:            safeErr,
 		})
-		c.JSON(http.StatusBadGateway, gin.H{
+		c.JSON(http.StatusBadGateway, response.WithErrorCorrelation(c, gin.H{
 			"error": gin.H{
 				"type":    "upstream_error",
 				"message": "Upstream request failed",
 			},
-		})
+		}))
 		return nil, fmt.Errorf("upstream request failed: %s", safeErr)
 	}
 	defer func() { _ = resp.Body.Close() }()
@@ -3219,10 +3222,10 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 			return &openaiStreamingResultPassthrough{usage: usage, firstTokenMs: firstTokenMs}, fmt.Errorf("stream usage incomplete: %w", err)
 		}
 		if errors.Is(err, bufio.ErrTooLong) {
-			logger.LegacyPrintf("service.openai_gateway", "[OpenAI passthrough] SSE line too long: account=%d max_size=%d error=%v", account.ID, maxLineSize, err)
+			logger.LegacyPrintfContext(ctx, "service.openai_gateway", "[OpenAI passthrough] SSE line too long: account=%d max_size=%d error=%v", account.ID, maxLineSize, err)
 			return &openaiStreamingResultPassthrough{usage: usage, firstTokenMs: firstTokenMs}, err
 		}
-		logger.LegacyPrintf("service.openai_gateway",
+		logger.LegacyPrintfContext(ctx, "service.openai_gateway",
 			"[OpenAI passthrough] 流读取异常中断: account=%d request_id=%s err=%v",
 			account.ID,
 			upstreamRequestID,
@@ -3495,7 +3498,7 @@ func (s *OpenAIGatewayService) handleErrorResponse(
 	logOpenAIInstructionsRequiredDebug(ctx, c, account, resp.StatusCode, upstreamMsg, requestBody, body)
 
 	if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
-		logger.LegacyPrintf("service.openai_gateway",
+		logger.LegacyPrintfContext(ctx, "service.openai_gateway",
 			"OpenAI upstream error %d (account=%d platform=%s type=%s): %s",
 			resp.StatusCode,
 			account.ID,
@@ -3514,12 +3517,12 @@ func (s *OpenAIGatewayService) handleErrorResponse(
 		"upstream_error",
 		"Upstream request failed",
 	); matched {
-		c.JSON(status, gin.H{
+		c.JSON(status, response.WithErrorCorrelation(c, gin.H{
 			"error": gin.H{
 				"type":    errType,
 				"message": errMsg,
 			},
-		})
+		}))
 		if upstreamMsg == "" {
 			upstreamMsg = errMsg
 		}
@@ -3541,12 +3544,12 @@ func (s *OpenAIGatewayService) handleErrorResponse(
 			Message:            upstreamMsg,
 			Detail:             upstreamDetail,
 		})
-		c.JSON(http.StatusInternalServerError, gin.H{
+		c.JSON(http.StatusInternalServerError, response.WithErrorCorrelation(c, gin.H{
 			"error": gin.H{
 				"type":    "upstream_error",
 				"message": "Upstream gateway error",
 			},
-		})
+		}))
 		if upstreamMsg == "" {
 			return nil, fmt.Errorf("upstream error: %d (not in custom error codes)", resp.StatusCode)
 		}
@@ -3607,12 +3610,12 @@ func (s *OpenAIGatewayService) handleErrorResponse(
 		errMsg = "Upstream request failed"
 	}
 
-	c.JSON(statusCode, gin.H{
+	c.JSON(statusCode, response.WithErrorCorrelation(c, gin.H{
 		"error": gin.H{
 			"type":    errType,
 			"message": errMsg,
 		},
-	})
+	}))
 
 	if upstreamMsg == "" {
 		return nil, fmt.Errorf("upstream error: %d", resp.StatusCode)
@@ -4287,12 +4290,12 @@ func (s *OpenAIGatewayService) writeOpenAINonStreamingProtocolError(resp *http.R
 	setOpsUpstreamError(c, http.StatusBadGateway, message, "")
 	responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 	c.Writer.Header().Set("Content-Type", "application/json; charset=utf-8")
-	c.JSON(http.StatusBadGateway, gin.H{
+	c.JSON(http.StatusBadGateway, response.WithErrorCorrelation(c, gin.H{
 		"error": gin.H{
 			"type":    "upstream_error",
 			"message": message,
 		},
-	})
+	}))
 	return fmt.Errorf("non-streaming openai protocol error: %s", message)
 }
 
@@ -4854,7 +4857,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 
 	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple {
 		writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.openai_gateway")
-		logger.LegacyPrintf("service.openai_gateway", "[SIMPLE MODE] Usage recorded (not billed): user=%d, tokens=%d", usageLog.UserID, usageLog.TotalTokens())
+		logger.LegacyPrintfContext(ctx, "service.openai_gateway", "[SIMPLE MODE] Usage recorded (not billed): user=%d, tokens=%d", usageLog.UserID, usageLog.TotalTokens())
 		s.deferredService.ScheduleLastUsedUpdate(account.ID)
 		return nil
 	}
@@ -5527,7 +5530,7 @@ func (s *OpenAIGatewayService) calculateOpenAIImageCost(
 		if err == nil {
 			return cost
 		}
-		logger.LegacyPrintf("service.openai_gateway", "Calculate image channel cost failed: %v", err)
+		logger.LegacyPrintfContext(ctx, "service.openai_gateway", "Calculate image channel cost failed: %v", err)
 	}
 
 	var groupConfig *ImagePriceConfig

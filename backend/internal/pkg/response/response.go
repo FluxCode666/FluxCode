@@ -89,17 +89,51 @@ func TraceIDFromGinContext(c *gin.Context) string {
 	return traceIDFromContext(c)
 }
 
+// RequestIDFromGinContext extracts request_id from the gin request context or
+// response header.
+func RequestIDFromGinContext(c *gin.Context) string {
+	return correlationValueFromGinContext(c, ctxkey.RequestID, "X-Request-ID")
+}
+
+// WithErrorCorrelation returns payload with trace_id/request_id attached when
+// they are available on the request context or response headers.
+func WithErrorCorrelation(c *gin.Context, payload gin.H) gin.H {
+	if payload == nil {
+		payload = gin.H{}
+	}
+	AddErrorCorrelationFields(c, payload)
+	return payload
+}
+
+// AddErrorCorrelationFields mutates payload in place, attaching trace_id and
+// request_id when available.
+func AddErrorCorrelationFields(c *gin.Context, payload gin.H) {
+	if payload == nil {
+		return
+	}
+	if traceID := TraceIDFromGinContext(c); traceID != "" {
+		payload["trace_id"] = traceID
+	}
+	if requestID := RequestIDFromGinContext(c); requestID != "" {
+		payload["request_id"] = requestID
+	}
+}
+
 func traceIDFromContext(c *gin.Context) string {
+	return correlationValueFromGinContext(c, ctxkey.TraceID, "X-Trace-ID")
+}
+
+func correlationValueFromGinContext(c *gin.Context, key ctxkey.Key, headerName string) string {
 	if c == nil {
 		return ""
 	}
 	if c.Request != nil {
-		if traceID, _ := c.Request.Context().Value(ctxkey.TraceID).(string); strings.TrimSpace(traceID) != "" {
-			return strings.TrimSpace(traceID)
+		if value, _ := c.Request.Context().Value(key).(string); strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
 		}
 	}
 	if c.Writer != nil {
-		return strings.TrimSpace(c.Writer.Header().Get("X-Trace-ID"))
+		return strings.TrimSpace(c.Writer.Header().Get(headerName))
 	}
 	return ""
 }

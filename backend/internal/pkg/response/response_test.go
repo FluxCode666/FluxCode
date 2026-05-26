@@ -3,12 +3,14 @@
 package response
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	errors2 "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
@@ -206,6 +208,37 @@ func TestErrorFrom(t *testing.T) {
 			require.Equal(t, tt.wantBody, got)
 		})
 	}
+}
+
+func TestWithErrorCorrelation(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	t.Run("uses request context correlation ids", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		ctx := context.WithValue(req.Context(), ctxkey.TraceID, " trace-from-context ")
+		ctx = context.WithValue(ctx, ctxkey.RequestID, " request-from-context ")
+		c.Request = req.WithContext(ctx)
+
+		payload := WithErrorCorrelation(c, gin.H{"error": "upstream failed"})
+
+		require.Equal(t, "trace-from-context", payload["trace_id"])
+		require.Equal(t, "request-from-context", payload["request_id"])
+		require.Equal(t, "upstream failed", payload["error"])
+	})
+
+	t.Run("falls back to response headers", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Header("X-Trace-ID", "trace-from-header")
+		c.Header("X-Request-ID", "request-from-header")
+
+		payload := WithErrorCorrelation(c, gin.H{"error": "gateway failed"})
+
+		require.Equal(t, "trace-from-header", payload["trace_id"])
+		require.Equal(t, "request-from-header", payload["request_id"])
+	})
 }
 
 // ---------- 新增测试 ----------

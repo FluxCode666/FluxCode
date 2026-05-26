@@ -13,6 +13,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"gopkg.in/natefinch/lumberjack.v2"
@@ -475,6 +476,22 @@ func inferStdLogLevel(msg string) Level {
 
 // LegacyPrintf 用于平滑迁移历史的 printf 风格日志到结构化 logger。
 func LegacyPrintf(component, format string, args ...any) {
+	legacyPrintfWithLogger(nil, component, format, args...)
+}
+
+// LegacyPrintfContext is the request-scoped variant of LegacyPrintf. When the
+// context carries a logger, fields such as trace_id/request_id are preserved.
+func LegacyPrintfContext(ctx context.Context, component, format string, args ...any) {
+	l := FromContext(ctx)
+	if ctx != nil {
+		if _, ok := ctx.Value(loggerContextKey).(*zap.Logger); !ok {
+			l = withCorrelationFields(ctx, l)
+		}
+	}
+	legacyPrintfWithLogger(l, component, format, args...)
+}
+
+func legacyPrintfWithLogger(base *zap.Logger, component, format string, args ...any) {
 	msg := normalizeStdLogMessage(fmt.Sprintf(format, args...))
 	if msg == "" {
 		return
@@ -487,11 +504,14 @@ func LegacyPrintf(component, format string, args ...any) {
 		return
 	}
 
-	l := L()
+	l := base
+	if l == nil {
+		l = L()
+	}
 	if component != "" {
 		l = l.With(zap.String("component", component))
 	}
-	l = l.WithOptions(zap.AddCallerSkip(1))
+	l = l.WithOptions(zap.AddCallerSkip(2))
 
 	switch inferStdLogLevel(msg) {
 	case LevelDebug:
@@ -503,6 +523,19 @@ func LegacyPrintf(component, format string, args ...any) {
 	default:
 		l.Info(msg, zap.Bool("legacy_printf", true))
 	}
+}
+
+func withCorrelationFields(ctx context.Context, l *zap.Logger) *zap.Logger {
+	if l == nil {
+		l = L()
+	}
+	if traceID, _ := ctx.Value(ctxkey.TraceID).(string); strings.TrimSpace(traceID) != "" {
+		l = l.With(zap.String("trace_id", strings.TrimSpace(traceID)))
+	}
+	if requestID, _ := ctx.Value(ctxkey.RequestID).(string); strings.TrimSpace(requestID) != "" {
+		l = l.With(zap.String("request_id", strings.TrimSpace(requestID)))
+	}
+	return l
 }
 
 type contextKey string
