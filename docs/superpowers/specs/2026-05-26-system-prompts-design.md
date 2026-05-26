@@ -16,7 +16,7 @@ FluxCode 需要支持按层级配置系统提示词，并在请求转发到不�
 - 分组支持配置系统提示词和处理模式。
 - APIKey 支持用户自定义系统提示词和处理模式。
 - 转发链路按 `APIKey > 分组 > 系统平台配置` 解析最终规则。
-- 支持五种状态：不配置、透传、覆盖、追加、不改。
+- 支持四种状态：不配置、透传、覆盖、追加。
 - 覆盖 Anthropic、OpenAI、Gemini、Antigravity 的主要请求入口。
 
 ## 非目标
@@ -29,19 +29,18 @@ FluxCode 需要支持按层级配置系统提示词，并在请求转发到不�
 
 新增枚举 `SystemPromptMode`：
 
-- `inherit`：不配置。当前层不产生有效规则，继续向下一层查找。仅 APIKey 和分组可使用。
+- `inherit`：不配置。当前层不产生有效规则，继续向下一层查找；如果系统平台层也是不配置，则最终不注入。
 - `passthrough`：透传。客户端已有系统提示词时保留客户端原值；客户端没有系统提示词时注入当前配置提示词。
 - `override`：覆盖。用当前配置提示词替换客户端原系统提示词。
 - `append`：追加。保留两者，当前配置提示词在前，客户端原系统提示词在后。
-- `none`：不改。当前层明确关闭注入，停止继续向下继承，并保持客户端请求不变。
 
-空白提示词不构成有效注入内容。保存配置时，`passthrough`、`override`、`append` 必须搭配非空 `system_prompt`；`inherit` 和 `none` 允许提示词为空。
+空白提示词不构成有效注入内容。保存配置时，`passthrough`、`override`、`append` 必须搭配非空 `system_prompt`；`inherit` 允许提示词为空。
 
 默认值：
 
 - APIKey：`system_prompt_mode = "inherit"`，`system_prompt = ""`
 - 分组：`system_prompt_mode = "inherit"`，`system_prompt = ""`
-- 系统平台配置：`system_prompt_mode_<platform> = "none"`，`system_prompt_<platform> = ""`
+- 系统平台配置：`system_prompt_mode_<platform> = "inherit"`，`system_prompt_<platform> = ""`
 
 这样升级后所有现有请求默认保持原行为。
 
@@ -93,7 +92,7 @@ FluxCode 需要支持按层级配置系统提示词，并在请求转发到不�
 - `system_prompt_antigravity`
 - `system_prompt_mode_antigravity`
 
-平台级模式仅允许 `passthrough`、`override`、`append`、`none`。字段缺省或空值按 `none` 处理；未知枚举返回 400。
+平台级模式允许 `inherit`、`passthrough`、`override`、`append`。字段缺省或空值按 `inherit` 处理；未知枚举返回 400。
 
 ## API 契约
 
@@ -161,17 +160,17 @@ FluxCode 需要支持按层级配置系统提示词，并在请求转发到不�
 ```json
 {
   "system_prompt_anthropic": "",
-  "system_prompt_mode_anthropic": "none",
+  "system_prompt_mode_anthropic": "inherit",
   "system_prompt_openai": "",
-  "system_prompt_mode_openai": "none",
+  "system_prompt_mode_openai": "inherit",
   "system_prompt_gemini": "",
-  "system_prompt_mode_gemini": "none",
+  "system_prompt_mode_gemini": "inherit",
   "system_prompt_antigravity": "",
-  "system_prompt_mode_antigravity": "none"
+  "system_prompt_mode_antigravity": "inherit"
 }
 ```
 
-兼容性：新增可选字段，旧管理端不传时保留或写入默认 `none`。
+兼容性：新增可选字段，旧管理端不传时保留或写入默认 `inherit`。
 
 ## 解析流程
 
@@ -196,8 +195,10 @@ type EffectiveSystemPrompt struct {
 1. 如果 APIKey `system_prompt_mode != "inherit"`，使用 APIKey 规则。
 2. 否则如果分组 `system_prompt_mode != "inherit"`，使用分组规则。
 3. 否则读取系统设置中的平台规则。
-4. 如果最终模式是 `none`，不注入。
-5. 如果最终模式是 `passthrough`、`override`、`append` 但提示词为空，按 `none` 处理并记录调试日志。
+4. 如果最终模式是 `inherit`，不注入。
+5. 如果某一层模式是 `passthrough`、`override`、`append` 但提示词为空，跳过该层并继续向下一层查找，同时记录调试日志。
+
+系统中不提供“当前层显式阻断下层配置”的独立开关。需要不注入时，将对应层级保持为 `inherit`，并确保更低层级也未配置有效提示词。
 
 平台来源：
 
@@ -258,14 +259,14 @@ Antigravity 现有 identity patch 仍保留。业务系统提示词应作为通�
 在管理后台设置页的网关相关配置区域增加“全局系统提示词”配置：
 
 - 平台选择或四个平台独立 textarea
-- 每个平台一个模式选择：不改、透传、覆盖、追加
+- 每个平台一个模式选择：不配置、透传、覆盖、追加
 - 当选择透传/覆盖/追加时提示词必填
 
 ### 分组管理
 
 在创建和编辑分组表单增加：
 
-- 系统提示词模式：不配置、透传、覆盖、追加、不改
+- 系统提示词模式：不配置、透传、覆盖、追加
 - 分组系统提示词 textarea
 
 默认“不配置”。选择透传/覆盖/追加时提示词必填。
@@ -274,7 +275,7 @@ Antigravity 现有 identity patch 仍保留。业务系统提示词应作为通�
 
 在用户 APIKey 创建和编辑表单增加：
 
-- 系统提示词模式：不配置、透传、覆盖、追加、不改
+- 系统提示词模式：不配置、透传、覆盖、追加
 - APIKey 系统提示词 textarea
 
 默认“不配置”。选择透传/覆盖/追加时提示词必填。
@@ -291,7 +292,6 @@ Antigravity 现有 identity patch 仍保留。业务系统提示词应作为通�
 
 - 不接受未知模式枚举。
 - APIKey / Group 的 `inherit` 只表示当前层不配置，不会清空下层配置。
-- APIKey / Group 的 `none` 表示明确停用并停止继承。
 - `passthrough`、`override`、`append` 搭配空提示词时，写接口返回 400；系统设置保存时也返回 400。
 - 转发注入失败时返回原始请求并记录 warn，不应导致业务请求失败，除非 JSON 本身已无法解析。
 
@@ -301,7 +301,7 @@ Antigravity 现有 identity patch 仍保留。业务系统提示词应作为通�
 
 - 有效规则解析：APIKey 优先于分组，分组优先于系统设置。
 - `inherit` 继续向下查找。
-- `none` 停止继承且不注入。
+- 系统平台层为 `inherit` 时最终不注入。
 - 空 prompt 搭配注入模式被拒绝。
 - APIKey auth cache snapshot 能保留 APIKey 和 Group 的系统提示词字段。
 
@@ -336,14 +336,14 @@ Antigravity 现有 identity patch 仍保留。业务系统提示词应作为通�
 
 回滚：
 
-- 关闭所有系统平台配置为 `none`。
-- 分组和 APIKey 配置改回 `inherit` 或 `none`。
+- 所有系统平台配置改回 `inherit`。
+- 分组和 APIKey 配置改回 `inherit`。
 - 如需代码回滚，新增字段留在数据库中不影响旧代码读取。
 
 ## 验收标准
 
 - APIKey、分组、系统平台三层都能保存和读取系统提示词配置。
 - 转发请求时按 `APIKey > 分组 > 系统平台配置` 生效。
-- 五种模式行为符合本文定义。
+- 四种模式行为符合本文定义。
 - 默认升级后不改变既有请求。
 - 后端测试、前端类型检查和关键构建命令通过。
