@@ -5,7 +5,6 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"log"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -15,6 +14,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/oauth"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -182,7 +182,9 @@ func (h *AuthHandler) LinuxDoOAuthCallback(c *gin.Context) {
 		description := ""
 		var exchangeErr *linuxDoTokenExchangeError
 		if errors.As(err, &exchangeErr) && exchangeErr != nil {
-			log.Printf(
+			logger.LegacyPrintfContext(
+				c.Request.Context(),
+				"handler.auth_linuxdo_oauth",
 				"[LinuxDo OAuth] token exchange failed: status=%d provider_error=%q provider_description=%q body=%s",
 				exchangeErr.StatusCode,
 				exchangeErr.ProviderError,
@@ -191,7 +193,7 @@ func (h *AuthHandler) LinuxDoOAuthCallback(c *gin.Context) {
 			)
 			description = exchangeErr.Error()
 		} else {
-			log.Printf("[LinuxDo OAuth] token exchange failed: %v", err)
+			logger.LegacyPrintfContext(c.Request.Context(), "handler.auth_linuxdo_oauth", "[LinuxDo OAuth] token exchange failed: %v", err)
 			description = err.Error()
 		}
 		redirectOAuthError(c, frontendCallback, "token_exchange_failed", "failed to exchange oauth code", singleLine(description))
@@ -200,7 +202,7 @@ func (h *AuthHandler) LinuxDoOAuthCallback(c *gin.Context) {
 
 	email, username, subject, err := linuxDoFetchUserInfo(c.Request.Context(), cfg, tokenResp)
 	if err != nil {
-		log.Printf("[LinuxDo OAuth] userinfo fetch failed: %v", err)
+		logger.LegacyPrintfContext(c.Request.Context(), "handler.auth_linuxdo_oauth", "[LinuxDo OAuth] userinfo fetch failed: %v", err)
 		redirectOAuthError(c, frontendCallback, "userinfo_failed", "failed to fetch user info", "")
 		return
 	}

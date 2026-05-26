@@ -3,11 +3,12 @@ package middleware
 import (
 	"context"
 	"fmt"
-	"log"
 	"net/http"
 	"strconv"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
 )
@@ -98,7 +99,7 @@ func (r *RateLimiter) LimitWithOptions(key string, limit int, window time.Durati
 		// 使用 Lua 脚本原子操作增加计数并设置过期
 		count, repaired, err := rateLimitRun(ctx, r.redis, redisKey, windowMillis)
 		if err != nil {
-			log.Printf("[RateLimit] redis error: key=%s mode=%s err=%v", redisKey, failureModeLabel(failureMode), err)
+			logger.LegacyPrintfContext(ctx, "middleware.rate_limiter", "[RateLimit] redis error: key=%s mode=%s err=%v", redisKey, failureModeLabel(failureMode), err)
 			if failureMode == RateLimitFailClose {
 				abortRateLimit(c)
 				return
@@ -108,7 +109,7 @@ func (r *RateLimiter) LimitWithOptions(key string, limit int, window time.Durati
 			return
 		}
 		if repaired {
-			log.Printf("[RateLimit] ttl repaired: key=%s window_ms=%d", redisKey, windowMillis)
+			logger.LegacyPrintfContext(ctx, "middleware.rate_limiter", "[RateLimit] ttl repaired: key=%s window_ms=%d", redisKey, windowMillis)
 		}
 
 		// 超过限制
@@ -130,10 +131,10 @@ func windowTTLMillis(window time.Duration) int64 {
 }
 
 func abortRateLimit(c *gin.Context) {
-	c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{
+	c.AbortWithStatusJSON(http.StatusTooManyRequests, response.WithErrorCorrelation(c, gin.H{
 		"error":   "rate limit exceeded",
 		"message": "Too many requests, please try again later",
-	})
+	}))
 }
 
 func failureModeLabel(mode RateLimitFailureMode) string {

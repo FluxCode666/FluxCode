@@ -212,3 +212,26 @@ func TestLegacyPrintfContextUsesRequestLogger(t *testing.T) {
 		t.Fatalf("stdout missing component field: %s", stdoutText)
 	}
 }
+
+func TestRequestChainFilesDoNotUseRawStdLogPrintf(t *testing.T) {
+	files := []string{
+		"../../handler/auth_linuxdo_oauth.go",
+		"../../handler/auth_oidc_oauth.go",
+		"../../handler/admin/account_handler.go",
+		"../response/response.go",
+		"../../middleware/rate_limiter.go",
+		"../../server/middleware/security_headers.go",
+		"../../service/antigravity_gateway_service.go",
+		"../../service/gemini_messages_compat_service.go",
+	}
+
+	for _, file := range files {
+		body, err := os.ReadFile(file)
+		if err != nil {
+			t.Fatalf("read %s: %v", file, err)
+		}
+		if strings.Contains(string(body), "log.Printf(") {
+			t.Fatalf("%s still uses raw log.Printf; use LegacyPrintfContext so trace_id/request_id are preserved", file)
+		}
+	}
+}

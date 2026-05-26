@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -22,6 +21,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
@@ -1069,7 +1069,7 @@ func (h *AccountHandler) refreshSingleAccount(ctx context.Context, account *serv
 	// 刷新成功后，清除 token 缓存，确保下次请求使用新 token
 	if h.tokenCacheInvalidator != nil {
 		if invalidateErr := h.tokenCacheInvalidator.InvalidateToken(ctx, updatedAccount); invalidateErr != nil {
-			log.Printf("[WARN] Failed to invalidate token cache for account %d: %v", updatedAccount.ID, invalidateErr)
+			logger.LegacyPrintfContext(ctx, "handler.admin.account", "[WARN] Failed to invalidate token cache for account %d: %v", updatedAccount.ID, invalidateErr)
 		}
 	}
 
@@ -1164,7 +1164,7 @@ func (h *AccountHandler) ClearError(c *gin.Context) {
 	// 这解决了管理员重置账号状态后，旧的失效 token 仍在缓存中导致立即再次 401 的问题
 	if h.tokenCacheInvalidator != nil && account.IsOAuth() {
 		if invalidateErr := h.tokenCacheInvalidator.InvalidateToken(c.Request.Context(), account); invalidateErr != nil {
-			log.Printf("[WARN] Failed to invalidate token cache for account %d: %v", accountID, invalidateErr)
+			logger.LegacyPrintfContext(c.Request.Context(), "handler.admin.account", "[WARN] Failed to invalidate token cache for account %d: %v", accountID, invalidateErr)
 		}
 	}
 
@@ -1215,7 +1215,7 @@ func (h *AccountHandler) BatchClearError(c *gin.Context) {
 			// 清除错误后，同时清除 token 缓存
 			if h.tokenCacheInvalidator != nil && account.IsOAuth() {
 				if invalidateErr := h.tokenCacheInvalidator.InvalidateToken(gctx, account); invalidateErr != nil {
-					log.Printf("[WARN] Failed to invalidate token cache for account %d: %v", accountID, invalidateErr)
+					logger.LegacyPrintfContext(gctx, "handler.admin.account", "[WARN] Failed to invalidate token cache for account %d: %v", accountID, invalidateErr)
 				}
 			}
 

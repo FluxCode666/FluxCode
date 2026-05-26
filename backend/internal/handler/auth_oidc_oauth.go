@@ -11,7 +11,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"math/big"
 	"net/http"
 	"net/url"
@@ -21,6 +20,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/oauth"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -242,7 +242,9 @@ func (h *AuthHandler) OIDCOAuthCallback(c *gin.Context) {
 		description := ""
 		var exchangeErr *oidcTokenExchangeError
 		if errors.As(err, &exchangeErr) && exchangeErr != nil {
-			log.Printf(
+			logger.LegacyPrintfContext(
+				c.Request.Context(),
+				"handler.auth_oidc_oauth",
 				"[OIDC OAuth] token exchange failed: status=%d provider_error=%q provider_description=%q body=%s",
 				exchangeErr.StatusCode,
 				exchangeErr.ProviderError,
@@ -251,7 +253,7 @@ func (h *AuthHandler) OIDCOAuthCallback(c *gin.Context) {
 			)
 			description = exchangeErr.Error()
 		} else {
-			log.Printf("[OIDC OAuth] token exchange failed: %v", err)
+			logger.LegacyPrintfContext(c.Request.Context(), "handler.auth_oidc_oauth", "[OIDC OAuth] token exchange failed: %v", err)
 			description = err.Error()
 		}
 		redirectOAuthError(c, frontendCallback, "token_exchange_failed", "failed to exchange oauth code", singleLine(description))
@@ -265,14 +267,14 @@ func (h *AuthHandler) OIDCOAuthCallback(c *gin.Context) {
 
 	idClaims, err := oidcParseAndValidateIDToken(c.Request.Context(), cfg, tokenResp.IDToken, expectedNonce)
 	if err != nil {
-		log.Printf("[OIDC OAuth] id_token validation failed: %v", err)
+		logger.LegacyPrintfContext(c.Request.Context(), "handler.auth_oidc_oauth", "[OIDC OAuth] id_token validation failed: %v", err)
 		redirectOAuthError(c, frontendCallback, "invalid_id_token", "failed to validate id_token", "")
 		return
 	}
 
 	userInfoClaims, err := oidcFetchUserInfo(c.Request.Context(), cfg, tokenResp)
 	if err != nil {
-		log.Printf("[OIDC OAuth] userinfo fetch failed: %v", err)
+		logger.LegacyPrintfContext(c.Request.Context(), "handler.auth_oidc_oauth", "[OIDC OAuth] userinfo fetch failed: %v", err)
 		redirectOAuthError(c, frontendCallback, "userinfo_failed", "failed to fetch user info", "")
 		return
 	}

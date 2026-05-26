@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"log/slog"
 	mathrand "math/rand"
 	"net"
@@ -1690,7 +1689,7 @@ func (s *AntigravityGatewayService) Forward(ctx context.Context, c *gin.Context,
 				if isGoogleProjectConfigError(msg) {
 					upstreamMsg := sanitizeUpstreamErrorMessage(strings.TrimSpace(extractAntigravityErrorMessage(respBody)))
 					upstreamDetail := s.getUpstreamErrorDetail(respBody)
-					log.Printf("%s status=400 google_config_error failover=true upstream_message=%q account=%d", prefix, upstreamMsg, account.ID)
+					logger.LegacyPrintfContext(ctx, "service.antigravity_gateway", "%s status=400 google_config_error failover=true upstream_message=%q account=%d", prefix, upstreamMsg, account.ID)
 					appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
 						Platform:           account.Platform,
 						AccountID:          account.ID,
@@ -2359,7 +2358,7 @@ func (s *AntigravityGatewayService) ForwardGemini(ctx context.Context, c *gin.Co
 
 		// 精确匹配服务端配置类 400 错误，触发同账号重试 + failover
 		if resp.StatusCode == http.StatusBadRequest && isGoogleProjectConfigError(strings.ToLower(upstreamMsg)) {
-			log.Printf("%s status=400 google_config_error failover=true upstream_message=%q account=%d", prefix, upstreamMsg, account.ID)
+			logger.LegacyPrintfContext(ctx, "service.antigravity_gateway", "%s status=400 google_config_error failover=true upstream_message=%q account=%d", prefix, upstreamMsg, account.ID)
 			appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
 				Platform:           account.Platform,
 				AccountID:          account.ID,
@@ -2486,9 +2485,9 @@ func tempUnscheduleGoogleConfigError(ctx context.Context, repo AccountRepository
 	until := time.Now().Add(googleConfigErrorCooldown)
 	reason := "400: invalid project resource name (auto temp-unschedule 1m)"
 	if err := repo.SetTempUnschedulable(ctx, accountID, until, reason); err != nil {
-		log.Printf("%s temp_unschedule_failed account=%d error=%v", logPrefix, accountID, err)
+		logger.LegacyPrintfContext(ctx, "service.antigravity_gateway", "%s temp_unschedule_failed account=%d error=%v", logPrefix, accountID, err)
 	} else {
-		log.Printf("%s temp_unscheduled account=%d until=%v reason=%q", logPrefix, accountID, until.Format("15:04:05"), reason)
+		logger.LegacyPrintfContext(ctx, "service.antigravity_gateway", "%s temp_unscheduled account=%d until=%v reason=%q", logPrefix, accountID, until.Format("15:04:05"), reason)
 	}
 }
 
@@ -2501,9 +2500,9 @@ func tempUnscheduleEmptyResponse(ctx context.Context, repo AccountRepository, ac
 	until := time.Now().Add(emptyResponseCooldown)
 	reason := "empty stream response (auto temp-unschedule 1m)"
 	if err := repo.SetTempUnschedulable(ctx, accountID, until, reason); err != nil {
-		log.Printf("%s temp_unschedule_failed account=%d error=%v", logPrefix, accountID, err)
+		logger.LegacyPrintfContext(ctx, "service.antigravity_gateway", "%s temp_unschedule_failed account=%d error=%v", logPrefix, accountID, err)
 	} else {
-		log.Printf("%s temp_unscheduled account=%d until=%v reason=%q", logPrefix, accountID, until.Format("15:04:05"), reason)
+		logger.LegacyPrintfContext(ctx, "service.antigravity_gateway", "%s temp_unscheduled account=%d until=%v reason=%q", logPrefix, accountID, until.Format("15:04:05"), reason)
 	}
 }
 
@@ -2774,7 +2773,7 @@ func (s *AntigravityGatewayService) handleModelRateLimit(p *handleModelRateLimit
 	// MODEL_CAPACITY_EXHAUSTED：模型容量不足，所有账号共享同一容量池
 	// 切换账号无意义，不设置模型限流（实际重试由 handleSmartRetry 处理）
 	if info.IsModelCapacityExhausted {
-		log.Printf("%s status=%d model_capacity_exhausted model=%s (not switching account, retry handled by smart retry)",
+		logger.LegacyPrintfContext(p.ctx, "service.antigravity_gateway", "%s status=%d model_capacity_exhausted model=%s (not switching account, retry handled by smart retry)",
 			p.prefix, p.statusCode, info.ModelName)
 		return &handleModelRateLimitResult{
 			Handled: true,
