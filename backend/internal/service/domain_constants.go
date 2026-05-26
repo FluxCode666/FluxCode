@@ -28,6 +28,18 @@ const (
 	PlatformAntigravity = domain.PlatformAntigravity
 )
 
+const (
+	SystemPromptModeInherit     = "inherit"
+	SystemPromptModePassthrough = "passthrough"
+	SystemPromptModeOverride    = "override"
+	SystemPromptModeAppend      = "append"
+
+	SystemPromptSourceNone   = "none"
+	SystemPromptSourceAPIKey = "api_key"
+	SystemPromptSourceGroup  = "group"
+	SystemPromptSourceSystem = "system"
+)
+
 func IsOpenAICompatiblePlatform(platform string) bool {
 	return platform == PlatformOpenAI || platform == PlatformCodex2API
 }
