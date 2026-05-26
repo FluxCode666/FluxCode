@@ -62,3 +62,47 @@ func TestResolveEffectiveSystemPrompt_AllInheritReturnsDisabled(t *testing.T) {
 	require.False(t, got.Enabled())
 	require.Equal(t, SystemPromptModeInherit, got.Mode)
 }
+
+func TestApplySystemPromptToAnthropic_AppendStringSystem(t *testing.T) {
+	body := []byte(`{"model":"claude","system":"client","messages":[{"role":"user","content":"hi"}]}`)
+	got, changed, err := ApplySystemPromptToJSON(body, PlatformAnthropic, EffectiveSystemPrompt{
+		Prompt: "server",
+		Mode:   SystemPromptModeAppend,
+	})
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.JSONEq(t, `{"model":"claude","system":[{"type":"text","text":"server"},{"type":"text","text":"client"}],"messages":[{"role":"user","content":"hi"}]}`, string(got))
+}
+
+func TestApplySystemPromptToOpenAIResponses_PassthroughKeepsExisting(t *testing.T) {
+	body := []byte(`{"model":"gpt","instructions":"client","input":"hi"}`)
+	got, changed, err := ApplySystemPromptToJSON(body, PlatformOpenAI, EffectiveSystemPrompt{
+		Prompt: "server",
+		Mode:   SystemPromptModePassthrough,
+	})
+	require.NoError(t, err)
+	require.False(t, changed)
+	require.JSONEq(t, string(body), string(got))
+}
+
+func TestApplySystemPromptToChatCompletions_Override(t *testing.T) {
+	body := []byte(`{"model":"gpt","messages":[{"role":"system","content":"client"},{"role":"user","content":"hi"}]}`)
+	got, changed, err := ApplySystemPromptToChatCompletionsJSON(body, EffectiveSystemPrompt{
+		Prompt: "server",
+		Mode:   SystemPromptModeOverride,
+	})
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.JSONEq(t, `{"model":"gpt","messages":[{"role":"system","content":"server"},{"role":"user","content":"hi"}]}`, string(got))
+}
+
+func TestApplySystemPromptToGemini_AppendSystemInstruction(t *testing.T) {
+	body := []byte(`{"model":"gemini","systemInstruction":{"parts":[{"text":"client"}]},"contents":[]}`)
+	got, changed, err := ApplySystemPromptToJSON(body, PlatformGemini, EffectiveSystemPrompt{
+		Prompt: "server",
+		Mode:   SystemPromptModeAppend,
+	})
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.JSONEq(t, `{"model":"gemini","systemInstruction":{"parts":[{"text":"server"},{"text":"client"}]},"contents":[]}`, string(got))
+}
