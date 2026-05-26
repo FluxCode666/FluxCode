@@ -131,6 +131,7 @@ docs/*
 !docs/plans/*.md
 !docs/PAYMENT.md
 !docs/PAYMENT_CN.md
+!docs/superpowers/
 .serena/
 .codex/
 frontend/coverage/
