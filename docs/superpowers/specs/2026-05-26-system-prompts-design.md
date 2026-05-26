@@ -94,6 +94,8 @@ FluxCode 需要支持按层级配置系统提示词，并在请求转发到不�
 
 平台级模式允许 `inherit`、`passthrough`、`override`、`append`。字段缺省或空值按 `inherit` 处理；未知枚举返回 400。
 
+这些平台级配置必须进入请求热路径缓存，不允许每次转发都查询 settings 表。缓存策略见“缓存与失效”。
+
 ## API 契约
 
 ### 用户 APIKey 接口
@@ -282,11 +284,44 @@ Antigravity 现有 identity patch 仍保留。业务系统提示词应作为通�
 
 ## 缓存与失效
 
-- APIKey auth cache snapshot 增加 APIKey 和 Group 的系统提示词字段，版本号递增，旧缓存自动回源。
-- APIKey 更新后继续调用 `InvalidateAuthCacheByKey`。
-- Group 更新后继续调用 `InvalidateAuthCacheByGroupID`。
-- 系统设置读取在请求热路径使用短 TTL 缓存或复用 `SettingService` 的 cached settings 模式。
-- 系统平台提示词更新后清理系统提示词缓存。
+系统提示词配置必须缓存，避免请求转发热路径反复读取数据库。
+
+### APIKey / Group 缓存
+
+- APIKey 和 Group 的 `system_prompt`、`system_prompt_mode` 进入现有 APIKey auth cache snapshot。
+- auth cache snapshot 版本号递增，旧缓存自动回源。
+- APIKey 更新后继续调用 `InvalidateAuthCacheByKey`，确保该 APIKey 的提示词配置立即失效。
+- Group 更新后继续调用 `InvalidateAuthCacheByGroupID`，确保分组下所有 APIKey 的分组提示词配置立即失效。
+- 认证缓存 L1/L2 继续使用现有 key、TTL、Pub/Sub 失效机制，不新增独立 Redis key。
+
+### 系统平台配置缓存
+
+新增 `SettingService` 级别的系统提示词缓存，例如：
+
+```go
+type cachedSystemPromptSettings struct {
+    byPlatform map[string]EffectiveSystemPrompt
+    expiresAt  int64
+}
+```
+
+缓存行为：
+
+- 缓存内容包含四个平台的 `system_prompt_<platform>` 和 `system_prompt_mode_<platform>`。
+- 使用进程内 `atomic.Value` 保存快照，读取路径无锁。
+- 缓存 TTL 默认 60 秒，DB 读取错误时使用 5 秒短 TTL 的空配置快照。
+- 缓存 miss 或过期时使用 `singleflight` 合并回源。
+- 回源查询使用独立 DB timeout，避免请求取消导致缓存无法刷新。
+- `UpdateSettings` 写入任一系统提示词字段或模式字段后，必须清理或刷新系统提示词缓存。
+- 多实例环境允许最多一个 TTL 窗口的一致性延迟；如果后续已有 settings 级 Pub/Sub 失效能力，可复用它做跨实例即时失效。
+
+解析函数只从缓存读取系统平台层规则：
+
+```go
+GetSystemPromptSettings(ctx) map[string]EffectiveSystemPrompt
+```
+
+APIKey 和 Group 层来自认证缓存快照；系统平台层来自 `SettingService` 缓存。最终解析不直接访问数据库。
 
 ## 错误处理与校验
 
@@ -304,6 +339,10 @@ Antigravity 现有 identity patch 仍保留。业务系统提示词应作为通�
 - 系统平台层为 `inherit` 时最终不注入。
 - 空 prompt 搭配注入模式被拒绝。
 - APIKey auth cache snapshot 能保留 APIKey 和 Group 的系统提示词字段。
+- 系统平台提示词缓存命中时不重复读取 settings 表。
+- 系统平台提示词缓存过期后通过 `singleflight` 合并回源。
+- `UpdateSettings` 修改任一系统提示词字段或模式字段后清理系统提示词缓存。
+- settings 回源失败时返回短 TTL 的空配置快照，热路径不因配置读取失败中断。
 
 ### 注入 helper 测试
 
