@@ -309,11 +309,11 @@ type cachedSystemPromptSettings struct {
 
 - 缓存内容包含四个平台的 `system_prompt_<platform>` 和 `system_prompt_mode_<platform>`。
 - 使用进程内 `atomic.Value` 保存快照，读取路径无锁。
-- 缓存 TTL 默认 60 秒，DB 读取错误时使用 5 秒短 TTL 的空配置快照。
+- 缓存 TTL 默认 7 天，DB 读取错误时使用 5 秒短 TTL 的空配置快照。
 - 缓存 miss 或过期时使用 `singleflight` 合并回源。
 - 回源查询使用独立 DB timeout，避免请求取消导致缓存无法刷新。
-- `UpdateSettings` 写入任一系统提示词字段或模式字段后，必须清理或刷新系统提示词缓存。
-- 多实例环境允许最多一个 TTL 窗口的一致性延迟；如果后续已有 settings 级 Pub/Sub 失效能力，可复用它做跨实例即时失效。
+- `UpdateSettings` 写入任一系统提示词字段或模式字段后，必须立即用最新配置更新系统提示词缓存快照。
+- 多实例环境下，当前实例写入后立即更新本进程缓存；其他实例允许最多一个 7 天 TTL 窗口的一致性延迟。如果后续已有 settings 级 Pub/Sub 失效能力，可复用它做跨实例即时更新。
 
 解析函数只从缓存读取系统平台层规则：
 
@@ -341,7 +341,7 @@ APIKey 和 Group 层来自认证缓存快照；系统平台层来自 `SettingSer
 - APIKey auth cache snapshot 能保留 APIKey 和 Group 的系统提示词字段。
 - 系统平台提示词缓存命中时不重复读取 settings 表。
 - 系统平台提示词缓存过期后通过 `singleflight` 合并回源。
-- `UpdateSettings` 修改任一系统提示词字段或模式字段后清理系统提示词缓存。
+- `UpdateSettings` 修改任一系统提示词字段或模式字段后立即更新系统提示词缓存快照。
 - settings 回源失败时返回短 TTL 的空配置快照，热路径不因配置读取失败中断。
 
 ### 注入 helper 测试
