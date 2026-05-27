@@ -173,8 +173,8 @@ func (r *referralRepository) GetStatsByReferrerID(ctx context.Context, referrerI
 	return &stats, nil
 }
 
-func (r *referralRepository) ListAll(ctx context.Context, status string, offset, limit int) ([]service.Referral, int, error) {
-	countQuery := `SELECT COUNT(*) FROM referrals`
+func (r *referralRepository) ListAll(ctx context.Context, status string, referrerID, refereeID int64, offset, limit int) ([]service.Referral, int, error) {
+	countQuery := `SELECT COUNT(*) FROM referrals r`
 	listQuery := `SELECT r.id, r.referrer_id, r.referee_id, r.referral_code, r.status,
 		r.invitee_reward_amount, r.inviter_reward_amount,
 		r.invitee_rewarded_at, r.inviter_rewarded_at,
@@ -188,11 +188,29 @@ func (r *referralRepository) ListAll(ctx context.Context, status string, offset,
 
 	var args []any
 	argIdx := 1
+	var conditions []string
 	if status != "" {
-		countQuery += fmt.Sprintf(` WHERE status = $%d`, argIdx)
-		listQuery += fmt.Sprintf(` WHERE r.status = $%d`, argIdx)
+		conditions = append(conditions, fmt.Sprintf(`r.status = $%d`, argIdx))
 		args = append(args, status)
 		argIdx++
+	}
+	if referrerID > 0 {
+		conditions = append(conditions, fmt.Sprintf(`r.referrer_id = $%d`, argIdx))
+		args = append(args, referrerID)
+		argIdx++
+	}
+	if refereeID > 0 {
+		conditions = append(conditions, fmt.Sprintf(`r.referee_id = $%d`, argIdx))
+		args = append(args, refereeID)
+		argIdx++
+	}
+	if len(conditions) > 0 {
+		where := " WHERE " + conditions[0]
+		for _, c := range conditions[1:] {
+			where += " AND " + c
+		}
+		countQuery += where
+		listQuery += where
 	}
 
 	var total int
@@ -225,13 +243,21 @@ func (r *referralRepository) ListAll(ctx context.Context, status string, offset,
 	return refs, total, rows.Err()
 }
 
-func (r *referralRepository) GetLeaderboard(ctx context.Context, period string, limit int) ([]service.ReferralLeaderboardEntry, error) {
+func (r *referralRepository) GetLeaderboard(ctx context.Context, period, startDate, endDate string, limit int) ([]service.ReferralLeaderboardEntry, error) {
 	whereClause := ""
+	var args []any
+	argIdx := 1
 	switch period {
 	case "this_month":
 		whereClause = "WHERE r.created_at >= date_trunc('month', NOW())"
 	case "this_week":
 		whereClause = "WHERE r.created_at >= date_trunc('week', NOW())"
+	case "custom":
+		if startDate != "" && endDate != "" {
+			whereClause = fmt.Sprintf("WHERE r.created_at >= $%d AND r.created_at < $%d::date + INTERVAL '1 day'", argIdx, argIdx+1)
+			args = append(args, startDate, endDate)
+			argIdx += 2
+		}
 	}
 
 	query := fmt.Sprintf(
@@ -241,9 +267,10 @@ func (r *referralRepository) GetLeaderboard(ctx context.Context, period string, 
 		 FROM referrals r LEFT JOIN users u ON r.referrer_id = u.id
 		 %s
 		 GROUP BY r.referrer_id, u.email, u.username, u.referral_code
-		 ORDER BY invite_count DESC LIMIT $1`, whereClause)
+		 ORDER BY invite_count DESC LIMIT $%d`, whereClause, argIdx)
 
-	rows, err := r.db.QueryContext(ctx, query, limit)
+	args = append(args, limit)
+	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}

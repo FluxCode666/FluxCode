@@ -443,10 +443,10 @@ func (r *referralRepoStub) IncrementInviteeOngoingReward(_ context.Context, _ in
 func (r *referralRepoStub) GetStatsByReferrerID(_ context.Context, _ int64) (*ReferralStats, error) {
 	return nil, nil
 }
-func (r *referralRepoStub) ListAll(_ context.Context, _ string, _, _ int) ([]Referral, int, error) {
+func (r *referralRepoStub) ListAll(_ context.Context, _ string, _, _ int64, _, _ int) ([]Referral, int, error) {
 	return nil, 0, nil
 }
-func (r *referralRepoStub) GetLeaderboard(_ context.Context, _ string, _ int) ([]ReferralLeaderboardEntry, error) {
+func (r *referralRepoStub) GetLeaderboard(_ context.Context, _, _, _ string, _ int) ([]ReferralLeaderboardEntry, error) {
 	return nil, nil
 }
 func (r *referralRepoStub) GetTrendByReferrerID(_ context.Context, _ int64, _ int) ([]ReferralTrendPoint, error) {

@@ -815,18 +815,18 @@ func (s *ReferralService) AdminGetStats(ctx context.Context) (*AdminReferralStat
 }
 
 // AdminListReferrals 管理端列出推广关系
-func (s *ReferralService) AdminListReferrals(ctx context.Context, status string, page, pageSize int) ([]Referral, int, error) {
+func (s *ReferralService) AdminListReferrals(ctx context.Context, status string, referrerID, refereeID int64, page, pageSize int) ([]Referral, int, error) {
 	offset := (page - 1) * pageSize
-	return s.referralRepo.ListAll(ctx, status, offset, pageSize)
+	return s.referralRepo.ListAll(ctx, status, referrerID, refereeID, offset, pageSize)
 }
 
 // AdminGetLeaderboard 管理端获取推广排行榜
-// period: all_time / this_month / this_week
-func (s *ReferralService) AdminGetLeaderboard(ctx context.Context, period string, limit int) ([]ReferralLeaderboardEntry, error) {
+// period: all_time / this_month / this_week / custom
+func (s *ReferralService) AdminGetLeaderboard(ctx context.Context, period, startDate, endDate string, limit int) ([]ReferralLeaderboardEntry, error) {
 	if limit <= 0 {
 		limit = 20
 	}
-	return s.referralRepo.GetLeaderboard(ctx, period, limit)
+	return s.referralRepo.GetLeaderboard(ctx, period, startDate, endDate, limit)
 }
 
 // AdminGetDashboard 管理端推广数据看板：转化漏斗 + 趋势 + 概览

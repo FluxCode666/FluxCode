@@ -389,8 +389,68 @@
 
           <!-- Referral List Tab -->
           <div v-if="activeTab === 'list'" class="p-6">
-            <div class="mb-4 flex items-center gap-2">
+            <div class="mb-4 flex flex-wrap items-center gap-3">
               <Select v-model="listFilter.status" :options="listStatusOptions" class="w-40" @change="loadList" />
+              <!-- Referrer filter -->
+              <div class="relative">
+                <div class="relative">
+                  <input
+                    v-model="referrerSearch"
+                    type="text"
+                    class="input w-48 !py-1.5 !pr-7 text-sm"
+                    :placeholder="t('adminReferral.filterReferrerPlaceholder')"
+                    @input="onReferrerSearch"
+                    @focus="referrerDropdownVisible = referrerResults.length > 0"
+                    @blur="onReferrerBlur"
+                  />
+                  <span v-if="referrerSearching" class="absolute right-2 top-0 bottom-0 flex items-center"><svg class="h-4 w-4 animate-spin text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg></span>
+                  <button v-else-if="listFilter.referrer_id" @click="clearReferrerFilter" class="absolute right-2 top-0 bottom-0 flex items-center text-gray-400 hover:text-gray-600 dark:hover:text-dark-200 text-xs">✕</button>
+                </div>
+                <ul
+                  v-if="referrerDropdownVisible && referrerResults.length > 0"
+                  class="absolute z-10 mt-1 max-h-48 w-full overflow-auto rounded-md border border-gray-200 bg-white shadow-lg dark:border-dark-600 dark:bg-dark-800"
+                >
+                  <li
+                    v-for="u in referrerResults"
+                    :key="u.id"
+                    class="cursor-pointer px-3 py-2 text-sm hover:bg-primary-50 dark:hover:bg-dark-700"
+                    @mousedown.prevent="selectReferrer(u)"
+                  >
+                    <span class="font-medium">{{ u.email }}</span>
+                    <span class="ml-2 text-xs text-gray-400">(ID: {{ u.id }})</span>
+                  </li>
+                </ul>
+              </div>
+              <!-- Referee filter -->
+              <div class="relative">
+                <div class="relative">
+                  <input
+                    v-model="refereeSearch"
+                    type="text"
+                    class="input w-48 !py-1.5 !pr-7 text-sm"
+                    :placeholder="t('adminReferral.filterRefereePlaceholder')"
+                    @input="onRefereeSearch"
+                    @focus="refereeDropdownVisible = refereeResults.length > 0"
+                    @blur="onRefereeBlur"
+                  />
+                  <span v-if="refereeSearching" class="absolute right-2 top-0 bottom-0 flex items-center"><svg class="h-4 w-4 animate-spin text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg></span>
+                  <button v-else-if="listFilter.referee_id" @click="clearRefereeFilter" class="absolute right-2 top-0 bottom-0 flex items-center text-gray-400 hover:text-gray-600 dark:hover:text-dark-200 text-xs">✕</button>
+                </div>
+                <ul
+                  v-if="refereeDropdownVisible && refereeResults.length > 0"
+                  class="absolute z-10 mt-1 max-h-48 w-full overflow-auto rounded-md border border-gray-200 bg-white shadow-lg dark:border-dark-600 dark:bg-dark-800"
+                >
+                  <li
+                    v-for="u in refereeResults"
+                    :key="u.id"
+                    class="cursor-pointer px-3 py-2 text-sm hover:bg-primary-50 dark:hover:bg-dark-700"
+                    @mousedown.prevent="selectReferee(u)"
+                  >
+                    <span class="font-medium">{{ u.email }}</span>
+                    <span class="ml-2 text-xs text-gray-400">(ID: {{ u.id }})</span>
+                  </li>
+                </ul>
+              </div>
             </div>
             <div v-if="referralList.length === 0" class="py-8 text-center text-gray-500 dark:text-dark-400">
               {{ t('adminReferral.noReferrals') }}
@@ -430,14 +490,14 @@
                         {{ item.status }}
                       </span>
                     </td>
-                    <td class="py-3 pr-4 text-right text-gray-700 dark:text-dark-200">${{ item.invitee_reward_amount.toFixed(2) }}</td>
-                    <td class="py-3 pr-4 text-right text-gray-700 dark:text-dark-200">${{ item.inviter_reward_amount.toFixed(2) }}</td>
+                    <td class="py-3 pr-4 text-right text-gray-700 dark:text-dark-200">${{ (item.invitee_reward_amount + (item.invitee_ongoing_reward_total || 0)).toFixed(2) }}</td>
+                    <td class="py-3 pr-4 text-right text-gray-700 dark:text-dark-200">${{ (item.inviter_reward_amount + (item.ongoing_reward_total || 0)).toFixed(2) }}</td>
                     <td class="py-3 text-right">
                       <button
                         v-if="item.status === 'pending'"
                         @click="handleMarkCompleted(item)"
                         :disabled="completingReferralId === item.id"
-                        class="btn btn-outline btn-sm"
+                        class="btn btn-secondary btn-sm"
                       >
                         {{ completingReferralId === item.id ? t('adminReferral.granting') : t('adminReferral.manualComplete') }}
                       </button>
@@ -450,8 +510,23 @@
 
           <!-- Leaderboard Tab -->
           <div v-if="activeTab === 'leaderboard'" class="p-6">
-            <div class="mb-4 flex items-center gap-2">
+            <div class="mb-4 flex flex-wrap items-center gap-3">
               <Select v-model="leaderboardPeriod" :options="leaderboardPeriodOptions" class="w-40" @change="loadLeaderboard" />
+              <template v-if="leaderboardPeriod === 'custom'">
+                <input
+                  v-model="leaderboardStartDate"
+                  type="date"
+                  class="input w-40 !py-1.5 text-sm"
+                  @change="loadLeaderboard"
+                />
+                <span class="text-gray-500 dark:text-dark-400 text-sm">—</span>
+                <input
+                  v-model="leaderboardEndDate"
+                  type="date"
+                  class="input w-40 !py-1.5 text-sm"
+                  @change="loadLeaderboard"
+                />
+              </template>
             </div>
             <div v-if="leaderboard.length === 0" class="py-8 text-center text-gray-500 dark:text-dark-400">
               {{ t('adminReferral.noLeaderboard') }}
@@ -546,7 +621,7 @@
               <p class="mt-1 text-sm text-gray-500 dark:text-dark-400">{{ t('adminReferral.userConfigDescription') }}</p>
               <div class="mt-4 flex gap-2">
                 <input v-model.number="userConfigUserId" type="number" min="1" class="input" :placeholder="t('adminReferral.userIdPlaceholder')" />
-                <button @click="loadUserConfig" :disabled="!userConfigUserId" class="btn btn-outline">{{ t('adminReferral.load') }}</button>
+                <button @click="loadUserConfig" :disabled="!userConfigUserId" class="btn btn-secondary">{{ t('adminReferral.load') }}</button>
               </div>
             </div>
 
@@ -555,7 +630,7 @@
                 <h4 class="text-base font-semibold text-gray-900 dark:text-white">
                   {{ userConfigData.has_custom_config ? t('adminReferral.userHasCustom') : t('adminReferral.userNoCustom') }}
                 </h4>
-                <button v-if="userConfigData.has_custom_config" @click="clearUserConfig" class="btn btn-outline btn-sm text-red-600">
+                <button v-if="userConfigData.has_custom_config" @click="clearUserConfig" class="btn btn-danger btn-sm">
                   {{ t('adminReferral.clearOverride') }}
                 </button>
               </div>
@@ -763,6 +838,7 @@ const leaderboardPeriodOptions = computed(() => [
   { value: 'all_time', label: t('adminReferral.allTime') },
   { value: 'this_month', label: t('adminReferral.thisMonth') },
   { value: 'this_week', label: t('adminReferral.thisWeek') },
+  { value: 'custom', label: t('adminReferral.customDate') },
 ])
 
 const batchTargetOptions = computed(() => [
@@ -814,10 +890,26 @@ const config = reactive<ReferralConfig>({
 })
 
 const referralList = ref<ReferralListItem[]>([])
-const listFilter = reactive({ status: '' })
+const listFilter = reactive({ status: '', referrer_id: undefined as number | undefined, referee_id: undefined as number | undefined })
+
+const referrerSearch = ref('')
+const referrerResults = ref<{ id: number; email: string }[]>([])
+const referrerDropdownVisible = ref(false)
+const referrerSelectedEmail = ref('')
+const referrerSearching = ref(false)
+let referrerSearchTimer: ReturnType<typeof setTimeout> | null = null
+
+const refereeSearch = ref('')
+const refereeResults = ref<{ id: number; email: string }[]>([])
+const refereeDropdownVisible = ref(false)
+const refereeSelectedEmail = ref('')
+const refereeSearching = ref(false)
+let refereeSearchTimer: ReturnType<typeof setTimeout> | null = null
 
 const leaderboard = ref<LeaderboardItem[]>([])
-const leaderboardPeriod = ref<'all_time' | 'this_month' | 'this_week'>('all_time')
+const leaderboardPeriod = ref<'all_time' | 'this_month' | 'this_week' | 'custom'>('all_time')
+const leaderboardStartDate = ref('')
+const leaderboardEndDate = ref('')
 
 const grantForm = reactive({
   user_id: null as number | null,
@@ -930,6 +1022,8 @@ async function loadList() {
       page: 1,
       page_size: 50,
       status: listFilter.status || undefined,
+      referrer_id: listFilter.referrer_id || undefined,
+      referee_id: listFilter.referee_id || undefined,
     })
     referralList.value = result.items || []
   } catch (error) {
@@ -937,12 +1031,119 @@ async function loadList() {
   }
 }
 
+function onReferrerBlur() {
+  setTimeout(() => {
+    referrerDropdownVisible.value = false
+    referrerSearching.value = false
+  }, 100)
+}
+
+function onRefereeBlur() {
+  setTimeout(() => {
+    refereeDropdownVisible.value = false
+    refereeSearching.value = false
+  }, 100)
+}
+
+function onReferrerSearch() {
+  listFilter.referrer_id = undefined
+  referrerSelectedEmail.value = ''
+  if (referrerSearchTimer) clearTimeout(referrerSearchTimer)
+  const query = referrerSearch.value.trim()
+  if (!query) {
+    referrerResults.value = []
+    referrerDropdownVisible.value = false
+    loadList()
+    return
+  }
+  referrerSearching.value = true
+  referrerSearchTimer = setTimeout(async () => {
+    try {
+      const res = await listUsers(1, 10, { search: query })
+      referrerResults.value = (res.items || []).map((u: any) => ({ id: u.id, email: u.email }))
+      referrerDropdownVisible.value = referrerResults.value.length > 0
+    } catch {
+      referrerResults.value = []
+      referrerDropdownVisible.value = false
+    } finally {
+      referrerSearching.value = false
+    }
+  }, 150)
+}
+
+function selectReferrer(user: { id: number; email: string }) {
+  listFilter.referrer_id = user.id
+  referrerSelectedEmail.value = user.email
+  referrerSearch.value = user.email
+  referrerResults.value = []
+  referrerDropdownVisible.value = false
+  loadList()
+}
+
+function clearReferrerFilter() {
+  listFilter.referrer_id = undefined
+  referrerSelectedEmail.value = ''
+  referrerSearch.value = ''
+  referrerResults.value = []
+  referrerDropdownVisible.value = false
+  loadList()
+}
+
+function onRefereeSearch() {
+  listFilter.referee_id = undefined
+  refereeSelectedEmail.value = ''
+  if (refereeSearchTimer) clearTimeout(refereeSearchTimer)
+  const query = refereeSearch.value.trim()
+  if (!query) {
+    refereeResults.value = []
+    refereeDropdownVisible.value = false
+    loadList()
+    return
+  }
+  refereeSearching.value = true
+  refereeSearchTimer = setTimeout(async () => {
+    try {
+      const res = await listUsers(1, 10, { search: query })
+      refereeResults.value = (res.items || []).map((u: any) => ({ id: u.id, email: u.email }))
+      refereeDropdownVisible.value = refereeResults.value.length > 0
+    } catch {
+      refereeResults.value = []
+      refereeDropdownVisible.value = false
+    } finally {
+      refereeSearching.value = false
+    }
+  }, 150)
+}
+
+function selectReferee(user: { id: number; email: string }) {
+  listFilter.referee_id = user.id
+  refereeSelectedEmail.value = user.email
+  refereeSearch.value = user.email
+  refereeResults.value = []
+  refereeDropdownVisible.value = false
+  loadList()
+}
+
+function clearRefereeFilter() {
+  listFilter.referee_id = undefined
+  refereeSelectedEmail.value = ''
+  refereeSearch.value = ''
+  refereeResults.value = []
+  refereeDropdownVisible.value = false
+  loadList()
+}
+
 async function loadLeaderboard() {
   try {
-    leaderboard.value = (await adminReferralAPI.getLeaderboard({
+    const params: { limit: number; period: 'all_time' | 'this_month' | 'this_week' | 'custom'; start_date?: string; end_date?: string } = {
       limit: 20,
       period: leaderboardPeriod.value,
-    })) || []
+    }
+    if (leaderboardPeriod.value === 'custom' && leaderboardStartDate.value && leaderboardEndDate.value) {
+      params.start_date = leaderboardStartDate.value
+      params.end_date = leaderboardEndDate.value
+    }
+    leaderboard.value = (await adminReferralAPI.getLeaderboard(params)) || []
   } catch (error) {
     console.error('Failed to load leaderboard:', error)
   }

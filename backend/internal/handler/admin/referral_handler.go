@@ -351,6 +351,8 @@ func (h *ReferralHandler) UpdateConfig(c *gin.Context) {
 // GET /api/v1/admin/referral/list
 func (h *ReferralHandler) ListReferrals(c *gin.Context) {
 	status := c.Query("status")
+	referrerID, _ := strconv.ParseInt(c.Query("referrer_id"), 10, 64)
+	refereeID, _ := strconv.ParseInt(c.Query("referee_id"), 10, 64)
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
 	if page < 1 {
@@ -360,7 +362,7 @@ func (h *ReferralHandler) ListReferrals(c *gin.Context) {
 		pageSize = 20
 	}
 
-	referrals, total, err := h.referralService.AdminListReferrals(c.Request.Context(), status, page, pageSize)
+	referrals, total, err := h.referralService.AdminListReferrals(c.Request.Context(), status, referrerID, refereeID, page, pageSize)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -377,7 +379,9 @@ func (h *ReferralHandler) ListReferrals(c *gin.Context) {
 func (h *ReferralHandler) GetLeaderboard(c *gin.Context) {
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
 	period := c.DefaultQuery("period", "all_time")
-	entries, err := h.referralService.AdminGetLeaderboard(c.Request.Context(), period, limit)
+	startDate := c.Query("start_date")
+	endDate := c.Query("end_date")
+	entries, err := h.referralService.AdminGetLeaderboard(c.Request.Context(), period, startDate, endDate, limit)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

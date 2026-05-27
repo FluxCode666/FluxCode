@@ -71,6 +71,8 @@ export interface ReferralListItem {
   inviter_reward_amount: number
   ongoing_reward_count: number
   ongoing_reward_total: number
+  invitee_ongoing_reward_count: number
+  invitee_ongoing_reward_total: number
   created_at: string
   invitee_rewarded_at?: string
   inviter_rewarded_at?: string
@@ -210,6 +212,8 @@ export async function listReferrals(params?: {
   page_size?: number
   status?: string
   search?: string
+  referrer_id?: number
+  referee_id?: number
 }): Promise<{ items: ReferralListItem[]; total: number; page: number }> {
   const { data } = await apiClient.get<{ items: ReferralListItem[]; total: number; page: number }>(
     '/admin/referral/list',
@@ -220,7 +224,9 @@ export async function listReferrals(params?: {
 
 export async function getLeaderboard(params?: {
   limit?: number
-  period?: 'all_time' | 'this_month' | 'this_week'
+  period?: 'all_time' | 'this_month' | 'this_week' | 'custom'
+  start_date?: string
+  end_date?: string
 }): Promise<LeaderboardItem[]> {
   const { data } = await apiClient.get<LeaderboardItem[]>('/admin/referral/leaderboard', { params })
   return data
