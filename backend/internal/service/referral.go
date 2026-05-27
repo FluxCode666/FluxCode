@@ -316,9 +316,9 @@ type ReferralRepository interface {
 	// GetStatsByReferrerID 获取推广人的推广统计
 	GetStatsByReferrerID(ctx context.Context, referrerID int64) (*ReferralStats, error)
 	// ListAll 管理端列表（分页，支持筛选）
-	ListAll(ctx context.Context, status string, offset, limit int) ([]Referral, int, error)
-	// GetLeaderboard 推广排行榜（period: all_time / this_month / this_week）
-	GetLeaderboard(ctx context.Context, period string, limit int) ([]ReferralLeaderboardEntry, error)
+	ListAll(ctx context.Context, status string, referrerID, refereeID int64, offset, limit int) ([]Referral, int, error)
+	// GetLeaderboard 推广排行榜（period: all_time / this_month / this_week / custom）
+	GetLeaderboard(ctx context.Context, period, startDate, endDate string, limit int) ([]ReferralLeaderboardEntry, error)
 	// GetTrendByReferrerID 用户级趋势数据（按日，最近 N 天）
 	GetTrendByReferrerID(ctx context.Context, referrerID int64, days int) ([]ReferralTrendPoint, error)
 	// GetGlobalTrend 全站趋势数据
