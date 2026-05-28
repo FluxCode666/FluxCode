@@ -356,6 +356,7 @@ type OpenAIGatewayService struct {
 	channelService        *ChannelService
 	balanceNotifyService  *BalanceNotifyService
 	disabledProxyMode     DisabledProxyScheduleModeProvider
+	settingService        *SettingService
 
 	openaiWSPoolOnce              sync.Once
 	openaiWSStateStoreOnce        sync.Once
@@ -448,6 +449,13 @@ func (s *OpenAIGatewayService) SetDisabledProxyScheduleModeProvider(p DisabledPr
 		return
 	}
 	s.disabledProxyMode = p
+}
+
+func (s *OpenAIGatewayService) SetSettingService(settingService *SettingService) {
+	if s == nil {
+		return
+	}
+	s.settingService = settingService
 }
 
 // ResolveChannelMapping 解析渠道级模型映射（代理到 ChannelService）
@@ -1970,7 +1978,6 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		return nil, errors.New("codex_cli_only restriction: only codex official clients are allowed")
 	}
 
-	originalBody := body
 	reqModel, reqStream, promptCacheKey := extractOpenAIRequestMetaFromBody(body)
 	originalModel := reqModel
 
@@ -2010,7 +2017,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	if passthroughEnabled {
 		// 透传分支只需要轻量提取字段，避免热路径全量 Unmarshal。
 		reasoningEffort := extractOpenAIReasoningEffortFromBody(body, reqModel)
-		return s.forwardOpenAIPassthrough(ctx, c, account, originalBody, reqModel, reasoningEffort, reqStream, startTime)
+		return s.forwardOpenAIPassthrough(ctx, c, account, body, reqModel, reasoningEffort, reqStream, startTime)
 	}
 
 	reqBody, err := getOpenAIRequestBodyMap(c, body)
@@ -2029,6 +2036,16 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		if v, ok := reqBody["prompt_cache_key"].(string); ok {
 			promptCacheKey = strings.TrimSpace(v)
 		}
+	}
+	if updatedBody, changed, err := applyResolvedSystemPromptToJSON(ctx, c, body, PlatformOpenAI, PlatformOpenAI, s.settingService); err != nil {
+		return nil, fmt.Errorf("apply system prompt: %w", err)
+	} else if changed {
+		body = updatedBody
+		if err := json.Unmarshal(body, &reqBody); err != nil {
+			return nil, fmt.Errorf("parse system prompt request body: %w", err)
+		}
+	} else {
+		body = updatedBody
 	}
 
 	// Track if body needs re-serialization
@@ -2276,9 +2293,9 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		}
 	}
 
-	// 仅在 WSv2 模式保留 previous_response_id，其他模式（HTTP/WSv1）统一过滤。
-	// 注意：该规则同样适用于 Codex CLI 请求，避免 WSv1 向上游透传不支持字段。
-	if wsDecision.Transport != OpenAIUpstreamTransportResponsesWebsocketV2 {
+	// 仅在 WSv2 模式或工具输出续链场景保留 previous_response_id。
+	// function_call_output 依赖 previous_response_id 关联历史工具调用，不能在转发前删除。
+	if wsDecision.Transport != OpenAIUpstreamTransportResponsesWebsocketV2 && !HasFunctionCallOutput(reqBody) {
 		if _, has := reqBody["previous_response_id"]; has {
 			delete(reqBody, "previous_response_id")
 			bodyModified = true
@@ -2313,7 +2330,6 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			}
 		}
 	}
-
 	// Get access token
 	token, _, err := s.GetAccessToken(ctx, account)
 	if err != nil {
@@ -2685,6 +2701,11 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	reqStream bool,
 	startTime time.Time,
 ) (*OpenAIForwardResult, error) {
+	var injectErr error
+	body, _, injectErr = applyResolvedSystemPromptToJSON(ctx, c, body, PlatformOpenAI, PlatformOpenAI, s.settingService)
+	if injectErr != nil {
+		return nil, fmt.Errorf("apply system prompt: %w", injectErr)
+	}
 	if account != nil && account.Type == AccountTypeOAuth {
 		if rejectReason := detectOpenAIPassthroughInstructionsRejectReason(reqModel, body); rejectReason != "" {
 			rejectMsg := "OpenAI codex passthrough requires a non-empty instructions field"
@@ -3588,6 +3609,13 @@ func (s *OpenAIGatewayService) handleErrorResponse(
 	var statusCode int
 
 	switch resp.StatusCode {
+	case 400:
+		statusCode = http.StatusBadRequest
+		errType = "invalid_request_error"
+		errMsg = upstreamMsg
+		if errMsg == "" {
+			errMsg = "Upstream request failed"
+		}
 	case 401:
 		statusCode = http.StatusBadGateway
 		errType = "upstream_error"

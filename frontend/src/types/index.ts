@@ -501,6 +501,8 @@ export type GroupPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity'
 
 export type SubscriptionType = 'standard' | 'subscription'
 
+export type SystemPromptMode = 'inherit' | 'passthrough' | 'override' | 'append'
+
 export interface OpenAIMessagesDispatchModelConfig {
   opus_mapped_model?: string
   sonnet_mapped_model?: string
@@ -516,6 +518,8 @@ export interface Group {
   rate_multiplier: number
   is_exclusive: boolean
   status: 'active' | 'inactive'
+  system_prompt: string
+  system_prompt_mode: SystemPromptMode
   subscription_type: SubscriptionType
   daily_limit_usd: number | null
   weekly_limit_usd: number | null
@@ -571,6 +575,8 @@ export interface ApiKey {
   status: 'active' | 'inactive' | 'quota_exhausted' | 'expired'
   ip_whitelist: string[]
   ip_blacklist: string[]
+  system_prompt: string
+  system_prompt_mode: SystemPromptMode
   last_used_at: string | null
   quota: number // Quota limit in USD (0 = unlimited)
   quota_used: number // Used quota amount in USD
@@ -598,6 +604,8 @@ export interface CreateApiKeyRequest {
   custom_key?: string // Optional custom API Key
   ip_whitelist?: string[]
   ip_blacklist?: string[]
+  system_prompt?: string
+  system_prompt_mode?: SystemPromptMode
   quota?: number // Quota limit in USD (0 = unlimited)
   expires_in_days?: number // Days until expiry (null = never expires)
   rate_limit_5h?: number
@@ -611,6 +619,8 @@ export interface UpdateApiKeyRequest {
   status?: 'active' | 'inactive'
   ip_whitelist?: string[]
   ip_blacklist?: string[]
+  system_prompt?: string
+  system_prompt_mode?: SystemPromptMode
   quota?: number // Quota limit in USD (null = no change, 0 = unlimited)
   expires_at?: string | null // Expiration time (null = no change)
   reset_quota?: boolean // Reset quota_used to 0
@@ -626,6 +636,8 @@ export interface CreateGroupRequest {
   platform?: GroupPlatform
   rate_multiplier?: number
   is_exclusive?: boolean
+  system_prompt?: string
+  system_prompt_mode?: SystemPromptMode
   subscription_type?: SubscriptionType
   daily_limit_usd?: number | null
   weekly_limit_usd?: number | null
@@ -651,6 +663,8 @@ export interface UpdateGroupRequest {
   rate_multiplier?: number
   is_exclusive?: boolean
   status?: 'active' | 'inactive'
+  system_prompt?: string
+  system_prompt_mode?: SystemPromptMode
   subscription_type?: SubscriptionType
   daily_limit_usd?: number | null
   weekly_limit_usd?: number | null

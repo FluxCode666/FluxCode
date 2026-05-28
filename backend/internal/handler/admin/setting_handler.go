@@ -163,6 +163,14 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		FallbackModelAntigravity:             settings.FallbackModelAntigravity,
 		EnableIdentityPatch:                  settings.EnableIdentityPatch,
 		IdentityPatchPrompt:                  settings.IdentityPatchPrompt,
+		SystemPromptAnthropic:                settings.SystemPromptAnthropic,
+		SystemPromptModeAnthropic:            settings.SystemPromptModeAnthropic,
+		SystemPromptOpenAI:                   settings.SystemPromptOpenAI,
+		SystemPromptModeOpenAI:               settings.SystemPromptModeOpenAI,
+		SystemPromptGemini:                   settings.SystemPromptGemini,
+		SystemPromptModeGemini:               settings.SystemPromptModeGemini,
+		SystemPromptAntigravity:              settings.SystemPromptAntigravity,
+		SystemPromptModeAntigravity:          settings.SystemPromptModeAntigravity,
 		OpsMonitoringEnabled:                 opsEnabled && settings.OpsMonitoringEnabled,
 		OpsRealtimeMonitoringEnabled:         settings.OpsRealtimeMonitoringEnabled,
 		OpsQueryModeDefault:                  settings.OpsQueryModeDefault,
@@ -296,6 +304,16 @@ type UpdateSettingsRequest struct {
 	// Identity patch configuration (Claude -> Gemini)
 	EnableIdentityPatch bool   `json:"enable_identity_patch"`
 	IdentityPatchPrompt string `json:"identity_patch_prompt"`
+
+	// System prompt injection configuration
+	SystemPromptAnthropic       string `json:"system_prompt_anthropic"`
+	SystemPromptModeAnthropic   string `json:"system_prompt_mode_anthropic"`
+	SystemPromptOpenAI          string `json:"system_prompt_openai"`
+	SystemPromptModeOpenAI      string `json:"system_prompt_mode_openai"`
+	SystemPromptGemini          string `json:"system_prompt_gemini"`
+	SystemPromptModeGemini      string `json:"system_prompt_mode_gemini"`
+	SystemPromptAntigravity     string `json:"system_prompt_antigravity"`
+	SystemPromptModeAntigravity string `json:"system_prompt_mode_antigravity"`
 
 	// Ops monitoring (vNext)
 	OpsMonitoringEnabled         *bool   `json:"ops_monitoring_enabled"`
@@ -867,6 +885,14 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		FallbackModelAntigravity:         req.FallbackModelAntigravity,
 		EnableIdentityPatch:              req.EnableIdentityPatch,
 		IdentityPatchPrompt:              req.IdentityPatchPrompt,
+		SystemPromptAnthropic:            req.SystemPromptAnthropic,
+		SystemPromptModeAnthropic:        req.SystemPromptModeAnthropic,
+		SystemPromptOpenAI:               req.SystemPromptOpenAI,
+		SystemPromptModeOpenAI:           req.SystemPromptModeOpenAI,
+		SystemPromptGemini:               req.SystemPromptGemini,
+		SystemPromptModeGemini:           req.SystemPromptModeGemini,
+		SystemPromptAntigravity:          req.SystemPromptAntigravity,
+		SystemPromptModeAntigravity:      req.SystemPromptModeAntigravity,
 		MinClaudeCodeVersion:             req.MinClaudeCodeVersion,
 		MaxClaudeCodeVersion:             req.MaxClaudeCodeVersion,
 		AllowUngroupedKeyScheduling:      req.AllowUngroupedKeyScheduling,
@@ -1096,6 +1122,14 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		FallbackModelAntigravity:             updatedSettings.FallbackModelAntigravity,
 		EnableIdentityPatch:                  updatedSettings.EnableIdentityPatch,
 		IdentityPatchPrompt:                  updatedSettings.IdentityPatchPrompt,
+		SystemPromptAnthropic:                updatedSettings.SystemPromptAnthropic,
+		SystemPromptModeAnthropic:            updatedSettings.SystemPromptModeAnthropic,
+		SystemPromptOpenAI:                   updatedSettings.SystemPromptOpenAI,
+		SystemPromptModeOpenAI:               updatedSettings.SystemPromptModeOpenAI,
+		SystemPromptGemini:                   updatedSettings.SystemPromptGemini,
+		SystemPromptModeGemini:               updatedSettings.SystemPromptModeGemini,
+		SystemPromptAntigravity:              updatedSettings.SystemPromptAntigravity,
+		SystemPromptModeAntigravity:          updatedSettings.SystemPromptModeAntigravity,
 		OpsMonitoringEnabled:                 updatedSettings.OpsMonitoringEnabled,
 		OpsRealtimeMonitoringEnabled:         updatedSettings.OpsRealtimeMonitoringEnabled,
 		OpsQueryModeDefault:                  updatedSettings.OpsQueryModeDefault,
@@ -1360,6 +1394,18 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	}
 	if before.IdentityPatchPrompt != after.IdentityPatchPrompt {
 		changed = append(changed, "identity_patch_prompt")
+	}
+	if before.SystemPromptAnthropic != after.SystemPromptAnthropic || before.SystemPromptModeAnthropic != after.SystemPromptModeAnthropic {
+		changed = append(changed, "system_prompt_anthropic")
+	}
+	if before.SystemPromptOpenAI != after.SystemPromptOpenAI || before.SystemPromptModeOpenAI != after.SystemPromptModeOpenAI {
+		changed = append(changed, "system_prompt_openai")
+	}
+	if before.SystemPromptGemini != after.SystemPromptGemini || before.SystemPromptModeGemini != after.SystemPromptModeGemini {
+		changed = append(changed, "system_prompt_gemini")
+	}
+	if before.SystemPromptAntigravity != after.SystemPromptAntigravity || before.SystemPromptModeAntigravity != after.SystemPromptModeAntigravity {
+		changed = append(changed, "system_prompt_antigravity")
 	}
 	if before.OpsMonitoringEnabled != after.OpsMonitoringEnabled {
 		changed = append(changed, "ops_monitoring_enabled")

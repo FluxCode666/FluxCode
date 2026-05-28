@@ -88,6 +88,32 @@ func TestOpenAIHandleErrorResponse_NoRuleKeepsDefault(t *testing.T) {
 	assert.Equal(t, "Upstream request failed", errField["message"])
 }
 
+func TestOpenAIHandleErrorResponse_Upstream400ReturnsInvalidRequest(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+
+	svc := &OpenAIGatewayService{}
+	respBody := []byte(`{"error":{"message":"No tool output found for tool search call fc_test."}}`)
+	resp := &http.Response{
+		StatusCode: http.StatusBadRequest,
+		Body:       io.NopCloser(bytes.NewReader(respBody)),
+		Header:     http.Header{},
+	}
+	account := &Account{ID: 12, Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
+
+	_, err := svc.handleErrorResponse(context.Background(), resp, c, account, nil)
+	require.Error(t, err)
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+
+	var payload map[string]any
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &payload))
+	errField, ok := payload["error"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "invalid_request_error", errField["type"])
+	require.Contains(t, errField["message"], "No tool output found")
+}
+
 func TestGeminiWriteGeminiMappedError_NoRuleKeepsDefault(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	rec := httptest.NewRecorder()

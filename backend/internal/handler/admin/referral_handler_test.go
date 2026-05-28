@@ -231,10 +231,10 @@ func (r *referralAdminReferralRepoStub) IncrementInviteeOngoingReward(_ context.
 func (r *referralAdminReferralRepoStub) GetStatsByReferrerID(_ context.Context, _ int64) (*service.ReferralStats, error) {
 	return nil, nil
 }
-func (r *referralAdminReferralRepoStub) ListAll(_ context.Context, _ string, _, _ int) ([]service.Referral, int, error) {
+func (r *referralAdminReferralRepoStub) ListAll(_ context.Context, _ string, _, _ int64, _, _ int) ([]service.Referral, int, error) {
 	return nil, 0, nil
 }
-func (r *referralAdminReferralRepoStub) GetLeaderboard(_ context.Context, _ string, _ int) ([]service.ReferralLeaderboardEntry, error) {
+func (r *referralAdminReferralRepoStub) GetLeaderboard(_ context.Context, _, _, _ string, _ int) ([]service.ReferralLeaderboardEntry, error) {
 	return nil, nil
 }
 func (r *referralAdminReferralRepoStub) GetTrendByReferrerID(_ context.Context, _ int64, _ int) ([]service.ReferralTrendPoint, error) {

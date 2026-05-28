@@ -159,6 +159,8 @@ type CreateGroupInput struct {
 	Platform         string
 	RateMultiplier   float64
 	IsExclusive      bool
+	SystemPrompt     string
+	SystemPromptMode string
 	SubscriptionType string   // standard/subscription
 	DailyLimitUSD    *float64 // 日限额 (USD)
 	WeeklyLimitUSD   *float64 // 周限额 (USD)
@@ -194,6 +196,8 @@ type UpdateGroupInput struct {
 	RateMultiplier   *float64 // 使用指针以支持设置为0
 	IsExclusive      *bool
 	Status           string
+	SystemPrompt     *string
+	SystemPromptMode *string
 	SubscriptionType string   // standard/subscription
 	DailyLimitUSD    *float64 // 日限额 (USD)
 	WeeklyLimitUSD   *float64 // 周限额 (USD)
@@ -947,6 +951,11 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		subscriptionType = SubscriptionTypeStandard
 	}
 
+	systemPrompt, systemPromptMode, err := NormalizeSystemPromptConfig(input.SystemPrompt, input.SystemPromptMode)
+	if err != nil {
+		return nil, err
+	}
+
 	// 限额字段：nil/负数 表示"无限制"，0 表示"不允许用量"，正数表示具体限额
 	dailyLimit := normalizeLimit(input.DailyLimitUSD)
 	weeklyLimit := normalizeLimit(input.WeeklyLimitUSD)
@@ -1019,6 +1028,8 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		RateMultiplier:                  input.RateMultiplier,
 		IsExclusive:                     input.IsExclusive,
 		Status:                          StatusActive,
+		SystemPrompt:                    systemPrompt,
+		SystemPromptMode:                systemPromptMode,
 		SubscriptionType:                subscriptionType,
 		DailyLimitUSD:                   dailyLimit,
 		WeeklyLimitUSD:                  weeklyLimit,
@@ -1183,6 +1194,20 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	}
 	if input.Status != "" {
 		group.Status = input.Status
+	}
+	if input.SystemPrompt != nil || input.SystemPromptMode != nil {
+		systemPrompt := group.SystemPrompt
+		systemPromptMode := group.SystemPromptMode
+		if input.SystemPrompt != nil {
+			systemPrompt = *input.SystemPrompt
+		}
+		if input.SystemPromptMode != nil {
+			systemPromptMode = *input.SystemPromptMode
+		}
+		group.SystemPrompt, group.SystemPromptMode, err = NormalizeSystemPromptConfig(systemPrompt, systemPromptMode)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	// 订阅相关字段

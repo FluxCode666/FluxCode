@@ -276,16 +276,19 @@ func TestReferralService_AdminMarkReferralCompleted_SalesReferrerRequiresAmounts
 func newReferralRewardTestService(referrer *User, referral *Referral) (*ReferralService, *referralGiftBalanceRepoStub, *referralRepoStub) {
 	settingRepo := &referralSettingRepoStub{
 		values: map[string]string{
-			SettingKeyReferralEnabled:                   "true",
-			SettingKeyReferralInviteeReward:             "1",
-			SettingKeyReferralInviterReward:             "20",
-			SettingKeyReferralMaxInvites:                "0",
-			SettingKeyReferralRewardExpiryDays:          "0",
-			SettingKeyReferralOngoingRewardEnabled:      "true",
-			SettingKeyReferralOngoingRewardType:         "percentage",
-			SettingKeyReferralOngoingRewardValue:        "5",
-			SettingKeyReferralOngoingRewardMaxCount:     "0",
-			SettingKeyReferralOngoingRewardDurationDays: "0",
+			SettingKeyReferralEnabled:                         "true",
+			SettingKeyReferralInviteeReward:                   "1",
+			SettingKeyReferralInviterReward:                   "20",
+			SettingKeyReferralMaxInvites:                      "0",
+			SettingKeyReferralRewardExpiryDays:                "0",
+			SettingKeyReferralInviterFirstChargeRewardEnabled: "true",
+			SettingKeyReferralInviterFirstChargeRewardType:    "fixed",
+			SettingKeyReferralInviterFirstChargeRewardValue:   "20",
+			SettingKeyReferralOngoingRewardEnabled:            "true",
+			SettingKeyReferralOngoingRewardType:               "percentage",
+			SettingKeyReferralOngoingRewardValue:              "5",
+			SettingKeyReferralOngoingRewardMaxCount:           "0",
+			SettingKeyReferralOngoingRewardDurationDays:       "0",
 		},
 	}
 	userRepo := &referralUserRepoStub{

@@ -3,7 +3,12 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"reflect"
 	"strings"
+
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/gin-gonic/gin"
 )
 
 type EffectiveSystemPrompt struct {
@@ -11,6 +16,8 @@ type EffectiveSystemPrompt struct {
 	Mode   string
 	Source string
 }
+
+var ErrInvalidSystemPromptMode = infraerrors.BadRequest("INVALID_SYSTEM_PROMPT_MODE", "invalid system prompt mode")
 
 func (p EffectiveSystemPrompt) Enabled() bool {
 	return strings.TrimSpace(p.Prompt) != "" && IsSystemPromptInjectionMode(p.Mode)
@@ -20,6 +27,25 @@ type SystemPromptSettingsProvider interface {
 	GetSystemPromptSettings(ctx context.Context) map[string]EffectiveSystemPrompt
 }
 
+type systemPromptAPIKeyContextKey struct{}
+
+const ginAPIKeyContextKey = "api_key"
+
+func WithAPIKeyContext(ctx context.Context, apiKey *APIKey) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return context.WithValue(ctx, systemPromptAPIKeyContextKey{}, apiKey)
+}
+
+func APIKeyFromContext(ctx context.Context) (*APIKey, bool) {
+	if ctx == nil {
+		return nil, false
+	}
+	apiKey, ok := ctx.Value(systemPromptAPIKeyContextKey{}).(*APIKey)
+	return apiKey, ok && apiKey != nil
+}
+
 func NormalizeSystemPromptMode(mode string) string {
 	switch strings.TrimSpace(mode) {
 	case SystemPromptModePassthrough, SystemPromptModeOverride, SystemPromptModeAppend:
@@ -27,6 +53,29 @@ func NormalizeSystemPromptMode(mode string) string {
 	default:
 		return SystemPromptModeInherit
 	}
+}
+
+func ValidateSystemPromptMode(mode string) error {
+	switch strings.TrimSpace(mode) {
+	case "", SystemPromptModeInherit, SystemPromptModePassthrough, SystemPromptModeOverride, SystemPromptModeAppend:
+		return nil
+	default:
+		return ErrInvalidSystemPromptMode.WithMetadata(map[string]string{"mode": strings.TrimSpace(mode)})
+	}
+}
+
+func NormalizeSystemPromptConfig(prompt, mode string) (string, string, error) {
+	if err := ValidateSystemPromptMode(mode); err != nil {
+		return "", "", err
+	}
+	normalizedMode := strings.TrimSpace(mode)
+	if normalizedMode == "" {
+		normalizedMode = SystemPromptModeInherit
+	}
+	if normalizedMode == SystemPromptModeInherit {
+		return "", normalizedMode, nil
+	}
+	return strings.TrimSpace(prompt), normalizedMode, nil
 }
 
 func IsSystemPromptInjectionMode(mode string) bool {
@@ -49,13 +98,110 @@ func ResolveEffectiveSystemPrompt(ctx context.Context, apiKey *APIKey, platform 
 			}
 		}
 	}
-	if settings != nil {
+	if !isNilSystemPromptSettingsProvider(settings) {
 		byPlatform := settings.GetSystemPromptSettings(ctx)
 		if p, ok := byPlatform[strings.TrimSpace(platform)]; ok && p.Enabled() {
 			return p
 		}
 	}
 	return EffectiveSystemPrompt{Mode: SystemPromptModeInherit, Source: SystemPromptSourceNone}
+}
+
+func isNilSystemPromptSettingsProvider(settings SystemPromptSettingsProvider) bool {
+	if settings == nil {
+		return true
+	}
+	value := reflect.ValueOf(settings)
+	switch value.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
+		return value.IsNil()
+	default:
+		return false
+	}
+}
+
+func applyResolvedSystemPromptToJSON(
+	ctx context.Context,
+	c *gin.Context,
+	body []byte,
+	requestPlatform string,
+	settingsPlatform string,
+	settings SystemPromptSettingsProvider,
+) ([]byte, bool, error) {
+	runtimeCtx := systemPromptRuntimeContext(ctx, c)
+	apiKey := resolveRuntimeAPIKey(ctx, c)
+	effective := ResolveEffectiveSystemPrompt(runtimeCtx, apiKey, settingsPlatform, settings)
+	return ApplySystemPromptToJSON(body, requestPlatform, effective)
+}
+
+func applyResolvedSystemPromptToChatCompletionsJSON(
+	ctx context.Context,
+	c *gin.Context,
+	body []byte,
+	platform string,
+	settings SystemPromptSettingsProvider,
+) ([]byte, bool, error) {
+	runtimeCtx := systemPromptRuntimeContext(ctx, c)
+	apiKey := resolveRuntimeAPIKey(ctx, c)
+	effective := ResolveEffectiveSystemPrompt(runtimeCtx, apiKey, platform, settings)
+	return ApplySystemPromptToChatCompletionsJSON(body, effective)
+}
+
+func systemPromptRuntimeContext(ctx context.Context, c *gin.Context) context.Context {
+	if c != nil && c.Request != nil && c.Request.Context() != nil {
+		return c.Request.Context()
+	}
+	if ctx != nil {
+		return ctx
+	}
+	return context.Background()
+}
+
+func resolveRuntimeAPIKey(ctx context.Context, c *gin.Context) *APIKey {
+	var apiKey *APIKey
+	runtimeCtx := systemPromptRuntimeContext(ctx, c)
+	if c != nil {
+		if value, exists := c.Get(ginAPIKeyContextKey); exists {
+			if key, ok := value.(*APIKey); ok {
+				apiKey = key
+			}
+		}
+	}
+	if apiKey == nil {
+		if key, ok := APIKeyFromContext(ctx); ok {
+			apiKey = key
+		}
+	}
+	if apiKey == nil {
+		if key, ok := APIKeyFromContext(runtimeCtx); ok {
+			apiKey = key
+		}
+	}
+
+	group := runtimeGroupFromContext(runtimeCtx)
+	if apiKey == nil {
+		if group == nil {
+			return nil
+		}
+		return &APIKey{SystemPromptMode: SystemPromptModeInherit, Group: group}
+	}
+	if apiKey.Group != nil || group == nil {
+		return apiKey
+	}
+	keyCopy := *apiKey
+	keyCopy.Group = group
+	return &keyCopy
+}
+
+func runtimeGroupFromContext(ctx context.Context) *Group {
+	if ctx == nil {
+		return nil
+	}
+	group, _ := ctx.Value(ctxkey.Group).(*Group)
+	if !IsGroupContextValid(group) {
+		return nil
+	}
+	return group
 }
 
 func promptFromLayer(prompt, mode, source string) EffectiveSystemPrompt {

@@ -106,6 +106,30 @@ var codexCLICfgSF singleflight.Group
 
 const codexCLICfgCacheTTL = 7 * 24 * time.Hour // 7 天；由 UpdateSettings 主动刷新
 
+// cachedSystemPromptSettings 缓存平台级系统提示词配置（进程内缓存，7 天 TTL，由 UpdateSettings 主动刷新）
+type cachedSystemPromptSettings struct {
+	values    map[string]EffectiveSystemPrompt
+	expiresAt int64 // unix nano
+}
+
+var systemPromptSettingsCache atomic.Value // *cachedSystemPromptSettings
+var systemPromptSettingsSF singleflight.Group
+
+const systemPromptSettingsCacheTTL = 7 * 24 * time.Hour
+const systemPromptSettingsErrorTTL = 5 * time.Second
+const systemPromptSettingsDBTimeout = 5 * time.Second
+
+var systemPromptSettingKeys = []string{
+	SettingKeySystemPromptAnthropic,
+	SettingKeySystemPromptModeAnthropic,
+	SettingKeySystemPromptOpenAI,
+	SettingKeySystemPromptModeOpenAI,
+	SettingKeySystemPromptGemini,
+	SettingKeySystemPromptModeGemini,
+	SettingKeySystemPromptAntigravity,
+	SettingKeySystemPromptModeAntigravity,
+}
+
 // DefaultSubscriptionGroupReader validates group references used by default subscriptions.
 type DefaultSubscriptionGroupReader interface {
 	GetByID(ctx context.Context, id int64) (*Group, error)
@@ -638,6 +662,18 @@ func (s *SettingService) UpdateSettings(ctx context.Context, settings *SystemSet
 	updates[SettingKeyEnableIdentityPatch] = strconv.FormatBool(settings.EnableIdentityPatch)
 	updates[SettingKeyIdentityPatchPrompt] = settings.IdentityPatchPrompt
 
+	if err := normalizeSystemPromptSystemSettings(settings); err != nil {
+		return err
+	}
+	updates[SettingKeySystemPromptAnthropic] = settings.SystemPromptAnthropic
+	updates[SettingKeySystemPromptModeAnthropic] = settings.SystemPromptModeAnthropic
+	updates[SettingKeySystemPromptOpenAI] = settings.SystemPromptOpenAI
+	updates[SettingKeySystemPromptModeOpenAI] = settings.SystemPromptModeOpenAI
+	updates[SettingKeySystemPromptGemini] = settings.SystemPromptGemini
+	updates[SettingKeySystemPromptModeGemini] = settings.SystemPromptModeGemini
+	updates[SettingKeySystemPromptAntigravity] = settings.SystemPromptAntigravity
+	updates[SettingKeySystemPromptModeAntigravity] = settings.SystemPromptModeAntigravity
+
 	// Ops monitoring (vNext)
 	updates[SettingKeyOpsMonitoringEnabled] = strconv.FormatBool(settings.OpsMonitoringEnabled)
 	updates[SettingKeyOpsRealtimeMonitoringEnabled] = strconv.FormatBool(settings.OpsRealtimeMonitoringEnabled)
@@ -704,6 +740,7 @@ func (s *SettingService) UpdateSettings(ctx context.Context, settings *SystemSet
 			version:   settings.CodexCLIVersion,
 			expiresAt: time.Now().Add(codexCLICfgCacheTTL).UnixNano(),
 		})
+		refreshSystemPromptSettingsCache(settings)
 		if s.onUpdate != nil {
 			s.onUpdate() // Invalidate cache after settings update
 		}
@@ -747,6 +784,23 @@ func (s *SettingService) validateDefaultSubscriptionGroups(ctx context.Context, 
 		}
 	}
 
+	return nil
+}
+
+func normalizeSystemPromptSystemSettings(settings *SystemSettings) error {
+	var err error
+	if settings.SystemPromptAnthropic, settings.SystemPromptModeAnthropic, err = NormalizeSystemPromptConfig(settings.SystemPromptAnthropic, settings.SystemPromptModeAnthropic); err != nil {
+		return err
+	}
+	if settings.SystemPromptOpenAI, settings.SystemPromptModeOpenAI, err = NormalizeSystemPromptConfig(settings.SystemPromptOpenAI, settings.SystemPromptModeOpenAI); err != nil {
+		return err
+	}
+	if settings.SystemPromptGemini, settings.SystemPromptModeGemini, err = NormalizeSystemPromptConfig(settings.SystemPromptGemini, settings.SystemPromptModeGemini); err != nil {
+		return err
+	}
+	if settings.SystemPromptAntigravity, settings.SystemPromptModeAntigravity, err = NormalizeSystemPromptConfig(settings.SystemPromptAntigravity, settings.SystemPromptModeAntigravity); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -907,6 +961,108 @@ func (s *SettingService) GetCodexCLIConfig(ctx context.Context) (userAgent, vers
 	return "", ""
 }
 
+// GetSystemPromptSettings returns platform-level system prompt settings.
+// It uses a 7-day in-process cache; UpdateSettings refreshes it immediately.
+func (s *SettingService) GetSystemPromptSettings(ctx context.Context) map[string]EffectiveSystemPrompt {
+	if cached, ok := systemPromptSettingsCache.Load().(*cachedSystemPromptSettings); ok && cached != nil {
+		if time.Now().UnixNano() < cached.expiresAt {
+			return cloneSystemPromptSettings(cached.values)
+		}
+	}
+	val, _, _ := systemPromptSettingsSF.Do("system_prompt_settings", func() (any, error) {
+		if cached, ok := systemPromptSettingsCache.Load().(*cachedSystemPromptSettings); ok && cached != nil {
+			if time.Now().UnixNano() < cached.expiresAt {
+				return cloneSystemPromptSettings(cached.values), nil
+			}
+		}
+		dbCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), systemPromptSettingsDBTimeout)
+		defer cancel()
+		values, err := s.settingRepo.GetMultiple(dbCtx, systemPromptSettingKeys)
+		if err != nil {
+			slog.Warn("failed to get system prompt settings", "error", err)
+			fallback := defaultSystemPromptSettings()
+			systemPromptSettingsCache.Store(&cachedSystemPromptSettings{
+				values:    fallback,
+				expiresAt: time.Now().Add(systemPromptSettingsErrorTTL).UnixNano(),
+			})
+			return cloneSystemPromptSettings(fallback), nil
+		}
+		settings := buildSystemPromptSettings(values)
+		systemPromptSettingsCache.Store(&cachedSystemPromptSettings{
+			values:    settings,
+			expiresAt: time.Now().Add(systemPromptSettingsCacheTTL).UnixNano(),
+		})
+		return cloneSystemPromptSettings(settings), nil
+	})
+	if out, ok := val.(map[string]EffectiveSystemPrompt); ok {
+		return out
+	}
+	return defaultSystemPromptSettings()
+}
+
+func refreshSystemPromptSettingsCache(settings *SystemSettings) {
+	if settings == nil {
+		return
+	}
+	values := map[string]string{
+		SettingKeySystemPromptAnthropic:       settings.SystemPromptAnthropic,
+		SettingKeySystemPromptModeAnthropic:   settings.SystemPromptModeAnthropic,
+		SettingKeySystemPromptOpenAI:          settings.SystemPromptOpenAI,
+		SettingKeySystemPromptModeOpenAI:      settings.SystemPromptModeOpenAI,
+		SettingKeySystemPromptGemini:          settings.SystemPromptGemini,
+		SettingKeySystemPromptModeGemini:      settings.SystemPromptModeGemini,
+		SettingKeySystemPromptAntigravity:     settings.SystemPromptAntigravity,
+		SettingKeySystemPromptModeAntigravity: settings.SystemPromptModeAntigravity,
+	}
+	systemPromptSettingsSF.Forget("system_prompt_settings")
+	systemPromptSettingsCache.Store(&cachedSystemPromptSettings{
+		values:    buildSystemPromptSettings(values),
+		expiresAt: time.Now().Add(systemPromptSettingsCacheTTL).UnixNano(),
+	})
+}
+
+func buildSystemPromptSettings(values map[string]string) map[string]EffectiveSystemPrompt {
+	out := defaultSystemPromptSettings()
+	apply := func(platform, promptKey, modeKey string) {
+		prompt, mode := normalizeStoredSystemPromptConfig(values[promptKey], values[modeKey])
+		out[platform] = EffectiveSystemPrompt{
+			Prompt: prompt,
+			Mode:   mode,
+			Source: SystemPromptSourceSystem,
+		}
+	}
+	apply(PlatformAnthropic, SettingKeySystemPromptAnthropic, SettingKeySystemPromptModeAnthropic)
+	apply(PlatformOpenAI, SettingKeySystemPromptOpenAI, SettingKeySystemPromptModeOpenAI)
+	apply(PlatformGemini, SettingKeySystemPromptGemini, SettingKeySystemPromptModeGemini)
+	apply(PlatformAntigravity, SettingKeySystemPromptAntigravity, SettingKeySystemPromptModeAntigravity)
+	return out
+}
+
+func normalizeStoredSystemPromptConfig(prompt, mode string) (string, string) {
+	normalizedPrompt, normalizedMode, err := NormalizeSystemPromptConfig(prompt, mode)
+	if err != nil {
+		return "", SystemPromptModeInherit
+	}
+	return normalizedPrompt, normalizedMode
+}
+
+func defaultSystemPromptSettings() map[string]EffectiveSystemPrompt {
+	return map[string]EffectiveSystemPrompt{
+		PlatformAnthropic:   {Mode: SystemPromptModeInherit, Source: SystemPromptSourceSystem},
+		PlatformOpenAI:      {Mode: SystemPromptModeInherit, Source: SystemPromptSourceSystem},
+		PlatformGemini:      {Mode: SystemPromptModeInherit, Source: SystemPromptSourceSystem},
+		PlatformAntigravity: {Mode: SystemPromptModeInherit, Source: SystemPromptSourceSystem},
+	}
+}
+
+func cloneSystemPromptSettings(in map[string]EffectiveSystemPrompt) map[string]EffectiveSystemPrompt {
+	out := make(map[string]EffectiveSystemPrompt, len(in))
+	for key, value := range in {
+		out[key] = value
+	}
+	return out
+}
+
 // IsEmailVerifyEnabled 检查是否开启邮件验证
 func (s *SettingService) IsEmailVerifyEnabled(ctx context.Context) bool {
 	value, err := s.settingRepo.GetValue(ctx, SettingKeyEmailVerifyEnabled)
@@ -1054,8 +1210,16 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyFallbackModelGemini:      "gemini-2.5-pro",
 		SettingKeyFallbackModelAntigravity: "gemini-2.5-pro",
 		// Identity patch defaults
-		SettingKeyEnableIdentityPatch: "true",
-		SettingKeyIdentityPatchPrompt: "",
+		SettingKeyEnableIdentityPatch:         "true",
+		SettingKeyIdentityPatchPrompt:         "",
+		SettingKeySystemPromptAnthropic:       "",
+		SettingKeySystemPromptModeAnthropic:   SystemPromptModeInherit,
+		SettingKeySystemPromptOpenAI:          "",
+		SettingKeySystemPromptModeOpenAI:      SystemPromptModeInherit,
+		SettingKeySystemPromptGemini:          "",
+		SettingKeySystemPromptModeGemini:      SystemPromptModeInherit,
+		SettingKeySystemPromptAntigravity:     "",
+		SettingKeySystemPromptModeAntigravity: SystemPromptModeInherit,
 
 		// Ops monitoring defaults (vNext)
 		SettingKeyOpsMonitoringEnabled:         "true",
@@ -1317,6 +1481,23 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		result.EnableIdentityPatch = true
 	}
 	result.IdentityPatchPrompt = settings[SettingKeyIdentityPatchPrompt]
+
+	result.SystemPromptAnthropic, result.SystemPromptModeAnthropic = normalizeStoredSystemPromptConfig(
+		settings[SettingKeySystemPromptAnthropic],
+		settings[SettingKeySystemPromptModeAnthropic],
+	)
+	result.SystemPromptOpenAI, result.SystemPromptModeOpenAI = normalizeStoredSystemPromptConfig(
+		settings[SettingKeySystemPromptOpenAI],
+		settings[SettingKeySystemPromptModeOpenAI],
+	)
+	result.SystemPromptGemini, result.SystemPromptModeGemini = normalizeStoredSystemPromptConfig(
+		settings[SettingKeySystemPromptGemini],
+		settings[SettingKeySystemPromptModeGemini],
+	)
+	result.SystemPromptAntigravity, result.SystemPromptModeAntigravity = normalizeStoredSystemPromptConfig(
+		settings[SettingKeySystemPromptAntigravity],
+		settings[SettingKeySystemPromptModeAntigravity],
+	)
 
 	// Ops monitoring settings (default: enabled, fail-open)
 	result.OpsMonitoringEnabled = !isFalseSettingValue(settings[SettingKeyOpsMonitoringEnabled])

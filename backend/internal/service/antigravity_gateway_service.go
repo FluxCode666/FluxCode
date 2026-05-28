@@ -1352,6 +1352,12 @@ func (s *AntigravityGatewayService) Forward(ctx context.Context, c *gin.Context,
 	sessionID := getSessionID(c)
 	prefix := logPrefix(sessionID, account.Name)
 
+	if updatedBody, _, err := applyResolvedSystemPromptToJSON(ctx, c, body, PlatformAnthropic, PlatformAntigravity, s.settingService); err != nil {
+		return nil, s.writeClaudeError(c, http.StatusBadRequest, "invalid_request_error", "Invalid request body")
+	} else {
+		body = updatedBody
+	}
+
 	// 解析 Claude 请求
 	var claudeReq antigravity.ClaudeRequest
 	if err := json.Unmarshal(body, &claudeReq); err != nil {
@@ -2133,6 +2139,11 @@ func (s *AntigravityGatewayService) ForwardGemini(ctx context.Context, c *gin.Co
 	proxyURL := account.EffectiveProxyURL()
 
 	// Antigravity 上游要求必须包含身份提示词，注入到请求中
+	if updatedBody, _, err := applyResolvedSystemPromptToJSON(ctx, c, body, PlatformAntigravity, PlatformAntigravity, s.settingService); err != nil {
+		return nil, s.writeGoogleError(c, http.StatusBadRequest, "Invalid request body")
+	} else {
+		body = updatedBody
+	}
 	injectedBody, err := injectIdentityPatchToGeminiRequest(body)
 	if err != nil {
 		return nil, s.writeGoogleError(c, http.StatusBadRequest, "Invalid request body")
@@ -4217,6 +4228,11 @@ func (s *AntigravityGatewayService) ForwardUpstream(ctx context.Context, c *gin.
 		return nil, fmt.Errorf("missing model")
 	}
 	originalModel := claudeReq.Model
+	if updatedBody, _, err := applyResolvedSystemPromptToJSON(ctx, c, body, PlatformAnthropic, PlatformAntigravity, s.settingService); err != nil {
+		return nil, fmt.Errorf("apply system prompt: %w", err)
+	} else {
+		body = updatedBody
+	}
 
 	// 构建上游请求 URL
 	upstreamURL := baseURL + "/v1/messages"

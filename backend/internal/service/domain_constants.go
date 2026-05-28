@@ -202,6 +202,16 @@ const (
 	SettingKeyEnableIdentityPatch = "enable_identity_patch"
 	SettingKeyIdentityPatchPrompt = "identity_patch_prompt"
 
+	// System prompt injection settings (platform scoped)
+	SettingKeySystemPromptAnthropic       = "system_prompt_anthropic"
+	SettingKeySystemPromptModeAnthropic   = "system_prompt_mode_anthropic"
+	SettingKeySystemPromptOpenAI          = "system_prompt_openai"
+	SettingKeySystemPromptModeOpenAI      = "system_prompt_mode_openai"
+	SettingKeySystemPromptGemini          = "system_prompt_gemini"
+	SettingKeySystemPromptModeGemini      = "system_prompt_mode_gemini"
+	SettingKeySystemPromptAntigravity     = "system_prompt_antigravity"
+	SettingKeySystemPromptModeAntigravity = "system_prompt_mode_antigravity"
+
 	// =========================
 	// Ops Monitoring (vNext)
 	// =========================

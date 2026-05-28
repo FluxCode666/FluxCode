@@ -89,6 +89,17 @@ export default {
     }
   },
 
+  systemPrompt: {
+    modeLabel: '注入模式',
+    promptLabel: '系统提示词',
+    modes: {
+      inherit: '不配置',
+      passthrough: '透传',
+      override: '覆盖',
+      append: '追加'
+    }
+  },
+
   // Key Usage Query Page
   keyUsage: {
     title: 'API Key 用量查询',
@@ -638,6 +649,12 @@ export default {
     groupChangedSuccess: '分组更换成功',
     failedToChangeGroup: '更换分组失败',
     groupRequired: '请选择分组',
+    systemPrompt: {
+      title: 'API Key 系统提示词',
+      description: '仅对当前 API Key 生效，优先级高于分组和系统平台默认配置。',
+      placeholder: '输入当前 API Key 的系统提示词',
+      promptHint: '选择“不配置”时不会在 API Key 层注入提示词。'
+    },
     usage: '用量',
     today: '今日',
     total: '近30天',
@@ -2249,6 +2266,12 @@ export default {
       optionalDescription: '可选描述',
       platformHint: '选择此分组关联的平台',
       platformNotEditable: '创建后不可更改平台',
+      systemPrompt: {
+        title: '分组系统提示词',
+        description: '对该分组内的 API Key 生效，优先级高于系统平台默认配置，低于 API Key 自定义配置。',
+        placeholder: '输入该分组的系统提示词',
+        promptHint: '选择“不配置”时继续使用系统平台默认配置。'
+      },
       noGroupsYet: '暂无分组',
       createFirstGroup: '创建您的第一个分组来组织 API 密钥。',
       creating: '创建中...',
@@ -5256,6 +5279,7 @@ export default {
         security: '安全与认证',
         users: '用户默认值',
         gateway: '网关服务',
+        systemPrompt: '系统提示词',
         email: '邮件设置',
         backup: '数据备份',
         payment: '支付设置',
@@ -5420,6 +5444,13 @@ export default {
         metadataPassthroughHint: '透传客户端原始 metadata.user_id，不进行重写。可能提高上游缓存命中率。',
         cchSigning: 'CCH 签名',
         cchSigningHint: '对转发请求的 billing header 进行 CCH 哈希签名。关闭时保留原始占位符。',
+      },
+      systemPrompt: {
+        title: '平台系统提示词',
+        description: '按平台配置全局默认系统提示词，优先级低于分组和 API Key 配置。',
+        platformDescription: '{platform} 平台默认配置',
+        placeholder: '输入 {platform} 的默认系统提示词',
+        promptHint: '选择“不配置”时，该平台不会从系统配置层注入提示词。'
       },
       webSearchEmulation: {
         title: 'Web Search 模拟',

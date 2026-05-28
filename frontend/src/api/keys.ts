@@ -65,7 +65,8 @@ export async function create(
   ipBlacklist?: string[],
   quota?: number,
   expiresInDays?: number,
-  rateLimitData?: { rate_limit_5h?: number; rate_limit_1d?: number; rate_limit_7d?: number }
+  rateLimitData?: { rate_limit_5h?: number; rate_limit_1d?: number; rate_limit_7d?: number },
+  systemPromptConfig?: Pick<CreateApiKeyRequest, 'system_prompt' | 'system_prompt_mode'>
 ): Promise<ApiKey> {
   const payload: CreateApiKeyRequest = { name }
   if (groupId !== undefined) {
@@ -94,6 +95,10 @@ export async function create(
   }
   if (rateLimitData?.rate_limit_7d && rateLimitData.rate_limit_7d > 0) {
     payload.rate_limit_7d = rateLimitData.rate_limit_7d
+  }
+  if (systemPromptConfig) {
+    payload.system_prompt = systemPromptConfig.system_prompt
+    payload.system_prompt_mode = systemPromptConfig.system_prompt_mode
   }
 
   const { data } = await apiClient.post<ApiKey>('/keys', payload)

@@ -30,13 +30,15 @@ func NewAPIKeyHandler(apiKeyService *service.APIKeyService) *APIKeyHandler {
 
 // CreateAPIKeyRequest represents the create API key request payload
 type CreateAPIKeyRequest struct {
-	Name          string   `json:"name" binding:"required"`
-	GroupID       *int64   `json:"group_id"`        // nullable
-	CustomKey     *string  `json:"custom_key"`      // 可选的自定义key
-	IPWhitelist   []string `json:"ip_whitelist"`    // IP 白名单
-	IPBlacklist   []string `json:"ip_blacklist"`    // IP 黑名单
-	Quota         *float64 `json:"quota"`           // 配额限制 (USD)
-	ExpiresInDays *int     `json:"expires_in_days"` // 过期天数
+	Name             string   `json:"name" binding:"required"`
+	GroupID          *int64   `json:"group_id"`     // nullable
+	CustomKey        *string  `json:"custom_key"`   // 可选的自定义key
+	IPWhitelist      []string `json:"ip_whitelist"` // IP 白名单
+	IPBlacklist      []string `json:"ip_blacklist"` // IP 黑名单
+	SystemPrompt     string   `json:"system_prompt"`
+	SystemPromptMode string   `json:"system_prompt_mode"`
+	Quota            *float64 `json:"quota"`           // 配额限制 (USD)
+	ExpiresInDays    *int     `json:"expires_in_days"` // 过期天数
 
 	// Rate limit fields (0 = unlimited)
 	RateLimit5h *float64 `json:"rate_limit_5h"`
@@ -46,14 +48,16 @@ type CreateAPIKeyRequest struct {
 
 // UpdateAPIKeyRequest represents the update API key request payload
 type UpdateAPIKeyRequest struct {
-	Name        string   `json:"name"`
-	GroupID     *int64   `json:"group_id"`
-	Status      string   `json:"status" binding:"omitempty,oneof=active inactive"`
-	IPWhitelist []string `json:"ip_whitelist"` // IP 白名单
-	IPBlacklist []string `json:"ip_blacklist"` // IP 黑名单
-	Quota       *float64 `json:"quota"`        // 配额限制 (USD), 0=无限制
-	ExpiresAt   *string  `json:"expires_at"`   // 过期时间 (ISO 8601)
-	ResetQuota  *bool    `json:"reset_quota"`  // 重置已用配额
+	Name             string   `json:"name"`
+	GroupID          *int64   `json:"group_id"`
+	Status           string   `json:"status" binding:"omitempty,oneof=active inactive"`
+	IPWhitelist      []string `json:"ip_whitelist"` // IP 白名单
+	IPBlacklist      []string `json:"ip_blacklist"` // IP 黑名单
+	SystemPrompt     *string  `json:"system_prompt"`
+	SystemPromptMode *string  `json:"system_prompt_mode"`
+	Quota            *float64 `json:"quota"`       // 配额限制 (USD), 0=无限制
+	ExpiresAt        *string  `json:"expires_at"`  // 过期时间 (ISO 8601)
+	ResetQuota       *bool    `json:"reset_quota"` // 重置已用配额
 
 	// Rate limit fields (nil = no change, 0 = unlimited)
 	RateLimit5h         *float64 `json:"rate_limit_5h"`
@@ -154,12 +158,14 @@ func (h *APIKeyHandler) Create(c *gin.Context) {
 	}
 
 	svcReq := service.CreateAPIKeyRequest{
-		Name:          req.Name,
-		GroupID:       req.GroupID,
-		CustomKey:     req.CustomKey,
-		IPWhitelist:   req.IPWhitelist,
-		IPBlacklist:   req.IPBlacklist,
-		ExpiresInDays: req.ExpiresInDays,
+		Name:             req.Name,
+		GroupID:          req.GroupID,
+		CustomKey:        req.CustomKey,
+		IPWhitelist:      req.IPWhitelist,
+		IPBlacklist:      req.IPBlacklist,
+		SystemPrompt:     req.SystemPrompt,
+		SystemPromptMode: req.SystemPromptMode,
+		ExpiresInDays:    req.ExpiresInDays,
 	}
 	if req.Quota != nil {
 		svcReq.Quota = *req.Quota
@@ -207,6 +213,8 @@ func (h *APIKeyHandler) Update(c *gin.Context) {
 	svcReq := service.UpdateAPIKeyRequest{
 		IPWhitelist:         req.IPWhitelist,
 		IPBlacklist:         req.IPBlacklist,
+		SystemPrompt:        req.SystemPrompt,
+		SystemPromptMode:    req.SystemPromptMode,
 		Quota:               req.Quota,
 		ResetQuota:          req.ResetQuota,
 		RateLimit5h:         req.RateLimit5h,
