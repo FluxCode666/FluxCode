@@ -68,6 +68,7 @@ export interface ReferralListItem {
   referral_code: string
   status: string
   invitee_reward_amount: number
+  invitee_first_charge_reward_amount?: number
   inviter_reward_amount: number
   ongoing_reward_count: number
   ongoing_reward_total: number

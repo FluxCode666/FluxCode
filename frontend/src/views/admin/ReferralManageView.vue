@@ -490,7 +490,7 @@
                         {{ item.status }}
                       </span>
                     </td>
-                    <td class="py-3 pr-4 text-right text-gray-700 dark:text-dark-200">${{ (item.invitee_reward_amount + (item.invitee_ongoing_reward_total || 0)).toFixed(2) }}</td>
+                    <td class="py-3 pr-4 text-right text-gray-700 dark:text-dark-200">${{ (item.invitee_reward_amount + (item.invitee_first_charge_reward_amount || 0) + (item.invitee_ongoing_reward_total || 0)).toFixed(2) }}</td>
                     <td class="py-3 pr-4 text-right text-gray-700 dark:text-dark-200">${{ (item.inviter_reward_amount + (item.ongoing_reward_total || 0)).toFixed(2) }}</td>
                     <td class="py-3 text-right">
                       <button

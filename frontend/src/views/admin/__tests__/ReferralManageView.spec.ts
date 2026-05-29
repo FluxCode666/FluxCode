@@ -109,9 +109,11 @@ describe('ReferralManageView', () => {
         referral_code: 'ABC123',
         status: 'pending',
         invitee_reward_amount: 10,
+        invitee_first_charge_reward_amount: 2.5,
         inviter_reward_amount: 20,
         ongoing_reward_count: 0,
         ongoing_reward_total: 0,
+        invitee_ongoing_reward_total: 4,
         created_at: '2026-05-14T00:00:00Z',
       }],
       total: 1,
@@ -145,6 +147,7 @@ describe('ReferralManageView', () => {
     expect(wrapper.text()).toContain('#12')
     expect(wrapper.text()).toContain('referrer@example.com')
     expect(wrapper.text()).toContain('buyer@example.com')
+    expect(wrapper.text()).toContain('$16.50')
     expect(wrapper.text()).toContain('adminReferral.manualComplete')
 
     const manualCompleteButton = wrapper.findAll('button').find((button) => button.text() === 'adminReferral.manualComplete')

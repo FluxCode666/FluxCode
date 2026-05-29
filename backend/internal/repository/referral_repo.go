@@ -12,6 +12,13 @@ type referralRepository struct {
 	db *sql.DB
 }
 
+const referralInviteeFirstChargeRewardSelect = `COALESCE((
+	SELECT SUM(gbr.amount)
+	FROM gift_balance_records gbr
+	WHERE gbr.source = 'referral_invitee_first_charge'
+	  AND gbr.user_id = r.referee_id
+), 0)`
+
 func NewReferralRepository(sqlDB *sql.DB) service.ReferralRepository {
 	return &referralRepository{db: sqlDB}
 }
@@ -77,17 +84,18 @@ func (r *referralRepository) GetByReferrerID(ctx context.Context, referrerID int
 		return nil, 0, err
 	}
 	rows, err := r.db.QueryContext(ctx,
-		`SELECT r.id, r.referrer_id, r.referee_id, r.referral_code, r.status,
+		fmt.Sprintf(`SELECT r.id, r.referrer_id, r.referee_id, r.referral_code, r.status,
 		        r.invitee_reward_amount, r.inviter_reward_amount,
 		        r.invitee_rewarded_at, r.inviter_rewarded_at,
 		        r.ongoing_reward_count, r.ongoing_reward_total,
 		        COALESCE(r.invitee_ongoing_reward_count, 0), COALESCE(r.invitee_ongoing_reward_total, 0),
+		        %s,
 		        r.created_at, r.updated_at,
 		        COALESCE(ru.email, ''), COALESCE(ru.is_sales, FALSE), COALESCE(u.email, ''), COALESCE(u.username, '')
 		 FROM referrals r
 		 LEFT JOIN users u ON r.referee_id = u.id
 		 LEFT JOIN users ru ON r.referrer_id = ru.id
-		 WHERE r.referrer_id = $1 ORDER BY r.created_at DESC LIMIT $2 OFFSET $3`,
+		 WHERE r.referrer_id = $1 ORDER BY r.created_at DESC LIMIT $2 OFFSET $3`, referralInviteeFirstChargeRewardSelect),
 		referrerID, limit, offset)
 	if err != nil {
 		return nil, 0, err
@@ -101,6 +109,7 @@ func (r *referralRepository) GetByReferrerID(ctx context.Context, referrerID int
 			&ref.InviteeRewardedAt, &ref.InviterRewardedAt,
 			&ref.OngoingRewardCount, &ref.OngoingRewardTotal,
 			&ref.InviteeOngoingRewardCount, &ref.InviteeOngoingRewardTotal,
+			&ref.InviteeFirstChargeRewardAmount,
 			&ref.CreatedAt, &ref.UpdatedAt,
 			&ref.ReferrerEmail, &ref.ReferrerIsSales, &ref.RefereeEmail, &ref.RefereeUsername); err != nil {
 			return nil, 0, err
@@ -175,16 +184,17 @@ func (r *referralRepository) GetStatsByReferrerID(ctx context.Context, referrerI
 
 func (r *referralRepository) ListAll(ctx context.Context, status string, referrerID, refereeID int64, offset, limit int) ([]service.Referral, int, error) {
 	countQuery := `SELECT COUNT(*) FROM referrals r`
-	listQuery := `SELECT r.id, r.referrer_id, r.referee_id, r.referral_code, r.status,
+	listQuery := fmt.Sprintf(`SELECT r.id, r.referrer_id, r.referee_id, r.referral_code, r.status,
 		r.invitee_reward_amount, r.inviter_reward_amount,
 		r.invitee_rewarded_at, r.inviter_rewarded_at,
 		r.ongoing_reward_count, r.ongoing_reward_total,
 		COALESCE(r.invitee_ongoing_reward_count, 0), COALESCE(r.invitee_ongoing_reward_total, 0),
+		%s,
 		r.created_at, r.updated_at,
 		COALESCE(ru.email, ''), COALESCE(ru.is_sales, FALSE), COALESCE(u.email, ''), COALESCE(u.username, '')
 		FROM referrals r
 		LEFT JOIN users u ON r.referee_id = u.id
-		LEFT JOIN users ru ON r.referrer_id = ru.id`
+		LEFT JOIN users ru ON r.referrer_id = ru.id`, referralInviteeFirstChargeRewardSelect)
 
 	var args []any
 	argIdx := 1
@@ -234,6 +244,7 @@ func (r *referralRepository) ListAll(ctx context.Context, status string, referre
 			&ref.InviteeRewardedAt, &ref.InviterRewardedAt,
 			&ref.OngoingRewardCount, &ref.OngoingRewardTotal,
 			&ref.InviteeOngoingRewardCount, &ref.InviteeOngoingRewardTotal,
+			&ref.InviteeFirstChargeRewardAmount,
 			&ref.CreatedAt, &ref.UpdatedAt,
 			&ref.ReferrerEmail, &ref.ReferrerIsSales, &ref.RefereeEmail, &ref.RefereeUsername); err != nil {
 			return nil, 0, err
