@@ -95,6 +95,16 @@ func Status(v string) predicate.APIKey {
 	return predicate.APIKey(sql.FieldEQ(FieldStatus, v))
 }
 
+// SystemPrompt applies equality check predicate on the "system_prompt" field. It's identical to SystemPromptEQ.
+func SystemPrompt(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldEQ(FieldSystemPrompt, v))
+}
+
+// SystemPromptMode applies equality check predicate on the "system_prompt_mode" field. It's identical to SystemPromptModeEQ.
+func SystemPromptMode(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldEQ(FieldSystemPromptMode, v))
+}
+
 // LastUsedAt applies equality check predicate on the "last_used_at" field. It's identical to LastUsedAtEQ.
 func LastUsedAt(v time.Time) predicate.APIKey {
 	return predicate.APIKey(sql.FieldEQ(FieldLastUsedAt, v))
@@ -533,6 +543,136 @@ func StatusEqualFold(v string) predicate.APIKey {
 // StatusContainsFold applies the ContainsFold predicate on the "status" field.
 func StatusContainsFold(v string) predicate.APIKey {
 	return predicate.APIKey(sql.FieldContainsFold(FieldStatus, v))
+}
+
+// SystemPromptEQ applies the EQ predicate on the "system_prompt" field.
+func SystemPromptEQ(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldEQ(FieldSystemPrompt, v))
+}
+
+// SystemPromptNEQ applies the NEQ predicate on the "system_prompt" field.
+func SystemPromptNEQ(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldNEQ(FieldSystemPrompt, v))
+}
+
+// SystemPromptIn applies the In predicate on the "system_prompt" field.
+func SystemPromptIn(vs ...string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldIn(FieldSystemPrompt, vs...))
+}
+
+// SystemPromptNotIn applies the NotIn predicate on the "system_prompt" field.
+func SystemPromptNotIn(vs ...string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldNotIn(FieldSystemPrompt, vs...))
+}
+
+// SystemPromptGT applies the GT predicate on the "system_prompt" field.
+func SystemPromptGT(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldGT(FieldSystemPrompt, v))
+}
+
+// SystemPromptGTE applies the GTE predicate on the "system_prompt" field.
+func SystemPromptGTE(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldGTE(FieldSystemPrompt, v))
+}
+
+// SystemPromptLT applies the LT predicate on the "system_prompt" field.
+func SystemPromptLT(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldLT(FieldSystemPrompt, v))
+}
+
+// SystemPromptLTE applies the LTE predicate on the "system_prompt" field.
+func SystemPromptLTE(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldLTE(FieldSystemPrompt, v))
+}
+
+// SystemPromptContains applies the Contains predicate on the "system_prompt" field.
+func SystemPromptContains(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldContains(FieldSystemPrompt, v))
+}
+
+// SystemPromptHasPrefix applies the HasPrefix predicate on the "system_prompt" field.
+func SystemPromptHasPrefix(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldHasPrefix(FieldSystemPrompt, v))
+}
+
+// SystemPromptHasSuffix applies the HasSuffix predicate on the "system_prompt" field.
+func SystemPromptHasSuffix(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldHasSuffix(FieldSystemPrompt, v))
+}
+
+// SystemPromptEqualFold applies the EqualFold predicate on the "system_prompt" field.
+func SystemPromptEqualFold(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldEqualFold(FieldSystemPrompt, v))
+}
+
+// SystemPromptContainsFold applies the ContainsFold predicate on the "system_prompt" field.
+func SystemPromptContainsFold(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldContainsFold(FieldSystemPrompt, v))
+}
+
+// SystemPromptModeEQ applies the EQ predicate on the "system_prompt_mode" field.
+func SystemPromptModeEQ(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldEQ(FieldSystemPromptMode, v))
+}
+
+// SystemPromptModeNEQ applies the NEQ predicate on the "system_prompt_mode" field.
+func SystemPromptModeNEQ(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldNEQ(FieldSystemPromptMode, v))
+}
+
+// SystemPromptModeIn applies the In predicate on the "system_prompt_mode" field.
+func SystemPromptModeIn(vs ...string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldIn(FieldSystemPromptMode, vs...))
+}
+
+// SystemPromptModeNotIn applies the NotIn predicate on the "system_prompt_mode" field.
+func SystemPromptModeNotIn(vs ...string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldNotIn(FieldSystemPromptMode, vs...))
+}
+
+// SystemPromptModeGT applies the GT predicate on the "system_prompt_mode" field.
+func SystemPromptModeGT(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldGT(FieldSystemPromptMode, v))
+}
+
+// SystemPromptModeGTE applies the GTE predicate on the "system_prompt_mode" field.
+func SystemPromptModeGTE(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldGTE(FieldSystemPromptMode, v))
+}
+
+// SystemPromptModeLT applies the LT predicate on the "system_prompt_mode" field.
+func SystemPromptModeLT(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldLT(FieldSystemPromptMode, v))
+}
+
+// SystemPromptModeLTE applies the LTE predicate on the "system_prompt_mode" field.
+func SystemPromptModeLTE(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldLTE(FieldSystemPromptMode, v))
+}
+
+// SystemPromptModeContains applies the Contains predicate on the "system_prompt_mode" field.
+func SystemPromptModeContains(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldContains(FieldSystemPromptMode, v))
+}
+
+// SystemPromptModeHasPrefix applies the HasPrefix predicate on the "system_prompt_mode" field.
+func SystemPromptModeHasPrefix(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldHasPrefix(FieldSystemPromptMode, v))
+}
+
+// SystemPromptModeHasSuffix applies the HasSuffix predicate on the "system_prompt_mode" field.
+func SystemPromptModeHasSuffix(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldHasSuffix(FieldSystemPromptMode, v))
+}
+
+// SystemPromptModeEqualFold applies the EqualFold predicate on the "system_prompt_mode" field.
+func SystemPromptModeEqualFold(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldEqualFold(FieldSystemPromptMode, v))
+}
+
+// SystemPromptModeContainsFold applies the ContainsFold predicate on the "system_prompt_mode" field.
+func SystemPromptModeContainsFold(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldContainsFold(FieldSystemPromptMode, v))
 }
 
 // LastUsedAtEQ applies the EQ predicate on the "last_used_at" field.

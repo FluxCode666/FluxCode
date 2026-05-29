@@ -91,6 +91,23 @@ export default {
     }
   },
 
+  systemPrompt: {
+    modeLabel: 'Injection Mode',
+    promptLabel: 'System Prompt',
+    modes: {
+      inherit: 'Not configured',
+      passthrough: 'Passthrough',
+      override: 'Override',
+      append: 'Append'
+    },
+    modeTooltips: {
+      inherit: 'Do not configure a system prompt at this level; continue resolving the next lower-priority configuration.',
+      passthrough: 'Keep an existing request system prompt unchanged; inject this prompt only when the request has none.',
+      override: 'Always replace the request system prompt with this configured prompt.',
+      append: 'Place this configured prompt before the request system prompt; inject it directly when the request has none.'
+    }
+  },
+
   // Key Usage Query Page
   keyUsage: {
     title: 'API Key Usage',
@@ -641,6 +658,12 @@ export default {
     groupChangedSuccess: 'Group changed successfully',
     failedToChangeGroup: 'Failed to change group',
     groupRequired: 'Please select a group',
+    systemPrompt: {
+      title: 'API Key System Prompt',
+      description: 'Applies only to this API Key and has higher priority than group and platform defaults.',
+      placeholder: 'Enter the system prompt for this API Key',
+      promptHint: 'When "Not configured" is selected, no prompt is injected at the API Key layer.'
+    },
     usage: 'Usage',
     today: 'Today',
     total: 'Last 30d',
@@ -2148,6 +2171,13 @@ export default {
       optionalDescription: 'Optional description',
       platformHint: 'Select the platform this group is associated with',
       platformNotEditable: 'Platform cannot be changed after creation',
+      systemPrompt: {
+        title: 'Group System Prompt',
+        description:
+          'Applies to API Keys in this group. It has higher priority than platform defaults and lower priority than API Key custom settings.',
+        placeholder: 'Enter the system prompt for this group',
+        promptHint: 'When "Not configured" is selected, the platform default can still apply.'
+      },
       rateMultiplierHint: 'Cost multiplier for this group (e.g., 1.5 = 150% of base cost)',
       exclusiveHint: 'Exclusive group, manually assign to specific users',
       exclusiveTooltip: {
@@ -5123,6 +5153,7 @@ export default {
         security: 'Security',
         users: 'Users',
         gateway: 'Gateway',
+        systemPrompt: 'System Prompt',
         email: 'Email',
         backup: 'Backup',
         payment: 'Payment',
@@ -5290,6 +5321,14 @@ export default {
         metadataPassthroughHint: 'Pass through client\'s original metadata.user_id without rewriting. May improve upstream cache hit rates.',
         cchSigning: 'CCH Signing',
         cchSigningHint: 'Sign the billing header in forwarded requests with CCH hash. When disabled, the placeholder is preserved.',
+      },
+      systemPrompt: {
+        title: 'Platform System Prompts',
+        description:
+          'Configure default system prompts by platform. Runtime priority: API Key > Group > System Settings (current platform default).',
+        platformDescription: '{platform} platform default',
+        placeholder: 'Enter the default system prompt for {platform}',
+        promptHint: 'When "Not configured" is selected, this platform does not inject a prompt from system settings.'
       },
       webSearchEmulation: {
         title: 'Web Search Emulation',

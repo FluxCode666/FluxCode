@@ -53,6 +53,7 @@ type GeminiMessagesCompatService struct {
 	httpUpstream              HTTPUpstream
 	antigravityGatewayService *AntigravityGatewayService
 	cfg                       *config.Config
+	settingService            *SettingService
 	responseHeaderFilter      *responseheaders.CompiledHeaderFilter
 	disabledProxyMode         DisabledProxyScheduleModeProvider
 }
@@ -89,6 +90,13 @@ func (s *GeminiMessagesCompatService) SetDisabledProxyScheduleModeProvider(p Dis
 		return
 	}
 	s.disabledProxyMode = p
+}
+
+func (s *GeminiMessagesCompatService) SetSettingService(settingService *SettingService) {
+	if s == nil {
+		return
+	}
+	s.settingService = settingService
 }
 
 // applyDisabledProxyScheduleMode filters out accounts whose assigned proxy is
@@ -632,6 +640,11 @@ func (s *GeminiMessagesCompatService) Forward(ctx context.Context, c *gin.Contex
 		return nil, s.writeClaudeError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
 	}
 	geminiReq = ensureGeminiFunctionCallThoughtSignatures(geminiReq)
+	if updatedReq, _, err := applyResolvedSystemPromptToJSON(ctx, c, geminiReq, PlatformGemini, PlatformGemini, s.settingService); err != nil {
+		return nil, fmt.Errorf("apply system prompt: %w", err)
+	} else {
+		geminiReq = updatedReq
+	}
 	originalClaudeBody := body
 
 	proxyURL := account.EffectiveProxyURL()
@@ -1133,6 +1146,11 @@ func (s *GeminiMessagesCompatService) ForwardNative(ctx context.Context, c *gin.
 	// Some Gemini upstreams validate tool call parts strictly; ensure any `functionCall` part includes a
 	// `thoughtSignature` to avoid frequent INVALID_ARGUMENT 400s.
 	body = ensureGeminiFunctionCallThoughtSignatures(body)
+	if updatedBody, _, err := applyResolvedSystemPromptToJSON(ctx, c, body, PlatformGemini, PlatformGemini, s.settingService); err != nil {
+		return nil, s.writeGoogleError(c, http.StatusBadRequest, "Invalid request body")
+	} else {
+		body = updatedBody
+	}
 
 	mappedModel := originalModel
 	if account.Type == AccountTypeAPIKey {

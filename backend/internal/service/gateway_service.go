@@ -3992,6 +3992,11 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 				passthroughModel = mappedModel
 			}
 		}
+		var injectErr error
+		passthroughBody, _, injectErr = applyResolvedSystemPromptToJSON(ctx, c, passthroughBody, PlatformAnthropic, PlatformAnthropic, s.settingService)
+		if injectErr != nil {
+			return nil, fmt.Errorf("apply system prompt: %w", injectErr)
+		}
 		return s.forwardAnthropicAPIKeyPassthroughWithInput(ctx, c, account, anthropicPassthroughForwardInput{
 			Body:          passthroughBody,
 			RequestModel:  passthroughModel,
@@ -4094,6 +4099,11 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 		body = s.replaceModelInBody(body, mappedModel)
 		reqModel = mappedModel
 		logger.LegacyPrintf("service.gateway", "Model mapping applied: %s -> %s (account: %s, source=%s)", originalModel, mappedModel, account.Name, mappingSource)
+	}
+	if updatedBody, _, err := applyResolvedSystemPromptToJSON(ctx, c, body, PlatformAnthropic, PlatformAnthropic, s.settingService); err != nil {
+		return nil, fmt.Errorf("apply system prompt: %w", err)
+	} else {
+		body = updatedBody
 	}
 
 	// 获取凭证
@@ -4573,6 +4583,11 @@ func (s *GatewayService) forwardAnthropicAPIKeyPassthrough(
 	reqStream bool,
 	startTime time.Time,
 ) (*ForwardResult, error) {
+	var err error
+	body, _, err = applyResolvedSystemPromptToJSON(ctx, c, body, PlatformAnthropic, PlatformAnthropic, s.settingService)
+	if err != nil {
+		return nil, fmt.Errorf("apply system prompt: %w", err)
+	}
 	return s.forwardAnthropicAPIKeyPassthroughWithInput(ctx, c, account, anthropicPassthroughForwardInput{
 		Body:          body,
 		RequestModel:  reqModel,
@@ -5208,6 +5223,11 @@ func (s *GatewayService) forwardBedrock(
 	}
 	if mappedModel != reqModel {
 		logger.LegacyPrintf("service.gateway", "[Bedrock] Model mapping: %s -> %s (account: %s)", reqModel, mappedModel, account.Name)
+	}
+	if updatedBody, _, err := applyResolvedSystemPromptToJSON(ctx, c, body, PlatformAnthropic, PlatformAnthropic, s.settingService); err != nil {
+		return nil, fmt.Errorf("apply system prompt: %w", err)
+	} else {
+		body = updatedBody
 	}
 
 	betaHeader := ""

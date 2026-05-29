@@ -326,6 +326,7 @@ func ProvideOpenAIGatewayService(
 	resolver *ModelPricingResolver,
 	channelService *ChannelService,
 	balanceNotifyService *BalanceNotifyService,
+	settingService *SettingService,
 	proxyMetricsRepo ProxyUsageMetricsRepository,
 	disabledProxyModeProvider DisabledProxyScheduleModeProvider,
 	giftBalanceRepo GiftBalanceRepository,
@@ -351,6 +352,7 @@ func ProvideOpenAIGatewayService(
 		channelService,
 		balanceNotifyService,
 	)
+	svc.SetSettingService(settingService)
 	svc.SetProxyMetricsRepo(proxyMetricsRepo)
 	svc.SetDisabledProxyScheduleModeProvider(disabledProxyModeProvider)
 	svc.SetGiftBalanceRepo(giftBalanceRepo)
@@ -403,6 +405,7 @@ func ProvideGeminiMessagesCompatService(
 	httpUpstream HTTPUpstream,
 	antigravityGatewayService *AntigravityGatewayService,
 	cfg *config.Config,
+	settingService *SettingService,
 	disabledProxyModeProvider DisabledProxyScheduleModeProvider,
 ) *GeminiMessagesCompatService {
 	svc := NewGeminiMessagesCompatService(
@@ -416,6 +419,7 @@ func ProvideGeminiMessagesCompatService(
 		antigravityGatewayService,
 		cfg,
 	)
+	svc.SetSettingService(settingService)
 	svc.SetDisabledProxyScheduleModeProvider(disabledProxyModeProvider)
 	return svc
 }

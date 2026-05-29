@@ -165,6 +165,16 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 			return nil, fmt.Errorf("remarshal after codex transform: %w", err)
 		}
 	}
+	if updatedBody, changed, err := applyResolvedSystemPromptToJSON(ctx, c, responsesBody, PlatformOpenAI, PlatformOpenAI, s.settingService); err != nil {
+		return nil, fmt.Errorf("apply system prompt: %w", err)
+	} else if changed {
+		responsesBody = updatedBody
+		if err := json.Unmarshal(responsesBody, responsesReq); err != nil {
+			return nil, fmt.Errorf("parse system prompt responses body: %w", err)
+		}
+	} else {
+		responsesBody = updatedBody
+	}
 
 	// 5. Get access token
 	token, _, err := s.GetAccessToken(ctx, account)

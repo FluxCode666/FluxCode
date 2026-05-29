@@ -50,6 +50,14 @@ func (Group) Fields() []ent.Field {
 		field.String("status").
 			MaxLen(20).
 			Default(domain.StatusActive),
+		field.String("system_prompt").
+			SchemaType(map[string]string{dialect.Postgres: "text"}).
+			Default("").
+			Comment("Group level system prompt"),
+		field.String("system_prompt_mode").
+			MaxLen(20).
+			Default("inherit").
+			Comment("Group level system prompt mode"),
 
 		// Subscription-related fields (added by migration 003)
 		field.String("platform").

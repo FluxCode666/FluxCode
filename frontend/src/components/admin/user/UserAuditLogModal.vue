@@ -187,7 +187,7 @@
               </div>
             </div>
             <div v-if="entry.gift_balance.note" class="border-t border-gray-100 px-4 py-2 dark:border-dark-700">
-              <p class="text-xs text-gray-500 dark:text-dark-400">{{ entry.gift_balance.note }}</p>
+              <p class="text-xs text-gray-500 dark:text-dark-400" v-html="formatNoteWithTags(entry.gift_balance.note)"></p>
             </div>
             <div v-if="entry.gift_balance.expires_at" class="border-t border-gray-100 px-4 py-2 dark:border-dark-700">
               <p class="text-xs text-gray-400 dark:text-dark-500">
@@ -338,6 +338,11 @@ const formatDetail = (detail: string): string => {
 const formatDetailSummary = (detail: string): string => {
   const full = formatDetail(detail)
   return full.length > 80 ? full.substring(0, 75) + '...' : full
+}
+
+const formatNoteWithTags = (note: string): string => {
+  // Replace #123 with styled span tag
+  return note.replace(/#(\d+)/g, '<span class="inline-flex items-center rounded-full bg-gray-100 px-1.5 py-0.5 text-xs font-mono text-gray-600 dark:bg-dark-600 dark:text-gray-300">#$1</span>')
 }
 
 const parseDetail = (detail: string): Record<string, unknown> | null => {

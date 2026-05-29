@@ -28,6 +28,18 @@ const (
 	PlatformAntigravity = domain.PlatformAntigravity
 )
 
+const (
+	SystemPromptModeInherit     = "inherit"
+	SystemPromptModePassthrough = "passthrough"
+	SystemPromptModeOverride    = "override"
+	SystemPromptModeAppend      = "append"
+
+	SystemPromptSourceNone   = "none"
+	SystemPromptSourceAPIKey = "api_key"
+	SystemPromptSourceGroup  = "group"
+	SystemPromptSourceSystem = "system"
+)
+
 func IsOpenAICompatiblePlatform(platform string) bool {
 	return platform == PlatformOpenAI || platform == PlatformCodex2API
 }
@@ -189,6 +201,16 @@ const (
 	// Request identity patch (Claude -> Gemini systemInstruction injection)
 	SettingKeyEnableIdentityPatch = "enable_identity_patch"
 	SettingKeyIdentityPatchPrompt = "identity_patch_prompt"
+
+	// System prompt injection settings (platform scoped)
+	SettingKeySystemPromptAnthropic       = "system_prompt_anthropic"
+	SettingKeySystemPromptModeAnthropic   = "system_prompt_mode_anthropic"
+	SettingKeySystemPromptOpenAI          = "system_prompt_openai"
+	SettingKeySystemPromptModeOpenAI      = "system_prompt_mode_openai"
+	SettingKeySystemPromptGemini          = "system_prompt_gemini"
+	SettingKeySystemPromptModeGemini      = "system_prompt_mode_gemini"
+	SettingKeySystemPromptAntigravity     = "system_prompt_antigravity"
+	SettingKeySystemPromptModeAntigravity = "system_prompt_mode_antigravity"
 
 	// =========================
 	// Ops Monitoring (vNext)

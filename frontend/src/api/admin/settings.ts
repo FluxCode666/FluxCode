@@ -4,7 +4,7 @@
  */
 
 import { apiClient } from '../client'
-import type { CustomMenuItem, CustomEndpoint, NotifyEmailEntry } from '@/types'
+import type { CustomMenuItem, CustomEndpoint, NotifyEmailEntry, SystemPromptMode } from '@/types'
 
 export interface DefaultSubscriptionSetting {
   group_id: number
@@ -96,6 +96,16 @@ export interface SystemSettings {
   // Identity patch configuration (Claude -> Gemini)
   enable_identity_patch: boolean
   identity_patch_prompt: string
+
+  // System prompt injection configuration
+  system_prompt_anthropic: string
+  system_prompt_mode_anthropic: SystemPromptMode
+  system_prompt_openai: string
+  system_prompt_mode_openai: SystemPromptMode
+  system_prompt_gemini: string
+  system_prompt_mode_gemini: SystemPromptMode
+  system_prompt_antigravity: string
+  system_prompt_mode_antigravity: SystemPromptMode
 
   // Ops Monitoring (vNext)
   ops_monitoring_enabled: boolean
@@ -232,6 +242,14 @@ export interface UpdateSettingsRequest {
   fallback_model_antigravity?: string
   enable_identity_patch?: boolean
   identity_patch_prompt?: string
+  system_prompt_anthropic?: string
+  system_prompt_mode_anthropic?: SystemPromptMode
+  system_prompt_openai?: string
+  system_prompt_mode_openai?: SystemPromptMode
+  system_prompt_gemini?: string
+  system_prompt_mode_gemini?: SystemPromptMode
+  system_prompt_antigravity?: string
+  system_prompt_mode_antigravity?: SystemPromptMode
   ops_monitoring_enabled?: boolean
   ops_realtime_monitoring_enabled?: boolean
   ops_query_mode_default?: 'auto' | 'raw' | 'preagg' | string

@@ -86,6 +86,16 @@ type SystemSettings struct {
 	EnableIdentityPatch bool   `json:"enable_identity_patch"`
 	IdentityPatchPrompt string `json:"identity_patch_prompt"`
 
+	// System prompt injection configuration
+	SystemPromptAnthropic       string
+	SystemPromptModeAnthropic   string
+	SystemPromptOpenAI          string
+	SystemPromptModeOpenAI      string
+	SystemPromptGemini          string
+	SystemPromptModeGemini      string
+	SystemPromptAntigravity     string
+	SystemPromptModeAntigravity string
+
 	// Ops monitoring (vNext)
 	OpsMonitoringEnabled         bool
 	OpsRealtimeMonitoringEnabled bool

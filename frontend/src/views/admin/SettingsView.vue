@@ -1660,6 +1660,45 @@
           </div>
         </div>
 
+        </div><!-- /Tab: Gateway -->
+
+        <!-- Tab: System Prompt -->
+        <div v-show="activeTab === 'systemPrompt'" class="space-y-6">
+        <!-- System Prompt Settings -->
+        <div class="card">
+          <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+              {{ t('admin.settings.systemPrompt.title') }}
+            </h2>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              {{ t('admin.settings.systemPrompt.description') }}
+            </p>
+          </div>
+          <div class="space-y-5 p-6">
+            <div
+              v-for="(platform, index) in systemPromptPlatforms"
+              :key="platform.key"
+              :class="index > 0 ? 'border-t border-gray-100 pt-5 dark:border-dark-700' : ''"
+            >
+              <SystemPromptConfigFields
+                :title="platform.label"
+                :mode="form[platform.modeKey]"
+                :prompt="form[platform.promptKey]"
+                :mode-options="systemPromptModeOptions"
+                :mode-label="t('systemPrompt.modeLabel')"
+                :prompt-label="t('systemPrompt.promptLabel')"
+                :prompt-placeholder="t('admin.settings.systemPrompt.placeholder', { platform: platform.label })"
+                :prompt-hint="t('admin.settings.systemPrompt.promptHint')"
+                @update:mode="form[platform.modeKey] = $event"
+                @update:prompt="form[platform.promptKey] = $event"
+              />
+            </div>
+          </div>
+        </div>
+        </div><!-- /Tab: System Prompt -->
+
+        <div v-show="activeTab === 'gateway'" class="space-y-6">
+
         <!-- Gateway Forwarding Behavior -->
         <div class="card">
           <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
@@ -3047,7 +3086,7 @@ import type {
   WebSearchProviderConfig,
   WebSearchTestResult,
 } from '@/api/admin/settings'
-import type { AdminGroup, Proxy, NotifyEmailEntry } from '@/types'
+import type { AdminGroup, Proxy, NotifyEmailEntry, SystemPromptMode } from '@/types'
 import type { ProviderInstance } from '@/types/payment'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
@@ -3057,6 +3096,7 @@ import PaymentProviderList from '@/components/payment/PaymentProviderList.vue'
 import PaymentProviderDialog from '@/components/payment/PaymentProviderDialog.vue'
 import GroupBadge from '@/components/common/GroupBadge.vue'
 import GroupOptionItem from '@/components/common/GroupOptionItem.vue'
+import SystemPromptConfigFields from '@/components/common/SystemPromptConfigFields.vue'
 import Toggle from '@/components/common/Toggle.vue'
 import ProxySelector from '@/components/common/ProxySelector.vue'
 import ImageUpload from '@/components/common/ImageUpload.vue'
@@ -3076,18 +3116,68 @@ const { t, locale } = useI18n()
 const appStore = useAppStore()
 const adminSettingsStore = useAdminSettingsStore()
 
-type SettingsTab = 'general' | 'security' | 'users' | 'gateway' | 'payment' | 'email' | 'backup'
+type SettingsTab = 'general' | 'security' | 'users' | 'gateway' | 'systemPrompt' | 'payment' | 'email' | 'backup'
 const activeTab = ref<SettingsTab>('general')
 const settingsTabs = [
   { key: 'general'  as SettingsTab, icon: 'home'   as const },
   { key: 'security' as SettingsTab, icon: 'shield' as const },
   { key: 'users'    as SettingsTab, icon: 'user'   as const },
   { key: 'gateway'  as SettingsTab, icon: 'server' as const },
+  { key: 'systemPrompt' as SettingsTab, icon: 'chat' as const },
   { key: 'payment'  as SettingsTab, icon: 'creditCard' as const },
   { key: 'email'    as SettingsTab, icon: 'mail'   as const },
   { key: 'backup'   as SettingsTab, icon: 'database' as const },
 ]
 const { copyToClipboard } = useClipboard()
+
+type SystemPromptPlatformSetting = {
+  key: string
+  label: string
+  promptKey:
+    | 'system_prompt_anthropic'
+    | 'system_prompt_openai'
+    | 'system_prompt_gemini'
+    | 'system_prompt_antigravity'
+  modeKey:
+    | 'system_prompt_mode_anthropic'
+    | 'system_prompt_mode_openai'
+    | 'system_prompt_mode_gemini'
+    | 'system_prompt_mode_antigravity'
+}
+
+const systemPromptModeOptions = computed(() => [
+  { value: 'inherit' as SystemPromptMode, label: t('systemPrompt.modes.inherit'), description: t('systemPrompt.modeTooltips.inherit') },
+  { value: 'passthrough' as SystemPromptMode, label: t('systemPrompt.modes.passthrough'), description: t('systemPrompt.modeTooltips.passthrough') },
+  { value: 'override' as SystemPromptMode, label: t('systemPrompt.modes.override'), description: t('systemPrompt.modeTooltips.override') },
+  { value: 'append' as SystemPromptMode, label: t('systemPrompt.modes.append'), description: t('systemPrompt.modeTooltips.append') },
+])
+
+const systemPromptPlatforms = computed<SystemPromptPlatformSetting[]>(() => [
+  {
+    key: 'anthropic',
+    label: t('admin.groups.platforms.anthropic'),
+    promptKey: 'system_prompt_anthropic',
+    modeKey: 'system_prompt_mode_anthropic',
+  },
+  {
+    key: 'openai',
+    label: t('admin.groups.platforms.openai'),
+    promptKey: 'system_prompt_openai',
+    modeKey: 'system_prompt_mode_openai',
+  },
+  {
+    key: 'gemini',
+    label: t('admin.groups.platforms.gemini'),
+    promptKey: 'system_prompt_gemini',
+    modeKey: 'system_prompt_mode_gemini',
+  },
+  {
+    key: 'antigravity',
+    label: t('admin.groups.platforms.antigravity'),
+    promptKey: 'system_prompt_antigravity',
+    modeKey: 'system_prompt_mode_antigravity',
+  },
+])
 
 const loading = ref(true)
 const loadFailed = ref(false)
@@ -3253,6 +3343,15 @@ const form = reactive<SettingsForm>({
   // Identity patch (Claude -> Gemini)
   enable_identity_patch: true,
   identity_patch_prompt: '',
+  // System prompt injection
+  system_prompt_anthropic: '',
+  system_prompt_mode_anthropic: 'inherit',
+  system_prompt_openai: '',
+  system_prompt_mode_openai: 'inherit',
+  system_prompt_gemini: '',
+  system_prompt_mode_gemini: 'inherit',
+  system_prompt_antigravity: '',
+  system_prompt_mode_antigravity: 'inherit',
   // Ops monitoring (vNext)
   ops_monitoring_enabled: true,
   ops_realtime_monitoring_enabled: true,
@@ -3852,6 +3951,14 @@ async function saveSettings() {
       fallback_model_antigravity: form.fallback_model_antigravity,
       enable_identity_patch: form.enable_identity_patch,
       identity_patch_prompt: form.identity_patch_prompt,
+      system_prompt_anthropic: form.system_prompt_anthropic,
+      system_prompt_mode_anthropic: form.system_prompt_mode_anthropic,
+      system_prompt_openai: form.system_prompt_openai,
+      system_prompt_mode_openai: form.system_prompt_mode_openai,
+      system_prompt_gemini: form.system_prompt_gemini,
+      system_prompt_mode_gemini: form.system_prompt_mode_gemini,
+      system_prompt_antigravity: form.system_prompt_antigravity,
+      system_prompt_mode_antigravity: form.system_prompt_mode_antigravity,
       min_claude_code_version: form.min_claude_code_version,
       max_claude_code_version: form.max_claude_code_version,
       allow_ungrouped_key_scheduling: form.allow_ungrouped_key_scheduling,

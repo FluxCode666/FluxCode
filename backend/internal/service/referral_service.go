@@ -954,7 +954,7 @@ func (s *ReferralService) isSalesReferrer(ctx context.Context, userID int64) boo
 	return SalesCommissionUserEligible(user)
 }
 
-// buildRewardNote 构建赠送余额备注，包含被邀请人邮箱(ID)、充值金额、推广人邮箱(ID)
+// buildRewardNote 构建赠送余额备注，包含被邀请人邮箱(#ID)、充值金额、推广人邮箱(#ID)
 func (s *ReferralService) buildRewardNote(ctx context.Context, prefix string, inviteeID int64, rechargeAmount float64, referrerID int64) string {
 	inviteeEmail := ""
 	if user, err := s.userRepo.GetByID(ctx, inviteeID); err == nil && user != nil {
@@ -965,9 +965,9 @@ func (s *ReferralService) buildRewardNote(ctx context.Context, prefix string, in
 		if user, err := s.userRepo.GetByID(ctx, referrerID); err == nil && user != nil {
 			referrerEmail = user.Email
 		}
-		return fmt.Sprintf("%s（被邀请人: %s(%d), 充值: %.2f, 推广人: %s(%d)）", prefix, inviteeEmail, inviteeID, rechargeAmount, referrerEmail, referrerID)
+		return fmt.Sprintf("%s（被邀请人: %s(#%d), 充值: %.2f, 推广人: %s(#%d)）", prefix, inviteeEmail, inviteeID, rechargeAmount, referrerEmail, referrerID)
 	}
-	return fmt.Sprintf("%s（被邀请人: %s(%d), 充值: %.2f）", prefix, inviteeEmail, inviteeID, rechargeAmount)
+	return fmt.Sprintf("%s（被邀请人: %s(#%d), 充值: %.2f）", prefix, inviteeEmail, inviteeID, rechargeAmount)
 }
 
 // generateUniqueCode 生成 6-8 位唯一推广码

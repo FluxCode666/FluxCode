@@ -145,6 +145,34 @@ func (_u *GroupUpdate) SetNillableStatus(v *string) *GroupUpdate {
 	return _u
 }
 
+// SetSystemPrompt sets the "system_prompt" field.
+func (_u *GroupUpdate) SetSystemPrompt(v string) *GroupUpdate {
+	_u.mutation.SetSystemPrompt(v)
+	return _u
+}
+
+// SetNillableSystemPrompt sets the "system_prompt" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableSystemPrompt(v *string) *GroupUpdate {
+	if v != nil {
+		_u.SetSystemPrompt(*v)
+	}
+	return _u
+}
+
+// SetSystemPromptMode sets the "system_prompt_mode" field.
+func (_u *GroupUpdate) SetSystemPromptMode(v string) *GroupUpdate {
+	_u.mutation.SetSystemPromptMode(v)
+	return _u
+}
+
+// SetNillableSystemPromptMode sets the "system_prompt_mode" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableSystemPromptMode(v *string) *GroupUpdate {
+	if v != nil {
+		_u.SetSystemPromptMode(*v)
+	}
+	return _u
+}
+
 // SetPlatform sets the "platform" field.
 func (_u *GroupUpdate) SetPlatform(v string) *GroupUpdate {
 	_u.mutation.SetPlatform(v)
@@ -842,6 +870,11 @@ func (_u *GroupUpdate) check() error {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "Group.status": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.SystemPromptMode(); ok {
+		if err := group.SystemPromptModeValidator(v); err != nil {
+			return &ValidationError{Name: "system_prompt_mode", err: fmt.Errorf(`ent: validator failed for field "Group.system_prompt_mode": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.Platform(); ok {
 		if err := group.PlatformValidator(v); err != nil {
 			return &ValidationError{Name: "platform", err: fmt.Errorf(`ent: validator failed for field "Group.platform": %w`, err)}
@@ -901,6 +934,12 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(group.FieldStatus, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.SystemPrompt(); ok {
+		_spec.SetField(group.FieldSystemPrompt, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.SystemPromptMode(); ok {
+		_spec.SetField(group.FieldSystemPromptMode, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.Platform(); ok {
 		_spec.SetField(group.FieldPlatform, field.TypeString, value)
@@ -1449,6 +1488,34 @@ func (_u *GroupUpdateOne) SetStatus(v string) *GroupUpdateOne {
 func (_u *GroupUpdateOne) SetNillableStatus(v *string) *GroupUpdateOne {
 	if v != nil {
 		_u.SetStatus(*v)
+	}
+	return _u
+}
+
+// SetSystemPrompt sets the "system_prompt" field.
+func (_u *GroupUpdateOne) SetSystemPrompt(v string) *GroupUpdateOne {
+	_u.mutation.SetSystemPrompt(v)
+	return _u
+}
+
+// SetNillableSystemPrompt sets the "system_prompt" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableSystemPrompt(v *string) *GroupUpdateOne {
+	if v != nil {
+		_u.SetSystemPrompt(*v)
+	}
+	return _u
+}
+
+// SetSystemPromptMode sets the "system_prompt_mode" field.
+func (_u *GroupUpdateOne) SetSystemPromptMode(v string) *GroupUpdateOne {
+	_u.mutation.SetSystemPromptMode(v)
+	return _u
+}
+
+// SetNillableSystemPromptMode sets the "system_prompt_mode" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableSystemPromptMode(v *string) *GroupUpdateOne {
+	if v != nil {
+		_u.SetSystemPromptMode(*v)
 	}
 	return _u
 }
@@ -2163,6 +2230,11 @@ func (_u *GroupUpdateOne) check() error {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "Group.status": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.SystemPromptMode(); ok {
+		if err := group.SystemPromptModeValidator(v); err != nil {
+			return &ValidationError{Name: "system_prompt_mode", err: fmt.Errorf(`ent: validator failed for field "Group.system_prompt_mode": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.Platform(); ok {
 		if err := group.PlatformValidator(v); err != nil {
 			return &ValidationError{Name: "platform", err: fmt.Errorf(`ent: validator failed for field "Group.platform": %w`, err)}
@@ -2239,6 +2311,12 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(group.FieldStatus, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.SystemPrompt(); ok {
+		_spec.SetField(group.FieldSystemPrompt, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.SystemPromptMode(); ok {
+		_spec.SetField(group.FieldSystemPromptMode, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.Platform(); ok {
 		_spec.SetField(group.FieldPlatform, field.TypeString, value)

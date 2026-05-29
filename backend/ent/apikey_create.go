@@ -113,6 +113,34 @@ func (_c *APIKeyCreate) SetNillableStatus(v *string) *APIKeyCreate {
 	return _c
 }
 
+// SetSystemPrompt sets the "system_prompt" field.
+func (_c *APIKeyCreate) SetSystemPrompt(v string) *APIKeyCreate {
+	_c.mutation.SetSystemPrompt(v)
+	return _c
+}
+
+// SetNillableSystemPrompt sets the "system_prompt" field if the given value is not nil.
+func (_c *APIKeyCreate) SetNillableSystemPrompt(v *string) *APIKeyCreate {
+	if v != nil {
+		_c.SetSystemPrompt(*v)
+	}
+	return _c
+}
+
+// SetSystemPromptMode sets the "system_prompt_mode" field.
+func (_c *APIKeyCreate) SetSystemPromptMode(v string) *APIKeyCreate {
+	_c.mutation.SetSystemPromptMode(v)
+	return _c
+}
+
+// SetNillableSystemPromptMode sets the "system_prompt_mode" field if the given value is not nil.
+func (_c *APIKeyCreate) SetNillableSystemPromptMode(v *string) *APIKeyCreate {
+	if v != nil {
+		_c.SetSystemPromptMode(*v)
+	}
+	return _c
+}
+
 // SetLastUsedAt sets the "last_used_at" field.
 func (_c *APIKeyCreate) SetLastUsedAt(v time.Time) *APIKeyCreate {
 	_c.mutation.SetLastUsedAt(v)
@@ -387,6 +415,14 @@ func (_c *APIKeyCreate) defaults() error {
 		v := apikey.DefaultStatus
 		_c.mutation.SetStatus(v)
 	}
+	if _, ok := _c.mutation.SystemPrompt(); !ok {
+		v := apikey.DefaultSystemPrompt
+		_c.mutation.SetSystemPrompt(v)
+	}
+	if _, ok := _c.mutation.SystemPromptMode(); !ok {
+		v := apikey.DefaultSystemPromptMode
+		_c.mutation.SetSystemPromptMode(v)
+	}
 	if _, ok := _c.mutation.Quota(); !ok {
 		v := apikey.DefaultQuota
 		_c.mutation.SetQuota(v)
@@ -455,6 +491,17 @@ func (_c *APIKeyCreate) check() error {
 	if v, ok := _c.mutation.Status(); ok {
 		if err := apikey.StatusValidator(v); err != nil {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "APIKey.status": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.SystemPrompt(); !ok {
+		return &ValidationError{Name: "system_prompt", err: errors.New(`ent: missing required field "APIKey.system_prompt"`)}
+	}
+	if _, ok := _c.mutation.SystemPromptMode(); !ok {
+		return &ValidationError{Name: "system_prompt_mode", err: errors.New(`ent: missing required field "APIKey.system_prompt_mode"`)}
+	}
+	if v, ok := _c.mutation.SystemPromptMode(); ok {
+		if err := apikey.SystemPromptModeValidator(v); err != nil {
+			return &ValidationError{Name: "system_prompt_mode", err: fmt.Errorf(`ent: validator failed for field "APIKey.system_prompt_mode": %w`, err)}
 		}
 	}
 	if _, ok := _c.mutation.Quota(); !ok {
@@ -534,6 +581,14 @@ func (_c *APIKeyCreate) createSpec() (*APIKey, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Status(); ok {
 		_spec.SetField(apikey.FieldStatus, field.TypeString, value)
 		_node.Status = value
+	}
+	if value, ok := _c.mutation.SystemPrompt(); ok {
+		_spec.SetField(apikey.FieldSystemPrompt, field.TypeString, value)
+		_node.SystemPrompt = value
+	}
+	if value, ok := _c.mutation.SystemPromptMode(); ok {
+		_spec.SetField(apikey.FieldSystemPromptMode, field.TypeString, value)
+		_node.SystemPromptMode = value
 	}
 	if value, ok := _c.mutation.LastUsedAt(); ok {
 		_spec.SetField(apikey.FieldLastUsedAt, field.TypeTime, value)
@@ -790,6 +845,30 @@ func (u *APIKeyUpsert) SetStatus(v string) *APIKeyUpsert {
 // UpdateStatus sets the "status" field to the value that was provided on create.
 func (u *APIKeyUpsert) UpdateStatus() *APIKeyUpsert {
 	u.SetExcluded(apikey.FieldStatus)
+	return u
+}
+
+// SetSystemPrompt sets the "system_prompt" field.
+func (u *APIKeyUpsert) SetSystemPrompt(v string) *APIKeyUpsert {
+	u.Set(apikey.FieldSystemPrompt, v)
+	return u
+}
+
+// UpdateSystemPrompt sets the "system_prompt" field to the value that was provided on create.
+func (u *APIKeyUpsert) UpdateSystemPrompt() *APIKeyUpsert {
+	u.SetExcluded(apikey.FieldSystemPrompt)
+	return u
+}
+
+// SetSystemPromptMode sets the "system_prompt_mode" field.
+func (u *APIKeyUpsert) SetSystemPromptMode(v string) *APIKeyUpsert {
+	u.Set(apikey.FieldSystemPromptMode, v)
+	return u
+}
+
+// UpdateSystemPromptMode sets the "system_prompt_mode" field to the value that was provided on create.
+func (u *APIKeyUpsert) UpdateSystemPromptMode() *APIKeyUpsert {
+	u.SetExcluded(apikey.FieldSystemPromptMode)
 	return u
 }
 
@@ -1217,6 +1296,34 @@ func (u *APIKeyUpsertOne) SetStatus(v string) *APIKeyUpsertOne {
 func (u *APIKeyUpsertOne) UpdateStatus() *APIKeyUpsertOne {
 	return u.Update(func(s *APIKeyUpsert) {
 		s.UpdateStatus()
+	})
+}
+
+// SetSystemPrompt sets the "system_prompt" field.
+func (u *APIKeyUpsertOne) SetSystemPrompt(v string) *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetSystemPrompt(v)
+	})
+}
+
+// UpdateSystemPrompt sets the "system_prompt" field to the value that was provided on create.
+func (u *APIKeyUpsertOne) UpdateSystemPrompt() *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateSystemPrompt()
+	})
+}
+
+// SetSystemPromptMode sets the "system_prompt_mode" field.
+func (u *APIKeyUpsertOne) SetSystemPromptMode(v string) *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetSystemPromptMode(v)
+	})
+}
+
+// UpdateSystemPromptMode sets the "system_prompt_mode" field to the value that was provided on create.
+func (u *APIKeyUpsertOne) UpdateSystemPromptMode() *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateSystemPromptMode()
 	})
 }
 
@@ -1855,6 +1962,34 @@ func (u *APIKeyUpsertBulk) SetStatus(v string) *APIKeyUpsertBulk {
 func (u *APIKeyUpsertBulk) UpdateStatus() *APIKeyUpsertBulk {
 	return u.Update(func(s *APIKeyUpsert) {
 		s.UpdateStatus()
+	})
+}
+
+// SetSystemPrompt sets the "system_prompt" field.
+func (u *APIKeyUpsertBulk) SetSystemPrompt(v string) *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetSystemPrompt(v)
+	})
+}
+
+// UpdateSystemPrompt sets the "system_prompt" field to the value that was provided on create.
+func (u *APIKeyUpsertBulk) UpdateSystemPrompt() *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateSystemPrompt()
+	})
+}
+
+// SetSystemPromptMode sets the "system_prompt_mode" field.
+func (u *APIKeyUpsertBulk) SetSystemPromptMode(v string) *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetSystemPromptMode(v)
+	})
+}
+
+// UpdateSystemPromptMode sets the "system_prompt_mode" field to the value that was provided on create.
+func (u *APIKeyUpsertBulk) UpdateSystemPromptMode() *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateSystemPromptMode()
 	})
 }
 

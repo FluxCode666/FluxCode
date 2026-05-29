@@ -95,6 +95,11 @@ func (s *GatewayService) ForwardAsResponses(
 
 	// 7. Enforce cache_control block limit
 	anthropicBody = enforceCacheControlLimit(anthropicBody)
+	if updatedBody, _, err := applyResolvedSystemPromptToJSON(ctx, c, anthropicBody, PlatformAnthropic, PlatformAnthropic, s.settingService); err != nil {
+		return nil, fmt.Errorf("apply system prompt: %w", err)
+	} else {
+		anthropicBody = updatedBody
+	}
 
 	// 8. Get access token
 	token, tokenType, err := s.GetAccessToken(ctx, account)

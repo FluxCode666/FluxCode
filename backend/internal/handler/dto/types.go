@@ -53,20 +53,22 @@ type SalesCommissionTier struct {
 }
 
 type APIKey struct {
-	ID          int64      `json:"id"`
-	UserID      int64      `json:"user_id"`
-	Key         string     `json:"key"`
-	Name        string     `json:"name"`
-	GroupID     *int64     `json:"group_id"`
-	Status      string     `json:"status"`
-	IPWhitelist []string   `json:"ip_whitelist"`
-	IPBlacklist []string   `json:"ip_blacklist"`
-	LastUsedAt  *time.Time `json:"last_used_at"`
-	Quota       float64    `json:"quota"`      // Quota limit in USD (0 = unlimited)
-	QuotaUsed   float64    `json:"quota_used"` // Used quota amount in USD
-	ExpiresAt   *time.Time `json:"expires_at"` // Expiration time (nil = never expires)
-	CreatedAt   time.Time  `json:"created_at"`
-	UpdatedAt   time.Time  `json:"updated_at"`
+	ID               int64      `json:"id"`
+	UserID           int64      `json:"user_id"`
+	Key              string     `json:"key"`
+	Name             string     `json:"name"`
+	GroupID          *int64     `json:"group_id"`
+	Status           string     `json:"status"`
+	IPWhitelist      []string   `json:"ip_whitelist"`
+	IPBlacklist      []string   `json:"ip_blacklist"`
+	SystemPrompt     string     `json:"system_prompt"`
+	SystemPromptMode string     `json:"system_prompt_mode"`
+	LastUsedAt       *time.Time `json:"last_used_at"`
+	Quota            float64    `json:"quota"`      // Quota limit in USD (0 = unlimited)
+	QuotaUsed        float64    `json:"quota_used"` // Used quota amount in USD
+	ExpiresAt        *time.Time `json:"expires_at"` // Expiration time (nil = never expires)
+	CreatedAt        time.Time  `json:"created_at"`
+	UpdatedAt        time.Time  `json:"updated_at"`
 
 	// Rate limit fields
 	RateLimit5h   float64    `json:"rate_limit_5h"`
@@ -87,13 +89,15 @@ type APIKey struct {
 }
 
 type Group struct {
-	ID             int64   `json:"id"`
-	Name           string  `json:"name"`
-	Description    string  `json:"description"`
-	Platform       string  `json:"platform"`
-	RateMultiplier float64 `json:"rate_multiplier"`
-	IsExclusive    bool    `json:"is_exclusive"`
-	Status         string  `json:"status"`
+	ID               int64   `json:"id"`
+	Name             string  `json:"name"`
+	Description      string  `json:"description"`
+	Platform         string  `json:"platform"`
+	RateMultiplier   float64 `json:"rate_multiplier"`
+	IsExclusive      bool    `json:"is_exclusive"`
+	Status           string  `json:"status"`
+	SystemPrompt     string  `json:"system_prompt"`
+	SystemPromptMode string  `json:"system_prompt_mode"`
 
 	SubscriptionType string   `json:"subscription_type"`
 	DailyLimitUSD    *float64 `json:"daily_limit_usd"`

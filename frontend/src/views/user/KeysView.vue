@@ -439,6 +439,22 @@
           </Select>
         </div>
 
+        <div class="border-t pt-4">
+          <SystemPromptConfigFields
+            :title="t('keys.systemPrompt.title')"
+            :description="t('keys.systemPrompt.description')"
+            :mode="formData.system_prompt_mode"
+            :prompt="formData.system_prompt"
+            :mode-options="systemPromptModeOptions"
+            :mode-label="t('systemPrompt.modeLabel')"
+            :prompt-label="t('systemPrompt.promptLabel')"
+            :prompt-placeholder="t('keys.systemPrompt.placeholder')"
+            :prompt-hint="t('keys.systemPrompt.promptHint')"
+            @update:mode="formData.system_prompt_mode = $event"
+            @update:prompt="formData.system_prompt = $event"
+          />
+        </div>
+
         <!-- Custom Key Section (only for create) -->
         <div v-if="!showEditModal" class="space-y-3">
           <div class="flex items-center justify-between">
@@ -1062,13 +1078,14 @@ import TablePageLayout from '@/components/layout/TablePageLayout.vue'
 	import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 	import EmptyState from '@/components/common/EmptyState.vue'
 	import Select from '@/components/common/Select.vue'
+	import SystemPromptConfigFields from '@/components/common/SystemPromptConfigFields.vue'
 	import SearchInput from '@/components/common/SearchInput.vue'
 	import Icon from '@/components/icons/Icon.vue'
 	import UseKeyModal from '@/components/keys/UseKeyModal.vue'
 	import EndpointPopover from '@/components/keys/EndpointPopover.vue'
 	import GroupBadge from '@/components/common/GroupBadge.vue'
 	import GroupOptionItem from '@/components/common/GroupOptionItem.vue'
-	import type { ApiKey, Group, PublicSettings, SubscriptionType, GroupPlatform } from '@/types'
+	import type { ApiKey, Group, PublicSettings, SubscriptionType, GroupPlatform, SystemPromptMode } from '@/types'
 import type { Column } from '@/components/common/types'
 import type { BatchApiKeyUsageStats } from '@/api/usage'
 import { formatDateTime } from '@/utils/format'
@@ -1167,6 +1184,8 @@ const formData = ref({
   name: '',
   group_id: null as number | null,
   status: 'active' as 'active' | 'inactive',
+  system_prompt: '',
+  system_prompt_mode: 'inherit' as SystemPromptMode,
   use_custom_key: false,
   custom_key: '',
   enable_ip_restriction: false,
@@ -1204,6 +1223,13 @@ const customKeyError = computed(() => {
 const statusOptions = computed(() => [
   { value: 'active', label: t('common.active') },
   { value: 'inactive', label: t('common.inactive') }
+])
+
+const systemPromptModeOptions = computed(() => [
+  { value: 'inherit' as SystemPromptMode, label: t('systemPrompt.modes.inherit'), description: t('systemPrompt.modeTooltips.inherit') },
+  { value: 'passthrough' as SystemPromptMode, label: t('systemPrompt.modes.passthrough'), description: t('systemPrompt.modeTooltips.passthrough') },
+  { value: 'override' as SystemPromptMode, label: t('systemPrompt.modes.override'), description: t('systemPrompt.modeTooltips.override') },
+  { value: 'append' as SystemPromptMode, label: t('systemPrompt.modes.append'), description: t('systemPrompt.modeTooltips.append') },
 ])
 
 // Filter dropdown options
@@ -1395,6 +1421,8 @@ const editKey = (key: ApiKey) => {
     name: key.name,
     group_id: key.group_id,
     status: key.status === 'quota_exhausted' || key.status === 'expired' ? 'inactive' : key.status,
+    system_prompt: key.system_prompt || '',
+    system_prompt_mode: key.system_prompt_mode || 'inherit',
     use_custom_key: false,
     custom_key: '',
     enable_ip_restriction: hasIPRestriction,
@@ -1546,6 +1574,8 @@ const handleSubmit = async () => {
         name: formData.value.name,
         group_id: formData.value.group_id,
         status: formData.value.status,
+        system_prompt: formData.value.system_prompt,
+        system_prompt_mode: formData.value.system_prompt_mode,
         ip_whitelist: ipWhitelist,
         ip_blacklist: ipBlacklist,
         quota: quota,
@@ -1565,7 +1595,11 @@ const handleSubmit = async () => {
         ipBlacklist,
         quota,
         expiresInDays,
-        rateLimitData
+        rateLimitData,
+        {
+          system_prompt: formData.value.system_prompt,
+          system_prompt_mode: formData.value.system_prompt_mode,
+        }
       )
       appStore.showSuccess(t('keys.keyCreatedSuccess'))
       // Only advance tour if active, on submit step, and creation succeeded
@@ -1612,6 +1646,8 @@ const closeModals = () => {
     name: '',
     group_id: null,
     status: 'active',
+    system_prompt: '',
+    system_prompt_mode: 'inherit',
     use_custom_key: false,
     custom_key: '',
     enable_ip_restriction: false,

@@ -1089,11 +1089,11 @@ func (r *salesCommissionReferralRepoStub) GetStatsByReferrerID(context.Context, 
 	return nil, nil
 }
 
-func (r *salesCommissionReferralRepoStub) ListAll(context.Context, string, int, int) ([]Referral, int, error) {
+func (r *salesCommissionReferralRepoStub) ListAll(context.Context, string, int64, int64, int, int) ([]Referral, int, error) {
 	return nil, 0, nil
 }
 
-func (r *salesCommissionReferralRepoStub) GetLeaderboard(context.Context, string, int) ([]ReferralLeaderboardEntry, error) {
+func (r *salesCommissionReferralRepoStub) GetLeaderboard(context.Context, string, string, string, int) ([]ReferralLeaderboardEntry, error) {
 	return nil, nil
 }
 

@@ -387,6 +387,21 @@
           />
           <p class="input-hint">{{ t("admin.groups.platformHint") }}</p>
         </div>
+        <div class="border-t pt-4">
+          <SystemPromptConfigFields
+            :title="t('admin.groups.systemPrompt.title')"
+            :description="t('admin.groups.systemPrompt.description')"
+            :mode="createForm.system_prompt_mode"
+            :prompt="createForm.system_prompt"
+            :mode-options="systemPromptModeOptions"
+            :mode-label="t('systemPrompt.modeLabel')"
+            :prompt-label="t('systemPrompt.promptLabel')"
+            :prompt-placeholder="t('admin.groups.systemPrompt.placeholder')"
+            :prompt-hint="t('admin.groups.systemPrompt.promptHint')"
+            @update:mode="createForm.system_prompt_mode = $event"
+            @update:prompt="createForm.system_prompt = $event"
+          />
+        </div>
         <!-- 从分组复制账号 -->
         <div v-if="copyAccountsGroupOptions.length > 0">
           <div class="mb-1.5 flex items-center gap-1">
@@ -1505,6 +1520,21 @@
             data-tour="group-form-platform"
           />
           <p class="input-hint">{{ t("admin.groups.platformNotEditable") }}</p>
+        </div>
+        <div class="border-t pt-4">
+          <SystemPromptConfigFields
+            :title="t('admin.groups.systemPrompt.title')"
+            :description="t('admin.groups.systemPrompt.description')"
+            :mode="editForm.system_prompt_mode"
+            :prompt="editForm.system_prompt"
+            :mode-options="systemPromptModeOptions"
+            :mode-label="t('systemPrompt.modeLabel')"
+            :prompt-label="t('systemPrompt.promptLabel')"
+            :prompt-placeholder="t('admin.groups.systemPrompt.placeholder')"
+            :prompt-hint="t('admin.groups.systemPrompt.promptHint')"
+            @update:mode="editForm.system_prompt_mode = $event"
+            @update:prompt="editForm.system_prompt = $event"
+          />
         </div>
         <!-- 从分组复制账号（编辑时） -->
         <div v-if="copyAccountsGroupOptionsForEdit.length > 0">
@@ -2696,7 +2726,7 @@ import { useI18n } from "vue-i18n";
 import { useAppStore } from "@/stores/app";
 import { useOnboardingStore } from "@/stores/onboarding";
 import { adminAPI } from "@/api/admin";
-import type { AdminGroup, GroupPlatform, SubscriptionType } from "@/types";
+import type { AdminGroup, GroupPlatform, SubscriptionType, SystemPromptMode } from "@/types";
 import type { Column } from "@/components/common/types";
 import AppLayout from "@/components/layout/AppLayout.vue";
 import TablePageLayout from "@/components/layout/TablePageLayout.vue";
@@ -2706,6 +2736,7 @@ import BaseDialog from "@/components/common/BaseDialog.vue";
 import ConfirmDialog from "@/components/common/ConfirmDialog.vue";
 import EmptyState from "@/components/common/EmptyState.vue";
 import Select from "@/components/common/Select.vue";
+import SystemPromptConfigFields from "@/components/common/SystemPromptConfigFields.vue";
 import PlatformIcon from "@/components/common/PlatformIcon.vue";
 import Icon from "@/components/icons/Icon.vue";
 import GroupRateMultipliersModal from "@/components/admin/group/GroupRateMultipliersModal.vue";
@@ -2801,6 +2832,13 @@ const editStatusOptions = computed(() => [
 const subscriptionTypeOptions = computed(() => [
   { value: "standard", label: t("admin.groups.subscription.standard") },
   { value: "subscription", label: t("admin.groups.subscription.subscription") },
+]);
+
+const systemPromptModeOptions = computed(() => [
+  { value: "inherit" as SystemPromptMode, label: t("systemPrompt.modes.inherit"), description: t("systemPrompt.modeTooltips.inherit") },
+  { value: "passthrough" as SystemPromptMode, label: t("systemPrompt.modes.passthrough"), description: t("systemPrompt.modeTooltips.passthrough") },
+  { value: "override" as SystemPromptMode, label: t("systemPrompt.modes.override"), description: t("systemPrompt.modeTooltips.override") },
+  { value: "append" as SystemPromptMode, label: t("systemPrompt.modes.append"), description: t("systemPrompt.modeTooltips.append") },
 ]);
 
 // 降级分组选项（创建时）- 仅包含 anthropic 平台且未启用 claude_code_only 的分组
@@ -2961,6 +2999,8 @@ const createForm = reactive({
   platform: "anthropic" as GroupPlatform,
   rate_multiplier: 1.0,
   is_exclusive: false,
+  system_prompt: "",
+  system_prompt_mode: "inherit" as SystemPromptMode,
   subscription_type: "standard" as SubscriptionType,
   daily_limit_usd: null as number | null,
   weekly_limit_usd: null as number | null,
@@ -3241,6 +3281,8 @@ const editForm = reactive({
   rate_multiplier: 1.0,
   is_exclusive: false,
   status: "active" as "active" | "inactive",
+  system_prompt: "",
+  system_prompt_mode: "inherit" as SystemPromptMode,
   subscription_type: "standard" as SubscriptionType,
   daily_limit_usd: null as number | null,
   weekly_limit_usd: null as number | null,
@@ -3427,6 +3469,8 @@ const closeCreateModal = () => {
   createForm.platform = "anthropic";
   createForm.rate_multiplier = 1.0;
   createForm.is_exclusive = false;
+  createForm.system_prompt = "";
+  createForm.system_prompt_mode = "inherit";
   createForm.subscription_type = "standard";
   createForm.daily_limit_usd = null;
   createForm.weekly_limit_usd = null;
@@ -3530,6 +3574,8 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.rate_multiplier = group.rate_multiplier;
   editForm.is_exclusive = group.is_exclusive;
   editForm.status = group.status;
+  editForm.system_prompt = group.system_prompt || "";
+  editForm.system_prompt_mode = group.system_prompt_mode || "inherit";
   editForm.subscription_type = group.subscription_type || "standard";
   editForm.daily_limit_usd = group.daily_limit_usd;
   editForm.weekly_limit_usd = group.weekly_limit_usd;
