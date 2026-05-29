@@ -439,7 +439,7 @@
           </Select>
         </div>
 
-        <div class="border-t pt-4">
+        <div v-if="canConfigureSystemPrompt" class="border-t pt-4">
           <SystemPromptConfigFields
             :title="t('keys.systemPrompt.title')"
             :description="t('keys.systemPrompt.description')"
@@ -1064,6 +1064,7 @@
 	import { ref, computed, onMounted, onUnmounted, type ComponentPublicInstance } from 'vue'
 	import { useI18n } from 'vue-i18n'
 	import { useAppStore } from '@/stores/app'
+	import { useAuthStore } from '@/stores/auth'
 	import { useOnboardingStore } from '@/stores/onboarding'
 	import { useClipboard } from '@/composables/useClipboard'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
@@ -1108,6 +1109,7 @@ interface GroupOption {
 }
 
 const appStore = useAppStore()
+const authStore = useAuthStore()
 const onboardingStore = useOnboardingStore()
 const { copyToClipboard: clipboardCopy } = useClipboard()
 
@@ -1231,6 +1233,16 @@ const systemPromptModeOptions = computed(() => [
   { value: 'override' as SystemPromptMode, label: t('systemPrompt.modes.override'), description: t('systemPrompt.modeTooltips.override') },
   { value: 'append' as SystemPromptMode, label: t('systemPrompt.modes.append'), description: t('systemPrompt.modeTooltips.append') },
 ])
+
+const canConfigureSystemPrompt = computed(() => authStore.user?.can_configure_system_prompt === true)
+const systemPromptConfigPayload = computed(() =>
+  canConfigureSystemPrompt.value
+    ? {
+        system_prompt: formData.value.system_prompt,
+        system_prompt_mode: formData.value.system_prompt_mode,
+      }
+    : null
+)
 
 // Filter dropdown options
 const groupFilterOptions = computed(() => [
@@ -1574,8 +1586,7 @@ const handleSubmit = async () => {
         name: formData.value.name,
         group_id: formData.value.group_id,
         status: formData.value.status,
-        system_prompt: formData.value.system_prompt,
-        system_prompt_mode: formData.value.system_prompt_mode,
+        ...(systemPromptConfigPayload.value ?? {}),
         ip_whitelist: ipWhitelist,
         ip_blacklist: ipBlacklist,
         quota: quota,
@@ -1596,10 +1607,7 @@ const handleSubmit = async () => {
         quota,
         expiresInDays,
         rateLimitData,
-        {
-          system_prompt: formData.value.system_prompt,
-          system_prompt_mode: formData.value.system_prompt_mode,
-        }
+        systemPromptConfigPayload.value ?? undefined
       )
       appStore.showSuccess(t('keys.keyCreatedSuccess'))
       // Only advance tour if active, on submit step, and creation succeeded
@@ -1841,6 +1849,9 @@ function formatResetTime(resetAt: string | null): string {
 }
 
 onMounted(() => {
+  authStore.refreshUser().catch((error) => {
+    console.error('Failed to refresh current user capabilities:', error)
+  })
   loadApiKeys()
   loadGroups()
   loadUserGroupRates()

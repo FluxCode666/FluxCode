@@ -87,14 +87,17 @@ type SystemSettings struct {
 	IdentityPatchPrompt string `json:"identity_patch_prompt"`
 
 	// System prompt injection configuration
-	SystemPromptAnthropic       string
-	SystemPromptModeAnthropic   string
-	SystemPromptOpenAI          string
-	SystemPromptModeOpenAI      string
-	SystemPromptGemini          string
-	SystemPromptModeGemini      string
-	SystemPromptAntigravity     string
-	SystemPromptModeAntigravity string
+	SystemPromptAnthropic        string
+	SystemPromptModeAnthropic    string
+	SystemPromptOpenAI           string
+	SystemPromptModeOpenAI       string
+	SystemPromptGemini           string
+	SystemPromptModeGemini       string
+	SystemPromptAntigravity      string
+	SystemPromptModeAntigravity  string
+	SystemPromptUserScopeEnabled bool
+	SystemPromptUserScopeMode    string
+	SystemPromptUserScopeUserIDs []int64
 
 	// Ops monitoring (vNext)
 	OpsMonitoringEnabled         bool

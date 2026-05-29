@@ -9,16 +9,19 @@ import (
 )
 
 type runtimePromptSettingsStub struct {
-	byPlatform map[string]EffectiveSystemPrompt
+	runtime SystemPromptRuntimeSettings
 }
 
-func (s runtimePromptSettingsStub) GetSystemPromptSettings(context.Context) map[string]EffectiveSystemPrompt {
-	return s.byPlatform
+func (s runtimePromptSettingsStub) GetSystemPromptSettings(context.Context) SystemPromptRuntimeSettings {
+	return s.runtime
 }
 
 func TestApplyResolvedSystemPromptToJSONUsesAPIKeyPriority(t *testing.T) {
-	settings := runtimePromptSettingsStub{byPlatform: map[string]EffectiveSystemPrompt{
-		PlatformOpenAI: {Prompt: "system", Mode: SystemPromptModeAppend, Source: SystemPromptSourceSystem},
+	settings := runtimePromptSettingsStub{runtime: SystemPromptRuntimeSettings{
+		Prompts: map[string]EffectiveSystemPrompt{
+			PlatformOpenAI: {Prompt: "system", Mode: SystemPromptModeAppend, Source: SystemPromptSourceSystem},
+		},
+		UserScope: SystemPromptUserScope{Enabled: true, Mode: SystemPromptUserScopeAll},
 	}}
 	apiKey := &APIKey{
 		SystemPrompt:     "key",
@@ -41,8 +44,11 @@ func TestApplyResolvedSystemPromptToJSONUsesAPIKeyPriority(t *testing.T) {
 }
 
 func TestApplyResolvedSystemPromptToJSONFallsBackToGroup(t *testing.T) {
-	settings := runtimePromptSettingsStub{byPlatform: map[string]EffectiveSystemPrompt{
-		PlatformAnthropic: {Prompt: "system", Mode: SystemPromptModeOverride, Source: SystemPromptSourceSystem},
+	settings := runtimePromptSettingsStub{runtime: SystemPromptRuntimeSettings{
+		Prompts: map[string]EffectiveSystemPrompt{
+			PlatformAnthropic: {Prompt: "system", Mode: SystemPromptModeOverride, Source: SystemPromptSourceSystem},
+		},
+		UserScope: SystemPromptUserScope{Enabled: true, Mode: SystemPromptUserScopeAll},
 	}}
 	apiKey := &APIKey{
 		SystemPromptMode: SystemPromptModeInherit,
@@ -65,8 +71,11 @@ func TestApplyResolvedSystemPromptToJSONFallsBackToGroup(t *testing.T) {
 }
 
 func TestApplyResolvedSystemPromptToChatCompletionsKeepsExistingOnPassthrough(t *testing.T) {
-	settings := runtimePromptSettingsStub{byPlatform: map[string]EffectiveSystemPrompt{
-		PlatformOpenAI: {Prompt: "system", Mode: SystemPromptModePassthrough, Source: SystemPromptSourceSystem},
+	settings := runtimePromptSettingsStub{runtime: SystemPromptRuntimeSettings{
+		Prompts: map[string]EffectiveSystemPrompt{
+			PlatformOpenAI: {Prompt: "system", Mode: SystemPromptModePassthrough, Source: SystemPromptSourceSystem},
+		},
+		UserScope: SystemPromptUserScope{Enabled: true, Mode: SystemPromptUserScopeAll},
 	}}
 	ctx := WithAPIKeyContext(context.Background(), &APIKey{SystemPromptMode: SystemPromptModeInherit})
 	body := []byte(`{"model":"gpt-5","messages":[{"role":"system","content":"client"},{"role":"user","content":"hi"}]}`)
@@ -83,6 +92,22 @@ func TestApplyResolvedSystemPromptToJSONNoopsWhenInherited(t *testing.T) {
 	body := []byte(`{"model":"gemini-2.5-pro","contents":[{"role":"user","parts":[{"text":"hi"}]}]}`)
 
 	got, changed, err := applyResolvedSystemPromptToJSON(ctx, nil, body, PlatformGemini, PlatformGemini, runtimePromptSettingsStub{})
+
+	require.NoError(t, err)
+	require.False(t, changed)
+	require.JSONEq(t, string(body), string(got))
+}
+
+func TestApplyResolvedSystemPromptToJSONNoopsWhenWhitelistHasNoAPIKeyUser(t *testing.T) {
+	settings := runtimePromptSettingsStub{runtime: SystemPromptRuntimeSettings{
+		Prompts: map[string]EffectiveSystemPrompt{
+			PlatformOpenAI: {Prompt: "system", Mode: SystemPromptModeOverride, Source: SystemPromptSourceSystem},
+		},
+		UserScope: SystemPromptUserScope{Enabled: true, Mode: SystemPromptUserScopeWhitelist, UserIDs: []int64{42}},
+	}}
+	body := []byte(`{"model":"gpt-5","instructions":"client"}`)
+
+	got, changed, err := applyResolvedSystemPromptToJSON(context.Background(), nil, body, PlatformOpenAI, PlatformOpenAI, settings)
 
 	require.NoError(t, err)
 	require.False(t, changed)

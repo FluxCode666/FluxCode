@@ -20,6 +20,7 @@ type User struct {
 	SalesCommissionMode            string                `json:"sales_commission_mode"`
 	SalesCommissionMinMonthlySales float64               `json:"sales_commission_min_monthly_sales"`
 	SalesCommissionTiers           []SalesCommissionTier `json:"sales_commission_tiers,omitempty"`
+	CanConfigureSystemPrompt       *bool                 `json:"can_configure_system_prompt,omitempty"`
 	CreatedAt                      time.Time             `json:"created_at"`
 	UpdatedAt                      time.Time             `json:"updated_at"`
 

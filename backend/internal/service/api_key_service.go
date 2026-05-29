@@ -20,13 +20,14 @@ import (
 )
 
 var (
-	ErrAPIKeyNotFound     = infraerrors.NotFound("API_KEY_NOT_FOUND", "api key not found")
-	ErrGroupNotAllowed    = infraerrors.Forbidden("GROUP_NOT_ALLOWED", "user is not allowed to bind this group")
-	ErrAPIKeyExists       = infraerrors.Conflict("API_KEY_EXISTS", "api key already exists")
-	ErrAPIKeyTooShort     = infraerrors.BadRequest("API_KEY_TOO_SHORT", "api key must be at least 16 characters")
-	ErrAPIKeyInvalidChars = infraerrors.BadRequest("API_KEY_INVALID_CHARS", "api key can only contain letters, numbers, underscores, and hyphens")
-	ErrAPIKeyRateLimited  = infraerrors.TooManyRequests("API_KEY_RATE_LIMITED", "too many failed attempts, please try again later")
-	ErrInvalidIPPattern   = infraerrors.BadRequest("INVALID_IP_PATTERN", "invalid IP or CIDR pattern")
+	ErrAPIKeyNotFound               = infraerrors.NotFound("API_KEY_NOT_FOUND", "api key not found")
+	ErrGroupNotAllowed              = infraerrors.Forbidden("GROUP_NOT_ALLOWED", "user is not allowed to bind this group")
+	ErrAPIKeyExists                 = infraerrors.Conflict("API_KEY_EXISTS", "api key already exists")
+	ErrAPIKeyTooShort               = infraerrors.BadRequest("API_KEY_TOO_SHORT", "api key must be at least 16 characters")
+	ErrAPIKeyInvalidChars           = infraerrors.BadRequest("API_KEY_INVALID_CHARS", "api key can only contain letters, numbers, underscores, and hyphens")
+	ErrAPIKeyRateLimited            = infraerrors.TooManyRequests("API_KEY_RATE_LIMITED", "too many failed attempts, please try again later")
+	ErrInvalidIPPattern             = infraerrors.BadRequest("INVALID_IP_PATTERN", "invalid IP or CIDR pattern")
+	ErrSystemPromptConfigNotAllowed = infraerrors.Forbidden("SYSTEM_PROMPT_CONFIG_NOT_ALLOWED", "user is not allowed to configure system prompt")
 	// ErrAPIKeyExpired        = infraerrors.Forbidden("API_KEY_EXPIRED", "api key has expired")
 	ErrAPIKeyExpired = infraerrors.Forbidden("API_KEY_EXPIRED", "api key 已过期")
 	// ErrAPIKeyQuotaExhausted = infraerrors.TooManyRequests("API_KEY_QUOTA_EXHAUSTED", "api key quota exhausted")
@@ -207,6 +208,7 @@ type APIKeyService struct {
 	cfg                   *config.Config
 	authCacheL1           *ristretto.Cache
 	authCfg               apiKeyAuthCacheConfig
+	systemPromptSettings  SystemPromptSettingsProvider
 	authGroup             singleflight.Group
 	lastUsedTouchL1       sync.Map // keyID -> nextAllowedAt(time.Time)
 	lastUsedTouchSF       singleflight.Group
@@ -239,6 +241,18 @@ func NewAPIKeyService(
 // Called after construction (e.g. in wire) to avoid circular dependencies.
 func (s *APIKeyService) SetRateLimitCacheInvalidator(inv RateLimitCacheInvalidator) {
 	s.rateLimitCacheInvalid = inv
+}
+
+func (s *APIKeyService) SetSystemPromptSettingsProvider(provider SystemPromptSettingsProvider) {
+	s.systemPromptSettings = provider
+}
+
+func (s *APIKeyService) canUserConfigureSystemPrompt(ctx context.Context, userID int64) bool {
+	if isNilSystemPromptSettingsProvider(s.systemPromptSettings) {
+		return true
+	}
+	settings := s.systemPromptSettings.GetSystemPromptSettings(ctx)
+	return IsSystemPromptAllowedForUserID(userID, settings.UserScope)
 }
 
 func (s *APIKeyService) compileAPIKeyIPRules(apiKey *APIKey) {
@@ -354,6 +368,9 @@ func (s *APIKeyService) Create(ctx context.Context, userID int64, req CreateAPIK
 	systemPrompt, systemPromptMode, err := NormalizeSystemPromptConfig(req.SystemPrompt, req.SystemPromptMode)
 	if err != nil {
 		return nil, err
+	}
+	if !s.canUserConfigureSystemPrompt(ctx, userID) && IsSystemPromptInjectionMode(systemPromptMode) {
+		return nil, ErrSystemPromptConfigNotAllowed
 	}
 
 	// 验证分组权限（如果指定了分组）
@@ -557,10 +574,15 @@ func (s *APIKeyService) Update(ctx context.Context, id int64, userID int64, req 
 			systemPromptMode = *req.SystemPromptMode
 		}
 		var err error
-		apiKey.SystemPrompt, apiKey.SystemPromptMode, err = NormalizeSystemPromptConfig(systemPrompt, systemPromptMode)
+		systemPrompt, systemPromptMode, err = NormalizeSystemPromptConfig(systemPrompt, systemPromptMode)
 		if err != nil {
 			return nil, err
 		}
+		if !s.canUserConfigureSystemPrompt(ctx, userID) && IsSystemPromptInjectionMode(systemPromptMode) {
+			return nil, ErrSystemPromptConfigNotAllowed
+		}
+		apiKey.SystemPrompt = systemPrompt
+		apiKey.SystemPromptMode = systemPromptMode
 	}
 
 	// 更新字段

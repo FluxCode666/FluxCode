@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"reflect"
 	"regexp"
 	"strings"
 
@@ -171,6 +172,9 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		SystemPromptModeGemini:               settings.SystemPromptModeGemini,
 		SystemPromptAntigravity:              settings.SystemPromptAntigravity,
 		SystemPromptModeAntigravity:          settings.SystemPromptModeAntigravity,
+		SystemPromptUserScopeEnabled:         settings.SystemPromptUserScopeEnabled,
+		SystemPromptUserScopeMode:            settings.SystemPromptUserScopeMode,
+		SystemPromptUserScopeUserIDs:         settings.SystemPromptUserScopeUserIDs,
 		OpsMonitoringEnabled:                 opsEnabled && settings.OpsMonitoringEnabled,
 		OpsRealtimeMonitoringEnabled:         settings.OpsRealtimeMonitoringEnabled,
 		OpsQueryModeDefault:                  settings.OpsQueryModeDefault,
@@ -306,14 +310,17 @@ type UpdateSettingsRequest struct {
 	IdentityPatchPrompt string `json:"identity_patch_prompt"`
 
 	// System prompt injection configuration
-	SystemPromptAnthropic       string `json:"system_prompt_anthropic"`
-	SystemPromptModeAnthropic   string `json:"system_prompt_mode_anthropic"`
-	SystemPromptOpenAI          string `json:"system_prompt_openai"`
-	SystemPromptModeOpenAI      string `json:"system_prompt_mode_openai"`
-	SystemPromptGemini          string `json:"system_prompt_gemini"`
-	SystemPromptModeGemini      string `json:"system_prompt_mode_gemini"`
-	SystemPromptAntigravity     string `json:"system_prompt_antigravity"`
-	SystemPromptModeAntigravity string `json:"system_prompt_mode_antigravity"`
+	SystemPromptAnthropic        string  `json:"system_prompt_anthropic"`
+	SystemPromptModeAnthropic    string  `json:"system_prompt_mode_anthropic"`
+	SystemPromptOpenAI           string  `json:"system_prompt_openai"`
+	SystemPromptModeOpenAI       string  `json:"system_prompt_mode_openai"`
+	SystemPromptGemini           string  `json:"system_prompt_gemini"`
+	SystemPromptModeGemini       string  `json:"system_prompt_mode_gemini"`
+	SystemPromptAntigravity      string  `json:"system_prompt_antigravity"`
+	SystemPromptModeAntigravity  string  `json:"system_prompt_mode_antigravity"`
+	SystemPromptUserScopeEnabled bool    `json:"system_prompt_user_scope_enabled"`
+	SystemPromptUserScopeMode    string  `json:"system_prompt_user_scope_mode"`
+	SystemPromptUserScopeUserIDs []int64 `json:"system_prompt_user_scope_user_ids"`
 
 	// Ops monitoring (vNext)
 	OpsMonitoringEnabled         *bool   `json:"ops_monitoring_enabled"`
@@ -893,6 +900,9 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		SystemPromptModeGemini:           req.SystemPromptModeGemini,
 		SystemPromptAntigravity:          req.SystemPromptAntigravity,
 		SystemPromptModeAntigravity:      req.SystemPromptModeAntigravity,
+		SystemPromptUserScopeEnabled:     req.SystemPromptUserScopeEnabled,
+		SystemPromptUserScopeMode:        req.SystemPromptUserScopeMode,
+		SystemPromptUserScopeUserIDs:     req.SystemPromptUserScopeUserIDs,
 		MinClaudeCodeVersion:             req.MinClaudeCodeVersion,
 		MaxClaudeCodeVersion:             req.MaxClaudeCodeVersion,
 		AllowUngroupedKeyScheduling:      req.AllowUngroupedKeyScheduling,
@@ -1130,6 +1140,9 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		SystemPromptModeGemini:               updatedSettings.SystemPromptModeGemini,
 		SystemPromptAntigravity:              updatedSettings.SystemPromptAntigravity,
 		SystemPromptModeAntigravity:          updatedSettings.SystemPromptModeAntigravity,
+		SystemPromptUserScopeEnabled:         updatedSettings.SystemPromptUserScopeEnabled,
+		SystemPromptUserScopeMode:            updatedSettings.SystemPromptUserScopeMode,
+		SystemPromptUserScopeUserIDs:         updatedSettings.SystemPromptUserScopeUserIDs,
 		OpsMonitoringEnabled:                 updatedSettings.OpsMonitoringEnabled,
 		OpsRealtimeMonitoringEnabled:         updatedSettings.OpsRealtimeMonitoringEnabled,
 		OpsQueryModeDefault:                  updatedSettings.OpsQueryModeDefault,
@@ -1406,6 +1419,11 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	}
 	if before.SystemPromptAntigravity != after.SystemPromptAntigravity || before.SystemPromptModeAntigravity != after.SystemPromptModeAntigravity {
 		changed = append(changed, "system_prompt_antigravity")
+	}
+	if before.SystemPromptUserScopeEnabled != after.SystemPromptUserScopeEnabled ||
+		before.SystemPromptUserScopeMode != after.SystemPromptUserScopeMode ||
+		!reflect.DeepEqual(before.SystemPromptUserScopeUserIDs, after.SystemPromptUserScopeUserIDs) {
+		changed = append(changed, "system_prompt_user_scope")
 	}
 	if before.OpsMonitoringEnabled != after.OpsMonitoringEnabled {
 		changed = append(changed, "ops_monitoring_enabled")

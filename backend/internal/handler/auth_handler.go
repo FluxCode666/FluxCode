@@ -80,6 +80,7 @@ type AuthResponse struct {
 // respondWithTokenPair 生成 Token 对并返回认证响应
 // 如果 Token 对生成失败，回退到只返回 Access Token（向后兼容）
 func (h *AuthHandler) respondWithTokenPair(c *gin.Context, user *service.User) {
+	userDTO := h.userDTOWithCapabilities(c, user)
 	tokenPair, err := h.authService.GenerateTokenPair(c.Request.Context(), user, "")
 	if err != nil {
 		slog.Error("failed to generate token pair", "error", err, "user_id", user.ID)
@@ -92,7 +93,7 @@ func (h *AuthHandler) respondWithTokenPair(c *gin.Context, user *service.User) {
 		response.Success(c, AuthResponse{
 			AccessToken: token,
 			TokenType:   "Bearer",
-			User:        dto.UserFromService(user),
+			User:        userDTO,
 		})
 		return
 	}
@@ -101,8 +102,18 @@ func (h *AuthHandler) respondWithTokenPair(c *gin.Context, user *service.User) {
 		RefreshToken: tokenPair.RefreshToken,
 		ExpiresIn:    tokenPair.ExpiresIn,
 		TokenType:    "Bearer",
-		User:         dto.UserFromService(user),
+		User:         userDTO,
 	})
+}
+
+func (h *AuthHandler) userDTOWithCapabilities(c *gin.Context, user *service.User) *dto.User {
+	out := dto.UserFromService(user)
+	if out == nil || h.settingSvc == nil {
+		return out
+	}
+	canConfigure := h.settingSvc.CanUserConfigureSystemPrompt(c.Request.Context(), user.ID)
+	out.CanConfigureSystemPrompt = &canConfigure
+	return out
 }
 
 // Register handles user registration
@@ -301,7 +312,7 @@ func (h *AuthHandler) GetCurrentUser(c *gin.Context) {
 		runMode = h.cfg.RunMode
 	}
 
-	response.Success(c, UserResponse{User: dto.UserFromService(user), RunMode: runMode})
+	response.Success(c, UserResponse{User: h.userDTOWithCapabilities(c, user), RunMode: runMode})
 }
 
 // ValidatePromoCodeRequest 验证优惠码请求

@@ -40,6 +40,12 @@ const (
 	SystemPromptSourceSystem = "system"
 )
 
+const (
+	SystemPromptUserScopeAll       = "all"
+	SystemPromptUserScopeWhitelist = "whitelist"
+	SystemPromptUserScopeBlacklist = "blacklist"
+)
+
 func IsOpenAICompatiblePlatform(platform string) bool {
 	return platform == PlatformOpenAI || platform == PlatformCodex2API
 }
@@ -203,14 +209,17 @@ const (
 	SettingKeyIdentityPatchPrompt = "identity_patch_prompt"
 
 	// System prompt injection settings (platform scoped)
-	SettingKeySystemPromptAnthropic       = "system_prompt_anthropic"
-	SettingKeySystemPromptModeAnthropic   = "system_prompt_mode_anthropic"
-	SettingKeySystemPromptOpenAI          = "system_prompt_openai"
-	SettingKeySystemPromptModeOpenAI      = "system_prompt_mode_openai"
-	SettingKeySystemPromptGemini          = "system_prompt_gemini"
-	SettingKeySystemPromptModeGemini      = "system_prompt_mode_gemini"
-	SettingKeySystemPromptAntigravity     = "system_prompt_antigravity"
-	SettingKeySystemPromptModeAntigravity = "system_prompt_mode_antigravity"
+	SettingKeySystemPromptAnthropic        = "system_prompt_anthropic"
+	SettingKeySystemPromptModeAnthropic    = "system_prompt_mode_anthropic"
+	SettingKeySystemPromptOpenAI           = "system_prompt_openai"
+	SettingKeySystemPromptModeOpenAI       = "system_prompt_mode_openai"
+	SettingKeySystemPromptGemini           = "system_prompt_gemini"
+	SettingKeySystemPromptModeGemini       = "system_prompt_mode_gemini"
+	SettingKeySystemPromptAntigravity      = "system_prompt_antigravity"
+	SettingKeySystemPromptModeAntigravity  = "system_prompt_mode_antigravity"
+	SettingKeySystemPromptUserScopeEnabled = "system_prompt_user_scope_enabled"
+	SettingKeySystemPromptUserScopeMode    = "system_prompt_user_scope_mode"
+	SettingKeySystemPromptUserScopeUserIDs = "system_prompt_user_scope_user_ids"
 
 	// =========================
 	// Ops Monitoring (vNext)
