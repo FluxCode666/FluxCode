@@ -108,7 +108,7 @@ const codexCLICfgCacheTTL = 7 * 24 * time.Hour // 7 天；由 UpdateSettings 主
 
 // cachedSystemPromptSettings 缓存平台级系统提示词配置（进程内缓存，7 天 TTL，由 UpdateSettings 主动刷新）
 type cachedSystemPromptSettings struct {
-	values    map[string]EffectiveSystemPrompt
+	values    SystemPromptRuntimeSettings
 	expiresAt int64 // unix nano
 }
 
@@ -128,6 +128,9 @@ var systemPromptSettingKeys = []string{
 	SettingKeySystemPromptModeGemini,
 	SettingKeySystemPromptAntigravity,
 	SettingKeySystemPromptModeAntigravity,
+	SettingKeySystemPromptUserScopeEnabled,
+	SettingKeySystemPromptUserScopeMode,
+	SettingKeySystemPromptUserScopeUserIDs,
 }
 
 // DefaultSubscriptionGroupReader validates group references used by default subscriptions.
@@ -665,6 +668,15 @@ func (s *SettingService) UpdateSettings(ctx context.Context, settings *SystemSet
 	if err := normalizeSystemPromptSystemSettings(settings); err != nil {
 		return err
 	}
+	settings.SystemPromptUserScopeMode = normalizeSystemPromptUserScopeMode(settings.SystemPromptUserScopeMode)
+	settings.SystemPromptUserScopeUserIDs = normalizeSystemPromptUserScopeUserIDs(settings.SystemPromptUserScopeUserIDs)
+	if settings.SystemPromptUserScopeMode == SystemPromptUserScopeAll {
+		settings.SystemPromptUserScopeUserIDs = []int64{}
+	}
+	systemPromptUserScopeUserIDsJSON, err := marshalSystemPromptUserScopeUserIDs(settings.SystemPromptUserScopeUserIDs)
+	if err != nil {
+		return fmt.Errorf("marshal system prompt user scope user ids: %w", err)
+	}
 	updates[SettingKeySystemPromptAnthropic] = settings.SystemPromptAnthropic
 	updates[SettingKeySystemPromptModeAnthropic] = settings.SystemPromptModeAnthropic
 	updates[SettingKeySystemPromptOpenAI] = settings.SystemPromptOpenAI
@@ -673,6 +685,9 @@ func (s *SettingService) UpdateSettings(ctx context.Context, settings *SystemSet
 	updates[SettingKeySystemPromptModeGemini] = settings.SystemPromptModeGemini
 	updates[SettingKeySystemPromptAntigravity] = settings.SystemPromptAntigravity
 	updates[SettingKeySystemPromptModeAntigravity] = settings.SystemPromptModeAntigravity
+	updates[SettingKeySystemPromptUserScopeEnabled] = strconv.FormatBool(settings.SystemPromptUserScopeEnabled)
+	updates[SettingKeySystemPromptUserScopeMode] = settings.SystemPromptUserScopeMode
+	updates[SettingKeySystemPromptUserScopeUserIDs] = systemPromptUserScopeUserIDsJSON
 
 	// Ops monitoring (vNext)
 	updates[SettingKeyOpsMonitoringEnabled] = strconv.FormatBool(settings.OpsMonitoringEnabled)
@@ -802,6 +817,49 @@ func normalizeSystemPromptSystemSettings(settings *SystemSettings) error {
 		return err
 	}
 	return nil
+}
+
+func normalizeSystemPromptUserScopeMode(mode string) string {
+	switch strings.TrimSpace(mode) {
+	case SystemPromptUserScopeWhitelist, SystemPromptUserScopeBlacklist:
+		return strings.TrimSpace(mode)
+	default:
+		return SystemPromptUserScopeAll
+	}
+}
+
+func normalizeSystemPromptUserScopeUserIDs(ids []int64) []int64 {
+	seen := make(map[int64]struct{}, len(ids))
+	out := make([]int64, 0, len(ids))
+	for _, id := range ids {
+		if id <= 0 {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		out = append(out, id)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
+	return out
+}
+
+func parseSystemPromptUserScopeUserIDs(raw string) []int64 {
+	var ids []int64
+	if err := json.Unmarshal([]byte(strings.TrimSpace(raw)), &ids); err != nil {
+		return []int64{}
+	}
+	return normalizeSystemPromptUserScopeUserIDs(ids)
+}
+
+func marshalSystemPromptUserScopeUserIDs(ids []int64) (string, error) {
+	normalized := normalizeSystemPromptUserScopeUserIDs(ids)
+	b, err := json.Marshal(normalized)
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
 }
 
 // IsRegistrationEnabled 检查是否开放注册
@@ -961,9 +1019,9 @@ func (s *SettingService) GetCodexCLIConfig(ctx context.Context) (userAgent, vers
 	return "", ""
 }
 
-// GetSystemPromptSettings returns platform-level system prompt settings.
+// GetSystemPromptSettings returns platform-level system prompt settings and user scope.
 // It uses a 7-day in-process cache; UpdateSettings refreshes it immediately.
-func (s *SettingService) GetSystemPromptSettings(ctx context.Context) map[string]EffectiveSystemPrompt {
+func (s *SettingService) GetSystemPromptSettings(ctx context.Context) SystemPromptRuntimeSettings {
 	if cached, ok := systemPromptSettingsCache.Load().(*cachedSystemPromptSettings); ok && cached != nil {
 		if time.Now().UnixNano() < cached.expiresAt {
 			return cloneSystemPromptSettings(cached.values)
@@ -994,10 +1052,18 @@ func (s *SettingService) GetSystemPromptSettings(ctx context.Context) map[string
 		})
 		return cloneSystemPromptSettings(settings), nil
 	})
-	if out, ok := val.(map[string]EffectiveSystemPrompt); ok {
+	if out, ok := val.(SystemPromptRuntimeSettings); ok {
 		return out
 	}
 	return defaultSystemPromptSettings()
+}
+
+func (s *SettingService) CanUserConfigureSystemPrompt(ctx context.Context, userID int64) bool {
+	if s == nil {
+		return true
+	}
+	settings := s.GetSystemPromptSettings(ctx)
+	return IsSystemPromptAllowedForUserID(userID, settings.UserScope)
 }
 
 func refreshSystemPromptSettingsCache(settings *SystemSettings) {
@@ -1005,15 +1071,22 @@ func refreshSystemPromptSettingsCache(settings *SystemSettings) {
 		return
 	}
 	values := map[string]string{
-		SettingKeySystemPromptAnthropic:       settings.SystemPromptAnthropic,
-		SettingKeySystemPromptModeAnthropic:   settings.SystemPromptModeAnthropic,
-		SettingKeySystemPromptOpenAI:          settings.SystemPromptOpenAI,
-		SettingKeySystemPromptModeOpenAI:      settings.SystemPromptModeOpenAI,
-		SettingKeySystemPromptGemini:          settings.SystemPromptGemini,
-		SettingKeySystemPromptModeGemini:      settings.SystemPromptModeGemini,
-		SettingKeySystemPromptAntigravity:     settings.SystemPromptAntigravity,
-		SettingKeySystemPromptModeAntigravity: settings.SystemPromptModeAntigravity,
+		SettingKeySystemPromptAnthropic:        settings.SystemPromptAnthropic,
+		SettingKeySystemPromptModeAnthropic:    settings.SystemPromptModeAnthropic,
+		SettingKeySystemPromptOpenAI:           settings.SystemPromptOpenAI,
+		SettingKeySystemPromptModeOpenAI:       settings.SystemPromptModeOpenAI,
+		SettingKeySystemPromptGemini:           settings.SystemPromptGemini,
+		SettingKeySystemPromptModeGemini:       settings.SystemPromptModeGemini,
+		SettingKeySystemPromptAntigravity:      settings.SystemPromptAntigravity,
+		SettingKeySystemPromptModeAntigravity:  settings.SystemPromptModeAntigravity,
+		SettingKeySystemPromptUserScopeEnabled: strconv.FormatBool(settings.SystemPromptUserScopeEnabled),
+		SettingKeySystemPromptUserScopeMode:    settings.SystemPromptUserScopeMode,
 	}
+	userIDsJSON, err := marshalSystemPromptUserScopeUserIDs(settings.SystemPromptUserScopeUserIDs)
+	if err != nil {
+		userIDsJSON = "[]"
+	}
+	values[SettingKeySystemPromptUserScopeUserIDs] = userIDsJSON
 	systemPromptSettingsSF.Forget("system_prompt_settings")
 	systemPromptSettingsCache.Store(&cachedSystemPromptSettings{
 		values:    buildSystemPromptSettings(values),
@@ -1021,11 +1094,11 @@ func refreshSystemPromptSettingsCache(settings *SystemSettings) {
 	})
 }
 
-func buildSystemPromptSettings(values map[string]string) map[string]EffectiveSystemPrompt {
+func buildSystemPromptSettings(values map[string]string) SystemPromptRuntimeSettings {
 	out := defaultSystemPromptSettings()
 	apply := func(platform, promptKey, modeKey string) {
 		prompt, mode := normalizeStoredSystemPromptConfig(values[promptKey], values[modeKey])
-		out[platform] = EffectiveSystemPrompt{
+		out.Prompts[platform] = EffectiveSystemPrompt{
 			Prompt: prompt,
 			Mode:   mode,
 			Source: SystemPromptSourceSystem,
@@ -1035,6 +1108,11 @@ func buildSystemPromptSettings(values map[string]string) map[string]EffectiveSys
 	apply(PlatformOpenAI, SettingKeySystemPromptOpenAI, SettingKeySystemPromptModeOpenAI)
 	apply(PlatformGemini, SettingKeySystemPromptGemini, SettingKeySystemPromptModeGemini)
 	apply(PlatformAntigravity, SettingKeySystemPromptAntigravity, SettingKeySystemPromptModeAntigravity)
+	out.UserScope = SystemPromptUserScope{
+		Enabled: values[SettingKeySystemPromptUserScopeEnabled] == "true",
+		Mode:    normalizeSystemPromptUserScopeMode(values[SettingKeySystemPromptUserScopeMode]),
+		UserIDs: parseSystemPromptUserScopeUserIDs(values[SettingKeySystemPromptUserScopeUserIDs]),
+	}
 	return out
 }
 
@@ -1046,21 +1124,35 @@ func normalizeStoredSystemPromptConfig(prompt, mode string) (string, string) {
 	return normalizedPrompt, normalizedMode
 }
 
-func defaultSystemPromptSettings() map[string]EffectiveSystemPrompt {
-	return map[string]EffectiveSystemPrompt{
-		PlatformAnthropic:   {Mode: SystemPromptModeInherit, Source: SystemPromptSourceSystem},
-		PlatformOpenAI:      {Mode: SystemPromptModeInherit, Source: SystemPromptSourceSystem},
-		PlatformGemini:      {Mode: SystemPromptModeInherit, Source: SystemPromptSourceSystem},
-		PlatformAntigravity: {Mode: SystemPromptModeInherit, Source: SystemPromptSourceSystem},
+func defaultSystemPromptSettings() SystemPromptRuntimeSettings {
+	return SystemPromptRuntimeSettings{
+		Prompts: map[string]EffectiveSystemPrompt{
+			PlatformAnthropic:   {Mode: SystemPromptModeInherit, Source: SystemPromptSourceSystem},
+			PlatformOpenAI:      {Mode: SystemPromptModeInherit, Source: SystemPromptSourceSystem},
+			PlatformGemini:      {Mode: SystemPromptModeInherit, Source: SystemPromptSourceSystem},
+			PlatformAntigravity: {Mode: SystemPromptModeInherit, Source: SystemPromptSourceSystem},
+		},
+		UserScope: SystemPromptUserScope{
+			Enabled: false,
+			Mode:    SystemPromptUserScopeAll,
+			UserIDs: []int64{},
+		},
 	}
 }
 
-func cloneSystemPromptSettings(in map[string]EffectiveSystemPrompt) map[string]EffectiveSystemPrompt {
-	out := make(map[string]EffectiveSystemPrompt, len(in))
-	for key, value := range in {
-		out[key] = value
+func cloneSystemPromptSettings(in SystemPromptRuntimeSettings) SystemPromptRuntimeSettings {
+	prompts := make(map[string]EffectiveSystemPrompt, len(in.Prompts))
+	for key, value := range in.Prompts {
+		prompts[key] = value
 	}
-	return out
+	return SystemPromptRuntimeSettings{
+		Prompts: prompts,
+		UserScope: SystemPromptUserScope{
+			Enabled: in.UserScope.Enabled,
+			Mode:    in.UserScope.Mode,
+			UserIDs: append([]int64(nil), in.UserScope.UserIDs...),
+		},
+	}
 }
 
 // IsEmailVerifyEnabled 检查是否开启邮件验证
@@ -1210,16 +1302,19 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyFallbackModelGemini:      "gemini-2.5-pro",
 		SettingKeyFallbackModelAntigravity: "gemini-2.5-pro",
 		// Identity patch defaults
-		SettingKeyEnableIdentityPatch:         "true",
-		SettingKeyIdentityPatchPrompt:         "",
-		SettingKeySystemPromptAnthropic:       "",
-		SettingKeySystemPromptModeAnthropic:   SystemPromptModeInherit,
-		SettingKeySystemPromptOpenAI:          "",
-		SettingKeySystemPromptModeOpenAI:      SystemPromptModeInherit,
-		SettingKeySystemPromptGemini:          "",
-		SettingKeySystemPromptModeGemini:      SystemPromptModeInherit,
-		SettingKeySystemPromptAntigravity:     "",
-		SettingKeySystemPromptModeAntigravity: SystemPromptModeInherit,
+		SettingKeyEnableIdentityPatch:          "true",
+		SettingKeyIdentityPatchPrompt:          "",
+		SettingKeySystemPromptAnthropic:        "",
+		SettingKeySystemPromptModeAnthropic:    SystemPromptModeInherit,
+		SettingKeySystemPromptOpenAI:           "",
+		SettingKeySystemPromptModeOpenAI:       SystemPromptModeInherit,
+		SettingKeySystemPromptGemini:           "",
+		SettingKeySystemPromptModeGemini:       SystemPromptModeInherit,
+		SettingKeySystemPromptAntigravity:      "",
+		SettingKeySystemPromptModeAntigravity:  SystemPromptModeInherit,
+		SettingKeySystemPromptUserScopeEnabled: "false",
+		SettingKeySystemPromptUserScopeMode:    SystemPromptUserScopeAll,
+		SettingKeySystemPromptUserScopeUserIDs: "[]",
 
 		// Ops monitoring defaults (vNext)
 		SettingKeyOpsMonitoringEnabled:         "true",
@@ -1498,6 +1593,9 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		settings[SettingKeySystemPromptAntigravity],
 		settings[SettingKeySystemPromptModeAntigravity],
 	)
+	result.SystemPromptUserScopeEnabled = settings[SettingKeySystemPromptUserScopeEnabled] == "true"
+	result.SystemPromptUserScopeMode = normalizeSystemPromptUserScopeMode(settings[SettingKeySystemPromptUserScopeMode])
+	result.SystemPromptUserScopeUserIDs = parseSystemPromptUserScopeUserIDs(settings[SettingKeySystemPromptUserScopeUserIDs])
 
 	// Ops monitoring settings (default: enabled, fail-open)
 	result.OpsMonitoringEnabled = !isFalseSettingValue(settings[SettingKeyOpsMonitoringEnabled])

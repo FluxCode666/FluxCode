@@ -105,14 +105,17 @@ type SystemSettings struct {
 	IdentityPatchPrompt string `json:"identity_patch_prompt"`
 
 	// System prompt injection configuration
-	SystemPromptAnthropic       string `json:"system_prompt_anthropic"`
-	SystemPromptModeAnthropic   string `json:"system_prompt_mode_anthropic"`
-	SystemPromptOpenAI          string `json:"system_prompt_openai"`
-	SystemPromptModeOpenAI      string `json:"system_prompt_mode_openai"`
-	SystemPromptGemini          string `json:"system_prompt_gemini"`
-	SystemPromptModeGemini      string `json:"system_prompt_mode_gemini"`
-	SystemPromptAntigravity     string `json:"system_prompt_antigravity"`
-	SystemPromptModeAntigravity string `json:"system_prompt_mode_antigravity"`
+	SystemPromptAnthropic        string  `json:"system_prompt_anthropic"`
+	SystemPromptModeAnthropic    string  `json:"system_prompt_mode_anthropic"`
+	SystemPromptOpenAI           string  `json:"system_prompt_openai"`
+	SystemPromptModeOpenAI       string  `json:"system_prompt_mode_openai"`
+	SystemPromptGemini           string  `json:"system_prompt_gemini"`
+	SystemPromptModeGemini       string  `json:"system_prompt_mode_gemini"`
+	SystemPromptAntigravity      string  `json:"system_prompt_antigravity"`
+	SystemPromptModeAntigravity  string  `json:"system_prompt_mode_antigravity"`
+	SystemPromptUserScopeEnabled bool    `json:"system_prompt_user_scope_enabled"`
+	SystemPromptUserScopeMode    string  `json:"system_prompt_user_scope_mode"`
+	SystemPromptUserScopeUserIDs []int64 `json:"system_prompt_user_scope_user_ids"`
 
 	// Ops monitoring (vNext)
 	OpsMonitoringEnabled         bool   `json:"ops_monitoring_enabled"`

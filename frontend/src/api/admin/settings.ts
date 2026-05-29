@@ -4,7 +4,13 @@
  */
 
 import { apiClient } from '../client'
-import type { CustomMenuItem, CustomEndpoint, NotifyEmailEntry, SystemPromptMode } from '@/types'
+import type {
+  CustomMenuItem,
+  CustomEndpoint,
+  NotifyEmailEntry,
+  SystemPromptMode,
+  SystemPromptUserScopeMode,
+} from '@/types'
 
 export interface DefaultSubscriptionSetting {
   group_id: number
@@ -106,6 +112,9 @@ export interface SystemSettings {
   system_prompt_mode_gemini: SystemPromptMode
   system_prompt_antigravity: string
   system_prompt_mode_antigravity: SystemPromptMode
+  system_prompt_user_scope_enabled: boolean
+  system_prompt_user_scope_mode: SystemPromptUserScopeMode
+  system_prompt_user_scope_user_ids: number[]
 
   // Ops Monitoring (vNext)
   ops_monitoring_enabled: boolean
@@ -250,6 +259,9 @@ export interface UpdateSettingsRequest {
   system_prompt_mode_gemini?: SystemPromptMode
   system_prompt_antigravity?: string
   system_prompt_mode_antigravity?: SystemPromptMode
+  system_prompt_user_scope_enabled?: boolean
+  system_prompt_user_scope_mode?: SystemPromptUserScopeMode
+  system_prompt_user_scope_user_ids?: number[]
   ops_monitoring_enabled?: boolean
   ops_realtime_monitoring_enabled?: boolean
   ops_query_mode_default?: 'auto' | 'raw' | 'preagg' | string

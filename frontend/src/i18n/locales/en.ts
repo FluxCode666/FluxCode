@@ -5328,7 +5328,27 @@ export default {
           'Configure default system prompts by platform. Runtime priority: API Key > Group > System Settings (current platform default).',
         platformDescription: '{platform} platform default',
         placeholder: 'Enter the default system prompt for {platform}',
-        promptHint: 'When "Not configured" is selected, this platform does not inject a prompt from system settings.'
+        promptHint: 'When "Not configured" is selected, this platform does not inject a prompt from system settings.',
+        userScopeTitle: 'User System Prompt Permission',
+        userScopeDescription:
+          'Acts as the user-side global system prompt switch. When disabled, API Key custom system prompt settings are hidden from users. When enabled, prompts still resolve by API Key > Group > System Settings (current platform default).',
+        userScopeEnabled: 'Allow users to use system prompts',
+        userScopeEnabledHint:
+          'When disabled, no user can configure custom system prompts and the user-side entry is hidden.',
+        userScopeMode: 'Scope',
+        userScopeUsers: 'Users',
+        userScopeUsersHint: 'Search users by email. Only user IDs are stored when settings are saved.',
+        userScopeSearchPlaceholder: 'Search users by email',
+        userScopeModes: {
+          all: 'All',
+          whitelist: 'Whitelist',
+          blacklist: 'Blacklist'
+        },
+        userScopeModeHints: {
+          all: 'When enabled, all users can configure and use system prompts by the original priority.',
+          whitelist: 'When enabled, only listed users can configure and use system prompts.',
+          blacklist: 'When enabled, listed users cannot configure or use system prompts; all other users keep normal behavior.'
+        }
       },
       webSearchEmulation: {
         title: 'Web Search Emulation',

@@ -17,6 +17,17 @@ type EffectiveSystemPrompt struct {
 	Source string
 }
 
+type SystemPromptUserScope struct {
+	Enabled bool
+	Mode    string
+	UserIDs []int64
+}
+
+type SystemPromptRuntimeSettings struct {
+	Prompts   map[string]EffectiveSystemPrompt
+	UserScope SystemPromptUserScope
+}
+
 var ErrInvalidSystemPromptMode = infraerrors.BadRequest("INVALID_SYSTEM_PROMPT_MODE", "invalid system prompt mode")
 
 func (p EffectiveSystemPrompt) Enabled() bool {
@@ -24,7 +35,7 @@ func (p EffectiveSystemPrompt) Enabled() bool {
 }
 
 type SystemPromptSettingsProvider interface {
-	GetSystemPromptSettings(ctx context.Context) map[string]EffectiveSystemPrompt
+	GetSystemPromptSettings(ctx context.Context) SystemPromptRuntimeSettings
 }
 
 type systemPromptAPIKeyContextKey struct{}
@@ -88,6 +99,14 @@ func IsSystemPromptInjectionMode(mode string) bool {
 }
 
 func ResolveEffectiveSystemPrompt(ctx context.Context, apiKey *APIKey, platform string, settings SystemPromptSettingsProvider) EffectiveSystemPrompt {
+	runtimeSettings := defaultSystemPromptSettings()
+	if !isNilSystemPromptSettingsProvider(settings) {
+		runtimeSettings = settings.GetSystemPromptSettings(ctx)
+	}
+	if !isSystemPromptAllowedForUser(apiKey, runtimeSettings.UserScope) {
+		return EffectiveSystemPrompt{Mode: SystemPromptModeInherit, Source: SystemPromptSourceNone}
+	}
+
 	if apiKey != nil {
 		if p := promptFromLayer(apiKey.SystemPrompt, apiKey.SystemPromptMode, SystemPromptSourceAPIKey); p.Enabled() {
 			return p
@@ -98,13 +117,41 @@ func ResolveEffectiveSystemPrompt(ctx context.Context, apiKey *APIKey, platform 
 			}
 		}
 	}
-	if !isNilSystemPromptSettingsProvider(settings) {
-		byPlatform := settings.GetSystemPromptSettings(ctx)
-		if p, ok := byPlatform[strings.TrimSpace(platform)]; ok && p.Enabled() {
-			return p
-		}
+	if p, ok := runtimeSettings.Prompts[strings.TrimSpace(platform)]; ok && p.Enabled() {
+		return p
 	}
 	return EffectiveSystemPrompt{Mode: SystemPromptModeInherit, Source: SystemPromptSourceNone}
+}
+
+func isSystemPromptAllowedForUser(apiKey *APIKey, scope SystemPromptUserScope) bool {
+	if !scope.Enabled {
+		return false
+	}
+	userID := int64(0)
+	if apiKey != nil {
+		userID = apiKey.UserID
+	}
+	switch normalizeSystemPromptUserScopeMode(scope.Mode) {
+	case SystemPromptUserScopeWhitelist:
+		return userID > 0 && systemPromptScopeContainsUserID(scope.UserIDs, userID)
+	case SystemPromptUserScopeBlacklist:
+		return userID <= 0 || !systemPromptScopeContainsUserID(scope.UserIDs, userID)
+	default:
+		return true
+	}
+}
+
+func IsSystemPromptAllowedForUserID(userID int64, scope SystemPromptUserScope) bool {
+	return isSystemPromptAllowedForUser(&APIKey{UserID: userID}, scope)
+}
+
+func systemPromptScopeContainsUserID(values []int64, target int64) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
 }
 
 func isNilSystemPromptSettingsProvider(settings SystemPromptSettingsProvider) bool {

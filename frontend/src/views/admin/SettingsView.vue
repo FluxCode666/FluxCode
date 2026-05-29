@@ -1675,23 +1675,113 @@
             </p>
           </div>
           <div class="space-y-5 p-6">
-            <div
-              v-for="(platform, index) in systemPromptPlatforms"
-              :key="platform.key"
-              :class="index > 0 ? 'border-t border-gray-100 pt-5 dark:border-dark-700' : ''"
+            <section
+              data-test="system-prompt-user-scope"
+              class="space-y-4 rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-dark-700 dark:bg-dark-800/60"
             >
-              <SystemPromptConfigFields
-                :title="platform.label"
-                :mode="form[platform.modeKey]"
-                :prompt="form[platform.promptKey]"
-                :mode-options="systemPromptModeOptions"
-                :mode-label="t('systemPrompt.modeLabel')"
-                :prompt-label="t('systemPrompt.promptLabel')"
-                :prompt-placeholder="t('admin.settings.systemPrompt.placeholder', { platform: platform.label })"
-                :prompt-hint="t('admin.settings.systemPrompt.promptHint')"
-                @update:mode="form[platform.modeKey] = $event"
-                @update:prompt="form[platform.promptKey] = $event"
-              />
+              <div>
+                <h3 class="text-sm font-semibold text-gray-900 dark:text-white">
+                  {{ t('admin.settings.systemPrompt.userScopeTitle') }}
+                </h3>
+                <p class="mt-1 text-xs leading-5 text-gray-500 dark:text-gray-400">
+                  {{ t('admin.settings.systemPrompt.userScopeDescription') }}
+                </p>
+              </div>
+              <div class="flex items-start justify-between gap-4">
+                <div>
+                  <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {{ t('admin.settings.systemPrompt.userScopeEnabled') }}
+                  </label>
+                  <p class="mt-1 text-xs leading-5 text-gray-500 dark:text-gray-400">
+                    {{ t('admin.settings.systemPrompt.userScopeEnabledHint') }}
+                  </p>
+                </div>
+                <Toggle v-model="form.system_prompt_user_scope_enabled" />
+              </div>
+
+              <div v-if="form.system_prompt_user_scope_enabled" class="space-y-3">
+                <div class="max-w-xs">
+                  <label class="input-label">
+                    {{ t('admin.settings.systemPrompt.userScopeMode') }}
+                  </label>
+                  <Select
+                    :model-value="form.system_prompt_user_scope_mode"
+                    :options="systemPromptUserScopeModeOptions"
+                    @update:model-value="updateSystemPromptUserScopeMode($event as SystemPromptUserScopeMode)"
+                  >
+                    <template #option="{ option, selected }">
+                      <div class="flex min-w-0 flex-1 items-center gap-2">
+                        <span class="select-option-label">
+                          {{ systemPromptUserScopeOptionLabel(option) }}
+                        </span>
+                        <Icon
+                          v-if="selected"
+                          name="check"
+                          size="sm"
+                          class="flex-shrink-0 text-primary-500"
+                          :stroke-width="2"
+                        />
+                        <HelpTooltip
+                          v-if="systemPromptUserScopeOptionDescription(option)"
+                          :content="systemPromptUserScopeOptionDescription(option)"
+                        >
+                          <template #trigger>
+                            <span
+                              class="inline-flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full text-gray-400 transition-colors hover:text-primary-600 dark:text-gray-500 dark:hover:text-primary-400"
+                              :title="systemPromptUserScopeOptionDescription(option)"
+                              :aria-label="systemPromptUserScopeOptionHelpLabel(option)"
+                              @click.stop
+                              @mousedown.stop
+                            >
+                              <Icon name="questionCircle" size="sm" :stroke-width="2" />
+                            </span>
+                          </template>
+                        </HelpTooltip>
+                      </div>
+                    </template>
+                  </Select>
+                </div>
+
+                <div
+                  v-if="form.system_prompt_user_scope_enabled && form.system_prompt_user_scope_mode !== 'all'"
+                >
+                  <label class="input-label">
+                    {{ t('admin.settings.systemPrompt.userScopeUsers') }}
+                  </label>
+                  <UserMultiSearchSelect
+                    v-model="form.system_prompt_user_scope_user_ids"
+                    v-model:selected-users="systemPromptScopeSelectedUsers"
+                    :placeholder="t('admin.settings.systemPrompt.userScopeSearchPlaceholder')"
+                  />
+                  <p class="input-hint">
+                    {{ t('admin.settings.systemPrompt.userScopeUsersHint') }}
+                  </p>
+                </div>
+              </div>
+            </section>
+
+            <div
+              data-test="system-prompt-platform-list"
+              class="space-y-5 border-t border-gray-100 pt-5 dark:border-dark-700"
+            >
+              <div
+                v-for="(platform, index) in systemPromptPlatforms"
+                :key="platform.key"
+                :class="index > 0 ? 'border-t border-gray-100 pt-5 dark:border-dark-700' : ''"
+              >
+                <SystemPromptConfigFields
+                  :title="platform.label"
+                  :mode="form[platform.modeKey]"
+                  :prompt="form[platform.promptKey]"
+                  :mode-options="systemPromptModeOptions"
+                  :mode-label="t('systemPrompt.modeLabel')"
+                  :prompt-label="t('systemPrompt.promptLabel')"
+                  :prompt-placeholder="t('admin.settings.systemPrompt.placeholder', { platform: platform.label })"
+                  :prompt-hint="t('admin.settings.systemPrompt.promptHint')"
+                  @update:mode="form[platform.modeKey] = $event"
+                  @update:prompt="form[platform.promptKey] = $event"
+                />
+              </div>
             </div>
           </div>
         </div>
@@ -3086,12 +3176,20 @@ import type {
   WebSearchProviderConfig,
   WebSearchTestResult,
 } from '@/api/admin/settings'
-import type { AdminGroup, Proxy, NotifyEmailEntry, SystemPromptMode } from '@/types'
+import type {
+  AdminGroup,
+  Proxy,
+  NotifyEmailEntry,
+  SystemPromptMode,
+  SystemPromptUserScopeMode,
+} from '@/types'
 import type { ProviderInstance } from '@/types/payment'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
 import Select from '@/components/common/Select.vue'
+import HelpTooltip from '@/components/common/HelpTooltip.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
+import UserMultiSearchSelect from '@/components/common/UserMultiSearchSelect.vue'
 import PaymentProviderList from '@/components/payment/PaymentProviderList.vue'
 import PaymentProviderDialog from '@/components/payment/PaymentProviderDialog.vue'
 import GroupBadge from '@/components/common/GroupBadge.vue'
@@ -3152,6 +3250,24 @@ const systemPromptModeOptions = computed(() => [
   { value: 'append' as SystemPromptMode, label: t('systemPrompt.modes.append'), description: t('systemPrompt.modeTooltips.append') },
 ])
 
+const systemPromptUserScopeModeOptions = computed(() => [
+  {
+    value: 'all' as SystemPromptUserScopeMode,
+    label: t('admin.settings.systemPrompt.userScopeModes.all'),
+    description: t('admin.settings.systemPrompt.userScopeModeHints.all'),
+  },
+  {
+    value: 'whitelist' as SystemPromptUserScopeMode,
+    label: t('admin.settings.systemPrompt.userScopeModes.whitelist'),
+    description: t('admin.settings.systemPrompt.userScopeModeHints.whitelist'),
+  },
+  {
+    value: 'blacklist' as SystemPromptUserScopeMode,
+    label: t('admin.settings.systemPrompt.userScopeModes.blacklist'),
+    description: t('admin.settings.systemPrompt.userScopeModeHints.blacklist'),
+  },
+])
+
 const systemPromptPlatforms = computed<SystemPromptPlatformSetting[]>(() => [
   {
     key: 'anthropic',
@@ -3179,6 +3295,32 @@ const systemPromptPlatforms = computed<SystemPromptPlatformSetting[]>(() => [
   },
 ])
 
+function updateSystemPromptUserScopeMode(mode: SystemPromptUserScopeMode) {
+  form.system_prompt_user_scope_mode = mode
+  if (mode === 'all') {
+    form.system_prompt_user_scope_user_ids = []
+    systemPromptScopeSelectedUsers.value = []
+  }
+}
+
+function systemPromptUserScopeOptionLabel(option: unknown): string {
+  if (option && typeof option === 'object' && 'label' in option) {
+    return String((option as { label?: unknown }).label ?? '')
+  }
+  return ''
+}
+
+function systemPromptUserScopeOptionDescription(option: unknown): string {
+  if (option && typeof option === 'object' && 'description' in option) {
+    return String((option as { description?: unknown }).description ?? '')
+  }
+  return ''
+}
+
+function systemPromptUserScopeOptionHelpLabel(option: unknown): string {
+  return `${systemPromptUserScopeOptionLabel(option)}: ${systemPromptUserScopeOptionDescription(option)}`
+}
+
 const loading = ref(true)
 const loadFailed = ref(false)
 const saving = ref(false)
@@ -3197,6 +3339,7 @@ const adminApiKeyMasked = ref('')
 const adminApiKeyOperating = ref(false)
 const newAdminApiKey = ref('')
 const subscriptionGroups = ref<AdminGroup[]>([])
+const systemPromptScopeSelectedUsers = ref<SystemPromptScopeSelectedUser[]>([])
 
 // Overload Cooldown (529) 状态
 const overloadCooldownLoading = ref(true)
@@ -3263,6 +3406,8 @@ type SettingsForm = SystemSettings & {
   linuxdo_connect_client_secret: string
   oidc_connect_client_secret: string
 }
+
+type SystemPromptScopeSelectedUser = { id: number; email: string; username?: string }
 
 const form = reactive<SettingsForm>({
   registration_enabled: true,
@@ -3352,6 +3497,9 @@ const form = reactive<SettingsForm>({
   system_prompt_mode_gemini: 'inherit',
   system_prompt_antigravity: '',
   system_prompt_mode_antigravity: 'inherit',
+  system_prompt_user_scope_enabled: false,
+  system_prompt_user_scope_mode: 'all',
+  system_prompt_user_scope_user_ids: [],
   // Ops monitoring (vNext)
   ops_monitoring_enabled: true,
   ops_realtime_monitoring_enabled: true,
@@ -3739,6 +3887,26 @@ function parseTablePageSizeOptionsInput(raw: string): number[] | null {
   return deduped
 }
 
+async function hydrateSystemPromptScopeSelectedUsers(userIDs: number[]) {
+  const ids = Array.from(new Set((userIDs || []).filter((id) => Number.isInteger(id) && id > 0)))
+  if (ids.length === 0) {
+    systemPromptScopeSelectedUsers.value = []
+    return
+  }
+
+  const users = await Promise.all(
+    ids.map(async (id): Promise<SystemPromptScopeSelectedUser> => {
+      try {
+        const user = await adminAPI.users.getById(id)
+        return { id: user.id, email: user.email, username: user.username }
+      } catch {
+        return { id, email: `#${id}`, username: undefined }
+      }
+    })
+  )
+  systemPromptScopeSelectedUsers.value = users
+}
+
 async function loadSettings() {
   loading.value = true
   loadFailed.value = false
@@ -3772,6 +3940,7 @@ async function loadSettings() {
     form.turnstile_secret_key = ''
     form.linuxdo_connect_client_secret = ''
     form.oidc_connect_client_secret = ''
+    await hydrateSystemPromptScopeSelectedUsers(form.system_prompt_user_scope_user_ids)
 
     // Load web search emulation config separately
     await loadWebSearchConfig()
@@ -3959,6 +4128,12 @@ async function saveSettings() {
       system_prompt_mode_gemini: form.system_prompt_mode_gemini,
       system_prompt_antigravity: form.system_prompt_antigravity,
       system_prompt_mode_antigravity: form.system_prompt_mode_antigravity,
+      system_prompt_user_scope_enabled: form.system_prompt_user_scope_enabled,
+      system_prompt_user_scope_mode: form.system_prompt_user_scope_mode,
+      system_prompt_user_scope_user_ids:
+        form.system_prompt_user_scope_mode === 'all'
+          ? []
+          : form.system_prompt_user_scope_user_ids,
       min_claude_code_version: form.min_claude_code_version,
       max_claude_code_version: form.max_claude_code_version,
       allow_ungrouped_key_scheduling: form.allow_ungrouped_key_scheduling,
@@ -4018,6 +4193,7 @@ async function saveSettings() {
     form.turnstile_secret_key = ''
     form.linuxdo_connect_client_secret = ''
     form.oidc_connect_client_secret = ''
+    await hydrateSystemPromptScopeSelectedUsers(form.system_prompt_user_scope_user_ids)
     // Save web search emulation config separately (errors handled internally)
     const wsOk = await saveWebSearchConfig()
     // Refresh cached settings so sidebar/header update immediately

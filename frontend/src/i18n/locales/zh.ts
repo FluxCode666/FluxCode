@@ -5456,7 +5456,25 @@ export default {
         description: '按平台配置全局默认系统提示词。运行时优先级：API Key > 分组 > 系统配置（当前平台默认）。',
         platformDescription: '{platform} 平台默认配置',
         placeholder: '输入 {platform} 的默认系统提示词',
-        promptHint: '选择“不配置”时，该平台不会从系统配置层注入提示词。'
+        promptHint: '选择“不配置”时，该平台不会从系统配置层注入提示词。',
+        userScopeTitle: '用户系统提示词权限',
+        userScopeDescription: '作为用户侧系统提示词总开关；关闭后用户 API Key 自定义系统提示词配置会隐藏。开启后仍按 API Key > 分组 > 系统配置（当前平台默认）的优先级解析。',
+        userScopeEnabled: '允许用户使用系统提示词',
+        userScopeEnabledHint: '关闭时所有用户都不能配置自定义系统提示词，用户侧配置入口会隐藏。',
+        userScopeMode: '适用范围',
+        userScopeUsers: '用户名单',
+        userScopeUsersHint: '通过邮箱搜索选择用户，保存时仅存储用户 ID。',
+        userScopeSearchPlaceholder: '输入邮箱搜索用户',
+        userScopeModes: {
+          all: '全量',
+          whitelist: '白名单',
+          blacklist: '黑名单'
+        },
+        userScopeModeHints: {
+          all: '开启后所有用户都允许配置并按原优先级使用系统提示词。',
+          whitelist: '开启后只有名单中的用户允许配置并使用系统提示词。',
+          blacklist: '开启后名单中的用户不能配置或使用系统提示词，其他用户正常生效。'
+        }
       },
       webSearchEmulation: {
         title: 'Web Search 模拟',

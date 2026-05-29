@@ -32,4 +32,35 @@ describe('SettingsView system prompt placement', () => {
     expect(settingsViewSource).toContain(":mode-label=\"t('systemPrompt.modeLabel')\"")
     expect(settingsViewSource).toContain(":prompt-label=\"t('systemPrompt.promptLabel')\"")
   })
+
+  it('renders user scope controls before platform prompts', () => {
+    expect(settingsViewSource).toContain('data-test="system-prompt-user-scope"')
+    expect(settingsViewSource).toContain('data-test="system-prompt-platform-list"')
+    expect(settingsViewSource.indexOf('data-test="system-prompt-user-scope"')).toBeLessThan(
+      settingsViewSource.indexOf('data-test="system-prompt-platform-list"')
+    )
+    expect(settingsViewSource).toContain('system_prompt_user_scope_enabled')
+    expect(settingsViewSource).toContain('system_prompt_user_scope_mode')
+    expect(settingsViewSource).toContain('system_prompt_user_scope_user_ids')
+  })
+
+  it('describes user scope modes and keeps the runtime priority visible', () => {
+    expect(zh.admin.settings.systemPrompt.userScopeDescription).toContain('API Key > 分组 > 系统配置')
+    expect(zh.admin.settings.systemPrompt.userScopeModes).toMatchObject({
+      all: '全量',
+      whitelist: '白名单',
+      blacklist: '黑名单',
+    })
+    expect(en.admin.settings.systemPrompt.userScopeDescription).toContain('API Key > Group > System Settings')
+    expect(en.admin.settings.systemPrompt.userScopeModes).toMatchObject({
+      all: 'All',
+      whitelist: 'Whitelist',
+      blacklist: 'Blacklist',
+    })
+  })
+
+  it('hides user scope detail controls when the global switch is disabled', () => {
+    expect(settingsViewSource).toContain('<div v-if="form.system_prompt_user_scope_enabled" class="space-y-3">')
+    expect(settingsViewSource).not.toContain(':disabled="!form.system_prompt_user_scope_enabled"')
+  })
 })

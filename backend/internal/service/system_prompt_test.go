@@ -10,16 +10,25 @@ import (
 )
 
 type promptSettingsStub struct {
-	byPlatform map[string]EffectiveSystemPrompt
+	runtime SystemPromptRuntimeSettings
 }
 
-func (s promptSettingsStub) GetSystemPromptSettings(context.Context) map[string]EffectiveSystemPrompt {
-	return s.byPlatform
+func (s promptSettingsStub) GetSystemPromptSettings(context.Context) SystemPromptRuntimeSettings {
+	return s.runtime
+}
+
+func TestSystemPromptUserScopeConstants(t *testing.T) {
+	require.Equal(t, "all", SystemPromptUserScopeAll)
+	require.Equal(t, "whitelist", SystemPromptUserScopeWhitelist)
+	require.Equal(t, "blacklist", SystemPromptUserScopeBlacklist)
 }
 
 func TestResolveEffectiveSystemPrompt_Priority(t *testing.T) {
-	settings := promptSettingsStub{byPlatform: map[string]EffectiveSystemPrompt{
-		PlatformOpenAI: {Prompt: "system", Mode: SystemPromptModeOverride, Source: SystemPromptSourceSystem},
+	settings := promptSettingsStub{runtime: SystemPromptRuntimeSettings{
+		Prompts: map[string]EffectiveSystemPrompt{
+			PlatformOpenAI: {Prompt: "system", Mode: SystemPromptModeOverride, Source: SystemPromptSourceSystem},
+		},
+		UserScope: SystemPromptUserScope{Enabled: true, Mode: SystemPromptUserScopeAll},
 	}}
 	apiKey := &APIKey{
 		SystemPrompt:     "key",
@@ -38,8 +47,11 @@ func TestResolveEffectiveSystemPrompt_Priority(t *testing.T) {
 }
 
 func TestResolveEffectiveSystemPrompt_InheritsThroughGroupToSystem(t *testing.T) {
-	settings := promptSettingsStub{byPlatform: map[string]EffectiveSystemPrompt{
-		PlatformGemini: {Prompt: "platform", Mode: SystemPromptModePassthrough, Source: SystemPromptSourceSystem},
+	settings := promptSettingsStub{runtime: SystemPromptRuntimeSettings{
+		Prompts: map[string]EffectiveSystemPrompt{
+			PlatformGemini: {Prompt: "platform", Mode: SystemPromptModePassthrough, Source: SystemPromptSourceSystem},
+		},
+		UserScope: SystemPromptUserScope{Enabled: true, Mode: SystemPromptUserScopeAll},
 	}}
 	apiKey := &APIKey{
 		SystemPromptMode: SystemPromptModeInherit,
@@ -61,6 +73,68 @@ func TestResolveEffectiveSystemPrompt_AllInheritReturnsDisabled(t *testing.T) {
 
 	require.False(t, got.Enabled())
 	require.Equal(t, SystemPromptModeInherit, got.Mode)
+}
+
+func TestResolveEffectiveSystemPrompt_UserScopeWhitelistAllowsListedUser(t *testing.T) {
+	settings := promptSettingsStub{runtime: SystemPromptRuntimeSettings{
+		Prompts: map[string]EffectiveSystemPrompt{
+			PlatformOpenAI: {Prompt: "system", Mode: SystemPromptModeOverride, Source: SystemPromptSourceSystem},
+		},
+		UserScope: SystemPromptUserScope{Enabled: true, Mode: SystemPromptUserScopeWhitelist, UserIDs: []int64{42}},
+	}}
+	apiKey := &APIKey{UserID: 42, SystemPromptMode: SystemPromptModeInherit}
+
+	got := ResolveEffectiveSystemPrompt(context.Background(), apiKey, PlatformOpenAI, settings)
+
+	require.True(t, got.Enabled())
+	require.Equal(t, "system", got.Prompt)
+}
+
+func TestResolveEffectiveSystemPrompt_UserScopeWhitelistBlocksUnlistedUser(t *testing.T) {
+	settings := promptSettingsStub{runtime: SystemPromptRuntimeSettings{
+		Prompts: map[string]EffectiveSystemPrompt{
+			PlatformOpenAI: {Prompt: "system", Mode: SystemPromptModeOverride, Source: SystemPromptSourceSystem},
+		},
+		UserScope: SystemPromptUserScope{Enabled: true, Mode: SystemPromptUserScopeWhitelist, UserIDs: []int64{42}},
+	}}
+	apiKey := &APIKey{UserID: 99, SystemPrompt: "key", SystemPromptMode: SystemPromptModeOverride}
+
+	got := ResolveEffectiveSystemPrompt(context.Background(), apiKey, PlatformOpenAI, settings)
+
+	require.False(t, got.Enabled())
+	require.Equal(t, SystemPromptSourceNone, got.Source)
+}
+
+func TestResolveEffectiveSystemPrompt_UserScopeBlacklistBlocksListedUser(t *testing.T) {
+	settings := promptSettingsStub{runtime: SystemPromptRuntimeSettings{
+		Prompts: map[string]EffectiveSystemPrompt{
+			PlatformOpenAI: {Prompt: "system", Mode: SystemPromptModeOverride, Source: SystemPromptSourceSystem},
+		},
+		UserScope: SystemPromptUserScope{Enabled: true, Mode: SystemPromptUserScopeBlacklist, UserIDs: []int64{42}},
+	}}
+	apiKey := &APIKey{UserID: 42, SystemPrompt: "key", SystemPromptMode: SystemPromptModeOverride}
+
+	got := ResolveEffectiveSystemPrompt(context.Background(), apiKey, PlatformOpenAI, settings)
+
+	require.False(t, got.Enabled())
+	require.Equal(t, SystemPromptSourceNone, got.Source)
+}
+
+func TestResolveEffectiveSystemPrompt_UserScopeDisabledBlocksAllUsers(t *testing.T) {
+	settings := promptSettingsStub{runtime: SystemPromptRuntimeSettings{
+		Prompts: map[string]EffectiveSystemPrompt{
+			PlatformOpenAI: {Prompt: "system", Mode: SystemPromptModeOverride, Source: SystemPromptSourceSystem},
+		},
+		UserScope: SystemPromptUserScope{Enabled: false, Mode: SystemPromptUserScopeWhitelist, UserIDs: []int64{42}},
+	}}
+	apiKey := &APIKey{UserID: 42, SystemPrompt: "key", SystemPromptMode: SystemPromptModeOverride}
+
+	got := ResolveEffectiveSystemPrompt(context.Background(), apiKey, PlatformOpenAI, settings)
+
+	require.False(t, got.Enabled())
+	require.Equal(t, SystemPromptModeInherit, got.Mode)
+	require.Equal(t, SystemPromptSourceNone, got.Source)
+	require.False(t, IsSystemPromptAllowedForUserID(42, settings.runtime.UserScope))
 }
 
 func TestApplySystemPromptToAnthropic_AppendStringSystem(t *testing.T) {

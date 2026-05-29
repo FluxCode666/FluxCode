@@ -48,6 +48,7 @@ export interface User {
   sales_commission_mode?: SalesCommissionMode
   sales_commission_min_monthly_sales?: number
   sales_commission_tiers?: SalesCommissionTier[]
+  can_configure_system_prompt?: boolean
   balance_notify_enabled: boolean
   balance_notify_threshold: number | null
   balance_notify_extra_emails: NotifyEmailEntry[]
@@ -502,6 +503,7 @@ export type GroupPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity'
 export type SubscriptionType = 'standard' | 'subscription'
 
 export type SystemPromptMode = 'inherit' | 'passthrough' | 'override' | 'append'
+export type SystemPromptUserScopeMode = 'all' | 'whitelist' | 'blacklist'
 
 export interface OpenAIMessagesDispatchModelConfig {
   opus_mapped_model?: string
