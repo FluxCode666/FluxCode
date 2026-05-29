@@ -99,6 +99,12 @@ export default {
       passthrough: 'Passthrough',
       override: 'Override',
       append: 'Append'
+    },
+    modeTooltips: {
+      inherit: 'Do not configure a system prompt at this level; continue resolving the next lower-priority configuration.',
+      passthrough: 'Keep an existing request system prompt unchanged; inject this prompt only when the request has none.',
+      override: 'Always replace the request system prompt with this configured prompt.',
+      append: 'Place this configured prompt before the request system prompt; inject it directly when the request has none.'
     }
   },
 
@@ -5319,7 +5325,7 @@ export default {
       systemPrompt: {
         title: 'Platform System Prompts',
         description:
-          'Configure default system prompts by platform. Group and API Key settings take priority over these defaults.',
+          'Configure default system prompts by platform. Runtime priority: API Key > Group > System Settings (current platform default).',
         platformDescription: '{platform} platform default',
         placeholder: 'Enter the default system prompt for {platform}',
         promptHint: 'When "Not configured" is selected, this platform does not inject a prompt from system settings.'

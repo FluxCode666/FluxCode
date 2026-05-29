@@ -97,6 +97,12 @@ export default {
       passthrough: '透传',
       override: '覆盖',
       append: '追加'
+    },
+    modeTooltips: {
+      inherit: '当前层级不配置系统提示词，继续按优先级使用下一级配置。',
+      passthrough: '如果请求里已经有系统提示词则保持原样；没有时才注入当前配置。',
+      override: '始终使用当前配置覆盖请求里已有的系统提示词。',
+      append: '将当前配置追加到请求已有系统提示词之前；没有已有内容时直接注入当前配置。'
     }
   },
 
@@ -5447,7 +5453,7 @@ export default {
       },
       systemPrompt: {
         title: '平台系统提示词',
-        description: '按平台配置全局默认系统提示词，优先级低于分组和 API Key 配置。',
+        description: '按平台配置全局默认系统提示词。运行时优先级：API Key > 分组 > 系统配置（当前平台默认）。',
         platformDescription: '{platform} 平台默认配置',
         placeholder: '输入 {platform} 的默认系统提示词',
         promptHint: '选择“不配置”时，该平台不会从系统配置层注入提示词。'

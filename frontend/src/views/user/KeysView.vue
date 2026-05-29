@@ -1226,10 +1226,10 @@ const statusOptions = computed(() => [
 ])
 
 const systemPromptModeOptions = computed(() => [
-  { value: 'inherit' as SystemPromptMode, label: t('systemPrompt.modes.inherit') },
-  { value: 'passthrough' as SystemPromptMode, label: t('systemPrompt.modes.passthrough') },
-  { value: 'override' as SystemPromptMode, label: t('systemPrompt.modes.override') },
-  { value: 'append' as SystemPromptMode, label: t('systemPrompt.modes.append') },
+  { value: 'inherit' as SystemPromptMode, label: t('systemPrompt.modes.inherit'), description: t('systemPrompt.modeTooltips.inherit') },
+  { value: 'passthrough' as SystemPromptMode, label: t('systemPrompt.modes.passthrough'), description: t('systemPrompt.modeTooltips.passthrough') },
+  { value: 'override' as SystemPromptMode, label: t('systemPrompt.modes.override'), description: t('systemPrompt.modeTooltips.override') },
+  { value: 'append' as SystemPromptMode, label: t('systemPrompt.modes.append'), description: t('systemPrompt.modeTooltips.append') },
 ])
 
 // Filter dropdown options
