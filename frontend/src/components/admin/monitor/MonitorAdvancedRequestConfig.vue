@@ -176,7 +176,7 @@ function isSameHeaderMap(a: Record<string, string>, b: Record<string, string>): 
 }
 
 function commitHeaders() {
-  // 空白 name + 空白 value 的行允许保留作为"占位新行"，不报错；
+  // 空白 name + 空白 value 的行允许保留作为新增输入行，不报错；
   // name 非空但 value 为空（或反之）都视为用户正在编辑，同样不报错。
   // 只在 name 里含冒号这种明显不合法时兜一下。
   for (const row of headerRows.value) {

@@ -40,7 +40,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, onBeforeUnmount, watch } from 'vue'
+import { ref, reactive, computed, onBeforeUnmount, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { extractApiErrorMessage } from '@/utils/apiError'
@@ -83,6 +83,10 @@ const autoRefresh = useAutoRefresh({
 const countdown = autoRefresh.countdown
 
 // ── Computed ──
+const channelMonitorEnabled = computed(() => {
+  return appStore.cachedPublicSettings?.channel_monitor_enabled === true
+})
+
 const overallStatus = computed<OverallStatus>(() => {
   if (items.value.length === 0) return 'operational'
   for (const it of items.value) {
@@ -163,19 +167,21 @@ watch(items, () => {
 })
 
 watch(
-  () => appStore.cachedPublicSettings?.channel_monitor_enabled,
+  channelMonitorEnabled,
   (enabled) => {
-    if (enabled === false) autoRefresh.stop()
-    else if (autoRefresh.enabled.value) autoRefresh.start()
+    if (!enabled) {
+      autoRefresh.stop()
+      return
+    }
+    void reload(false)
+    if (!autoRefresh.enabled.value) {
+      autoRefresh.setEnabled(true)
+    } else {
+      autoRefresh.start()
+    }
   },
+  { immediate: true },
 )
-
-onMounted(() => {
-  void reload(false)
-  if (appStore.cachedPublicSettings?.channel_monitor_enabled !== false) {
-    autoRefresh.setEnabled(true)
-  }
-})
 
 onBeforeUnmount(() => {
   if (abortController) abortController.abort()

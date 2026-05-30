@@ -44,12 +44,22 @@ export const useAdminSettingsStore = defineStore('adminSettings', () => {
     }
   }
 
+  const normalizeChannelMonitorInterval = (value: number): number => {
+    if (!Number.isFinite(value)) return 60
+    return Math.min(3600, Math.max(15, Math.round(value)))
+  }
+
   // Default open, but honor cached value to reduce UI flicker on first paint.
   const opsMonitoringEnabled = ref(readCachedBool('ops_monitoring_enabled_cached', true))
   const opsRealtimeMonitoringEnabled = ref(readCachedBool('ops_realtime_monitoring_enabled_cached', true))
   const opsQueryModeDefault = ref(readCachedString('ops_query_mode_default_cached', 'auto'))
   const paymentEnabled = ref(readCachedBool('payment_enabled_cached', false))
   const channelMonitorEnabled = ref(readCachedBool('channel_monitor_enabled_cached', false))
+  const channelMonitorDefaultIntervalSeconds = ref(
+    normalizeChannelMonitorInterval(
+      Number(readCachedString('channel_monitor_default_interval_seconds_cached', '60'))
+    )
+  )
   const customMenuItems = ref<CustomMenuItem[]>([])
 
   async function fetch(force = false): Promise<void> {
@@ -75,6 +85,14 @@ export const useAdminSettingsStore = defineStore('adminSettings', () => {
 
       channelMonitorEnabled.value = settings.channel_monitor_enabled ?? false
       writeCachedBool('channel_monitor_enabled_cached', channelMonitorEnabled.value)
+
+      channelMonitorDefaultIntervalSeconds.value = normalizeChannelMonitorInterval(
+        Number(settings.channel_monitor_default_interval_seconds || 60)
+      )
+      writeCachedString(
+        'channel_monitor_default_interval_seconds_cached',
+        String(channelMonitorDefaultIntervalSeconds.value)
+      )
 
       paymentEnabled.value = paymentConfigResp.data?.enabled ?? false
       writeCachedBool('payment_enabled_cached', paymentEnabled.value)
@@ -110,6 +128,15 @@ export const useAdminSettingsStore = defineStore('adminSettings', () => {
   function setChannelMonitorEnabledLocal(value: boolean) {
     channelMonitorEnabled.value = value
     writeCachedBool('channel_monitor_enabled_cached', value)
+    loaded.value = true
+  }
+
+  function setChannelMonitorDefaultIntervalSecondsLocal(value: number) {
+    channelMonitorDefaultIntervalSeconds.value = normalizeChannelMonitorInterval(value)
+    writeCachedString(
+      'channel_monitor_default_interval_seconds_cached',
+      String(channelMonitorDefaultIntervalSeconds.value)
+    )
     loaded.value = true
   }
 
@@ -151,12 +178,14 @@ export const useAdminSettingsStore = defineStore('adminSettings', () => {
     opsQueryModeDefault,
     paymentEnabled,
     channelMonitorEnabled,
+    channelMonitorDefaultIntervalSeconds,
     customMenuItems,
     fetch,
     setOpsMonitoringEnabledLocal,
     setOpsRealtimeMonitoringEnabledLocal,
     setPaymentEnabledLocal,
     setChannelMonitorEnabledLocal,
+    setChannelMonitorDefaultIntervalSecondsLocal,
     setOpsQueryModeDefaultLocal
   }
 })

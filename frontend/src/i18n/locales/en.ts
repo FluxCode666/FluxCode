@@ -312,6 +312,7 @@ export default {
     invalidEmail: 'Please enter a valid email address',
     optional: 'optional',
     selectOption: 'Select an option',
+    selectAll: 'Select all',
     searchPlaceholder: 'Search...',
     noOptionsFound: 'No options found',
     noGroupsAvailable: 'No groups available',

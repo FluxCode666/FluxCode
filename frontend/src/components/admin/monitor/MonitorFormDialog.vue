@@ -180,6 +180,7 @@
 import { ref, reactive, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
+import { useAdminSettingsStore } from '@/stores/adminSettings'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import { adminAPI } from '@/api/admin'
 import { keysAPI } from '@/api/keys'
@@ -224,12 +225,13 @@ const emit = defineEmits<{
 
 const { t } = useI18n()
 const appStore = useAppStore()
+const adminSettingsStore = useAdminSettingsStore()
 const { providerPickerClass } = useChannelMonitorFormat()
 
 // System-configured default interval for new monitors. Falls back to the static
-// constant when public settings haven't loaded yet or store the legacy 0 value.
+// constant when admin settings haven't loaded yet or store the legacy 0 value.
 const systemDefaultInterval = computed<number>(() => {
-  const configured = appStore.cachedPublicSettings?.channel_monitor_default_interval_seconds
+  const configured = Number(adminSettingsStore.channelMonitorDefaultIntervalSeconds)
   return configured && configured > 0 ? configured : DEFAULT_INTERVAL_SECONDS
 })
 
