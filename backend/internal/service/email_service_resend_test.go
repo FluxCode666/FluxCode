@@ -89,6 +89,38 @@ func TestEmailService_GetEmailConfig_UsesResendProvider(t *testing.T) {
 	}, config.Resend)
 }
 
+func TestEmailService_SendEmail_UsesResendProvider(t *testing.T) {
+	var gotPayload resendEmailRequest
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, http.MethodPost, r.Method)
+		require.Equal(t, "Bearer re_test", r.Header.Get("Authorization"))
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&gotPayload))
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"id":"email_123"}`))
+	}))
+	defer server.Close()
+
+	repo := &resendEmailSettingRepoStub{
+		values: map[string]string{
+			SettingKeyEmailProvider:  EmailProviderResend,
+			SettingKeyResendAPIKey:   "re_test",
+			SettingKeyResendFrom:     "no-reply@example.com",
+			SettingKeyResendFromName: "FluxCode",
+		},
+	}
+	svc := NewEmailService(repo, nil)
+	svc.httpClient = server.Client()
+	svc.resendURL = server.URL
+
+	err := svc.SendEmail(context.Background(), "user@example.com", "Subject", "<p>Hello</p>")
+
+	require.NoError(t, err)
+	require.Equal(t, "FluxCode <no-reply@example.com>", gotPayload.From)
+	require.Equal(t, []string{"user@example.com"}, gotPayload.To)
+	require.Equal(t, "Subject", gotPayload.Subject)
+	require.Equal(t, "<p>Hello</p>", gotPayload.HTML)
+}
+
 type resendEmailSettingRepoStub struct {
 	values map[string]string
 }
