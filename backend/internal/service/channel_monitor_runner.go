@@ -72,6 +72,10 @@ func (r *ChannelMonitorRunner) Start() {
 	if r == nil || r.svc == nil {
 		return
 	}
+	if !r.canRun(context.Background()) {
+		slog.Info("channel_monitor: runner disabled at startup")
+		return
+	}
 	r.mu.Lock()
 	if r.started || r.stopped {
 		r.mu.Unlock()

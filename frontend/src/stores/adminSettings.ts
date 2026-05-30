@@ -54,7 +54,7 @@ export const useAdminSettingsStore = defineStore('adminSettings', () => {
   const opsRealtimeMonitoringEnabled = ref(readCachedBool('ops_realtime_monitoring_enabled_cached', true))
   const opsQueryModeDefault = ref(readCachedString('ops_query_mode_default_cached', 'auto'))
   const paymentEnabled = ref(readCachedBool('payment_enabled_cached', false))
-  const channelMonitorEnabled = ref(readCachedBool('channel_monitor_enabled_cached', false))
+  const channelMonitorEnabled = ref(false)
   const channelMonitorDefaultIntervalSeconds = ref(
     normalizeChannelMonitorInterval(
       Number(readCachedString('channel_monitor_default_interval_seconds_cached', '60'))

@@ -15,6 +15,28 @@ func TestChannelMonitorRunnerDefaultDisabledSkipsChecks(t *testing.T) {
 	require.False(t, runner.canRun(context.Background()))
 }
 
+func TestChannelMonitorRunnerStartDefaultDisabledSkipsScheduling(t *testing.T) {
+	svc := &channelMonitorRunnerSvcStub{
+		monitors: []*ChannelMonitor{
+			{
+				ID:              10,
+				Name:            "disabled-startup",
+				Enabled:         true,
+				IntervalSeconds: 60,
+			},
+		},
+	}
+	runner := newChannelMonitorRunner(svc, &channelMonitorRuntimeStub{
+		settings: ChannelMonitorRuntimeSettings{Enabled: false},
+	})
+	defer runner.Stop()
+
+	runner.Start()
+
+	require.Equal(t, 0, svc.listCalls)
+	require.Empty(t, runner.tasks)
+}
+
 func TestChannelMonitorRunnerEnabledCanRun(t *testing.T) {
 	runner := newChannelMonitorRunner(&channelMonitorRunnerSvcStub{}, &channelMonitorRuntimeStub{
 		settings: ChannelMonitorRuntimeSettings{Enabled: true},
@@ -31,10 +53,14 @@ func (s *channelMonitorRuntimeStub) GetChannelMonitorRuntime(context.Context) Ch
 	return s.settings
 }
 
-type channelMonitorRunnerSvcStub struct{}
+type channelMonitorRunnerSvcStub struct {
+	listCalls int
+	monitors  []*ChannelMonitor
+}
 
 func (s *channelMonitorRunnerSvcStub) ListEnabledMonitors(context.Context) ([]*ChannelMonitor, error) {
-	return nil, nil
+	s.listCalls++
+	return s.monitors, nil
 }
 
 func (s *channelMonitorRunnerSvcStub) RunCheck(context.Context, int64) ([]*CheckResult, error) {
