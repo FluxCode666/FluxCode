@@ -237,6 +237,8 @@ export interface PublicSettings {
   oidc_oauth_enabled: boolean
   oidc_oauth_provider_name: string
   backend_mode_enabled: boolean
+  channel_monitor_enabled?: boolean
+  channel_monitor_default_interval_seconds?: number
   attract_popup_title?: string
   attract_popup_markdown?: string
   version: string

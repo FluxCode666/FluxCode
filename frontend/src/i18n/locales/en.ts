@@ -319,6 +319,12 @@ export default {
     saving: 'Saving...',
     selectedCount: '({count} selected)',
     refresh: 'Refresh',
+    autoRefresh: {
+      title: 'Auto Refresh',
+      enable: 'Enable auto refresh',
+      countdown: 'Auto refresh: {seconds}s',
+      seconds: '{n} seconds'
+    },
     apply: 'Apply',
     clear: 'Clear',
     view: 'View',
@@ -402,8 +408,88 @@ export default {
     paymentDashboard: 'Payment Dashboard',
     paymentConfig: 'Payment Config',
     paymentPlans: 'Plans',
+    channelManagement: 'Channels',
+    channelMonitor: 'Channel Monitor',
+    channelStatus: 'Channel Status',
     referralManagement: 'Referral',
     salesCommissions: 'Sales Commissions',
+  },
+
+  // Shared keys for channel monitor (admin + user views)
+  monitorCommon: {
+    status: {
+      operational: 'Operational',
+      degraded: 'Degraded',
+      failed: 'Failed',
+      error: 'Error',
+      unknown: '-'
+    },
+    providers: {
+      openai: 'OpenAI',
+      anthropic: 'Anthropic',
+      gemini: 'Gemini'
+    },
+    extraModelsHeader: 'Extra Models',
+    extraModelsEmpty: 'No extra models',
+    latencyEmpty: '-',
+    availabilityPrefix: 'Availability',
+    dialogLatency: 'Dialog Latency',
+    endpointPing: 'Endpoint PING',
+    history60pts: 'HISTORY ({n} PTS)',
+    nextUpdateIn: 'NEXT UPDATE IN {n}s',
+    past: 'PAST',
+    now: 'NOW',
+    maintenancePaused: 'Maintenance · timeline paused',
+    extraModelsCount: '+ {n} models',
+    pollEvery: '{n}s polling',
+    updatedAt: 'Updated {time}',
+    relativeSecondsAgo: '{n}s ago',
+    relativeMinutesAgo: '{n}m ago',
+    relativeHoursAgo: '{n}h ago',
+    relativeDaysAgo: '{n}d ago'
+  },
+
+  // Channel Status (user-facing read-only view)
+  channelStatus: {
+    title: 'Channel Status',
+    description: 'Inspect channel availability, latency and recent status',
+    searchPlaceholder: 'Search channels...',
+    allProviders: 'All Providers',
+    loadError: 'Failed to load channel status',
+    detailLoadError: 'Failed to load channel detail',
+    detailTitle: 'Channel Detail',
+    closeDetail: 'Close',
+    windowTab: {
+      '7d': '7 days',
+      '15d': '15 days',
+      '30d': '30 days'
+    },
+    overall: {
+      operational: 'OPERATIONAL',
+      degraded: 'DEGRADED',
+      unavailable: 'UNAVAILABLE'
+    },
+    columns: {
+      name: 'Name',
+      provider: 'Provider',
+      groupName: 'Group',
+      primaryModel: 'Primary Model',
+      availability7d: '7d Availability',
+      latency: 'Latency (ms)'
+    },
+    detailColumns: {
+      model: 'Model',
+      latestStatus: 'Latest Status',
+      latestLatency: 'Latest Latency (ms)',
+      availability7d: '7d Availability',
+      availability15d: '15d Availability',
+      availability30d: '30d Availability',
+      avgLatency7d: '7d Avg Latency (ms)'
+    },
+    empty: {
+      title: 'No channels available',
+      description: 'No monitored channels have been configured yet.'
+    }
   },
 
   // Auth
@@ -2516,6 +2602,135 @@ export default {
         ruleModelPricing: 'Model Pricing',
         noGroupsInChannel: 'No groups selected in platform tabs above',
         unnamed: 'Unnamed'
+      }
+    },
+
+    // Channel Monitor
+    channelMonitor: {
+      title: 'Channel Monitor',
+      description: 'Monitor channel availability, latency and status',
+      searchPlaceholder: 'Search monitor name...',
+      allProviders: 'All Providers',
+      allStatus: 'All Status',
+      enabledFilter: 'Enabled',
+      onlyEnabled: 'Enabled only',
+      onlyDisabled: 'Disabled only',
+      createButton: 'Create Monitor',
+      createTitle: 'Create Channel Monitor',
+      editTitle: 'Edit Channel Monitor',
+      runNow: 'Run Now',
+      runSuccess: 'Check completed',
+      runFailed: 'Check failed',
+      apiKeyDecryptFailed: 'API Key decryption failed. Please re-edit this monitor with a fresh key.',
+      createSuccess: 'Monitor created',
+      updateSuccess: 'Monitor updated',
+      deleteSuccess: 'Monitor deleted',
+      loadError: 'Failed to load monitors',
+      deleteConfirm: 'Are you sure you want to delete monitor "{name}"? This action cannot be undone.',
+      nameRequired: 'Please enter a monitor name',
+      primaryModelRequired: 'Please enter a primary model',
+      columns: {
+        name: 'Name',
+        provider: 'Provider',
+        primaryModel: 'Primary Model',
+        availability7d: '7d Availability',
+        latency: 'Latency (ms)',
+        enabled: 'Enabled',
+        actions: 'Actions'
+      },
+      form: {
+        name: 'Name',
+        namePlaceholder: 'Enter monitor name',
+        provider: 'Platform',
+        apiMode: 'OpenAI protocol',
+        apiModeChatCompletions: 'OpenAI Compatible',
+        apiModeChatCompletionsHint: 'Use /v1/chat/completions with messages; works for most compatible providers.',
+        apiModeResponses: 'Responses API',
+        apiModeResponsesHint: 'Use /v1/responses with default instructions + input; best for self-check/Codex paths.',
+        endpoint: 'Endpoint',
+        endpointPlaceholder: 'https://api.example.com',
+        useCurrentDomain: 'Use current service',
+        apiKey: 'API Key',
+        apiKeyPlaceholder: 'Enter API Key',
+        apiKeyEditPlaceholder: 'Leave blank to keep current key',
+        useMyKey: 'Use my key',
+        selectKeyTitle: 'Select my API Key',
+        selectKeyHint: 'Only your active, non-expired keys are listed.',
+        noActiveKey: 'No active API keys available',
+        primaryModel: 'Primary Model',
+        primaryModelPlaceholder: 'gpt-4o-mini',
+        extraModels: 'Extra Models',
+        extraModelsPlaceholder: 'Press Enter to add extra model',
+        groupName: 'Group Name',
+        groupNamePlaceholder: 'Optional, used to group rows in user view',
+        intervalSeconds: 'Interval (seconds)',
+        intervalSecondsHint: 'Range: 15 - 3600 seconds',
+        enabled: 'Enable monitor',
+        kindRequired: 'Please select a provider'
+      },
+      runResultTitle: 'Check Result',
+      noMonitorsYet: 'No monitors yet',
+      createFirstMonitor: 'Create your first monitor to track channel availability',
+      advanced: {
+        section: 'Advanced (optional)',
+        sectionHint: 'Customize request headers and body to bypass upstream client-detection (e.g. "only Claude Code clients allowed").',
+        headers: 'Custom request headers',
+        headersPlaceholder: 'User-Agent: claude-cli/1.0.83 (external, cli)\nx-app: cli\nanthropic-beta: claude-code-20250219',
+        headerNamePlaceholder: 'Header name',
+        headerValuePlaceholder: 'Value',
+        headerAddRow: 'Add header',
+        headerNameInvalid: 'Header name cannot contain whitespace or colon: {name}',
+        headersHint: 'Merged on top of adapter defaults (user wins). Hop-by-hop headers (Host / Content-Length / ...) are ignored.',
+        headersParseError: 'Cannot parse line: {line}',
+        bodyMode: 'Body handling',
+        bodyModeOff: 'Default',
+        bodyModeMerge: 'Merge',
+        bodyModeReplace: 'Replace',
+        bodyModeHintOff: 'Use the adapter default body (includes challenge validation).',
+        bodyModeHintMerge: 'Shallow-merge with the default body; user fields win but model / messages / contents are protected (use Replace to change those).',
+        bodyModeHintReplace: 'Use the JSON below as the complete body. Challenge validation is skipped; HTTP 2xx + non-empty response text is treated as operational.',
+        bodyJson: 'Body JSON',
+        bodyJsonFormat: 'Format',
+        bodyJsonHint: 'Parsed on blur. Empty means no override.',
+        bodyJsonError: 'JSON parse failed',
+        bodyJsonObjectError: 'Body must be a JSON object (no arrays or primitives)'
+      },
+      templateField: {
+        label: 'Request template',
+        none: 'No template',
+        placeholder: 'Pick a template (filtered by current provider)',
+        applyHint: 'Picking a template copies its headers and body to this monitor (snapshot). Later template edits are not auto-synced.'
+      },
+      template: {
+        manageButton: 'Templates',
+        managerTitle: 'Request template manager',
+        createButton: 'New template',
+        emptyState: 'No templates for this provider yet',
+        missingName: 'Template name is required',
+        createSuccess: 'Template created',
+        updateSuccess: 'Template updated',
+        deleteSuccess: 'Template deleted',
+        applyButton: 'Apply to monitors',
+        applyTooltip: 'Overwrite snapshot fields on associated monitors',
+        applyTitle: 'Apply template',
+        applyConfirm: 'Apply',
+        applyConfirmMessage: 'Overwrite {n} associated monitor(s) with the current configuration of "{name}"? Any local customizations on those monitors will be discarded.',
+        applySuccess: 'Applied to {n} monitor(s)',
+        applyPickerTitle: 'Apply template "{name}"',
+        applyPickerHint: 'Select which monitors to overwrite (all selected by default). Any local customizations will be discarded.',
+        applyPickerEmpty: 'No monitors are currently associated to this template',
+        applyPickerConfirm: 'Apply to {n} monitor(s)',
+        selectNone: 'Select none',
+        selectedCount: 'Selected {n} / {total}',
+        deleteConfirm: 'Delete template "{name}"? {n} associated monitor(s) will be disassociated but keep their current snapshot and continue running.',
+        associatedCount: '{n} associated monitor(s)',
+        headersSummary: '{n} custom header(s)',
+        form: {
+          name: 'Template name',
+          namePlaceholder: 'e.g. Claude Code mimicry',
+          description: 'Description',
+          descriptionPlaceholder: 'Optional: what this template is for, capture date, etc.'
+        }
       }
     },
 
