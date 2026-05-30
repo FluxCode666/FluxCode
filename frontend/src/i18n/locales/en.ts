@@ -5147,7 +5147,7 @@ export default {
     // Settings
     settings: {
       title: 'System Settings',
-      description: 'Manage registration, email verification, default values, and SMTP settings',
+      description: 'Manage registration, email verification, default values, and email provider settings',
       tabs: {
         general: 'General',
         security: 'Security',
@@ -5159,7 +5159,7 @@ export default {
         payment: 'Payment',
       },
       emailTabDisabledTitle: 'Email Verification Not Enabled',
-      emailTabDisabledHint: 'Enable email verification in the Security tab to configure SMTP settings.',
+      emailTabDisabledHint: 'Enable email verification in the Security tab to configure email sending.',
       registration: {
         title: 'Registration Settings',
         description: 'Control user registration and verification',
@@ -5632,8 +5632,11 @@ export default {
         emailPlaceholder: 'Enter email address',
       },
       smtp: {
-        title: 'SMTP Settings',
-        description: 'Configure email sending for verification codes',
+        title: 'Email Settings',
+        description: 'Configure email sending for verification codes and notifications',
+        provider: 'Email Provider',
+        providerSmtp: 'SMTP',
+        providerResend: 'Resend',
         testConnection: 'Test Connection',
         testing: 'Testing...',
         host: 'SMTP Host',
@@ -5654,9 +5657,20 @@ export default {
         useTls: 'Use TLS',
         useTlsHint: 'Enable TLS encryption for SMTP connection'
       },
+      resend: {
+        apiKey: 'Resend API Key',
+        apiKeyPlaceholder: 're_xxxxxxxxx',
+        apiKeyHint: 'Create an API key in Resend and verify your sending domain first.',
+        apiKeyConfiguredPlaceholder: '********',
+        apiKeyConfiguredHint: 'API key configured. Leave empty to keep the current value.',
+        fromEmail: 'From Email',
+        fromEmailPlaceholder: "noreply{'@'}example.com",
+        fromName: 'From Name',
+        fromNamePlaceholder: 'FluxCode'
+      },
       testEmail: {
         title: 'Send Test Email',
-        description: 'Send a test email to verify your SMTP configuration',
+        description: 'Send a test email to verify your email provider configuration',
         recipientEmail: 'Recipient Email',
         recipientEmailPlaceholder: "test{'@'}example.com",
         sendTestEmail: 'Send Test Email',
