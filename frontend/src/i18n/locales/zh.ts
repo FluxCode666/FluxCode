@@ -5507,6 +5507,14 @@ export default {
       },
       emailTabDisabledTitle: '邮箱验证未启用',
       emailTabDisabledHint: '请在「安全与认证」选项卡中启用邮箱验证后，再配置 SMTP 设置。',
+      channelMonitor: {
+        title: '渠道监控',
+        description: '配置渠道健康检测与用户端渠道状态展示',
+        enabled: '启用渠道监控',
+        enabledHint: '关闭后后台不再执行定时检测，用户端菜单和状态页默认隐藏。',
+        defaultInterval: '默认检测间隔（秒）',
+        defaultIntervalHint: '新建监控项时使用的默认间隔，范围 15 - 3600 秒。'
+      },
       registration: {
         title: '注册设置',
         description: '控制用户注册和验证',

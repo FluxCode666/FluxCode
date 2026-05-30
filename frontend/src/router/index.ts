@@ -181,6 +181,19 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/monitor',
+    name: 'ChannelStatus',
+    component: () => import('@/views/user/ChannelStatusView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      requiresChannelMonitor: true,
+      title: 'Channel Status',
+      titleKey: 'channelStatus.title',
+      descriptionKey: 'channelStatus.description'
+    }
+  },
+  {
     path: '/redeem',
     name: 'Redeem',
     component: () => import('@/views/user/RedeemView.vue'),
@@ -388,6 +401,19 @@ const routes: RouteRecordRaw[] = [
       title: 'Channel Management',
       titleKey: 'admin.channels.title',
       descriptionKey: 'admin.channels.description'
+    }
+  },
+  {
+    path: '/admin/channels/monitor',
+    name: 'AdminChannelMonitor',
+    component: () => import('@/views/admin/ChannelMonitorView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      requiresChannelMonitor: true,
+      title: 'Channel Monitor',
+      titleKey: 'admin.channelMonitor.title',
+      descriptionKey: 'admin.channelMonitor.description'
     }
   },
   {
@@ -741,6 +767,14 @@ router.beforeEach((to, _from, next) => {
   if (to.meta.requiresReferral) {
     const referralEnabled = appStore.cachedPublicSettings?.referral_enabled
     if (!referralEnabled) {
+      next(authStore.isAdmin ? '/admin/dashboard' : '/dashboard')
+      return
+    }
+  }
+
+  // Check channel monitor requirement
+  if (to.meta.requiresChannelMonitor) {
+    if (!appStore.channelMonitorEnabled) {
       next(authStore.isAdmin ? '/admin/dashboard' : '/dashboard')
       return
     }

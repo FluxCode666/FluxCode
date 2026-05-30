@@ -5375,6 +5375,14 @@ export default {
       },
       emailTabDisabledTitle: 'Email Verification Not Enabled',
       emailTabDisabledHint: 'Enable email verification in the Security tab to configure SMTP settings.',
+      channelMonitor: {
+        title: 'Channel Monitor',
+        description: 'Configure channel health checks and the user-facing channel status page.',
+        enabled: 'Enable Channel Monitor',
+        enabledHint: 'When disabled, scheduled checks stop and the user menu/status page stay hidden by default.',
+        defaultInterval: 'Default check interval (seconds)',
+        defaultIntervalHint: 'Default interval used when creating monitors. Range: 15 - 3600 seconds.'
+      },
       registration: {
         title: 'Registration Settings',
         description: 'Control user registration and verification',
