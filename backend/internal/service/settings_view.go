@@ -18,6 +18,11 @@ type SystemSettings struct {
 	SMTPFrom               string
 	SMTPFromName           string
 	SMTPUseTLS             bool
+	EmailProvider          string
+	ResendAPIKey           string
+	ResendAPIKeyConfigured bool
+	ResendFrom             string
+	ResendFromName         string
 
 	TurnstileEnabled             bool
 	TurnstileSiteKey             string

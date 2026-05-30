@@ -41,6 +41,10 @@ type SystemSettings struct {
 	SMTPFrom               string `json:"smtp_from_email"`
 	SMTPFromName           string `json:"smtp_from_name"`
 	SMTPUseTLS             bool   `json:"smtp_use_tls"`
+	EmailProvider          string `json:"email_provider"`
+	ResendAPIKeyConfigured bool   `json:"resend_api_key_configured"`
+	ResendFrom             string `json:"resend_from_email"`
+	ResendFromName         string `json:"resend_from_name"`
 
 	TurnstileEnabled             bool   `json:"turnstile_enabled"`
 	TurnstileSiteKey             string `json:"turnstile_site_key"`
