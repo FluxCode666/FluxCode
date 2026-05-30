@@ -39,6 +39,7 @@ func (h *SettingHandler) GetPublicSettings(c *gin.Context) {
 		PasswordResetEnabled:             settings.PasswordResetEnabled,
 		InvitationCodeEnabled:            settings.InvitationCodeEnabled,
 		TotpEnabled:                      settings.TotpEnabled,
+		ChannelMonitorEnabled:            settings.ChannelMonitorEnabled,
 		TurnstileEnabled:                 settings.TurnstileEnabled,
 		TurnstileSiteKey:                 settings.TurnstileSiteKey,
 		SiteName:                         settings.SiteName,

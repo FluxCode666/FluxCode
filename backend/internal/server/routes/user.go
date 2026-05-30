@@ -111,6 +111,12 @@ func RegisterUserRoutes(
 			announcements.POST("/:id/read", h.Announcement.MarkRead)
 		}
 
+		monitors := authenticated.Group("/channel-monitors")
+		{
+			monitors.GET("", h.ChannelMonitor.List)
+			monitors.GET("/:id/status", h.ChannelMonitor.GetStatus)
+		}
+
 		// 卡密兑换
 		redeem := authenticated.Group("/redeem")
 		{

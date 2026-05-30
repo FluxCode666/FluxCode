@@ -1,14 +1,16 @@
 package service
 
 type SystemSettings struct {
-	RegistrationEnabled              bool
-	EmailVerifyEnabled               bool
-	RegistrationEmailSuffixWhitelist []string
-	PromoCodeEnabled                 bool
-	PasswordResetEnabled             bool
-	FrontendURL                      string
-	InvitationCodeEnabled            bool
-	TotpEnabled                      bool // TOTP 双因素认证
+	RegistrationEnabled                  bool
+	EmailVerifyEnabled                   bool
+	RegistrationEmailSuffixWhitelist     []string
+	PromoCodeEnabled                     bool
+	PasswordResetEnabled                 bool
+	FrontendURL                          string
+	InvitationCodeEnabled                bool
+	TotpEnabled                          bool // TOTP 双因素认证
+	ChannelMonitorEnabled                bool
+	ChannelMonitorDefaultIntervalSeconds int
 
 	SMTPHost               string
 	SMTPPort               int
@@ -155,6 +157,7 @@ type PublicSettings struct {
 	PasswordResetEnabled             bool
 	InvitationCodeEnabled            bool
 	TotpEnabled                      bool // TOTP 双因素认证
+	ChannelMonitorEnabled            bool
 	TurnstileEnabled                 bool
 	TurnstileSiteKey                 string
 	SiteName                         string

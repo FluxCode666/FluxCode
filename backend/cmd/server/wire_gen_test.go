@@ -1,6 +1,7 @@
 package main
 
 import (
+	"os"
 	"testing"
 	"time"
 
@@ -18,6 +19,12 @@ func TestProvideServiceBuildInfo(t *testing.T) {
 	out := provideServiceBuildInfo(in)
 	require.Equal(t, in.Version, out.Version)
 	require.Equal(t, in.BuildType, out.BuildType)
+}
+
+func TestWireGenInjectsAdminUserPaymentService(t *testing.T) {
+	content, err := os.ReadFile("wire_gen.go")
+	require.NoError(t, err)
+	require.Contains(t, string(content), "handler.ProvideAdminUserHandler(adminService, concurrencyService, giftBalanceRepository, paymentService)")
 }
 
 func TestProvideCleanup_WithMinimalDependencies_NoPanic(t *testing.T) {
@@ -75,6 +82,7 @@ func TestProvideCleanup_WithMinimalDependencies_NoPanic(t *testing.T) {
 		antigravityOAuthSvc,
 		nil, // openAIGateway
 		nil, // scheduledTestRunner
+		nil, // channelMonitorRunner
 		nil, // backupSvc
 		nil, // paymentOrderExpiry
 		nil, // giftBalanceExpiry

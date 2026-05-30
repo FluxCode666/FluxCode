@@ -24,15 +24,17 @@ type CustomEndpoint struct {
 
 // SystemSettings represents the admin settings API response payload.
 type SystemSettings struct {
-	RegistrationEnabled              bool     `json:"registration_enabled"`
-	EmailVerifyEnabled               bool     `json:"email_verify_enabled"`
-	RegistrationEmailSuffixWhitelist []string `json:"registration_email_suffix_whitelist"`
-	PromoCodeEnabled                 bool     `json:"promo_code_enabled"`
-	PasswordResetEnabled             bool     `json:"password_reset_enabled"`
-	FrontendURL                      string   `json:"frontend_url"`
-	InvitationCodeEnabled            bool     `json:"invitation_code_enabled"`
-	TotpEnabled                      bool     `json:"totp_enabled"`                   // TOTP 双因素认证
-	TotpEncryptionKeyConfigured      bool     `json:"totp_encryption_key_configured"` // TOTP 加密密钥是否已配置
+	RegistrationEnabled                  bool     `json:"registration_enabled"`
+	EmailVerifyEnabled                   bool     `json:"email_verify_enabled"`
+	RegistrationEmailSuffixWhitelist     []string `json:"registration_email_suffix_whitelist"`
+	PromoCodeEnabled                     bool     `json:"promo_code_enabled"`
+	PasswordResetEnabled                 bool     `json:"password_reset_enabled"`
+	FrontendURL                          string   `json:"frontend_url"`
+	InvitationCodeEnabled                bool     `json:"invitation_code_enabled"`
+	TotpEnabled                          bool     `json:"totp_enabled"`                   // TOTP 双因素认证
+	TotpEncryptionKeyConfigured          bool     `json:"totp_encryption_key_configured"` // TOTP 加密密钥是否已配置
+	ChannelMonitorEnabled                bool     `json:"channel_monitor_enabled"`
+	ChannelMonitorDefaultIntervalSeconds int      `json:"channel_monitor_default_interval_seconds"`
 
 	SMTPHost               string `json:"smtp_host"`
 	SMTPPort               int    `json:"smtp_port"`
@@ -195,6 +197,7 @@ type PublicSettings struct {
 	PasswordResetEnabled             bool             `json:"password_reset_enabled"`
 	InvitationCodeEnabled            bool             `json:"invitation_code_enabled"`
 	TotpEnabled                      bool             `json:"totp_enabled"` // TOTP 双因素认证
+	ChannelMonitorEnabled            bool             `json:"channel_monitor_enabled"`
 	TurnstileEnabled                 bool             `json:"turnstile_enabled"`
 	TurnstileSiteKey                 string           `json:"turnstile_site_key"`
 	SiteName                         string           `json:"site_name"`
