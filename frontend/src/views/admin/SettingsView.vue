@@ -2858,6 +2858,7 @@
               </p>
             </div>
             <button
+              v-if="form.email_provider === 'smtp'"
               type="button"
               @click="testSmtpConnection"
               :disabled="testingSmtp || loadFailed"
@@ -2886,7 +2887,31 @@
             </button>
           </div>
           <div class="space-y-6 p-6">
-            <div class="grid grid-cols-1 gap-6 md:grid-cols-2">
+            <div>
+              <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                {{ t('admin.settings.smtp.provider') }}
+              </label>
+              <div class="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-1 dark:border-dark-700 dark:bg-dark-800">
+                <button
+                  type="button"
+                  class="rounded-md px-4 py-2 text-sm font-medium transition-colors"
+                  :class="form.email_provider === 'smtp' ? 'bg-white text-gray-900 shadow-sm dark:bg-dark-700 dark:text-white' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'"
+                  @click="form.email_provider = 'smtp'"
+                >
+                  {{ t('admin.settings.smtp.providerSmtp') }}
+                </button>
+                <button
+                  type="button"
+                  class="rounded-md px-4 py-2 text-sm font-medium transition-colors"
+                  :class="form.email_provider === 'resend' ? 'bg-white text-gray-900 shadow-sm dark:bg-dark-700 dark:text-white' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'"
+                  @click="form.email_provider = 'resend'"
+                >
+                  {{ t('admin.settings.smtp.providerResend') }}
+                </button>
+              </div>
+            </div>
+
+            <div v-if="form.email_provider === 'smtp'" class="grid grid-cols-1 gap-6 md:grid-cols-2">
               <div>
                 <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
                   {{ t('admin.settings.smtp.host') }}
@@ -2975,6 +3000,7 @@
 
             <!-- Use TLS Toggle -->
             <div
+              v-if="form.email_provider === 'smtp'"
               class="flex items-center justify-between border-t border-gray-100 pt-4 dark:border-dark-700"
             >
               <div>
@@ -2986,6 +3012,58 @@
                 </p>
               </div>
               <Toggle v-model="form.smtp_use_tls" />
+            </div>
+
+            <div v-if="form.email_provider === 'resend'" class="grid grid-cols-1 gap-6 md:grid-cols-2">
+              <div>
+                <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {{ t('admin.settings.resend.apiKey') }}
+                </label>
+                <input
+                  v-model="form.resend_api_key"
+                  type="password"
+                  class="input"
+                  autocomplete="new-password"
+                  autocapitalize="off"
+                  spellcheck="false"
+                  @keydown="resendApiKeyManuallyEdited = true"
+                  @paste="resendApiKeyManuallyEdited = true"
+                  :placeholder="
+                    form.resend_api_key_configured
+                      ? t('admin.settings.resend.apiKeyConfiguredPlaceholder')
+                      : t('admin.settings.resend.apiKeyPlaceholder')
+                  "
+                />
+                <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                  {{
+                    form.resend_api_key_configured
+                      ? t('admin.settings.resend.apiKeyConfiguredHint')
+                      : t('admin.settings.resend.apiKeyHint')
+                  }}
+                </p>
+              </div>
+              <div>
+                <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {{ t('admin.settings.resend.fromEmail') }}
+                </label>
+                <input
+                  v-model="form.resend_from_email"
+                  type="email"
+                  class="input"
+                  :placeholder="t('admin.settings.resend.fromEmailPlaceholder')"
+                />
+              </div>
+              <div>
+                <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {{ t('admin.settings.resend.fromName') }}
+                </label>
+                <input
+                  v-model="form.resend_from_name"
+                  type="text"
+                  class="input"
+                  :placeholder="t('admin.settings.resend.fromNamePlaceholder')"
+                />
+              </div>
             </div>
 
           </div>
@@ -3327,6 +3405,7 @@ const saving = ref(false)
 const testingSmtp = ref(false)
 const sendingTestEmail = ref(false)
 const smtpPasswordManuallyEdited = ref(false)
+const resendApiKeyManuallyEdited = ref(false)
 const testEmailAddress = ref('')
 const registrationEmailSuffixWhitelistTags = ref<string[]>([])
 const registrationEmailSuffixWhitelistDraft = ref('')
@@ -3402,6 +3481,7 @@ interface DefaultSubscriptionGroupOption {
 
 type SettingsForm = SystemSettings & {
   smtp_password: string
+  resend_api_key: string
   turnstile_secret_key: string
   linuxdo_connect_client_secret: string
   oidc_connect_client_secret: string
@@ -3436,6 +3516,7 @@ const form = reactive<SettingsForm>({
   custom_menu_items: [] as Array<{id: string; label: string; icon_svg: string; url: string; visibility: 'user' | 'admin'; sort_order: number}>,
   custom_endpoints: [] as Array<{name: string; endpoint: string; description: string}>,
   frontend_url: '',
+  email_provider: 'smtp',
   smtp_host: '',
   smtp_port: 587,
   smtp_username: '',
@@ -3444,6 +3525,10 @@ const form = reactive<SettingsForm>({
   smtp_from_email: '',
   smtp_from_name: '',
   smtp_use_tls: true,
+  resend_api_key: '',
+  resend_api_key_configured: false,
+  resend_from_email: '',
+  resend_from_name: '',
   // Cloudflare Turnstile
   turnstile_enabled: false,
   turnstile_site_key: '',
@@ -3937,6 +4022,8 @@ async function loadSettings() {
     registrationEmailSuffixWhitelistDraft.value = ''
     form.smtp_password = ''
     smtpPasswordManuallyEdited.value = false
+    form.resend_api_key = ''
+    resendApiKeyManuallyEdited.value = false
     form.turnstile_secret_key = ''
     form.linuxdo_connect_client_secret = ''
     form.oidc_connect_client_secret = ''
@@ -4077,6 +4164,7 @@ async function saveSettings() {
       custom_menu_items: form.custom_menu_items,
       custom_endpoints: form.custom_endpoints,
       frontend_url: form.frontend_url,
+      email_provider: form.email_provider,
       smtp_host: form.smtp_host,
       smtp_port: form.smtp_port,
       smtp_username: form.smtp_username,
@@ -4084,6 +4172,9 @@ async function saveSettings() {
       smtp_from_email: form.smtp_from_email,
       smtp_from_name: form.smtp_from_name,
       smtp_use_tls: form.smtp_use_tls,
+      resend_api_key: form.resend_api_key || undefined,
+      resend_from_email: form.resend_from_email,
+      resend_from_name: form.resend_from_name,
       turnstile_enabled: form.turnstile_enabled,
       turnstile_site_key: form.turnstile_site_key,
       turnstile_secret_key: form.turnstile_secret_key || undefined,
@@ -4190,6 +4281,8 @@ async function saveSettings() {
     registrationEmailSuffixWhitelistDraft.value = ''
     form.smtp_password = ''
     smtpPasswordManuallyEdited.value = false
+    form.resend_api_key = ''
+    resendApiKeyManuallyEdited.value = false
     form.turnstile_secret_key = ''
     form.linuxdo_connect_client_secret = ''
     form.oidc_connect_client_secret = ''
@@ -4210,6 +4303,9 @@ async function saveSettings() {
 }
 
 async function testSmtpConnection() {
+  if (form.email_provider !== 'smtp') {
+    return
+  }
   testingSmtp.value = true
   try {
     const smtpPasswordForTest = smtpPasswordManuallyEdited.value ? form.smtp_password : ''
@@ -4238,15 +4334,20 @@ async function sendTestEmail() {
   sendingTestEmail.value = true
   try {
     const smtpPasswordForSend = smtpPasswordManuallyEdited.value ? form.smtp_password : ''
+    const resendApiKeyForSend = resendApiKeyManuallyEdited.value ? form.resend_api_key : ''
     const result = await adminAPI.settings.sendTestEmail({
       email: testEmailAddress.value,
+      email_provider: form.email_provider,
       smtp_host: form.smtp_host,
       smtp_port: form.smtp_port,
       smtp_username: form.smtp_username,
       smtp_password: smtpPasswordForSend,
       smtp_from_email: form.smtp_from_email,
       smtp_from_name: form.smtp_from_name,
-      smtp_use_tls: form.smtp_use_tls
+      smtp_use_tls: form.smtp_use_tls,
+      resend_api_key: resendApiKeyForSend,
+      resend_from_email: form.resend_from_email,
+      resend_from_name: form.resend_from_name
     })
     // API returns { message: "..." } on success, errors are thrown as exceptions
     appStore.showSuccess(result.message || t('admin.settings.testEmailSent'))

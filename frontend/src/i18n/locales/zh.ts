@@ -5279,7 +5279,7 @@ export default {
     // Settings
     settings: {
       title: '系统设置',
-      description: '管理注册、邮箱验证、默认值和 SMTP 设置',
+      description: '管理注册、邮箱验证、默认值和邮件提供商设置',
       tabs: {
         general: '通用设置',
         security: '安全与认证',
@@ -5291,7 +5291,7 @@ export default {
         payment: '支付设置',
       },
       emailTabDisabledTitle: '邮箱验证未启用',
-      emailTabDisabledHint: '请在「安全与认证」选项卡中启用邮箱验证后，再配置 SMTP 设置。',
+      emailTabDisabledHint: '请在「安全与认证」选项卡中启用邮箱验证后，再配置邮件发送。',
       registration: {
         title: '注册设置',
         description: '控制用户注册和验证',
@@ -5759,8 +5759,11 @@ export default {
         emailPlaceholder: '输入邮箱地址',
       },
       smtp: {
-        title: 'SMTP 设置',
-        description: '配置用于发送验证码的邮件服务',
+        title: '邮件设置',
+        description: '配置用于发送验证码和通知的邮件服务',
+        provider: '邮件提供商',
+        providerSmtp: 'SMTP',
+        providerResend: 'Resend',
         testConnection: '测试连接',
         testing: '测试中...',
         host: 'SMTP 主机',
@@ -5781,9 +5784,20 @@ export default {
         useTls: '使用 TLS',
         useTlsHint: '为 SMTP 连接启用 TLS 加密'
       },
+      resend: {
+        apiKey: 'Resend API Key',
+        apiKeyPlaceholder: 're_xxxxxxxxx',
+        apiKeyHint: '请先在 Resend 创建 API Key，并验证发信域名。',
+        apiKeyConfiguredPlaceholder: '********',
+        apiKeyConfiguredHint: 'API Key 已配置，留空则保持当前值。',
+        fromEmail: '发件人邮箱',
+        fromEmailPlaceholder: "noreply{'@'}example.com",
+        fromName: '发件人名称',
+        fromNamePlaceholder: 'FluxCode'
+      },
       testEmail: {
         title: '发送测试邮件',
-        description: '发送测试邮件以验证 SMTP 配置',
+        description: '发送测试邮件以验证邮件提供商配置',
         recipientEmail: '收件人邮箱',
         recipientEmailPlaceholder: "test{'@'}example.com",
         sendTestEmail: '发送测试邮件',
