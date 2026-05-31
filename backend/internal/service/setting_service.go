@@ -148,8 +148,8 @@ type SettingService struct {
 	defaultSubGroupReader   DefaultSubscriptionGroupReader
 	proxyRepo               ProxyRepository // for resolving websearch provider proxy URLs
 	cfg                     *config.Config
-	onUpdate                func() // Callback when settings are updated (for cache invalidation)
-	version                 string // Application version
+	onUpdateCallbacks       []func() // Callbacks when settings are updated (cache invalidation, runtime refresh)
+	version                 string   // Application version
 	webSearchManagerBuilder WebSearchManagerBuilder
 }
 
@@ -324,10 +324,13 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 	}, nil
 }
 
-// SetOnUpdateCallback sets a callback function to be called when settings are updated
-// This is used for cache invalidation (e.g., HTML cache in frontend server)
+// SetOnUpdateCallback registers a callback function to be called when settings are updated.
+// Multiple runtime components may register independently; callbacks are intentionally additive.
 func (s *SettingService) SetOnUpdateCallback(callback func()) {
-	s.onUpdate = callback
+	if callback == nil {
+		return
+	}
+	s.onUpdateCallbacks = append(s.onUpdateCallbacks, callback)
 }
 
 // SetVersion sets the application version for injection into public settings
@@ -792,8 +795,8 @@ func (s *SettingService) UpdateSettings(ctx context.Context, settings *SystemSet
 			expiresAt: time.Now().Add(codexCLICfgCacheTTL).UnixNano(),
 		})
 		refreshSystemPromptSettingsCache(settings)
-		if s.onUpdate != nil {
-			s.onUpdate() // Invalidate cache after settings update
+		for _, callback := range s.onUpdateCallbacks {
+			callback() // Invalidate caches / refresh runtime state after settings update
 		}
 	}
 	return err

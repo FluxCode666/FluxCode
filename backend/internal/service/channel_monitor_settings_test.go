@@ -31,6 +31,21 @@ func TestSettingServiceUpdateChannelMonitorFields(t *testing.T) {
 	require.Equal(t, "120", repo.updates[SettingKeyChannelMonitorDefaultIntervalSeconds])
 }
 
+func TestSettingServiceUpdateInvokesAllRegisteredCallbacks(t *testing.T) {
+	repo := &channelMonitorSettingsRepoStub{values: map[string]string{}}
+	svc := NewSettingService(repo, &config.Config{})
+	firstCalls := 0
+	secondCalls := 0
+	svc.SetOnUpdateCallback(func() { firstCalls++ })
+	svc.SetOnUpdateCallback(func() { secondCalls++ })
+
+	err := svc.UpdateSettings(context.Background(), &SystemSettings{})
+
+	require.NoError(t, err)
+	require.Equal(t, 1, firstCalls)
+	require.Equal(t, 1, secondCalls)
+}
+
 type channelMonitorSettingsRepoStub struct {
 	values  map[string]string
 	updates map[string]string
@@ -63,8 +78,12 @@ func (s *channelMonitorSettingsRepoStub) GetMultiple(ctx context.Context, keys [
 
 func (s *channelMonitorSettingsRepoStub) SetMultiple(ctx context.Context, settings map[string]string) error {
 	s.updates = make(map[string]string, len(settings))
+	if s.values == nil {
+		s.values = map[string]string{}
+	}
 	for key, value := range settings {
 		s.updates[key] = value
+		s.values[key] = value
 	}
 	return nil
 }

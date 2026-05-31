@@ -28,7 +28,13 @@ func newSSRFSafeHTTPClient(timeout time.Duration) *http.Client {
 		TLSHandshakeTimeout:   monitorTLSHandshakeTimeout,
 		ResponseHeaderTimeout: monitorResponseHeaderTimeout,
 	}
-	return &http.Client{Timeout: timeout, Transport: tr}
+	return &http.Client{
+		Timeout:   timeout,
+		Transport: tr,
+		CheckRedirect: func(*http.Request, []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
 }
 
 type CheckOptions struct {
@@ -156,7 +162,7 @@ var providerAdapters = map[string]providerAdapter{
 		buildPath: func(model string) string { return fmt.Sprintf(providerGeminiPathTemplate, model) },
 		buildBody: func(_, prompt string) ([]byte, error) {
 			return json.Marshal(map[string]any{
-				"contents": []map[string]any{{"parts": []map[string]any{{"text": prompt}}}},
+				"contents":         []map[string]any{{"parts": []map[string]any{{"text": prompt}}}},
 				"generationConfig": map[string]any{"maxOutputTokens": monitorChallengeMaxTokens},
 			})
 		},

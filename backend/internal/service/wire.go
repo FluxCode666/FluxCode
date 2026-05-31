@@ -251,6 +251,11 @@ func ProvideChannelMonitorService(repo ChannelMonitorRepository, encryptor Secre
 func ProvideChannelMonitorRunner(svc *ChannelMonitorService, settingService *SettingService) *ChannelMonitorRunner {
 	runner := NewChannelMonitorRunner(svc, settingService)
 	svc.SetScheduler(runner)
+	if settingService != nil {
+		settingService.SetOnUpdateCallback(func() {
+			runner.Start()
+		})
+	}
 	runner.Start()
 	return runner
 }
@@ -504,8 +509,9 @@ func ProvideOpsCleanupService(
 	db *sql.DB,
 	redisClient *redis.Client,
 	cfg *config.Config,
+	channelMonitorSvc *ChannelMonitorService,
 ) *OpsCleanupService {
-	svc := NewOpsCleanupService(opsRepo, db, redisClient, cfg)
+	svc := NewOpsCleanupService(opsRepo, db, redisClient, cfg, channelMonitorSvc)
 	svc.Start()
 	return svc
 }
