@@ -467,7 +467,7 @@ func (s *ReferralService) handleSalesInviteeOngoingReward(ctx context.Context, r
 	}
 
 	// 检查持续奖励次数上限
-	if globalCfg.SalesInviteeOngoingRewardMaxCount > 0 && ref.OngoingRewardCount >= globalCfg.SalesInviteeOngoingRewardMaxCount {
+	if globalCfg.SalesInviteeOngoingRewardMaxCount > 0 && ref.InviteeOngoingRewardCount >= globalCfg.SalesInviteeOngoingRewardMaxCount {
 		return
 	}
 
@@ -497,7 +497,7 @@ func (s *ReferralService) handleSalesInviteeOngoingReward(ctx context.Context, r
 		return
 	}
 
-	if err := s.referralRepo.IncrementOngoingReward(ctx, ref.ID, rewardAmount); err != nil {
+	if err := s.referralRepo.IncrementInviteeOngoingReward(ctx, ref.ID, rewardAmount); err != nil {
 		slog.Error("increment sales invitee ongoing reward", "referralID", ref.ID, "error", err)
 	}
 	slog.Info("sales invitee ongoing reward granted", "referrerID", ref.ReferrerID, "refereeID", userID, "amount", rewardAmount)
@@ -905,7 +905,7 @@ func (s *ReferralService) AdminBatchGrantGiftBalance(ctx context.Context, target
 
 func (s *ReferralService) grantGiftBalance(ctx context.Context, userID int64, amount float64, source string, sourceRefID int64, expiryDays int, note string) bool {
 	// 幂等性检查
-	if sourceRefID > 0 {
+	if sourceRefID != 0 {
 		exists, _ := s.giftBalanceRepo.ExistsBySourceRef(ctx, source, sourceRefID)
 		if exists {
 			slog.Info("gift balance already granted (idempotent)", "source", source, "sourceRefID", sourceRefID)
@@ -920,7 +920,7 @@ func (s *ReferralService) grantGiftBalance(ctx context.Context, userID int64, am
 	}
 
 	var refID *int64
-	if sourceRefID > 0 {
+	if sourceRefID != 0 {
 		refID = &sourceRefID
 	}
 

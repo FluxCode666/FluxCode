@@ -162,6 +162,56 @@ func TestReferralService_HandleOngoingRewardOnRecharge_GrantsOncePerOrder(t *tes
 	require.Len(t, giftRepo.existsChecks, 3)
 }
 
+func TestReferralService_HandleOngoingRewardOnRecharge_SalesInviteeOngoingTracksInviteeReward(t *testing.T) {
+	t.Parallel()
+
+	settingRepo := &referralSettingRepoStub{
+		values: map[string]string{
+			SettingKeyReferralEnabled:                               "true",
+			SettingKeyReferralSalesEnabled:                          "true",
+			SettingKeyReferralSalesInviteeOngoingRewardEnabled:      "true",
+			SettingKeyReferralSalesInviteeOngoingRewardType:         "percentage",
+			SettingKeyReferralSalesInviteeOngoingRewardValue:        "10",
+			SettingKeyReferralSalesInviteeOngoingRewardMaxCount:     "0",
+			SettingKeyReferralSalesInviteeOngoingRewardDurationDays: "0",
+		},
+	}
+	userRepo := &referralUserRepoStub{
+		byID: map[int64]*User{
+			10: {ID: 10, IsSales: true, SalesCommissionRate: 15},
+		},
+	}
+	referralRepo := &referralRepoStub{referralByReferee: map[int64]*Referral{
+		20: {ID: 7, ReferrerID: 10, RefereeID: 20, Status: ReferralStatusCompleted, CreatedAt: time.Now()},
+	}}
+	giftRepo := &referralGiftBalanceRepoStub{}
+	resolver := NewReferralConfigResolver(settingRepo, &referralUserConfigRepoStub{})
+	svc := NewReferralService(userRepo, referralRepo, giftRepo, resolver, nil)
+
+	svc.HandleOngoingRewardOnRecharge(context.Background(), 20, 100, 301, false)
+
+	require.Len(t, giftRepo.created, 1)
+	require.Equal(t, int64(20), giftRepo.created[0].UserID)
+	require.Equal(t, GiftBalanceSourceReferralOngoing, giftRepo.created[0].Source)
+	require.Equal(t, []float64{10}, referralRepo.inviteeOngoingRewardIncrements)
+	require.Empty(t, referralRepo.ongoingRewardIncrements)
+}
+
+func TestReferralServiceGrantGiftBalanceKeepsNegativeSourceRefForIdempotency(t *testing.T) {
+	t.Parallel()
+
+	giftRepo := &referralGiftBalanceRepoStub{}
+	svc := &ReferralService{giftBalanceRepo: giftRepo}
+
+	ok := svc.grantGiftBalance(context.Background(), 20, 10, GiftBalanceSourceReferralInviteeFirstCharge, -301, 0, "invitee first charge")
+
+	require.True(t, ok)
+	require.Equal(t, []string{giftBalanceKey(GiftBalanceSourceReferralInviteeFirstCharge, -301)}, giftRepo.existsChecks)
+	require.Len(t, giftRepo.created, 1)
+	require.NotNil(t, giftRepo.created[0].SourceRefID)
+	require.Equal(t, int64(-301), *giftRepo.created[0].SourceRefID)
+}
+
 func TestReferralService_AdminMarkReferralCompleted_GrantsInviterRewardOnly(t *testing.T) {
 	t.Parallel()
 
@@ -393,14 +443,15 @@ func (r *referralUserRepoStub) IsFirstRecharge(_ context.Context, _ int64) (bool
 func (r *referralUserRepoStub) ListActiveUserIDs(_ context.Context) ([]int64, error) { return nil, nil }
 
 type referralRepoStub struct {
-	referralByReferee         map[int64]*Referral
-	referralByID              map[int64]*Referral
-	inviterRewarded           []float64
-	ongoingRewardIncrements   []float64
-	markCompletedID           int64
-	markCompletedRewardAmount float64
-	markCompletedNote         string
-	updateStatusCalls         []referralRepoStubStatusCall
+	referralByReferee              map[int64]*Referral
+	referralByID                   map[int64]*Referral
+	inviterRewarded                []float64
+	ongoingRewardIncrements        []float64
+	inviteeOngoingRewardIncrements []float64
+	markCompletedID                int64
+	markCompletedRewardAmount      float64
+	markCompletedNote              string
+	updateStatusCalls              []referralRepoStubStatusCall
 }
 
 type referralRepoStubStatusCall struct {
@@ -440,7 +491,8 @@ func (r *referralRepoStub) IncrementOngoingReward(_ context.Context, _ int64, am
 	r.ongoingRewardIncrements = append(r.ongoingRewardIncrements, amount)
 	return nil
 }
-func (r *referralRepoStub) IncrementInviteeOngoingReward(_ context.Context, _ int64, _ float64) error {
+func (r *referralRepoStub) IncrementInviteeOngoingReward(_ context.Context, _ int64, amount float64) error {
+	r.inviteeOngoingRewardIncrements = append(r.inviteeOngoingRewardIncrements, amount)
 	return nil
 }
 func (r *referralRepoStub) GetStatsByReferrerID(_ context.Context, _ int64) (*ReferralStats, error) {

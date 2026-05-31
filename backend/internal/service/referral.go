@@ -36,21 +36,22 @@ type GiftBalanceRecord struct {
 
 // Referral 推广关系记录
 type Referral struct {
-	ID                        int64      `json:"id"`
-	ReferrerID                int64      `json:"referrer_id"`
-	RefereeID                 int64      `json:"referee_id"`
-	ReferralCode              string     `json:"referral_code"`
-	Status                    string     `json:"status"`
-	InviteeRewardAmount       float64    `json:"invitee_reward_amount"`
-	InviterRewardAmount       float64    `json:"inviter_reward_amount"`
-	InviteeRewardedAt         *time.Time `json:"invitee_rewarded_at"`
-	InviterRewardedAt         *time.Time `json:"inviter_rewarded_at"`
-	OngoingRewardCount        int        `json:"ongoing_reward_count"`
-	OngoingRewardTotal        float64    `json:"ongoing_reward_total"`
-	InviteeOngoingRewardCount int        `json:"invitee_ongoing_reward_count"`
-	InviteeOngoingRewardTotal float64    `json:"invitee_ongoing_reward_total"`
-	CreatedAt                 time.Time  `json:"created_at"`
-	UpdatedAt                 time.Time  `json:"updated_at"`
+	ID                             int64      `json:"id"`
+	ReferrerID                     int64      `json:"referrer_id"`
+	RefereeID                      int64      `json:"referee_id"`
+	ReferralCode                   string     `json:"referral_code"`
+	Status                         string     `json:"status"`
+	InviteeRewardAmount            float64    `json:"invitee_reward_amount"`
+	InviteeFirstChargeRewardAmount float64    `json:"invitee_first_charge_reward_amount"`
+	InviterRewardAmount            float64    `json:"inviter_reward_amount"`
+	InviteeRewardedAt              *time.Time `json:"invitee_rewarded_at"`
+	InviterRewardedAt              *time.Time `json:"inviter_rewarded_at"`
+	OngoingRewardCount             int        `json:"ongoing_reward_count"`
+	OngoingRewardTotal             float64    `json:"ongoing_reward_total"`
+	InviteeOngoingRewardCount      int        `json:"invitee_ongoing_reward_count"`
+	InviteeOngoingRewardTotal      float64    `json:"invitee_ongoing_reward_total"`
+	CreatedAt                      time.Time  `json:"created_at"`
+	UpdatedAt                      time.Time  `json:"updated_at"`
 
 	// 附加字段（列表查询时填充）
 	ReferrerEmail   string `json:"referrer_email,omitempty"`

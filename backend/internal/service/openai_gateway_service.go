@@ -3284,6 +3284,10 @@ func (s *OpenAIGatewayService) handleNonStreamingResponsePassthrough(
 		return s.handlePassthroughSSEToJSON(resp, c, body)
 	}
 
+	if msg, invalid := invalidCompletedResponsesOutputMessage(body); invalid {
+		return nil, s.writeOpenAINonStreamingProtocolError(resp, c, msg)
+	}
+
 	usage := &OpenAIUsage{}
 	usageParsed := false
 	if len(body) > 0 {
@@ -4173,6 +4177,29 @@ func extractOpenAIUsageFromJSONBytes(body []byte) (OpenAIUsage, bool) {
 	}, true
 }
 
+func invalidCompletedResponsesOutputMessage(body []byte) (string, bool) {
+	if len(body) == 0 || !gjson.ValidBytes(body) {
+		return "", false
+	}
+	root := gjson.ParseBytes(body)
+	status := strings.TrimSpace(root.Get("status").String())
+	output := root.Get("output")
+	if status == "" && root.Get("type").String() == "response.completed" {
+		responsePayload := root.Get("response")
+		if responsePayload.Exists() {
+			status = strings.TrimSpace(responsePayload.Get("status").String())
+			output = responsePayload.Get("output")
+		}
+	}
+	if status != "completed" {
+		return "", false
+	}
+	if output.Exists() && output.IsArray() {
+		return "", false
+	}
+	return "Upstream returned a completed Responses payload with invalid output", true
+}
+
 func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, resp *http.Response, c *gin.Context, account *Account, originalModel, mappedModel string) (*OpenAIUsage, error) {
 	body, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, openAITooLargeError)
 	if err != nil {
@@ -4195,6 +4222,10 @@ func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, r
 		if bodyLooksLikeSSE {
 			return s.handleSSEToJSON(resp, c, body, originalModel, mappedModel)
 		}
+	}
+
+	if msg, invalid := invalidCompletedResponsesOutputMessage(body); invalid {
+		return nil, s.writeOpenAINonStreamingProtocolError(resp, c, msg)
 	}
 
 	usageValue, usageOK := extractOpenAIUsageFromJSONBytes(body)
