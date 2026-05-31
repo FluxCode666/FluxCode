@@ -535,6 +535,9 @@ func withCorrelationFields(ctx context.Context, l *zap.Logger) *zap.Logger {
 	if requestID, _ := ctx.Value(ctxkey.RequestID).(string); strings.TrimSpace(requestID) != "" {
 		l = l.With(zap.String("request_id", strings.TrimSpace(requestID)))
 	}
+	if userEmail, _ := ctx.Value(ctxkey.UserEmail).(string); strings.TrimSpace(userEmail) != "" {
+		l = l.With(zap.String("user_email", strings.TrimSpace(userEmail)))
+	}
 	return l
 }
 
