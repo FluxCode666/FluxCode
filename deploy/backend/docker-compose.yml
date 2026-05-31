@@ -24,6 +24,8 @@ services:
     #   dockerfile: deploy/backend/Dockerfile
     container_name: fluxcode-backend
     restart: unless-stopped
+    networks:
+      - flux-code
     ulimits:
       nofile:
         soft: 100000
@@ -133,3 +135,8 @@ services:
 
 volumes:
   fluxcode-data:
+
+networks:
+  flux-code:
+    external: true
+    name: flux-code
