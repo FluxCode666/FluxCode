@@ -3262,6 +3262,10 @@ import type {
   SystemPromptUserScopeMode,
 } from '@/types'
 import type { ProviderInstance } from '@/types/payment'
+import {
+  applyDefinedSettingsToForm,
+  resolveSettingsUpdateForForm,
+} from './settingsFormState'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
 import Select from '@/components/common/Select.vue'
@@ -3998,12 +4002,7 @@ async function loadSettings() {
   try {
     const settings = await adminAPI.settings.getSettings()
     settings.payment_load_balance_strategy = settings.payment_load_balance_strategy || 'round-robin'
-    // Only assign non-null values from backend (null means unconfigured, keep defaults)
-    for (const [key, value] of Object.entries(settings)) {
-      if (value !== null && value !== undefined) {
-        (form as Record<string, unknown>)[key] = value
-      }
-    }
+    applyDefinedSettingsToForm(form, settings)
     form.backend_mode_enabled = settings.backend_mode_enabled
     form.default_subscriptions = Array.isArray(settings.default_subscriptions)
       ? settings.default_subscriptions
@@ -4266,12 +4265,11 @@ async function saveSettings() {
       account_quota_notify_emails: (form.account_quota_notify_emails || []).filter((e) => e.email.trim() !== ''),
     }
 
-    const updated = await adminAPI.settings.updateSettings(payload)
-    for (const [key, value] of Object.entries(updated)) {
-      if (value !== null && value !== undefined) {
-        (form as Record<string, unknown>)[key] = value
-      }
-    }
+    const updated = resolveSettingsUpdateForForm(
+      await adminAPI.settings.updateSettings(payload),
+      payload
+    )
+    applyDefinedSettingsToForm(form, updated)
     registrationEmailSuffixWhitelistTags.value = normalizeRegistrationEmailSuffixDomains(
       updated.registration_email_suffix_whitelist
     )
