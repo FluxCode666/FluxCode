@@ -1204,6 +1204,8 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		EnableFingerprintUnification:         updatedSettings.EnableFingerprintUnification,
 		EnableMetadataPassthrough:            updatedSettings.EnableMetadataPassthrough,
 		EnableCCHSigning:                     updatedSettings.EnableCCHSigning,
+		CodexCLIUserAgent:                    updatedSettings.CodexCLIUserAgent,
+		CodexCLIVersion:                      updatedSettings.CodexCLIVersion,
 		BalanceLowNotifyEnabled:              updatedSettings.BalanceLowNotifyEnabled,
 		BalanceLowNotifyThreshold:            updatedSettings.BalanceLowNotifyThreshold,
 		BalanceLowNotifyRechargeURL:          updatedSettings.BalanceLowNotifyRechargeURL,
