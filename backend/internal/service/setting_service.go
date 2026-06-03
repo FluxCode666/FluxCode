@@ -148,8 +148,8 @@ type SettingService struct {
 	defaultSubGroupReader   DefaultSubscriptionGroupReader
 	proxyRepo               ProxyRepository // for resolving websearch provider proxy URLs
 	cfg                     *config.Config
-	onUpdate                func() // Callback when settings are updated (for cache invalidation)
-	version                 string // Application version
+	onUpdateCallbacks       []func() // Callbacks when settings are updated (cache invalidation, runtime refresh)
+	version                 string   // Application version
 	webSearchManagerBuilder WebSearchManagerBuilder
 }
 
@@ -210,6 +210,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyPasswordResetEnabled,
 		SettingKeyInvitationCodeEnabled,
 		SettingKeyTotpEnabled,
+		SettingKeyChannelMonitorEnabled,
 		SettingKeyTurnstileEnabled,
 		SettingKeyTurnstileSiteKey,
 		SettingKeySiteName,
@@ -290,6 +291,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		PasswordResetEnabled:             passwordResetEnabled,
 		InvitationCodeEnabled:            settings[SettingKeyInvitationCodeEnabled] == "true",
 		TotpEnabled:                      settings[SettingKeyTotpEnabled] == "true",
+		ChannelMonitorEnabled:            settings[SettingKeyChannelMonitorEnabled] == "true",
 		TurnstileEnabled:                 settings[SettingKeyTurnstileEnabled] == "true",
 		TurnstileSiteKey:                 settings[SettingKeyTurnstileSiteKey],
 		SiteName:                         s.getStringOrDefault(settings, SettingKeySiteName, "FluxCode"),
@@ -322,10 +324,13 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 	}, nil
 }
 
-// SetOnUpdateCallback sets a callback function to be called when settings are updated
-// This is used for cache invalidation (e.g., HTML cache in frontend server)
+// SetOnUpdateCallback registers a callback function to be called when settings are updated.
+// Multiple runtime components may register independently; callbacks are intentionally additive.
 func (s *SettingService) SetOnUpdateCallback(callback func()) {
-	s.onUpdate = callback
+	if callback == nil {
+		return
+	}
+	s.onUpdateCallbacks = append(s.onUpdateCallbacks, callback)
 }
 
 // SetVersion sets the application version for injection into public settings
@@ -350,6 +355,7 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		PasswordResetEnabled             bool            `json:"password_reset_enabled"`
 		InvitationCodeEnabled            bool            `json:"invitation_code_enabled"`
 		TotpEnabled                      bool            `json:"totp_enabled"`
+		ChannelMonitorEnabled            bool            `json:"channel_monitor_enabled"`
 		TurnstileEnabled                 bool            `json:"turnstile_enabled"`
 		TurnstileSiteKey                 string          `json:"turnstile_site_key,omitempty"`
 		SiteName                         string          `json:"site_name"`
@@ -386,6 +392,7 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		PasswordResetEnabled:             settings.PasswordResetEnabled,
 		InvitationCodeEnabled:            settings.InvitationCodeEnabled,
 		TotpEnabled:                      settings.TotpEnabled,
+		ChannelMonitorEnabled:            settings.ChannelMonitorEnabled,
 		TurnstileEnabled:                 settings.TurnstileEnabled,
 		TurnstileSiteKey:                 settings.TurnstileSiteKey,
 		SiteName:                         settings.SiteName,
@@ -415,6 +422,26 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		BalanceLowNotifyThreshold:        settings.BalanceLowNotifyThreshold,
 		BalanceLowNotifyRechargeURL:      settings.BalanceLowNotifyRechargeURL,
 	}, nil
+}
+
+func (s *SettingService) GetChannelMonitorRuntime(ctx context.Context) ChannelMonitorRuntimeSettings {
+	settings, err := s.settingRepo.GetMultiple(ctx, []string{
+		SettingKeyChannelMonitorEnabled,
+		SettingKeyChannelMonitorDefaultIntervalSeconds,
+	})
+	if err != nil {
+		return ChannelMonitorRuntimeSettings{
+			Enabled:                false,
+			DefaultIntervalSeconds: ChannelMonitorFallbackIntervalSecond,
+		}
+	}
+	return ChannelMonitorRuntimeSettings{
+		Enabled: settings[SettingKeyChannelMonitorEnabled] == "true",
+		DefaultIntervalSeconds: NormalizeChannelMonitorInterval(
+			parseIntSetting(settings[SettingKeyChannelMonitorDefaultIntervalSeconds], ChannelMonitorFallbackIntervalSecond),
+			ChannelMonitorFallbackIntervalSecond,
+		),
+	}
 }
 
 // filterUserVisibleMenuItems filters out admin-only menu items from a raw JSON
@@ -463,6 +490,14 @@ func safeRawJSONArray(raw string) json.RawMessage {
 		return json.RawMessage(raw)
 	}
 	return json.RawMessage("[]")
+}
+
+func parseIntSetting(raw string, fallback int) int {
+	value, err := strconv.Atoi(strings.TrimSpace(raw))
+	if err != nil {
+		return fallback
+	}
+	return value
 }
 
 // GetFrameSrcOrigins returns deduplicated http(s) origins from home_content URL,
@@ -568,6 +603,10 @@ func (s *SettingService) UpdateSettings(ctx context.Context, settings *SystemSet
 	updates[SettingKeyFrontendURL] = settings.FrontendURL
 	updates[SettingKeyInvitationCodeEnabled] = strconv.FormatBool(settings.InvitationCodeEnabled)
 	updates[SettingKeyTotpEnabled] = strconv.FormatBool(settings.TotpEnabled)
+	updates[SettingKeyChannelMonitorEnabled] = strconv.FormatBool(settings.ChannelMonitorEnabled)
+	updates[SettingKeyChannelMonitorDefaultIntervalSeconds] = strconv.Itoa(
+		NormalizeChannelMonitorInterval(settings.ChannelMonitorDefaultIntervalSeconds, ChannelMonitorFallbackIntervalSecond),
+	)
 
 	// 邮件服务设置（只有非空才更新密码）
 	updates[SettingKeyEmailProvider] = NormalizeEmailProvider(settings.EmailProvider)
@@ -762,8 +801,8 @@ func (s *SettingService) UpdateSettings(ctx context.Context, settings *SystemSet
 			expiresAt: time.Now().Add(codexCLICfgCacheTTL).UnixNano(),
 		})
 		refreshSystemPromptSettingsCache(settings)
-		if s.onUpdate != nil {
-			s.onUpdate() // Invalidate cache after settings update
+		for _, callback := range s.onUpdateCallbacks {
+			callback() // Invalidate caches / refresh runtime state after settings update
 		}
 	}
 	return err
@@ -1282,26 +1321,28 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 
 	// 初始化默认设置
 	defaults := map[string]string{
-		SettingKeyRegistrationEnabled:              "true",
-		SettingKeyEmailVerifyEnabled:               "false",
-		SettingKeyRegistrationEmailSuffixWhitelist: "[]",
-		SettingKeyPromoCodeEnabled:                 "true", // 默认启用优惠码功能
-		SettingKeySiteName:                         "FluxCode",
-		SettingKeySiteLogo:                         "",
-		SettingKeyPurchaseSubscriptionEnabled:      "false",
-		SettingKeyPurchaseSubscriptionURL:          "",
-		SettingKeyTableDefaultPageSize:             "20",
-		SettingKeyTablePageSizeOptions:             "[10,20,50,100]",
-		SettingKeyCustomMenuItems:                  "[]",
-		SettingKeyCustomEndpoints:                  "[]",
-		SettingKeyOIDCConnectEnabled:               "false",
-		SettingKeyOIDCConnectProviderName:          "OIDC",
-		SettingKeyDefaultConcurrency:               strconv.Itoa(s.cfg.Default.UserConcurrency),
-		SettingKeyDefaultBalance:                   strconv.FormatFloat(s.cfg.Default.UserBalance, 'f', 8, 64),
-		SettingKeyDefaultSubscriptions:             "[]",
-		SettingKeyEmailProvider:                    EmailProviderSMTP,
-		SettingKeySMTPPort:                         "587",
-		SettingKeySMTPUseTLS:                       "false",
+		SettingKeyRegistrationEnabled:                  "true",
+		SettingKeyEmailVerifyEnabled:                   "false",
+		SettingKeyRegistrationEmailSuffixWhitelist:     "[]",
+		SettingKeyPromoCodeEnabled:                     "true", // 默认启用优惠码功能
+		SettingKeySiteName:                             "FluxCode",
+		SettingKeySiteLogo:                             "",
+		SettingKeyPurchaseSubscriptionEnabled:          "false",
+		SettingKeyPurchaseSubscriptionURL:              "",
+		SettingKeyTableDefaultPageSize:                 "20",
+		SettingKeyTablePageSizeOptions:                 "[10,20,50,100]",
+		SettingKeyCustomMenuItems:                      "[]",
+		SettingKeyCustomEndpoints:                      "[]",
+		SettingKeyOIDCConnectEnabled:                   "false",
+		SettingKeyOIDCConnectProviderName:              "OIDC",
+		SettingKeyDefaultConcurrency:                   strconv.Itoa(s.cfg.Default.UserConcurrency),
+		SettingKeyDefaultBalance:                       strconv.FormatFloat(s.cfg.Default.UserBalance, 'f', 8, 64),
+		SettingKeyDefaultSubscriptions:                 "[]",
+		SettingKeyEmailProvider:                        EmailProviderSMTP,
+		SettingKeySMTPPort:                             "587",
+		SettingKeySMTPUseTLS:                           "false",
+		SettingKeyChannelMonitorEnabled:                "false",
+		SettingKeyChannelMonitorDefaultIntervalSeconds: strconv.Itoa(ChannelMonitorFallbackIntervalSecond),
 		// Model fallback defaults
 		SettingKeyEnableModelFallback:      "false",
 		SettingKeyFallbackModelAnthropic:   "claude-3-5-sonnet-20241022",
@@ -1352,32 +1393,37 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		FrontendURL:                      settings[SettingKeyFrontendURL],
 		InvitationCodeEnabled:            settings[SettingKeyInvitationCodeEnabled] == "true",
 		TotpEnabled:                      settings[SettingKeyTotpEnabled] == "true",
-		EmailProvider:                    NormalizeEmailProvider(settings[SettingKeyEmailProvider]),
-		SMTPHost:                         settings[SettingKeySMTPHost],
-		SMTPUsername:                     settings[SettingKeySMTPUsername],
-		SMTPFrom:                         settings[SettingKeySMTPFrom],
-		SMTPFromName:                     settings[SettingKeySMTPFromName],
-		SMTPUseTLS:                       settings[SettingKeySMTPUseTLS] == "true",
-		SMTPPasswordConfigured:           settings[SettingKeySMTPPassword] != "",
-		ResendFrom:                       settings[SettingKeyResendFrom],
-		ResendFromName:                   settings[SettingKeyResendFromName],
-		ResendAPIKeyConfigured:           settings[SettingKeyResendAPIKey] != "",
-		TurnstileEnabled:                 settings[SettingKeyTurnstileEnabled] == "true",
-		TurnstileSiteKey:                 settings[SettingKeyTurnstileSiteKey],
-		TurnstileSecretKeyConfigured:     settings[SettingKeyTurnstileSecretKey] != "",
-		SiteName:                         s.getStringOrDefault(settings, SettingKeySiteName, "FluxCode"),
-		SiteLogo:                         settings[SettingKeySiteLogo],
-		SiteSubtitle:                     s.getStringOrDefault(settings, SettingKeySiteSubtitle, "Subscription to API Conversion Platform"),
-		APIBaseURL:                       settings[SettingKeyAPIBaseURL],
-		ContactInfo:                      settings[SettingKeyContactInfo],
-		DocURL:                           settings[SettingKeyDocURL],
-		HomeContent:                      settings[SettingKeyHomeContent],
-		HideCcsImportButton:              settings[SettingKeyHideCcsImportButton] == "true",
-		PurchaseSubscriptionEnabled:      settings[SettingKeyPurchaseSubscriptionEnabled] == "true",
-		PurchaseSubscriptionURL:          strings.TrimSpace(settings[SettingKeyPurchaseSubscriptionURL]),
-		CustomMenuItems:                  settings[SettingKeyCustomMenuItems],
-		CustomEndpoints:                  settings[SettingKeyCustomEndpoints],
-		BackendModeEnabled:               settings[SettingKeyBackendModeEnabled] == "true",
+		ChannelMonitorEnabled:            settings[SettingKeyChannelMonitorEnabled] == "true",
+		ChannelMonitorDefaultIntervalSeconds: NormalizeChannelMonitorInterval(
+			parseIntSetting(settings[SettingKeyChannelMonitorDefaultIntervalSeconds], ChannelMonitorFallbackIntervalSecond),
+			ChannelMonitorFallbackIntervalSecond,
+		),
+		EmailProvider:                NormalizeEmailProvider(settings[SettingKeyEmailProvider]),
+		SMTPHost:                     settings[SettingKeySMTPHost],
+		SMTPUsername:                 settings[SettingKeySMTPUsername],
+		SMTPFrom:                     settings[SettingKeySMTPFrom],
+		SMTPFromName:                 settings[SettingKeySMTPFromName],
+		SMTPUseTLS:                   settings[SettingKeySMTPUseTLS] == "true",
+		SMTPPasswordConfigured:       settings[SettingKeySMTPPassword] != "",
+		ResendFrom:                   settings[SettingKeyResendFrom],
+		ResendFromName:               settings[SettingKeyResendFromName],
+		ResendAPIKeyConfigured:       settings[SettingKeyResendAPIKey] != "",
+		TurnstileEnabled:             settings[SettingKeyTurnstileEnabled] == "true",
+		TurnstileSiteKey:             settings[SettingKeyTurnstileSiteKey],
+		TurnstileSecretKeyConfigured: settings[SettingKeyTurnstileSecretKey] != "",
+		SiteName:                     s.getStringOrDefault(settings, SettingKeySiteName, "FluxCode"),
+		SiteLogo:                     settings[SettingKeySiteLogo],
+		SiteSubtitle:                 s.getStringOrDefault(settings, SettingKeySiteSubtitle, "Subscription to API Conversion Platform"),
+		APIBaseURL:                   settings[SettingKeyAPIBaseURL],
+		ContactInfo:                  settings[SettingKeyContactInfo],
+		DocURL:                       settings[SettingKeyDocURL],
+		HomeContent:                  settings[SettingKeyHomeContent],
+		HideCcsImportButton:          settings[SettingKeyHideCcsImportButton] == "true",
+		PurchaseSubscriptionEnabled:  settings[SettingKeyPurchaseSubscriptionEnabled] == "true",
+		PurchaseSubscriptionURL:      strings.TrimSpace(settings[SettingKeyPurchaseSubscriptionURL]),
+		CustomMenuItems:              settings[SettingKeyCustomMenuItems],
+		CustomEndpoints:              settings[SettingKeyCustomEndpoints],
+		BackendModeEnabled:           settings[SettingKeyBackendModeEnabled] == "true",
 	}
 	result.TableDefaultPageSize, result.TablePageSizeOptions = parseTablePreferences(
 		settings[SettingKeyTableDefaultPageSize],

@@ -41,6 +41,8 @@ type AdminUser struct {
 	User
 
 	Notes string `json:"notes"`
+	// GiftBalanceRemaining is the currently available gift balance for admin list display.
+	GiftBalanceRemaining float64 `json:"gift_balance_remaining"`
 	// GroupRates 用户专属分组倍率配置
 	// map[groupID]rateMultiplier
 	GroupRates map[int64]float64 `json:"group_rates,omitempty"`

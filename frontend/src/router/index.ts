@@ -55,6 +55,17 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/channel-status',
+    name: 'PublicChannelStatus',
+    component: () => import('@/views/ChannelStatusPublicView.vue'),
+    meta: {
+      requiresAuth: false,
+      title: 'Channel Status',
+      titleKey: 'channelStatus.title',
+      descriptionKey: 'channelStatus.description'
+    }
+  },
+  {
     path: '/login',
     name: 'Login',
     component: () => import('@/views/auth/LoginView.vue'),
@@ -178,6 +189,19 @@ const routes: RouteRecordRaw[] = [
       title: 'Usage Records',
       titleKey: 'usage.title',
       descriptionKey: 'usage.description'
+    }
+  },
+  {
+    path: '/monitor',
+    name: 'ChannelStatus',
+    component: () => import('@/views/user/ChannelStatusView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      requiresChannelMonitor: true,
+      title: 'Channel Status',
+      titleKey: 'channelStatus.title',
+      descriptionKey: 'channelStatus.description'
     }
   },
   {
@@ -388,6 +412,19 @@ const routes: RouteRecordRaw[] = [
       title: 'Channel Management',
       titleKey: 'admin.channels.title',
       descriptionKey: 'admin.channels.description'
+    }
+  },
+  {
+    path: '/admin/channels/monitor',
+    name: 'AdminChannelMonitor',
+    component: () => import('@/views/admin/ChannelMonitorView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      requiresChannelMonitor: true,
+      title: 'Channel Monitor',
+      titleKey: 'admin.channelMonitor.title',
+      descriptionKey: 'admin.channelMonitor.description'
     }
   },
   {
@@ -741,6 +778,14 @@ router.beforeEach((to, _from, next) => {
   if (to.meta.requiresReferral) {
     const referralEnabled = appStore.cachedPublicSettings?.referral_enabled
     if (!referralEnabled) {
+      next(authStore.isAdmin ? '/admin/dashboard' : '/dashboard')
+      return
+    }
+  }
+
+  // Check channel monitor requirement
+  if (to.meta.requiresChannelMonitor) {
+    if (!appStore.channelMonitorEnabled) {
       next(authStore.isAdmin ? '/admin/dashboard' : '/dashboard')
       return
     }

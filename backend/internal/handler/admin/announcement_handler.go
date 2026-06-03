@@ -240,12 +240,20 @@ func (h *AnnouncementHandler) ListReadStatus(c *gin.Context) {
 	if len(search) > 200 {
 		search = search[:200]
 	}
+	readStatus := strings.TrimSpace(c.Query("read_status"))
+	switch readStatus {
+	case "", service.AnnouncementReadStatusRead, service.AnnouncementReadStatusUnread:
+	default:
+		response.BadRequest(c, "Invalid read_status")
+		return
+	}
 
 	items, paginationResult, err := h.announcementService.ListUserReadStatus(
 		c.Request.Context(),
 		announcementID,
 		params,
 		search,
+		readStatus,
 	)
 	if err != nil {
 		response.ErrorFrom(c, err)

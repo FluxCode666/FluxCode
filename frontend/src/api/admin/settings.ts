@@ -140,6 +140,10 @@ export interface SystemSettings {
   // Sora client
   sora_client_enabled: boolean
 
+  // Channel monitor
+  channel_monitor_enabled: boolean
+  channel_monitor_default_interval_seconds: number
+
   // 兑换码发货文案 & 引流弹窗
   redeem_delivery_text: string
   attract_popup_title: string
@@ -283,6 +287,9 @@ export interface UpdateSettingsRequest {
   purchase_subscription_url?: string
   // Sora client
   sora_client_enabled?: boolean
+  // Channel monitor
+  channel_monitor_enabled?: boolean
+  channel_monitor_default_interval_seconds?: number
   // 兑换码发货文案 & 引流弹窗
   redeem_delivery_text?: string
   attract_popup_title?: string

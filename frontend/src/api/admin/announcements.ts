@@ -59,6 +59,7 @@ export async function getReadStatus(
     search?: string
     sort_by?: string
     sort_order?: 'asc' | 'desc'
+    read_status?: 'read' | 'unread'
   },
   options?: {
     signal?: AbortSignal

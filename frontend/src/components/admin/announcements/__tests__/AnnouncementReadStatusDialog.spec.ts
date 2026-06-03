@@ -42,6 +42,23 @@ const BaseDialogStub = {
   template: '<div><slot /><slot name="footer" /></div>',
 }
 
+const SelectStub = {
+  props: ['modelValue', 'options'],
+  emits: ['update:modelValue', 'change'],
+  methods: {
+    handleChange(event: Event) {
+      const value = (event.target as HTMLSelectElement).value
+      this.$emit('update:modelValue', value)
+      this.$emit('change', value)
+    },
+  },
+  template: `
+    <select data-test="read-status-filter" :value="modelValue" @change="handleChange">
+      <option v-for="option in options" :key="option.value" :value="option.value">{{ option.label }}</option>
+    </select>
+  `,
+}
+
 describe('AnnouncementReadStatusDialog', () => {
   beforeEach(() => {
     getReadStatus.mockReset()
@@ -91,5 +108,44 @@ describe('AnnouncementReadStatusDialog', () => {
     await flushPromises()
 
     expect(getReadStatus).toHaveBeenCalledTimes(1)
+  })
+
+  it('defaults to all read statuses and reloads when filtering read users', async () => {
+    getReadStatus.mockResolvedValue({
+      items: [],
+      total: 0,
+      pages: 0,
+      page: 1,
+      page_size: 20,
+    })
+
+    const wrapper = mount(AnnouncementReadStatusDialog, {
+      props: {
+        show: false,
+        announcementId: 1,
+      },
+      global: {
+        stubs: {
+          BaseDialog: BaseDialogStub,
+          DataTable: true,
+          Pagination: true,
+          Icon: true,
+          Select: SelectStub,
+        },
+      },
+    })
+
+    await wrapper.setProps({ show: true })
+    await flushPromises()
+
+    expect(getReadStatus).toHaveBeenCalledTimes(1)
+    expect(getReadStatus.mock.calls[0][3]).not.toHaveProperty('read_status')
+
+    await wrapper.get('[data-test="read-status-filter"]').setValue('read')
+    await flushPromises()
+
+    expect(getReadStatus).toHaveBeenCalledTimes(2)
+    expect(getReadStatus.mock.calls[1][1]).toBe(1)
+    expect(getReadStatus.mock.calls[1][3]).toMatchObject({ read_status: 'read' })
   })
 })

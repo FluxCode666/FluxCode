@@ -60,6 +60,8 @@ export interface User {
 export interface AdminUser extends User {
   // 管理员备注（普通用户接口不返回）
   notes: string
+  // 可用赠送余额（仅管理员列表接口返回）
+  gift_balance_remaining?: number
   // 用户专属分组倍率配置 (group_id -> rate_multiplier)
   group_rates?: Record<number, number>
   // 当前并发数（仅管理员列表接口返回）
@@ -237,6 +239,7 @@ export interface PublicSettings {
   oidc_oauth_enabled: boolean
   oidc_oauth_provider_name: string
   backend_mode_enabled: boolean
+  channel_monitor_enabled?: boolean
   attract_popup_title?: string
   attract_popup_markdown?: string
   version: string

@@ -127,6 +127,11 @@ func resolveCodexCLIUserAgent() string {
 	return codexCLIUserAgentDefault
 }
 
+// ResolveCodexCLIUserAgent returns the configured Codex CLI User-Agent for upstream OpenAI requests.
+func ResolveCodexCLIUserAgent() string {
+	return resolveCodexCLIUserAgent()
+}
+
 // resolveCodexCLIVersion 从 DB 缓存获取 Codex CLI Version，
 // 缓存为空时回退到默认值。缓存由启动预热 + UpdateSettings 维护。
 func resolveCodexCLIVersion() string {

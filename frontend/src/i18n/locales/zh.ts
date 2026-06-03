@@ -14,6 +14,7 @@ export default {
       features: '功能特性',
       pricing: '购买入口',
       docs: '使用文档',
+      channelStatus: '渠道状态',
       menu: '菜单'
     },
     hero: {
@@ -310,6 +311,7 @@ export default {
     invalidEmail: '请输入有效的邮箱地址',
     optional: '可选',
     selectOption: '请选择',
+    selectAll: '全选',
     searchPlaceholder: '搜索...',
     noOptionsFound: '无匹配选项',
     noGroupsAvailable: '无可用分组',
@@ -317,6 +319,12 @@ export default {
     saving: '保存中...',
     selectedCount: '（已选 {count} 个）',
     refresh: '刷新',
+    autoRefresh: {
+      title: '自动刷新',
+      enable: '启用自动刷新',
+      countdown: '自动刷新: {seconds}s',
+      seconds: '{n} 秒'
+    },
     apply: '应用',
     clear: '清空',
     view: '查看',
@@ -400,8 +408,88 @@ export default {
     paymentDashboard: '支付概览',
     paymentConfig: '支付配置',
     paymentPlans: '订阅套餐',
+    channelManagement: '渠道管理',
+    channelMonitor: '渠道监控',
+    channelStatus: '渠道状态',
     referralManagement: '推广管理',
     salesCommissions: '销售佣金',
+  },
+
+  // Shared keys for channel monitor (admin + user views)
+  monitorCommon: {
+    status: {
+      operational: '正常',
+      degraded: '降级',
+      failed: '失败',
+      error: '错误',
+      unknown: '-'
+    },
+    providers: {
+      openai: 'OpenAI',
+      anthropic: 'Anthropic',
+      gemini: 'Gemini'
+    },
+    extraModelsHeader: '附加模型',
+    extraModelsEmpty: '无附加模型',
+    latencyEmpty: '-',
+    availabilityPrefix: '可用性',
+    dialogLatency: '对话延迟',
+    endpointPing: '端点 PING',
+    history60pts: '近 {n} 次记录',
+    nextUpdateIn: '{n}s 后刷新',
+    past: 'PAST',
+    now: 'NOW',
+    maintenancePaused: '维护中 · 已暂停时间线采集',
+    extraModelsCount: '+ {n} 模型',
+    pollEvery: '{n}s 轮询',
+    updatedAt: '更新于 {time}',
+    relativeSecondsAgo: '{n} 秒前',
+    relativeMinutesAgo: '{n} 分钟前',
+    relativeHoursAgo: '{n} 小时前',
+    relativeDaysAgo: '{n} 天前'
+  },
+
+  // Channel Status (user-facing read-only view)
+  channelStatus: {
+    title: '渠道状态',
+    description: '查看渠道可用性、延迟和近期状态',
+    searchPlaceholder: '搜索渠道...',
+    allProviders: '全部供应商',
+    loadError: '加载渠道状态失败',
+    detailLoadError: '加载渠道详情失败',
+    detailTitle: '渠道详情',
+    closeDetail: '关闭',
+    windowTab: {
+      '7d': '7 天',
+      '15d': '15 天',
+      '30d': '30 天'
+    },
+    overall: {
+      operational: 'OPERATIONAL',
+      degraded: 'DEGRADED',
+      unavailable: 'UNAVAILABLE'
+    },
+    columns: {
+      name: '名称',
+      provider: '供应商',
+      groupName: '分组',
+      primaryModel: '主模型',
+      availability7d: '7 天可用率',
+      latency: '延迟 (ms)'
+    },
+    detailColumns: {
+      model: '模型',
+      latestStatus: '最新状态',
+      latestLatency: '最新延迟 (ms)',
+      availability7d: '7 天可用率',
+      availability15d: '15 天可用率',
+      availability30d: '30 天可用率',
+      avgLatency7d: '7 天平均延迟 (ms)'
+    },
+    empty: {
+      title: '暂无可显示的渠道',
+      description: '管理员尚未配置可监控的渠道。'
+    }
   },
 
   // Auth
@@ -1165,7 +1253,7 @@ export default {
     tabConfig: '配置',
     tabList: '推广列表',
     tabLeaderboard: '排行榜',
-    tabGrant: '发放余额',
+    tabGrant: '发放赠送余额',
     referralEnabled: '启用普通用户推广功能',
     inviteeReward: '被邀请人奖励 ($)',
     inviterReward: '邀请人奖励 ($)',
@@ -1208,6 +1296,7 @@ export default {
     totalEarned: '累计收益',
     userId: '用户 ID',
     userIdPlaceholder: '输入用户 ID',
+    userSearchPlaceholder: '搜索用户邮箱',
     amount: '金额 ($)',
     amountPlaceholder: '0.00',
     expiryDays: '有效期（天，0 = 永不过期）',
@@ -1215,6 +1304,7 @@ export default {
     notesPlaceholder: '可选备注',
     granting: '发放中...',
     grantGiftBalance: '发放赠送余额',
+    grantGiftBalanceHint: '发放余额为赠送余额，仅用于兜底操作，也会新增审计日志。',
     loadFailed: '加载数据失败',
     configSaved: '配置保存成功',
     configSaveFailed: '保存配置失败',
@@ -2584,6 +2674,135 @@ export default {
         ruleModelPricing: '模型定价',
         noGroupsInChannel: '上方平台标签页中未选择分组',
         unnamed: '未命名'
+      }
+    },
+
+    // Channel Monitor
+    channelMonitor: {
+      title: '渠道监控',
+      description: '监测各渠道的可用性、延迟和状态',
+      searchPlaceholder: '搜索监控名称...',
+      allProviders: '全部供应商',
+      allStatus: '全部状态',
+      enabledFilter: '启用状态',
+      onlyEnabled: '仅启用',
+      onlyDisabled: '仅禁用',
+      createButton: '新增监控',
+      createTitle: '新增渠道监控',
+      editTitle: '编辑渠道监控',
+      runNow: '立即检测',
+      runSuccess: '检测完成',
+      runFailed: '检测失败',
+      apiKeyDecryptFailed: 'API Key 解密失败，请重新编辑该监控并填入新的 Key',
+      createSuccess: '监控创建成功',
+      updateSuccess: '监控更新成功',
+      deleteSuccess: '监控删除成功',
+      loadError: '加载监控列表失败',
+      deleteConfirm: '确定要删除监控「{name}」吗？此操作不可撤销。',
+      nameRequired: '请输入监控名称',
+      primaryModelRequired: '请输入主模型',
+      columns: {
+        name: '名称',
+        provider: '供应商',
+        primaryModel: '主模型',
+        availability7d: '7 天可用率',
+        latency: '延迟 (ms)',
+        enabled: '启用',
+        actions: '操作'
+      },
+      form: {
+        name: '名称',
+        namePlaceholder: '输入监控名称',
+        provider: '平台',
+        apiMode: 'OpenAI 协议',
+        apiModeChatCompletions: 'OpenAI Compatible',
+        apiModeChatCompletionsHint: '使用 /v1/chat/completions，发送 messages；适合大多数兼容站。',
+        apiModeResponses: 'Responses API',
+        apiModeResponsesHint: '使用 /v1/responses，默认带 instructions + input；适合本站自检/Codex。',
+        endpoint: '上游地址',
+        endpointPlaceholder: 'https://api.example.com',
+        useCurrentDomain: '使用当前服务',
+        apiKey: 'API Key',
+        apiKeyPlaceholder: '请输入 API Key',
+        apiKeyEditPlaceholder: '留空表示不修改',
+        useMyKey: '使用我的 Key',
+        selectKeyTitle: '选择我的 API Key',
+        selectKeyHint: '仅显示当前账号下处于「启用」状态且未过期的 Key。',
+        noActiveKey: '没有可用的启用状态 Key',
+        primaryModel: '主模型',
+        primaryModelPlaceholder: 'gpt-4o-mini',
+        extraModels: '附加模型',
+        extraModelsPlaceholder: '回车添加附加模型',
+        groupName: '分组名称',
+        groupNamePlaceholder: '可选，用于在用户视图中聚合显示',
+        intervalSeconds: '检测间隔 (秒)',
+        intervalSecondsHint: '范围：15 - 3600 秒',
+        enabled: '启用监控',
+        kindRequired: '请选择供应商'
+      },
+      runResultTitle: '检测结果',
+      noMonitorsYet: '暂无监控',
+      createFirstMonitor: '创建第一个监控来跟踪渠道可用性',
+      advanced: {
+        section: '高级（可选）',
+        sectionHint: '自定义请求头和请求体，用于突破上游的客户端识别限制（如仅允许 Claude Code 客户端）。',
+        headers: '自定义请求头',
+        headersPlaceholder: 'User-Agent: claude-cli/1.0.83 (external, cli)\nx-app: cli\nanthropic-beta: claude-code-20250219',
+        headerNamePlaceholder: 'Header 名',
+        headerValuePlaceholder: 'Value',
+        headerAddRow: '添加 Header',
+        headerNameInvalid: 'Header 名不能包含空格或冒号：{name}',
+        headersHint: '与默认请求头合并，用户值优先。hop-by-hop 类 header（Host/Content-Length/...）会被忽略。',
+        headersParseError: '无法解析这一行：{line}',
+        bodyMode: '请求体处理',
+        bodyModeOff: '默认',
+        bodyModeMerge: '合并',
+        bodyModeReplace: '覆盖',
+        bodyModeHintOff: '使用 adapter 默认请求体（带 challenge 数学题校验）。',
+        bodyModeHintMerge: '与默认请求体浅合并，用户字段优先；但 model / messages / contents 会被保护不允许覆盖（动这些字段请用「覆盖」模式）。',
+        bodyModeHintReplace: '完全用下方 JSON 作为请求体。注意：此模式下跳过 challenge 校验，改为 HTTP 2xx + 响应文本非空即视为可用。',
+        bodyJson: 'Body JSON',
+        bodyJsonFormat: '格式化',
+        bodyJsonHint: '失焦时自动解析校验。留空等价于没有覆盖。',
+        bodyJsonError: 'JSON 解析失败',
+        bodyJsonObjectError: '请求体必须是一个 JSON 对象（不能是数组或基本类型）'
+      },
+      templateField: {
+        label: '请求模板',
+        none: '不使用模板',
+        placeholder: '选择一个模板（按当前平台过滤）',
+        applyHint: '选中模板后，会把模板的请求头和请求体拷贝到此监控（快照）。后续模板变动不自动同步。'
+      },
+      template: {
+        manageButton: '模板管理',
+        managerTitle: '请求模板管理',
+        createButton: '新建模板',
+        emptyState: '当前平台下还没有请求模板',
+        missingName: '请输入模板名称',
+        createSuccess: '模板创建成功',
+        updateSuccess: '模板更新成功',
+        deleteSuccess: '模板删除成功',
+        applyButton: '应用到关联监控',
+        applyTooltip: '把当前模板配置覆盖到所有关联的监控上',
+        applyTitle: '应用模板',
+        applyConfirm: '确认应用',
+        applyConfirmMessage: '将把模板「{name}」的当前配置覆盖到 {n} 个关联监控。监控本地已编辑的自定义修改会被丢弃，是否继续？',
+        applySuccess: '已应用到 {n} 个监控',
+        applyPickerTitle: '应用模板「{name}」',
+        applyPickerHint: '勾选要覆盖请求头/请求体的监控（默认全选）。监控本地已编辑的自定义修改会被丢弃。',
+        applyPickerEmpty: '当前模板没有关联监控',
+        applyPickerConfirm: '应用到 {n} 个监控',
+        selectNone: '全不选',
+        selectedCount: '已选 {n} / {total}',
+        deleteConfirm: '确定要删除模板「{name}」吗？{n} 个关联监控会解除关联但保留自己的快照继续工作。',
+        associatedCount: '{n} 个关联监控',
+        headersSummary: '{n} 个自定义请求头',
+        form: {
+          name: '模板名称',
+          namePlaceholder: '例：Claude Code 伪装',
+          description: '说明',
+          descriptionPlaceholder: '可选：说明这个模板的用途和来源（抓包日期等）'
+        }
       }
     },
 
@@ -4172,6 +4391,8 @@ export default {
       timeImmediate: '立即',
       timeNever: '永久',
       readStatus: '已读情况',
+      allReadStatuses: '全部',
+      read: '已读',
       eligible: '符合条件',
       readAt: '已读时间',
       unread: '未读',
@@ -5292,6 +5513,14 @@ export default {
       },
       emailTabDisabledTitle: '邮箱验证未启用',
       emailTabDisabledHint: '请在「安全与认证」选项卡中启用邮箱验证后，再配置邮件发送。',
+      channelMonitor: {
+        title: '渠道监控',
+        description: '配置渠道健康检测与用户端渠道状态展示',
+        enabled: '启用渠道监控',
+        enabledHint: '关闭后后台不再执行定时检测，用户端菜单和状态页默认隐藏。',
+        defaultInterval: '默认检测间隔（秒）',
+        defaultIntervalHint: '新建监控项时使用的默认间隔，范围 15 - 3600 秒。'
+      },
       registration: {
         title: '注册设置',
         description: '控制用户注册和验证',

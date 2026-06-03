@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
@@ -141,12 +142,25 @@ func (h *UserHandler) List(c *gin.Context) {
 		loadInfo, _ = h.concurrencyService.GetUsersLoadBatch(c.Request.Context(), usersConcurrency)
 	}
 
+	giftBalanceRemainingByUserID := make(map[int64]float64, len(users))
+	if len(users) > 0 && h.giftBalanceRepo != nil {
+		for i := range users {
+			remaining, err := h.giftBalanceRepo.GetTotalRemainingByUserID(c.Request.Context(), users[i].ID)
+			if err != nil {
+				logger.LegacyPrintf("handler.admin.user", "failed to load gift balance remaining: user_id=%d err=%v", users[i].ID, err)
+				continue
+			}
+			giftBalanceRemainingByUserID[users[i].ID] = remaining
+		}
+	}
+
 	// Build response with concurrency info
 	out := make([]UserWithConcurrency, len(users))
 	for i := range users {
 		out[i] = UserWithConcurrency{
 			AdminUser: *dto.UserFromServiceAdmin(&users[i]),
 		}
+		out[i].GiftBalanceRemaining = giftBalanceRemainingByUserID[users[i].ID]
 		if info := loadInfo[users[i].ID]; info != nil {
 			out[i].CurrentConcurrency = info.CurrentConcurrency
 		}

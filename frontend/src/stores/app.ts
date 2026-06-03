@@ -53,6 +53,9 @@ export const useAppStore = defineStore('app', () => {
 
   const hasActiveToasts = computed(() => toasts.value.length > 0)
   const backendModeEnabled = computed(() => cachedPublicSettings.value?.backend_mode_enabled ?? false)
+  const channelMonitorEnabled = computed(
+    () => cachedPublicSettings.value?.channel_monitor_enabled ?? false
+  )
 
   const loadingCount = ref<number>(0)
 
@@ -346,6 +349,7 @@ export const useAppStore = defineStore('app', () => {
         oidc_oauth_enabled: false,
         oidc_oauth_provider_name: 'OIDC',
         backend_mode_enabled: false,
+        channel_monitor_enabled: false,
         version: siteVersion.value,
         balance_low_notify_enabled: false,
         account_quota_notify_enabled: false,
@@ -428,6 +432,7 @@ export const useAppStore = defineStore('app', () => {
     // Computed
     hasActiveToasts,
     backendModeEnabled,
+    channelMonitorEnabled,
 
     // Actions
     toggleSidebar,

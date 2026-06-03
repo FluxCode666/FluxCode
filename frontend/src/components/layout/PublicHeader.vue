@@ -54,6 +54,14 @@
             >
               {{ t('home.nav.docs') }}
             </router-link>
+            <router-link
+              v-if="channelStatusEnabled"
+              to="/channel-status"
+              class="rounded-full px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-black/5 hover:text-gray-900 dark:text-dark-200 dark:hover:bg-white/10 dark:hover:text-white"
+              @click="closeMobileMenu"
+            >
+              {{ t('home.nav.channelStatus') }}
+            </router-link>
           </div>
 
           <!-- Right Actions -->
@@ -188,6 +196,14 @@
                   >
                     {{ t('home.nav.docs') }}
                   </router-link>
+                  <router-link
+                    v-if="channelStatusEnabled"
+                    to="/channel-status"
+                    class="rounded-2xl border border-black/5 bg-white/70 px-4 py-3 text-sm font-medium text-gray-800 shadow-sm backdrop-blur transition-colors hover:bg-white/90 dark:border-white/10 dark:bg-dark-900/40 dark:text-dark-100 dark:hover:bg-dark-900/55"
+                    @click="closeMobileMenu"
+                  >
+                    {{ t('home.nav.channelStatus') }}
+                  </router-link>
                 </div>
               </div>
             </div>
@@ -202,7 +218,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useWindowScroll } from '@vueuse/core'
-import { useAuthStore } from '@/stores'
+import { useAppStore, useAuthStore } from '@/stores'
 import LocaleSwitcher from '@/components/common/LocaleSwitcher.vue'
 
 defineProps<{
@@ -212,6 +228,7 @@ defineProps<{
 
 const { t } = useI18n()
 
+const appStore = useAppStore()
 const authStore = useAuthStore()
 
 const { y } = useWindowScroll()
@@ -248,6 +265,7 @@ function initTheme() {
 
 // Auth state
 const isAuthenticated = computed(() => authStore.isAuthenticated)
+const channelStatusEnabled = computed(() => appStore.channelMonitorEnabled)
 const dashboardPath = computed(() => (authStore.isAdmin ? '/admin/dashboard' : '/dashboard'))
 const userInitial = computed(() => {
   const user = authStore.user

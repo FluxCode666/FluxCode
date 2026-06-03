@@ -6,9 +6,12 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"sync"
 	"testing"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
+	servicepkg "github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 )
@@ -19,6 +22,76 @@ type OpenAIOAuthServiceSuite struct {
 	srv      *httptest.Server
 	svc      *openaiOAuthService
 	received chan url.Values
+}
+
+type openAIOAuthSettingRepoStub struct {
+	mu     sync.Mutex
+	values map[string]string
+}
+
+func (r *openAIOAuthSettingRepoStub) Get(ctx context.Context, key string) (*servicepkg.Setting, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return &servicepkg.Setting{Key: key, Value: r.values[key]}, nil
+}
+
+func (r *openAIOAuthSettingRepoStub) GetValue(ctx context.Context, key string) (string, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.values[key], nil
+}
+
+func (r *openAIOAuthSettingRepoStub) Set(ctx context.Context, key, value string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.values[key] = value
+	return nil
+}
+
+func (r *openAIOAuthSettingRepoStub) GetMultiple(ctx context.Context, keys []string) (map[string]string, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	result := make(map[string]string, len(keys))
+	for _, key := range keys {
+		result[key] = r.values[key]
+	}
+	return result, nil
+}
+
+func (r *openAIOAuthSettingRepoStub) SetMultiple(ctx context.Context, settings map[string]string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for key, value := range settings {
+		r.values[key] = value
+	}
+	return nil
+}
+
+func (r *openAIOAuthSettingRepoStub) GetAll(ctx context.Context) (map[string]string, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	result := make(map[string]string, len(r.values))
+	for key, value := range r.values {
+		result[key] = value
+	}
+	return result, nil
+}
+
+func (r *openAIOAuthSettingRepoStub) Delete(ctx context.Context, key string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	delete(r.values, key)
+	return nil
+}
+
+func configureOpenAIOAuthCodexUserAgent(t *testing.T, userAgent string) {
+	t.Helper()
+	repo := &openAIOAuthSettingRepoStub{values: map[string]string{}}
+	settingService := servicepkg.NewSettingService(repo, &config.Config{})
+	err := settingService.UpdateSettings(context.Background(), &servicepkg.SystemSettings{
+		CodexCLIUserAgent: userAgent,
+	})
+	require.NoError(t, err)
 }
 
 func (s *OpenAIOAuthServiceSuite) SetupTest() {
@@ -92,6 +165,21 @@ func (s *OpenAIOAuthServiceSuite) TestExchangeCode_DefaultRedirectURI() {
 	require.Equal(s.T(), "rt", resp.RefreshToken)
 }
 
+func (s *OpenAIOAuthServiceSuite) TestExchangeCode_UsesConfiguredCodexCLIUserAgent() {
+	const wantUserAgent = "codex_cli_rs/9.8.7"
+	configureOpenAIOAuthCodexUserAgent(s.T(), wantUserAgent)
+	seenUserAgent := make(chan string, 1)
+	s.setupServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seenUserAgent <- r.Header.Get("User-Agent")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"access_token":"at","refresh_token":"rt","token_type":"bearer","expires_in":3600}`)
+	}))
+
+	_, err := s.svc.ExchangeCode(s.ctx, "code", "ver", openai.DefaultRedirectURI, "", "")
+	require.NoError(s.T(), err, "ExchangeCode")
+	require.Equal(s.T(), wantUserAgent, <-seenUserAgent)
+}
+
 func (s *OpenAIOAuthServiceSuite) TestRefreshToken_FormFields() {
 	errCh := make(chan string, 1)
 	s.setupServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -134,6 +222,21 @@ func (s *OpenAIOAuthServiceSuite) TestRefreshToken_FormFields() {
 	}
 	require.Equal(s.T(), "at2", resp.AccessToken)
 	require.Equal(s.T(), "rt2", resp.RefreshToken)
+}
+
+func (s *OpenAIOAuthServiceSuite) TestRefreshToken_UsesConfiguredCodexCLIUserAgent() {
+	const wantUserAgent = "codex_cli_rs/9.8.8"
+	configureOpenAIOAuthCodexUserAgent(s.T(), wantUserAgent)
+	seenUserAgent := make(chan string, 1)
+	s.setupServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seenUserAgent <- r.Header.Get("User-Agent")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"access_token":"at2","refresh_token":"rt2","token_type":"bearer","expires_in":3600}`)
+	}))
+
+	_, err := s.svc.RefreshToken(s.ctx, "rt", "")
+	require.NoError(s.T(), err, "RefreshToken")
+	require.Equal(s.T(), wantUserAgent, <-seenUserAgent)
 }
 
 // TestRefreshToken_DefaultsToOpenAIClientID 验证未指定 client_id 时默认使用 OpenAI ClientID，

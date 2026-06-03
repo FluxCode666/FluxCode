@@ -397,7 +397,7 @@
                   <input
                     v-model="referrerSearch"
                     type="text"
-                    class="input w-48 !py-1.5 !pr-7 text-sm"
+                    class="input w-48 !pr-7"
                     :placeholder="t('adminReferral.filterReferrerPlaceholder')"
                     @input="onReferrerSearch"
                     @focus="referrerDropdownVisible = referrerResults.length > 0"
@@ -427,7 +427,7 @@
                   <input
                     v-model="refereeSearch"
                     type="text"
-                    class="input w-48 !py-1.5 !pr-7 text-sm"
+                    class="input w-48 !pr-7"
                     :placeholder="t('adminReferral.filterRefereePlaceholder')"
                     @input="onRefereeSearch"
                     @focus="refereeDropdownVisible = refereeResults.length > 0"
@@ -451,6 +451,22 @@
                   </li>
                 </ul>
               </div>
+              <button
+                type="button"
+                data-test="referral-list-refresh"
+                class="btn btn-secondary px-2 md:px-3"
+                :disabled="listLoading"
+                :title="t('common.refresh')"
+                :aria-label="t('common.refresh')"
+                @click="loadList"
+              >
+                <Icon
+                  name="refresh"
+                  size="md"
+                  data-test="referral-list-refresh-icon"
+                  :class="listLoading ? 'animate-spin' : ''"
+                />
+              </button>
             </div>
             <div v-if="referralList.length === 0" class="py-8 text-center text-gray-500 dark:text-dark-400">
               {{ t('adminReferral.noReferrals') }}
@@ -557,13 +573,17 @@
 
           <!-- Grant Tab -->
           <div v-if="activeTab === 'grant'" class="p-6 space-y-6">
+            <div class="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900/60 dark:bg-amber-900/20 dark:text-amber-200">
+              {{ t('adminReferral.grantGiftBalanceHint') }}
+            </div>
+
             <!-- Single grant -->
             <div class="card p-6">
               <h3 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('adminReferral.grantSingle') }}</h3>
               <div class="mt-4 max-w-lg space-y-4">
                 <div>
-                  <label class="input-label">{{ t('adminReferral.userId') }}</label>
-                  <input v-model.number="grantForm.user_id" type="number" min="1" class="input mt-1" :placeholder="t('adminReferral.userIdPlaceholder')" />
+                  <label class="input-label">{{ t('adminReferral.user') }}</label>
+                  <UserSearchSelect v-model="grantUserIdModel" class="mt-1" :placeholder="t('adminReferral.userSearchPlaceholder')" />
                 </div>
                 <div>
                   <label class="input-label">{{ t('adminReferral.amount') }}</label>
@@ -620,7 +640,7 @@
               <h3 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('adminReferral.userConfigTitle') }}</h3>
               <p class="mt-1 text-sm text-gray-500 dark:text-dark-400">{{ t('adminReferral.userConfigDescription') }}</p>
               <div class="mt-4 flex gap-2">
-                <input v-model.number="userConfigUserId" type="number" min="1" class="input" :placeholder="t('adminReferral.userIdPlaceholder')" />
+                <UserSearchSelect v-model="userConfigUserIdModel" class="flex-1" :placeholder="t('adminReferral.userSearchPlaceholder')" />
                 <button @click="loadUserConfig" :disabled="!userConfigUserId" class="btn btn-secondary">{{ t('adminReferral.load') }}</button>
               </div>
             </div>
@@ -756,6 +776,8 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { AppLayout } from '@/components/layout'
 import Select from '@/components/common/Select.vue'
+import UserSearchSelect from '@/components/common/UserSearchSelect.vue'
+import Icon from '@/components/icons/Icon.vue'
 import { useAppStore } from '@/stores'
 import {
   Chart as ChartJS,
@@ -890,6 +912,7 @@ const config = reactive<ReferralConfig>({
 })
 
 const referralList = ref<ReferralListItem[]>([])
+const listLoading = ref(false)
 const listFilter = reactive({ status: '', referrer_id: undefined as number | undefined, referee_id: undefined as number | undefined })
 
 const referrerSearch = ref('')
@@ -918,6 +941,22 @@ const grantForm = reactive({
   notes: '',
 })
 
+function userIdToModelValue(userId: number | null): string {
+  return userId ? String(userId) : ''
+}
+
+function modelValueToUserId(value: string): number | null {
+  const id = Number(value)
+  return Number.isFinite(id) && id > 0 ? id : null
+}
+
+const grantUserIdModel = computed({
+  get: () => userIdToModelValue(grantForm.user_id),
+  set: (value: string) => {
+    grantForm.user_id = modelValueToUserId(value)
+  },
+})
+
 const batchForm = reactive({
   target: 'all' as 'all' | 'selected',
   amount: null as number | null,
@@ -928,6 +967,13 @@ const batchUserIdsRaw = ref('')
 
 const userConfigUserId = ref<number | null>(null)
 const userConfigData = ref<UserConfigResponse | null>(null)
+const userConfigUserIdModel = computed({
+  get: () => userIdToModelValue(userConfigUserId.value),
+  set: (value: string) => {
+    userConfigUserId.value = modelValueToUserId(value)
+    userConfigData.value = null
+  },
+})
 const userConfigSaving = ref(false)
 const userConfigForm = reactive<UserConfigPayload>({
   invitee_reward: undefined,
@@ -1017,6 +1063,7 @@ async function loadConfig() {
 }
 
 async function loadList() {
+  listLoading.value = true
   try {
     const result = await adminReferralAPI.listReferrals({
       page: 1,
@@ -1028,6 +1075,8 @@ async function loadList() {
     referralList.value = result.items || []
   } catch (error) {
     console.error('Failed to load list:', error)
+  } finally {
+    listLoading.value = false
   }
 }
 

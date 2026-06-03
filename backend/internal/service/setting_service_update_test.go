@@ -223,3 +223,17 @@ func TestSettingService_UpdateSettings_TablePreferences(t *testing.T) {
 	require.Equal(t, "1000", repo.updates[SettingKeyTableDefaultPageSize])
 	require.Equal(t, "[20,100]", repo.updates[SettingKeyTablePageSizeOptions])
 }
+
+func TestSettingService_UpdateSettings_ChannelMonitorFields(t *testing.T) {
+	repo := &settingUpdateRepoStub{}
+	svc := NewSettingService(repo, &config.Config{})
+
+	err := svc.UpdateSettings(context.Background(), &SystemSettings{
+		ChannelMonitorEnabled:                true,
+		ChannelMonitorDefaultIntervalSeconds: 120,
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, "true", repo.updates[SettingKeyChannelMonitorEnabled])
+	require.Equal(t, "120", repo.updates[SettingKeyChannelMonitorDefaultIntervalSeconds])
+}
