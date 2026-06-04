@@ -238,6 +238,58 @@ func TestOpenAIGatewayService_Forward_HTTPIngressPreservesPreviousResponseIDForF
 	require.Equal(t, "function_call_output", gjson.GetBytes(upstream.lastBody, "input.0.type").String())
 }
 
+func TestOpenAIGatewayService_Forward_HTTPIngressPreservesPreviousResponseIDForToolSearchOutput(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	systemPromptSettingsSF.Forget("system_prompt_settings")
+	systemPromptSettingsCache.Store(&cachedSystemPromptSettings{
+		values:    defaultSystemPromptSettings(),
+		expiresAt: time.Now().Add(time.Hour).UnixNano(),
+	})
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/openai/v1/responses", nil)
+	SetOpenAIClientTransport(c, OpenAIClientTransportHTTP)
+
+	upstream := &httpUpstreamRecorder{
+		resp: &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body: io.NopCloser(strings.NewReader(
+				`{"id":"resp_ok","usage":{"input_tokens":1,"output_tokens":1,"input_tokens_details":{"cached_tokens":0}}}`,
+			)),
+		},
+	}
+
+	cfg := &config.Config{}
+	cfg.Security.URLAllowlist.Enabled = false
+	cfg.Security.URLAllowlist.AllowInsecureHTTP = true
+
+	svc := &OpenAIGatewayService{
+		cfg:          cfg,
+		httpUpstream: upstream,
+	}
+	account := &Account{
+		ID:          203,
+		Name:        "openai-apikey",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"api_key":  "sk-test",
+			"base_url": "https://example.com/v1",
+		},
+	}
+
+	body := []byte(`{"model":"gpt-5.1","stream":false,"previous_response_id":"resp_prev_tool_search","input":[{"type":"tool_search_output","call_id":"call_1","output":"ok"}]}`)
+	result, err := svc.Forward(context.Background(), c, account, body)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.NotNil(t, upstream.lastReq)
+	require.Equal(t, "resp_prev_tool_search", gjson.GetBytes(upstream.lastBody, "previous_response_id").String())
+	require.Equal(t, "tool_search_output", gjson.GetBytes(upstream.lastBody, "input.0.type").String())
+}
+
 func TestOpenAIGatewayService_Forward_HTTPIngressRetriesInvalidEncryptedContentOnce(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	wsFallbackServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
