@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	servicepkg "github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/stretchr/testify/require"
@@ -415,6 +416,20 @@ func (s *OpenAIOAuthServiceSuite) TestRefreshToken_NonSuccessStatus() {
 	_, err := s.svc.RefreshToken(s.ctx, "rt", "")
 	require.Error(s.T(), err, "expected error for non-2xx status")
 	require.ErrorContains(s.T(), err, "status 401")
+}
+
+func (s *OpenAIOAuthServiceSuite) TestRefreshToken_AppSessionTerminatedReturnsExplicitError() {
+	s.setupServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = io.WriteString(w, `{"error":{"message":"Your session has ended. Please log in again.","type":"invalid_request_error","code":"app_session_terminated"}}`)
+	}))
+
+	_, err := s.svc.RefreshToken(s.ctx, "rt", "")
+	require.Error(s.T(), err, "expected explicit error for terminated OpenAI OAuth session")
+	require.Equal(s.T(), servicepkg.OpenAIOAuthSessionTerminatedReason, infraerrors.Reason(err))
+	require.Equal(s.T(), http.StatusBadRequest, infraerrors.Code(err))
+	require.Contains(s.T(), infraerrors.Message(err), "重新授权")
 }
 
 func TestNewOpenAIOAuthClient_DefaultTokenURL(t *testing.T) {

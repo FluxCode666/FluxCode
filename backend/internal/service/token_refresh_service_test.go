@@ -541,6 +541,7 @@ func TestIsNonRetryableRefreshError(t *testing.T) {
 		{name: "no_refresh_token", err: errors.New("no refresh token available"), expected: true},
 		{name: "invalid_grant_with_desc", err: errors.New("Error: invalid_grant - token revoked"), expected: true},
 		{name: "refresh_token_reused", err: errors.New(`token refresh failed: status 401, body: {"error":{"code":"refresh_token_reused"}}`), expected: true},
+		{name: "openai_app_session_terminated", err: errors.New(`token refresh failed: status 400, body: {"error":{"code":"app_session_terminated","message":"Your session has ended. Please log in again."}}`), expected: true},
 		{name: "case_insensitive", err: errors.New("INVALID_GRANT"), expected: true},
 	}
 

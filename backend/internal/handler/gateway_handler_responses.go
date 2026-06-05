@@ -297,6 +297,11 @@ func (h *GatewayHandler) handleResponsesFailoverExhausted(c *gin.Context, lastEr
 	if streamStarted {
 		return // Can't write error after stream started
 	}
+	if isOpenAIOAuthSessionTerminatedFailover(lastErr) {
+		status, _, msg := openAIOAuthSessionTerminatedGatewayError()
+		h.responsesErrorResponse(c, status, service.OpenAIOAuthSessionTerminatedReason, msg)
+		return
+	}
 	statusCode := http.StatusBadGateway
 	if lastErr != nil && lastErr.StatusCode > 0 {
 		statusCode = lastErr.StatusCode
