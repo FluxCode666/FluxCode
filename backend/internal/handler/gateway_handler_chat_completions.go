@@ -291,6 +291,11 @@ func (h *GatewayHandler) handleCCFailoverExhausted(c *gin.Context, lastErr *serv
 	if streamStarted {
 		return
 	}
+	if isOpenAIOAuthSessionTerminatedFailover(lastErr) {
+		status, errType, msg := openAIOAuthSessionTerminatedGatewayError()
+		h.chatCompletionsErrorResponse(c, status, errType, msg)
+		return
+	}
 	statusCode := http.StatusBadGateway
 	if lastErr != nil && lastErr.StatusCode > 0 {
 		statusCode = lastErr.StatusCode

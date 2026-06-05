@@ -1232,6 +1232,13 @@ func (h *GatewayHandler) handleFailoverExhausted(c *gin.Context, failoverErr *se
 	statusCode := failoverErr.StatusCode
 	responseBody := failoverErr.ResponseBody
 
+	if platform == service.PlatformOpenAI && isOpenAIOAuthSessionTerminatedFailover(failoverErr) {
+		service.SetOpsUpstreamError(c, statusCode, service.OpenAIOAuthSessionTerminatedGatewayMessage, "")
+		status, errType, errMsg := openAIOAuthSessionTerminatedGatewayError()
+		h.handleStreamingAwareError(c, status, errType, errMsg, streamStarted)
+		return
+	}
+
 	// 先检查透传规则
 	if h.errorPassthroughService != nil && len(responseBody) > 0 {
 		if rule := h.errorPassthroughService.MatchRule(platform, statusCode, responseBody); rule != nil {

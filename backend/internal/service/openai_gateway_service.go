@@ -1925,6 +1925,9 @@ func (s *OpenAIGatewayService) GetAccessToken(ctx context.Context, account *Acco
 		if s.openAITokenProvider != nil {
 			accessToken, err := s.openAITokenProvider.GetAccessToken(ctx, account)
 			if err != nil {
+				if IsOpenAIOAuthSessionTerminatedError(err) {
+					return "", "", NewOpenAIOAuthSessionTerminatedFailoverError()
+				}
 				return "", "", err
 			}
 			return accessToken, "oauth", nil
