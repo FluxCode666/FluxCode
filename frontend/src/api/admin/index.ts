@@ -29,6 +29,8 @@ import pricingPlansAPI from './pricingPlans'
 import poolMonitorAPI from './poolMonitor'
 import tlsFingerprintProfileAPI from './tlsFingerprintProfile'
 import channelsAPI from './channels'
+import channelMonitorAPI from './channelMonitor'
+import channelMonitorTemplateAPI from './channelMonitorTemplate'
 import adminPaymentAPI from './payment'
 import adminReferralAPI from './referral'
 import adminSalesCommissionsAPI from './salesCommissions'
@@ -63,6 +65,8 @@ export const adminAPI = {
   poolMonitor: poolMonitorAPI,
   tlsFingerprintProfiles: tlsFingerprintProfileAPI,
   channels: channelsAPI,
+  channelMonitor: channelMonitorAPI,
+  channelMonitorTemplate: channelMonitorTemplateAPI,
   payment: adminPaymentAPI,
   referral: adminReferralAPI,
   salesCommissions: adminSalesCommissionsAPI
@@ -95,6 +99,8 @@ export {
   poolMonitorAPI,
   tlsFingerprintProfileAPI,
   channelsAPI,
+  channelMonitorAPI,
+  channelMonitorTemplateAPI,
   adminPaymentAPI,
   adminReferralAPI,
   adminSalesCommissionsAPI

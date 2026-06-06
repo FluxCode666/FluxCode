@@ -62,6 +62,12 @@ declare module 'vue-router' {
     requiresReferral?: boolean
 
     /**
+     * Whether this route requires channel monitor functionality to be enabled
+     * @default false
+     */
+    requiresChannelMonitor?: boolean
+
+    /**
      * i18n key for the page title
      */
     titleKey?: string

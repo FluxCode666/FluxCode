@@ -1,15 +1,19 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/subtle"
 	"crypto/tls"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"math/big"
 	"net"
+	"net/http"
 	"net/smtp"
 	"net/url"
 	"strconv"
@@ -27,6 +31,13 @@ var (
 
 	// Password reset errors
 	ErrInvalidResetToken = infraerrors.BadRequest("INVALID_RESET_TOKEN", "invalid or expired password reset token")
+)
+
+const (
+	EmailProviderSMTP   = "smtp"
+	EmailProviderResend = "resend"
+
+	defaultResendAPIURL = "https://api.resend.com/emails"
 )
 
 // EmailCache defines cache operations for email service
@@ -92,10 +103,24 @@ type SMTPConfig struct {
 	UseTLS   bool
 }
 
+type ResendConfig struct {
+	APIKey   string
+	From     string
+	FromName string
+}
+
+type EmailConfig struct {
+	Provider string
+	SMTP     *SMTPConfig
+	Resend   *ResendConfig
+}
+
 // EmailService 邮件服务
 type EmailService struct {
 	settingRepo SettingRepository
 	cache       EmailCache
+	httpClient  *http.Client
+	resendURL   string
 }
 
 // NewEmailService 创建邮件服务实例
@@ -103,6 +128,28 @@ func NewEmailService(settingRepo SettingRepository, cache EmailCache) *EmailServ
 	return &EmailService{
 		settingRepo: settingRepo,
 		cache:       cache,
+		httpClient:  &http.Client{Timeout: smtpIOTimeout},
+		resendURL:   defaultResendAPIURL,
+	}
+}
+
+func NormalizeEmailProvider(provider string) string {
+	switch strings.ToLower(strings.TrimSpace(provider)) {
+	case "", EmailProviderSMTP:
+		return EmailProviderSMTP
+	case EmailProviderResend:
+		return EmailProviderResend
+	default:
+		return EmailProviderSMTP
+	}
+}
+
+func IsSupportedEmailProvider(provider string) bool {
+	switch strings.ToLower(strings.TrimSpace(provider)) {
+	case EmailProviderSMTP, EmailProviderResend:
+		return true
+	default:
+		return false
 	}
 }
 
@@ -123,6 +170,10 @@ func (s *EmailService) GetSMTPConfig(ctx context.Context) (*SMTPConfig, error) {
 		return nil, fmt.Errorf("get smtp settings: %w", err)
 	}
 
+	return smtpConfigFromSettings(settings)
+}
+
+func smtpConfigFromSettings(settings map[string]string) (*SMTPConfig, error) {
 	host := strings.TrimSpace(settings[SettingKeySMTPHost])
 	if host == "" {
 		return nil, ErrEmailNotConfigured
@@ -148,28 +199,102 @@ func (s *EmailService) GetSMTPConfig(ctx context.Context) (*SMTPConfig, error) {
 	}, nil
 }
 
-// SendEmail 发送邮件（使用数据库中保存的配置）
+func (s *EmailService) GetResendConfig(ctx context.Context) (*ResendConfig, error) {
+	keys := []string{
+		SettingKeyResendAPIKey,
+		SettingKeyResendFrom,
+		SettingKeyResendFromName,
+	}
+
+	settings, err := s.settingRepo.GetMultiple(ctx, keys)
+	if err != nil {
+		return nil, fmt.Errorf("get resend settings: %w", err)
+	}
+
+	return resendConfigFromSettings(settings)
+}
+
+func resendConfigFromSettings(settings map[string]string) (*ResendConfig, error) {
+	config := &ResendConfig{
+		APIKey:   strings.TrimSpace(settings[SettingKeyResendAPIKey]),
+		From:     strings.TrimSpace(settings[SettingKeyResendFrom]),
+		FromName: strings.TrimSpace(settings[SettingKeyResendFromName]),
+	}
+	if config.APIKey == "" || config.From == "" {
+		return nil, ErrEmailNotConfigured
+	}
+	return config, nil
+}
+
+func (s *EmailService) GetEmailConfig(ctx context.Context) (*EmailConfig, error) {
+	keys := []string{
+		SettingKeyEmailProvider,
+		SettingKeySMTPHost,
+		SettingKeySMTPPort,
+		SettingKeySMTPUsername,
+		SettingKeySMTPPassword,
+		SettingKeySMTPFrom,
+		SettingKeySMTPFromName,
+		SettingKeySMTPUseTLS,
+		SettingKeyResendAPIKey,
+		SettingKeyResendFrom,
+		SettingKeyResendFromName,
+	}
+
+	settings, err := s.settingRepo.GetMultiple(ctx, keys)
+	if err != nil {
+		return nil, fmt.Errorf("get email settings: %w", err)
+	}
+
+	provider := NormalizeEmailProvider(settings[SettingKeyEmailProvider])
+	if provider == EmailProviderResend {
+		config, err := resendConfigFromSettings(settings)
+		if err != nil {
+			return nil, err
+		}
+		return &EmailConfig{Provider: provider, Resend: config}, nil
+	}
+
+	config, err := smtpConfigFromSettings(settings)
+	if err != nil {
+		return nil, err
+	}
+	return &EmailConfig{Provider: EmailProviderSMTP, SMTP: config}, nil
+}
+
 func (s *EmailService) SendEmail(ctx context.Context, to, subject, body string) error {
-	config, err := s.GetSMTPConfig(ctx)
+	config, err := s.GetEmailConfig(ctx)
 	if err != nil {
 		return err
 	}
-	return s.SendEmailWithConfig(config, to, subject, body)
+	return s.SendEmailWithProviderConfig(ctx, config, to, subject, body)
 }
 
 const smtpDialTimeout = 10 * time.Second
 const smtpIOTimeout = 20 * time.Second
 
-// SendEmailWithConfig 使用指定配置发送邮件
+func (s *EmailService) SendEmailWithProviderConfig(ctx context.Context, config *EmailConfig, to, subject, body string) error {
+	if config == nil {
+		return ErrEmailNotConfigured
+	}
+	switch NormalizeEmailProvider(config.Provider) {
+	case EmailProviderResend:
+		return s.SendEmailWithResendConfig(ctx, config.Resend, to, subject, body)
+	default:
+		return s.SendEmailWithConfig(config.SMTP, to, subject, body)
+	}
+}
+
+// SendEmailWithConfig sends an email using an explicit SMTP config.
 func (s *EmailService) SendEmailWithConfig(config *SMTPConfig, to, subject, body string) error {
+	if config == nil || strings.TrimSpace(config.Host) == "" {
+		return ErrEmailNotConfigured
+	}
 	// Sanitize all SMTP header fields to prevent header injection (CR/LF removal).
 	to = sanitizeEmailHeader(to)
 	subject = sanitizeEmailHeader(subject)
 
-	from := sanitizeEmailHeader(config.From)
-	if config.FromName != "" {
-		from = fmt.Sprintf("%s <%s>", sanitizeEmailHeader(config.FromName), sanitizeEmailHeader(config.From))
-	}
+	from := formatEmailFrom(config.From, config.FromName)
 
 	msg := fmt.Sprintf("From: %s\r\nTo: %s\r\nSubject: %s\r\nMIME-Version: 1.0\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n%s",
 		from, to, subject, body)
@@ -182,6 +307,86 @@ func (s *EmailService) SendEmailWithConfig(config *SMTPConfig, to, subject, body
 	}
 
 	return s.sendMailPlain(addr, auth, config.From, to, []byte(msg), config.Host)
+}
+
+type resendEmailRequest struct {
+	From    string   `json:"from"`
+	To      []string `json:"to"`
+	Subject string   `json:"subject"`
+	HTML    string   `json:"html"`
+}
+
+type resendErrorResponse struct {
+	Name       string `json:"name"`
+	Message    string `json:"message"`
+	StatusCode int    `json:"statusCode"`
+}
+
+func (s *EmailService) SendEmailWithResendConfig(ctx context.Context, config *ResendConfig, to, subject, body string) error {
+	if config == nil || strings.TrimSpace(config.APIKey) == "" || strings.TrimSpace(config.From) == "" {
+		return ErrEmailNotConfigured
+	}
+
+	payload := resendEmailRequest{
+		From:    formatEmailFrom(config.From, config.FromName),
+		To:      []string{sanitizeEmailHeader(to)},
+		Subject: sanitizeEmailHeader(subject),
+		HTML:    body,
+	}
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("marshal resend request: %w", err)
+	}
+
+	reqCtx, cancel := context.WithTimeout(ctx, smtpIOTimeout)
+	defer cancel()
+
+	apiURL := strings.TrimSpace(s.resendURL)
+	if apiURL == "" {
+		apiURL = defaultResendAPIURL
+	}
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodPost, apiURL, bytes.NewReader(data))
+	if err != nil {
+		return fmt.Errorf("create resend request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+strings.TrimSpace(config.APIKey))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("User-Agent", "FluxCode/1.0")
+
+	client := s.httpClient
+	if client == nil {
+		client = &http.Client{Timeout: smtpIOTimeout}
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("resend request: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		detail := strings.TrimSpace(string(raw))
+		var resendErr resendErrorResponse
+		if err := json.Unmarshal(raw, &resendErr); err == nil && strings.TrimSpace(resendErr.Message) != "" {
+			detail = strings.TrimSpace(resendErr.Message)
+		}
+		if detail == "" {
+			detail = resp.Status
+		}
+		return fmt.Errorf("resend send email failed: status %d: %s", resp.StatusCode, detail)
+	}
+
+	return nil
+}
+
+func formatEmailFrom(address, name string) string {
+	address = sanitizeEmailHeader(strings.TrimSpace(address))
+	name = sanitizeEmailHeader(strings.TrimSpace(name))
+	if name == "" {
+		return address
+	}
+	return fmt.Sprintf("%s <%s>", name, address)
 }
 
 // sendMailPlain sends mail without TLS using a dialer with timeout.

@@ -16,6 +16,13 @@
             @input="handleSearch"
           />
         </div>
+        <Select
+          v-model="readStatus"
+          :options="readStatusOptions"
+          class="w-full sm:w-40"
+          data-test="read-status-filter"
+          @change="handleReadStatusChange"
+        />
         <button @click="load" :disabled="loading" class="btn btn-secondary" :title="t('common.refresh')">
           <Icon name="refresh" size="md" :class="loading ? 'animate-spin' : ''" />
         </button>
@@ -75,13 +82,14 @@ import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { adminAPI } from '@/api/admin'
 import { formatDateTime } from '@/utils/format'
-import type { AnnouncementUserReadStatus } from '@/types'
+import type { AnnouncementUserReadStatus, SelectOption } from '@/types'
 import type { Column } from '@/components/common/types'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import DataTable from '@/components/common/DataTable.vue'
 import Pagination from '@/components/common/Pagination.vue'
+import Select from '@/components/common/Select.vue'
 import Icon from '@/components/icons/Icon.vue'
 
 const { t } = useI18n()
@@ -98,6 +106,7 @@ const emit = defineEmits<{
 
 const loading = ref(false)
 const search = ref('')
+const readStatus = ref<'' | 'read' | 'unread'>('')
 
 const pagination = reactive({
   page: 1,
@@ -121,12 +130,19 @@ const columns = computed<Column[]>(() => [
   { key: 'read_at', label: t('admin.announcements.readAt') }
 ])
 
+const readStatusOptions = computed<SelectOption[]>(() => [
+  { value: '', label: t('admin.announcements.allReadStatuses') },
+  { value: 'read', label: t('admin.announcements.read') },
+  { value: 'unread', label: t('admin.announcements.unread') }
+])
+
 let currentController: AbortController | null = null
 let searchDebounceTimer: number | null = null
 
 function resetDialogState() {
   loading.value = false
   search.value = ''
+  readStatus.value = ''
   items.value = []
   pagination.page = 1
   pagination.total = 0
@@ -164,7 +180,8 @@ async function load() {
       {
         search: search.value,
         sort_by: sortState.sort_by,
-        sort_order: sortState.sort_order
+        sort_order: sortState.sort_order,
+        ...(readStatus.value ? { read_status: readStatus.value } : {})
       },
       { signal }
     )
@@ -219,6 +236,11 @@ function handleSearch() {
     pagination.page = 1
     load()
   }, 300)
+}
+
+function handleReadStatusChange() {
+  pagination.page = 1
+  load()
 }
 
 function handleClose() {

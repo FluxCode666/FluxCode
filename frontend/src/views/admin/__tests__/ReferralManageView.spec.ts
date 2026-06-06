@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 
 import ReferralManageView from '../ReferralManageView.vue'
+import zh from '@/i18n/locales/zh'
+import en from '@/i18n/locales/en'
 
 const {
   getDashboard,
@@ -9,6 +11,8 @@ const {
   listReferrals,
   getLeaderboard,
   markReferralCompleted,
+  grantGiftBalance,
+  getUserConfig,
   showError,
   showSuccess
 } = vi.hoisted(() => ({
@@ -17,6 +21,8 @@ const {
   listReferrals: vi.fn(),
   getLeaderboard: vi.fn(),
   markReferralCompleted: vi.fn(),
+  grantGiftBalance: vi.fn(),
+  getUserConfig: vi.fn(),
   showError: vi.fn(),
   showSuccess: vi.fn()
 }))
@@ -29,9 +35,9 @@ vi.mock('@/api/admin/referral', () => ({
     getLeaderboard,
     markReferralCompleted,
     updateConfig: vi.fn(),
-    grantGiftBalance: vi.fn(),
+    grantGiftBalance,
     batchGrantGiftBalance: vi.fn(),
-    getUserConfig: vi.fn(),
+    getUserConfig,
     upsertUserConfig: vi.fn(),
     deleteUserConfig: vi.fn()
   }
@@ -68,6 +74,8 @@ describe('ReferralManageView', () => {
     listReferrals.mockReset()
     getLeaderboard.mockReset()
     markReferralCompleted.mockReset()
+    grantGiftBalance.mockReset()
+    getUserConfig.mockReset()
     showError.mockReset()
     showSuccess.mockReset()
 
@@ -121,8 +129,127 @@ describe('ReferralManageView', () => {
     })
     getLeaderboard.mockResolvedValue([])
     markReferralCompleted.mockResolvedValue({ message: 'ok' })
+    grantGiftBalance.mockResolvedValue({ message: 'ok' })
+    getUserConfig.mockResolvedValue({
+      has_custom_config: false,
+      config: null,
+      effective: {
+        enabled: true,
+        invitee_reward_amount: 10,
+        inviter_reward_amount: 20,
+        max_invites: 0,
+        reward_expiry_days: 7,
+        inviter_first_charge_reward_enabled: false,
+        inviter_first_charge_reward_type: 'fixed',
+        inviter_first_charge_reward_value: 0,
+        invitee_first_charge_reward_enabled: false,
+        invitee_first_charge_reward_type: 'fixed',
+        invitee_first_charge_reward_value: 0,
+        ongoing_reward_enabled: false,
+        ongoing_reward_type: 'fixed',
+        ongoing_reward_value: 0,
+        ongoing_reward_max_count: 0,
+        ongoing_reward_duration_days: 0,
+        invitee_ongoing_reward_enabled: false,
+        invitee_ongoing_reward_type: 'fixed',
+        invitee_ongoing_reward_value: 0,
+        invitee_ongoing_reward_max_count: 0,
+        invitee_ongoing_reward_duration_days: 0,
+      }
+    })
     vi.stubGlobal('prompt', vi.fn(() => 'webhook missed'))
     vi.stubGlobal('confirm', vi.fn(() => true))
+  })
+
+  it('uses gift balance wording for the grant tab in locales', () => {
+    expect(zh.adminReferral.tabGrant).toBe('发放赠送余额')
+    expect(en.adminReferral.tabGrant).toBe('Grant Gift Balance')
+  })
+
+  it('refreshes the referral list from the list tab', async () => {
+    const wrapper = mount(ReferralManageView, {
+      global: {
+        stubs: {
+          AppLayout: { template: '<div><slot /></div>' },
+          Select: { props: ['options', 'modelValue'], template: '<select />' },
+          Line: true,
+          Icon: true,
+        }
+      }
+    })
+
+    await flushPromises()
+
+    const listTab = wrapper.findAll('button').find((button) => button.text() === 'adminReferral.tabList')
+    expect(listTab).toBeTruthy()
+    await listTab!.trigger('click')
+    await flushPromises()
+
+    listReferrals.mockClear()
+    await wrapper.get('[data-test="referral-list-refresh"]').trigger('click')
+    await flushPromises()
+
+    expect(listReferrals).toHaveBeenCalledTimes(1)
+  })
+
+  it('shows a loading state while refreshing the referral list', async () => {
+    const wrapper = mount(ReferralManageView, {
+      global: {
+        stubs: {
+          AppLayout: { template: '<div><slot /></div>' },
+          Select: { props: ['options', 'modelValue'], template: '<select />' },
+          Line: true,
+          Icon: true,
+        }
+      }
+    })
+
+    await flushPromises()
+
+    const listTab = wrapper.findAll('button').find((button) => button.text() === 'adminReferral.tabList')
+    expect(listTab).toBeTruthy()
+    await listTab!.trigger('click')
+    await flushPromises()
+
+    let resolveRefresh: ((value: unknown) => void) | undefined
+    listReferrals.mockImplementationOnce(() => new Promise((resolve) => {
+      resolveRefresh = resolve
+    }))
+
+    await wrapper.get('[data-test="referral-list-refresh"]').trigger('click')
+    await wrapper.vm.$nextTick()
+
+    const refreshButton = wrapper.get('[data-test="referral-list-refresh"]')
+    expect(refreshButton.attributes('disabled')).toBeDefined()
+    expect(wrapper.get('[data-test="referral-list-refresh-icon"]').classes()).toContain('animate-spin')
+
+    resolveRefresh?.({ items: [], total: 0, page: 1 })
+    await flushPromises()
+
+    expect(refreshButton.attributes('disabled')).toBeUndefined()
+    expect(wrapper.get('[data-test="referral-list-refresh-icon"]').classes()).not.toContain('animate-spin')
+  })
+
+  it('keeps the referral email filters at the standard input size', async () => {
+    const wrapper = mount(ReferralManageView, {
+      global: {
+        stubs: {
+          AppLayout: { template: '<div><slot /></div>' },
+          Select: { props: ['options', 'modelValue'], template: '<select />' },
+          Line: true,
+        }
+      }
+    })
+
+    await flushPromises()
+
+    const listTab = wrapper.findAll('button').find((button) => button.text() === 'adminReferral.tabList')
+    expect(listTab).toBeTruthy()
+    await listTab!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('input[placeholder="adminReferral.filterReferrerPlaceholder"]').classes()).not.toContain('!py-1.5')
+    expect(wrapper.get('input[placeholder="adminReferral.filterRefereePlaceholder"]').classes()).not.toContain('!py-1.5')
   })
 
   it('renders referrer id and email and marks pending referrals as completed', async () => {
@@ -157,5 +284,73 @@ describe('ReferralManageView', () => {
 
     expect(markReferralCompleted).toHaveBeenCalledWith(1, { notes: 'webhook missed' })
     expect(showSuccess).toHaveBeenCalledWith('adminReferral.manualCompleteSuccess')
+  })
+
+  it('uses user email search to grant gift balance', async () => {
+    const wrapper = mount(ReferralManageView, {
+      global: {
+        stubs: {
+          AppLayout: { template: '<div><slot /></div>' },
+          Select: { props: ['options', 'modelValue'], template: '<select />' },
+          Line: true,
+          UserSearchSelect: {
+            props: ['modelValue', 'placeholder'],
+            emits: ['update:modelValue'],
+            template: '<button type="button" data-test="user-search-select" @click="$emit(\'update:modelValue\', \'42\')">{{ placeholder }}</button>',
+          },
+        }
+      }
+    })
+
+    await flushPromises()
+    const grantTab = wrapper.findAll('button').find((button) => button.text() === 'adminReferral.tabGrant')
+    expect(grantTab).toBeTruthy()
+    await grantTab!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('adminReferral.grantGiftBalanceHint')
+    await wrapper.get('[data-test="user-search-select"]').trigger('click')
+    await wrapper.get('input[type="number"]').setValue('5')
+
+    const grantButton = wrapper.findAll('button').find((button) => button.text() === 'adminReferral.grantGiftBalance')
+    expect(grantButton).toBeTruthy()
+    await grantButton!.trigger('click')
+    await flushPromises()
+
+    expect(grantGiftBalance).toHaveBeenCalledWith(expect.objectContaining({
+      user_id: 42,
+      amount: 5,
+    }))
+  })
+
+  it('uses user email search to load per-user referral config', async () => {
+    const wrapper = mount(ReferralManageView, {
+      global: {
+        stubs: {
+          AppLayout: { template: '<div><slot /></div>' },
+          Select: { props: ['options', 'modelValue'], template: '<select />' },
+          Line: true,
+          UserSearchSelect: {
+            props: ['modelValue', 'placeholder'],
+            emits: ['update:modelValue'],
+            template: '<button type="button" data-test="user-search-select" @click="$emit(\'update:modelValue\', \'42\')">{{ placeholder }}</button>',
+          },
+        }
+      }
+    })
+
+    await flushPromises()
+    const userConfigTab = wrapper.findAll('button').find((button) => button.text() === 'adminReferral.tabUserConfig')
+    expect(userConfigTab).toBeTruthy()
+    await userConfigTab!.trigger('click')
+    await flushPromises()
+
+    await wrapper.get('[data-test="user-search-select"]').trigger('click')
+    const loadButton = wrapper.findAll('button').find((button) => button.text() === 'adminReferral.load')
+    expect(loadButton).toBeTruthy()
+    await loadButton!.trigger('click')
+    await flushPromises()
+
+    expect(getUserConfig).toHaveBeenCalledWith(42)
   })
 })

@@ -53,6 +53,7 @@ interface MockAuthState {
   isSales: boolean
   isSimpleMode: boolean
   backendModeEnabled: boolean
+  channelMonitorEnabled?: boolean
 }
 
 /**
@@ -99,6 +100,10 @@ function simulateGuard(
 
   if (requiresSales && !authState.isSales) {
     return authState.isAdmin ? '/admin/sales-commissions' : '/dashboard'
+  }
+
+  if (toMeta.requiresChannelMonitor && !authState.channelMonitorEnabled) {
+    return authState.isAdmin ? '/admin/dashboard' : '/dashboard'
   }
 
   // 简易模式限制
@@ -237,6 +242,51 @@ describe('路由守卫逻辑', () => {
     it('访问用户销售佣金页面跳转到管理页', () => {
       const redirect = simulateGuard('/sales-commissions', { requiresSales: true }, authState)
       expect(redirect).toBe('/admin/sales-commissions')
+    })
+  })
+
+  describe('渠道监控门禁', () => {
+    it('默认关闭时普通用户访问 /monitor 重定向到 /dashboard', () => {
+      const authState: MockAuthState = {
+        isAuthenticated: true,
+        isAdmin: false,
+        isSales: false,
+        isSimpleMode: false,
+        backendModeEnabled: false,
+        channelMonitorEnabled: false,
+      }
+      const redirect = simulateGuard('/monitor', { requiresChannelMonitor: true }, authState)
+      expect(redirect).toBe('/dashboard')
+    })
+
+    it('默认关闭时管理员访问 /admin/channels/monitor 重定向到 /admin/dashboard', () => {
+      const authState: MockAuthState = {
+        isAuthenticated: true,
+        isAdmin: true,
+        isSales: false,
+        isSimpleMode: false,
+        backendModeEnabled: false,
+        channelMonitorEnabled: false,
+      }
+      const redirect = simulateGuard(
+        '/admin/channels/monitor',
+        { requiresAdmin: true, requiresChannelMonitor: true },
+        authState
+      )
+      expect(redirect).toBe('/admin/dashboard')
+    })
+
+    it('开启后允许访问渠道状态页', () => {
+      const authState: MockAuthState = {
+        isAuthenticated: true,
+        isAdmin: false,
+        isSales: false,
+        isSimpleMode: false,
+        backendModeEnabled: false,
+        channelMonitorEnabled: true,
+      }
+      const redirect = simulateGuard('/monitor', { requiresChannelMonitor: true }, authState)
+      expect(redirect).toBeNull()
     })
   })
 

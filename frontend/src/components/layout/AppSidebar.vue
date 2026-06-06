@@ -630,6 +630,9 @@ const userNavItems = computed((): NavItem[] => {
     { path: '/dashboard', label: t('nav.dashboard'), icon: DashboardIcon },
     { path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon },
     { path: '/usage', label: t('nav.usage'), icon: ChartIcon, hideInSimpleMode: true },
+    ...(appStore.channelMonitorEnabled
+      ? [{ path: '/monitor', label: t('nav.channelStatus'), icon: ChartIcon, hideInSimpleMode: true }]
+      : []),
     { path: '/subscriptions', label: t('nav.mySubscriptions'), icon: CreditCardIcon, hideInSimpleMode: true },
     ...(appStore.cachedPublicSettings?.payment_enabled
       ? [
@@ -674,6 +677,9 @@ const personalNavItems = computed((): NavItem[] => {
   const items: NavItem[] = [
     { path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon },
     { path: '/usage', label: t('nav.usage'), icon: ChartIcon, hideInSimpleMode: true },
+    ...(appStore.channelMonitorEnabled
+      ? [{ path: '/monitor', label: t('nav.channelStatus'), icon: ChartIcon, hideInSimpleMode: true }]
+      : []),
     { path: '/subscriptions', label: t('nav.mySubscriptions'), icon: CreditCardIcon, hideInSimpleMode: true },
     ...(appStore.cachedPublicSettings?.payment_enabled
       ? [
@@ -727,6 +733,10 @@ const customMenuItemsForAdmin = computed(() => {
     .sort((a, b) => a.sort_order - b.sort_order)
 })
 
+const channelMonitorConsoleEnabled = computed(
+  () => appStore.channelMonitorEnabled || adminSettingsStore.channelMonitorEnabled
+)
+
 // Admin navigation items
 const adminNavItems = computed((): NavItem[] => {
   const baseItems: NavItem[] = [
@@ -742,7 +752,18 @@ const adminNavItems = computed((): NavItem[] => {
       icon: CurrencyYenIcon,
       hideInSimpleMode: true
     },
-    { path: '/admin/channels', label: t('nav.channels', '渠道管理'), icon: ChannelIcon, hideInSimpleMode: true },
+    {
+      path: '/admin/channels',
+      label: t('nav.channels', '渠道管理'),
+      icon: ChannelIcon,
+      hideInSimpleMode: true,
+      children: [
+        { path: '/admin/channels', label: t('nav.channelManagement'), icon: ChannelIcon },
+        ...(channelMonitorConsoleEnabled.value
+          ? [{ path: '/admin/channels/monitor', label: t('nav.channelMonitor'), icon: ChartIcon }]
+          : [])
+      ]
+    },
     { path: '/admin/subscriptions', label: t('nav.subscriptions'), icon: CreditCardIcon, hideInSimpleMode: true },
     { path: '/admin/accounts', label: t('nav.accounts'), icon: ServerIcon },
     { path: '/admin/announcements', label: t('nav.announcements'), icon: BellIcon },

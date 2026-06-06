@@ -244,6 +244,26 @@ func ProvideDashboardService(
 	return svc
 }
 
+func ProvideChannelMonitorService(repo ChannelMonitorRepository, encryptor SecretEncryptor) *ChannelMonitorService {
+	return NewChannelMonitorService(repo, encryptor)
+}
+
+func ProvideChannelMonitorRunner(svc *ChannelMonitorService, settingService *SettingService) *ChannelMonitorRunner {
+	runner := NewChannelMonitorRunner(svc, settingService)
+	svc.SetScheduler(runner)
+	if settingService != nil {
+		settingService.SetOnUpdateCallback(func() {
+			runner.Start()
+		})
+	}
+	runner.Start()
+	return runner
+}
+
+func ProvideSalesCommissionService(repo SalesCommissionRepository, referralRepo ReferralRepository, userRepo UserRepository) *SalesCommissionService {
+	return NewSalesCommissionService(repo, referralRepo, userRepo)
+}
+
 // ProvideUsageCleanupService 创建并启动使用记录清理任务服务
 func ProvideUsageCleanupService(repo UsageCleanupRepository, timingWheel *TimingWheelService, dashboardAgg *DashboardAggregationService, cfg *config.Config) *UsageCleanupService {
 	svc := NewUsageCleanupService(repo, timingWheel, dashboardAgg, cfg)
@@ -489,8 +509,9 @@ func ProvideOpsCleanupService(
 	db *sql.DB,
 	redisClient *redis.Client,
 	cfg *config.Config,
+	channelMonitorSvc *ChannelMonitorService,
 ) *OpsCleanupService {
-	svc := NewOpsCleanupService(opsRepo, db, redisClient, cfg)
+	svc := NewOpsCleanupService(opsRepo, db, redisClient, cfg, channelMonitorSvc)
 	svc.Start()
 	return svc
 }
@@ -693,6 +714,9 @@ var ProviderSet = wire.NewSet(
 	wire.Bind(new(DisabledProxyScheduleModeProvider), new(*PoolMonitorService)),
 	ProvideOpenAIPoolMonitorWorker,
 	NewChannelService,
+	ProvideChannelMonitorService,
+	ProvideChannelMonitorRunner,
+	NewChannelMonitorRequestTemplateService,
 	NewModelPricingResolver,
 	ProvidePaymentConfigService,
 	ProvidePaymentService,
@@ -700,7 +724,7 @@ var ProviderSet = wire.NewSet(
 	ProvideBalanceNotifyService,
 	NewReferralConfigResolver,
 	NewReferralService,
-	NewSalesCommissionService,
+	ProvideSalesCommissionService,
 	ProvideGiftBalanceExpiryService,
 )
 

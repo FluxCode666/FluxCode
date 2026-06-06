@@ -8,13 +8,20 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// RegisterUserRoutes 注册用户相关路由（需要认证）
+// RegisterUserRoutes 注册用户相关路由，并挂载官网需要的公开只读路由。
 func RegisterUserRoutes(
 	v1 *gin.RouterGroup,
 	h *handler.Handlers,
 	jwtAuth middleware.JWTAuthMiddleware,
 	settingService *service.SettingService,
 ) {
+	// 官网渠道状态页使用这组只读接口，允许未登录访问。
+	monitors := v1.Group("/channel-monitors")
+	{
+		monitors.GET("", h.ChannelMonitor.List)
+		monitors.GET("/:id/status", h.ChannelMonitor.GetStatus)
+	}
+
 	authenticated := v1.Group("")
 	authenticated.Use(gin.HandlerFunc(jwtAuth))
 	authenticated.Use(middleware.BackendModeUserGuard(settingService))

@@ -50,6 +50,7 @@ export interface SystemSettings {
   custom_menu_items: CustomMenuItem[]
   custom_endpoints: CustomEndpoint[]
   // SMTP settings
+  email_provider: string
   smtp_host: string
   smtp_port: number
   smtp_username: string
@@ -57,6 +58,9 @@ export interface SystemSettings {
   smtp_from_email: string
   smtp_from_name: string
   smtp_use_tls: boolean
+  resend_api_key_configured: boolean
+  resend_from_email: string
+  resend_from_name: string
   // Cloudflare Turnstile settings
   turnstile_enabled: boolean
   turnstile_site_key: string
@@ -136,6 +140,10 @@ export interface SystemSettings {
   // Sora client
   sora_client_enabled: boolean
 
+  // Channel monitor
+  channel_monitor_enabled: boolean
+  channel_monitor_default_interval_seconds: number
+
   // 兑换码发货文案 & 引流弹窗
   redeem_delivery_text: string
   attract_popup_title: string
@@ -208,6 +216,7 @@ export interface UpdateSettingsRequest {
   backend_mode_enabled?: boolean
   custom_menu_items?: CustomMenuItem[]
   custom_endpoints?: CustomEndpoint[]
+  email_provider?: string
   smtp_host?: string
   smtp_port?: number
   smtp_username?: string
@@ -215,6 +224,9 @@ export interface UpdateSettingsRequest {
   smtp_from_email?: string
   smtp_from_name?: string
   smtp_use_tls?: boolean
+  resend_api_key?: string
+  resend_from_email?: string
+  resend_from_name?: string
   turnstile_enabled?: boolean
   turnstile_site_key?: string
   turnstile_secret_key?: string
@@ -275,6 +287,9 @@ export interface UpdateSettingsRequest {
   purchase_subscription_url?: string
   // Sora client
   sora_client_enabled?: boolean
+  // Channel monitor
+  channel_monitor_enabled?: boolean
+  channel_monitor_default_interval_seconds?: number
   // 兑换码发货文案 & 引流弹窗
   redeem_delivery_text?: string
   attract_popup_title?: string
@@ -363,6 +378,7 @@ export async function testSmtpConnection(config: TestSmtpRequest): Promise<{ mes
  */
 export interface SendTestEmailRequest {
   email: string
+  email_provider: string
   smtp_host: string
   smtp_port: number
   smtp_username: string
@@ -370,11 +386,14 @@ export interface SendTestEmailRequest {
   smtp_from_email: string
   smtp_from_name: string
   smtp_use_tls: boolean
+  resend_api_key: string
+  resend_from_email: string
+  resend_from_name: string
 }
 
 /**
- * Send test email with provided SMTP config
- * @param request - Email address and SMTP config
+ * Send test email with provided email provider config
+ * @param request - Email address and email provider config
  * @returns Test result message
  */
 export async function sendTestEmail(request: SendTestEmailRequest): Promise<{ message: string }> {

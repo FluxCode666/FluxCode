@@ -136,3 +136,27 @@ func TestAdminAnnouncementReadStatusSortDefaults(t *testing.T) {
 	require.Equal(t, "email", userRepo.listParams.SortBy)
 	require.Equal(t, "asc", userRepo.listParams.SortOrder)
 }
+
+func TestAdminAnnouncementReadStatusRejectsInvalidReadStatus(t *testing.T) {
+	announcementRepo := &announcementRepoCapture{}
+	userRepo := &announcementUserRepoCapture{}
+	router := newAnnouncementSortTestRouter(announcementRepo, userRepo)
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/announcements/1/read-status?read_status=maybe", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func TestAdminAnnouncementReadStatusAcceptsReadStatusFilter(t *testing.T) {
+	announcementRepo := &announcementRepoCapture{}
+	userRepo := &announcementUserRepoCapture{}
+	router := newAnnouncementSortTestRouter(announcementRepo, userRepo)
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/announcements/1/read-status?read_status=read", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+}

@@ -1,11 +1,14 @@
 package service
 
 import (
+	"context"
 	"encoding/json"
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 )
 
 // Gin context keys used by Ops error logger for capturing upstream error details.
@@ -43,6 +46,8 @@ const (
 // final storage cap used by sanitizeOpsUpstreamEvents (10KB) so we avoid
 // allocating large intermediate strings during retries/failovers.
 const opsUpstreamRequestBodyEarlyCap = 10 * 1024
+
+const opsUpstreamDebugLogBodyMaxBytes = 10 * 1024
 
 // truncateStringBytes truncates s to at most maxBytes bytes without splitting
 // a multi-byte UTF-8 character.
@@ -189,7 +194,53 @@ func appendOpsUpstreamError(c *gin.Context, ev OpsUpstreamErrorEvent) {
 	existing = append(existing, &evCopy)
 	c.Set(OpsUpstreamErrorsKey, existing)
 
+	logOpsUpstreamErrorEvent(c, &evCopy)
 	checkSkipMonitoringForUpstreamEvent(c, &evCopy)
+}
+
+func logOpsUpstreamErrorEvent(c *gin.Context, ev *OpsUpstreamErrorEvent) {
+	if c == nil || ev == nil {
+		return
+	}
+
+	ctx := context.Background()
+	if c.Request != nil {
+		ctx = c.Request.Context()
+	}
+	fields := []zap.Field{
+		zap.String("component", "service.upstream_error"),
+		zap.String("kind", strings.TrimSpace(ev.Kind)),
+		zap.Int("upstream_status_code", ev.UpstreamStatusCode),
+		zap.String("platform", strings.TrimSpace(ev.Platform)),
+		zap.Int64("account_id", ev.AccountID),
+		zap.String("account_name", strings.TrimSpace(ev.AccountName)),
+		zap.String("upstream_request_id", strings.TrimSpace(ev.UpstreamRequestID)),
+		zap.String("upstream_url", strings.TrimSpace(ev.UpstreamURL)),
+		zap.String("upstream_error_message", strings.TrimSpace(ev.Message)),
+	}
+
+	if body := strings.TrimSpace(ev.UpstreamRequestBody); body != "" {
+		sanitizedBody, truncated, _ := sanitizeAndTrimRequestBody([]byte(body), opsUpstreamDebugLogBodyMaxBytes)
+		if sanitizedBody == "" {
+			sanitizedBody = "<non-json request body redacted>"
+		}
+		fields = append(fields,
+			zap.String("upstream_request_body", sanitizedBody),
+			zap.Bool("upstream_request_body_truncated", truncated),
+		)
+	}
+
+	responseBody := strings.TrimSpace(ev.UpstreamResponseBody)
+	if responseBody == "" {
+		responseBody = strings.TrimSpace(ev.Detail)
+	}
+	if responseBody != "" {
+		fields = append(fields,
+			zap.String("upstream_response_body", truncateString(responseBody, opsUpstreamDebugLogBodyMaxBytes)),
+		)
+	}
+
+	logger.FromContext(ctx).With(fields...).Warn("upstream model request failed")
 }
 
 // checkSkipMonitoringForUpstreamEvent checks whether the upstream error event

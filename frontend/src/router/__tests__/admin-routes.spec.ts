@@ -57,4 +57,25 @@ describe('admin route mapping', () => {
     expect(configRoute?.meta.descriptionKey).toBe('admin.poolMonitorConfig.description')
     expect(configRoute?.meta.hideInMenu).toBe(true)
   })
+
+  it('registers gated channel monitor admin route', async () => {
+    const { default: router } = await import('../index')
+
+    const route = router.getRoutes().find((item) => item.name === 'AdminChannelMonitor')
+
+    expect(route?.path).toBe('/admin/channels/monitor')
+    expect(route?.meta.requiresAdmin).toBe(true)
+    expect(route?.meta.requiresChannelMonitor).toBe(true)
+    expect(route?.meta.titleKey).toBe('admin.channelMonitor.title')
+  })
+
+  it('registers public channel status route outside the console', async () => {
+    const { default: router } = await import('../index')
+
+    const route = router.getRoutes().find((item) => item.name === 'PublicChannelStatus')
+
+    expect(route?.path).toBe('/channel-status')
+    expect(route?.meta.requiresAuth).toBe(false)
+    expect(route?.meta.titleKey).toBe('channelStatus.title')
+  })
 })

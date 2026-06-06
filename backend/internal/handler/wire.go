@@ -36,49 +36,64 @@ func ProvideAdminHandlers(
 	pricingPlanHandler *admin.PricingPlanHandler,
 	poolMonitorHandler *admin.PoolMonitorHandler,
 	channelHandler *admin.ChannelHandler,
+	channelMonitorHandler *admin.ChannelMonitorHandler,
+	channelMonitorTemplateHandler *admin.ChannelMonitorRequestTemplateHandler,
 	paymentHandler *admin.PaymentHandler,
 	referralHandler *admin.ReferralHandler,
 	salesCommissionHandler *admin.SalesCommissionHandler,
 	promotionHandler *admin.PromotionHandler,
 ) *AdminHandlers {
 	return &AdminHandlers{
-		Dashboard:             dashboardHandler,
-		User:                  userHandler,
-		Group:                 groupHandler,
-		Account:               accountHandler,
-		Announcement:          announcementHandler,
-		DataManagement:        dataManagementHandler,
-		Backup:                backupHandler,
-		OAuth:                 oauthHandler,
-		OpenAIOAuth:           openaiOAuthHandler,
-		GeminiOAuth:           geminiOAuthHandler,
-		AntigravityOAuth:      antigravityOAuthHandler,
-		Proxy:                 proxyHandler,
-		Redeem:                redeemHandler,
-		Promo:                 promoHandler,
-		Setting:               settingHandler,
-		Ops:                   opsHandler,
-		System:                systemHandler,
-		Subscription:          subscriptionHandler,
-		Usage:                 usageHandler,
-		UserAttribute:         userAttributeHandler,
-		ErrorPassthrough:      errorPassthroughHandler,
-		TLSFingerprintProfile: tlsFingerprintProfileHandler,
-		APIKey:                apiKeyHandler,
-		ScheduledTest:         scheduledTestHandler,
-		PricingPlan:           pricingPlanHandler,
-		PoolMonitor:           poolMonitorHandler,
-		Channel:               channelHandler,
-		Payment:               paymentHandler,
-		Referral:              referralHandler,
-		SalesCommission:       salesCommissionHandler,
-		Promotion:             promotionHandler,
+		Dashboard:              dashboardHandler,
+		User:                   userHandler,
+		Group:                  groupHandler,
+		Account:                accountHandler,
+		Announcement:           announcementHandler,
+		DataManagement:         dataManagementHandler,
+		Backup:                 backupHandler,
+		OAuth:                  oauthHandler,
+		OpenAIOAuth:            openaiOAuthHandler,
+		GeminiOAuth:            geminiOAuthHandler,
+		AntigravityOAuth:       antigravityOAuthHandler,
+		Proxy:                  proxyHandler,
+		Redeem:                 redeemHandler,
+		Promo:                  promoHandler,
+		Setting:                settingHandler,
+		Ops:                    opsHandler,
+		System:                 systemHandler,
+		Subscription:           subscriptionHandler,
+		Usage:                  usageHandler,
+		UserAttribute:          userAttributeHandler,
+		ErrorPassthrough:       errorPassthroughHandler,
+		TLSFingerprintProfile:  tlsFingerprintProfileHandler,
+		APIKey:                 apiKeyHandler,
+		ScheduledTest:          scheduledTestHandler,
+		PricingPlan:            pricingPlanHandler,
+		PoolMonitor:            poolMonitorHandler,
+		Channel:                channelHandler,
+		ChannelMonitor:         channelMonitorHandler,
+		ChannelMonitorTemplate: channelMonitorTemplateHandler,
+		Payment:                paymentHandler,
+		Referral:               referralHandler,
+		SalesCommission:        salesCommissionHandler,
+		Promotion:              promotionHandler,
 	}
 }
 
 // ProvideSystemHandler creates admin.SystemHandler with UpdateService
 func ProvideSystemHandler(updateService *service.UpdateService, lockService *service.SystemOperationLockService) *admin.SystemHandler {
 	return admin.NewSystemHandler(updateService, lockService)
+}
+
+func ProvideAdminUserHandler(
+	adminService service.AdminService,
+	concurrencyService *service.ConcurrencyService,
+	giftBalanceRepo service.GiftBalanceRepository,
+	paymentService *service.PaymentService,
+) *admin.UserHandler {
+	handler := admin.NewUserHandler(adminService, concurrencyService, giftBalanceRepo)
+	handler.SetPaymentService(paymentService)
+	return handler
 }
 
 // ProvideSettingHandler creates SettingHandler with version from BuildInfo
@@ -105,6 +120,7 @@ func ProvideHandlers(
 	paymentWebhookHandler *PaymentWebhookHandler,
 	referralHandler *ReferralHandler,
 	salesCommissionHandler *SalesCommissionHandler,
+	channelMonitorHandler *ChannelMonitorUserHandler,
 	_ *service.IdempotencyCoordinator,
 	_ *service.IdempotencyCleanupService,
 ) *Handlers {
@@ -126,6 +142,7 @@ func ProvideHandlers(
 		PaymentWebhook:  paymentWebhookHandler,
 		Referral:        referralHandler,
 		SalesCommission: salesCommissionHandler,
+		ChannelMonitor:  channelMonitorHandler,
 	}
 }
 
@@ -146,10 +163,11 @@ var ProviderSet = wire.NewSet(
 	NewPricingPlanHandler,
 	NewPaymentHandler,
 	NewPaymentWebhookHandler,
+	NewChannelMonitorUserHandler,
 
 	// Admin handlers
 	admin.NewDashboardHandler,
-	admin.NewUserHandler,
+	ProvideAdminUserHandler,
 	admin.NewGroupHandler,
 	admin.NewAccountHandler,
 	admin.NewAnnouncementHandler,
@@ -175,6 +193,8 @@ var ProviderSet = wire.NewSet(
 	admin.NewPricingPlanHandler,
 	admin.NewPoolMonitorHandler,
 	admin.NewChannelHandler,
+	admin.NewChannelMonitorHandler,
+	admin.NewChannelMonitorRequestTemplateHandler,
 	admin.NewPaymentHandler,
 	admin.NewReferralHandler,
 	admin.NewSalesCommissionHandler,

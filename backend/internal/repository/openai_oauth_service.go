@@ -47,7 +47,7 @@ func (s *openaiOAuthService) ExchangeCode(ctx context.Context, code, codeVerifie
 
 	resp, err := client.R().
 		SetContext(ctx).
-		SetHeader("User-Agent", "codex-cli/0.91.0").
+		SetHeader("User-Agent", service.ResolveCodexCLIUserAgent()).
 		SetFormDataFromValues(formData).
 		SetSuccessResult(&tokenResp).
 		Post(s.tokenURL)
@@ -92,7 +92,7 @@ func (s *openaiOAuthService) refreshTokenWithClientID(ctx context.Context, refre
 
 	resp, err := client.R().
 		SetContext(ctx).
-		SetHeader("User-Agent", "codex-cli/0.91.0").
+		SetHeader("User-Agent", service.ResolveCodexCLIUserAgent()).
 		SetFormDataFromValues(formData).
 		SetSuccessResult(&tokenResp).
 		Post(s.tokenURL)
@@ -102,6 +102,9 @@ func (s *openaiOAuthService) refreshTokenWithClientID(ctx context.Context, refre
 	}
 
 	if !resp.IsSuccessState() {
+		if service.IsOpenAIOAuthSessionTerminatedText(resp.String()) {
+			return nil, service.NewOpenAIOAuthSessionTerminatedError()
+		}
 		return nil, infraerrors.Newf(http.StatusBadGateway, "OPENAI_OAUTH_TOKEN_REFRESH_FAILED", "token refresh failed: status %d, body: %s", resp.StatusCode, resp.String())
 	}
 

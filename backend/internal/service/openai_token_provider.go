@@ -153,6 +153,7 @@ func (p *OpenAITokenProvider) GetAccessToken(ctx context.Context, account *Accou
 	expiresAt := account.GetCredentialAsTime("expires_at")
 	needsRefresh := expiresAt == nil || time.Until(*expiresAt) <= openAITokenRefreshSkew
 	refreshFailed := false
+	var refreshErr error
 
 	if needsRefresh && p.refreshAPI != nil && p.executor != nil {
 		p.metrics.refreshRequests.Add(1)
@@ -166,6 +167,7 @@ func (p *OpenAITokenProvider) GetAccessToken(ctx context.Context, account *Accou
 			slog.Warn("openai_token_refresh_failed", "account_id", account.ID, "error", err)
 			p.metrics.refreshFailure.Add(1)
 			refreshFailed = true
+			refreshErr = err
 		} else if result.LockHeld {
 			if p.refreshPolicy.OnLockHeld == ProviderLockHeldWaitForCache {
 				p.metrics.lockContention.Add(1)
@@ -214,6 +216,9 @@ func (p *OpenAITokenProvider) GetAccessToken(ctx context.Context, account *Accou
 
 	accessToken := account.GetCredential("access_token")
 	if strings.TrimSpace(accessToken) == "" {
+		if IsOpenAIOAuthSessionTerminatedError(refreshErr) {
+			return "", refreshErr
+		}
 		return "", errors.New("access_token not found in credentials")
 	}
 

@@ -127,6 +127,11 @@ func resolveCodexCLIUserAgent() string {
 	return codexCLIUserAgentDefault
 }
 
+// ResolveCodexCLIUserAgent returns the configured Codex CLI User-Agent for upstream OpenAI requests.
+func ResolveCodexCLIUserAgent() string {
+	return resolveCodexCLIUserAgent()
+}
+
 // resolveCodexCLIVersion 从 DB 缓存获取 Codex CLI Version，
 // 缓存为空时回退到默认值。缓存由启动预热 + UpdateSettings 维护。
 func resolveCodexCLIVersion() string {
@@ -1920,6 +1925,9 @@ func (s *OpenAIGatewayService) GetAccessToken(ctx context.Context, account *Acco
 		if s.openAITokenProvider != nil {
 			accessToken, err := s.openAITokenProvider.GetAccessToken(ctx, account)
 			if err != nil {
+				if IsOpenAIOAuthSessionTerminatedError(err) {
+					return "", "", NewOpenAIOAuthSessionTerminatedFailoverError()
+				}
 				return "", "", err
 			}
 			return accessToken, "oauth", nil
@@ -3284,6 +3292,10 @@ func (s *OpenAIGatewayService) handleNonStreamingResponsePassthrough(
 		return s.handlePassthroughSSEToJSON(resp, c, body)
 	}
 
+	if msg, invalid := invalidCompletedResponsesOutputMessage(body); invalid {
+		return nil, s.writeOpenAINonStreamingProtocolError(resp, c, msg)
+	}
+
 	usage := &OpenAIUsage{}
 	usageParsed := false
 	if len(body) > 0 {
@@ -4173,6 +4185,29 @@ func extractOpenAIUsageFromJSONBytes(body []byte) (OpenAIUsage, bool) {
 	}, true
 }
 
+func invalidCompletedResponsesOutputMessage(body []byte) (string, bool) {
+	if len(body) == 0 || !gjson.ValidBytes(body) {
+		return "", false
+	}
+	root := gjson.ParseBytes(body)
+	status := strings.TrimSpace(root.Get("status").String())
+	output := root.Get("output")
+	if status == "" && root.Get("type").String() == "response.completed" {
+		responsePayload := root.Get("response")
+		if responsePayload.Exists() {
+			status = strings.TrimSpace(responsePayload.Get("status").String())
+			output = responsePayload.Get("output")
+		}
+	}
+	if status != "completed" {
+		return "", false
+	}
+	if output.Exists() && output.IsArray() {
+		return "", false
+	}
+	return "Upstream returned a completed Responses payload with invalid output", true
+}
+
 func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, resp *http.Response, c *gin.Context, account *Account, originalModel, mappedModel string) (*OpenAIUsage, error) {
 	body, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, openAITooLargeError)
 	if err != nil {
@@ -4195,6 +4230,10 @@ func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, r
 		if bodyLooksLikeSSE {
 			return s.handleSSEToJSON(resp, c, body, originalModel, mappedModel)
 		}
+	}
+
+	if msg, invalid := invalidCompletedResponsesOutputMessage(body); invalid {
+		return nil, s.writeOpenAINonStreamingProtocolError(resp, c, msg)
 	}
 
 	usageValue, usageOK := extractOpenAIUsageFromJSONBytes(body)

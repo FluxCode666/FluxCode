@@ -10,6 +10,7 @@ const {
   getBatchTodayStats,
   listAllProxies,
   listAllGroups,
+  refreshCredentials,
   showError,
   showSuccess
 } = vi.hoisted(() => ({
@@ -18,6 +19,7 @@ const {
   getBatchTodayStats: vi.fn(),
   listAllProxies: vi.fn(),
   listAllGroups: vi.fn(),
+  refreshCredentials: vi.fn(),
   showError: vi.fn(),
   showSuccess: vi.fn()
 }))
@@ -32,13 +34,14 @@ vi.mock('@/api/admin', () => ({
       batchRefresh: vi.fn().mockResolvedValue({ success: 0, failed: 0 }),
       bulkUpdate: vi.fn().mockResolvedValue({}),
       exportData: vi.fn(),
-      refreshCredentials: vi.fn(),
+      refreshCredentials,
       recoverState: vi.fn(),
       resetAccountQuota: vi.fn(),
       getAvailableModels: vi.fn().mockResolvedValue([])
     },
     proxies: {
-      getAll: listAllProxies
+      getAll: listAllProxies,
+      getAllWithCount: listAllProxies
     },
     groups: {
       getAll: listAllGroups
@@ -122,6 +125,7 @@ describe('admin AccountsView', () => {
     getBatchTodayStats.mockReset()
     listAllProxies.mockReset()
     listAllGroups.mockReset()
+    refreshCredentials.mockReset()
     showError.mockReset()
     showSuccess.mockReset()
 
@@ -208,5 +212,62 @@ describe('admin AccountsView', () => {
         signal: expect.any(AbortSignal)
       })
     )
+  })
+
+  it('shows backend error message when manual token refresh fails', async () => {
+    const message = 'OpenAI OAuth 会话已结束，请重新授权该账号。'
+    refreshCredentials.mockRejectedValue({
+      status: 400,
+      reason: 'OPENAI_OAUTH_SESSION_TERMINATED',
+      message
+    })
+
+    const wrapper = mount(AccountsView, {
+      global: {
+        stubs: {
+          AppLayout: { template: '<div><slot /></div>' },
+          TablePageLayout: {
+            template: '<div><slot name="filters" /><slot name="table" /><slot name="pagination" /></div>'
+          },
+          AccountTableFilters: AccountTableFiltersStub,
+          AccountTableActions: {
+            template: '<div><slot name="beforeCreate" /><slot name="after" /></div>'
+          },
+          AccountBulkActionsBar: true,
+          DataTable: DataTableStub,
+          Pagination: true,
+          CreateAccountModal: true,
+          EditAccountModal: true,
+          ReAuthAccountModal: true,
+          AccountTestModal: true,
+          AccountStatsModal: true,
+          ScheduledTestsPanel: true,
+          AccountActionMenu: defineComponent({
+            emits: ['refresh-token'],
+            template: '<button data-test="refresh-token" @click="$emit(\'refresh-token\', { id: 42 })">refresh</button>'
+          }),
+          SyncFromCrsModal: true,
+          ImportDataModal: true,
+          BulkEditAccountModal: true,
+          TempUnschedStatusModal: true,
+          ConfirmDialog: true,
+          ErrorPassthroughRulesModal: true,
+          AccountStatusIndicator: true,
+          AccountUsageCell: true,
+          AccountTodayStatsCell: true,
+          AccountGroupsCell: true,
+          AccountCapacityCell: true,
+          PlatformTypeBadge: true,
+          Icon: true
+        }
+      }
+    })
+
+    await flushPromises()
+    await wrapper.get('[data-test="refresh-token"]').trigger('click')
+    await flushPromises()
+
+    expect(refreshCredentials).toHaveBeenCalledWith(42)
+    expect(showError).toHaveBeenCalledWith(message)
   })
 })

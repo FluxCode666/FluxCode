@@ -17,6 +17,9 @@ func TestNeedsToolContinuationSignals(t *testing.T) {
 		{name: "previous_response_id", body: map[string]any{"previous_response_id": "resp_1"}, want: true},
 		{name: "previous_response_id_blank", body: map[string]any{"previous_response_id": "  "}, want: false},
 		{name: "function_call_output", body: map[string]any{"input": []any{map[string]any{"type": "function_call_output"}}}, want: true},
+		{name: "tool_search_output", body: map[string]any{"input": []any{map[string]any{"type": "tool_search_output"}}}, want: true},
+		{name: "custom_tool_call_output", body: map[string]any{"input": []any{map[string]any{"type": "custom_tool_call_output"}}}, want: true},
+		{name: "mcp_tool_call_output", body: map[string]any{"input": []any{map[string]any{"type": "mcp_tool_call_output"}}}, want: true},
 		{name: "item_reference", body: map[string]any{"input": []any{map[string]any{"type": "item_reference"}}}, want: true},
 		{name: "tools", body: map[string]any{"tools": []any{map[string]any{"type": "function"}}}, want: true},
 		{name: "tools_empty", body: map[string]any{"tools": []any{}}, want: false},
@@ -35,10 +38,13 @@ func TestNeedsToolContinuationSignals(t *testing.T) {
 }
 
 func TestHasFunctionCallOutput(t *testing.T) {
-	// 仅当 input 中存在 function_call_output 才视为续链输出。
+	// 兼容既有函数名：任意 Codex 工具输出都应视为续链输出。
 	require.False(t, HasFunctionCallOutput(nil))
 	require.True(t, HasFunctionCallOutput(map[string]any{
 		"input": []any{map[string]any{"type": "function_call_output"}},
+	}))
+	require.True(t, HasFunctionCallOutput(map[string]any{
+		"input": []any{map[string]any{"type": "tool_search_output"}},
 	}))
 	require.False(t, HasFunctionCallOutput(map[string]any{
 		"input": "text",

@@ -7,10 +7,23 @@ describe('navigation locale keys', () => {
   it('contains admin pricing and pool monitor labels in zh', () => {
     expect(zh.nav.pricingPlans).toBe('定价方案')
     expect(zh.nav.poolMonitor).toBe('号池监控')
+    expect(zh.nav.channelStatus).toBe('渠道状态')
+    expect(zh.home.nav.channelStatus).toBe('渠道状态')
+    expect(zh.nav.channelMonitor).toBe('渠道监控')
+    expect(zh.nav.channelManagement).toBe('渠道管理')
   })
 
   it('contains admin pricing and pool monitor labels in en', () => {
     expect(en.nav.pricingPlans).toBe('Pricing Plans')
     expect(en.nav.poolMonitor).toBe('Pool Monitor')
+    expect(en.nav.channelStatus).toBe('Channel Status')
+    expect(en.home.nav.channelStatus).toBe('Channel Status')
+    expect(en.nav.channelMonitor).toBe('Channel Monitor')
+    expect(en.nav.channelManagement).toBe('Channels')
+  })
+
+  it('contains settings labels for channel monitor in both locales', () => {
+    expect(zh.admin.settings.channelMonitor.title).toBe('渠道监控')
+    expect(en.admin.settings.channelMonitor.title).toBe('Channel Monitor')
   })
 })
