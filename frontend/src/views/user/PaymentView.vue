@@ -97,17 +97,25 @@
                     >
                       <svg v-if="selectedPromotionId === promo.id" class="h-3 w-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg>
                     </div>
-                    <div class="flex-1 min-w-0">
-                      <div class="flex items-center gap-2">
-                        <span class="text-sm font-semibold text-gray-800 dark:text-gray-100">{{ promo.name }}</span>
-                        <span v-if="promo.discount_mode === 'reduce_pay' || promo.discount_mode === 'rate' || promo.discount_mode === 'amount'" class="inline-flex items-center rounded-md bg-orange-100 px-1.5 py-0.5 text-[10px] font-medium text-orange-700 ring-1 ring-inset ring-orange-200 dark:bg-orange-900/30 dark:text-orange-400 dark:ring-orange-800/50">
-                          {{ t('payment.promoModeDiscount') }}
-                        </span>
-                        <span v-else-if="promo.discount_mode === 'bonus_credit'" class="inline-flex items-center rounded-md bg-blue-100 px-1.5 py-0.5 text-[10px] font-medium text-blue-700 ring-1 ring-inset ring-blue-200 dark:bg-blue-900/30 dark:text-blue-400 dark:ring-blue-800/50">
-                          {{ t('payment.promoModeBonus') }}
-                        </span>
+                    <div class="flex min-w-0 flex-1 items-start justify-between gap-3">
+                      <div class="min-w-0 flex-1">
+                        <div class="flex flex-wrap items-center gap-2">
+                          <span class="text-sm font-semibold text-gray-800 dark:text-gray-100">{{ promo.name }}</span>
+                          <span v-if="promo.discount_mode === 'reduce_pay' || promo.discount_mode === 'rate' || promo.discount_mode === 'amount'" class="inline-flex items-center rounded-md bg-orange-100 px-1.5 py-0.5 text-[10px] font-medium text-orange-700 ring-1 ring-inset ring-orange-200 dark:bg-orange-900/30 dark:text-orange-400 dark:ring-orange-800/50">
+                            {{ t('payment.promoModeDiscount') }}
+                          </span>
+                          <span v-else-if="promo.discount_mode === 'bonus_credit'" class="inline-flex items-center rounded-md bg-blue-100 px-1.5 py-0.5 text-[10px] font-medium text-blue-700 ring-1 ring-inset ring-blue-200 dark:bg-blue-900/30 dark:text-blue-400 dark:ring-blue-800/50">
+                            {{ t('payment.promoModeBonus') }}
+                          </span>
+                        </div>
+                        <p v-if="promo.description" class="mt-1 text-xs leading-relaxed text-gray-500 dark:text-gray-400">{{ promo.description }}</p>
                       </div>
-                      <p v-if="promo.description" class="mt-1 text-xs leading-relaxed text-gray-500 dark:text-gray-400">{{ promo.description }}</p>
+                      <span
+                        v-if="hasPromotionUseLimit(promo)"
+                        class="mt-0.5 shrink-0 whitespace-nowrap rounded-md bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700 ring-1 ring-inset ring-amber-200 dark:bg-amber-900/20 dark:text-amber-300 dark:ring-amber-800/60"
+                      >
+                        {{ t('payment.promoRemaining', { n: promotionRemainingUses(promo) }) }}
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -286,14 +294,22 @@
                       >
                         <svg v-if="subSelectedPromotionId === promo.id" class="h-3 w-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg>
                       </div>
-                      <div class="flex-1 min-w-0">
-                        <div class="flex items-center gap-2">
-                          <span class="text-sm font-semibold text-gray-800 dark:text-gray-100">{{ promo.name }}</span>
-                          <span v-if="promo.discount_mode === 'rate' || promo.discount_mode === 'amount'" class="inline-flex items-center rounded-md bg-orange-100 px-1.5 py-0.5 text-[10px] font-medium text-orange-700 ring-1 ring-inset ring-orange-200 dark:bg-orange-900/30 dark:text-orange-400 dark:ring-orange-800/50">
-                            {{ t('payment.promoModeDiscount') }}
-                          </span>
+                      <div class="flex min-w-0 flex-1 items-start justify-between gap-3">
+                        <div class="min-w-0 flex-1">
+                          <div class="flex flex-wrap items-center gap-2">
+                            <span class="text-sm font-semibold text-gray-800 dark:text-gray-100">{{ promo.name }}</span>
+                            <span v-if="promo.discount_mode === 'rate' || promo.discount_mode === 'amount'" class="inline-flex items-center rounded-md bg-orange-100 px-1.5 py-0.5 text-[10px] font-medium text-orange-700 ring-1 ring-inset ring-orange-200 dark:bg-orange-900/30 dark:text-orange-400 dark:ring-orange-800/50">
+                              {{ t('payment.promoModeDiscount') }}
+                            </span>
+                          </div>
+                          <p v-if="promo.description" class="mt-1 text-xs leading-relaxed text-gray-500 dark:text-gray-400">{{ promo.description }}</p>
                         </div>
-                        <p v-if="promo.description" class="mt-1 text-xs leading-relaxed text-gray-500 dark:text-gray-400">{{ promo.description }}</p>
+                        <span
+                          v-if="hasPromotionUseLimit(promo)"
+                          class="mt-0.5 shrink-0 whitespace-nowrap rounded-md bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700 ring-1 ring-inset ring-amber-200 dark:bg-amber-900/20 dark:text-amber-300 dark:ring-amber-800/60"
+                        >
+                          {{ t('payment.promoRemaining', { n: promotionRemainingUses(promo) }) }}
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -475,6 +491,15 @@ const selectedPromotionId = ref<number | null>(null)
 const subSelectedPromotionId = ref<number | null>(null)
 const promoPreview = ref<PromotionPreview | null>(null)
 const subPromoPreview = ref<PromotionPreview | null>(null)
+
+function hasPromotionUseLimit(promo: AvailablePromotion): boolean {
+  return (promo.max_uses ?? 0) > 0
+}
+
+function promotionRemainingUses(promo: AvailablePromotion): number {
+  if (!hasPromotionUseLimit(promo)) return 0
+  return Math.max((promo.max_uses ?? 0) - (promo.used_count ?? 0), 0)
+}
 
 // Payment phase: 'select' → 'paying' (QR/redirect) or 'stripe' (inline Stripe)
 const paymentPhase = ref<'select' | 'paying' | 'stripe'>('select')
