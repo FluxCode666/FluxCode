@@ -99,7 +99,7 @@ describe('buildCcswitchProviderDeepLink', () => {
 Run:
 
 ```bash
-pnpm -C frontend vitest run src/utils/__tests__/ccswitchDeepLink.spec.ts
+pnpm --dir frontend exec vitest run src/utils/__tests__/ccswitchDeepLink.spec.ts
 ```
 
 Expected: FAIL because `../ccswitchDeepLink` does not exist yet.
@@ -179,7 +179,7 @@ In `executeCcsImport`, replace local `new URLSearchParams` and `deeplink` assemb
 Run:
 
 ```bash
-pnpm -C frontend vitest run src/utils/__tests__/ccswitchDeepLink.spec.ts
+pnpm --dir frontend exec vitest run src/utils/__tests__/ccswitchDeepLink.spec.ts
 ```
 
 Expected: PASS.
@@ -189,8 +189,8 @@ Expected: PASS.
 Run:
 
 ```bash
-pnpm -C frontend vitest run src/components/keys/__tests__/UseKeyModal.spec.ts src/utils/__tests__/ccswitchDeepLink.spec.ts
-pnpm -C frontend typecheck
+pnpm --dir frontend exec vitest run src/components/keys/__tests__/UseKeyModal.spec.ts src/utils/__tests__/ccswitchDeepLink.spec.ts
+pnpm --dir frontend typecheck
 ```
 
 Expected: both commands complete successfully.

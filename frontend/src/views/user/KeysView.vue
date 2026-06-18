@@ -1089,6 +1089,7 @@ import TablePageLayout from '@/components/layout/TablePageLayout.vue'
 	import type { ApiKey, Group, PublicSettings, SubscriptionType, GroupPlatform, SystemPromptMode } from '@/types'
 import type { Column } from '@/components/common/types'
 import type { BatchApiKeyUsageStats } from '@/api/usage'
+import { buildCcswitchProviderDeepLink, type CcswitchProviderApp } from '@/utils/ccswitchDeepLink'
 import { formatDateTime } from '@/utils/format'
 
 // Helper to format date for datetime-local input
@@ -1753,7 +1754,7 @@ const executeCcsImport = (row: ApiKey, clientType: 'claude' | 'gemini') => {
   const platform = row.group?.platform || 'anthropic'
 
   // Determine app name and endpoint based on platform and client type
-  let app: string
+  let app: CcswitchProviderApp
   let endpoint: string
 
   if (platform === 'antigravity') {
@@ -1794,19 +1795,15 @@ const executeCcsImport = (row: ApiKey, clientType: 'claude' | 'gemini') => {
   })`
   const providerName = (publicSettings.value?.site_name || 'fluxcode').trim() || 'fluxcode'
 
-  const params = new URLSearchParams({
-    resource: 'provider',
-    app: app,
+  const deeplink = buildCcswitchProviderDeepLink({
+    app,
     name: providerName,
     homepage: baseUrl,
-    endpoint: endpoint,
+    endpoint,
     apiKey: row.key,
-    configFormat: 'json',
-    usageEnabled: 'true',
-    usageScript: btoa(usageScript),
-    usageAutoInterval: '30'
+    usageScript,
+    openaiModelId: publicSettings.value?.openai_use_key_model_id
   })
-  const deeplink = `ccswitch://v1/import?${params.toString()}`
 
   try {
     window.open(deeplink, '_self')
