@@ -94,6 +94,7 @@ type SystemSettings struct {
 	TablePageSizeOptions        []int            `json:"table_page_size_options"`
 	CustomMenuItems             []CustomMenuItem `json:"custom_menu_items"`
 	CustomEndpoints             []CustomEndpoint `json:"custom_endpoints"`
+	OpenAIUseKeyModelID         string           `json:"openai_use_key_model_id"`
 
 	DefaultConcurrency   int                          `json:"default_concurrency"`
 	DefaultBalance       float64                      `json:"default_balance"`
@@ -218,6 +219,7 @@ type PublicSettings struct {
 	TablePageSizeOptions             []int            `json:"table_page_size_options"`
 	CustomMenuItems                  []CustomMenuItem `json:"custom_menu_items"`
 	CustomEndpoints                  []CustomEndpoint `json:"custom_endpoints"`
+	OpenAIUseKeyModelID              string           `json:"openai_use_key_model_id"`
 	LinuxDoOAuthEnabled              bool             `json:"linuxdo_oauth_enabled"`
 	OIDCOAuthEnabled                 bool             `json:"oidc_oauth_enabled"`
 	OIDCOAuthProviderName            string           `json:"oidc_oauth_provider_name"`

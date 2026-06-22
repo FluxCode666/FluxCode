@@ -469,14 +469,53 @@ func isOpenAINativeImageOption(name string) bool {
 }
 
 func normalizeOpenAIImageSizeTier(size string) string {
-	switch strings.ToLower(strings.TrimSpace(size)) {
-	case "1024x1024":
+	trimmed := strings.TrimSpace(size)
+	switch strings.ToLower(trimmed) {
+	case "1k":
 		return "1K"
-	case "1536x1024", "1024x1536", "1792x1024", "1024x1792", "", "auto":
+	case "2k":
 		return "2K"
-	default:
+	case "4k":
+		return "4K"
+	case "", "auto":
 		return "2K"
 	}
+
+	width, height, ok := parseOpenAIImageSize(trimmed)
+	if !ok {
+		return "2K"
+	}
+	maxEdge := width
+	if height > maxEdge {
+		maxEdge = height
+	}
+	switch {
+	case maxEdge <= 1024:
+		return "1K"
+	case maxEdge <= 2048:
+		return "2K"
+	default:
+		return "4K"
+	}
+}
+
+func parseOpenAIImageSize(size string) (int, int, bool) {
+	parts := strings.Split(strings.ToLower(strings.TrimSpace(size)), "x")
+	if len(parts) != 2 {
+		return 0, 0, false
+	}
+	width, err := strconv.Atoi(strings.TrimSpace(parts[0]))
+	if err != nil {
+		return 0, 0, false
+	}
+	height, err := strconv.Atoi(strings.TrimSpace(parts[1]))
+	if err != nil {
+		return 0, 0, false
+	}
+	if width <= 0 || height <= 0 {
+		return 0, 0, false
+	}
+	return width, height, true
 }
 
 func (s *OpenAIGatewayService) ForwardImages(

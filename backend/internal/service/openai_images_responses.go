@@ -255,6 +255,7 @@ func buildOpenAIImagesResponsesRequest(parsed *OpenAIImagesRequest, toolModel st
 		{path: "background", value: parsed.Background},
 		{path: "output_format", value: parsed.OutputFormat},
 		{path: "moderation", value: parsed.Moderation},
+		{path: "input_fidelity", value: parsed.InputFidelity},
 		{path: "style", value: parsed.Style},
 	} {
 		if trimmed := strings.TrimSpace(field.value); trimmed != "" {

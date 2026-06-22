@@ -1853,6 +1853,20 @@
           <div class="p-6 space-y-4">
             <div>
               <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                {{ t('admin.settings.codexCLIUA.openaiUseKeyModelId') }}
+              </label>
+              <input
+                v-model="form.openai_use_key_model_id"
+                type="text"
+                class="input max-w-xs font-mono text-sm"
+                :placeholder="t('admin.settings.codexCLIUA.openaiUseKeyModelIdPlaceholder')"
+              />
+              <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.settings.codexCLIUA.openaiUseKeyModelIdHint') }}
+              </p>
+            </div>
+            <div>
+              <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
                 {{ t('admin.settings.codexCLIUA.userAgent') }}
               </label>
               <input
@@ -3659,6 +3673,7 @@ const form = reactive<SettingsForm>({
   enable_metadata_passthrough: false,
   enable_cch_signing: false,
   // Codex CLI User-Agent
+  openai_use_key_model_id: 'gpt-5.5',
   codex_cli_user_agent: '',
   codex_cli_version: '',
   // Balance & quota notification
@@ -4286,6 +4301,7 @@ async function saveSettings() {
       enable_fingerprint_unification: form.enable_fingerprint_unification,
       enable_metadata_passthrough: form.enable_metadata_passthrough,
       enable_cch_signing: form.enable_cch_signing,
+      openai_use_key_model_id: form.openai_use_key_model_id,
       codex_cli_user_agent: form.codex_cli_user_agent,
       codex_cli_version: form.codex_cli_version,
       // Payment configuration

@@ -176,6 +176,7 @@ import { useI18n } from 'vue-i18n'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { useClipboard } from '@/composables/useClipboard'
+import { resolveOpenAIUseKeyModelId } from '@/utils/openaiUseKeyModel'
 import type { GroupPlatform } from '@/types'
 
 interface Props {
@@ -184,6 +185,7 @@ interface Props {
   baseUrl: string
   platform: GroupPlatform | null
   allowMessagesDispatch?: boolean
+  openaiUseKeyModelId?: string
 }
 
 interface Emits {
@@ -565,11 +567,12 @@ ${keyword('$env:')}${variable('GEMINI_MODEL')}${operator('=')}${string(`"${model
 function generateOpenAIFiles(baseUrl: string, apiKey: string): FileConfig[] {
   const isWindows = activeTab.value === 'windows'
   const configDir = isWindows ? '%userprofile%\\.codex' : '~/.codex'
+  const modelId = resolveOpenAIUseKeyModelId(props.openaiUseKeyModelId)
 
   // config.toml content
   const configContent = `model_provider = "OpenAI"
-model = "gpt-5.4"
-review_model = "gpt-5.4"
+model = "${modelId}"
+review_model = "${modelId}"
 model_reasoning_effort = "xhigh"
 disable_response_storage = true
 network_access = "enabled"
@@ -604,11 +607,12 @@ requires_openai_auth = true`
 function generateOpenAIWsFiles(baseUrl: string, apiKey: string): FileConfig[] {
   const isWindows = activeTab.value === 'windows'
   const configDir = isWindows ? '%userprofile%\\.codex' : '~/.codex'
+  const modelId = resolveOpenAIUseKeyModelId(props.openaiUseKeyModelId)
 
   // config.toml content with WebSocket v2
   const configContent = `model_provider = "OpenAI"
-model = "gpt-5.4"
-review_model = "gpt-5.4"
+model = "${modelId}"
+review_model = "${modelId}"
 model_reasoning_effort = "xhigh"
 disable_response_storage = true
 network_access = "enabled"
@@ -1194,6 +1198,15 @@ const quickSetupShellLabel = computed(() => {
   }
 })
 
+const encodeBase64Utf8 = (value: string) => {
+  const bytes = new TextEncoder().encode(value)
+  let binary = ''
+  bytes.forEach((byte) => {
+    binary += String.fromCharCode(byte)
+  })
+  return btoa(binary)
+}
+
 const quickSetupCommand = computed((): string => {
   const files = currentFiles.value
   if (!files.length) return ''
@@ -1228,7 +1241,7 @@ const quickSetupCommand = computed((): string => {
         const winPath = filePath.replace(/^~\//, '$env:USERPROFILE\\').replace(/%userprofile%\\/i, '$env:USERPROFILE\\').replace(/\//g, '\\')
         const dir = winPath.substring(0, winPath.lastIndexOf('\\'))
         parts.push(`New-Item -ItemType Directory -Force -Path "${dir}" | Out-Null`)
-        parts.push(`@'\n${file.content}\n'@ | Set-Content -Path "${winPath}" -Encoding UTF8`)
+        parts.push(`Set-Content -Path "${winPath}" -Value ([System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String('${encodeBase64Utf8(file.content)}'))) -Encoding UTF8`)
       } else if (isCmd) {
         const winPath = filePath.replace(/^~\//, '%userprofile%\\').replace(/\//g, '\\')
         const dir = winPath.substring(0, winPath.lastIndexOf('\\'))

@@ -123,7 +123,7 @@ services:
       # CRITICAL: Must be the same across ALL backend instances!
       # =======================================================================
       - JWT_SECRET=${JWT_SECRET:?JWT_SECRET is required for cluster mode}
-      - JWT_EXPIRE_HOUR=${JWT_EXPIRE_HOUR:-24}
+      - JWT_EXPIRE_HOUR=${JWT_EXPIRE_HOUR:-168}
 
       # =======================================================================
       # TOTP (2FA) Configuration
@@ -214,7 +214,7 @@ services:
   #     - ADMIN_EMAIL=${ADMIN_EMAIL:-admin@sub2api.local}
   #     - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}
   #     - JWT_SECRET=${JWT_SECRET:?JWT_SECRET is required for cluster mode}
-  #     - JWT_EXPIRE_HOUR=${JWT_EXPIRE_HOUR:-24}
+  #     - JWT_EXPIRE_HOUR=${JWT_EXPIRE_HOUR:-168}
   #     - TOTP_ENCRYPTION_KEY=${TOTP_ENCRYPTION_KEY:-}
   #     - TZ=${TZ:-Asia/Shanghai}
   #     - GEMINI_OAUTH_CLIENT_ID=${GEMINI_OAUTH_CLIENT_ID:-}

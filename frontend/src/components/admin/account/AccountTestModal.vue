@@ -58,9 +58,9 @@
       <div v-if="supportsImageTest" class="space-y-1.5">
         <TextArea
           v-model="testPrompt"
-          :label="t('admin.accounts.geminiImagePromptLabel')"
-          :placeholder="t('admin.accounts.geminiImagePromptPlaceholder')"
-          :hint="t('admin.accounts.geminiImageTestHint')"
+          :label="t(imageTestCopy.promptLabel)"
+          :placeholder="t(imageTestCopy.promptPlaceholder)"
+          :hint="t(imageTestCopy.testHint)"
           :disabled="status === 'connecting'"
           rows="3"
         />
@@ -122,7 +122,7 @@
 
       <div v-if="generatedImages.length > 0" class="space-y-2">
         <div class="text-xs font-medium text-gray-600 dark:text-gray-300">
-          {{ t('admin.accounts.geminiImagePreview') }}
+          {{ t(imageTestCopy.preview) }}
         </div>
         <div class="grid gap-3 sm:grid-cols-2">
           <a
@@ -133,7 +133,7 @@
             rel="noopener noreferrer"
             class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm transition hover:border-primary-300 hover:shadow-md dark:border-dark-500 dark:bg-dark-700"
           >
-            <img :src="image.url" :alt="`gemini-test-image-${index + 1}`" class="h-48 w-full object-cover" />
+            <img :src="image.url" :alt="`${imageTestCopy.altPrefix}-${index + 1}`" class="h-48 w-full object-cover" />
             <div class="border-t border-gray-100 px-3 py-2 text-xs text-gray-500 dark:border-dark-500 dark:text-gray-300">
               {{ image.mimeType || 'image/*' }}
             </div>
@@ -153,7 +153,7 @@
           <Icon name="chat" size="sm" :stroke-width="2" />
           {{
             supportsImageTest
-              ? t('admin.accounts.geminiImageTestMode')
+              ? t(imageTestCopy.testMode)
               : t('admin.accounts.testPrompt')
             }}
         </span>
@@ -264,6 +264,34 @@ const supportsOpenAIImageTest = computed(() => {
   return props.account?.platform === 'openai'
 })
 const supportsImageTest = computed(() => supportsGeminiImageTest.value || supportsOpenAIImageTest.value)
+const imageTestProvider = computed<'gemini' | 'openai'>(() => supportsOpenAIImageTest.value ? 'openai' : 'gemini')
+const imageTestCopy = computed(() => {
+  if (imageTestProvider.value === 'openai') {
+    return {
+      promptLabel: 'admin.accounts.openaiImagePromptLabel',
+      promptPlaceholder: 'admin.accounts.openaiImagePromptPlaceholder',
+      promptDefault: 'admin.accounts.openaiImagePromptDefault',
+      testHint: 'admin.accounts.openaiImageTestHint',
+      testMode: 'admin.accounts.openaiImageTestMode',
+      preview: 'admin.accounts.openaiImagePreview',
+      received: 'admin.accounts.openaiImageReceived',
+      sendingRequest: 'admin.accounts.sendingOpenAIImageRequest',
+      altPrefix: 'openai-test-image'
+    }
+  }
+
+  return {
+    promptLabel: 'admin.accounts.geminiImagePromptLabel',
+    promptPlaceholder: 'admin.accounts.geminiImagePromptPlaceholder',
+    promptDefault: 'admin.accounts.geminiImagePromptDefault',
+    testHint: 'admin.accounts.geminiImageTestHint',
+    testMode: 'admin.accounts.geminiImageTestMode',
+    preview: 'admin.accounts.geminiImagePreview',
+    received: 'admin.accounts.geminiImageReceived',
+    sendingRequest: 'admin.accounts.sendingGeminiImageRequest',
+    altPrefix: 'gemini-test-image'
+  }
+})
 
 const sortTestModels = (models: ClaudeModel[]) => {
   const priorityMap = new Map(prioritizedGeminiModels.map((id, index) => [id, index]))
@@ -292,7 +320,7 @@ watch(
 
 watch(selectedModelId, () => {
   if (supportsImageTest.value && !testPrompt.value.trim()) {
-    testPrompt.value = t('admin.accounts.geminiImagePromptDefault')
+    testPrompt.value = t(imageTestCopy.value.promptDefault)
   }
 })
 
@@ -452,7 +480,7 @@ const handleEvent = (event: {
       }
       addLine(
         supportsImageTest.value
-            ? t('admin.accounts.sendingGeminiImageRequest')
+            ? t(imageTestCopy.value.sendingRequest)
             : t('admin.accounts.sendingTestMessage'),
         'text-gray-400'
       )
@@ -473,7 +501,7 @@ const handleEvent = (event: {
           url: event.image_url,
           mimeType: event.mime_type
         })
-        addLine(t('admin.accounts.geminiImageReceived', { count: generatedImages.value.length }), 'text-purple-300')
+        addLine(t(imageTestCopy.value.received, { count: generatedImages.value.length }), 'text-purple-300')
       }
       break
 

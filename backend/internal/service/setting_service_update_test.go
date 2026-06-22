@@ -237,3 +237,15 @@ func TestSettingService_UpdateSettings_ChannelMonitorFields(t *testing.T) {
 	require.Equal(t, "true", repo.updates[SettingKeyChannelMonitorEnabled])
 	require.Equal(t, "120", repo.updates[SettingKeyChannelMonitorDefaultIntervalSeconds])
 }
+
+func TestSettingService_UpdateSettings_OpenAIUseKeyModelID(t *testing.T) {
+	repo := &settingUpdateRepoStub{}
+	svc := NewSettingService(repo, &config.Config{})
+
+	err := svc.UpdateSettings(context.Background(), &SystemSettings{
+		OpenAIUseKeyModelID: " gpt-5.4-mini ",
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, "gpt-5.4-mini", repo.updates[SettingKeyOpenAIUseKeyModelID])
+}

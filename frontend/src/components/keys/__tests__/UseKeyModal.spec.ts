@@ -17,25 +17,28 @@ vi.mock('@/composables/useClipboard', () => ({
 import UseKeyModal from '../UseKeyModal.vue'
 
 describe('UseKeyModal', () => {
-  it('renders updated GPT-5.4 mini/nano names in OpenCode config', async () => {
-    const wrapper = mount(UseKeyModal, {
-      props: {
-        show: true,
-        apiKey: 'sk-test',
-        baseUrl: 'https://example.com/v1',
-        platform: 'openai'
-      },
-      global: {
-        stubs: {
-          BaseDialog: {
-            template: '<div><slot /><slot name="footer" /></div>'
-          },
-          Icon: {
-            template: '<span />'
-          }
+  const mountModal = (props: Record<string, unknown> = {}) => mount(UseKeyModal, {
+    props: {
+      show: true,
+      apiKey: 'sk-test',
+      baseUrl: 'https://example.com/v1',
+      platform: 'openai',
+      ...props
+    },
+    global: {
+      stubs: {
+        BaseDialog: {
+          template: '<div><slot /><slot name="footer" /></div>'
+        },
+        Icon: {
+          template: '<span />'
         }
       }
-    })
+    }
+  })
+
+  it('renders updated GPT-5.4 mini/nano names in OpenCode config', async () => {
+    const wrapper = mountModal()
 
     const opencodeTab = wrapper.findAll('button').find((button) =>
       button.text().includes('keys.useKeyModal.cliTabs.opencode')
@@ -49,5 +52,44 @@ describe('UseKeyModal', () => {
     expect(codeBlock.exists()).toBe(true)
     expect(codeBlock.text()).toContain('"name": "GPT-5.4 Mini"')
     expect(codeBlock.text()).toContain('"name": "GPT-5.4 Nano"')
+  })
+
+  it('renders OpenAI Windows quick setup as a single PowerShell command', async () => {
+    const wrapper = mountModal()
+
+    const windowsTab = wrapper.findAll('button').find((button) =>
+      button.text().includes('Windows')
+    )
+
+    expect(windowsTab).toBeDefined()
+    await windowsTab!.trigger('click')
+    await nextTick()
+
+    const codeBlocks = wrapper.findAll('pre code')
+    const quickSetupCommand = codeBlocks.at(-1)?.text() ?? ''
+
+    expect(quickSetupCommand).toContain('$env:USERPROFILE\\.codex\\config.toml')
+    expect(quickSetupCommand).toContain('$env:USERPROFILE\\.codex\\auth.json')
+    expect(quickSetupCommand).not.toContain("@'")
+    expect(quickSetupCommand).not.toMatch(/\r?\n/)
+  })
+
+  it('uses configured OpenAI model id in Codex config files', () => {
+    const wrapper = mountModal({ openaiUseKeyModelId: 'gpt-5.4-mini' })
+
+    const configBlock = wrapper.find('pre code').text()
+
+    expect(configBlock).toContain('model = "gpt-5.4-mini"')
+    expect(configBlock).toContain('review_model = "gpt-5.4-mini"')
+    expect(configBlock).not.toContain('model = "gpt-5.4"')
+  })
+
+  it('falls back to GPT-5.5 when OpenAI model id is empty', () => {
+    const wrapper = mountModal({ openaiUseKeyModelId: '   ' })
+
+    const configBlock = wrapper.find('pre code').text()
+
+    expect(configBlock).toContain('model = "gpt-5.5"')
+    expect(configBlock).toContain('review_model = "gpt-5.5"')
   })
 })

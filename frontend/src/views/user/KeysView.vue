@@ -943,6 +943,7 @@
       :base-url="publicSettings?.api_base_url || ''"
       :platform="selectedKey?.group?.platform || null"
       :allow-messages-dispatch="selectedKey?.group?.allow_messages_dispatch || false"
+      :openai-use-key-model-id="publicSettings?.openai_use_key_model_id || ''"
       @close="closeUseKeyModal"
     />
 

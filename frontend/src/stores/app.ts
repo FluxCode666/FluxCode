@@ -12,7 +12,7 @@ import {
   type ReleaseInfo
 } from '@/api/admin/system'
 import { getPublicSettings as fetchPublicSettingsAPI } from '@/api/auth'
-import { DEFAULT_OPENAI_USE_KEY_MODEL_ID } from '@/utils/openaiUseKeyModel'
+import { DEFAULT_OPENAI_USE_KEY_MODEL_ID, resolveOpenAIUseKeyModelId } from '@/utils/openaiUseKeyModel'
 
 export const useAppStore = defineStore('app', () => {
   // ==================== State ====================
@@ -301,6 +301,7 @@ export const useAppStore = defineStore('app', () => {
     siteVersion.value = config.version || ''
     contactInfo.value = config.contact_info || ''
     apiBaseUrl.value = config.api_base_url || ''
+    openaiUseKeyModelId.value = resolveOpenAIUseKeyModelId(config.openai_use_key_model_id)
     docUrl.value = config.doc_url || ''
     attractPopupTitle.value = config.attract_popup_title || ''
     attractPopupMarkdown.value = config.attract_popup_markdown || ''
