@@ -5663,6 +5663,10 @@ export default {
       codexCLIUA: {
         title: 'Codex CLI User-Agent',
         description: '配置发往 OpenAI 上游的 User-Agent 和 Version 请求头',
+        openaiUseKeyModelId: '一键配置模型 ID',
+        openaiUseKeyModelIdPlaceholder: '例如 gpt-5.5',
+        openaiUseKeyModelIdHint:
+          '用户侧 OpenAI/Codex 一键配置写入 config.toml 的 model 和 review_model。留空使用 gpt-5.5，不影响网关实际调度。',
         userAgent: 'User-Agent',
         userAgentPlaceholder: '例如 codex_cli_rs/1.0.0',
         userAgentHint: '发往 OpenAI 上游的 User-Agent 请求头。留空则使用默认值 codex_cli_rs/1.0.0。',

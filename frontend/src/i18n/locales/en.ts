@@ -5534,6 +5534,10 @@ export default {
       codexCLIUA: {
         title: 'Codex CLI User-Agent',
         description: 'Configure the User-Agent and Version headers sent to OpenAI upstream',
+        openaiUseKeyModelId: 'Quick setup model ID',
+        openaiUseKeyModelIdPlaceholder: 'e.g. gpt-5.5',
+        openaiUseKeyModelIdHint:
+          'Model and review_model written into user-facing OpenAI/Codex config.toml quick setup. Leave empty to use gpt-5.5. This does not change gateway scheduling.',
         userAgent: 'User-Agent',
         userAgentPlaceholder: 'e.g. codex_cli_rs/1.0.0',
         userAgentHint: 'User-Agent header sent to OpenAI upstream. Leave empty to use default codex_cli_rs/1.0.0.',

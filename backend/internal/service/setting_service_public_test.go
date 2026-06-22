@@ -99,3 +99,27 @@ func TestSettingService_GetPublicSettings_ChannelMonitorEnabled(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, settings.ChannelMonitorEnabled)
 }
+
+func TestSettingService_GetPublicSettings_ExposesOpenAIUseKeyModelID(t *testing.T) {
+	repo := &settingPublicRepoStub{
+		values: map[string]string{
+			SettingKeyOpenAIUseKeyModelID: "gpt-5.4-mini",
+		},
+	}
+	svc := NewSettingService(repo, &config.Config{})
+
+	settings, err := svc.GetPublicSettings(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, "gpt-5.4-mini", settings.OpenAIUseKeyModelID)
+}
+
+func TestSettingService_GetPublicSettings_DefaultsOpenAIUseKeyModelID(t *testing.T) {
+	repo := &settingPublicRepoStub{
+		values: map[string]string{},
+	}
+	svc := NewSettingService(repo, &config.Config{})
+
+	settings, err := svc.GetPublicSettings(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, "gpt-5.5", settings.OpenAIUseKeyModelID)
+}

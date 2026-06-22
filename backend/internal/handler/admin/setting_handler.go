@@ -160,6 +160,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		TablePageSizeOptions:                 settings.TablePageSizeOptions,
 		CustomMenuItems:                      dto.ParseCustomMenuItems(settings.CustomMenuItems),
 		CustomEndpoints:                      dto.ParseCustomEndpoints(settings.CustomEndpoints),
+		OpenAIUseKeyModelID:                  settings.OpenAIUseKeyModelID,
 		DefaultConcurrency:                   settings.DefaultConcurrency,
 		DefaultBalance:                       settings.DefaultBalance,
 		DefaultSubscriptions:                 defaultSubscriptions,
@@ -304,6 +305,7 @@ type UpdateSettingsRequest struct {
 	TablePageSizeOptions        []int                 `json:"table_page_size_options"`
 	CustomMenuItems             *[]dto.CustomMenuItem `json:"custom_menu_items"`
 	CustomEndpoints             *[]dto.CustomEndpoint `json:"custom_endpoints"`
+	OpenAIUseKeyModelID         *string               `json:"openai_use_key_model_id"`
 
 	// 默认配置
 	DefaultConcurrency   int                              `json:"default_concurrency"`
@@ -937,34 +939,40 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		TablePageSizeOptions:            req.TablePageSizeOptions,
 		CustomMenuItems:                 customMenuJSON,
 		CustomEndpoints:                 customEndpointsJSON,
-		DefaultConcurrency:              req.DefaultConcurrency,
-		DefaultBalance:                  req.DefaultBalance,
-		DefaultSubscriptions:            defaultSubscriptions,
-		EnableModelFallback:             req.EnableModelFallback,
-		FallbackModelAnthropic:          req.FallbackModelAnthropic,
-		FallbackModelOpenAI:             req.FallbackModelOpenAI,
-		FallbackModelGemini:             req.FallbackModelGemini,
-		FallbackModelAntigravity:        req.FallbackModelAntigravity,
-		EnableIdentityPatch:             req.EnableIdentityPatch,
-		IdentityPatchPrompt:             req.IdentityPatchPrompt,
-		SystemPromptAnthropic:           req.SystemPromptAnthropic,
-		SystemPromptModeAnthropic:       req.SystemPromptModeAnthropic,
-		SystemPromptOpenAI:              req.SystemPromptOpenAI,
-		SystemPromptModeOpenAI:          req.SystemPromptModeOpenAI,
-		SystemPromptGemini:              req.SystemPromptGemini,
-		SystemPromptModeGemini:          req.SystemPromptModeGemini,
-		SystemPromptAntigravity:         req.SystemPromptAntigravity,
-		SystemPromptModeAntigravity:     req.SystemPromptModeAntigravity,
-		SystemPromptUserScopeEnabled:    req.SystemPromptUserScopeEnabled,
-		SystemPromptUserScopeMode:       req.SystemPromptUserScopeMode,
-		SystemPromptUserScopeUserIDs:    req.SystemPromptUserScopeUserIDs,
-		MinClaudeCodeVersion:            req.MinClaudeCodeVersion,
-		MaxClaudeCodeVersion:            req.MaxClaudeCodeVersion,
-		AllowUngroupedKeyScheduling:     req.AllowUngroupedKeyScheduling,
-		BackendModeEnabled:              req.BackendModeEnabled,
-		RedeemDeliveryText:              req.RedeemDeliveryText,
-		AttractPopupTitle:               req.AttractPopupTitle,
-		AttractPopupMarkdown:            req.AttractPopupMarkdown,
+		OpenAIUseKeyModelID: func() string {
+			if req.OpenAIUseKeyModelID != nil {
+				return strings.TrimSpace(*req.OpenAIUseKeyModelID)
+			}
+			return previousSettings.OpenAIUseKeyModelID
+		}(),
+		DefaultConcurrency:           req.DefaultConcurrency,
+		DefaultBalance:               req.DefaultBalance,
+		DefaultSubscriptions:         defaultSubscriptions,
+		EnableModelFallback:          req.EnableModelFallback,
+		FallbackModelAnthropic:       req.FallbackModelAnthropic,
+		FallbackModelOpenAI:          req.FallbackModelOpenAI,
+		FallbackModelGemini:          req.FallbackModelGemini,
+		FallbackModelAntigravity:     req.FallbackModelAntigravity,
+		EnableIdentityPatch:          req.EnableIdentityPatch,
+		IdentityPatchPrompt:          req.IdentityPatchPrompt,
+		SystemPromptAnthropic:        req.SystemPromptAnthropic,
+		SystemPromptModeAnthropic:    req.SystemPromptModeAnthropic,
+		SystemPromptOpenAI:           req.SystemPromptOpenAI,
+		SystemPromptModeOpenAI:       req.SystemPromptModeOpenAI,
+		SystemPromptGemini:           req.SystemPromptGemini,
+		SystemPromptModeGemini:       req.SystemPromptModeGemini,
+		SystemPromptAntigravity:      req.SystemPromptAntigravity,
+		SystemPromptModeAntigravity:  req.SystemPromptModeAntigravity,
+		SystemPromptUserScopeEnabled: req.SystemPromptUserScopeEnabled,
+		SystemPromptUserScopeMode:    req.SystemPromptUserScopeMode,
+		SystemPromptUserScopeUserIDs: req.SystemPromptUserScopeUserIDs,
+		MinClaudeCodeVersion:         req.MinClaudeCodeVersion,
+		MaxClaudeCodeVersion:         req.MaxClaudeCodeVersion,
+		AllowUngroupedKeyScheduling:  req.AllowUngroupedKeyScheduling,
+		BackendModeEnabled:           req.BackendModeEnabled,
+		RedeemDeliveryText:           req.RedeemDeliveryText,
+		AttractPopupTitle:            req.AttractPopupTitle,
+		AttractPopupMarkdown:         req.AttractPopupMarkdown,
 		OpsMonitoringEnabled: func() bool {
 			if req.OpsMonitoringEnabled != nil {
 				return *req.OpsMonitoringEnabled
@@ -1183,6 +1191,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		TablePageSizeOptions:                 updatedSettings.TablePageSizeOptions,
 		CustomMenuItems:                      dto.ParseCustomMenuItems(updatedSettings.CustomMenuItems),
 		CustomEndpoints:                      dto.ParseCustomEndpoints(updatedSettings.CustomEndpoints),
+		OpenAIUseKeyModelID:                  updatedSettings.OpenAIUseKeyModelID,
 		DefaultConcurrency:                   updatedSettings.DefaultConcurrency,
 		DefaultBalance:                       updatedSettings.DefaultBalance,
 		DefaultSubscriptions:                 updatedDefaultSubscriptions,
@@ -1476,6 +1485,9 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	}
 	if before.FallbackModelAntigravity != after.FallbackModelAntigravity {
 		changed = append(changed, "fallback_model_antigravity")
+	}
+	if before.OpenAIUseKeyModelID != after.OpenAIUseKeyModelID {
+		changed = append(changed, "openai_use_key_model_id")
 	}
 	if before.EnableIdentityPatch != after.EnableIdentityPatch {
 		changed = append(changed, "enable_identity_patch")
