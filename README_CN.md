@@ -438,7 +438,7 @@ redis:
 
 jwt:
   secret: "change-this-to-a-secure-random-string"
-  expire_hour: 24
+  expire_hour: 168
 
 default:
   user_concurrency: 5
