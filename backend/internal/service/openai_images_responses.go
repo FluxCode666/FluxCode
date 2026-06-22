@@ -73,7 +73,7 @@ func mergeOpenAIResponsesImageMeta(dst *openAIResponsesImageResult, src openAIRe
 
 func extractOpenAIResponsesImageMetaFromLifecycleEvent(payload []byte) (openAIResponsesImageResult, int64, bool) {
 	switch gjson.GetBytes(payload, "type").String() {
-	case "response.created", "response.in_progress", "response.completed":
+	case "response.created", "response.in_progress", "response.completed", "response.done":
 	default:
 		return openAIResponsesImageResult{}, 0, false
 	}
@@ -287,11 +287,19 @@ func buildOpenAIImagesResponsesRequest(parsed *OpenAIImagesRequest, toolModel st
 }
 
 func extractOpenAIImagesFromResponsesCompleted(payload []byte) ([]openAIResponsesImageResult, int64, []byte, openAIResponsesImageResult, error) {
-	if gjson.GetBytes(payload, "type").String() != "response.completed" {
+	eventType := gjson.GetBytes(payload, "type").String()
+	switch eventType {
+	case "", "response.completed", "response.done":
+	default:
 		return nil, 0, nil, openAIResponsesImageResult{}, fmt.Errorf("unexpected event type")
 	}
 
-	createdAt := gjson.GetBytes(payload, "response.created_at").Int()
+	root := gjson.ParseBytes(payload)
+	if response := root.Get("response"); response.Exists() && response.IsObject() {
+		root = response
+	}
+
+	createdAt := root.Get("created_at").Int()
 	if createdAt <= 0 {
 		createdAt = time.Now().Unix()
 	}
@@ -300,7 +308,7 @@ func extractOpenAIImagesFromResponsesCompleted(payload []byte) ([]openAIResponse
 		results   []openAIResponsesImageResult
 		firstMeta openAIResponsesImageResult
 	)
-	output := gjson.GetBytes(payload, "response.output")
+	output := root.Get("output")
 	if output.IsArray() {
 		for _, item := range output.Array() {
 			if item.Get("type").String() != "image_generation_call" {
@@ -326,7 +334,9 @@ func extractOpenAIImagesFromResponsesCompleted(payload []byte) ([]openAIResponse
 	}
 
 	var usageRaw []byte
-	if usage := gjson.GetBytes(payload, "response.tool_usage.image_gen"); usage.Exists() && usage.IsObject() {
+	if usage := root.Get("tool_usage.image_gen"); usage.Exists() && usage.IsObject() {
+		usageRaw = []byte(usage.Raw)
+	} else if usage := root.Get("usage"); usage.Exists() && usage.IsObject() {
 		usageRaw = []byte(usage.Raw)
 	}
 	return results, createdAt, usageRaw, firstMeta, nil
@@ -368,6 +378,17 @@ func collectOpenAIImagesFromResponsesBody(body []byte) ([]openAIResponsesImageRe
 		responseMeta    openAIResponsesImageResult
 	)
 
+	if trimmed := bytes.TrimSpace(body); gjson.ValidBytes(trimmed) {
+		eventType := gjson.GetBytes(trimmed, "type").String()
+		if eventType == "" || eventType == "response.completed" || eventType == "response.done" {
+			results, completedAt, completedUsageRaw, firstMeta, err := extractOpenAIImagesFromResponsesCompleted(trimmed)
+			if err != nil {
+				return nil, 0, nil, openAIResponsesImageResult{}, false, err
+			}
+			return results, completedAt, completedUsageRaw, firstMeta, true, nil
+		}
+	}
+
 	for _, line := range bytes.Split(body, []byte("\n")) {
 		line = bytes.TrimRight(line, "\r")
 		data, ok := extractOpenAISSEDataLine(string(line))
@@ -395,7 +416,7 @@ func collectOpenAIImagesFromResponsesBody(body []byte) ([]openAIResponsesImageRe
 				mergeOpenAIResponsesImageMeta(&result, responseMeta)
 				appendOpenAIResponsesImageResultDedup(&fallbackResults, fallbackSeen, itemID, result)
 			}
-		case "response.completed":
+		case "response.completed", "response.done":
 			results, completedAt, completedUsageRaw, firstMeta, err := extractOpenAIImagesFromResponsesCompleted(payload)
 			if err != nil {
 				return nil, 0, nil, openAIResponsesImageResult{}, false, err
@@ -642,7 +663,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponse(
 						}
 						pendingSeen[key] = struct{}{}
 						pendingResults = append(pendingResults, img)
-					case "response.completed":
+					case "response.completed", "response.done":
 						results, _, usageRaw, firstMeta, extractErr := extractOpenAIImagesFromResponsesCompleted(dataBytes)
 						if extractErr != nil {
 							_ = s.writeOpenAIImagesStreamEvent(c, flusher, "error", buildOpenAIImagesStreamErrorBody(extractErr.Error()))

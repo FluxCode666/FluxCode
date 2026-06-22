@@ -76,3 +76,46 @@ func TestBuildOpenAIImagesResponsesRequestUsesOfficialToolParameters(t *testing.
 	require.Equal(t, int64(2), tool.Get("partial_images").Int())
 	require.False(t, tool.Get("n").Exists())
 }
+
+func TestCollectOpenAIImagesFromResponsesBodyHandlesFullResponsesJSON(t *testing.T) {
+	body := []byte(`{
+		"id": "resp_123",
+		"created_at": 1710000006,
+		"status": "completed",
+		"output": [
+			{
+				"id": "ig_123",
+				"type": "image_generation_call",
+				"result": "aGVsbG8=",
+				"revised_prompt": "draw a cat",
+				"output_format": "png"
+			}
+		],
+		"usage": {"input_tokens": 1, "output_tokens": 1}
+	}`)
+
+	results, createdAt, usageRaw, firstMeta, foundFinal, err := collectOpenAIImagesFromResponsesBody(body)
+
+	require.NoError(t, err)
+	require.True(t, foundFinal)
+	require.Equal(t, int64(1710000006), createdAt)
+	require.JSONEq(t, `{"input_tokens":1,"output_tokens":1}`, string(usageRaw))
+	require.Len(t, results, 1)
+	require.Equal(t, "aGVsbG8=", results[0].Result)
+	require.Equal(t, "draw a cat", firstMeta.RevisedPrompt)
+	require.Equal(t, "png", firstMeta.OutputFormat)
+}
+
+func TestCollectOpenAIImagesFromResponsesBodyHandlesResponseDoneEvent(t *testing.T) {
+	body := []byte("data: {\"type\":\"response.done\",\"response\":{\"created_at\":1710000007,\"output\":[{\"id\":\"ig_456\",\"type\":\"image_generation_call\",\"result\":\"aW1hZ2U=\",\"output_format\":\"webp\"}],\"usage\":{\"input_tokens\":2,\"output_tokens\":1}}}\n\n")
+
+	results, createdAt, usageRaw, firstMeta, foundFinal, err := collectOpenAIImagesFromResponsesBody(body)
+
+	require.NoError(t, err)
+	require.True(t, foundFinal)
+	require.Equal(t, int64(1710000007), createdAt)
+	require.JSONEq(t, `{"input_tokens":2,"output_tokens":1}`, string(usageRaw))
+	require.Len(t, results, 1)
+	require.Equal(t, "aW1hZ2U=", results[0].Result)
+	require.Equal(t, "webp", firstMeta.OutputFormat)
+}
