@@ -1,4 +1,4 @@
-# Sub2API
+# FluxCode
 
 <div align="center">
 
@@ -8,31 +8,23 @@
 [![Redis](https://img.shields.io/badge/Redis-7+-DC382D.svg)](https://redis.io/)
 [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg)](https://www.docker.com/)
 
-<a href="https://trendshift.io/repositories/21823" target="_blank"><img src="https://trendshift.io/api/badge/repositories/21823" alt="Wei-Shaw%2Fsub2api | Trendshift" width="250" height="55"/></a>
-
 **サブスクリプションクォータ配分のための AI API ゲートウェイプラットフォーム**
 
 [English](README.md) | [中文](README_CN.md) | 日本語
 
 </div>
 
-> **Sub2API が公式に使用しているドメインは `sub2api.org` と `pincc.ai` のみです。Sub2API の名称を使用している他のウェブサイトは、サードパーティによるデプロイやサービスであり、本プロジェクトとは一切関係がありません。ご利用の際はご自身で確認・判断をお願いします。**
+> **FluxCode は `https://github.com/FluxCode666/FluxCode` でメンテナンスされています。公開デモ、リレーサービス、スポンサーリンクはサードパーティによるデプロイやサービスである可能性があります。利用前に所有者と認証情報の安全性をご確認ください。**
 
 ---
 
 ## デモ
 
-Sub2API をオンラインでお試しください: **[https://demo.sub2api.org/](https://demo.sub2api.org/)**
-
-デモ用認証情報（共有デモ環境です。セルフホスト環境では**自動作成されません**）:
-
-| メールアドレス | パスワード |
-|-------|----------|
-| admin@sub2api.org | admin123 |
+この README では、FluxCode の公式公開デモは現在案内していません。セルフホスト環境では、デプロイ後に `http://YOUR_SERVER_IP:8080` を開き、セットアップウィザードを完了してください。
 
 ## 概要
 
-Sub2API は、AI 製品のサブスクリプションから API クォータを配分・管理するために設計された AI API ゲートウェイプラットフォームです。ユーザーはプラットフォームが生成した API キーを通じて上流の AI サービスにアクセスでき、プラットフォームは認証、課金、負荷分散、リクエスト転送を処理します。
+FluxCode は、AI 製品のサブスクリプションから API クォータを配分・管理するために設計された AI API ゲートウェイプラットフォームです。ユーザーはプラットフォームが生成した API キーを通じて上流の AI サービスにアクセスでき、プラットフォームは認証、課金、負荷分散、リクエスト転送を処理します。
 
 ## 機能
 
@@ -53,7 +45,7 @@ Sub2API は、AI 製品のサブスクリプションから API クォータを�
 <table>
 <tr>
 <td width="180" align="center" valign="middle"><a href="https://shop.pincc.ai/"><img src="assets/partners/logos/pincc-logo.png" alt="pincc" width="150"></a></td>
-<td valign="middle"><b><a href="https://shop.pincc.ai/">PinCC</a></b> は Sub2API 上に構築された公式リレーサービスで、Claude Code、Codex、Gemini などの人気モデルへの安定したアクセスを提供します。デプロイやメンテナンスは不要で、すぐにご利用いただけます。</td>
+<td valign="middle"><b><a href="https://shop.pincc.ai/">PinCC</a></b> は FluxCode 上に構築された公式リレーサービスで、Claude Code、Codex、Gemini などの人気モデルへの安定したアクセスを提供します。デプロイやメンテナンスは不要で、すぐにご利用いただけます。</td>
 </tr>
 <tr>
 <td width="180"><a href="https://www.packyapi.com/register?aff=sub2api"><img src="assets/partners/logos/packycode.png" alt="PackyCode" width="150"></a></td>
@@ -62,7 +54,7 @@ Sub2API は、AI 製品のサブスクリプションから API クォータを�
 
 <tr>
 <td width="180"><a href="https://poixe.com/i/sub2api"><img src="assets/partners/logos/poixe.png" alt="PoixeAi" width="150"></a></td>
-<td>Poixe AI のご支援に感謝します！Poixe AI は信頼性の高い LLM API サービスを提供しています。プラットフォームの API エンドポイントを活用して、AI 搭載プロダクトをシームレスに構築できます。また、ベンダーとして AI API リソースをプラットフォームに提供し、収益を得ることも可能です。専用の <a href="https://poixe.com/i/sub2api">sub2api</a> 紹介リンクから登録すると、初回チャージ時に $5 USD のボーナスがもらえます。</td>
+<td>Poixe AI のご支援に感謝します！Poixe AI は信頼性の高い LLM API サービスを提供しています。プラットフォームの API エンドポイントを活用して、AI 搭載プロダクトをシームレスに構築できます。また、ベンダーとして AI API リソースをプラットフォームに提供し、収益を得ることも可能です。専用の <a href="https://poixe.com/i/sub2api">紹介リンク</a>から登録すると、初回チャージ時に $5 USD のボーナスがもらえます。</td>
 </tr>
 
 <tr>
@@ -72,7 +64,7 @@ Sub2API は、AI 製品のサブスクリプションから API クォータを�
 
 <tr>
 <td width="180"><a href="https://code.silkapi.com/"><img src="assets/partners/logos/silkapi.png" alt="silkapi" width="150"></a></td>
-<td>SilkAPI のご支援に感謝します！<a href="https://code.silkapi.com/">SilkAPI</a> は Sub2API をベースに構築された中継サービスで、高速かつ安定した Codex API 中継の提供に特化しています。</td>
+<td>SilkAPI のご支援に感謝します！<a href="https://code.silkapi.com/">SilkAPI</a> は FluxCode をベースに構築された中継サービスで、高速かつ安定した Codex API 中継の提供に特化しています。</td>
 </tr>
 
 <tr>
@@ -82,12 +74,12 @@ Sub2API は、AI 製品のサブスクリプションから API クォータを�
 
 <tr>
 <td width="180"><a href="https://www.aicodemirror.com/register?invitecode=KMVZQM"><img src="assets/partners/logos/AICodeMirror.jpg" alt="AICodeMirror" width="150"></a></td>
-<td>AICodeMirror のご支援に感謝します！AICodeMirror は Claude Code / Codex / Gemini CLI の公式高安定性リレーサービスを提供しており、エンタープライズグレードの同時実行、迅速な請求書発行、24時間年中無休の専属テクニカルサポートを備えています。Claude Code / Codex / Gemini の公式チャネルを定価の 38% / 2% / 9% で利用可能、チャージ時にはさらに追加割引！AICodeMirror は sub2api ユーザー向けに特別特典を提供中：<a href="https://www.aicodemirror.com/register?invitecode=KMVZQM">こちらのリンク</a>から登録すると、初回チャージが 20% オフ、法人のお客様は最大 25% オフ！</td>
+<td>AICodeMirror のご支援に感謝します！AICodeMirror は Claude Code / Codex / Gemini CLI の公式高安定性リレーサービスを提供しており、エンタープライズグレードの同時実行、迅速な請求書発行、24時間年中無休の専属テクニカルサポートを備えています。Claude Code / Codex / Gemini の公式チャネルを定価の 38% / 2% / 9% で利用可能、チャージ時にはさらに追加割引！AICodeMirror は FluxCode ユーザー向けに特別特典を提供中：<a href="https://www.aicodemirror.com/register?invitecode=KMVZQM">こちらのリンク</a>から登録すると、初回チャージが 20% オフ、法人のお客様は最大 25% オフ！</td>
 </tr>
 
 <tr>
 <td width="180"><a href="https://aigocode.com/invite/SUB2API"><img src="assets/partners/logos/aigocode.png" alt="AIGoCode" width="150"></a></td>
-<td>AIGoCode のご支援に感謝します！AIGoCode は Claude Code、Codex、最新の Gemini モデルを統合したオールインワンプラットフォームで、安定的かつ効率的でコストパフォーマンスに優れた AI コーディングサービスを提供します。柔軟なサブスクリプションプラン、アカウント停止リスクゼロ、VPN 不要の直接アクセス、超高速レスポンスが特長です。AIGoCode は sub2api ユーザー向けに特別特典を用意しています：<a href="https://aigocode.com/invite/SUB2API">こちらのリンク</a>から登録すると、初回チャージ時に 10% のボーナスクレジットを追加プレゼント！</td>
+<td>AIGoCode のご支援に感謝します！AIGoCode は Claude Code、Codex、最新の Gemini モデルを統合したオールインワンプラットフォームで、安定的かつ効率的でコストパフォーマンスに優れた AI コーディングサービスを提供します。柔軟なサブスクリプションプラン、アカウント停止リスクゼロ、VPN 不要の直接アクセス、超高速レスポンスが特長です。AIGoCode は FluxCode ユーザー向けに特別特典を用意しています：<a href="https://aigocode.com/invite/SUB2API">こちらのリンク</a>から登録すると、初回チャージ時に 10% のボーナスクレジットを追加プレゼント！</td>
 </tr>
 
 <tr>
@@ -99,11 +91,11 @@ Sub2API は、AI 製品のサブスクリプションから API クォータを�
 
 ## エコシステム
 
-Sub2API を拡張・統合するコミュニティプロジェクト:
+FluxCode を拡張・統合するコミュニティプロジェクト:
 
 | プロジェクト | 説明 | 機能 |
 |---------|-------------|----------|
-| ~~[Sub2ApiPay](https://github.com/touwaeriol/sub2apipay)~~ | ~~セルフサービス決済システム~~ | **内蔵済み** — 決済機能は Sub2API に統合されました。別途デプロイは不要です。[決済設定ガイド](docs/PAYMENT.md)をご参照ください |
+| ~~[Sub2ApiPay](https://github.com/touwaeriol/sub2apipay)~~ | ~~セルフサービス決済システム~~ | **内蔵済み** — 決済機能は FluxCode に統合されました。別途デプロイは不要です。[決済設定ガイド](docs/PAYMENT.md)をご参照ください |
 | [sub2api-mobile](https://github.com/ckken/sub2api-mobile) | モバイル管理コンソール | ユーザー管理、アカウント管理、監視ダッシュボード、マルチバックエンド切り替えが可能なクロスプラットフォームアプリ（iOS/Android/Web）。Expo + React Native で構築 |
 
 ## 技術スタック
@@ -119,7 +111,7 @@ Sub2API を拡張・統合するコミュニティプロジェクト:
 
 ## Nginx リバースプロキシに関する注意
 
-Sub2API（または CRS）を Nginx でリバースプロキシし、Codex CLI と組み合わせて使用する場合、Nginx の `http` ブロックに以下の設定を追加してください:
+FluxCode（または CRS）を Nginx でリバースプロキシし、Codex CLI と組み合わせて使用する場合、Nginx の `http` ブロックに以下の設定を追加してください:
 
 ```nginx
 underscores_in_headers on;
@@ -145,13 +137,13 @@ GitHub Releases からビルド済みバイナリをダウンロードするワ�
 #### インストール手順
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/Wei-Shaw/sub2api/main/deploy/install.sh | sudo bash
+curl -sSL https://raw.githubusercontent.com/FluxCode666/FluxCode/main/deploy/install.sh | sudo bash
 ```
 
 スクリプトは以下を実行します:
 1. システムアーキテクチャの検出
 2. 最新リリースのダウンロード
-3. バイナリを `/opt/sub2api` にインストール
+3. バイナリを `/opt/fluxcode` にインストール
 4. systemd サービスの作成
 5. システムユーザーと権限の設定
 
@@ -159,10 +151,10 @@ curl -sSL https://raw.githubusercontent.com/Wei-Shaw/sub2api/main/deploy/install
 
 ```bash
 # 1. サービスを起動
-sudo systemctl start sub2api
+sudo systemctl start fluxcode
 
 # 2. 起動時の自動起動を有効化
-sudo systemctl enable sub2api
+sudo systemctl enable fluxcode
 
 # 3. ブラウザでセットアップウィザードを開く
 # http://YOUR_SERVER_IP:8080
@@ -186,16 +178,16 @@ Web インターフェースでは以下が可能です:
 
 ```bash
 # ステータスを確認
-sudo systemctl status sub2api
+sudo systemctl status fluxcode
 
 # ログを表示
-sudo journalctl -u sub2api -f
+sudo journalctl -u fluxcode -f
 
 # サービスを再起動
-sudo systemctl restart sub2api
+sudo systemctl restart fluxcode
 
 # アンインストール
-curl -sSL https://raw.githubusercontent.com/Wei-Shaw/sub2api/main/deploy/install.sh | sudo bash -s -- uninstall -y
+curl -sSL https://raw.githubusercontent.com/FluxCode666/FluxCode/main/deploy/install.sh | sudo bash -s -- uninstall -y
 ```
 
 ---
@@ -215,16 +207,16 @@ PostgreSQL と Redis のコンテナを含む Docker Compose でデプロイし�
 
 ```bash
 # デプロイ用ディレクトリを作成
-mkdir -p sub2api-deploy && cd sub2api-deploy
+mkdir -p fluxcode-deploy && cd fluxcode-deploy
 
 # デプロイ準備スクリプトをダウンロードして実行
-curl -sSL https://raw.githubusercontent.com/Wei-Shaw/sub2api/main/deploy/docker-deploy.sh | bash
+curl -sSL https://raw.githubusercontent.com/FluxCode666/FluxCode/main/deploy/docker-deploy.sh | bash
 
 # サービスを起動
 docker compose up -d
 
 # ログを表示
-docker compose logs -f sub2api
+docker logs -f fluxcode
 ```
 
 **スクリプトの動作内容:**
@@ -240,8 +232,8 @@ docker compose logs -f sub2api
 
 ```bash
 # 1. リポジトリをクローン
-git clone https://github.com/Wei-Shaw/sub2api.git
-cd sub2api/deploy
+git clone https://github.com/FluxCode666/FluxCode.git
+cd FluxCode/deploy
 
 # 2. 環境設定ファイルをコピー
 cp .env.example .env
@@ -297,7 +289,7 @@ docker compose up -d
 docker compose -f docker-compose.local.yml ps
 
 # 7. ログを表示
-docker compose -f docker-compose.local.yml logs -f sub2api
+docker logs -f fluxcode
 ```
 
 #### デプロイバージョン
@@ -315,7 +307,7 @@ docker compose -f docker-compose.local.yml logs -f sub2api
 
 管理者パスワードが自動生成された場合は、ログで確認できます:
 ```bash
-docker compose -f docker-compose.local.yml logs sub2api | grep "admin password"
+docker logs fluxcode 2>&1 | grep "admin password"
 ```
 
 #### アップグレード
@@ -334,14 +326,14 @@ docker compose -f docker-compose.local.yml up -d
 # 移行元サーバーにて
 docker compose -f docker-compose.local.yml down
 cd ..
-tar czf sub2api-complete.tar.gz sub2api-deploy/
+tar czf fluxcode-complete.tar.gz fluxcode-deploy/
 
 # 新しいサーバーに転送
-scp sub2api-complete.tar.gz user@new-server:/path/
+scp fluxcode-complete.tar.gz user@new-server:/path/
 
 # 移行先サーバーにて
-tar xzf sub2api-complete.tar.gz
-cd sub2api-deploy/
+tar xzf fluxcode-complete.tar.gz
+cd fluxcode-deploy/
 docker compose -f docker-compose.local.yml up -d
 ```
 
@@ -379,8 +371,8 @@ rm -rf data/ postgres_data/ redis_data/
 
 ```bash
 # 1. リポジトリをクローン
-git clone https://github.com/Wei-Shaw/sub2api.git
-cd sub2api
+git clone https://github.com/FluxCode666/FluxCode.git
+cd FluxCode
 
 # 2. pnpm をインストール（未インストールの場合）
 npm install -g pnpm
@@ -393,7 +385,7 @@ pnpm run build
 
 # 4. フロントエンドを組み込んだバックエンドをビルド
 cd ../backend
-go build -tags embed -o sub2api ./cmd/server
+go build -tags embed -o fluxcode ./cmd/server
 
 # 5. 設定ファイルを作成
 cp ../deploy/config.example.yaml ./config.yaml
@@ -417,7 +409,7 @@ database:
   port: 5432
   user: "postgres"
   password: "your_password"
-  dbname: "sub2api"
+  dbname: "fluxcode"
 
 redis:
   host: "localhost"
@@ -496,7 +488,7 @@ URL バリデーションまたはレスポンスヘッダーフィルタリン�
 
 ```bash
 # 6. アプリケーションを実行
-./sub2api
+./fluxcode
 ```
 
 #### 開発モード
@@ -535,7 +527,7 @@ go generate ./cmd/server
 
 ## Antigravity サポート
 
-Sub2API は [Antigravity](https://antigravity.so/) アカウントをサポートしています。認証後、Claude および Gemini モデル用の専用エンドポイントが利用可能になります。
+FluxCode は [Antigravity](https://antigravity.so/) アカウントをサポートしています。認証後、Claude および Gemini モデル用の専用エンドポイントが利用可能になります。
 
 ### 専用エンドポイント
 
@@ -568,7 +560,7 @@ Claude Code では、Plan Mode を自動的に終了できません。（通常�
 ## プロジェクト構成
 
 ```
-sub2api/
+FluxCode/
 ├── backend/                  # Go バックエンドサービス
 │   ├── cmd/server/           # アプリケーションエントリ
 │   ├── internal/             # 内部モジュール
@@ -605,11 +597,11 @@ sub2api/
 
 ## スター履歴
 
-<a href="https://star-history.com/#Wei-Shaw/sub2api&Date">
+<a href="https://star-history.com/#FluxCode666/FluxCode&Date">
  <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=Wei-Shaw/sub2api&type=Date&theme=dark" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=Wei-Shaw/sub2api&type=Date" />
-   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=Wei-Shaw/sub2api&type=Date" />
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=FluxCode666/FluxCode&type=Date&theme=dark" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=FluxCode666/FluxCode&type=Date" />
+   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=FluxCode666/FluxCode&type=Date" />
  </picture>
 </a>
 
