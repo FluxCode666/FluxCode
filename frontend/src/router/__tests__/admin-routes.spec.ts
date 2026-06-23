@@ -78,4 +78,16 @@ describe('admin route mapping', () => {
     expect(route?.meta.requiresAuth).toBe(false)
     expect(route?.meta.titleKey).toBe('channelStatus.title')
   })
+
+  it('registers the admin-only growth dashboard route', async () => {
+    const { default: router } = await import('../index')
+
+    const growthRoute = router.getRoutes().find((route) => route.name === 'AdminGrowthDashboard')
+
+    expect(growthRoute?.path).toBe('/admin/growth')
+    expect(growthRoute?.meta.requiresAuth).toBe(true)
+    expect(growthRoute?.meta.requiresAdmin).toBe(true)
+    expect(growthRoute?.meta.titleKey).toBe('admin.growth.title')
+    expect(growthRoute?.meta.descriptionKey).toBe('admin.growth.description')
+  })
 })

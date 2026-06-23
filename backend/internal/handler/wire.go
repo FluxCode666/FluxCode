@@ -10,6 +10,7 @@ import (
 // ProvideAdminHandlers creates the AdminHandlers struct
 func ProvideAdminHandlers(
 	dashboardHandler *admin.DashboardHandler,
+	growthHandler *admin.GrowthHandler,
 	userHandler *admin.UserHandler,
 	groupHandler *admin.GroupHandler,
 	accountHandler *admin.AccountHandler,
@@ -45,6 +46,7 @@ func ProvideAdminHandlers(
 ) *AdminHandlers {
 	return &AdminHandlers{
 		Dashboard:              dashboardHandler,
+		Growth:                 growthHandler,
 		User:                   userHandler,
 		Group:                  groupHandler,
 		Account:                accountHandler,
@@ -167,6 +169,7 @@ var ProviderSet = wire.NewSet(
 
 	// Admin handlers
 	admin.NewDashboardHandler,
+	admin.NewGrowthHandler,
 	ProvideAdminUserHandler,
 	admin.NewGroupHandler,
 	admin.NewAccountHandler,

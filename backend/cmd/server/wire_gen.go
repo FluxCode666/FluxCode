@@ -109,6 +109,9 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	}
 	dashboardAggregationService := service.ProvideDashboardAggregationService(dashboardAggregationRepository, timingWheelService, redisClient, configConfig)
 	dashboardHandler := admin.NewDashboardHandler(dashboardService, dashboardAggregationService)
+	growthRepository := repository.NewGrowthRepository(db)
+	growthService := service.NewGrowthService(growthRepository)
+	growthHandler := admin.NewGrowthHandler(growthService)
 	schedulerCache := repository.ProvideSchedulerCache(redisClient, configConfig)
 	accountRepository := repository.NewAccountRepository(client, db, schedulerCache)
 	proxyExitInfoProber := repository.NewProxyExitInfoProber(configConfig)
@@ -250,7 +253,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	salesCommissionHandler := admin.NewSalesCommissionHandler(salesCommissionService)
 	promotionService := service.NewPromotionService(promotionRepository)
 	promotionHandler := admin.NewPromotionHandler(promotionService)
-	adminHandlers := handler.ProvideAdminHandlers(dashboardHandler, adminUserHandler, groupHandler, accountHandler, adminAnnouncementHandler, dataManagementHandler, backupHandler, oAuthHandler, openAIOAuthHandler, geminiOAuthHandler, antigravityOAuthHandler, proxyHandler, adminRedeemHandler, promoHandler, settingHandler, opsHandler, systemHandler, adminSubscriptionHandler, adminUsageHandler, userAttributeHandler, errorPassthroughHandler, tlsFingerprintProfileHandler, adminAPIKeyHandler, scheduledTestHandler, pricingPlanHandler, poolMonitorHandler, channelHandler, channelMonitorHandler, channelMonitorRequestTemplateHandler, paymentHandler, referralHandler, salesCommissionHandler, promotionHandler)
+	adminHandlers := handler.ProvideAdminHandlers(dashboardHandler, growthHandler, adminUserHandler, groupHandler, accountHandler, adminAnnouncementHandler, dataManagementHandler, backupHandler, oAuthHandler, openAIOAuthHandler, geminiOAuthHandler, antigravityOAuthHandler, proxyHandler, adminRedeemHandler, promoHandler, settingHandler, opsHandler, systemHandler, adminSubscriptionHandler, adminUsageHandler, userAttributeHandler, errorPassthroughHandler, tlsFingerprintProfileHandler, adminAPIKeyHandler, scheduledTestHandler, pricingPlanHandler, poolMonitorHandler, channelHandler, channelMonitorHandler, channelMonitorRequestTemplateHandler, paymentHandler, referralHandler, salesCommissionHandler, promotionHandler)
 	usageRecordWorkerPool := service.NewUsageRecordWorkerPool(configConfig)
 	userMsgQueueCache := repository.NewUserMsgQueueCache(redisClient)
 	userMessageQueueService := service.ProvideUserMessageQueueService(userMsgQueueCache, rpmCache, configConfig)

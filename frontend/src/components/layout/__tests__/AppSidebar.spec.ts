@@ -30,3 +30,11 @@ describe('AppSidebar header styles', () => {
     expect(sidebarBrandBlockMatch?.[0]).not.toContain('overflow: hidden;')
   })
 })
+
+describe('AppSidebar admin growth dashboard nav', () => {
+  it('adds growth dashboard to the admin navigation only', () => {
+    expect(componentSource).toContain("path: '/admin/growth'")
+    expect(componentSource).toContain("label: t('nav.growthDashboard')")
+    expect(componentSource.match(/path: '\/admin\/growth'/g)).toHaveLength(1)
+  })
+})

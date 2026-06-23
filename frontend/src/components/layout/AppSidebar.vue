@@ -741,6 +741,7 @@ const channelMonitorConsoleEnabled = computed(
 const adminNavItems = computed((): NavItem[] => {
   const baseItems: NavItem[] = [
     { path: '/admin/dashboard', label: t('nav.dashboard'), icon: DashboardIcon },
+    { path: '/admin/growth', label: t('nav.growthDashboard'), icon: ChartIcon },
     ...(adminSettingsStore.opsMonitoringEnabled
       ? [{ path: '/admin/ops', label: t('nav.ops'), icon: ChartIcon }]
       : []),

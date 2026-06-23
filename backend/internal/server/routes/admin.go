@@ -20,6 +20,9 @@ func RegisterAdminRoutes(
 		// 仪表盘
 		registerDashboardRoutes(admin, h)
 
+		// 运营大盘
+		registerGrowthRoutes(admin, h)
+
 		// 用户管理
 		registerUserManagementRoutes(admin, h)
 
@@ -246,6 +249,27 @@ func registerDashboardRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		dashboard.POST("/api-keys-usage", h.Admin.Dashboard.GetBatchAPIKeysUsage)
 		dashboard.GET("/user-breakdown", h.Admin.Dashboard.GetUserBreakdown)
 		dashboard.POST("/aggregation/backfill", h.Admin.Dashboard.BackfillAggregation)
+	}
+}
+
+func registerGrowthRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	growth := admin.Group("/growth")
+	{
+		growth.GET("/overview", h.Admin.Growth.GetOverview)
+		growth.GET("/users/trend", h.Admin.Growth.GetUserTrend)
+		growth.GET("/users/sources", h.Admin.Growth.GetUserSources)
+		growth.GET("/users/source-payment-rates", h.Admin.Growth.GetSourcePaymentRates)
+		growth.GET("/retention/matrix", h.Admin.Growth.GetRetentionMatrix)
+		growth.GET("/retention/trend", h.Admin.Growth.GetRetentionTrend)
+		growth.GET("/payments/funnel", h.Admin.Growth.GetPaymentFunnel)
+		growth.GET("/payments/plans", h.Admin.Growth.GetPaymentPlans)
+		growth.GET("/payments/first-payment", h.Admin.Growth.GetFirstPayment)
+		growth.GET("/features/ranking", h.Admin.Growth.GetFeatureRanking)
+		growth.GET("/features/session-metrics", h.Admin.Growth.GetSessionMetrics)
+		growth.GET("/audience/devices", h.Admin.Growth.GetAudienceDevices)
+		growth.GET("/audience/os", h.Admin.Growth.GetAudienceOS)
+		growth.GET("/audience/browsers", h.Admin.Growth.GetAudienceBrowsers)
+		growth.GET("/audience/clients", h.Admin.Growth.GetAudienceClients)
 	}
 }
 
