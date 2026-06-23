@@ -18,4 +18,11 @@ describe('SettingsView channel monitor controls', () => {
       'channel_monitor_default_interval_seconds: form.channel_monitor_default_interval_seconds'
     )
   })
+
+  it('binds OpenAI use-key model setting into the form and save payload', () => {
+    expect(viewSource).toContain("t('admin.settings.codexCLIUA.openaiUseKeyModelId')")
+    expect(viewSource).toContain('v-model="form.openai_use_key_model_id"')
+    expect(viewSource).toContain("openai_use_key_model_id: 'gpt-5.5'")
+    expect(viewSource).toContain('openai_use_key_model_id: form.openai_use_key_model_id')
+  })
 })

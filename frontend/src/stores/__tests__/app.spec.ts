@@ -261,6 +261,7 @@ describe('useAppStore', () => {
         contact_info: 'test@test.com',
         api_base_url: 'https://api.test.com',
         doc_url: 'https://docs.test.com',
+        openai_use_key_model_id: 'gpt-5.4-mini',
       }
 
       const store = useAppStore()
@@ -270,6 +271,7 @@ describe('useAppStore', () => {
       expect(store.siteName).toBe('TestSite')
       expect(store.siteLogo).toBe('/logo.png')
       expect(store.siteVersion).toBe('1.0.0')
+      expect(store.openaiUseKeyModelId).toBe('gpt-5.4-mini')
       expect(store.publicSettingsLoaded).toBe(true)
     })
 
@@ -321,6 +323,7 @@ describe('useAppStore', () => {
         custom_endpoints: [],
         linuxdo_oauth_enabled: false,
         backend_mode_enabled: false,
+        openai_use_key_model_id: 'gpt-5.4-nano',
         version: '1.0.0'
       })
 
@@ -329,6 +332,7 @@ describe('useAppStore', () => {
 
       expect((window as any).__APP_CONFIG__.table_default_page_size).toBe(1000)
       expect((window as any).__APP_CONFIG__.table_page_size_options).toEqual([20, 100, 1000])
+      expect(store.openaiUseKeyModelId).toBe('gpt-5.4-nano')
       expect(localStorage.getItem('table-page-size')).toBeNull()
       expect(localStorage.getItem('table-page-size-source')).toBeNull()
     })

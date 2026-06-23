@@ -24,7 +24,14 @@ vi.mock('@/composables/useClipboard', () => ({
 vi.mock('vue-i18n', async () => {
   const actual = await vi.importActual<typeof import('vue-i18n')>('vue-i18n')
   const messages: Record<string, string> = {
-    'admin.accounts.geminiImagePromptDefault': 'Generate a cute orange cat astronaut sticker on a clean pastel background.'
+    'admin.accounts.geminiImagePromptDefault': 'Generate a cute orange cat astronaut sticker on a clean pastel background.',
+    'admin.accounts.geminiImageTestHint': 'Gemini image test hint',
+    'admin.accounts.geminiImageTestMode': 'Mode: Gemini image generation test',
+    'admin.accounts.openaiImagePromptDefault': 'Generate a clean product-style OpenAI image test.',
+    'admin.accounts.openaiImageTestHint': 'OpenAI image test hint',
+    'admin.accounts.openaiImageTestMode': 'Mode: OpenAI image generation test',
+    'admin.accounts.sendingGeminiImageRequest': 'Sending Gemini image generation test request...',
+    'admin.accounts.sendingOpenAIImageRequest': 'Sending OpenAI image generation test request...'
   }
   return {
     ...actual,
@@ -59,7 +66,7 @@ function createStreamResponse(lines: string[]) {
   } as Response
 }
 
-function mountModal() {
+function mountModal(accountOverrides: Record<string, unknown> = {}) {
   return mount(AccountTestModal, {
     props: {
       show: false,
@@ -68,7 +75,8 @@ function mountModal() {
         name: 'Gemini Image Test',
         platform: 'gemini',
         type: 'apikey',
-        status: 'active'
+        status: 'active',
+        ...accountOverrides
       }
     } as any,
     global: {
@@ -76,9 +84,9 @@ function mountModal() {
         BaseDialog: { template: '<div><slot /><slot name="footer" /></div>' },
         Select: { template: '<div class="select-stub"></div>' },
         TextArea: {
-          props: ['modelValue'],
+          props: ['modelValue', 'label', 'placeholder', 'hint'],
           emits: ['update:modelValue'],
-          template: '<textarea class="textarea-stub" :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" />'
+          template: '<label><span class="textarea-label">{{ label }}</span><textarea class="textarea-stub" :placeholder="placeholder" :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" /><small class="textarea-hint">{{ hint }}</small></label>'
         },
         Icon: true
       }
@@ -143,5 +151,41 @@ describe('AccountTestModal', () => {
     const preview = wrapper.find('img[alt="gemini-test-image-1"]')
     expect(preview.exists()).toBe(true)
     expect(preview.attributes('src')).toBe('data:image/png;base64,QUJD')
+  })
+
+  it('openai 图片模型测试使用 OpenAI 生图文案和模式', async () => {
+    getAvailableModels.mockResolvedValueOnce([
+      { id: 'gpt-image-1', display_name: 'GPT Image 1' },
+      { id: 'gpt-4.1', display_name: 'GPT 4.1' }
+    ])
+    global.fetch = vi.fn().mockResolvedValue(
+      createStreamResponse([
+        'data: {"type":"test_start","model":"gpt-image-1"}\n',
+        'data: {"type":"test_complete","success":true}\n'
+      ])
+    ) as any
+
+    const wrapper = mountModal({
+      name: 'OpenAI Image Test',
+      platform: 'openai'
+    })
+    await wrapper.setProps({ show: true })
+    await flushPromises()
+
+    expect(wrapper.find('.textarea-hint').text()).toBe('OpenAI image test hint')
+    expect(wrapper.text()).toContain('Mode: OpenAI image generation test')
+    expect(wrapper.text()).not.toContain('Mode: Gemini image generation test')
+    expect(wrapper.find('textarea.textarea-stub').element.value).toBe('Generate a clean product-style OpenAI image test.')
+
+    const buttons = wrapper.findAll('button')
+    const startButton = buttons.find((button) => button.text().includes('admin.accounts.startTest'))
+    expect(startButton).toBeTruthy()
+
+    await startButton!.trigger('click')
+    await flushPromises()
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Sending OpenAI image generation test request...')
+    expect(wrapper.text()).not.toContain('Sending Gemini image generation test request...')
   })
 })

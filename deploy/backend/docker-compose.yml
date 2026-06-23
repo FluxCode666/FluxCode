@@ -91,7 +91,7 @@ services:
       # CRITICAL: Must be IDENTICAL across ALL backend instances!
       # =======================================================================
       - JWT_SECRET=${JWT_SECRET:?JWT_SECRET is required for multi-machine deployment}
-      - JWT_EXPIRE_HOUR=${JWT_EXPIRE_HOUR:-24}
+      - JWT_EXPIRE_HOUR=${JWT_EXPIRE_HOUR:-168}
 
       # =======================================================================
       # TOTP (2FA) Configuration

@@ -49,6 +49,7 @@ export interface SystemSettings {
   backend_mode_enabled: boolean
   custom_menu_items: CustomMenuItem[]
   custom_endpoints: CustomEndpoint[]
+  openai_use_key_model_id: string
   // SMTP settings
   email_provider: string
   smtp_host: string
@@ -216,6 +217,7 @@ export interface UpdateSettingsRequest {
   backend_mode_enabled?: boolean
   custom_menu_items?: CustomMenuItem[]
   custom_endpoints?: CustomEndpoint[]
+  openai_use_key_model_id?: string
   email_provider?: string
   smtp_host?: string
   smtp_port?: number
