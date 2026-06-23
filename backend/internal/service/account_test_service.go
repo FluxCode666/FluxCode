@@ -1180,70 +1180,92 @@ func (s *AccountTestService) testOpenAIImageOAuth(c *gin.Context, ctx context.Co
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Failed to build image request: %s", err.Error()))
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, chatgptCodexAPIURL, bytes.NewReader(responsesBody))
-	if err != nil {
-		return s.sendErrorAndEnd(c, "Failed to create request")
-	}
-	req.Host = "chatgpt.com"
-	req.Header.Set("Authorization", "Bearer "+authToken)
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "text/event-stream")
-	req.Header.Set("OpenAI-Beta", "responses=experimental")
-	req.Header.Set("originator", resolveOpenAIUpstreamOriginator(c, false))
-	req.Header.Set("User-Agent", resolveCodexCLIUserAgent())
-	if sessionSeed := strings.TrimSpace(parsed.StickySessionSeed()); sessionSeed != "" {
-		sessionID := isolateOpenAISessionID(getAPIKeyIDFromContext(c), sessionSeed)
-		req.Header.Set("session_id", sessionID)
-		req.Header.Set("conversation_id", sessionID)
-	}
-	if chatgptAccountID := strings.TrimSpace(account.GetChatGPTAccountID()); chatgptAccountID != "" {
-		req.Header.Set("chatgpt-account-id", chatgptAccountID)
-	}
-
 	proxyURL := account.EffectiveProxyURL()
-	resp, err := s.httpUpstream.Do(req, proxyURL, account.ID, account.Concurrency)
-	if err != nil {
-		return s.sendErrorAndEnd(c, fmt.Sprintf("Responses API request failed: %s", err.Error()))
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
-	if err != nil {
-		return s.sendErrorAndEnd(c, fmt.Sprintf("Failed to read image response: %s", err.Error()))
-	}
-	if resp.StatusCode >= http.StatusBadRequest {
-		message := strings.TrimSpace(extractUpstreamErrorMessage(body))
-		if message == "" {
-			message = fmt.Sprintf("Responses API returned %d", resp.StatusCode)
+	const maxAttempts = 3
+	var lastNoOutputSummary string
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, chatgptCodexAPIURL, bytes.NewReader(responsesBody))
+		if err != nil {
+			return s.sendErrorAndEnd(c, "Failed to create request")
 		}
-		return s.sendErrorAndEnd(c, message)
-	}
-
-	results, _, _, _, _, err := collectOpenAIImagesFromResponsesBody(body)
-	if err != nil {
-		return s.sendErrorAndEnd(c, fmt.Sprintf("Failed to parse image response: %s", err.Error()))
-	}
-	if len(results) == 0 {
-		return s.sendErrorAndEnd(c, "No images returned from responses API")
-	}
-
-	for _, item := range results {
-		if item.RevisedPrompt != "" {
-			s.sendEvent(c, TestEvent{Type: "content", Text: item.RevisedPrompt})
+		req.Host = "chatgpt.com"
+		req.Header.Set("Authorization", "Bearer "+authToken)
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Accept", "text/event-stream")
+		req.Header.Set("OpenAI-Beta", "responses=experimental")
+		req.Header.Set("originator", resolveOpenAIUpstreamOriginator(c, false))
+		req.Header.Set("User-Agent", resolveCodexCLIUserAgent())
+		if sessionSeed := strings.TrimSpace(parsed.StickySessionSeed()); sessionSeed != "" {
+			sessionID := isolateOpenAISessionID(getAPIKeyIDFromContext(c), sessionSeed)
+			req.Header.Set("session_id", sessionID)
+			req.Header.Set("conversation_id", sessionID)
 		}
-		if item.Result == "" {
-			continue
+		if chatgptAccountID := strings.TrimSpace(account.GetChatGPTAccountID()); chatgptAccountID != "" {
+			req.Header.Set("chatgpt-account-id", chatgptAccountID)
 		}
-		mimeType := openAIImageOutputMIMEType(item.OutputFormat)
-		s.sendEvent(c, TestEvent{
-			Type:     "image",
-			ImageURL: "data:" + mimeType + ";base64," + item.Result,
-			MimeType: mimeType,
-		})
+
+		resp, err := s.httpUpstream.Do(req, proxyURL, account.ID, account.Concurrency)
+		if err != nil {
+			return s.sendErrorAndEnd(c, fmt.Sprintf("Responses API request failed: %s", err.Error()))
+		}
+
+		body, readErr := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+		_ = resp.Body.Close()
+		if readErr != nil {
+			return s.sendErrorAndEnd(c, fmt.Sprintf("Failed to read image response: %s", readErr.Error()))
+		}
+		if resp.StatusCode >= http.StatusBadRequest {
+			message := strings.TrimSpace(extractUpstreamErrorMessage(body))
+			if message == "" {
+				message = fmt.Sprintf("Responses API returned %d", resp.StatusCode)
+			}
+			return s.sendErrorAndEnd(c, message)
+		}
+
+		results, _, _, _, _, err := collectOpenAIImagesFromResponsesBody(body)
+		if err != nil {
+			return s.sendErrorAndEnd(c, fmt.Sprintf("Failed to parse image response: %s", err.Error()))
+		}
+		if len(results) == 0 {
+			if upstreamErr := extractOpenAIImagesUpstreamError(body); upstreamErr != nil {
+				if IsOpenAIImagesRetryableUpstreamError(upstreamErr) && attempt < maxAttempts {
+					s.sendEvent(c, TestEvent{Type: "content", Text: fmt.Sprintf("No image output from responses API; retrying (%d/%d)...\n", attempt, maxAttempts)})
+					continue
+				}
+				return s.sendErrorAndEnd(c, upstreamErr.clientMessage())
+			}
+			lastNoOutputSummary = summarizeOpenAIImagesNoOutputBody(body)
+			if attempt < maxAttempts {
+				s.sendEvent(c, TestEvent{Type: "content", Text: fmt.Sprintf("No image output from responses API; retrying (%d/%d)...\n", attempt, maxAttempts)})
+				continue
+			}
+			message := "No images returned from responses API after 3 attempts"
+			if lastNoOutputSummary != "" {
+				message = fmt.Sprintf("%s: %s", message, lastNoOutputSummary)
+			}
+			return s.sendErrorAndEnd(c, message)
+		}
+
+		for _, item := range results {
+			if item.RevisedPrompt != "" {
+				s.sendEvent(c, TestEvent{Type: "content", Text: item.RevisedPrompt})
+			}
+			if item.Result == "" {
+				continue
+			}
+			mimeType := openAIImageOutputMIMEType(item.OutputFormat)
+			s.sendEvent(c, TestEvent{
+				Type:     "image",
+				ImageURL: "data:" + mimeType + ";base64," + item.Result,
+				MimeType: mimeType,
+			})
+		}
+
+		s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
+		return nil
 	}
 
-	s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
-	return nil
+	return s.sendErrorAndEnd(c, "No images returned from responses API after 3 attempts")
 }
 
 // testOpenAIImageChatGPTWeb tests image generation using the ChatGPT Web pipeline for free OAuth accounts.

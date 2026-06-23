@@ -2,7 +2,9 @@ package service
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -118,4 +120,53 @@ func TestCollectOpenAIImagesFromResponsesBodyHandlesResponseDoneEvent(t *testing
 	require.Len(t, results, 1)
 	require.Equal(t, "aW1hZ2U=", results[0].Result)
 	require.Equal(t, "webp", firstMeta.OutputFormat)
+}
+
+func TestExtractOpenAIImagesUpstreamErrorClassifiesIncompleteResponses(t *testing.T) {
+	body := []byte("data: {\"type\":\"response.incomplete\",\"response\":{\"id\":\"resp_incomplete\",\"incomplete_details\":{\"reason\":\"max_output_tokens\"}}}\n\n")
+
+	upstreamErr := extractOpenAIImagesUpstreamError(body)
+
+	require.NotNil(t, upstreamErr)
+	require.Equal(t, http.StatusBadGateway, upstreamErr.StatusCode)
+	require.True(t, IsOpenAIImagesRetryableUpstreamError(upstreamErr))
+	require.Equal(t, "response_incomplete", upstreamErr.Code)
+	require.Contains(t, upstreamErr.Message, "max_output_tokens")
+}
+
+func TestExtractOpenAIImagesUpstreamErrorDoesNotRetryContentFilterIncomplete(t *testing.T) {
+	body := []byte("data: {\"type\":\"response.incomplete\",\"response\":{\"id\":\"resp_blocked\",\"incomplete_details\":{\"reason\":\"content_filter\"}}}\n\n")
+
+	upstreamErr := extractOpenAIImagesUpstreamError(body)
+
+	require.NotNil(t, upstreamErr)
+	require.Equal(t, http.StatusBadRequest, upstreamErr.StatusCode)
+	require.False(t, IsOpenAIImagesRetryableUpstreamError(upstreamErr))
+	require.Equal(t, "image_generation_user_error", upstreamErr.ErrorType)
+	require.Equal(t, "response_incomplete", upstreamErr.Code)
+}
+
+func TestHandleOpenAIImagesOAuthNonStreamingResponseReturnsFailoverOnEmptyOutput(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/images/generations", nil)
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body: io.NopCloser(bytes.NewReader([]byte(
+			"data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_empty\",\"status\":\"completed\",\"output\":[]}}\n\n" +
+				"data: [DONE]\n\n",
+		))),
+	}
+	svc := &OpenAIGatewayService{}
+
+	_, imageCount, err := svc.handleOpenAIImagesOAuthNonStreamingResponse(resp, c, "b64_json", "gpt-image-2")
+
+	require.Zero(t, imageCount)
+	var failoverErr *UpstreamFailoverError
+	require.True(t, errors.As(err, &failoverErr))
+	require.Equal(t, http.StatusBadGateway, failoverErr.StatusCode)
+	require.True(t, failoverErr.RetryableOnSameAccount)
+	require.False(t, c.Writer.Written())
 }
