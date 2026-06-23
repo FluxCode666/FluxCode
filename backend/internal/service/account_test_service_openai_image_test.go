@@ -50,6 +50,7 @@ func TestAccountTestService_OpenAIImageOAuthHandlesOutputItemDoneFallback(t *tes
 		Type:     AccountTypeOAuth,
 		Credentials: map[string]any{
 			"access_token": "token-123",
+			"plan_type":    "plus",
 		},
 	}
 
