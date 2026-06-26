@@ -3,8 +3,10 @@ import { flushPromises, mount } from '@vue/test-utils'
 import AccountUsageCell from '../AccountUsageCell.vue'
 import type { Account } from '@/types'
 
-const { getUsage } = vi.hoisted(() => ({
-  getUsage: vi.fn()
+const { getUsage, queryOpenAIQuota, resetOpenAIQuota } = vi.hoisted(() => ({
+  getUsage: vi.fn(),
+  queryOpenAIQuota: vi.fn(),
+  resetOpenAIQuota: vi.fn()
 }))
 
 vi.mock('@/api/admin', () => ({
@@ -13,6 +15,11 @@ vi.mock('@/api/admin', () => ({
       getUsage
     }
   }
+}))
+
+vi.mock('@/api/admin/accounts', () => ({
+  queryOpenAIQuota,
+  resetOpenAIQuota
 }))
 
 vi.mock('vue-i18n', async () => {
@@ -57,6 +64,8 @@ function makeAccount(overrides: Partial<Account>): Account {
 describe('AccountUsageCell', () => {
   beforeEach(() => {
     getUsage.mockReset()
+    queryOpenAIQuota.mockReset()
+    resetOpenAIQuota.mockReset()
 
     Object.defineProperty(window, 'matchMedia', {
       writable: true,
@@ -527,6 +536,90 @@ describe('AccountUsageCell', () => {
   expect(getUsage).toHaveBeenCalledWith(2004, undefined)
   expect(wrapper.text()).toContain('5h|100|106540000')
   expect(wrapper.text()).toContain('7d|100|106540000')
+  })
+
+  it('OpenAI OAuth 会显示手动查询次数与重置按钮并触发上游 quota 接口', async () => {
+    getUsage.mockResolvedValue({
+      five_hour: {
+        utilization: 95,
+        resets_at: '2026-03-07T12:00:00Z',
+        remaining_seconds: 3600,
+        window_stats: {
+          requests: 12,
+          tokens: 1200,
+          cost: 0.12,
+          standard_cost: 0.12,
+          user_cost: 0.12
+        }
+      },
+      seven_day: null
+    })
+    queryOpenAIQuota
+      .mockResolvedValueOnce({
+        rate_limit_reset_credits: { available_count: 2 },
+        fetched_at: 1772880000
+      })
+      .mockResolvedValueOnce({
+        rate_limit_reset_credits: { available_count: 1 },
+        fetched_at: 1772880001
+      })
+    resetOpenAIQuota.mockResolvedValue({
+      code: 'success',
+      windows_reset: 1
+    })
+
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({
+          id: 2011,
+          platform: 'openai',
+          type: 'oauth',
+          extra: {}
+        })
+      },
+      global: {
+        stubs: {
+          UsageProgressBar: {
+            props: ['label', 'utilization', 'resetsAt', 'windowStats', 'color'],
+            template: '<div class="usage-bar">{{ label }}|{{ utilization }}|{{ windowStats?.tokens }}</div>'
+          },
+          AccountQuotaInfo: true,
+          ConfirmDialog: {
+            props: ['show'],
+            emits: ['confirm', 'cancel'],
+            template: '<div v-if="show"><button data-test="confirm-openai-reset" @click="$emit(\'confirm\')">confirm</button></div>'
+          }
+        }
+      }
+    })
+
+    await flushPromises()
+
+    const countButton = wrapper
+      .findAll('button')
+      .find((button) => button.text().includes('admin.accounts.openaiQuotaReset.count'))
+    expect(countButton).toBeTruthy()
+
+    await countButton!.trigger('click')
+    await flushPromises()
+
+    expect(queryOpenAIQuota).toHaveBeenCalledWith(2011)
+    expect(countButton!.text()).toContain('admin.accounts.openaiQuotaReset.count')
+    expect(countButton!.text()).toContain('2')
+
+    const resetButton = wrapper
+      .findAll('button')
+      .find((button) => button.text().includes('admin.accounts.openaiQuotaReset.reset'))
+    expect(resetButton).toBeTruthy()
+
+    await resetButton!.trigger('click')
+    await wrapper.get('[data-test="confirm-openai-reset"]').trigger('click')
+    await flushPromises()
+
+    expect(resetOpenAIQuota).toHaveBeenCalledWith(2011)
+    expect(queryOpenAIQuota).toHaveBeenCalledTimes(2)
+    expect(countButton!.text()).toContain('1')
+    expect(wrapper.text()).toContain('admin.accounts.openaiQuotaReset.resetSuccess')
   })
 
   it('Key 账号会展示 today stats 徽章并带 A/U 提示', async () => {
