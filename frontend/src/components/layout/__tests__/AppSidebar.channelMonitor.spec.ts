@@ -97,7 +97,11 @@ vi.mock('@/components/common/VersionBadge.vue', () => ({
   }
 }))
 
-describe('AppSidebar channel monitor menu', () => {
+describe('AppSidebar monitored feature menus', () => {
+  const signalIconPath =
+    'M8.288 15.038a5.25 5.25 0 017.424 0M5.106 11.856c3.807-3.808 9.98-3.808 13.788 0M1.924 8.674c5.565-5.565 14.587-5.565 20.152 0M12.53 18.22l-.53.53-.53-.53a.75.75 0 011.06 0z'
+  const activityIconPath = 'M3.75 13.5h3l2.25-6 4.5 12 2.25-6h4.5'
+
   beforeEach(() => {
     routeState.path = '/admin/dashboard'
     authStoreState.isAdmin = true
@@ -134,5 +138,46 @@ describe('AppSidebar channel monitor menu', () => {
     await wrapper.vm.$nextTick()
 
     expect(wrapper.find('a[data-to="/admin/channels/monitor"]').exists()).toBe(true)
+  })
+
+  it('uses a signal icon for the user channel status entry', async () => {
+    authStoreState.isAdmin = false
+    routeState.path = '/dashboard'
+
+    const wrapper = mount(AppSidebar, {
+      global: {
+        stubs: {
+          RouterLink: {
+            props: ['to'],
+            template: '<a :data-to="typeof to === \'string\' ? to : to.path"><slot /></a>'
+          }
+        }
+      }
+    })
+
+    await wrapper.vm.$nextTick()
+
+    const channelStatusLink = wrapper.find('a[data-to="/monitor"]')
+    expect(channelStatusLink.exists()).toBe(true)
+    expect(channelStatusLink.find('svg path').attributes('d')).toBe(signalIconPath)
+  })
+
+  it('uses an activity icon for the admin ops monitoring entry', async () => {
+    const wrapper = mount(AppSidebar, {
+      global: {
+        stubs: {
+          RouterLink: {
+            props: ['to'],
+            template: '<a :data-to="typeof to === \'string\' ? to : to.path"><slot /></a>'
+          }
+        }
+      }
+    })
+
+    await wrapper.vm.$nextTick()
+
+    const opsLink = wrapper.find('a[data-to="/admin/ops"]')
+    expect(opsLink.exists()).toBe(true)
+    expect(opsLink.find('svg path').attributes('d')).toBe(activityIconPath)
   })
 })
