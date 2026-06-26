@@ -5,8 +5,6 @@ import (
 )
 
 // SelectAccountWithSchedulerForImages selects an account for image generation requests.
-// It wraps SelectAccountWithScheduler, ignoring the image capability filter since
-// the current branch does not have capability-based filtering in the scheduler.
 // If no account is found with the native capability, it falls back to basic (OAuth).
 func (s *OpenAIGatewayService) SelectAccountWithSchedulerForImages(
 	ctx context.Context,
@@ -14,7 +12,7 @@ func (s *OpenAIGatewayService) SelectAccountWithSchedulerForImages(
 	sessionHash string,
 	requestedModel string,
 	excludedIDs map[int64]struct{},
-	_ OpenAIImagesCapability,
+	requiredCapability OpenAIImagesCapability,
 ) (*AccountSelectionResult, OpenAIAccountScheduleDecision, error) {
 	return s.SelectAccountWithSchedulerForImagesForPlatform(
 		ctx,
@@ -23,7 +21,7 @@ func (s *OpenAIGatewayService) SelectAccountWithSchedulerForImages(
 		sessionHash,
 		requestedModel,
 		excludedIDs,
-		OpenAIImagesCapabilityBasic,
+		requiredCapability,
 	)
 }
 
@@ -34,9 +32,9 @@ func (s *OpenAIGatewayService) SelectAccountWithSchedulerForImagesForPlatform(
 	sessionHash string,
 	requestedModel string,
 	excludedIDs map[int64]struct{},
-	_ OpenAIImagesCapability,
+	requiredCapability OpenAIImagesCapability,
 ) (*AccountSelectionResult, OpenAIAccountScheduleDecision, error) {
-	return s.SelectAccountWithSchedulerForPlatform(
+	selection, decision, err := s.SelectAccountWithSchedulerForPlatform(
 		ctx,
 		platform,
 		groupID,
@@ -45,5 +43,23 @@ func (s *OpenAIGatewayService) SelectAccountWithSchedulerForImagesForPlatform(
 		requestedModel,
 		excludedIDs,
 		OpenAIUpstreamTransportHTTPSSE,
+		requiredCapability,
 	)
+	if err == nil && selection != nil && selection.Account != nil {
+		return selection, decision, nil
+	}
+	if requiredCapability == OpenAIImagesCapabilityNative {
+		return s.SelectAccountWithSchedulerForPlatform(
+			ctx,
+			platform,
+			groupID,
+			"",
+			sessionHash,
+			requestedModel,
+			excludedIDs,
+			OpenAIUpstreamTransportHTTPSSE,
+			OpenAIImagesCapabilityBasic,
+		)
+	}
+	return selection, decision, err
 }

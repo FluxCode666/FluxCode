@@ -873,6 +873,31 @@ func (a *Account) IsOpenAIApiKey() bool {
 	return a.IsOpenAICompatible() && a.Type == AccountTypeAPIKey
 }
 
+func (a *Account) SupportsOpenAIImageCapability(capability OpenAIImagesCapability) bool {
+	if a == nil {
+		return false
+	}
+	if capability == "" {
+		return true
+	}
+	if !a.IsOpenAICompatible() {
+		return false
+	}
+	switch capability {
+	case OpenAIImagesCapabilityBasic, OpenAIImagesCapabilityNative:
+		switch a.Platform {
+		case PlatformOpenAI:
+			return a.Type == AccountTypeOAuth || a.Type == AccountTypeAPIKey
+		case PlatformCodex2API:
+			return a.Type == AccountTypeAPIKey
+		default:
+			return false
+		}
+	default:
+		return true
+	}
+}
+
 func (a *Account) GetOpenAIBaseURL() string {
 	if !a.IsOpenAICompatible() {
 		return ""

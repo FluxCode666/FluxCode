@@ -21,14 +21,15 @@ const (
 )
 
 type OpenAIAccountScheduleRequest struct {
-	Platform           string
-	GroupID            *int64
-	SessionHash        string
-	StickyAccountID    int64
-	PreviousResponseID string
-	RequestedModel     string
-	RequiredTransport  OpenAIUpstreamTransport
-	ExcludedIDs        map[int64]struct{}
+	Platform                string
+	GroupID                 *int64
+	SessionHash             string
+	StickyAccountID         int64
+	PreviousResponseID      string
+	RequestedModel          string
+	RequiredTransport       OpenAIUpstreamTransport
+	RequiredImageCapability OpenAIImagesCapability
+	ExcludedIDs             map[int64]struct{}
 }
 
 func normalizeOpenAICompatibleSchedulerPlatform(platform string) string {
@@ -282,7 +283,11 @@ func (s *defaultOpenAIAccountScheduler) Select(
 			return nil, decision, err
 		}
 		if selection != nil && selection.Account != nil {
-			if !s.isAccountTransportCompatible(selection.Account, req.RequiredTransport) {
+			if !s.isAccountTransportCompatible(selection.Account, req.RequiredTransport) ||
+				!accountSupportsOpenAIImageCapability(selection.Account, req.RequiredImageCapability) {
+				if selection.ReleaseFunc != nil {
+					selection.ReleaseFunc()
+				}
 				selection = nil
 			}
 		}
@@ -367,6 +372,9 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 	if req.RequestedModel != "" && !account.IsModelSupported(req.RequestedModel) {
 		return nil, nil
 	}
+	if !accountSupportsOpenAIImageCapability(account, req.RequiredImageCapability) {
+		return nil, nil
+	}
 	if !s.isAccountTransportCompatible(account, req.RequiredTransport) {
 		_ = s.service.deleteStickySessionAccountID(ctx, req.GroupID, sessionHash)
 		return nil, nil
@@ -374,6 +382,9 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 	account = s.service.recheckSelectedOpenAIAccountFromDBForPlatform(ctx, account, req.RequestedModel, req.Platform)
 	if account == nil {
 		_ = s.service.deleteStickySessionAccountID(ctx, req.GroupID, sessionHash)
+		return nil, nil
+	}
+	if !accountSupportsOpenAIImageCapability(account, req.RequiredImageCapability) {
 		return nil, nil
 	}
 
@@ -645,6 +656,9 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 		if req.RequestedModel != "" && !account.IsModelSupported(req.RequestedModel) {
 			continue
 		}
+		if !accountSupportsOpenAIImageCapability(account, req.RequiredImageCapability) {
+			continue
+		}
 		if !s.isAccountTransportCompatible(account, req.RequiredTransport) {
 			continue
 		}
@@ -754,11 +768,15 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 	for i := 0; i < len(selectionOrder); i++ {
 		candidate := selectionOrder[i]
 		fresh := s.service.resolveFreshSchedulableOpenAIAccountForPlatform(ctx, candidate.account, req.RequestedModel, platform)
-		if fresh == nil || !s.isAccountTransportCompatible(fresh, req.RequiredTransport) {
+		if fresh == nil ||
+			!s.isAccountTransportCompatible(fresh, req.RequiredTransport) ||
+			!accountSupportsOpenAIImageCapability(fresh, req.RequiredImageCapability) {
 			continue
 		}
 		fresh = s.service.recheckSelectedOpenAIAccountFromDBForPlatform(ctx, fresh, req.RequestedModel, platform)
-		if fresh == nil || !s.isAccountTransportCompatible(fresh, req.RequiredTransport) {
+		if fresh == nil ||
+			!s.isAccountTransportCompatible(fresh, req.RequiredTransport) ||
+			!accountSupportsOpenAIImageCapability(fresh, req.RequiredImageCapability) {
 			continue
 		}
 		result, acquireErr := s.service.tryAcquireAccountSlot(ctx, fresh.ID, fresh.Concurrency)
@@ -781,7 +799,9 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 	// WaitPlan.MaxConcurrency 使用 Concurrency（非 EffectiveLoadFactor），因为 WaitPlan 控制的是 Redis 实际并发槽位等待。
 	for _, candidate := range selectionOrder {
 		fresh := s.service.resolveFreshSchedulableOpenAIAccountForPlatform(ctx, candidate.account, req.RequestedModel, platform)
-		if fresh == nil || !s.isAccountTransportCompatible(fresh, req.RequiredTransport) {
+		if fresh == nil ||
+			!s.isAccountTransportCompatible(fresh, req.RequiredTransport) ||
+			!accountSupportsOpenAIImageCapability(fresh, req.RequiredImageCapability) {
 			continue
 		}
 		return &AccountSelectionResult{
@@ -796,6 +816,13 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 	}
 
 	return nil, len(candidates), topK, loadSkew, ErrNoAvailableAccounts
+}
+
+func accountSupportsOpenAIImageCapability(account *Account, requiredImageCapability OpenAIImagesCapability) bool {
+	if account == nil {
+		return false
+	}
+	return account.SupportsOpenAIImageCapability(requiredImageCapability)
 }
 
 func (s *defaultOpenAIAccountScheduler) isAccountTransportCompatible(account *Account, requiredTransport OpenAIUpstreamTransport) bool {
@@ -898,9 +925,14 @@ func (s *OpenAIGatewayService) SelectAccountWithSchedulerForPlatform(
 	requestedModel string,
 	excludedIDs map[int64]struct{},
 	requiredTransport OpenAIUpstreamTransport,
+	requiredImageCapabilityOverride ...OpenAIImagesCapability,
 ) (*AccountSelectionResult, OpenAIAccountScheduleDecision, error) {
 	decision := OpenAIAccountScheduleDecision{}
 	platform = normalizeOpenAICompatibleSchedulerPlatform(platform)
+	requiredImageCapability := OpenAIImagesCapability("")
+	if len(requiredImageCapabilityOverride) > 0 {
+		requiredImageCapability = requiredImageCapabilityOverride[0]
+	}
 	scheduler := s.getOpenAIAccountScheduler()
 	if scheduler == nil {
 		selection, err := s.SelectAccountWithLoadAwarenessForPlatform(ctx, platform, groupID, sessionHash, requestedModel, excludedIDs)
@@ -916,14 +948,15 @@ func (s *OpenAIGatewayService) SelectAccountWithSchedulerForPlatform(
 	}
 
 	return scheduler.Select(ctx, OpenAIAccountScheduleRequest{
-		Platform:           platform,
-		GroupID:            groupID,
-		SessionHash:        sessionHash,
-		StickyAccountID:    stickyAccountID,
-		PreviousResponseID: previousResponseID,
-		RequestedModel:     requestedModel,
-		RequiredTransport:  requiredTransport,
-		ExcludedIDs:        excludedIDs,
+		Platform:                platform,
+		GroupID:                 groupID,
+		SessionHash:             sessionHash,
+		StickyAccountID:         stickyAccountID,
+		PreviousResponseID:      previousResponseID,
+		RequestedModel:          requestedModel,
+		RequiredTransport:       requiredTransport,
+		RequiredImageCapability: requiredImageCapability,
+		ExcludedIDs:             excludedIDs,
 	})
 }
 
