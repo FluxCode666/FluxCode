@@ -260,3 +260,29 @@ func TestOpenAITokenRefresher_CanRefresh(t *testing.T) {
 		})
 	}
 }
+
+func TestOpenAITokenRefresher_NeedsRefresh_SkipsAccountWithoutRefreshToken(t *testing.T) {
+	refresher := NewOpenAITokenRefresher(nil, nil)
+	expiresAt := time.Now().Add(time.Minute).UTC().Format(time.RFC3339)
+
+	withoutRefreshToken := &Account{
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+		Credentials: map[string]any{
+			"access_token": "access-token",
+			"expires_at":   expiresAt,
+		},
+	}
+	require.False(t, refresher.NeedsRefresh(withoutRefreshToken, 5*time.Minute))
+
+	withRefreshToken := &Account{
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+		Credentials: map[string]any{
+			"access_token":  "access-token",
+			"refresh_token": "refresh-token",
+			"expires_at":    expiresAt,
+		},
+	}
+	require.True(t, refresher.NeedsRefresh(withRefreshToken, 5*time.Minute))
+}
