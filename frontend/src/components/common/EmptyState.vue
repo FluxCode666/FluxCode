@@ -43,7 +43,7 @@
           @click="!actionTo && $emit('action')"
           class="btn btn-primary"
         >
-          <Icon v-if="actionIcon" name="plus" size="md" class="mr-2" />
+          <Icon v-if="actionIcon" :name="actionIconName" size="md" class="mr-2" />
           {{ actionText }}
         </component>
       </slot>
@@ -59,6 +59,8 @@ import Icon from '@/components/icons/Icon.vue'
 
 const { t } = useI18n()
 
+type ActionIconName = 'plus' | 'refresh'
+
 interface Props {
   icon?: Component | string
   title?: string
@@ -66,12 +68,14 @@ interface Props {
   actionText?: string
   actionTo?: string | object
   actionIcon?: boolean
+  actionIconName?: ActionIconName
   message?: string
 }
 
 const props = withDefaults(defineProps<Props>(), {
   description: '',
-  actionIcon: true
+  actionIcon: true,
+  actionIconName: 'plus'
 })
 
 const displayTitle = computed(() => props.title || t('common.noData'))

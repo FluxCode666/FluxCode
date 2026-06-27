@@ -73,7 +73,7 @@ func (s *generatedImageStoreStub) Create(ctx context.Context, image *GeneratedIm
 	return &copy, nil
 }
 
-func (s *generatedImageStoreStub) List(ctx context.Context, params pagination.PaginationParams) ([]GeneratedImage, *pagination.PaginationResult, error) {
+func (s *generatedImageStoreStub) List(ctx context.Context, params GeneratedImageListParams) ([]GeneratedImage, *pagination.PaginationResult, error) {
 	return nil, nil, nil
 }
 

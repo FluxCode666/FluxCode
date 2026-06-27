@@ -24,6 +24,10 @@ func TestGeneratedImageHandlerListAndContent(t *testing.T) {
 			UserID:         12,
 			APIKeyID:       34,
 			AccountID:      56,
+			UserEmail:      "artist@example.com",
+			APIKeyName:     "Gallery Key",
+			AccountName:    "OpenAI Images",
+			AccountGroups:  []string{"image-group"},
 			RequestID:      "req_img",
 			Model:          "gpt-image-2",
 			Prompt:         "draw",
@@ -43,10 +47,15 @@ func TestGeneratedImageHandlerListAndContent(t *testing.T) {
 	router.GET("/admin/generated-images/:id/content", handler.Content)
 
 	listRec := httptest.NewRecorder()
-	listReq := httptest.NewRequest(http.MethodGet, "/admin/generated-images?page=1&page_size=20", nil)
+	listReq := httptest.NewRequest(http.MethodGet, "/admin/generated-images?page=1&page_size=20&user_email=artist%40example.com&group_id=9&start_at=2026-06-20&end_at=2026-06-27", nil)
 	router.ServeHTTP(listRec, listReq)
 
 	require.Equal(t, http.StatusOK, listRec.Code)
+	require.Equal(t, "artist@example.com", store.lastListParams.UserEmail)
+	require.Equal(t, int64(9), store.lastListParams.GroupID)
+	require.Equal(t, time.Date(2026, 6, 20, 0, 0, 0, 0, time.UTC), *store.lastListParams.StartAt)
+	require.Equal(t, time.Date(2026, 6, 28, 0, 0, 0, 0, time.UTC), *store.lastListParams.EndAt)
+
 	var listResp response.Response
 	require.NoError(t, json.Unmarshal(listRec.Body.Bytes(), &listResp))
 	data, ok := listResp.Data.(map[string]any)
@@ -57,6 +66,10 @@ func TestGeneratedImageHandlerListAndContent(t *testing.T) {
 	item := items[0].(map[string]any)
 	require.Equal(t, float64(7), item["id"])
 	require.Equal(t, "openai", item["provider"])
+	require.Equal(t, "artist@example.com", item["user_email"])
+	require.Equal(t, "Gallery Key", item["api_key_name"])
+	require.Equal(t, "OpenAI Images", item["account_name"])
+	require.Equal(t, []any{"image-group"}, item["account_group_names"])
 	require.Equal(t, "/api/v1/admin/generated-images/7/content", item["content_url"])
 	require.NotContains(t, item, "image_data")
 
@@ -70,16 +83,18 @@ func TestGeneratedImageHandlerListAndContent(t *testing.T) {
 }
 
 type generatedImageHandlerStoreStub struct {
-	items       []service.GeneratedImage
-	content     []byte
-	contentType string
+	items          []service.GeneratedImage
+	content        []byte
+	contentType    string
+	lastListParams service.GeneratedImageListParams
 }
 
 func (s *generatedImageHandlerStoreStub) Create(ctx context.Context, image *service.GeneratedImage) (*service.GeneratedImage, error) {
 	return image, nil
 }
 
-func (s *generatedImageHandlerStoreStub) List(ctx context.Context, params pagination.PaginationParams) ([]service.GeneratedImage, *pagination.PaginationResult, error) {
+func (s *generatedImageHandlerStoreStub) List(ctx context.Context, params service.GeneratedImageListParams) ([]service.GeneratedImage, *pagination.PaginationResult, error) {
+	s.lastListParams = params
 	return s.items, &pagination.PaginationResult{Total: int64(len(s.items)), Page: params.Page, PageSize: params.PageSize, Pages: 1}, nil
 }
 

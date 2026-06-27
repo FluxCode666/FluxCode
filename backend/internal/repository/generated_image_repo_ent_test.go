@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"testing"
+	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/enttest"
@@ -73,7 +74,9 @@ func TestGeneratedImageRepositoryCreateListAndGetContent(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	items, page, err := repo.List(ctx, pagination.PaginationParams{Page: 1, PageSize: 1})
+	items, page, err := repo.List(ctx, service.GeneratedImageListParams{
+		PaginationParams: pagination.PaginationParams{Page: 1, PageSize: 1},
+	})
 	require.NoError(t, err)
 	require.Equal(t, int64(2), page.Total)
 	require.Equal(t, 1, page.Page)
@@ -87,4 +90,109 @@ func TestGeneratedImageRepositoryCreateListAndGetContent(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []byte("first-image"), data)
 	require.Equal(t, "image/png", contentType)
+}
+
+func TestGeneratedImageRepositoryListEnrichesNamesAndFilters(t *testing.T) {
+	repo, client, _ := newGeneratedImageEntRepo(t)
+	ctx := context.Background()
+
+	alice, err := client.User.Create().
+		SetEmail("alice@example.com").
+		SetPasswordHash("hash").
+		Save(ctx)
+	require.NoError(t, err)
+	bob, err := client.User.Create().
+		SetEmail("bob@example.com").
+		SetPasswordHash("hash").
+		Save(ctx)
+	require.NoError(t, err)
+
+	aliceKey, err := client.APIKey.Create().
+		SetUserID(alice.ID).
+		SetKey("sk-alice").
+		SetName("Alice Image Key").
+		Save(ctx)
+	require.NoError(t, err)
+	bobKey, err := client.APIKey.Create().
+		SetUserID(bob.ID).
+		SetKey("sk-bob").
+		SetName("Bob Image Key").
+		Save(ctx)
+	require.NoError(t, err)
+
+	imageGroup, err := client.Group.Create().
+		SetName("Images").
+		SetPlatform("openai").
+		Save(ctx)
+	require.NoError(t, err)
+	textGroup, err := client.Group.Create().
+		SetName("Text").
+		SetPlatform("openai").
+		Save(ctx)
+	require.NoError(t, err)
+
+	aliceAccount, err := client.Account.Create().
+		SetName("OpenAI Image Account").
+		SetPlatform("openai").
+		SetType("apikey").
+		AddGroupIDs(imageGroup.ID).
+		Save(ctx)
+	require.NoError(t, err)
+	bobAccount, err := client.Account.Create().
+		SetName("OpenAI Text Account").
+		SetPlatform("openai").
+		SetType("apikey").
+		AddGroupIDs(textGroup.ID).
+		Save(ctx)
+	require.NoError(t, err)
+
+	createdAt := time.Date(2026, 6, 25, 9, 0, 0, 0, time.UTC)
+	_, err = repo.Create(ctx, &service.GeneratedImage{
+		Provider:       service.GeneratedImageProviderOpenAI,
+		UserID:         alice.ID,
+		APIKeyID:       aliceKey.ID,
+		AccountID:      aliceAccount.ID,
+		RequestID:      "req_alice",
+		Model:          "gpt-image-2",
+		Prompt:         "draw alice",
+		ResponseFormat: "url",
+		Source:         "upstream_url",
+		ContentType:    "image/png",
+		ImageData:      []byte("alice-image"),
+		SizeBytes:      len("alice-image"),
+		CreatedAt:      createdAt,
+	})
+	require.NoError(t, err)
+	_, err = repo.Create(ctx, &service.GeneratedImage{
+		Provider:       service.GeneratedImageProviderOpenAI,
+		UserID:         bob.ID,
+		APIKeyID:       bobKey.ID,
+		AccountID:      bobAccount.ID,
+		RequestID:      "req_bob",
+		Model:          "gpt-image-2",
+		Prompt:         "draw bob",
+		ResponseFormat: "b64_json",
+		Source:         "b64_json",
+		ContentType:    "image/png",
+		ImageData:      []byte("bob-image"),
+		SizeBytes:      len("bob-image"),
+		CreatedAt:      createdAt.Add(48 * time.Hour),
+	})
+	require.NoError(t, err)
+
+	endAt := createdAt.Add(24 * time.Hour)
+	items, page, err := repo.List(ctx, service.GeneratedImageListParams{
+		PaginationParams: pagination.PaginationParams{Page: 1, PageSize: 10},
+		UserEmail:        "alice@",
+		GroupID:          imageGroup.ID,
+		StartAt:          &createdAt,
+		EndAt:            &endAt,
+	})
+	require.NoError(t, err)
+	require.Equal(t, int64(1), page.Total)
+	require.Len(t, items, 1)
+	require.Equal(t, "alice@example.com", items[0].UserEmail)
+	require.Equal(t, "Alice Image Key", items[0].APIKeyName)
+	require.Equal(t, "OpenAI Image Account", items[0].AccountName)
+	require.Equal(t, []string{"Images"}, items[0].AccountGroups)
 }

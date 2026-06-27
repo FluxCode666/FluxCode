@@ -27,6 +27,10 @@ type GeneratedImage struct {
 	UserID         int64
 	APIKeyID       int64
 	AccountID      int64
+	UserEmail      string
+	APIKeyName     string
+	AccountName    string
+	AccountGroups  []string
 	RequestID      string
 	Model          string
 	Prompt         string
@@ -39,9 +43,17 @@ type GeneratedImage struct {
 	CreatedAt      time.Time
 }
 
+type GeneratedImageListParams struct {
+	pagination.PaginationParams
+	UserEmail string
+	GroupID   int64
+	StartAt   *time.Time
+	EndAt     *time.Time
+}
+
 type GeneratedImageStore interface {
 	Create(ctx context.Context, image *GeneratedImage) (*GeneratedImage, error)
-	List(ctx context.Context, params pagination.PaginationParams) ([]GeneratedImage, *pagination.PaginationResult, error)
+	List(ctx context.Context, params GeneratedImageListParams) ([]GeneratedImage, *pagination.PaginationResult, error)
 	GetContent(ctx context.Context, id int64) ([]byte, string, error)
 }
 

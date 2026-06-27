@@ -7,6 +7,10 @@ export interface GeneratedImage {
   user_id: number
   api_key_id: number
   account_id: number
+  user_email: string
+  api_key_name: string
+  account_name: string
+  account_group_names: string[]
   request_id: string
   model: string
   prompt: string
@@ -22,6 +26,10 @@ export interface GeneratedImage {
 export interface GeneratedImagesQuery {
   page?: number
   page_size?: number
+  user_email?: string
+  group_id?: number
+  start_at?: string
+  end_at?: string
 }
 
 export async function list(

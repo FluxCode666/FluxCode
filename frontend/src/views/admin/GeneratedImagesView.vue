@@ -21,6 +21,101 @@
         </button>
       </div>
 
+      <div class="rounded-lg border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-800">
+        <div class="grid gap-3 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,0.8fr)_minmax(0,0.8fr)_auto] lg:items-end">
+          <div class="relative">
+            <label class="input-label">{{ t('admin.generatedImages.userEmail') }}</label>
+            <input
+              v-model="userEmailSearch"
+              type="text"
+              class="input"
+              data-test="generated-images-user-email-search"
+              :placeholder="t('admin.generatedImages.userEmailPlaceholder')"
+              autocomplete="off"
+              @focus="openUserEmailDropdown"
+              @input="handleUserEmailInput"
+            />
+            <div
+              v-if="userEmailDropdownOpen"
+              class="absolute left-0 right-0 z-20 mt-1 max-h-52 overflow-auto rounded-md border border-gray-200 bg-white shadow-lg dark:border-dark-600 dark:bg-dark-800"
+            >
+              <div v-if="userEmailLoading" class="px-3 py-2 text-sm text-gray-500 dark:text-gray-400">
+                {{ t('common.loading') }}
+              </div>
+              <button
+                v-for="user in userEmailOptions"
+                :key="user.id"
+                type="button"
+                class="block w-full px-3 py-2 text-left text-sm hover:bg-gray-50 dark:hover:bg-dark-700"
+                :data-test="`generated-images-user-option-${user.id}`"
+                @click="selectUserEmail(user.email)"
+              >
+                <span class="block truncate font-medium text-gray-900 dark:text-white">{{ user.email }}</span>
+              </button>
+              <div
+                v-if="!userEmailLoading && userEmailOptions.length === 0 && userEmailSearch.trim()"
+                class="px-3 py-2 text-sm text-gray-500 dark:text-gray-400"
+              >
+                {{ t('common.noResults') }}
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <label class="input-label">{{ t('admin.generatedImages.channelGroup') }}</label>
+            <select
+              v-model="filters.group_id"
+              class="input"
+              data-test="generated-images-group-filter"
+            >
+              <option value="">{{ t('admin.generatedImages.allGroups') }}</option>
+              <option v-for="group in channelGroups" :key="group.id" :value="String(group.id)">
+                {{ group.name }}
+              </option>
+            </select>
+          </div>
+
+          <div>
+            <label class="input-label">{{ t('admin.generatedImages.startDate') }}</label>
+            <input
+              v-model="filters.start_at"
+              type="date"
+              class="input"
+              data-test="generated-images-start-date"
+            />
+          </div>
+
+          <div>
+            <label class="input-label">{{ t('admin.generatedImages.endDate') }}</label>
+            <input
+              v-model="filters.end_at"
+              type="date"
+              class="input"
+              data-test="generated-images-end-date"
+            />
+          </div>
+
+          <div class="flex gap-2">
+            <button
+              type="button"
+              class="btn btn-primary"
+              data-test="generated-images-apply-filters"
+              @click="applyFilters"
+            >
+              {{ t('admin.generatedImages.applyFilters') }}
+            </button>
+            <button
+              type="button"
+              class="btn btn-secondary"
+              :disabled="!hasActiveFilters"
+              @click="resetFilters"
+            >
+              {{ t('admin.generatedImages.resetFilters') }}
+            </button>
+          </div>
+        </div>
+      </div>
+
       <div v-if="loading && images.length === 0" class="flex min-h-[360px] items-center justify-center">
         <LoadingSpinner size="lg" />
       </div>
@@ -33,6 +128,7 @@
           :title="t('admin.generatedImages.emptyTitle')"
           :description="t('admin.generatedImages.emptyDescription')"
           :action-text="t('admin.generatedImages.refresh')"
+          action-icon-name="refresh"
           @action="refreshData"
         />
       </div>
@@ -109,16 +205,20 @@
                   <dd class="mt-0.5 truncate font-medium text-gray-800 dark:text-gray-200">{{ image.response_format || '-' }}</dd>
                 </div>
                 <div>
-                  <dt class="text-gray-500 dark:text-gray-400">{{ t('admin.generatedImages.userId') }}</dt>
-                  <dd class="mt-0.5 font-medium text-gray-800 dark:text-gray-200">{{ formatId(image.user_id) }}</dd>
+                  <dt class="text-gray-500 dark:text-gray-400">{{ t('admin.generatedImages.userEmail') }}</dt>
+                  <dd class="mt-0.5 truncate font-medium text-gray-800 dark:text-gray-200">{{ displayText(image.user_email) }}</dd>
                 </div>
                 <div>
-                  <dt class="text-gray-500 dark:text-gray-400">{{ t('admin.generatedImages.apiKeyId') }}</dt>
-                  <dd class="mt-0.5 font-medium text-gray-800 dark:text-gray-200">{{ formatId(image.api_key_id) }}</dd>
+                  <dt class="text-gray-500 dark:text-gray-400">{{ t('admin.generatedImages.apiKeyName') }}</dt>
+                  <dd class="mt-0.5 truncate font-medium text-gray-800 dark:text-gray-200">{{ displayText(image.api_key_name) }}</dd>
                 </div>
                 <div>
-                  <dt class="text-gray-500 dark:text-gray-400">{{ t('admin.generatedImages.accountId') }}</dt>
-                  <dd class="mt-0.5 font-medium text-gray-800 dark:text-gray-200">{{ formatId(image.account_id) }}</dd>
+                  <dt class="text-gray-500 dark:text-gray-400">{{ t('admin.generatedImages.accountName') }}</dt>
+                  <dd class="mt-0.5 truncate font-medium text-gray-800 dark:text-gray-200">{{ displayText(image.account_name) }}</dd>
+                </div>
+                <div>
+                  <dt class="text-gray-500 dark:text-gray-400">{{ t('admin.generatedImages.channelGroup') }}</dt>
+                  <dd class="mt-0.5 truncate font-medium text-gray-800 dark:text-gray-200">{{ formatGroups(image.account_group_names) }}</dd>
                 </div>
                 <div>
                   <dt class="text-gray-500 dark:text-gray-400">{{ t('admin.generatedImages.requestId') }}</dt>
@@ -145,7 +245,7 @@
       class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
       @mousedown.self="closePreview"
     >
-      <div class="flex max-h-full w-full max-w-5xl flex-col overflow-hidden rounded-lg bg-white shadow-xl dark:bg-dark-800">
+      <div class="flex max-h-full w-full max-w-6xl flex-col overflow-hidden rounded-lg bg-white shadow-xl dark:bg-dark-800">
         <div class="flex items-start justify-between gap-4 border-b border-gray-200 px-4 py-3 dark:border-dark-700">
           <div class="min-w-0">
             <h2 class="truncate text-base font-semibold text-gray-900 dark:text-white">
@@ -165,66 +265,99 @@
           </button>
         </div>
 
-        <div class="min-h-0 overflow-auto bg-gray-950">
-          <img
-            v-if="imageUrls.get(previewImage.id)"
-            data-test="generated-image-preview"
-            :src="imageUrls.get(previewImage.id)"
-            :alt="previewImage.prompt || t('admin.generatedImages.preview')"
-            class="mx-auto max-h-[72vh] w-auto max-w-full object-contain"
-          />
-        </div>
-
-        <div class="grid gap-4 border-t border-gray-200 p-4 dark:border-dark-700 lg:grid-cols-[1fr_320px]">
-          <div class="min-w-0 space-y-2">
-            <div>
-              <p class="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                {{ t('admin.generatedImages.prompt') }}
-              </p>
-              <p class="mt-1 whitespace-pre-wrap text-sm text-gray-800 dark:text-gray-200">
-                {{ previewImage.prompt || '-' }}
-              </p>
-            </div>
-            <div v-if="previewImage.revised_prompt">
-              <p class="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                {{ t('admin.generatedImages.revisedPrompt') }}
-              </p>
-              <p class="mt-1 whitespace-pre-wrap text-sm text-gray-800 dark:text-gray-200">
-                {{ previewImage.revised_prompt }}
-              </p>
-            </div>
+        <div class="grid min-h-0 overflow-auto lg:grid-cols-[minmax(0,1fr)_360px]">
+          <div class="min-w-0 bg-gray-950">
+            <img
+              v-if="imageUrls.get(previewImage.id)"
+              data-test="generated-image-preview"
+              :src="imageUrls.get(previewImage.id)"
+              :alt="previewImage.prompt || t('admin.generatedImages.preview')"
+              class="mx-auto max-h-[68vh] w-auto max-w-full object-contain"
+            />
           </div>
 
-          <dl class="grid grid-cols-2 gap-3 text-xs">
-            <div>
-              <dt class="text-gray-500 dark:text-gray-400">{{ t('admin.generatedImages.provider') }}</dt>
-              <dd class="mt-0.5 font-medium text-gray-800 dark:text-gray-200">{{ previewImage.provider || '-' }}</dd>
-            </div>
-            <div>
-              <dt class="text-gray-500 dark:text-gray-400">{{ t('admin.generatedImages.size') }}</dt>
-              <dd class="mt-0.5 font-medium text-gray-800 dark:text-gray-200">{{ formatBytes(previewImage.size_bytes) }}</dd>
-            </div>
-            <div>
-              <dt class="text-gray-500 dark:text-gray-400">{{ t('admin.generatedImages.responseFormat') }}</dt>
-              <dd class="mt-0.5 font-medium text-gray-800 dark:text-gray-200">{{ previewImage.response_format || '-' }}</dd>
-            </div>
-            <div>
-              <dt class="text-gray-500 dark:text-gray-400">{{ t('admin.generatedImages.userId') }}</dt>
-              <dd class="mt-0.5 font-medium text-gray-800 dark:text-gray-200">{{ formatId(previewImage.user_id) }}</dd>
-            </div>
-            <div>
-              <dt class="text-gray-500 dark:text-gray-400">{{ t('admin.generatedImages.apiKeyId') }}</dt>
-              <dd class="mt-0.5 font-medium text-gray-800 dark:text-gray-200">{{ formatId(previewImage.api_key_id) }}</dd>
-            </div>
-            <div>
-              <dt class="text-gray-500 dark:text-gray-400">{{ t('admin.generatedImages.accountId') }}</dt>
-              <dd class="mt-0.5 font-medium text-gray-800 dark:text-gray-200">{{ formatId(previewImage.account_id) }}</dd>
-            </div>
-            <div>
-              <dt class="text-gray-500 dark:text-gray-400">{{ t('admin.generatedImages.requestId') }}</dt>
-              <dd class="mt-0.5 truncate font-medium text-gray-800 dark:text-gray-200">{{ previewImage.request_id || '-' }}</dd>
-            </div>
-          </dl>
+          <aside class="min-w-0 divide-y divide-gray-200 border-t border-gray-200 dark:divide-dark-700 dark:border-dark-700 lg:border-l lg:border-t-0">
+            <section class="p-4">
+              <h3 class="text-sm font-semibold text-gray-900 dark:text-white">
+                {{ t('admin.generatedImages.prompt') }}
+              </h3>
+              <p class="mt-2 max-h-36 overflow-auto whitespace-pre-wrap rounded-md bg-gray-50 p-3 text-sm text-gray-800 dark:bg-dark-700 dark:text-gray-200">
+                {{ previewImage.prompt || '-' }}
+              </p>
+              <template v-if="previewImage.revised_prompt">
+                <h3 class="mt-4 text-sm font-semibold text-gray-900 dark:text-white">
+                  {{ t('admin.generatedImages.revisedPrompt') }}
+                </h3>
+                <p class="mt-2 max-h-36 overflow-auto whitespace-pre-wrap rounded-md bg-gray-50 p-3 text-sm text-gray-800 dark:bg-dark-700 dark:text-gray-200">
+                  {{ previewImage.revised_prompt }}
+                </p>
+              </template>
+            </section>
+
+            <section class="p-4">
+              <h3 class="text-sm font-semibold text-gray-900 dark:text-white">
+                {{ t('admin.generatedImages.metadata') }}
+              </h3>
+              <dl class="mt-3 grid grid-cols-2 gap-3 text-xs">
+                <div>
+                  <dt class="text-gray-500 dark:text-gray-400">{{ t('admin.generatedImages.provider') }}</dt>
+                  <dd class="mt-0.5 truncate font-medium text-gray-800 dark:text-gray-200">{{ previewImage.provider || '-' }}</dd>
+                </div>
+                <div>
+                  <dt class="text-gray-500 dark:text-gray-400">{{ t('admin.generatedImages.size') }}</dt>
+                  <dd class="mt-0.5 font-medium text-gray-800 dark:text-gray-200">{{ formatBytes(previewImage.size_bytes) }}</dd>
+                </div>
+                <div>
+                  <dt class="text-gray-500 dark:text-gray-400">{{ t('admin.generatedImages.source') }}</dt>
+                  <dd class="mt-0.5 truncate font-medium text-gray-800 dark:text-gray-200">{{ previewImage.source || '-' }}</dd>
+                </div>
+                <div>
+                  <dt class="text-gray-500 dark:text-gray-400">{{ t('admin.generatedImages.responseFormat') }}</dt>
+                  <dd class="mt-0.5 truncate font-medium text-gray-800 dark:text-gray-200">{{ previewImage.response_format || '-' }}</dd>
+                </div>
+              </dl>
+            </section>
+
+            <section class="p-4">
+              <h3 class="text-sm font-semibold text-gray-900 dark:text-white">
+                {{ t('admin.generatedImages.ownership') }}
+              </h3>
+              <dl class="mt-3 space-y-3 text-xs">
+                <div>
+                  <dt class="text-gray-500 dark:text-gray-400">{{ t('admin.generatedImages.userEmail') }}</dt>
+                  <dd class="mt-0.5 truncate font-medium text-gray-800 dark:text-gray-200">{{ displayText(previewImage.user_email) }}</dd>
+                </div>
+                <div>
+                  <dt class="text-gray-500 dark:text-gray-400">{{ t('admin.generatedImages.apiKeyName') }}</dt>
+                  <dd class="mt-0.5 truncate font-medium text-gray-800 dark:text-gray-200">{{ displayText(previewImage.api_key_name) }}</dd>
+                </div>
+                <div>
+                  <dt class="text-gray-500 dark:text-gray-400">{{ t('admin.generatedImages.accountName') }}</dt>
+                  <dd class="mt-0.5 truncate font-medium text-gray-800 dark:text-gray-200">{{ displayText(previewImage.account_name) }}</dd>
+                </div>
+                <div>
+                  <dt class="text-gray-500 dark:text-gray-400">{{ t('admin.generatedImages.channelGroup') }}</dt>
+                  <dd class="mt-0.5 truncate font-medium text-gray-800 dark:text-gray-200">{{ formatGroups(previewImage.account_group_names) }}</dd>
+                </div>
+              </dl>
+            </section>
+
+            <section class="p-4">
+              <h3 class="text-sm font-semibold text-gray-900 dark:text-white">
+                {{ t('admin.generatedImages.request') }}
+              </h3>
+              <dl class="mt-3 space-y-3 text-xs">
+                <div>
+                  <dt class="text-gray-500 dark:text-gray-400">{{ t('admin.generatedImages.requestId') }}</dt>
+                  <dd class="mt-0.5 truncate font-medium text-gray-800 dark:text-gray-200">{{ previewImage.request_id || '-' }}</dd>
+                </div>
+                <div>
+                  <dt class="text-gray-500 dark:text-gray-400">{{ t('admin.generatedImages.contentType') }}</dt>
+                  <dd class="mt-0.5 truncate font-medium text-gray-800 dark:text-gray-200">{{ previewImage.content_type || '-' }}</dd>
+                </div>
+              </dl>
+            </section>
+          </aside>
         </div>
       </div>
     </div>
@@ -232,9 +365,9 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, onUnmounted, reactive, ref } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { adminAPI, type GeneratedImage } from '@/api/admin'
+import { adminAPI, type GeneratedImage, type GeneratedImagesQuery } from '@/api/admin'
 import { useAppStore } from '@/stores/app'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
@@ -257,6 +390,24 @@ const pagination = reactive({
   total: 0,
   pages: 0
 })
+const filters = reactive({
+  user_email: '',
+  group_id: '',
+  start_at: '',
+  end_at: ''
+})
+const userEmailSearch = ref('')
+const userEmailOptions = ref<Array<{ id: number; email: string }>>([])
+const userEmailLoading = ref(false)
+const userEmailDropdownOpen = ref(false)
+const channelGroups = ref<Array<{ id: number; name: string }>>([])
+
+const hasActiveFilters = computed(() => (
+  Boolean(filters.user_email.trim()) ||
+  Boolean(filters.group_id) ||
+  Boolean(filters.start_at) ||
+  Boolean(filters.end_at)
+))
 
 let listAbortController: AbortController | null = null
 const contentAbortControllers = new Map<number, AbortController>()
@@ -349,10 +500,7 @@ async function loadData(): Promise<void> {
 
   try {
     const result = await adminAPI.generatedImages.list(
-      {
-        page: pagination.page,
-        page_size: pagination.page_size
-      },
+      buildListQuery(),
       {
         signal: controller.signal
       }
@@ -383,6 +531,91 @@ async function loadData(): Promise<void> {
       loading.value = false
     }
   }
+}
+
+function buildListQuery(): GeneratedImagesQuery {
+  const query: GeneratedImagesQuery = {
+    page: pagination.page,
+    page_size: pagination.page_size
+  }
+  const userEmail = filters.user_email.trim()
+  if (userEmail) {
+    query.user_email = userEmail
+  }
+  if (filters.group_id) {
+    query.group_id = Number(filters.group_id)
+  }
+  if (filters.start_at) {
+    query.start_at = filters.start_at
+  }
+  if (filters.end_at) {
+    query.end_at = filters.end_at
+  }
+  return query
+}
+
+async function loadChannelGroups(): Promise<void> {
+  try {
+    const groups = await adminAPI.groups.getAll()
+    channelGroups.value = groups
+      .map((group) => ({ id: group.id, name: group.name }))
+      .filter((group) => group.id > 0 && group.name)
+  } catch (error) {
+    appStore.showError(extractApiErrorMessage(error, t('admin.generatedImages.failedToLoadGroups')))
+  }
+}
+
+function openUserEmailDropdown(): void {
+  if (userEmailOptions.value.length > 0 || userEmailSearch.value.trim()) {
+    userEmailDropdownOpen.value = true
+  }
+}
+
+function handleUserEmailInput(): void {
+  filters.user_email = userEmailSearch.value.trim()
+  void searchUserEmails()
+}
+
+async function searchUserEmails(): Promise<void> {
+  const keyword = userEmailSearch.value.trim()
+  if (!keyword) {
+    userEmailOptions.value = []
+    userEmailDropdownOpen.value = false
+    return
+  }
+
+  userEmailLoading.value = true
+  userEmailDropdownOpen.value = true
+  try {
+    userEmailOptions.value = await adminAPI.usage.searchUsers(keyword)
+  } catch {
+    userEmailOptions.value = []
+  } finally {
+    userEmailLoading.value = false
+  }
+}
+
+function selectUserEmail(email: string): void {
+  filters.user_email = email
+  userEmailSearch.value = email
+  userEmailDropdownOpen.value = false
+}
+
+function applyFilters(): void {
+  pagination.page = 1
+  void loadData()
+}
+
+function resetFilters(): void {
+  filters.user_email = ''
+  filters.group_id = ''
+  filters.start_at = ''
+  filters.end_at = ''
+  userEmailSearch.value = ''
+  userEmailOptions.value = []
+  userEmailDropdownOpen.value = false
+  pagination.page = 1
+  void loadData()
 }
 
 function refreshData(): void {
@@ -437,11 +670,18 @@ function formatBytes(value: number): string {
   return `${size.toFixed(precision)} ${units[unitIndex]}`
 }
 
-function formatId(value: number): string {
-  return value > 0 ? `#${value}` : '-'
+function displayText(value: string): string {
+  const text = value?.trim()
+  return text || '-'
+}
+
+function formatGroups(values: string[]): string {
+  if (!Array.isArray(values) || values.length === 0) return '-'
+  return values.filter(Boolean).join(', ') || '-'
 }
 
 onMounted(() => {
+  void loadChannelGroups()
   void loadData()
 })
 
