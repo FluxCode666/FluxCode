@@ -65,8 +65,8 @@ apiClient.interceptors.request.use(
       config.headers['Accept-Language'] = getLocale()
     }
 
-    // Attach timezone for all GET requests (backend may use it for default date ranges)
-    if (config.method === 'get') {
+    // Attach timezone for read requests and date-range deletes.
+    if (config.method === 'get' || config.method === 'delete') {
       if (!config.params) {
         config.params = {}
       }

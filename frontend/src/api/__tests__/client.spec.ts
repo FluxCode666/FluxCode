@@ -76,6 +76,26 @@ describe('API Client', () => {
       expect(config.params).toHaveProperty('timezone')
     })
 
+    it('DELETE 请求自动附加 timezone 参数', async () => {
+      const adapter = vi.fn().mockResolvedValue({
+        status: 200,
+        data: { code: 0, data: {} },
+        headers: {},
+        config: {},
+        statusText: 'OK',
+      })
+      apiClient.defaults.adapter = adapter
+
+      await apiClient.delete('/test', { params: { start_at: '2026-06-28', end_at: '2026-06-28' } })
+
+      const config = adapter.mock.calls[0][0]
+      expect(config.params).toEqual(expect.objectContaining({
+        start_at: '2026-06-28',
+        end_at: '2026-06-28',
+        timezone: expect.any(String),
+      }))
+    })
+
     it('POST 请求不附加 timezone 参数', async () => {
       const adapter = vi.fn().mockResolvedValue({
         status: 200,
