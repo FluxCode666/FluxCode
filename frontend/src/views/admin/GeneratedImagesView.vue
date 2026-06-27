@@ -10,15 +10,6 @@
             {{ t('admin.generatedImages.description') }}
           </p>
         </div>
-        <button
-          type="button"
-          class="btn btn-secondary w-full justify-center md:w-auto"
-          :disabled="loading"
-          @click="refreshData"
-        >
-          <Icon name="refresh" size="sm" class="mr-2" />
-          {{ t('admin.generatedImages.refresh') }}
-        </button>
       </div>
 
       <div class="rounded-lg border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-800">
@@ -37,24 +28,24 @@
             />
             <div
               v-if="userEmailDropdownOpen"
-              class="absolute left-0 right-0 z-20 mt-1 max-h-52 overflow-auto rounded-md border border-gray-200 bg-white shadow-lg dark:border-dark-600 dark:bg-dark-800"
+              class="absolute left-0 right-0 z-20 mt-1 max-h-52 overflow-auto rounded-xl border border-gray-200 bg-white py-1 shadow-lg shadow-black/10 dark:border-dark-700 dark:bg-dark-800 dark:shadow-black/30"
             >
-              <div v-if="userEmailLoading" class="px-3 py-2 text-sm text-gray-500 dark:text-gray-400">
+              <div v-if="userEmailLoading" class="px-4 py-2.5 text-sm text-gray-500 dark:text-gray-400">
                 {{ t('common.loading') }}
               </div>
               <button
                 v-for="user in userEmailOptions"
                 :key="user.id"
                 type="button"
-                class="block w-full px-3 py-2 text-left text-sm hover:bg-gray-50 dark:hover:bg-dark-700"
+                class="block w-full px-4 py-2.5 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-dark-700"
                 :data-test="`generated-images-user-option-${user.id}`"
                 @click="selectUserEmail(user.email)"
               >
-                <span class="block truncate font-medium text-gray-900 dark:text-white">{{ user.email }}</span>
+                <span class="block truncate font-medium">{{ user.email }}</span>
               </button>
               <div
                 v-if="!userEmailLoading && userEmailOptions.length === 0 && userEmailSearch.trim()"
-                class="px-3 py-2 text-sm text-gray-500 dark:text-gray-400"
+                class="px-4 py-2.5 text-sm text-gray-500 dark:text-gray-400"
               >
                 {{ t('common.noResults') }}
               </div>
@@ -63,16 +54,11 @@
 
           <div>
             <label class="input-label">{{ t('admin.generatedImages.channelGroup') }}</label>
-            <select
+            <Select
               v-model="filters.group_id"
-              class="input"
+              :options="groupFilterOptions"
               data-test="generated-images-group-filter"
-            >
-              <option value="">{{ t('admin.generatedImages.allGroups') }}</option>
-              <option v-for="group in channelGroups" :key="group.id" :value="String(group.id)">
-                {{ group.name }}
-              </option>
-            </select>
+            />
           </div>
 
           <div>
@@ -102,7 +88,7 @@
               data-test="generated-images-apply-filters"
               @click="applyFilters"
             >
-              {{ t('admin.generatedImages.applyFilters') }}
+              {{ t('admin.generatedImages.query') }}
             </button>
             <button
               type="button"
@@ -244,6 +230,7 @@
           :page="pagination.page"
           :total="pagination.total"
           :page-size="pagination.page_size"
+          :page-size-options="tablePageSizeOptions"
           @update:page="handlePageChange"
           @update:pageSize="handlePageSizeChange"
         />
@@ -255,7 +242,7 @@
       class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
       @mousedown.self="closePreview"
     >
-      <div class="flex max-h-full w-full max-w-6xl flex-col overflow-hidden rounded-lg bg-white shadow-xl dark:bg-dark-800">
+      <div class="flex max-h-full w-full max-w-7xl flex-col overflow-hidden rounded-lg bg-white shadow-xl dark:bg-dark-800">
         <div class="flex items-start justify-between gap-4 border-b border-gray-200 px-4 py-3 dark:border-dark-700">
           <div class="min-w-0">
             <h2 class="truncate text-base font-semibold text-gray-900 dark:text-white">
@@ -276,13 +263,13 @@
         </div>
 
         <div class="grid min-h-0 overflow-auto lg:grid-cols-[minmax(0,1fr)_360px]">
-          <div class="min-w-0 bg-gray-950">
+          <div class="flex min-h-[70vh] min-w-0 items-center justify-center bg-gray-950" data-test="generated-image-preview-pane">
             <img
               v-if="imageUrls.get(previewImage.id)"
               data-test="generated-image-preview"
               :src="imageUrls.get(previewImage.id)"
               :alt="previewImage.prompt || t('admin.generatedImages.preview')"
-              class="mx-auto max-h-[68vh] w-auto max-w-full object-contain"
+              class="h-full w-full object-contain"
             />
           </div>
 
@@ -396,6 +383,9 @@ import EmptyState from '@/components/common/EmptyState.vue'
 import Icon from '@/components/icons/Icon.vue'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import Pagination from '@/components/common/Pagination.vue'
+import Select from '@/components/common/Select.vue'
+import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
+import { getConfiguredTablePageSizeOptions } from '@/utils/tablePreferences'
 import { extractApiErrorMessage } from '@/utils/apiError'
 
 const { t } = useI18n()
@@ -408,7 +398,7 @@ const imageUrls = ref(new Map<number, string>())
 const imageLoadErrors = ref(new Set<number>())
 const pagination = reactive({
   page: 1,
-  page_size: 24,
+  page_size: getPersistedPageSize(),
   total: 0,
   pages: 0
 })
@@ -425,6 +415,7 @@ const userEmailDropdownOpen = ref(false)
 const channelGroups = ref<Array<{ id: number; name: string }>>([])
 const cleanupDialogVisible = ref(false)
 const cleanupSubmitting = ref(false)
+const tablePageSizeOptions = getConfiguredTablePageSizeOptions()
 
 const hasActiveFilters = computed(() => (
   Boolean(filters.user_email.trim()) ||
@@ -432,6 +423,14 @@ const hasActiveFilters = computed(() => (
   Boolean(filters.start_at) ||
   Boolean(filters.end_at)
 ))
+
+const groupFilterOptions = computed(() => [
+  { value: '', label: t('admin.generatedImages.allGroups') },
+  ...channelGroups.value.map((group) => ({
+    value: String(group.id),
+    label: group.name
+  }))
+])
 
 let listAbortController: AbortController | null = null
 const contentAbortControllers = new Map<number, AbortController>()

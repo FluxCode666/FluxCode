@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { defineComponent } from 'vue'
 import { flushPromises, mount } from '@vue/test-utils'
 
 import GeneratedImagesView from '../GeneratedImagesView.vue'
@@ -61,8 +62,43 @@ vi.mock('vue-i18n', async () => {
 describe('admin GeneratedImagesView', () => {
   const refreshIconPath =
     'M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99'
+  const selectStub = defineComponent({
+    name: 'Select',
+    inheritAttrs: false,
+    props: {
+      modelValue: {
+        type: [String, Number, Boolean],
+        default: ''
+      },
+      options: {
+        type: Array,
+        default: () => []
+      }
+    },
+    emits: ['update:modelValue'],
+    methods: {
+      handleChange(event: Event) {
+        this.$emit('update:modelValue', (event.target as HTMLSelectElement).value)
+      }
+    },
+    template: `
+      <select v-bind="$attrs" :value="modelValue" @change="handleChange">
+        <option v-for="option in options" :key="String(option.value)" :value="option.value">{{ option.label }}</option>
+      </select>
+    `
+  })
+
+  const defaultStubs = {
+    AppLayout: { template: '<div><slot /></div>' },
+    Pagination: true,
+    Select: selectStub
+  }
 
   beforeEach(() => {
+    ;(window as any).__APP_CONFIG__ = {
+      table_default_page_size: 50,
+      table_page_size_options: [25, 50, 100]
+    }
     listGeneratedImages.mockReset()
     getContentBlob.mockReset()
     deleteByDateRange.mockReset()
@@ -104,7 +140,7 @@ describe('admin GeneratedImagesView', () => {
       ],
       total: 1,
       page: 1,
-      page_size: 24,
+      page_size: 50,
       pages: 1
     })
     getContentBlob.mockResolvedValue(new Blob(['image-bytes'], { type: 'image/png' }))
@@ -115,15 +151,13 @@ describe('admin GeneratedImagesView', () => {
 
   afterEach(() => {
     vi.unstubAllGlobals()
+    delete (window as any).__APP_CONFIG__
   })
 
   it('loads generated images, renders authorized blob thumbnails, and opens preview', async () => {
     const wrapper = mount(GeneratedImagesView, {
       global: {
-        stubs: {
-          AppLayout: { template: '<div><slot /></div>' },
-          Pagination: true
-        }
+        stubs: defaultStubs
       }
     })
 
@@ -132,7 +166,7 @@ describe('admin GeneratedImagesView', () => {
     expect(listGeneratedImages).toHaveBeenCalledWith(
       {
         page: 1,
-        page_size: 24
+        page_size: 50
       },
       expect.objectContaining({
         signal: expect.any(AbortSignal)
@@ -161,6 +195,9 @@ describe('admin GeneratedImagesView', () => {
     await wrapper.get('[data-test="generated-image-card"]').trigger('click')
 
     expect(wrapper.get('[data-test="generated-image-preview"]').attributes('src')).toBe('blob:image-11')
+    expect(wrapper.get('[data-test="generated-image-preview"]').classes()).toEqual(
+      expect.arrayContaining(['h-full', 'w-full', 'object-contain'])
+    )
     expect(wrapper.text()).toContain('admin.generatedImages.ownership')
 
     wrapper.unmount()
@@ -170,10 +207,7 @@ describe('admin GeneratedImagesView', () => {
   it('filters by user email, channel group, and date range', async () => {
     const wrapper = mount(GeneratedImagesView, {
       global: {
-        stubs: {
-          AppLayout: { template: '<div><slot /></div>' },
-          Pagination: true
-        }
+        stubs: defaultStubs
       }
     })
 
@@ -192,7 +226,7 @@ describe('admin GeneratedImagesView', () => {
     expect(listGeneratedImages).toHaveBeenLastCalledWith(
       {
         page: 1,
-        page_size: 24,
+        page_size: 50,
         user_email: 'artist@example.com',
         group_id: 9,
         start_at: '2026-06-20',
@@ -234,7 +268,7 @@ describe('admin GeneratedImagesView', () => {
         ],
         total: 2,
         page: 1,
-        page_size: 24,
+        page_size: 50,
         pages: 2
       })
       .mockResolvedValueOnce({
@@ -263,7 +297,7 @@ describe('admin GeneratedImagesView', () => {
         ],
         total: 2,
         page: 2,
-        page_size: 24,
+        page_size: 50,
         pages: 2
       })
 
@@ -306,16 +340,13 @@ describe('admin GeneratedImagesView', () => {
       items: [],
       total: 0,
       page: 1,
-      page_size: 24,
+      page_size: 50,
       pages: 0
     })
 
     const wrapper = mount(GeneratedImagesView, {
       global: {
-        stubs: {
-          AppLayout: { template: '<div><slot /></div>' },
-          Pagination: true
-        }
+        stubs: defaultStubs
       }
     })
 
@@ -329,8 +360,7 @@ describe('admin GeneratedImagesView', () => {
     const wrapper = mount(GeneratedImagesView, {
       global: {
         stubs: {
-          AppLayout: { template: '<div><slot /></div>' },
-          Pagination: true,
+          ...defaultStubs,
           ConfirmDialog: {
             props: ['show'],
             emits: ['confirm', 'cancel'],
@@ -354,5 +384,33 @@ describe('admin GeneratedImagesView', () => {
     })
     expect(showSuccess).toHaveBeenCalledWith('admin.generatedImages.cleanupSuccess:{"count":2}')
     expect(listGeneratedImages).toHaveBeenCalledTimes(2)
+  })
+
+  it('uses themed controls and configured pagination options', async () => {
+    const wrapper = mount(GeneratedImagesView, {
+      global: {
+        stubs: {
+          AppLayout: { template: '<div><slot /></div>' },
+          Pagination: {
+            props: {
+              pageSizeOptions: {
+                type: Array,
+                default: () => []
+              }
+            },
+            template: '<div data-test="page-size-options">{{ pageSizeOptions.join(",") }}</div>'
+          }
+        }
+      }
+    })
+
+    await flushPromises()
+
+    expect(wrapper.find('[data-test="generated-images-refresh"]').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('admin.generatedImages.refresh')
+    expect(wrapper.find('select[data-test="generated-images-group-filter"]').exists()).toBe(false)
+    expect(wrapper.get('[data-test="generated-images-group-filter"] .select-trigger').exists()).toBe(true)
+    expect(wrapper.get('[data-test="generated-images-apply-filters"]').text()).toBe('admin.generatedImages.query')
+    expect(wrapper.get('[data-test="page-size-options"]').text()).toBe('25,50,100')
   })
 })

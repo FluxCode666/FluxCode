@@ -4601,6 +4601,7 @@ export default {
       allGroups: '全部分组',
       startDate: '开始日期',
       endDate: '结束日期',
+      query: '查询',
       applyFilters: '筛选',
       resetFilters: '重置',
       cleanup: '清除',

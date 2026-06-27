@@ -4456,6 +4456,7 @@ export default {
       allGroups: 'All Groups',
       startDate: 'Start Date',
       endDate: 'End Date',
+      query: 'Query',
       applyFilters: 'Filter',
       resetFilters: 'Reset',
       cleanup: 'Clear',
