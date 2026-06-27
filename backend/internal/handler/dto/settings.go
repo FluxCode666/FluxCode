@@ -95,6 +95,7 @@ type SystemSettings struct {
 	CustomMenuItems             []CustomMenuItem `json:"custom_menu_items"`
 	CustomEndpoints             []CustomEndpoint `json:"custom_endpoints"`
 	OpenAIUseKeyModelID         string           `json:"openai_use_key_model_id"`
+	OpenAIImageURLCacheTTLHours int              `json:"openai_image_url_cache_ttl_hours"`
 
 	DefaultConcurrency   int                          `json:"default_concurrency"`
 	DefaultBalance       float64                      `json:"default_balance"`

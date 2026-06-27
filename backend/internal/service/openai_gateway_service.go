@@ -343,6 +343,7 @@ type OpenAIGatewayService struct {
 	userRepo              UserRepository
 	userSubRepo           UserSubscriptionRepository
 	cache                 GatewayCache
+	openAIImageCache      OpenAIImageCache
 	cfg                   *config.Config
 	codexDetector         CodexClientRestrictionDetector
 	schedulerSnapshot     *SchedulerSnapshotService
@@ -461,6 +462,13 @@ func (s *OpenAIGatewayService) SetSettingService(settingService *SettingService)
 		return
 	}
 	s.settingService = settingService
+}
+
+func (s *OpenAIGatewayService) SetOpenAIImageCache(cache OpenAIImageCache) {
+	if s == nil {
+		return
+	}
+	s.openAIImageCache = cache
 }
 
 // ResolveChannelMapping 解析渠道级模型映射（代理到 ChannelService）

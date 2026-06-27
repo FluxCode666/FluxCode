@@ -1867,6 +1867,21 @@
             </div>
             <div>
               <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                {{ t('admin.settings.codexCLIUA.openaiImageURLCacheTTLHours') }}
+              </label>
+              <input
+                v-model.number="form.openai_image_url_cache_ttl_hours"
+                type="number"
+                min="1"
+                step="1"
+                class="input max-w-xs"
+              />
+              <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.settings.codexCLIUA.openaiImageURLCacheTTLHoursHint') }}
+              </p>
+            </div>
+            <div>
+              <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
                 {{ t('admin.settings.codexCLIUA.userAgent') }}
               </label>
               <input
@@ -3674,6 +3689,7 @@ const form = reactive<SettingsForm>({
   enable_cch_signing: false,
   // Codex CLI User-Agent
   openai_use_key_model_id: 'gpt-5.5',
+  openai_image_url_cache_ttl_hours: 72,
   codex_cli_user_agent: '',
   codex_cli_version: '',
   // Balance & quota notification
@@ -4302,6 +4318,7 @@ async function saveSettings() {
       enable_metadata_passthrough: form.enable_metadata_passthrough,
       enable_cch_signing: form.enable_cch_signing,
       openai_use_key_model_id: form.openai_use_key_model_id,
+      openai_image_url_cache_ttl_hours: Number(form.openai_image_url_cache_ttl_hours) || 72,
       codex_cli_user_agent: form.codex_cli_user_agent,
       codex_cli_version: form.codex_cli_version,
       // Payment configuration

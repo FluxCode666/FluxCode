@@ -2398,6 +2398,23 @@
         </div>
       </div>
 
+      <div
+        v-if="form.platform === 'openai' || form.platform === 'codex2api'"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600"
+      >
+        <div class="flex items-center justify-between gap-4">
+          <div>
+            <label class="input-label mb-0">{{ t('admin.accounts.openai.imageResponseURLMode') }}</label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.openai.imageResponseURLModeDesc') }}
+            </p>
+          </div>
+          <div class="w-64">
+            <Select v-model="openaiImageResponseURLMode" :options="openAIImageResponseURLOptions" />
+          </div>
+        </div>
+      </div>
+
       <!-- Anthropic API Key 自动透传开关 -->
       <div
         v-if="form.platform === 'anthropic' && accountCategory === 'apikey'"
@@ -3134,6 +3151,8 @@ const autoPauseOnExpired = ref(true)
 const openaiPassthroughEnabled = ref(false)
 const openaiOAuthResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const openaiAPIKeyResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
+type OpenAIImageResponseURLMode = 'base64_url' | 'http_url'
+const openaiImageResponseURLMode = ref<OpenAIImageResponseURLMode>('base64_url')
 const codexCLIOnlyEnabled = ref(false)
 const anthropicPassthroughEnabled = ref(false)
 const anthropicSubUsageAccountingEnabled = ref(false)
@@ -3244,6 +3263,11 @@ const openAIWSModeOptions = computed(() => [
   { value: OPENAI_WS_MODE_OFF, label: t('admin.accounts.openai.wsModeOff') },
   { value: OPENAI_WS_MODE_CTX_POOL, label: t('admin.accounts.openai.wsModeCtxPool') },
   { value: OPENAI_WS_MODE_PASSTHROUGH, label: t('admin.accounts.openai.wsModePassthrough') }
+])
+
+const openAIImageResponseURLOptions = computed(() => [
+  { value: 'base64_url', label: t('admin.accounts.openai.imageResponseURLModeBase64') },
+  { value: 'http_url', label: t('admin.accounts.openai.imageResponseURLModeHTTP') }
 ])
 
 const openaiResponsesWebSocketV2Mode = computed({
@@ -3874,6 +3898,7 @@ const resetForm = () => {
   openaiPassthroughEnabled.value = false
   openaiOAuthResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
   openaiAPIKeyResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
+  openaiImageResponseURLMode.value = 'base64_url'
   codexCLIOnlyEnabled.value = false
   anthropicPassthroughEnabled.value = false
   anthropicSubUsageAccountingEnabled.value = false
@@ -3923,32 +3948,35 @@ const handleClose = () => {
 }
 
 const buildOpenAIExtra = (base?: Record<string, unknown>): Record<string, unknown> | undefined => {
-  if (form.platform !== 'openai') {
+  if (form.platform !== 'openai' && form.platform !== 'codex2api') {
     return base
   }
 
   const extra: Record<string, unknown> = { ...(base || {}) }
-  if (accountCategory.value === 'oauth-based') {
-    extra.openai_oauth_responses_websockets_v2_mode = openaiOAuthResponsesWebSocketV2Mode.value
-    extra.openai_oauth_responses_websockets_v2_enabled = isOpenAIWSModeEnabled(openaiOAuthResponsesWebSocketV2Mode.value)
-  } else if (accountCategory.value === 'apikey') {
-    extra.openai_apikey_responses_websockets_v2_mode = openaiAPIKeyResponsesWebSocketV2Mode.value
-    extra.openai_apikey_responses_websockets_v2_enabled = isOpenAIWSModeEnabled(openaiAPIKeyResponsesWebSocketV2Mode.value)
-  }
-  // 清理兼容旧键，统一改用分类型开关。
-  delete extra.responses_websockets_v2_enabled
-  delete extra.openai_ws_enabled
-  if (openaiPassthroughEnabled.value) {
-    extra.openai_passthrough = true
-  } else {
-    delete extra.openai_passthrough
-    delete extra.openai_oauth_passthrough
-  }
+  extra.openai_image_response_url_mode = openaiImageResponseURLMode.value
+  if (form.platform === 'openai') {
+    if (accountCategory.value === 'oauth-based') {
+      extra.openai_oauth_responses_websockets_v2_mode = openaiOAuthResponsesWebSocketV2Mode.value
+      extra.openai_oauth_responses_websockets_v2_enabled = isOpenAIWSModeEnabled(openaiOAuthResponsesWebSocketV2Mode.value)
+    } else if (accountCategory.value === 'apikey') {
+      extra.openai_apikey_responses_websockets_v2_mode = openaiAPIKeyResponsesWebSocketV2Mode.value
+      extra.openai_apikey_responses_websockets_v2_enabled = isOpenAIWSModeEnabled(openaiAPIKeyResponsesWebSocketV2Mode.value)
+    }
+    // 清理兼容旧键，统一改用分类型开关。
+    delete extra.responses_websockets_v2_enabled
+    delete extra.openai_ws_enabled
+    if (openaiPassthroughEnabled.value) {
+      extra.openai_passthrough = true
+    } else {
+      delete extra.openai_passthrough
+      delete extra.openai_oauth_passthrough
+    }
 
-  if (accountCategory.value === 'oauth-based' && codexCLIOnlyEnabled.value) {
-    extra.codex_cli_only = true
-  } else {
-    delete extra.codex_cli_only
+    if (accountCategory.value === 'oauth-based' && codexCLIOnlyEnabled.value) {
+      extra.codex_cli_only = true
+    } else {
+      delete extra.codex_cli_only
+    }
   }
 
   return Object.keys(extra).length > 0 ? extra : undefined

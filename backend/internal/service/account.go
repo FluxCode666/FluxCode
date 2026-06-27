@@ -1111,6 +1111,12 @@ const (
 	OpenAIWSIngressModePassthrough = "passthrough"
 )
 
+const (
+	OpenAIImageResponseURLModeExtraKey  = "openai_image_response_url_mode"
+	OpenAIImageResponseURLModeBase64URL = "base64_url"
+	OpenAIImageResponseURLModeHTTPURL   = "http_url"
+)
+
 func normalizeOpenAIWSIngressMode(mode string) string {
 	switch strings.ToLower(strings.TrimSpace(mode)) {
 	case OpenAIWSIngressModeOff:
@@ -1136,6 +1142,24 @@ func normalizeOpenAIWSIngressDefaultMode(mode string) string {
 		return normalized
 	}
 	return OpenAIWSIngressModeCtxPool
+}
+
+func normalizeOpenAIImageResponseURLMode(mode string) string {
+	switch strings.ToLower(strings.TrimSpace(mode)) {
+	case "", OpenAIImageResponseURLModeBase64URL:
+		return OpenAIImageResponseURLModeBase64URL
+	case OpenAIImageResponseURLModeHTTPURL:
+		return OpenAIImageResponseURLModeHTTPURL
+	default:
+		return OpenAIImageResponseURLModeBase64URL
+	}
+}
+
+func (a *Account) GetOpenAIImageResponseURLMode() string {
+	if a == nil || !a.IsOpenAICompatible() || a.Extra == nil {
+		return OpenAIImageResponseURLModeBase64URL
+	}
+	return normalizeOpenAIImageResponseURLMode(a.GetExtraString(OpenAIImageResponseURLModeExtraKey))
 }
 
 // ResolveOpenAIResponsesWebSocketV2Mode 返回账号在 WSv2 ingress 下的有效模式（off/ctx_pool/passthrough）。

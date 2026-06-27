@@ -2,13 +2,20 @@ package service
 
 import (
 	"bytes"
+	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
+	"mime"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
@@ -53,6 +60,85 @@ func TestParseOpenAIImagesRequestClassifiesOfficialAndArbitrarySizes(t *testing.
 	}
 }
 
+func TestParseOpenAIImagesRequestResponseFormatURLStaysBasicAndInvalidRejected(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := &OpenAIGatewayService{}
+
+	body := []byte(`{"prompt":"draw a cat","response_format":"url"}`)
+	req := httptest.NewRequest(http.MethodPost, "/v1/images/generations", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = req
+
+	parsed, err := svc.ParseOpenAIImagesRequest(c, body)
+
+	require.NoError(t, err)
+	require.Equal(t, "url", parsed.ResponseFormat)
+	require.Equal(t, OpenAIImagesCapabilityBasic, parsed.RequiredCapability)
+
+	invalidBody := []byte(`{"prompt":"draw a cat","response_format":"json"}`)
+	invalidReq := httptest.NewRequest(http.MethodPost, "/v1/images/generations", bytes.NewReader(invalidBody))
+	invalidReq.Header.Set("Content-Type", "application/json")
+	invalidRec := httptest.NewRecorder()
+	invalidCtx, _ := gin.CreateTestContext(invalidRec)
+	invalidCtx.Request = invalidReq
+
+	_, err = svc.ParseOpenAIImagesRequest(invalidCtx, invalidBody)
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "response_format")
+}
+
+func TestRewriteOpenAIImagesModelStripsLocalResponseFormatJSONAndMultipart(t *testing.T) {
+	jsonBody := []byte(`{"model":"gpt-image-1","prompt":"draw a cat","response_format":"url"}`)
+	rewrittenJSON, _, err := rewriteOpenAIImagesModel(jsonBody, "application/json", "gpt-image-2")
+
+	require.NoError(t, err)
+	require.Equal(t, "gpt-image-2", gjson.GetBytes(rewrittenJSON, "model").String())
+	require.False(t, gjson.GetBytes(rewrittenJSON, "response_format").Exists())
+
+	var multipartBody bytes.Buffer
+	writer := multipart.NewWriter(&multipartBody)
+	require.NoError(t, writer.WriteField("model", "gpt-image-1"))
+	require.NoError(t, writer.WriteField("prompt", "draw a cat"))
+	require.NoError(t, writer.WriteField("response_format", "url"))
+	part, err := writer.CreateFormFile("image", "cat.png")
+	require.NoError(t, err)
+	_, err = part.Write([]byte("fake-image"))
+	require.NoError(t, err)
+	require.NoError(t, writer.Close())
+
+	rewrittenMultipart, rewrittenType, err := rewriteOpenAIImagesModel(multipartBody.Bytes(), writer.FormDataContentType(), "gpt-image-2")
+	require.NoError(t, err)
+
+	_, params, err := mime.ParseMediaType(rewrittenType)
+	require.NoError(t, err)
+	reader := multipart.NewReader(bytes.NewReader(rewrittenMultipart), params["boundary"])
+	fields := map[string]string{}
+	fileSeen := false
+	for {
+		part, err := reader.NextPart()
+		if err == io.EOF {
+			break
+		}
+		require.NoError(t, err)
+		data, err := io.ReadAll(part)
+		require.NoError(t, err)
+		if part.FileName() != "" {
+			fileSeen = true
+			require.Equal(t, "image", part.FormName())
+			require.Equal(t, "fake-image", string(data))
+			continue
+		}
+		fields[part.FormName()] = string(data)
+	}
+	require.True(t, fileSeen)
+	require.Equal(t, "gpt-image-2", fields["model"])
+	require.Equal(t, "draw a cat", fields["prompt"])
+	require.NotContains(t, fields, "response_format")
+}
+
 func TestBuildOpenAIImagesResponsesRequestUsesOfficialToolParameters(t *testing.T) {
 	outputCompression := 80
 	partialImages := 2
@@ -77,6 +163,402 @@ func TestBuildOpenAIImagesResponsesRequestUsesOfficialToolParameters(t *testing.
 	require.Equal(t, int64(80), tool.Get("output_compression").Int())
 	require.Equal(t, int64(2), tool.Get("partial_images").Int())
 	require.False(t, tool.Get("n").Exists())
+}
+
+func TestForwardOpenAIImagesAPIKeyConvertsUpstreamURLToDefaultB64JSON(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	imageBytes := []byte("png-bytes")
+	imageServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/generated.png", r.URL.Path)
+		w.Header().Set("Content-Type", "image/png")
+		_, _ = w.Write(imageBytes)
+	}))
+	defer imageServer.Close()
+
+	body := []byte(`{"prompt":"draw a cat"}`)
+	c, rec := newOpenAIImagesForwardTestContext(body)
+	upstream := &httpUpstreamRecorder{
+		resp: &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body: io.NopCloser(strings.NewReader(fmt.Sprintf(
+				`{"created":1710000000,"data":[{"url":%q,"revised_prompt":"draw a cat"}]}`,
+				imageServer.URL+"/generated.png",
+			))),
+		},
+	}
+	svc := newOpenAIImagesForwardTestService(upstream)
+	parsed, err := svc.ParseOpenAIImagesRequest(c, body)
+	require.NoError(t, err)
+	require.Equal(t, "b64_json", parsed.ResponseFormat)
+
+	result, err := svc.ForwardImages(context.Background(), c, newOpenAIImagesAPIKeyTestAccount(), body, parsed, "")
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.False(t, gjson.GetBytes(upstream.lastBody, "response_format").Exists())
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, base64.StdEncoding.EncodeToString(imageBytes), gjson.GetBytes(rec.Body.Bytes(), "data.0.b64_json").String())
+	require.False(t, gjson.GetBytes(rec.Body.Bytes(), "data.0.url").Exists())
+}
+
+func TestForwardOpenAIImagesAPIKeyReturnsDataURLByDefaultWhenURLRequested(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	imageBytes := []byte("proxied-png-bytes")
+	imageServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/generated.png", r.URL.Path)
+		w.Header().Set("Content-Type", "image/png")
+		_, _ = w.Write(imageBytes)
+	}))
+	defer imageServer.Close()
+
+	body := []byte(`{"prompt":"draw a cat","response_format":"url"}`)
+	c, rec := newOpenAIImagesForwardTestContext(body)
+	upstream := &httpUpstreamRecorder{
+		resp: &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body: io.NopCloser(strings.NewReader(fmt.Sprintf(
+				`{"created":1710000000,"data":[{"url":%q,"revised_prompt":"draw a cat"}]}`,
+				imageServer.URL+"/generated.png",
+			))),
+		},
+	}
+	svc := newOpenAIImagesForwardTestService(upstream)
+	parsed, err := svc.ParseOpenAIImagesRequest(c, body)
+	require.NoError(t, err)
+
+	result, err := svc.ForwardImages(context.Background(), c, newOpenAIImagesAPIKeyTestAccount(), body, parsed, "")
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.False(t, gjson.GetBytes(upstream.lastBody, "response_format").Exists())
+	require.Equal(
+		t,
+		"data:image/png;base64,"+base64.StdEncoding.EncodeToString(imageBytes),
+		gjson.GetBytes(rec.Body.Bytes(), "data.0.url").String(),
+	)
+	require.False(t, gjson.GetBytes(rec.Body.Bytes(), "data.0.b64_json").Exists())
+}
+
+func TestForwardOpenAIImagesAPIKeyReturnsHTTPURLModeFromB64JSON(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	body := []byte(`{"prompt":"draw a cat","response_format":"url"}`)
+	c, rec := newOpenAIImagesForwardTestContext(body)
+	upstream := &httpUpstreamRecorder{
+		resp: &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body: io.NopCloser(strings.NewReader(
+				`{"created":1710000000,"data":[{"b64_json":"aGVsbG8=","output_format":"png"}]}`,
+			)),
+		},
+	}
+	cache := newOpenAIImagesFakeImageCache()
+	svc := newOpenAIImagesForwardTestService(upstream)
+	svc.SetOpenAIImageCache(cache)
+	account := newOpenAIImagesAPIKeyTestAccount()
+	account.Extra = map[string]any{
+		OpenAIImageResponseURLModeExtraKey: OpenAIImageResponseURLModeHTTPURL,
+	}
+	parsed, err := svc.ParseOpenAIImagesRequest(c, body)
+	require.NoError(t, err)
+
+	result, err := svc.ForwardImages(context.Background(), c, account, body, parsed, "")
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.False(t, gjson.GetBytes(upstream.lastBody, "response_format").Exists())
+	proxyURL := gjson.GetBytes(rec.Body.Bytes(), "data.0.url").String()
+	require.Contains(t, proxyURL, "proxy.example.test/v1/images/proxy/")
+	require.False(t, gjson.GetBytes(rec.Body.Bytes(), "data.0.b64_json").Exists())
+	require.Len(t, cache.sets, 1)
+	require.Equal(t, []byte("hello"), cache.sets[0].data)
+	require.Equal(t, "image/png", cache.sets[0].contentType)
+	require.Equal(t, 72*time.Hour, cache.sets[0].ttl)
+
+	token := proxyURL[strings.LastIndex(proxyURL, "/")+1:]
+	proxyRec := httptest.NewRecorder()
+	proxyCtx, _ := gin.CreateTestContext(proxyRec)
+	proxyCtx.Request = httptest.NewRequest(http.MethodGet, "/v1/images/proxy/"+token, nil)
+
+	err = svc.ProxyOpenAIImagesURL(proxyCtx, token)
+
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, proxyRec.Code)
+	require.Equal(t, "image/png", proxyRec.Header().Get("Content-Type"))
+	require.Equal(t, []byte("hello"), proxyRec.Body.Bytes())
+}
+
+func TestForwardOpenAIImagesAPIKeyReturnsHTTPURLModeFromUpstreamURLWithConfiguredTTL(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	imageBytes := []byte("downloaded-png-bytes")
+	imageServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/generated.png", r.URL.Path)
+		w.Header().Set("Content-Type", "image/png")
+		_, _ = w.Write(imageBytes)
+	}))
+	defer imageServer.Close()
+
+	body := []byte(`{"prompt":"draw a cat","response_format":"url"}`)
+	c, rec := newOpenAIImagesForwardTestContext(body)
+	upstream := &httpUpstreamRecorder{
+		resp: &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body: io.NopCloser(strings.NewReader(fmt.Sprintf(
+				`{"created":1710000000,"data":[{"url":%q}]}`,
+				imageServer.URL+"/generated.png",
+			))),
+		},
+	}
+	cache := newOpenAIImagesFakeImageCache()
+	svc := newOpenAIImagesForwardTestService(upstream)
+	svc.SetOpenAIImageCache(cache)
+	svc.SetSettingService(NewSettingService(&openAIImagesSettingRepoStub{values: map[string]string{
+		SettingKeyOpenAIImageURLCacheTTLHours: "12",
+	}}, &config.Config{}))
+	account := newOpenAIImagesAPIKeyTestAccount()
+	account.Extra = map[string]any{
+		OpenAIImageResponseURLModeExtraKey: OpenAIImageResponseURLModeHTTPURL,
+	}
+	parsed, err := svc.ParseOpenAIImagesRequest(c, body)
+	require.NoError(t, err)
+
+	result, err := svc.ForwardImages(context.Background(), c, account, body, parsed, "")
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	proxyURL := gjson.GetBytes(rec.Body.Bytes(), "data.0.url").String()
+	require.Contains(t, proxyURL, "proxy.example.test/v1/images/proxy/")
+	require.NotContains(t, proxyURL, imageServer.URL)
+	require.Len(t, cache.sets, 1)
+	require.Equal(t, imageBytes, cache.sets[0].data)
+	require.Equal(t, "image/png", cache.sets[0].contentType)
+	require.Equal(t, 12*time.Hour, cache.sets[0].ttl)
+}
+
+func TestForwardOpenAIImagesAPIKeyStreamingConvertsB64JSONToURLWhenRequested(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	body := []byte(`{"prompt":"draw a cat","stream":true,"response_format":"url"}`)
+	c, rec := newOpenAIImagesForwardTestContext(body)
+	upstream := &httpUpstreamRecorder{
+		resp: &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+			Body: io.NopCloser(strings.NewReader(
+				"event: image_generation.completed\n" +
+					"data: {\"type\":\"image_generation.completed\",\"b64_json\":\"aGVsbG8=\",\"output_format\":\"png\"}\n\n" +
+					"data: [DONE]\n\n",
+			)),
+		},
+	}
+	svc := newOpenAIImagesForwardTestService(upstream)
+	parsed, err := svc.ParseOpenAIImagesRequest(c, body)
+	require.NoError(t, err)
+
+	result, err := svc.ForwardImages(context.Background(), c, newOpenAIImagesAPIKeyTestAccount(), body, parsed, "")
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.False(t, gjson.GetBytes(upstream.lastBody, "response_format").Exists())
+	require.Contains(t, rec.Body.String(), `"url":"data:image/png;base64,aGVsbG8="`)
+	require.NotContains(t, rec.Body.String(), `"b64_json"`)
+}
+
+func TestForwardOpenAIImagesAPIKeyStreamingConvertsUpstreamURLToDefaultB64JSON(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	imageBytes := []byte("stream-png-bytes")
+	imageServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/generated.png", r.URL.Path)
+		w.Header().Set("Content-Type", "image/png")
+		_, _ = w.Write(imageBytes)
+	}))
+	defer imageServer.Close()
+
+	body := []byte(`{"prompt":"draw a cat","stream":true}`)
+	c, rec := newOpenAIImagesForwardTestContext(body)
+	upstream := &httpUpstreamRecorder{
+		resp: &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+			Body: io.NopCloser(strings.NewReader(fmt.Sprintf(
+				"event: image_generation.completed\n"+
+					"data: {\"type\":\"image_generation.completed\",\"url\":%q}\n\n"+
+					"data: [DONE]\n\n",
+				imageServer.URL+"/generated.png",
+			))),
+		},
+	}
+	svc := newOpenAIImagesForwardTestService(upstream)
+	parsed, err := svc.ParseOpenAIImagesRequest(c, body)
+	require.NoError(t, err)
+
+	result, err := svc.ForwardImages(context.Background(), c, newOpenAIImagesAPIKeyTestAccount(), body, parsed, "")
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Contains(t, rec.Body.String(), `"b64_json":"`+base64.StdEncoding.EncodeToString(imageBytes)+`"`)
+	require.NotContains(t, rec.Body.String(), imageServer.URL)
+}
+
+func newOpenAIImagesForwardTestContext(body []byte) (*gin.Context, *httptest.ResponseRecorder) {
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "http://proxy.example.test/v1/images/generations", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	return c, rec
+}
+
+func newOpenAIImagesForwardTestService(upstream *httpUpstreamRecorder) *OpenAIGatewayService {
+	return &OpenAIGatewayService{
+		cfg: &config.Config{
+			JWT: config.JWTConfig{Secret: strings.Repeat("x", 32)},
+			Security: config.SecurityConfig{
+				URLAllowlist: config.URLAllowlistConfig{
+					AllowInsecureHTTP: true,
+					AllowPrivateHosts: true,
+				},
+			},
+		},
+		httpUpstream: upstream,
+	}
+}
+
+func newOpenAIImagesAPIKeyTestAccount() *Account {
+	return &Account{
+		ID:          991,
+		Name:        "openai-apikey",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"api_key": "sk-test",
+		},
+	}
+}
+
+func TestOpenAIImageResponseURLModeDefaultsAndNormalizes(t *testing.T) {
+	require.Equal(t, OpenAIImageResponseURLModeBase64URL, newOpenAIImagesAPIKeyTestAccount().GetOpenAIImageResponseURLMode())
+
+	account := newOpenAIImagesAPIKeyTestAccount()
+	account.Extra = map[string]any{
+		OpenAIImageResponseURLModeExtraKey: OpenAIImageResponseURLModeHTTPURL,
+	}
+
+	require.Equal(t, OpenAIImageResponseURLModeHTTPURL, account.GetOpenAIImageResponseURLMode())
+
+	account.Extra[OpenAIImageResponseURLModeExtraKey] = "invalid"
+
+	require.Equal(t, OpenAIImageResponseURLModeBase64URL, account.GetOpenAIImageResponseURLMode())
+}
+
+func TestSettingServiceOpenAIImageURLCacheTTLHoursDefaultsAndUpdates(t *testing.T) {
+	repo := &openAIImagesSettingRepoStub{values: map[string]string{}}
+	svc := NewSettingService(repo, &config.Config{})
+
+	settings := svc.parseSettings(repo.values)
+	require.Equal(t, 72, settings.OpenAIImageURLCacheTTLHours)
+	require.Equal(t, 72*time.Hour, svc.GetOpenAIImageURLCacheTTL(context.Background()))
+
+	settings.OpenAIImageURLCacheTTLHours = 24
+	require.NoError(t, svc.UpdateSettings(context.Background(), settings))
+
+	require.Equal(t, "24", repo.values[SettingKeyOpenAIImageURLCacheTTLHours])
+}
+
+type openAIImagesFakeImageCache struct {
+	sets   []openAIImagesFakeImageCacheSet
+	values map[string]openAIImagesFakeImageCacheSet
+}
+
+type openAIImagesFakeImageCacheSet struct {
+	data        []byte
+	contentType string
+	ttl         time.Duration
+}
+
+func newOpenAIImagesFakeImageCache() *openAIImagesFakeImageCache {
+	return &openAIImagesFakeImageCache{values: make(map[string]openAIImagesFakeImageCacheSet)}
+}
+
+func (c *openAIImagesFakeImageCache) SetImage(ctx context.Context, id string, data []byte, contentType string, ttl time.Duration) error {
+	copied := append([]byte(nil), data...)
+	set := openAIImagesFakeImageCacheSet{
+		data:        copied,
+		contentType: contentType,
+		ttl:         ttl,
+	}
+	c.sets = append(c.sets, set)
+	c.values[id] = set
+	return nil
+}
+
+func (c *openAIImagesFakeImageCache) GetImage(ctx context.Context, id string) ([]byte, string, error) {
+	set, ok := c.values[id]
+	if !ok {
+		return nil, "", ErrOpenAIImageCacheNotFound
+	}
+	return append([]byte(nil), set.data...), set.contentType, nil
+}
+
+type openAIImagesSettingRepoStub struct {
+	values map[string]string
+}
+
+func (r *openAIImagesSettingRepoStub) Get(ctx context.Context, key string) (*Setting, error) {
+	if value, ok := r.values[key]; ok {
+		return &Setting{Key: key, Value: value}, nil
+	}
+	return nil, ErrSettingNotFound
+}
+
+func (r *openAIImagesSettingRepoStub) GetValue(ctx context.Context, key string) (string, error) {
+	if value, ok := r.values[key]; ok {
+		return value, nil
+	}
+	return "", ErrSettingNotFound
+}
+
+func (r *openAIImagesSettingRepoStub) Set(ctx context.Context, key, value string) error {
+	if r.values == nil {
+		r.values = make(map[string]string)
+	}
+	r.values[key] = value
+	return nil
+}
+
+func (r *openAIImagesSettingRepoStub) GetMultiple(ctx context.Context, keys []string) (map[string]string, error) {
+	out := make(map[string]string, len(keys))
+	for _, key := range keys {
+		out[key] = r.values[key]
+	}
+	return out, nil
+}
+
+func (r *openAIImagesSettingRepoStub) SetMultiple(ctx context.Context, settings map[string]string) error {
+	if r.values == nil {
+		r.values = make(map[string]string)
+	}
+	for key, value := range settings {
+		r.values[key] = value
+	}
+	return nil
+}
+
+func (r *openAIImagesSettingRepoStub) GetAll(ctx context.Context) (map[string]string, error) {
+	out := make(map[string]string, len(r.values))
+	for key, value := range r.values {
+		out[key] = value
+	}
+	return out, nil
+}
+
+func (r *openAIImagesSettingRepoStub) Delete(ctx context.Context, key string) error {
+	delete(r.values, key)
+	return nil
 }
 
 func TestCollectOpenAIImagesFromResponsesBodyHandlesFullResponsesJSON(t *testing.T) {

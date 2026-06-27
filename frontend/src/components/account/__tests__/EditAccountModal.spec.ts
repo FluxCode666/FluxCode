@@ -89,6 +89,38 @@ const ModelWhitelistSelectorStub = defineComponent({
   `
 })
 
+const SelectStub = defineComponent({
+  name: 'Select',
+  inheritAttrs: false,
+  props: {
+    modelValue: {
+      type: [String, Number, Boolean],
+      default: ''
+    },
+    options: {
+      type: Array,
+      default: () => []
+    }
+  },
+  emits: ['update:modelValue'],
+  methods: {
+    handleChange(event: Event) {
+      this.$emit('update:modelValue', (event.target as HTMLSelectElement).value)
+    }
+  },
+  template: `
+    <select v-bind="$attrs" :value="modelValue" @change="handleChange">
+      <option
+        v-for="option in options"
+        :key="String(option.value)"
+        :value="option.value"
+      >
+        {{ option.label }}
+      </option>
+    </select>
+  `
+})
+
 function buildAccount() {
   return {
     id: 1,
@@ -126,7 +158,7 @@ function mountModal(account = buildAccount()) {
     global: {
       stubs: {
         BaseDialog: BaseDialogStub,
-        Select: true,
+        Select: SelectStub,
         Icon: true,
         ProxySelector: true,
         GroupSelector: true,
@@ -162,5 +194,27 @@ describe('EditAccountModal', () => {
     expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.model_mapping).toEqual({
       'gpt-5.2': 'gpt-5.2'
     })
+  })
+
+  it('edits the OpenAI image response URL mode in account extra', async () => {
+    const account = buildAccount()
+    account.extra = {
+      openai_image_response_url_mode: 'http_url'
+    }
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+    const modeSelect = wrapper.get<HTMLSelectElement>('[data-testid="edit-openai-image-response-url-mode"]')
+
+    expect(modeSelect.element.value).toBe('http_url')
+
+    await modeSelect.setValue('base64_url')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.openai_image_response_url_mode).toBe('base64_url')
   })
 })

@@ -3250,6 +3250,11 @@ export default {
           'Only applies to OpenAI API Key. This account can use OpenAI WebSocket Mode only when enabled.',
         responsesWebsocketsV2PassthroughHint:
           'Automatic passthrough is currently enabled: it only affects HTTP passthrough and does not disable WS mode.',
+        imageResponseURLMode: 'Image URL response mode',
+        imageResponseURLModeDesc:
+          'When downstream response_format=url, return either a base64 data URL or an HTTP temporary link cached and proxied by this system.',
+        imageResponseURLModeBase64: 'Base64 URL (default)',
+        imageResponseURLModeHTTP: 'HTTP temporary link',
         codexCLIOnly: 'Codex official clients only',
         codexCLIOnlyDesc:
           'Only applies to OpenAI OAuth. When enabled, only Codex official client families are allowed; when disabled, the gateway bypasses this restriction and keeps existing behavior.',
@@ -5559,6 +5564,9 @@ export default {
         openaiUseKeyModelIdPlaceholder: 'e.g. gpt-5.5',
         openaiUseKeyModelIdHint:
           'Model and review_model written into user-facing OpenAI/Codex config.toml quick setup. Leave empty to use gpt-5.5. This does not change gateway scheduling.',
+        openaiImageURLCacheTTLHours: 'OpenAI image HTTP URL cache TTL (hours)',
+        openaiImageURLCacheTTLHoursHint:
+          'When an account returns HTTP temporary links for response_format=url, generated images are stored in Redis and expire after this duration. Default is 72 hours.',
         userAgent: 'User-Agent',
         userAgentPlaceholder: 'e.g. codex_cli_rs/1.0.0',
         userAgentHint: 'User-Agent header sent to OpenAI upstream. Leave empty to use default codex_cli_rs/1.0.0.',

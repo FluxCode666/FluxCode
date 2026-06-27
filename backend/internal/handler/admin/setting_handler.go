@@ -161,6 +161,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		CustomMenuItems:                      dto.ParseCustomMenuItems(settings.CustomMenuItems),
 		CustomEndpoints:                      dto.ParseCustomEndpoints(settings.CustomEndpoints),
 		OpenAIUseKeyModelID:                  settings.OpenAIUseKeyModelID,
+		OpenAIImageURLCacheTTLHours:          settings.OpenAIImageURLCacheTTLHours,
 		DefaultConcurrency:                   settings.DefaultConcurrency,
 		DefaultBalance:                       settings.DefaultBalance,
 		DefaultSubscriptions:                 defaultSubscriptions,
@@ -306,6 +307,7 @@ type UpdateSettingsRequest struct {
 	CustomMenuItems             *[]dto.CustomMenuItem `json:"custom_menu_items"`
 	CustomEndpoints             *[]dto.CustomEndpoint `json:"custom_endpoints"`
 	OpenAIUseKeyModelID         *string               `json:"openai_use_key_model_id"`
+	OpenAIImageURLCacheTTLHours *int                  `json:"openai_image_url_cache_ttl_hours"`
 
 	// 默认配置
 	DefaultConcurrency   int                              `json:"default_concurrency"`
@@ -945,6 +947,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.OpenAIUseKeyModelID
 		}(),
+		OpenAIImageURLCacheTTLHours: func() int {
+			if req.OpenAIImageURLCacheTTLHours != nil {
+				return *req.OpenAIImageURLCacheTTLHours
+			}
+			return previousSettings.OpenAIImageURLCacheTTLHours
+		}(),
 		DefaultConcurrency:           req.DefaultConcurrency,
 		DefaultBalance:               req.DefaultBalance,
 		DefaultSubscriptions:         defaultSubscriptions,
@@ -1192,6 +1200,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		CustomMenuItems:                      dto.ParseCustomMenuItems(updatedSettings.CustomMenuItems),
 		CustomEndpoints:                      dto.ParseCustomEndpoints(updatedSettings.CustomEndpoints),
 		OpenAIUseKeyModelID:                  updatedSettings.OpenAIUseKeyModelID,
+		OpenAIImageURLCacheTTLHours:          updatedSettings.OpenAIImageURLCacheTTLHours,
 		DefaultConcurrency:                   updatedSettings.DefaultConcurrency,
 		DefaultBalance:                       updatedSettings.DefaultBalance,
 		DefaultSubscriptions:                 updatedDefaultSubscriptions,

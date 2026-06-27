@@ -3399,6 +3399,11 @@ export default {
         apiKeyResponsesWebsocketsV2Desc:
           '仅对 OpenAI API Key 生效。开启后该账号才允许使用 OpenAI WebSocket Mode 协议。',
         responsesWebsocketsV2PassthroughHint: '当前已开启自动透传：仅影响 HTTP 透传链路，不影响 WS mode。',
+        imageResponseURLMode: '生图 URL 返回模式',
+        imageResponseURLModeDesc:
+          '当下游 response_format=url 时，选择返回 data URL 形式的 base64，或返回由本系统缓存代理的 HTTP 临时链接。',
+        imageResponseURLModeBase64: 'Base64 URL（默认）',
+        imageResponseURLModeHTTP: 'HTTP 临时链接',
         codexCLIOnly: '仅允许 Codex 官方客户端',
         codexCLIOnlyDesc: '仅对 OpenAI OAuth 生效。开启后仅允许 Codex 官方客户端家族访问；关闭后完全绕过并保持原逻辑。',
         modelRestrictionDisabledByPassthrough: '已开启自动透传：模型白名单/映射不会生效。',
@@ -5688,6 +5693,9 @@ export default {
         openaiUseKeyModelIdPlaceholder: '例如 gpt-5.5',
         openaiUseKeyModelIdHint:
           '用户侧 OpenAI/Codex 一键配置写入 config.toml 的 model 和 review_model。留空使用 gpt-5.5，不影响网关实际调度。',
+        openaiImageURLCacheTTLHours: 'OpenAI 图片 HTTP 链接缓存 TTL（小时）',
+        openaiImageURLCacheTTLHoursHint:
+          '当账号选择 response_format=url 返回 HTTP 临时链接时，生成图片会写入 Redis 并按此时间过期。默认 72 小时。',
         userAgent: 'User-Agent',
         userAgentPlaceholder: '例如 codex_cli_rs/1.0.0',
         userAgentHint: '发往 OpenAI 上游的 User-Agent 请求头。留空则使用默认值 codex_cli_rs/1.0.0。',

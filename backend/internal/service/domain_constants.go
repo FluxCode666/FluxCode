@@ -194,6 +194,7 @@ const (
 	SettingKeyCustomMenuItems             = "custom_menu_items"             // 自定义菜单项（JSON 数组）
 	SettingKeyCustomEndpoints             = "custom_endpoints"              // 自定义端点列表（JSON 数组）
 	SettingKeyOpenAIUseKeyModelID         = "openai_use_key_model_id"       // 用户侧 OpenAI/Codex 一键配置默认模型 ID
+	SettingKeyOpenAIImageURLCacheTTLHours = "openai_image_url_cache_ttl_hours"
 
 	// 默认配置
 	SettingKeyDefaultConcurrency   = "default_concurrency"   // 新用户默认并发量

@@ -31,6 +31,10 @@ func RegisterGatewayRoutes(
 	requireGroupAnthropic := middleware.RequireGroupAssignment(settingService, middleware.AnthropicErrorWriter)
 	requireGroupGoogle := middleware.RequireGroupAssignment(settingService, middleware.GoogleErrorWriter)
 
+	// Signed OpenAI Images proxy URLs returned by response_format=url.
+	r.GET("/v1/images/proxy/:token", clientRequestID, h.OpenAIGateway.ImagesProxy)
+	r.GET("/images/proxy/:token", clientRequestID, h.OpenAIGateway.ImagesProxy)
+
 	// API网关（Claude API兼容）
 	gateway := r.Group("/v1")
 	gateway.Use(bodyLimit)
