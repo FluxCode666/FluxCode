@@ -552,15 +552,16 @@ func (s *OpenAIGatewayService) ForwardImages(
 	body []byte,
 	parsed *OpenAIImagesRequest,
 	channelMappedModel string,
+	recordMeta ...*GeneratedImageRecordContext,
 ) (*OpenAIForwardResult, error) {
 	if parsed == nil {
 		return nil, fmt.Errorf("parsed images request is required")
 	}
 	switch account.Type {
 	case AccountTypeAPIKey:
-		return s.forwardOpenAIImagesAPIKey(ctx, c, account, body, parsed, channelMappedModel)
+		return s.forwardOpenAIImagesAPIKey(ctx, c, account, body, parsed, channelMappedModel, firstGeneratedImageRecordContext(recordMeta))
 	case AccountTypeOAuth:
-		return s.forwardOpenAIImagesOAuth(ctx, c, account, parsed, channelMappedModel)
+		return s.forwardOpenAIImagesOAuth(ctx, c, account, parsed, channelMappedModel, firstGeneratedImageRecordContext(recordMeta))
 	default:
 		return nil, fmt.Errorf("unsupported account type: %s", account.Type)
 	}
@@ -573,6 +574,7 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 	body []byte,
 	parsed *OpenAIImagesRequest,
 	channelMappedModel string,
+	recordMeta *GeneratedImageRecordContext,
 ) (*OpenAIForwardResult, error) {
 	startTime := time.Now()
 	requestModel := strings.TrimSpace(parsed.Model)
@@ -664,8 +666,9 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 	imageCount := parsed.N
 	var firstTokenMs *int
 	responseURLMode := account.GetOpenAIImageResponseURLMode()
+	recordCtx := normalizeGeneratedImageRecordContext(ctx, recordMeta, account, parsed, requestModel, resp.Header.Get("x-request-id"))
 	if parsed.Stream {
-		streamUsage, streamCount, ttft, err := s.handleOpenAIImagesStreamingResponse(resp, c, startTime, parsed.ResponseFormat, responseURLMode)
+		streamUsage, streamCount, ttft, err := s.handleOpenAIImagesStreamingResponse(resp, c, startTime, parsed.ResponseFormat, responseURLMode, recordCtx)
 		if err != nil {
 			return nil, err
 		}
@@ -673,7 +676,7 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 		imageCount = streamCount
 		firstTokenMs = ttft
 	} else {
-		nonStreamUsage, nonStreamCount, err := s.handleOpenAIImagesNonStreamingResponse(resp, c, parsed.ResponseFormat, responseURLMode)
+		nonStreamUsage, nonStreamCount, err := s.handleOpenAIImagesNonStreamingResponse(resp, c, parsed.ResponseFormat, responseURLMode, recordCtx)
 		if err != nil {
 			return nil, err
 		}
@@ -852,12 +855,18 @@ func cloneMultipartHeader(src textproto.MIMEHeader) textproto.MIMEHeader {
 	return dst
 }
 
-func (s *OpenAIGatewayService) handleOpenAIImagesNonStreamingResponse(resp *http.Response, c *gin.Context, responseFormat string, responseURLMode string) (OpenAIUsage, int, error) {
+func (s *OpenAIGatewayService) handleOpenAIImagesNonStreamingResponse(
+	resp *http.Response,
+	c *gin.Context,
+	responseFormat string,
+	responseURLMode string,
+	recordCtx GeneratedImageRecordContext,
+) (OpenAIUsage, int, error) {
 	body, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, openAITooLargeError)
 	if err != nil {
 		return OpenAIUsage{}, 0, err
 	}
-	body, err = s.transformOpenAIImagesAPIKeyResponse(c.Request.Context(), c, body, responseFormat, responseURLMode)
+	body, err = s.transformOpenAIImagesAPIKeyResponse(c.Request.Context(), c, body, responseFormat, responseURLMode, recordCtx)
 	if err != nil {
 		return OpenAIUsage{}, 0, err
 	}
@@ -880,6 +889,7 @@ func (s *OpenAIGatewayService) transformOpenAIImagesAPIKeyResponse(
 	body []byte,
 	responseFormat string,
 	responseURLMode string,
+	recordCtx GeneratedImageRecordContext,
 ) ([]byte, error) {
 	if len(body) == 0 || !gjson.ValidBytes(body) {
 		return body, nil
@@ -895,36 +905,77 @@ func (s *OpenAIGatewayService) transformOpenAIImagesAPIKeyResponse(
 
 	out := body
 	rootOutputFormat := strings.TrimSpace(gjson.GetBytes(body, "output_format").String())
+	rootModel := strings.TrimSpace(gjson.GetBytes(body, "model").String())
 	for i, item := range data.Array() {
 		basePath := fmt.Sprintf("data.%d", i)
 		b64Value := normalizeOpenAIImageBase64(item.Get("b64_json").String())
 		urlValue := strings.TrimSpace(item.Get("url").String())
+		outputFormat := strings.TrimSpace(item.Get("output_format").String())
+		if outputFormat == "" {
+			outputFormat = rootOutputFormat
+		}
+		itemRecordCtx := recordCtx
+		if itemModel := strings.TrimSpace(item.Get("model").String()); itemModel != "" {
+			itemRecordCtx.Model = itemModel
+		} else if rootModel != "" {
+			itemRecordCtx.Model = rootModel
+		}
+		revisedPrompt := strings.TrimSpace(item.Get("revised_prompt").String())
 
 		switch format {
 		case "url":
 			if urlValue != "" {
-				renderedURL, err := s.renderOpenAIImagesResponseURL(ctx, c, urlValue, "", responseURLMode)
+				imageBytes, resolvedContentType, err := s.resolveOpenAIImagesResponseImageBytes(ctx, c, urlValue, "")
 				if err != nil {
 					return nil, err
 				}
+				renderedURL, err := s.renderOpenAIImagesResolvedResponseURL(ctx, c, imageBytes, resolvedContentType, responseURLMode)
+				if err != nil {
+					return nil, err
+				}
+				s.recordGeneratedImageBestEffort(ctx, GeneratedImageRecordInput{
+					Meta:          itemRecordCtx,
+					ImageData:     imageBytes,
+					ContentType:   resolvedContentType,
+					OutputFormat:  outputFormat,
+					Source:        GeneratedImageSourceUpstreamURL,
+					RevisedPrompt: revisedPrompt,
+				})
 				out, _ = sjson.SetBytes(out, basePath+".url", renderedURL)
 				out, _ = sjson.DeleteBytes(out, basePath+".b64_json")
 				continue
 			}
 			if b64Value != "" {
-				outputFormat := strings.TrimSpace(item.Get("output_format").String())
-				if outputFormat == "" {
-					outputFormat = rootOutputFormat
-				}
-				renderedURL, err := s.renderOpenAIImagesResponseURL(ctx, c, b64Value, openAIImageOutputMIMEType(outputFormat), responseURLMode)
+				contentType := openAIImageOutputMIMEType(outputFormat)
+				imageBytes, resolvedContentType, err := s.resolveOpenAIImagesResponseImageBytes(ctx, c, b64Value, contentType)
 				if err != nil {
 					return nil, err
 				}
+				renderedURL, err := s.renderOpenAIImagesResolvedResponseURL(ctx, c, imageBytes, resolvedContentType, responseURLMode)
+				if err != nil {
+					return nil, err
+				}
+				s.recordGeneratedImageBestEffort(ctx, GeneratedImageRecordInput{
+					Meta:          itemRecordCtx,
+					ImageData:     imageBytes,
+					ContentType:   resolvedContentType,
+					OutputFormat:  outputFormat,
+					Source:        GeneratedImageSourceB64JSON,
+					RevisedPrompt: revisedPrompt,
+				})
 				out, _ = sjson.SetBytes(out, basePath+".url", renderedURL)
 				out, _ = sjson.DeleteBytes(out, basePath+".b64_json")
 			}
 		default:
 			if b64Value != "" {
+				s.recordGeneratedImageBestEffort(ctx, GeneratedImageRecordInput{
+					Meta:          itemRecordCtx,
+					Value:         b64Value,
+					ContentType:   openAIImageOutputMIMEType(outputFormat),
+					OutputFormat:  outputFormat,
+					Source:        GeneratedImageSourceB64JSON,
+					RevisedPrompt: revisedPrompt,
+				})
 				out, _ = sjson.SetBytes(out, basePath+".b64_json", b64Value)
 				out, _ = sjson.DeleteBytes(out, basePath+".url")
 				continue
@@ -932,10 +983,18 @@ func (s *OpenAIGatewayService) transformOpenAIImagesAPIKeyResponse(
 			if urlValue == "" {
 				continue
 			}
-			imageBytes, _, err := s.downloadOpenAIImagesExternalURL(ctx, c.Request.Header, urlValue)
+			imageBytes, contentType, err := s.downloadOpenAIImagesExternalURL(ctx, c.Request.Header, urlValue)
 			if err != nil {
 				return nil, fmt.Errorf("download upstream image url: %w", err)
 			}
+			s.recordGeneratedImageBestEffort(ctx, GeneratedImageRecordInput{
+				Meta:          itemRecordCtx,
+				ImageData:     imageBytes,
+				ContentType:   contentType,
+				OutputFormat:  outputFormat,
+				Source:        GeneratedImageSourceUpstreamURL,
+				RevisedPrompt: revisedPrompt,
+			})
 			out, _ = sjson.SetBytes(out, basePath+".b64_json", base64.StdEncoding.EncodeToString(imageBytes))
 			out, _ = sjson.DeleteBytes(out, basePath+".url")
 		}
@@ -949,6 +1008,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesStreamingResponse(
 	startTime time.Time,
 	responseFormat string,
 	responseURLMode string,
+	recordCtx GeneratedImageRecordContext,
 ) (OpenAIUsage, int, *int, error) {
 	responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 	contentType := strings.TrimSpace(resp.Header.Get("Content-Type"))
@@ -974,7 +1034,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesStreamingResponse(
 			lineToWrite := line
 			usageLine := line
 			if data, ok := extractOpenAISSEDataLine(strings.TrimRight(string(line), "\r\n")); ok && data != "" && data != "[DONE]" {
-				transformedData, transformErr := s.transformOpenAIImagesAPIKeyStreamPayload(c.Request.Context(), c, []byte(data), responseFormat, responseURLMode)
+				transformedData, transformErr := s.transformOpenAIImagesAPIKeyStreamPayload(c.Request.Context(), c, []byte(data), responseFormat, responseURLMode, recordCtx)
 				if transformErr != nil {
 					return OpenAIUsage{}, 0, firstTokenMs, transformErr
 				}
@@ -1027,12 +1087,13 @@ func (s *OpenAIGatewayService) transformOpenAIImagesAPIKeyStreamPayload(
 	payload []byte,
 	responseFormat string,
 	responseURLMode string,
+	recordCtx GeneratedImageRecordContext,
 ) ([]byte, error) {
 	if len(payload) == 0 || !gjson.ValidBytes(payload) {
 		return payload, nil
 	}
 	if data := gjson.GetBytes(payload, "data"); data.Exists() && data.IsArray() {
-		return s.transformOpenAIImagesAPIKeyResponse(ctx, c, payload, responseFormat, responseURLMode)
+		return s.transformOpenAIImagesAPIKeyResponse(ctx, c, payload, responseFormat, responseURLMode, recordCtx)
 	}
 	format, err := normalizeOpenAIImagesResponseFormat(responseFormat)
 	if err != nil {
@@ -1045,34 +1106,79 @@ func (s *OpenAIGatewayService) transformOpenAIImagesAPIKeyStreamPayload(
 	}
 
 	out := payload
+	outputFormat := strings.TrimSpace(gjson.GetBytes(payload, "output_format").String())
+	revisedPrompt := strings.TrimSpace(gjson.GetBytes(payload, "revised_prompt").String())
+	if itemModel := strings.TrimSpace(gjson.GetBytes(payload, "model").String()); itemModel != "" {
+		recordCtx.Model = itemModel
+	}
 	switch format {
 	case "url":
 		if urlValue != "" {
-			renderedURL, err := s.renderOpenAIImagesResponseURL(ctx, c, urlValue, "", responseURLMode)
+			imageBytes, resolvedContentType, err := s.resolveOpenAIImagesResponseImageBytes(ctx, c, urlValue, "")
 			if err != nil {
 				return nil, err
 			}
+			renderedURL, err := s.renderOpenAIImagesResolvedResponseURL(ctx, c, imageBytes, resolvedContentType, responseURLMode)
+			if err != nil {
+				return nil, err
+			}
+			s.recordGeneratedImageBestEffort(ctx, GeneratedImageRecordInput{
+				Meta:          recordCtx,
+				ImageData:     imageBytes,
+				ContentType:   resolvedContentType,
+				OutputFormat:  outputFormat,
+				Source:        GeneratedImageSourceUpstreamURL,
+				RevisedPrompt: revisedPrompt,
+			})
 			out, _ = sjson.SetBytes(out, "url", renderedURL)
 			out, _ = sjson.DeleteBytes(out, "b64_json")
 			return out, nil
 		}
-		outputFormat := strings.TrimSpace(gjson.GetBytes(payload, "output_format").String())
-		renderedURL, err := s.renderOpenAIImagesResponseURL(ctx, c, b64Value, openAIImageOutputMIMEType(outputFormat), responseURLMode)
+		contentType := openAIImageOutputMIMEType(outputFormat)
+		imageBytes, resolvedContentType, err := s.resolveOpenAIImagesResponseImageBytes(ctx, c, b64Value, contentType)
 		if err != nil {
 			return nil, err
 		}
+		renderedURL, err := s.renderOpenAIImagesResolvedResponseURL(ctx, c, imageBytes, resolvedContentType, responseURLMode)
+		if err != nil {
+			return nil, err
+		}
+		s.recordGeneratedImageBestEffort(ctx, GeneratedImageRecordInput{
+			Meta:          recordCtx,
+			ImageData:     imageBytes,
+			ContentType:   resolvedContentType,
+			OutputFormat:  outputFormat,
+			Source:        GeneratedImageSourceB64JSON,
+			RevisedPrompt: revisedPrompt,
+		})
 		out, _ = sjson.SetBytes(out, "url", renderedURL)
 		out, _ = sjson.DeleteBytes(out, "b64_json")
 	default:
 		if b64Value != "" {
+			s.recordGeneratedImageBestEffort(ctx, GeneratedImageRecordInput{
+				Meta:          recordCtx,
+				Value:         b64Value,
+				ContentType:   openAIImageOutputMIMEType(outputFormat),
+				OutputFormat:  outputFormat,
+				Source:        GeneratedImageSourceB64JSON,
+				RevisedPrompt: revisedPrompt,
+			})
 			out, _ = sjson.SetBytes(out, "b64_json", b64Value)
 			out, _ = sjson.DeleteBytes(out, "url")
 			return out, nil
 		}
-		imageBytes, _, err := s.downloadOpenAIImagesExternalURL(ctx, c.Request.Header, urlValue)
+		imageBytes, contentType, err := s.downloadOpenAIImagesExternalURL(ctx, c.Request.Header, urlValue)
 		if err != nil {
 			return nil, fmt.Errorf("download upstream image url: %w", err)
 		}
+		s.recordGeneratedImageBestEffort(ctx, GeneratedImageRecordInput{
+			Meta:          recordCtx,
+			ImageData:     imageBytes,
+			ContentType:   contentType,
+			OutputFormat:  outputFormat,
+			Source:        GeneratedImageSourceUpstreamURL,
+			RevisedPrompt: revisedPrompt,
+		})
 		out, _ = sjson.SetBytes(out, "b64_json", base64.StdEncoding.EncodeToString(imageBytes))
 		out, _ = sjson.DeleteBytes(out, "url")
 	}
@@ -1086,11 +1192,21 @@ func (s *OpenAIGatewayService) renderOpenAIImagesResponseURL(
 	contentType string,
 	responseURLMode string,
 ) (string, error) {
-	mode := normalizeOpenAIImageResponseURLMode(responseURLMode)
 	imageBytes, resolvedContentType, err := s.resolveOpenAIImagesResponseImageBytes(ctx, c, value, contentType)
 	if err != nil {
 		return "", err
 	}
+	return s.renderOpenAIImagesResolvedResponseURL(ctx, c, imageBytes, resolvedContentType, responseURLMode)
+}
+
+func (s *OpenAIGatewayService) renderOpenAIImagesResolvedResponseURL(
+	ctx context.Context,
+	c *gin.Context,
+	imageBytes []byte,
+	resolvedContentType string,
+	responseURLMode string,
+) (string, error) {
+	mode := normalizeOpenAIImageResponseURLMode(responseURLMode)
 	if resolvedContentType == "" {
 		resolvedContentType = "image/png"
 	}

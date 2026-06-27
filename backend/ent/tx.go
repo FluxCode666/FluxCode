@@ -34,6 +34,8 @@ type Tx struct {
 	ChannelMonitorRequestTemplate *ChannelMonitorRequestTemplateClient
 	// ErrorPassthroughRule is the client for interacting with the ErrorPassthroughRule builders.
 	ErrorPassthroughRule *ErrorPassthroughRuleClient
+	// GeneratedImage is the client for interacting with the GeneratedImage builders.
+	GeneratedImage *GeneratedImageClient
 	// GiftBalanceRecord is the client for interacting with the GiftBalanceRecord builders.
 	GiftBalanceRecord *GiftBalanceRecordClient
 	// Group is the client for interacting with the Group builders.
@@ -239,6 +241,7 @@ func (tx *Tx) init() {
 	tx.ChannelMonitorHistory = NewChannelMonitorHistoryClient(tx.config)
 	tx.ChannelMonitorRequestTemplate = NewChannelMonitorRequestTemplateClient(tx.config)
 	tx.ErrorPassthroughRule = NewErrorPassthroughRuleClient(tx.config)
+	tx.GeneratedImage = NewGeneratedImageClient(tx.config)
 	tx.GiftBalanceRecord = NewGiftBalanceRecordClient(tx.config)
 	tx.Group = NewGroupClient(tx.config)
 	tx.IdempotencyRecord = NewIdempotencyRecordClient(tx.config)

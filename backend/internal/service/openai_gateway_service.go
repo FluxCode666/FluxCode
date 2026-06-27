@@ -344,6 +344,7 @@ type OpenAIGatewayService struct {
 	userSubRepo           UserSubscriptionRepository
 	cache                 GatewayCache
 	openAIImageCache      OpenAIImageCache
+	generatedImageStore   GeneratedImageStore
 	cfg                   *config.Config
 	codexDetector         CodexClientRestrictionDetector
 	schedulerSnapshot     *SchedulerSnapshotService

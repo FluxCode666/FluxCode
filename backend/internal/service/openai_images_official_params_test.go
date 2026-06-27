@@ -643,7 +643,7 @@ func TestHandleOpenAIImagesOAuthNonStreamingResponseReturnsFailoverOnEmptyOutput
 	}
 	svc := &OpenAIGatewayService{}
 
-	_, imageCount, err := svc.handleOpenAIImagesOAuthNonStreamingResponse(resp, c, "b64_json", "gpt-image-2")
+	_, imageCount, err := svc.handleOpenAIImagesOAuthNonStreamingResponse(resp, c, "b64_json", "gpt-image-2", GeneratedImageRecordContext{})
 
 	require.Zero(t, imageCount)
 	var failoverErr *UpstreamFailoverError

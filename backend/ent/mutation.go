@@ -22,6 +22,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorhistory"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorrequesttemplate"
 	"github.com/Wei-Shaw/sub2api/ent/errorpassthroughrule"
+	"github.com/Wei-Shaw/sub2api/ent/generatedimage"
 	"github.com/Wei-Shaw/sub2api/ent/giftbalancerecord"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/idempotencyrecord"
@@ -77,6 +78,7 @@ const (
 	TypeChannelMonitorHistory          = "ChannelMonitorHistory"
 	TypeChannelMonitorRequestTemplate  = "ChannelMonitorRequestTemplate"
 	TypeErrorPassthroughRule           = "ErrorPassthroughRule"
+	TypeGeneratedImage                 = "GeneratedImage"
 	TypeGiftBalanceRecord              = "GiftBalanceRecord"
 	TypeGroup                          = "Group"
 	TypeIdempotencyRecord              = "IdempotencyRecord"
@@ -13130,6 +13132,1248 @@ func (m *ErrorPassthroughRuleMutation) ClearEdge(name string) error {
 // It returns an error if the edge is not defined in the schema.
 func (m *ErrorPassthroughRuleMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown ErrorPassthroughRule edge %s", name)
+}
+
+// GeneratedImageMutation represents an operation that mutates the GeneratedImage nodes in the graph.
+type GeneratedImageMutation struct {
+	config
+	op              Op
+	typ             string
+	id              *int64
+	provider        *string
+	user_id         *int64
+	adduser_id      *int64
+	api_key_id      *int64
+	addapi_key_id   *int64
+	account_id      *int64
+	addaccount_id   *int64
+	request_id      *string
+	model           *string
+	prompt          *string
+	revised_prompt  *string
+	response_format *string
+	source          *string
+	content_type    *string
+	image_data      *[]byte
+	size_bytes      *int
+	addsize_bytes   *int
+	created_at      *time.Time
+	clearedFields   map[string]struct{}
+	done            bool
+	oldValue        func(context.Context) (*GeneratedImage, error)
+	predicates      []predicate.GeneratedImage
+}
+
+var _ ent.Mutation = (*GeneratedImageMutation)(nil)
+
+// generatedimageOption allows management of the mutation configuration using functional options.
+type generatedimageOption func(*GeneratedImageMutation)
+
+// newGeneratedImageMutation creates new mutation for the GeneratedImage entity.
+func newGeneratedImageMutation(c config, op Op, opts ...generatedimageOption) *GeneratedImageMutation {
+	m := &GeneratedImageMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeGeneratedImage,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withGeneratedImageID sets the ID field of the mutation.
+func withGeneratedImageID(id int64) generatedimageOption {
+	return func(m *GeneratedImageMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *GeneratedImage
+		)
+		m.oldValue = func(ctx context.Context) (*GeneratedImage, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().GeneratedImage.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withGeneratedImage sets the old GeneratedImage of the mutation.
+func withGeneratedImage(node *GeneratedImage) generatedimageOption {
+	return func(m *GeneratedImageMutation) {
+		m.oldValue = func(context.Context) (*GeneratedImage, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m GeneratedImageMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m GeneratedImageMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *GeneratedImageMutation) ID() (id int64, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *GeneratedImageMutation) IDs(ctx context.Context) ([]int64, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int64{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().GeneratedImage.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetProvider sets the "provider" field.
+func (m *GeneratedImageMutation) SetProvider(s string) {
+	m.provider = &s
+}
+
+// Provider returns the value of the "provider" field in the mutation.
+func (m *GeneratedImageMutation) Provider() (r string, exists bool) {
+	v := m.provider
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldProvider returns the old "provider" field's value of the GeneratedImage entity.
+// If the GeneratedImage object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GeneratedImageMutation) OldProvider(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldProvider is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldProvider requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldProvider: %w", err)
+	}
+	return oldValue.Provider, nil
+}
+
+// ResetProvider resets all changes to the "provider" field.
+func (m *GeneratedImageMutation) ResetProvider() {
+	m.provider = nil
+}
+
+// SetUserID sets the "user_id" field.
+func (m *GeneratedImageMutation) SetUserID(i int64) {
+	m.user_id = &i
+	m.adduser_id = nil
+}
+
+// UserID returns the value of the "user_id" field in the mutation.
+func (m *GeneratedImageMutation) UserID() (r int64, exists bool) {
+	v := m.user_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUserID returns the old "user_id" field's value of the GeneratedImage entity.
+// If the GeneratedImage object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GeneratedImageMutation) OldUserID(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUserID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUserID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUserID: %w", err)
+	}
+	return oldValue.UserID, nil
+}
+
+// AddUserID adds i to the "user_id" field.
+func (m *GeneratedImageMutation) AddUserID(i int64) {
+	if m.adduser_id != nil {
+		*m.adduser_id += i
+	} else {
+		m.adduser_id = &i
+	}
+}
+
+// AddedUserID returns the value that was added to the "user_id" field in this mutation.
+func (m *GeneratedImageMutation) AddedUserID() (r int64, exists bool) {
+	v := m.adduser_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetUserID resets all changes to the "user_id" field.
+func (m *GeneratedImageMutation) ResetUserID() {
+	m.user_id = nil
+	m.adduser_id = nil
+}
+
+// SetAPIKeyID sets the "api_key_id" field.
+func (m *GeneratedImageMutation) SetAPIKeyID(i int64) {
+	m.api_key_id = &i
+	m.addapi_key_id = nil
+}
+
+// APIKeyID returns the value of the "api_key_id" field in the mutation.
+func (m *GeneratedImageMutation) APIKeyID() (r int64, exists bool) {
+	v := m.api_key_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAPIKeyID returns the old "api_key_id" field's value of the GeneratedImage entity.
+// If the GeneratedImage object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GeneratedImageMutation) OldAPIKeyID(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAPIKeyID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAPIKeyID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAPIKeyID: %w", err)
+	}
+	return oldValue.APIKeyID, nil
+}
+
+// AddAPIKeyID adds i to the "api_key_id" field.
+func (m *GeneratedImageMutation) AddAPIKeyID(i int64) {
+	if m.addapi_key_id != nil {
+		*m.addapi_key_id += i
+	} else {
+		m.addapi_key_id = &i
+	}
+}
+
+// AddedAPIKeyID returns the value that was added to the "api_key_id" field in this mutation.
+func (m *GeneratedImageMutation) AddedAPIKeyID() (r int64, exists bool) {
+	v := m.addapi_key_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetAPIKeyID resets all changes to the "api_key_id" field.
+func (m *GeneratedImageMutation) ResetAPIKeyID() {
+	m.api_key_id = nil
+	m.addapi_key_id = nil
+}
+
+// SetAccountID sets the "account_id" field.
+func (m *GeneratedImageMutation) SetAccountID(i int64) {
+	m.account_id = &i
+	m.addaccount_id = nil
+}
+
+// AccountID returns the value of the "account_id" field in the mutation.
+func (m *GeneratedImageMutation) AccountID() (r int64, exists bool) {
+	v := m.account_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAccountID returns the old "account_id" field's value of the GeneratedImage entity.
+// If the GeneratedImage object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GeneratedImageMutation) OldAccountID(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAccountID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAccountID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAccountID: %w", err)
+	}
+	return oldValue.AccountID, nil
+}
+
+// AddAccountID adds i to the "account_id" field.
+func (m *GeneratedImageMutation) AddAccountID(i int64) {
+	if m.addaccount_id != nil {
+		*m.addaccount_id += i
+	} else {
+		m.addaccount_id = &i
+	}
+}
+
+// AddedAccountID returns the value that was added to the "account_id" field in this mutation.
+func (m *GeneratedImageMutation) AddedAccountID() (r int64, exists bool) {
+	v := m.addaccount_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetAccountID resets all changes to the "account_id" field.
+func (m *GeneratedImageMutation) ResetAccountID() {
+	m.account_id = nil
+	m.addaccount_id = nil
+}
+
+// SetRequestID sets the "request_id" field.
+func (m *GeneratedImageMutation) SetRequestID(s string) {
+	m.request_id = &s
+}
+
+// RequestID returns the value of the "request_id" field in the mutation.
+func (m *GeneratedImageMutation) RequestID() (r string, exists bool) {
+	v := m.request_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRequestID returns the old "request_id" field's value of the GeneratedImage entity.
+// If the GeneratedImage object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GeneratedImageMutation) OldRequestID(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRequestID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRequestID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRequestID: %w", err)
+	}
+	return oldValue.RequestID, nil
+}
+
+// ClearRequestID clears the value of the "request_id" field.
+func (m *GeneratedImageMutation) ClearRequestID() {
+	m.request_id = nil
+	m.clearedFields[generatedimage.FieldRequestID] = struct{}{}
+}
+
+// RequestIDCleared returns if the "request_id" field was cleared in this mutation.
+func (m *GeneratedImageMutation) RequestIDCleared() bool {
+	_, ok := m.clearedFields[generatedimage.FieldRequestID]
+	return ok
+}
+
+// ResetRequestID resets all changes to the "request_id" field.
+func (m *GeneratedImageMutation) ResetRequestID() {
+	m.request_id = nil
+	delete(m.clearedFields, generatedimage.FieldRequestID)
+}
+
+// SetModel sets the "model" field.
+func (m *GeneratedImageMutation) SetModel(s string) {
+	m.model = &s
+}
+
+// Model returns the value of the "model" field in the mutation.
+func (m *GeneratedImageMutation) Model() (r string, exists bool) {
+	v := m.model
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldModel returns the old "model" field's value of the GeneratedImage entity.
+// If the GeneratedImage object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GeneratedImageMutation) OldModel(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldModel is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldModel requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldModel: %w", err)
+	}
+	return oldValue.Model, nil
+}
+
+// ClearModel clears the value of the "model" field.
+func (m *GeneratedImageMutation) ClearModel() {
+	m.model = nil
+	m.clearedFields[generatedimage.FieldModel] = struct{}{}
+}
+
+// ModelCleared returns if the "model" field was cleared in this mutation.
+func (m *GeneratedImageMutation) ModelCleared() bool {
+	_, ok := m.clearedFields[generatedimage.FieldModel]
+	return ok
+}
+
+// ResetModel resets all changes to the "model" field.
+func (m *GeneratedImageMutation) ResetModel() {
+	m.model = nil
+	delete(m.clearedFields, generatedimage.FieldModel)
+}
+
+// SetPrompt sets the "prompt" field.
+func (m *GeneratedImageMutation) SetPrompt(s string) {
+	m.prompt = &s
+}
+
+// Prompt returns the value of the "prompt" field in the mutation.
+func (m *GeneratedImageMutation) Prompt() (r string, exists bool) {
+	v := m.prompt
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPrompt returns the old "prompt" field's value of the GeneratedImage entity.
+// If the GeneratedImage object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GeneratedImageMutation) OldPrompt(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPrompt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPrompt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPrompt: %w", err)
+	}
+	return oldValue.Prompt, nil
+}
+
+// ClearPrompt clears the value of the "prompt" field.
+func (m *GeneratedImageMutation) ClearPrompt() {
+	m.prompt = nil
+	m.clearedFields[generatedimage.FieldPrompt] = struct{}{}
+}
+
+// PromptCleared returns if the "prompt" field was cleared in this mutation.
+func (m *GeneratedImageMutation) PromptCleared() bool {
+	_, ok := m.clearedFields[generatedimage.FieldPrompt]
+	return ok
+}
+
+// ResetPrompt resets all changes to the "prompt" field.
+func (m *GeneratedImageMutation) ResetPrompt() {
+	m.prompt = nil
+	delete(m.clearedFields, generatedimage.FieldPrompt)
+}
+
+// SetRevisedPrompt sets the "revised_prompt" field.
+func (m *GeneratedImageMutation) SetRevisedPrompt(s string) {
+	m.revised_prompt = &s
+}
+
+// RevisedPrompt returns the value of the "revised_prompt" field in the mutation.
+func (m *GeneratedImageMutation) RevisedPrompt() (r string, exists bool) {
+	v := m.revised_prompt
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRevisedPrompt returns the old "revised_prompt" field's value of the GeneratedImage entity.
+// If the GeneratedImage object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GeneratedImageMutation) OldRevisedPrompt(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRevisedPrompt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRevisedPrompt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRevisedPrompt: %w", err)
+	}
+	return oldValue.RevisedPrompt, nil
+}
+
+// ClearRevisedPrompt clears the value of the "revised_prompt" field.
+func (m *GeneratedImageMutation) ClearRevisedPrompt() {
+	m.revised_prompt = nil
+	m.clearedFields[generatedimage.FieldRevisedPrompt] = struct{}{}
+}
+
+// RevisedPromptCleared returns if the "revised_prompt" field was cleared in this mutation.
+func (m *GeneratedImageMutation) RevisedPromptCleared() bool {
+	_, ok := m.clearedFields[generatedimage.FieldRevisedPrompt]
+	return ok
+}
+
+// ResetRevisedPrompt resets all changes to the "revised_prompt" field.
+func (m *GeneratedImageMutation) ResetRevisedPrompt() {
+	m.revised_prompt = nil
+	delete(m.clearedFields, generatedimage.FieldRevisedPrompt)
+}
+
+// SetResponseFormat sets the "response_format" field.
+func (m *GeneratedImageMutation) SetResponseFormat(s string) {
+	m.response_format = &s
+}
+
+// ResponseFormat returns the value of the "response_format" field in the mutation.
+func (m *GeneratedImageMutation) ResponseFormat() (r string, exists bool) {
+	v := m.response_format
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldResponseFormat returns the old "response_format" field's value of the GeneratedImage entity.
+// If the GeneratedImage object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GeneratedImageMutation) OldResponseFormat(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldResponseFormat is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldResponseFormat requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldResponseFormat: %w", err)
+	}
+	return oldValue.ResponseFormat, nil
+}
+
+// ResetResponseFormat resets all changes to the "response_format" field.
+func (m *GeneratedImageMutation) ResetResponseFormat() {
+	m.response_format = nil
+}
+
+// SetSource sets the "source" field.
+func (m *GeneratedImageMutation) SetSource(s string) {
+	m.source = &s
+}
+
+// Source returns the value of the "source" field in the mutation.
+func (m *GeneratedImageMutation) Source() (r string, exists bool) {
+	v := m.source
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSource returns the old "source" field's value of the GeneratedImage entity.
+// If the GeneratedImage object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GeneratedImageMutation) OldSource(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSource is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSource requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSource: %w", err)
+	}
+	return oldValue.Source, nil
+}
+
+// ResetSource resets all changes to the "source" field.
+func (m *GeneratedImageMutation) ResetSource() {
+	m.source = nil
+}
+
+// SetContentType sets the "content_type" field.
+func (m *GeneratedImageMutation) SetContentType(s string) {
+	m.content_type = &s
+}
+
+// ContentType returns the value of the "content_type" field in the mutation.
+func (m *GeneratedImageMutation) ContentType() (r string, exists bool) {
+	v := m.content_type
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldContentType returns the old "content_type" field's value of the GeneratedImage entity.
+// If the GeneratedImage object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GeneratedImageMutation) OldContentType(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldContentType is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldContentType requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldContentType: %w", err)
+	}
+	return oldValue.ContentType, nil
+}
+
+// ResetContentType resets all changes to the "content_type" field.
+func (m *GeneratedImageMutation) ResetContentType() {
+	m.content_type = nil
+}
+
+// SetImageData sets the "image_data" field.
+func (m *GeneratedImageMutation) SetImageData(b []byte) {
+	m.image_data = &b
+}
+
+// ImageData returns the value of the "image_data" field in the mutation.
+func (m *GeneratedImageMutation) ImageData() (r []byte, exists bool) {
+	v := m.image_data
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldImageData returns the old "image_data" field's value of the GeneratedImage entity.
+// If the GeneratedImage object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GeneratedImageMutation) OldImageData(ctx context.Context) (v []byte, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldImageData is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldImageData requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldImageData: %w", err)
+	}
+	return oldValue.ImageData, nil
+}
+
+// ResetImageData resets all changes to the "image_data" field.
+func (m *GeneratedImageMutation) ResetImageData() {
+	m.image_data = nil
+}
+
+// SetSizeBytes sets the "size_bytes" field.
+func (m *GeneratedImageMutation) SetSizeBytes(i int) {
+	m.size_bytes = &i
+	m.addsize_bytes = nil
+}
+
+// SizeBytes returns the value of the "size_bytes" field in the mutation.
+func (m *GeneratedImageMutation) SizeBytes() (r int, exists bool) {
+	v := m.size_bytes
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSizeBytes returns the old "size_bytes" field's value of the GeneratedImage entity.
+// If the GeneratedImage object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GeneratedImageMutation) OldSizeBytes(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSizeBytes is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSizeBytes requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSizeBytes: %w", err)
+	}
+	return oldValue.SizeBytes, nil
+}
+
+// AddSizeBytes adds i to the "size_bytes" field.
+func (m *GeneratedImageMutation) AddSizeBytes(i int) {
+	if m.addsize_bytes != nil {
+		*m.addsize_bytes += i
+	} else {
+		m.addsize_bytes = &i
+	}
+}
+
+// AddedSizeBytes returns the value that was added to the "size_bytes" field in this mutation.
+func (m *GeneratedImageMutation) AddedSizeBytes() (r int, exists bool) {
+	v := m.addsize_bytes
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetSizeBytes resets all changes to the "size_bytes" field.
+func (m *GeneratedImageMutation) ResetSizeBytes() {
+	m.size_bytes = nil
+	m.addsize_bytes = nil
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *GeneratedImageMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *GeneratedImageMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the GeneratedImage entity.
+// If the GeneratedImage object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GeneratedImageMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *GeneratedImageMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// Where appends a list predicates to the GeneratedImageMutation builder.
+func (m *GeneratedImageMutation) Where(ps ...predicate.GeneratedImage) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the GeneratedImageMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *GeneratedImageMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.GeneratedImage, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *GeneratedImageMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *GeneratedImageMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (GeneratedImage).
+func (m *GeneratedImageMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *GeneratedImageMutation) Fields() []string {
+	fields := make([]string, 0, 14)
+	if m.provider != nil {
+		fields = append(fields, generatedimage.FieldProvider)
+	}
+	if m.user_id != nil {
+		fields = append(fields, generatedimage.FieldUserID)
+	}
+	if m.api_key_id != nil {
+		fields = append(fields, generatedimage.FieldAPIKeyID)
+	}
+	if m.account_id != nil {
+		fields = append(fields, generatedimage.FieldAccountID)
+	}
+	if m.request_id != nil {
+		fields = append(fields, generatedimage.FieldRequestID)
+	}
+	if m.model != nil {
+		fields = append(fields, generatedimage.FieldModel)
+	}
+	if m.prompt != nil {
+		fields = append(fields, generatedimage.FieldPrompt)
+	}
+	if m.revised_prompt != nil {
+		fields = append(fields, generatedimage.FieldRevisedPrompt)
+	}
+	if m.response_format != nil {
+		fields = append(fields, generatedimage.FieldResponseFormat)
+	}
+	if m.source != nil {
+		fields = append(fields, generatedimage.FieldSource)
+	}
+	if m.content_type != nil {
+		fields = append(fields, generatedimage.FieldContentType)
+	}
+	if m.image_data != nil {
+		fields = append(fields, generatedimage.FieldImageData)
+	}
+	if m.size_bytes != nil {
+		fields = append(fields, generatedimage.FieldSizeBytes)
+	}
+	if m.created_at != nil {
+		fields = append(fields, generatedimage.FieldCreatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *GeneratedImageMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case generatedimage.FieldProvider:
+		return m.Provider()
+	case generatedimage.FieldUserID:
+		return m.UserID()
+	case generatedimage.FieldAPIKeyID:
+		return m.APIKeyID()
+	case generatedimage.FieldAccountID:
+		return m.AccountID()
+	case generatedimage.FieldRequestID:
+		return m.RequestID()
+	case generatedimage.FieldModel:
+		return m.Model()
+	case generatedimage.FieldPrompt:
+		return m.Prompt()
+	case generatedimage.FieldRevisedPrompt:
+		return m.RevisedPrompt()
+	case generatedimage.FieldResponseFormat:
+		return m.ResponseFormat()
+	case generatedimage.FieldSource:
+		return m.Source()
+	case generatedimage.FieldContentType:
+		return m.ContentType()
+	case generatedimage.FieldImageData:
+		return m.ImageData()
+	case generatedimage.FieldSizeBytes:
+		return m.SizeBytes()
+	case generatedimage.FieldCreatedAt:
+		return m.CreatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *GeneratedImageMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case generatedimage.FieldProvider:
+		return m.OldProvider(ctx)
+	case generatedimage.FieldUserID:
+		return m.OldUserID(ctx)
+	case generatedimage.FieldAPIKeyID:
+		return m.OldAPIKeyID(ctx)
+	case generatedimage.FieldAccountID:
+		return m.OldAccountID(ctx)
+	case generatedimage.FieldRequestID:
+		return m.OldRequestID(ctx)
+	case generatedimage.FieldModel:
+		return m.OldModel(ctx)
+	case generatedimage.FieldPrompt:
+		return m.OldPrompt(ctx)
+	case generatedimage.FieldRevisedPrompt:
+		return m.OldRevisedPrompt(ctx)
+	case generatedimage.FieldResponseFormat:
+		return m.OldResponseFormat(ctx)
+	case generatedimage.FieldSource:
+		return m.OldSource(ctx)
+	case generatedimage.FieldContentType:
+		return m.OldContentType(ctx)
+	case generatedimage.FieldImageData:
+		return m.OldImageData(ctx)
+	case generatedimage.FieldSizeBytes:
+		return m.OldSizeBytes(ctx)
+	case generatedimage.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown GeneratedImage field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *GeneratedImageMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case generatedimage.FieldProvider:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetProvider(v)
+		return nil
+	case generatedimage.FieldUserID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUserID(v)
+		return nil
+	case generatedimage.FieldAPIKeyID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAPIKeyID(v)
+		return nil
+	case generatedimage.FieldAccountID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAccountID(v)
+		return nil
+	case generatedimage.FieldRequestID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRequestID(v)
+		return nil
+	case generatedimage.FieldModel:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetModel(v)
+		return nil
+	case generatedimage.FieldPrompt:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPrompt(v)
+		return nil
+	case generatedimage.FieldRevisedPrompt:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRevisedPrompt(v)
+		return nil
+	case generatedimage.FieldResponseFormat:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetResponseFormat(v)
+		return nil
+	case generatedimage.FieldSource:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSource(v)
+		return nil
+	case generatedimage.FieldContentType:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetContentType(v)
+		return nil
+	case generatedimage.FieldImageData:
+		v, ok := value.([]byte)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetImageData(v)
+		return nil
+	case generatedimage.FieldSizeBytes:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSizeBytes(v)
+		return nil
+	case generatedimage.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown GeneratedImage field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *GeneratedImageMutation) AddedFields() []string {
+	var fields []string
+	if m.adduser_id != nil {
+		fields = append(fields, generatedimage.FieldUserID)
+	}
+	if m.addapi_key_id != nil {
+		fields = append(fields, generatedimage.FieldAPIKeyID)
+	}
+	if m.addaccount_id != nil {
+		fields = append(fields, generatedimage.FieldAccountID)
+	}
+	if m.addsize_bytes != nil {
+		fields = append(fields, generatedimage.FieldSizeBytes)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *GeneratedImageMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case generatedimage.FieldUserID:
+		return m.AddedUserID()
+	case generatedimage.FieldAPIKeyID:
+		return m.AddedAPIKeyID()
+	case generatedimage.FieldAccountID:
+		return m.AddedAccountID()
+	case generatedimage.FieldSizeBytes:
+		return m.AddedSizeBytes()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *GeneratedImageMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case generatedimage.FieldUserID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddUserID(v)
+		return nil
+	case generatedimage.FieldAPIKeyID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddAPIKeyID(v)
+		return nil
+	case generatedimage.FieldAccountID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddAccountID(v)
+		return nil
+	case generatedimage.FieldSizeBytes:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddSizeBytes(v)
+		return nil
+	}
+	return fmt.Errorf("unknown GeneratedImage numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *GeneratedImageMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(generatedimage.FieldRequestID) {
+		fields = append(fields, generatedimage.FieldRequestID)
+	}
+	if m.FieldCleared(generatedimage.FieldModel) {
+		fields = append(fields, generatedimage.FieldModel)
+	}
+	if m.FieldCleared(generatedimage.FieldPrompt) {
+		fields = append(fields, generatedimage.FieldPrompt)
+	}
+	if m.FieldCleared(generatedimage.FieldRevisedPrompt) {
+		fields = append(fields, generatedimage.FieldRevisedPrompt)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *GeneratedImageMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *GeneratedImageMutation) ClearField(name string) error {
+	switch name {
+	case generatedimage.FieldRequestID:
+		m.ClearRequestID()
+		return nil
+	case generatedimage.FieldModel:
+		m.ClearModel()
+		return nil
+	case generatedimage.FieldPrompt:
+		m.ClearPrompt()
+		return nil
+	case generatedimage.FieldRevisedPrompt:
+		m.ClearRevisedPrompt()
+		return nil
+	}
+	return fmt.Errorf("unknown GeneratedImage nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *GeneratedImageMutation) ResetField(name string) error {
+	switch name {
+	case generatedimage.FieldProvider:
+		m.ResetProvider()
+		return nil
+	case generatedimage.FieldUserID:
+		m.ResetUserID()
+		return nil
+	case generatedimage.FieldAPIKeyID:
+		m.ResetAPIKeyID()
+		return nil
+	case generatedimage.FieldAccountID:
+		m.ResetAccountID()
+		return nil
+	case generatedimage.FieldRequestID:
+		m.ResetRequestID()
+		return nil
+	case generatedimage.FieldModel:
+		m.ResetModel()
+		return nil
+	case generatedimage.FieldPrompt:
+		m.ResetPrompt()
+		return nil
+	case generatedimage.FieldRevisedPrompt:
+		m.ResetRevisedPrompt()
+		return nil
+	case generatedimage.FieldResponseFormat:
+		m.ResetResponseFormat()
+		return nil
+	case generatedimage.FieldSource:
+		m.ResetSource()
+		return nil
+	case generatedimage.FieldContentType:
+		m.ResetContentType()
+		return nil
+	case generatedimage.FieldImageData:
+		m.ResetImageData()
+		return nil
+	case generatedimage.FieldSizeBytes:
+		m.ResetSizeBytes()
+		return nil
+	case generatedimage.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown GeneratedImage field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *GeneratedImageMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *GeneratedImageMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *GeneratedImageMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *GeneratedImageMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *GeneratedImageMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *GeneratedImageMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *GeneratedImageMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown GeneratedImage unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *GeneratedImageMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown GeneratedImage edge %s", name)
 }
 
 // GiftBalanceRecordMutation represents an operation that mutates the GiftBalanceRecord nodes in the graph.

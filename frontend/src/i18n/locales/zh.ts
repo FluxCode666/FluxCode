@@ -413,6 +413,7 @@ export default {
     channelStatus: '渠道状态',
     referralManagement: '推广管理',
     salesCommissions: '销售佣金',
+    generatedImages: '生图图库',
   },
 
   // Shared keys for channel monitor (admin + user views)
@@ -4574,6 +4575,31 @@ export default {
       failedToDelete: '删除活动失败',
       failedToToggle: '切换活动状态失败',
       failedToLoadUsages: '加载使用记录失败'
+    },
+
+    // Generated Images
+    generatedImages: {
+      title: '生图图库',
+      description: '查看当前网站生成并持久化保存的图片',
+      refresh: '刷新',
+      preview: '预览',
+      closePreview: '关闭预览',
+      failedToLoad: '加载生图记录失败',
+      failedToLoadImage: '图片加载失败',
+      emptyTitle: '暂无生图记录',
+      emptyDescription: '当前网站生成图片后，历史图片会显示在这里。',
+      prompt: '提示词',
+      revisedPrompt: '修订提示词',
+      model: '模型',
+      createdAt: '创建时间',
+      size: '大小',
+      userId: '用户 ID',
+      apiKeyId: 'API Key ID',
+      accountId: '账号 ID',
+      requestId: '请求 ID',
+      provider: '平台',
+      source: '来源',
+      responseFormat: '响应格式'
     },
 
     // Usage Records

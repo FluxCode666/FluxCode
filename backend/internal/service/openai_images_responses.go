@@ -787,6 +787,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthNonStreamingResponse(
 	c *gin.Context,
 	responseFormat string,
 	fallbackModel string,
+	recordCtx GeneratedImageRecordContext,
 ) (OpenAIUsage, int, error) {
 	body, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, openAITooLargeError)
 	if err != nil {
@@ -831,6 +832,22 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthNonStreamingResponse(
 	if strings.TrimSpace(firstMeta.Model) == "" {
 		firstMeta.Model = strings.TrimSpace(fallbackModel)
 	}
+	for _, img := range results {
+		itemRecordCtx := recordCtx
+		if strings.TrimSpace(img.Model) != "" {
+			itemRecordCtx.Model = strings.TrimSpace(img.Model)
+		} else if strings.TrimSpace(firstMeta.Model) != "" {
+			itemRecordCtx.Model = strings.TrimSpace(firstMeta.Model)
+		}
+		s.recordGeneratedImageBestEffort(c.Request.Context(), GeneratedImageRecordInput{
+			Meta:          itemRecordCtx,
+			Value:         img.Result,
+			ContentType:   openAIImageOutputMIMEType(img.OutputFormat),
+			OutputFormat:  img.OutputFormat,
+			Source:        GeneratedImageSourceB64JSON,
+			RevisedPrompt: img.RevisedPrompt,
+		})
+	}
 
 	responseBody, err := buildOpenAIImagesAPIResponse(results, createdAt, usageRaw, firstMeta, responseFormat)
 	if err != nil {
@@ -848,6 +865,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponse(
 	responseFormat string,
 	streamPrefix string,
 	fallbackModel string,
+	recordCtx GeneratedImageRecordContext,
 ) (OpenAIUsage, int, *int, error) {
 	responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 	c.Header("Content-Type", "text/event-stream")
@@ -969,6 +987,18 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponse(
 							if writeErr := s.writeOpenAIImagesStreamEvent(c, flusher, eventName, payload); writeErr != nil {
 								return OpenAIUsage{}, imageCount, firstTokenMs, writeErr
 							}
+							itemRecordCtx := recordCtx
+							if strings.TrimSpace(img.Model) != "" {
+								itemRecordCtx.Model = strings.TrimSpace(img.Model)
+							}
+							s.recordGeneratedImageBestEffort(c.Request.Context(), GeneratedImageRecordInput{
+								Meta:          itemRecordCtx,
+								Value:         img.Result,
+								ContentType:   openAIImageOutputMIMEType(img.OutputFormat),
+								OutputFormat:  img.OutputFormat,
+								Source:        GeneratedImageSourceB64JSON,
+								RevisedPrompt: img.RevisedPrompt,
+							})
 							emitted[key] = struct{}{}
 						}
 						imageCount = len(emitted)
@@ -1014,6 +1044,18 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponse(
 			if writeErr := s.writeOpenAIImagesStreamEvent(c, flusher, eventName, payload); writeErr != nil {
 				return OpenAIUsage{}, imageCount, firstTokenMs, writeErr
 			}
+			itemRecordCtx := recordCtx
+			if strings.TrimSpace(img.Model) != "" {
+				itemRecordCtx.Model = strings.TrimSpace(img.Model)
+			}
+			s.recordGeneratedImageBestEffort(c.Request.Context(), GeneratedImageRecordInput{
+				Meta:          itemRecordCtx,
+				Value:         img.Result,
+				ContentType:   openAIImageOutputMIMEType(img.OutputFormat),
+				OutputFormat:  img.OutputFormat,
+				Source:        GeneratedImageSourceB64JSON,
+				RevisedPrompt: img.RevisedPrompt,
+			})
 			emitted[key] = struct{}{}
 		}
 		imageCount = len(emitted)
@@ -1031,10 +1073,11 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuth(
 	account *Account,
 	parsed *OpenAIImagesRequest,
 	channelMappedModel string,
+	recordMeta *GeneratedImageRecordContext,
 ) (*OpenAIForwardResult, error) {
 	// ChatGPT Web image path for free OAuth accounts
 	if isOpenAIFreeAccount(account) {
-		return s.forwardOpenAIImagesChatGPTWeb(ctx, c, account, parsed, channelMappedModel)
+		return s.forwardOpenAIImagesChatGPTWeb(ctx, c, account, parsed, channelMappedModel, recordMeta)
 	}
 
 	startTime := time.Now()
@@ -1138,13 +1181,16 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuth(
 		imageCount   int
 		firstTokenMs *int
 	)
+	recordCtx := GeneratedImageRecordContext{}
 	if parsed.Stream {
-		usage, imageCount, firstTokenMs, err = s.handleOpenAIImagesOAuthStreamingResponse(resp, c, startTime, parsed.ResponseFormat, openAIImagesStreamPrefix(parsed), requestModel)
+		recordCtx = normalizeGeneratedImageRecordContext(ctx, recordMeta, account, parsed, requestModel, resp.Header.Get("x-request-id"))
+		usage, imageCount, firstTokenMs, err = s.handleOpenAIImagesOAuthStreamingResponse(resp, c, startTime, parsed.ResponseFormat, openAIImagesStreamPrefix(parsed), requestModel, recordCtx)
 		if err != nil {
 			return nil, err
 		}
 	} else {
-		usage, imageCount, err = s.handleOpenAIImagesOAuthNonStreamingResponse(resp, c, parsed.ResponseFormat, requestModel)
+		recordCtx = normalizeGeneratedImageRecordContext(ctx, recordMeta, account, parsed, requestModel, resp.Header.Get("x-request-id"))
+		usage, imageCount, err = s.handleOpenAIImagesOAuthNonStreamingResponse(resp, c, parsed.ResponseFormat, requestModel, recordCtx)
 		if err != nil {
 			return nil, err
 		}

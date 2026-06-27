@@ -602,6 +602,18 @@ const routes: RouteRecordRaw[] = [
       descriptionKey: 'admin.usage.description'
     }
   },
+  {
+    path: '/admin/generated-images',
+    name: 'AdminGeneratedImages',
+    component: () => import('@/views/admin/GeneratedImagesView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Generated Images',
+      titleKey: 'admin.generatedImages.title',
+      descriptionKey: 'admin.generatedImages.description'
+    }
+  },
 
 
   // ==================== Payment Admin Routes ====================

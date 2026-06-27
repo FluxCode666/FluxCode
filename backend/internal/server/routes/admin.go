@@ -74,6 +74,9 @@ func RegisterAdminRoutes(
 		// 使用记录管理
 		registerUsageRoutes(admin, h)
 
+		// OpenAI 生图图库
+		registerGeneratedImageRoutes(admin, h)
+
 		// 用户属性管理
 		registerUserAttributeRoutes(admin, h)
 
@@ -104,6 +107,14 @@ func RegisterAdminRoutes(
 
 		// 销售佣金管理
 		registerSalesCommissionRoutes(admin, h)
+	}
+}
+
+func registerGeneratedImageRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	images := admin.Group("/generated-images")
+	{
+		images.GET("", h.Admin.GeneratedImage.List)
+		images.GET("/:id/content", h.Admin.GeneratedImage.Content)
 	}
 }
 

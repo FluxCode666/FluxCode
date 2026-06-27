@@ -25,6 +25,7 @@ type AdminHandlers struct {
 	System                 *admin.SystemHandler
 	Subscription           *admin.SubscriptionHandler
 	Usage                  *admin.UsageHandler
+	GeneratedImage         *admin.GeneratedImageHandler
 	UserAttribute          *admin.UserAttributeHandler
 	ErrorPassthrough       *admin.ErrorPassthroughHandler
 	TLSFingerprintProfile  *admin.TLSFingerprintProfileHandler

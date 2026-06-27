@@ -16,6 +16,7 @@ import settingsAPI from './settings'
 import systemAPI from './system'
 import subscriptionsAPI from './subscriptions'
 import usageAPI from './usage'
+import generatedImagesAPI from './generatedImages'
 import geminiAPI from './gemini'
 import antigravityAPI from './antigravity'
 import userAttributesAPI from './userAttributes'
@@ -52,6 +53,7 @@ export const adminAPI = {
   system: systemAPI,
   subscriptions: subscriptionsAPI,
   usage: usageAPI,
+  generatedImages: generatedImagesAPI,
   gemini: geminiAPI,
   antigravity: antigravityAPI,
   userAttributes: userAttributesAPI,
@@ -86,6 +88,7 @@ export {
   systemAPI,
   subscriptionsAPI,
   usageAPI,
+  generatedImagesAPI,
   geminiAPI,
   antigravityAPI,
   userAttributesAPI,
@@ -113,3 +116,4 @@ export type { BalanceHistoryItem, UserAuditLogEntry, AuditLogDetail, GiftBalance
 export type { ErrorPassthroughRule, CreateRuleRequest, UpdateRuleRequest } from './errorPassthrough'
 export type { BackupAgentHealth, DataManagementConfig } from './dataManagement'
 export type { TLSFingerprintProfile, CreateProfileRequest, UpdateProfileRequest } from './tlsFingerprintProfile'
+export type { GeneratedImage, GeneratedImagesQuery } from './generatedImages'

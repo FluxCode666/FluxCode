@@ -552,6 +552,62 @@ var (
 			},
 		},
 	}
+	// GeneratedImagesColumns holds the columns for the "generated_images" table.
+	GeneratedImagesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "provider", Type: field.TypeString, Size: 32, Default: "openai"},
+		{Name: "user_id", Type: field.TypeInt64},
+		{Name: "api_key_id", Type: field.TypeInt64},
+		{Name: "account_id", Type: field.TypeInt64},
+		{Name: "request_id", Type: field.TypeString, Nullable: true, Size: 128},
+		{Name: "model", Type: field.TypeString, Nullable: true, Size: 100},
+		{Name: "prompt", Type: field.TypeString, Nullable: true, Size: 2147483647},
+		{Name: "revised_prompt", Type: field.TypeString, Nullable: true, Size: 2147483647},
+		{Name: "response_format", Type: field.TypeString, Size: 20, Default: "b64_json"},
+		{Name: "source", Type: field.TypeString, Size: 32, Default: "b64_json"},
+		{Name: "content_type", Type: field.TypeString, Size: 100, Default: "image/png"},
+		{Name: "image_data", Type: field.TypeBytes},
+		{Name: "size_bytes", Type: field.TypeInt, Default: 0},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+	}
+	// GeneratedImagesTable holds the schema information for the "generated_images" table.
+	GeneratedImagesTable = &schema.Table{
+		Name:       "generated_images",
+		Columns:    GeneratedImagesColumns,
+		PrimaryKey: []*schema.Column{GeneratedImagesColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "generatedimage_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{GeneratedImagesColumns[14]},
+			},
+			{
+				Name:    "generatedimage_provider_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{GeneratedImagesColumns[1], GeneratedImagesColumns[14]},
+			},
+			{
+				Name:    "generatedimage_user_id_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{GeneratedImagesColumns[2], GeneratedImagesColumns[14]},
+			},
+			{
+				Name:    "generatedimage_api_key_id_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{GeneratedImagesColumns[3], GeneratedImagesColumns[14]},
+			},
+			{
+				Name:    "generatedimage_account_id_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{GeneratedImagesColumns[4], GeneratedImagesColumns[14]},
+			},
+			{
+				Name:    "generatedimage_request_id",
+				Unique:  false,
+				Columns: []*schema.Column{GeneratedImagesColumns[5]},
+			},
+		},
+	}
 	// GiftBalanceRecordsColumns holds the columns for the "gift_balance_records" table.
 	GiftBalanceRecordsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt64, Increment: true},
@@ -1948,6 +2004,7 @@ var (
 		ChannelMonitorHistoriesTable,
 		ChannelMonitorRequestTemplatesTable,
 		ErrorPassthroughRulesTable,
+		GeneratedImagesTable,
 		GiftBalanceRecordsTable,
 		GroupsTable,
 		IdempotencyRecordsTable,
@@ -2023,6 +2080,9 @@ func init() {
 	}
 	ErrorPassthroughRulesTable.Annotation = &entsql.Annotation{
 		Table: "error_passthrough_rules",
+	}
+	GeneratedImagesTable.Annotation = &entsql.Annotation{
+		Table: "generated_images",
 	}
 	GiftBalanceRecordsTable.Annotation = &entsql.Annotation{
 		Table: "gift_balance_records",
