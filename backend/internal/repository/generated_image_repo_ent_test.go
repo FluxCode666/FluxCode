@@ -196,3 +196,67 @@ func TestGeneratedImageRepositoryListEnrichesNamesAndFilters(t *testing.T) {
 	require.Equal(t, "OpenAI Image Account", items[0].AccountName)
 	require.Equal(t, []string{"Images"}, items[0].AccountGroups)
 }
+
+func TestGeneratedImageRepositoryDeleteByDateRangeDeletesOnlyGeneratedImages(t *testing.T) {
+	repo, client, _ := newGeneratedImageEntRepo(t)
+	ctx := context.Background()
+	startAt := time.Date(2026, 6, 20, 0, 0, 0, 0, time.UTC)
+	endAt := time.Date(2026, 6, 28, 0, 0, 0, 0, time.UTC)
+
+	before, err := repo.Create(ctx, &service.GeneratedImage{
+		Provider:       service.GeneratedImageProviderOpenAI,
+		UserID:         1,
+		APIKeyID:       2,
+		AccountID:      3,
+		ResponseFormat: "b64_json",
+		Source:         "b64_json",
+		ContentType:    "image/png",
+		ImageData:      []byte("before"),
+		SizeBytes:      len("before"),
+		CreatedAt:      startAt.Add(-time.Second),
+	})
+	require.NoError(t, err)
+	inside, err := repo.Create(ctx, &service.GeneratedImage{
+		Provider:       service.GeneratedImageProviderOpenAI,
+		UserID:         1,
+		APIKeyID:       2,
+		AccountID:      3,
+		ResponseFormat: "b64_json",
+		Source:         "b64_json",
+		ContentType:    "image/png",
+		ImageData:      []byte("inside"),
+		SizeBytes:      len("inside"),
+		CreatedAt:      startAt,
+	})
+	require.NoError(t, err)
+	after, err := repo.Create(ctx, &service.GeneratedImage{
+		Provider:       service.GeneratedImageProviderOpenAI,
+		UserID:         1,
+		APIKeyID:       2,
+		AccountID:      3,
+		ResponseFormat: "b64_json",
+		Source:         "b64_json",
+		ContentType:    "image/png",
+		ImageData:      []byte("after"),
+		SizeBytes:      len("after"),
+		CreatedAt:      endAt,
+	})
+	require.NoError(t, err)
+
+	deleted, err := repo.DeleteByDateRange(ctx, startAt, endAt)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), deleted)
+
+	_, _, err = repo.GetContent(ctx, inside.ID)
+	require.True(t, dbent.IsNotFound(err))
+	beforeData, _, err := repo.GetContent(ctx, before.ID)
+	require.NoError(t, err)
+	require.Equal(t, []byte("before"), beforeData)
+	afterData, _, err := repo.GetContent(ctx, after.ID)
+	require.NoError(t, err)
+	require.Equal(t, []byte("after"), afterData)
+
+	count, err := client.GeneratedImage.Query().Count(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 2, count)
+}

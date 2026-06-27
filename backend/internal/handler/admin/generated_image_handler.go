@@ -120,6 +120,42 @@ func (h *GeneratedImageHandler) Content(c *gin.Context) {
 	c.Data(http.StatusOK, contentType, data)
 }
 
+func (h *GeneratedImageHandler) DeleteByDateRange(c *gin.Context) {
+	if h == nil || h.store == nil {
+		response.InternalError(c, "Generated image store is not configured")
+		return
+	}
+
+	startText := strings.TrimSpace(c.Query("start_at"))
+	endText := strings.TrimSpace(c.Query("end_at"))
+	if startText == "" || endText == "" {
+		response.BadRequest(c, "start_at and end_at are required")
+		return
+	}
+
+	startAt, err := parseGeneratedImageDateParam(startText, false)
+	if err != nil {
+		response.BadRequest(c, "Invalid start_at")
+		return
+	}
+	endAt, err := parseGeneratedImageDateParam(endText, true)
+	if err != nil {
+		response.BadRequest(c, "Invalid end_at")
+		return
+	}
+	if !endAt.After(startAt) {
+		response.BadRequest(c, "end_at must be after start_at")
+		return
+	}
+
+	deleted, err := h.store.DeleteByDateRange(c.Request.Context(), startAt, endAt)
+	if err != nil {
+		response.InternalError(c, err.Error())
+		return
+	}
+	response.Success(c, gin.H{"deleted_count": deleted})
+}
+
 func generatedImageToListItem(item service.GeneratedImage) generatedImageListItem {
 	return generatedImageListItem{
 		ID:             item.ID,

@@ -3152,7 +3152,7 @@ const openaiPassthroughEnabled = ref(false)
 const openaiOAuthResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const openaiAPIKeyResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 type OpenAIImageResponseURLMode = 'base64_url' | 'http_url'
-const openaiImageResponseURLMode = ref<OpenAIImageResponseURLMode>('base64_url')
+const openaiImageResponseURLMode = ref<OpenAIImageResponseURLMode>('http_url')
 const codexCLIOnlyEnabled = ref(false)
 const anthropicPassthroughEnabled = ref(false)
 const anthropicSubUsageAccountingEnabled = ref(false)
@@ -3898,7 +3898,7 @@ const resetForm = () => {
   openaiPassthroughEnabled.value = false
   openaiOAuthResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
   openaiAPIKeyResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
-  openaiImageResponseURLMode.value = 'base64_url'
+  openaiImageResponseURLMode.value = 'http_url'
   codexCLIOnlyEnabled.value = false
   anthropicPassthroughEnabled.value = false
   anthropicSubUsageAccountingEnabled.value = false

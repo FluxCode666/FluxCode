@@ -1146,18 +1146,18 @@ func normalizeOpenAIWSIngressDefaultMode(mode string) string {
 
 func normalizeOpenAIImageResponseURLMode(mode string) string {
 	switch strings.ToLower(strings.TrimSpace(mode)) {
-	case "", OpenAIImageResponseURLModeBase64URL:
+	case OpenAIImageResponseURLModeBase64URL:
 		return OpenAIImageResponseURLModeBase64URL
 	case OpenAIImageResponseURLModeHTTPURL:
 		return OpenAIImageResponseURLModeHTTPURL
 	default:
-		return OpenAIImageResponseURLModeBase64URL
+		return OpenAIImageResponseURLModeHTTPURL
 	}
 }
 
 func (a *Account) GetOpenAIImageResponseURLMode() string {
 	if a == nil || !a.IsOpenAICompatible() || a.Extra == nil {
-		return OpenAIImageResponseURLModeBase64URL
+		return OpenAIImageResponseURLModeHTTPURL
 	}
 	return normalizeOpenAIImageResponseURLMode(a.GetExtraString(OpenAIImageResponseURLModeExtraKey))
 }

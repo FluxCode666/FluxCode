@@ -95,7 +95,7 @@
             />
           </div>
 
-          <div class="flex gap-2">
+          <div class="flex flex-wrap gap-2">
             <button
               type="button"
               class="btn btn-primary"
@@ -111,6 +111,16 @@
               @click="resetFilters"
             >
               {{ t('admin.generatedImages.resetFilters') }}
+            </button>
+            <button
+              type="button"
+              class="btn border-red-200 bg-red-50 text-red-700 hover:bg-red-100 focus:ring-red-500 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300 dark:hover:bg-red-950/50"
+              data-test="generated-images-open-cleanup"
+              :disabled="cleanupSubmitting"
+              @click="openCleanupDialog"
+            >
+              <Icon name="trash" size="sm" class="mr-2" />
+              {{ t('admin.generatedImages.cleanup') }}
             </button>
           </div>
         </div>
@@ -361,6 +371,17 @@
         </div>
       </div>
     </div>
+
+    <ConfirmDialog
+      :show="cleanupDialogVisible"
+      :title="t('admin.generatedImages.cleanupConfirmTitle')"
+      :message="t('admin.generatedImages.cleanupConfirmMessage', { start: filters.start_at, end: filters.end_at })"
+      :confirm-text="t('admin.generatedImages.cleanupConfirmSubmit')"
+      :cancel-text="t('common.cancel')"
+      danger
+      @confirm="confirmCleanup"
+      @cancel="cleanupDialogVisible = false"
+    />
   </AppLayout>
 </template>
 
@@ -370,6 +391,7 @@ import { useI18n } from 'vue-i18n'
 import { adminAPI, type GeneratedImage, type GeneratedImagesQuery } from '@/api/admin'
 import { useAppStore } from '@/stores/app'
 import AppLayout from '@/components/layout/AppLayout.vue'
+import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import Icon from '@/components/icons/Icon.vue'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
@@ -401,6 +423,8 @@ const userEmailOptions = ref<Array<{ id: number; email: string }>>([])
 const userEmailLoading = ref(false)
 const userEmailDropdownOpen = ref(false)
 const channelGroups = ref<Array<{ id: number; name: string }>>([])
+const cleanupDialogVisible = ref(false)
+const cleanupSubmitting = ref(false)
 
 const hasActiveFilters = computed(() => (
   Boolean(filters.user_email.trim()) ||
@@ -616,6 +640,35 @@ function resetFilters(): void {
   userEmailDropdownOpen.value = false
   pagination.page = 1
   void loadData()
+}
+
+function openCleanupDialog(): void {
+  if (!filters.start_at || !filters.end_at) {
+    appStore.showError(t('admin.generatedImages.cleanupMissingRange'))
+    return
+  }
+
+  cleanupDialogVisible.value = true
+}
+
+async function confirmCleanup(): Promise<void> {
+  if (cleanupSubmitting.value) return
+
+  cleanupSubmitting.value = true
+  try {
+    const result = await adminAPI.generatedImages.deleteByDateRange({
+      start_at: filters.start_at,
+      end_at: filters.end_at
+    })
+    cleanupDialogVisible.value = false
+    appStore.showSuccess(t('admin.generatedImages.cleanupSuccess', { count: result.deleted_count }))
+    pagination.page = 1
+    await loadData()
+  } catch (error) {
+    appStore.showError(extractApiErrorMessage(error, t('admin.generatedImages.cleanupFailed')))
+  } finally {
+    cleanupSubmitting.value = false
+  }
 }
 
 function refreshData(): void {

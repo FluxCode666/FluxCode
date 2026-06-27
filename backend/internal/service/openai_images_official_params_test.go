@@ -202,7 +202,7 @@ func TestForwardOpenAIImagesAPIKeyConvertsUpstreamURLToDefaultB64JSON(t *testing
 	require.False(t, gjson.GetBytes(rec.Body.Bytes(), "data.0.url").Exists())
 }
 
-func TestForwardOpenAIImagesAPIKeyReturnsDataURLByDefaultWhenURLRequested(t *testing.T) {
+func TestForwardOpenAIImagesAPIKeyReturnsDataURLModeWhenURLRequested(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	imageBytes := []byte("proxied-png-bytes")
 	imageServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -225,10 +225,14 @@ func TestForwardOpenAIImagesAPIKeyReturnsDataURLByDefaultWhenURLRequested(t *tes
 		},
 	}
 	svc := newOpenAIImagesForwardTestService(upstream)
+	account := newOpenAIImagesAPIKeyTestAccount()
+	account.Extra = map[string]any{
+		OpenAIImageResponseURLModeExtraKey: OpenAIImageResponseURLModeBase64URL,
+	}
 	parsed, err := svc.ParseOpenAIImagesRequest(c, body)
 	require.NoError(t, err)
 
-	result, err := svc.ForwardImages(context.Background(), c, newOpenAIImagesAPIKeyTestAccount(), body, parsed, "")
+	result, err := svc.ForwardImages(context.Background(), c, account, body, parsed, "")
 
 	require.NoError(t, err)
 	require.NotNil(t, result)
@@ -241,7 +245,7 @@ func TestForwardOpenAIImagesAPIKeyReturnsDataURLByDefaultWhenURLRequested(t *tes
 	require.False(t, gjson.GetBytes(rec.Body.Bytes(), "data.0.b64_json").Exists())
 }
 
-func TestForwardOpenAIImagesAPIKeyReturnsHTTPURLModeFromB64JSON(t *testing.T) {
+func TestForwardOpenAIImagesAPIKeyReturnsHTTPURLByDefaultFromB64JSON(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	body := []byte(`{"prompt":"draw a cat","response_format":"url"}`)
@@ -259,9 +263,6 @@ func TestForwardOpenAIImagesAPIKeyReturnsHTTPURLModeFromB64JSON(t *testing.T) {
 	svc := newOpenAIImagesForwardTestService(upstream)
 	svc.SetOpenAIImageCache(cache)
 	account := newOpenAIImagesAPIKeyTestAccount()
-	account.Extra = map[string]any{
-		OpenAIImageResponseURLModeExtraKey: OpenAIImageResponseURLModeHTTPURL,
-	}
 	parsed, err := svc.ParseOpenAIImagesRequest(c, body)
 	require.NoError(t, err)
 
@@ -356,10 +357,14 @@ func TestForwardOpenAIImagesAPIKeyStreamingConvertsB64JSONToURLWhenRequested(t *
 		},
 	}
 	svc := newOpenAIImagesForwardTestService(upstream)
+	account := newOpenAIImagesAPIKeyTestAccount()
+	account.Extra = map[string]any{
+		OpenAIImageResponseURLModeExtraKey: OpenAIImageResponseURLModeBase64URL,
+	}
 	parsed, err := svc.ParseOpenAIImagesRequest(c, body)
 	require.NoError(t, err)
 
-	result, err := svc.ForwardImages(context.Background(), c, newOpenAIImagesAPIKeyTestAccount(), body, parsed, "")
+	result, err := svc.ForwardImages(context.Background(), c, account, body, parsed, "")
 
 	require.NoError(t, err)
 	require.NotNil(t, result)
@@ -441,7 +446,7 @@ func newOpenAIImagesAPIKeyTestAccount() *Account {
 }
 
 func TestOpenAIImageResponseURLModeDefaultsAndNormalizes(t *testing.T) {
-	require.Equal(t, OpenAIImageResponseURLModeBase64URL, newOpenAIImagesAPIKeyTestAccount().GetOpenAIImageResponseURLMode())
+	require.Equal(t, OpenAIImageResponseURLModeHTTPURL, newOpenAIImagesAPIKeyTestAccount().GetOpenAIImageResponseURLMode())
 
 	account := newOpenAIImagesAPIKeyTestAccount()
 	account.Extra = map[string]any{
@@ -452,7 +457,7 @@ func TestOpenAIImageResponseURLModeDefaultsAndNormalizes(t *testing.T) {
 
 	account.Extra[OpenAIImageResponseURLModeExtraKey] = "invalid"
 
-	require.Equal(t, OpenAIImageResponseURLModeBase64URL, account.GetOpenAIImageResponseURLMode())
+	require.Equal(t, OpenAIImageResponseURLModeHTTPURL, account.GetOpenAIImageResponseURLMode())
 }
 
 func TestSettingServiceOpenAIImageURLCacheTTLHoursDefaultsAndUpdates(t *testing.T) {

@@ -114,6 +114,7 @@ func registerGeneratedImageRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	images := admin.Group("/generated-images")
 	{
 		images.GET("", h.Admin.GeneratedImage.List)
+		images.DELETE("", h.Admin.GeneratedImage.DeleteByDateRange)
 		images.GET("/:id/content", h.Admin.GeneratedImage.Content)
 	}
 }

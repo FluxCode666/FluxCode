@@ -2048,7 +2048,7 @@ const openaiPassthroughEnabled = ref(false)
 const openaiOAuthResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const openaiAPIKeyResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 type OpenAIImageResponseURLMode = 'base64_url' | 'http_url'
-const openaiImageResponseURLMode = ref<OpenAIImageResponseURLMode>('base64_url')
+const openaiImageResponseURLMode = ref<OpenAIImageResponseURLMode>('http_url')
 const codexCLIOnlyEnabled = ref(false)
 const anthropicPassthroughEnabled = ref(false)
 const anthropicSubUsageAccountingEnabled = ref(false)
@@ -2088,7 +2088,7 @@ const openAIImageResponseURLOptions = computed(() => [
   { value: 'http_url', label: t('admin.accounts.openai.imageResponseURLModeHTTP') }
 ])
 const resolveOpenAIImageResponseURLMode = (value: unknown): OpenAIImageResponseURLMode =>
-  value === 'http_url' ? 'http_url' : 'base64_url'
+  value === 'base64_url' ? 'base64_url' : 'http_url'
 const openaiResponsesWebSocketV2Mode = computed({
   get: () => {
     if (props.account?.type === 'apikey') {

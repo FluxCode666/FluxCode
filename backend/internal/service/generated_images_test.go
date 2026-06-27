@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/stretchr/testify/require"
@@ -79,6 +80,10 @@ func (s *generatedImageStoreStub) List(ctx context.Context, params GeneratedImag
 
 func (s *generatedImageStoreStub) GetContent(ctx context.Context, id int64) ([]byte, string, error) {
 	return nil, "", nil
+}
+
+func (s *generatedImageStoreStub) DeleteByDateRange(ctx context.Context, startAt, endAt time.Time) (int64, error) {
+	return 0, nil
 }
 
 func TestGeneratedImageRecordNormalizesDataURL(t *testing.T) {

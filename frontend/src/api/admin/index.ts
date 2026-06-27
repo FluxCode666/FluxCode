@@ -116,4 +116,9 @@ export type { BalanceHistoryItem, UserAuditLogEntry, AuditLogDetail, GiftBalance
 export type { ErrorPassthroughRule, CreateRuleRequest, UpdateRuleRequest } from './errorPassthrough'
 export type { BackupAgentHealth, DataManagementConfig } from './dataManagement'
 export type { TLSFingerprintProfile, CreateProfileRequest, UpdateProfileRequest } from './tlsFingerprintProfile'
-export type { GeneratedImage, GeneratedImagesQuery } from './generatedImages'
+export type {
+  GeneratedImage,
+  GeneratedImagesQuery,
+  GeneratedImagesDeleteByDateRangeParams,
+  GeneratedImagesDeleteByDateRangeResult
+} from './generatedImages'

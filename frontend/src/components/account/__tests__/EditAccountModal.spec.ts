@@ -217,4 +217,13 @@ describe('EditAccountModal', () => {
     expect(updateAccountMock).toHaveBeenCalledTimes(1)
     expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.openai_image_response_url_mode).toBe('base64_url')
   })
+
+  it('defaults missing OpenAI image response URL mode to HTTP URL', () => {
+    const account = buildAccount()
+
+    const wrapper = mountModal(account)
+    const modeSelect = wrapper.get<HTMLSelectElement>('[data-testid="edit-openai-image-response-url-mode"]')
+
+    expect(modeSelect.element.value).toBe('http_url')
+  })
 })

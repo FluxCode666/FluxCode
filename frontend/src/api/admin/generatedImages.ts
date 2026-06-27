@@ -32,6 +32,15 @@ export interface GeneratedImagesQuery {
   end_at?: string
 }
 
+export interface GeneratedImagesDeleteByDateRangeParams {
+  start_at: string
+  end_at: string
+}
+
+export interface GeneratedImagesDeleteByDateRangeResult {
+  deleted_count: number
+}
+
 export async function list(
   params: GeneratedImagesQuery,
   options?: { signal?: AbortSignal }
@@ -51,9 +60,20 @@ export async function getContentBlob(id: number, options?: { signal?: AbortSigna
   return data
 }
 
+export async function deleteByDateRange(
+  params: GeneratedImagesDeleteByDateRangeParams
+): Promise<GeneratedImagesDeleteByDateRangeResult> {
+  const { data } = await apiClient.delete<GeneratedImagesDeleteByDateRangeResult>(
+    '/admin/generated-images',
+    { params }
+  )
+  return data
+}
+
 const generatedImagesAPI = {
   list,
-  getContentBlob
+  getContentBlob,
+  deleteByDateRange
 }
 
 export default generatedImagesAPI

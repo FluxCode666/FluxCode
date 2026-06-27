@@ -44,6 +44,7 @@ func TestGeneratedImageHandlerListAndContent(t *testing.T) {
 	handler := NewGeneratedImageHandler(store)
 	router := gin.New()
 	router.GET("/admin/generated-images", handler.List)
+	router.DELETE("/admin/generated-images", handler.DeleteByDateRange)
 	router.GET("/admin/generated-images/:id/content", handler.Content)
 
 	listRec := httptest.NewRecorder()
@@ -80,13 +81,28 @@ func TestGeneratedImageHandlerListAndContent(t *testing.T) {
 	require.Equal(t, http.StatusOK, contentRec.Code)
 	require.Equal(t, "image/png", contentRec.Header().Get("Content-Type"))
 	require.Equal(t, []byte("png-bytes"), contentRec.Body.Bytes())
+
+	deleteRec := httptest.NewRecorder()
+	deleteReq := httptest.NewRequest(http.MethodDelete, "/admin/generated-images?start_at=2026-06-20&end_at=2026-06-27", nil)
+	router.ServeHTTP(deleteRec, deleteReq)
+
+	require.Equal(t, http.StatusOK, deleteRec.Code)
+	require.Equal(t, time.Date(2026, 6, 20, 0, 0, 0, 0, time.UTC), store.lastDeleteStart)
+	require.Equal(t, time.Date(2026, 6, 28, 0, 0, 0, 0, time.UTC), store.lastDeleteEnd)
+	var deleteResp response.Response
+	require.NoError(t, json.Unmarshal(deleteRec.Body.Bytes(), &deleteResp))
+	deleteData, ok := deleteResp.Data.(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, float64(3), deleteData["deleted_count"])
 }
 
 type generatedImageHandlerStoreStub struct {
-	items          []service.GeneratedImage
-	content        []byte
-	contentType    string
-	lastListParams service.GeneratedImageListParams
+	items           []service.GeneratedImage
+	content         []byte
+	contentType     string
+	lastListParams  service.GeneratedImageListParams
+	lastDeleteStart time.Time
+	lastDeleteEnd   time.Time
 }
 
 func (s *generatedImageHandlerStoreStub) Create(ctx context.Context, image *service.GeneratedImage) (*service.GeneratedImage, error) {
@@ -100,4 +116,10 @@ func (s *generatedImageHandlerStoreStub) List(ctx context.Context, params servic
 
 func (s *generatedImageHandlerStoreStub) GetContent(ctx context.Context, id int64) ([]byte, string, error) {
 	return s.content, s.contentType, nil
+}
+
+func (s *generatedImageHandlerStoreStub) DeleteByDateRange(ctx context.Context, startAt, endAt time.Time) (int64, error) {
+	s.lastDeleteStart = startAt
+	s.lastDeleteEnd = endAt
+	return 3, nil
 }

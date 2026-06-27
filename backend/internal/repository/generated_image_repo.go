@@ -4,6 +4,7 @@ import (
 	"context"
 	"sort"
 	"strings"
+	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/account"
@@ -131,6 +132,16 @@ func (r *generatedImageRepository) GetContent(ctx context.Context, id int64) ([]
 		contentType = "application/octet-stream"
 	}
 	return append([]byte(nil), image.ImageData...), contentType, nil
+}
+
+func (r *generatedImageRepository) DeleteByDateRange(ctx context.Context, startAt, endAt time.Time) (int64, error) {
+	deleted, err := r.client.GeneratedImage.Delete().
+		Where(
+			generatedimage.CreatedAtGTE(startAt),
+			generatedimage.CreatedAtLT(endAt),
+		).
+		Exec(ctx)
+	return int64(deleted), err
 }
 
 func (r *generatedImageRepository) generatedImageListPredicates(ctx context.Context, params service.GeneratedImageListParams) ([]predicate.GeneratedImage, bool, error) {

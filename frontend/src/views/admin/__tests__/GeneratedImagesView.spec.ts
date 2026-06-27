@@ -6,16 +6,20 @@ import GeneratedImagesView from '../GeneratedImagesView.vue'
 const {
   listGeneratedImages,
   getContentBlob,
+  deleteByDateRange,
   searchUsers,
   getAllGroups,
+  showSuccess,
   showError,
   createObjectURL,
   revokeObjectURL
 } = vi.hoisted(() => ({
   listGeneratedImages: vi.fn(),
   getContentBlob: vi.fn(),
+  deleteByDateRange: vi.fn(),
   searchUsers: vi.fn(),
   getAllGroups: vi.fn(),
+  showSuccess: vi.fn(),
   showError: vi.fn(),
   createObjectURL: vi.fn((blob: Blob) => `blob:image-${blob.size}`),
   revokeObjectURL: vi.fn()
@@ -25,7 +29,8 @@ vi.mock('@/api/admin', () => ({
   adminAPI: {
     generatedImages: {
       list: listGeneratedImages,
-      getContentBlob
+      getContentBlob,
+      deleteByDateRange
     },
     usage: {
       searchUsers
@@ -38,6 +43,7 @@ vi.mock('@/api/admin', () => ({
 
 vi.mock('@/stores/app', () => ({
   useAppStore: () => ({
+    showSuccess,
     showError
   })
 }))
@@ -59,8 +65,10 @@ describe('admin GeneratedImagesView', () => {
   beforeEach(() => {
     listGeneratedImages.mockReset()
     getContentBlob.mockReset()
+    deleteByDateRange.mockReset()
     searchUsers.mockReset()
     getAllGroups.mockReset()
+    showSuccess.mockReset()
     showError.mockReset()
     createObjectURL.mockClear()
     revokeObjectURL.mockClear()
@@ -100,6 +108,7 @@ describe('admin GeneratedImagesView', () => {
       pages: 1
     })
     getContentBlob.mockResolvedValue(new Blob(['image-bytes'], { type: 'image/png' }))
+    deleteByDateRange.mockResolvedValue({ deleted_count: 2 })
     searchUsers.mockResolvedValue([{ id: 11, email: 'artist@example.com' }])
     getAllGroups.mockResolvedValue([{ id: 9, name: 'Images', platform: 'openai' }])
   })
@@ -314,5 +323,36 @@ describe('admin GeneratedImagesView', () => {
 
     const emptyActionIcon = wrapper.get('.empty-state .btn svg path')
     expect(emptyActionIcon.attributes('d')).toBe(refreshIconPath)
+  })
+
+  it('clears generated image rows by selected date range after confirmation', async () => {
+    const wrapper = mount(GeneratedImagesView, {
+      global: {
+        stubs: {
+          AppLayout: { template: '<div><slot /></div>' },
+          Pagination: true,
+          ConfirmDialog: {
+            props: ['show'],
+            emits: ['confirm', 'cancel'],
+            template: '<button v-if="show" data-test="confirm-cleanup" @click="$emit(\'confirm\')">confirm</button>'
+          }
+        }
+      }
+    })
+
+    await flushPromises()
+
+    await wrapper.get('[data-test="generated-images-start-date"]').setValue('2026-06-20')
+    await wrapper.get('[data-test="generated-images-end-date"]').setValue('2026-06-27')
+    await wrapper.get('[data-test="generated-images-open-cleanup"]').trigger('click')
+    await wrapper.get('[data-test="confirm-cleanup"]').trigger('click')
+    await flushPromises()
+
+    expect(deleteByDateRange).toHaveBeenCalledWith({
+      start_at: '2026-06-20',
+      end_at: '2026-06-27'
+    })
+    expect(showSuccess).toHaveBeenCalledWith('admin.generatedImages.cleanupSuccess:{"count":2}')
+    expect(listGeneratedImages).toHaveBeenCalledTimes(2)
   })
 })
