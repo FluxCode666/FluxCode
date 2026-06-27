@@ -175,7 +175,10 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 
 		service.SetOpsLatencyMs(c, service.OpsRoutingLatencyMsKey, time.Since(routingStart).Milliseconds())
 		forwardStart := time.Now()
-		result, err := h.gatewayService.ForwardImages(c.Request.Context(), c, account, body, parsed, channelMapping.MappedModel)
+		result, err := h.gatewayService.ForwardImages(c.Request.Context(), c, account, body, parsed, channelMapping.MappedModel, &service.GeneratedImageRecordContext{
+			UserID:   subject.UserID,
+			APIKeyID: apiKey.ID,
+		})
 		forwardDurationMs := time.Since(forwardStart).Milliseconds()
 		if accountReleaseFunc != nil {
 			accountReleaseFunc()
@@ -294,4 +297,42 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 
 func isMultipartImagesContentType(contentType string) bool {
 	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(contentType)), "multipart/form-data")
+}
+
+// ImagesProxy serves signed proxied image URLs returned by response_format=url.
+func (h *OpenAIGatewayHandler) ImagesProxy(c *gin.Context) {
+	if h == nil || h.gatewayService == nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": gin.H{
+				"type":    "api_error",
+				"message": "Gateway service is not configured",
+			},
+		})
+		return
+	}
+	token := strings.TrimSpace(c.Param("token"))
+	if token == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": gin.H{
+				"type":    "invalid_request_error",
+				"message": "Image proxy token is required",
+			},
+		})
+		return
+	}
+	if err := h.gatewayService.ProxyOpenAIImagesURL(c, token); err != nil {
+		status := http.StatusBadRequest
+		if errors.Is(err, service.ErrOpenAIImageCacheNotFound) {
+			status = http.StatusNotFound
+		} else if strings.Contains(strings.ToLower(err.Error()), "download") {
+			status = http.StatusBadGateway
+		}
+		c.JSON(status, gin.H{
+			"error": gin.H{
+				"type":    "invalid_request_error",
+				"message": err.Error(),
+			},
+		})
+		return
+	}
 }

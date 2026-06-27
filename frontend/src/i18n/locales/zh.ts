@@ -413,6 +413,7 @@ export default {
     channelStatus: '渠道状态',
     referralManagement: '推广管理',
     salesCommissions: '销售佣金',
+    generatedImages: '生图图库',
   },
 
   // Shared keys for channel monitor (admin + user views)
@@ -3399,6 +3400,11 @@ export default {
         apiKeyResponsesWebsocketsV2Desc:
           '仅对 OpenAI API Key 生效。开启后该账号才允许使用 OpenAI WebSocket Mode 协议。',
         responsesWebsocketsV2PassthroughHint: '当前已开启自动透传：仅影响 HTTP 透传链路，不影响 WS mode。',
+        imageResponseURLMode: '生图 URL 返回模式',
+        imageResponseURLModeDesc:
+          '当下游 response_format=url 时，选择返回 data URL 形式的 base64，或返回由本系统缓存代理的 HTTP 临时链接。',
+        imageResponseURLModeBase64: 'Base64 URL（默认）',
+        imageResponseURLModeHTTP: 'HTTP 临时链接',
         codexCLIOnly: '仅允许 Codex 官方客户端',
         codexCLIOnlyDesc: '仅对 OpenAI OAuth 生效。开启后仅允许 Codex 官方客户端家族访问；关闭后完全绕过并保持原逻辑。',
         modelRestrictionDisabledByPassthrough: '已开启自动透传：模型白名单/映射不会生效。',
@@ -4571,6 +4577,52 @@ export default {
       failedToLoadUsages: '加载使用记录失败'
     },
 
+    // Generated Images
+    generatedImages: {
+      title: '生图图库',
+      description: '查看当前网站生成并持久化保存的图片',
+      refresh: '刷新',
+      preview: '预览',
+      closePreview: '关闭预览',
+      failedToLoad: '加载生图记录失败',
+      failedToLoadImage: '图片加载失败',
+      emptyTitle: '暂无生图记录',
+      emptyDescription: '当前网站生成图片后，历史图片会显示在这里。',
+      prompt: '提示词',
+      revisedPrompt: '修订提示词',
+      model: '模型',
+      createdAt: '创建时间',
+      size: '大小',
+      userEmail: '用户邮箱',
+      userEmailPlaceholder: '搜索用户邮箱',
+      apiKeyName: 'API Key 名称',
+      accountName: '账号名称',
+      channelGroup: '渠道分组',
+      allGroups: '全部分组',
+      dateRange: '日期范围',
+      startDate: '开始日期',
+      endDate: '结束日期',
+      query: '查询',
+      applyFilters: '筛选',
+      resetFilters: '重置',
+      cleanup: '清除',
+      cleanupConfirmTitle: '清除生图数据',
+      cleanupConfirmMessage: '确定清除 {start} 至 {end} 的生图数据吗？此操作仅删除图库存图表数据，无法撤销。',
+      cleanupConfirmSubmit: '确认清除',
+      cleanupMissingRange: '请先选择开始日期和结束日期',
+      cleanupSuccess: '已清除 {count} 条生图数据',
+      cleanupFailed: '清除生图数据失败',
+      metadata: '基础信息',
+      ownership: '归属信息',
+      request: '请求信息',
+      contentType: '内容类型',
+      requestId: '请求 ID',
+      provider: '平台',
+      source: '来源',
+      responseFormat: '响应格式',
+      failedToLoadGroups: '加载渠道分组失败'
+    },
+
     // Usage Records
     usage: {
       title: '使用记录',
@@ -5688,6 +5740,9 @@ export default {
         openaiUseKeyModelIdPlaceholder: '例如 gpt-5.5',
         openaiUseKeyModelIdHint:
           '用户侧 OpenAI/Codex 一键配置写入 config.toml 的 model 和 review_model。留空使用 gpt-5.5，不影响网关实际调度。',
+        openaiImageURLCacheTTLHours: 'OpenAI 图片 HTTP 链接缓存 TTL（小时）',
+        openaiImageURLCacheTTLHoursHint:
+          '当账号选择 response_format=url 返回 HTTP 临时链接时，生成图片会写入 Redis 并按此时间过期。默认 72 小时。',
         userAgent: 'User-Agent',
         userAgentPlaceholder: '例如 codex_cli_rs/1.0.0',
         userAgentHint: '发往 OpenAI 上游的 User-Agent 请求头。留空则使用默认值 codex_cli_rs/1.0.0。',

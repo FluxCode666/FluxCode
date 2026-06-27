@@ -548,6 +548,181 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_LoadBalanceTopKFallback
 	}
 }
 
+func TestAccountSupportsOpenAIImageCapability(t *testing.T) {
+	cases := []struct {
+		name       string
+		account    *Account
+		capability OpenAIImagesCapability
+		want       bool
+	}{
+		{
+			name:       "nil account",
+			account:    nil,
+			capability: OpenAIImagesCapabilityBasic,
+			want:       false,
+		},
+		{
+			name:       "empty capability keeps existing account eligible",
+			account:    &Account{Platform: PlatformAnthropic, Type: AccountTypeOAuth},
+			capability: "",
+			want:       true,
+		},
+		{
+			name:       "openai oauth supports basic",
+			account:    &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth},
+			capability: OpenAIImagesCapabilityBasic,
+			want:       true,
+		},
+		{
+			name:       "openai oauth supports native",
+			account:    &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth},
+			capability: OpenAIImagesCapabilityNative,
+			want:       true,
+		},
+		{
+			name:       "openai apikey supports native",
+			account:    &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey},
+			capability: OpenAIImagesCapabilityNative,
+			want:       true,
+		},
+		{
+			name:       "codex2api apikey supports native",
+			account:    &Account{Platform: PlatformCodex2API, Type: AccountTypeAPIKey},
+			capability: OpenAIImagesCapabilityNative,
+			want:       true,
+		},
+		{
+			name:       "openai upstream does not support images",
+			account:    &Account{Platform: PlatformOpenAI, Type: AccountTypeUpstream},
+			capability: OpenAIImagesCapabilityBasic,
+			want:       false,
+		},
+		{
+			name:       "codex2api oauth does not support images",
+			account:    &Account{Platform: PlatformCodex2API, Type: AccountTypeOAuth},
+			capability: OpenAIImagesCapabilityBasic,
+			want:       false,
+		},
+		{
+			name:       "non openai compatible platform does not support images",
+			account:    &Account{Platform: PlatformAnthropic, Type: AccountTypeOAuth},
+			capability: OpenAIImagesCapabilityBasic,
+			want:       false,
+		},
+		{
+			name:       "unknown capability remains forward compatible",
+			account:    &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth},
+			capability: OpenAIImagesCapability("images-future"),
+			want:       true,
+		},
+	}
+
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, tt.account.SupportsOpenAIImageCapability(tt.capability))
+		})
+	}
+}
+
+func TestOpenAIGatewayService_SelectAccountWithSchedulerForImages_FiltersUnsupportedImageCapability(t *testing.T) {
+	ctx := context.Background()
+	groupID := int64(10105)
+	unsupported := Account{
+		ID:          35001,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeUpstream,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Priority:    0,
+	}
+	supported := Account{
+		ID:          35002,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Priority:    9,
+	}
+	svc := &OpenAIGatewayService{
+		accountRepo:        stubOpenAIAccountRepo{accounts: []Account{unsupported, supported}},
+		cache:              &stubGatewayCache{},
+		cfg:                &config.Config{},
+		concurrencyService: NewConcurrencyService(stubConcurrencyCache{}),
+	}
+
+	selection, decision, err := svc.SelectAccountWithSchedulerForImages(
+		ctx,
+		&groupID,
+		"",
+		"gpt-image-2",
+		nil,
+		OpenAIImagesCapabilityBasic,
+	)
+	require.NoError(t, err)
+	require.NotNil(t, selection)
+	require.NotNil(t, selection.Account)
+	require.Equal(t, supported.ID, selection.Account.ID)
+	require.Equal(t, openAIAccountScheduleLayerLoadBalance, decision.Layer)
+	require.Equal(t, 1, decision.CandidateCount)
+	if selection.ReleaseFunc != nil {
+		selection.ReleaseFunc()
+	}
+}
+
+func TestOpenAIGatewayService_SelectAccountWithSchedulerForImages_SkipsUnsupportedStickyAccount(t *testing.T) {
+	ctx := context.Background()
+	groupID := int64(10106)
+	unsupportedSticky := Account{
+		ID:          36001,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeUpstream,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Priority:    0,
+	}
+	supportedBackup := Account{
+		ID:          36002,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Priority:    9,
+	}
+	cache := &stubGatewayCache{
+		sessionBindings: map[string]int64{
+			"openai:session_hash_image_sticky": unsupportedSticky.ID,
+		},
+	}
+	svc := &OpenAIGatewayService{
+		accountRepo:        stubOpenAIAccountRepo{accounts: []Account{unsupportedSticky, supportedBackup}},
+		cache:              cache,
+		cfg:                &config.Config{},
+		concurrencyService: NewConcurrencyService(stubConcurrencyCache{}),
+	}
+
+	selection, decision, err := svc.SelectAccountWithSchedulerForImages(
+		ctx,
+		&groupID,
+		"session_hash_image_sticky",
+		"gpt-image-2",
+		nil,
+		OpenAIImagesCapabilityBasic,
+	)
+	require.NoError(t, err)
+	require.NotNil(t, selection)
+	require.NotNil(t, selection.Account)
+	require.Equal(t, supportedBackup.ID, selection.Account.ID)
+	require.Equal(t, openAIAccountScheduleLayerLoadBalance, decision.Layer)
+	require.False(t, decision.StickySessionHit)
+	if selection.ReleaseFunc != nil {
+		selection.ReleaseFunc()
+	}
+}
+
 func TestOpenAIGatewayService_OpenAIAccountSchedulerMetrics(t *testing.T) {
 	ctx := context.Background()
 	groupID := int64(12)

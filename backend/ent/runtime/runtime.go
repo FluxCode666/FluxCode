@@ -15,6 +15,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorhistory"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorrequesttemplate"
 	"github.com/Wei-Shaw/sub2api/ent/errorpassthroughrule"
+	"github.com/Wei-Shaw/sub2api/ent/generatedimage"
 	"github.com/Wei-Shaw/sub2api/ent/giftbalancerecord"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/idempotencyrecord"
@@ -656,6 +657,48 @@ func init() {
 	errorpassthroughruleDescSkipMonitoring := errorpassthroughruleFields[11].Descriptor()
 	// errorpassthroughrule.DefaultSkipMonitoring holds the default value on creation for the skip_monitoring field.
 	errorpassthroughrule.DefaultSkipMonitoring = errorpassthroughruleDescSkipMonitoring.Default.(bool)
+	generatedimageFields := schema.GeneratedImage{}.Fields()
+	_ = generatedimageFields
+	// generatedimageDescProvider is the schema descriptor for provider field.
+	generatedimageDescProvider := generatedimageFields[0].Descriptor()
+	// generatedimage.DefaultProvider holds the default value on creation for the provider field.
+	generatedimage.DefaultProvider = generatedimageDescProvider.Default.(string)
+	// generatedimage.ProviderValidator is a validator for the "provider" field. It is called by the builders before save.
+	generatedimage.ProviderValidator = generatedimageDescProvider.Validators[0].(func(string) error)
+	// generatedimageDescRequestID is the schema descriptor for request_id field.
+	generatedimageDescRequestID := generatedimageFields[4].Descriptor()
+	// generatedimage.RequestIDValidator is a validator for the "request_id" field. It is called by the builders before save.
+	generatedimage.RequestIDValidator = generatedimageDescRequestID.Validators[0].(func(string) error)
+	// generatedimageDescModel is the schema descriptor for model field.
+	generatedimageDescModel := generatedimageFields[5].Descriptor()
+	// generatedimage.ModelValidator is a validator for the "model" field. It is called by the builders before save.
+	generatedimage.ModelValidator = generatedimageDescModel.Validators[0].(func(string) error)
+	// generatedimageDescResponseFormat is the schema descriptor for response_format field.
+	generatedimageDescResponseFormat := generatedimageFields[8].Descriptor()
+	// generatedimage.DefaultResponseFormat holds the default value on creation for the response_format field.
+	generatedimage.DefaultResponseFormat = generatedimageDescResponseFormat.Default.(string)
+	// generatedimage.ResponseFormatValidator is a validator for the "response_format" field. It is called by the builders before save.
+	generatedimage.ResponseFormatValidator = generatedimageDescResponseFormat.Validators[0].(func(string) error)
+	// generatedimageDescSource is the schema descriptor for source field.
+	generatedimageDescSource := generatedimageFields[9].Descriptor()
+	// generatedimage.DefaultSource holds the default value on creation for the source field.
+	generatedimage.DefaultSource = generatedimageDescSource.Default.(string)
+	// generatedimage.SourceValidator is a validator for the "source" field. It is called by the builders before save.
+	generatedimage.SourceValidator = generatedimageDescSource.Validators[0].(func(string) error)
+	// generatedimageDescContentType is the schema descriptor for content_type field.
+	generatedimageDescContentType := generatedimageFields[10].Descriptor()
+	// generatedimage.DefaultContentType holds the default value on creation for the content_type field.
+	generatedimage.DefaultContentType = generatedimageDescContentType.Default.(string)
+	// generatedimage.ContentTypeValidator is a validator for the "content_type" field. It is called by the builders before save.
+	generatedimage.ContentTypeValidator = generatedimageDescContentType.Validators[0].(func(string) error)
+	// generatedimageDescSizeBytes is the schema descriptor for size_bytes field.
+	generatedimageDescSizeBytes := generatedimageFields[12].Descriptor()
+	// generatedimage.DefaultSizeBytes holds the default value on creation for the size_bytes field.
+	generatedimage.DefaultSizeBytes = generatedimageDescSizeBytes.Default.(int)
+	// generatedimageDescCreatedAt is the schema descriptor for created_at field.
+	generatedimageDescCreatedAt := generatedimageFields[13].Descriptor()
+	// generatedimage.DefaultCreatedAt holds the default value on creation for the created_at field.
+	generatedimage.DefaultCreatedAt = generatedimageDescCreatedAt.Default.(func() time.Time)
 	giftbalancerecordFields := schema.GiftBalanceRecord{}.Fields()
 	_ = giftbalancerecordFields
 	// giftbalancerecordDescAmount is the schema descriptor for amount field.

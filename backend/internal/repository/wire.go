@@ -119,6 +119,7 @@ var ProviderSet = wire.NewSet(
 	NewSalesCommissionRepository,
 	NewGiftBalanceRepository,
 	NewUserReferralConfigRepository,
+	NewGeneratedImageRepository,
 
 	// Cache implementations
 	NewGatewayCache,
@@ -137,6 +138,7 @@ var ProviderSet = wire.NewSet(
 	NewRedeemCache,
 	NewUpdateCache,
 	NewGeminiTokenCache,
+	NewOpenAIImageCache,
 	ProvideSchedulerCache,
 	ProvideSchedulerOutboxQueue,
 	NewProxyLatencyCache,

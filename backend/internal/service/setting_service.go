@@ -34,6 +34,8 @@ var (
 	)
 )
 
+const DefaultOpenAIImageURLCacheTTLHours = 72
+
 type SettingRepository interface {
 	Get(ctx context.Context, key string) (*Setting, error)
 	GetValue(ctx context.Context, key string) (string, error)
@@ -504,6 +506,24 @@ func parseIntSetting(raw string, fallback int) int {
 	return value
 }
 
+func normalizeOpenAIImageURLCacheTTLHours(hours int) int {
+	if hours <= 0 {
+		return DefaultOpenAIImageURLCacheTTLHours
+	}
+	return hours
+}
+
+func (s *SettingService) GetOpenAIImageURLCacheTTL(ctx context.Context) time.Duration {
+	if s == nil || s.settingRepo == nil {
+		return time.Duration(DefaultOpenAIImageURLCacheTTLHours) * time.Hour
+	}
+	raw, err := s.settingRepo.GetValue(ctx, SettingKeyOpenAIImageURLCacheTTLHours)
+	if err != nil {
+		return time.Duration(DefaultOpenAIImageURLCacheTTLHours) * time.Hour
+	}
+	return time.Duration(normalizeOpenAIImageURLCacheTTLHours(parseIntSetting(raw, DefaultOpenAIImageURLCacheTTLHours))) * time.Hour
+}
+
 // GetFrameSrcOrigins returns deduplicated http(s) origins from home_content URL,
 // purchase_subscription_url, and all custom_menu_items URLs. Used by the router layer for CSP frame-src injection.
 func (s *SettingService) GetFrameSrcOrigins(ctx context.Context) ([]string, error) {
@@ -694,6 +714,7 @@ func (s *SettingService) UpdateSettings(ctx context.Context, settings *SystemSet
 	updates[SettingKeyCustomMenuItems] = settings.CustomMenuItems
 	updates[SettingKeyCustomEndpoints] = settings.CustomEndpoints
 	updates[SettingKeyOpenAIUseKeyModelID] = strings.TrimSpace(settings.OpenAIUseKeyModelID)
+	updates[SettingKeyOpenAIImageURLCacheTTLHours] = strconv.Itoa(normalizeOpenAIImageURLCacheTTLHours(settings.OpenAIImageURLCacheTTLHours))
 
 	// 默认配置
 	updates[SettingKeyDefaultConcurrency] = strconv.Itoa(settings.DefaultConcurrency)
@@ -1339,6 +1360,7 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyCustomMenuItems:                      "[]",
 		SettingKeyCustomEndpoints:                      "[]",
 		SettingKeyOpenAIUseKeyModelID:                  "gpt-5.5",
+		SettingKeyOpenAIImageURLCacheTTLHours:          strconv.Itoa(DefaultOpenAIImageURLCacheTTLHours),
 		SettingKeyOIDCConnectEnabled:                   "false",
 		SettingKeyOIDCConnectProviderName:              "OIDC",
 		SettingKeyDefaultConcurrency:                   strconv.Itoa(s.cfg.Default.UserConcurrency),
@@ -1430,6 +1452,7 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		CustomMenuItems:              settings[SettingKeyCustomMenuItems],
 		CustomEndpoints:              settings[SettingKeyCustomEndpoints],
 		OpenAIUseKeyModelID:          s.getStringOrDefault(settings, SettingKeyOpenAIUseKeyModelID, "gpt-5.5"),
+		OpenAIImageURLCacheTTLHours:  normalizeOpenAIImageURLCacheTTLHours(parseIntSetting(settings[SettingKeyOpenAIImageURLCacheTTLHours], DefaultOpenAIImageURLCacheTTLHours)),
 		BackendModeEnabled:           settings[SettingKeyBackendModeEnabled] == "true",
 	}
 	result.TableDefaultPageSize, result.TablePageSizeOptions = parseTablePreferences(

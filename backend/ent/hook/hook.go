@@ -129,6 +129,18 @@ func (f ErrorPassthroughRuleFunc) Mutate(ctx context.Context, m ent.Mutation) (e
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ErrorPassthroughRuleMutation", m)
 }
 
+// The GeneratedImageFunc type is an adapter to allow the use of ordinary
+// function as GeneratedImage mutator.
+type GeneratedImageFunc func(context.Context, *ent.GeneratedImageMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f GeneratedImageFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.GeneratedImageMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.GeneratedImageMutation", m)
+}
+
 // The GiftBalanceRecordFunc type is an adapter to allow the use of ordinary
 // function as GiftBalanceRecord mutator.
 type GiftBalanceRecordFunc func(context.Context, *ent.GiftBalanceRecordMutation) (ent.Value, error)

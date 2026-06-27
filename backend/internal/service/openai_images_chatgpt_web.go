@@ -877,6 +877,7 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesChatGPTWeb(
 	account *Account,
 	parsed *OpenAIImagesRequest,
 	channelMappedModel string,
+	recordMeta *GeneratedImageRecordContext,
 ) (*OpenAIForwardResult, error) {
 	startTime := time.Now()
 	requestModel := strings.TrimSpace(parsed.Model)
@@ -982,7 +983,8 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesChatGPTWeb(
 	}
 
 	// 9. Build response
-	return s.buildChatGPTWebImagesResponse(c, imageDataList, parsed, requestModel, startTime)
+	recordCtx := normalizeGeneratedImageRecordContext(ctx, recordMeta, account, parsed, requestModel, "")
+	return s.buildChatGPTWebImagesResponse(c, imageDataList, parsed, requestModel, startTime, recordCtx)
 }
 
 func (s *OpenAIGatewayService) buildChatGPTWebImagesResponse(
@@ -991,6 +993,7 @@ func (s *OpenAIGatewayService) buildChatGPTWebImagesResponse(
 	parsed *OpenAIImagesRequest,
 	requestModel string,
 	startTime time.Time,
+	recordCtx GeneratedImageRecordContext,
 ) (*OpenAIForwardResult, error) {
 	createdAt := time.Now().Unix()
 	format := strings.ToLower(strings.TrimSpace(parsed.ResponseFormat))
@@ -1011,6 +1014,14 @@ func (s *OpenAIGatewayService) buildChatGPTWebImagesResponse(
 		}
 		item, _ = sjson.SetBytes(item, "revised_prompt", parsed.Prompt)
 		out, _ = sjson.SetRawBytes(out, "data.-1", item)
+		s.recordGeneratedImageBestEffort(c.Request.Context(), GeneratedImageRecordInput{
+			Meta:          recordCtx,
+			ImageData:     imgData,
+			ContentType:   "image/png",
+			OutputFormat:  "png",
+			Source:        GeneratedImageSourceChatGPTWeb,
+			RevisedPrompt: parsed.Prompt,
+		})
 	}
 	out, _ = sjson.SetBytes(out, "model", requestModel)
 

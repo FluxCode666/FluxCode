@@ -50,6 +50,7 @@ export interface SystemSettings {
   custom_menu_items: CustomMenuItem[]
   custom_endpoints: CustomEndpoint[]
   openai_use_key_model_id: string
+  openai_image_url_cache_ttl_hours: number
   // SMTP settings
   email_provider: string
   smtp_host: string
@@ -218,6 +219,7 @@ export interface UpdateSettingsRequest {
   custom_menu_items?: CustomMenuItem[]
   custom_endpoints?: CustomEndpoint[]
   openai_use_key_model_id?: string
+  openai_image_url_cache_ttl_hours?: number
   email_provider?: string
   smtp_host?: string
   smtp_port?: number

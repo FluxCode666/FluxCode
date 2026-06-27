@@ -873,6 +873,31 @@ func (a *Account) IsOpenAIApiKey() bool {
 	return a.IsOpenAICompatible() && a.Type == AccountTypeAPIKey
 }
 
+func (a *Account) SupportsOpenAIImageCapability(capability OpenAIImagesCapability) bool {
+	if a == nil {
+		return false
+	}
+	if capability == "" {
+		return true
+	}
+	if !a.IsOpenAICompatible() {
+		return false
+	}
+	switch capability {
+	case OpenAIImagesCapabilityBasic, OpenAIImagesCapabilityNative:
+		switch a.Platform {
+		case PlatformOpenAI:
+			return a.Type == AccountTypeOAuth || a.Type == AccountTypeAPIKey
+		case PlatformCodex2API:
+			return a.Type == AccountTypeAPIKey
+		default:
+			return false
+		}
+	default:
+		return true
+	}
+}
+
 func (a *Account) GetOpenAIBaseURL() string {
 	if !a.IsOpenAICompatible() {
 		return ""
@@ -1086,6 +1111,12 @@ const (
 	OpenAIWSIngressModePassthrough = "passthrough"
 )
 
+const (
+	OpenAIImageResponseURLModeExtraKey  = "openai_image_response_url_mode"
+	OpenAIImageResponseURLModeBase64URL = "base64_url"
+	OpenAIImageResponseURLModeHTTPURL   = "http_url"
+)
+
 func normalizeOpenAIWSIngressMode(mode string) string {
 	switch strings.ToLower(strings.TrimSpace(mode)) {
 	case OpenAIWSIngressModeOff:
@@ -1111,6 +1142,24 @@ func normalizeOpenAIWSIngressDefaultMode(mode string) string {
 		return normalized
 	}
 	return OpenAIWSIngressModeCtxPool
+}
+
+func normalizeOpenAIImageResponseURLMode(mode string) string {
+	switch strings.ToLower(strings.TrimSpace(mode)) {
+	case OpenAIImageResponseURLModeBase64URL:
+		return OpenAIImageResponseURLModeBase64URL
+	case OpenAIImageResponseURLModeHTTPURL:
+		return OpenAIImageResponseURLModeHTTPURL
+	default:
+		return OpenAIImageResponseURLModeHTTPURL
+	}
+}
+
+func (a *Account) GetOpenAIImageResponseURLMode() string {
+	if a == nil || !a.IsOpenAICompatible() || a.Extra == nil {
+		return OpenAIImageResponseURLModeHTTPURL
+	}
+	return normalizeOpenAIImageResponseURLMode(a.GetExtraString(OpenAIImageResponseURLModeExtraKey))
 }
 
 // ResolveOpenAIResponsesWebSocketV2Mode 返回账号在 WSv2 ingress 下的有效模式（off/ctx_pool/passthrough）。

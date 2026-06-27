@@ -18,6 +18,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorhistory"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorrequesttemplate"
 	"github.com/Wei-Shaw/sub2api/ent/errorpassthroughrule"
+	"github.com/Wei-Shaw/sub2api/ent/generatedimage"
 	"github.com/Wei-Shaw/sub2api/ent/giftbalancerecord"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/idempotencyrecord"
@@ -377,6 +378,33 @@ func (f TraverseErrorPassthroughRule) Traverse(ctx context.Context, q ent.Query)
 		return f(ctx, q)
 	}
 	return fmt.Errorf("unexpected query type %T. expect *ent.ErrorPassthroughRuleQuery", q)
+}
+
+// The GeneratedImageFunc type is an adapter to allow the use of ordinary function as a Querier.
+type GeneratedImageFunc func(context.Context, *ent.GeneratedImageQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f GeneratedImageFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.GeneratedImageQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.GeneratedImageQuery", q)
+}
+
+// The TraverseGeneratedImage type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseGeneratedImage func(context.Context, *ent.GeneratedImageQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseGeneratedImage) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseGeneratedImage) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.GeneratedImageQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.GeneratedImageQuery", q)
 }
 
 // The GiftBalanceRecordFunc type is an adapter to allow the use of ordinary function as a Querier.
@@ -1266,6 +1294,8 @@ func NewQuery(q ent.Query) (Query, error) {
 		return &query[*ent.ChannelMonitorRequestTemplateQuery, predicate.ChannelMonitorRequestTemplate, channelmonitorrequesttemplate.OrderOption]{typ: ent.TypeChannelMonitorRequestTemplate, tq: q}, nil
 	case *ent.ErrorPassthroughRuleQuery:
 		return &query[*ent.ErrorPassthroughRuleQuery, predicate.ErrorPassthroughRule, errorpassthroughrule.OrderOption]{typ: ent.TypeErrorPassthroughRule, tq: q}, nil
+	case *ent.GeneratedImageQuery:
+		return &query[*ent.GeneratedImageQuery, predicate.GeneratedImage, generatedimage.OrderOption]{typ: ent.TypeGeneratedImage, tq: q}, nil
 	case *ent.GiftBalanceRecordQuery:
 		return &query[*ent.GiftBalanceRecordQuery, predicate.GiftBalanceRecord, giftbalancerecord.OrderOption]{typ: ent.TypeGiftBalanceRecord, tq: q}, nil
 	case *ent.GroupQuery:

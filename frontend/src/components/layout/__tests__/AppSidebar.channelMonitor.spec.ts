@@ -101,6 +101,8 @@ describe('AppSidebar monitored feature menus', () => {
   const signalIconPath =
     'M8.288 15.038a5.25 5.25 0 017.424 0M5.106 11.856c3.807-3.808 9.98-3.808 13.788 0M1.924 8.674c5.565-5.565 14.587-5.565 20.152 0M12.53 18.22l-.53.53-.53-.53a.75.75 0 011.06 0z'
   const activityIconPath = 'M3.75 13.5h3l2.25-6 4.5 12 2.25-6h4.5'
+  const generatedImagesIconPath =
+    'M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25z'
 
   beforeEach(() => {
     routeState.path = '/admin/dashboard'
@@ -179,5 +181,24 @@ describe('AppSidebar monitored feature menus', () => {
     const opsLink = wrapper.find('a[data-to="/admin/ops"]')
     expect(opsLink.exists()).toBe(true)
     expect(opsLink.find('svg path').attributes('d')).toBe(activityIconPath)
+  })
+
+  it('uses an image gallery icon for the generated images admin entry', async () => {
+    const wrapper = mount(AppSidebar, {
+      global: {
+        stubs: {
+          RouterLink: {
+            props: ['to'],
+            template: '<a :data-to="typeof to === \'string\' ? to : to.path"><slot /></a>'
+          }
+        }
+      }
+    })
+
+    await wrapper.vm.$nextTick()
+
+    const generatedImagesLink = wrapper.find('a[data-to="/admin/generated-images"]')
+    expect(generatedImagesLink.exists()).toBe(true)
+    expect(generatedImagesLink.find('svg path').attributes('d')).toBe(generatedImagesIconPath)
   })
 })

@@ -25,6 +25,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorhistory"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorrequesttemplate"
 	"github.com/Wei-Shaw/sub2api/ent/errorpassthroughrule"
+	"github.com/Wei-Shaw/sub2api/ent/generatedimage"
 	"github.com/Wei-Shaw/sub2api/ent/giftbalancerecord"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/idempotencyrecord"
@@ -86,6 +87,8 @@ type Client struct {
 	ChannelMonitorRequestTemplate *ChannelMonitorRequestTemplateClient
 	// ErrorPassthroughRule is the client for interacting with the ErrorPassthroughRule builders.
 	ErrorPassthroughRule *ErrorPassthroughRuleClient
+	// GeneratedImage is the client for interacting with the GeneratedImage builders.
+	GeneratedImage *GeneratedImageClient
 	// GiftBalanceRecord is the client for interacting with the GiftBalanceRecord builders.
 	GiftBalanceRecord *GiftBalanceRecordClient
 	// Group is the client for interacting with the Group builders.
@@ -171,6 +174,7 @@ func (c *Client) init() {
 	c.ChannelMonitorHistory = NewChannelMonitorHistoryClient(c.config)
 	c.ChannelMonitorRequestTemplate = NewChannelMonitorRequestTemplateClient(c.config)
 	c.ErrorPassthroughRule = NewErrorPassthroughRuleClient(c.config)
+	c.GeneratedImage = NewGeneratedImageClient(c.config)
 	c.GiftBalanceRecord = NewGiftBalanceRecordClient(c.config)
 	c.Group = NewGroupClient(c.config)
 	c.IdempotencyRecord = NewIdempotencyRecordClient(c.config)
@@ -305,6 +309,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		ChannelMonitorHistory:          NewChannelMonitorHistoryClient(cfg),
 		ChannelMonitorRequestTemplate:  NewChannelMonitorRequestTemplateClient(cfg),
 		ErrorPassthroughRule:           NewErrorPassthroughRuleClient(cfg),
+		GeneratedImage:                 NewGeneratedImageClient(cfg),
 		GiftBalanceRecord:              NewGiftBalanceRecordClient(cfg),
 		Group:                          NewGroupClient(cfg),
 		IdempotencyRecord:              NewIdempotencyRecordClient(cfg),
@@ -366,6 +371,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		ChannelMonitorHistory:          NewChannelMonitorHistoryClient(cfg),
 		ChannelMonitorRequestTemplate:  NewChannelMonitorRequestTemplateClient(cfg),
 		ErrorPassthroughRule:           NewErrorPassthroughRuleClient(cfg),
+		GeneratedImage:                 NewGeneratedImageClient(cfg),
 		GiftBalanceRecord:              NewGiftBalanceRecordClient(cfg),
 		Group:                          NewGroupClient(cfg),
 		IdempotencyRecord:              NewIdempotencyRecordClient(cfg),
@@ -429,11 +435,11 @@ func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
 		c.APIKey, c.Account, c.AccountGroup, c.Announcement, c.AnnouncementRead,
 		c.ChannelMonitor, c.ChannelMonitorDailyRollup, c.ChannelMonitorHistory,
-		c.ChannelMonitorRequestTemplate, c.ErrorPassthroughRule, c.GiftBalanceRecord,
-		c.Group, c.IdempotencyRecord, c.PaymentAuditLog, c.PaymentOrder,
-		c.PaymentProviderInstance, c.PromoCode, c.PromoCodeUsage, c.Promotion,
-		c.PromotionPlanRule, c.PromotionUsage, c.Proxy, c.RedeemCode, c.Referral,
-		c.SalesCommissionMonthlySnapshot, c.SalesCommissionRecord,
+		c.ChannelMonitorRequestTemplate, c.ErrorPassthroughRule, c.GeneratedImage,
+		c.GiftBalanceRecord, c.Group, c.IdempotencyRecord, c.PaymentAuditLog,
+		c.PaymentOrder, c.PaymentProviderInstance, c.PromoCode, c.PromoCodeUsage,
+		c.Promotion, c.PromotionPlanRule, c.PromotionUsage, c.Proxy, c.RedeemCode,
+		c.Referral, c.SalesCommissionMonthlySnapshot, c.SalesCommissionRecord,
 		c.SalesCommissionSettlement, c.SalesCommissionSettlementItem,
 		c.SalesCommissionTier, c.SecuritySecret, c.Setting, c.SubscriptionGrant,
 		c.SubscriptionPlan, c.TLSFingerprintProfile, c.UsageCleanupTask, c.UsageLog,
@@ -450,11 +456,11 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
 		c.APIKey, c.Account, c.AccountGroup, c.Announcement, c.AnnouncementRead,
 		c.ChannelMonitor, c.ChannelMonitorDailyRollup, c.ChannelMonitorHistory,
-		c.ChannelMonitorRequestTemplate, c.ErrorPassthroughRule, c.GiftBalanceRecord,
-		c.Group, c.IdempotencyRecord, c.PaymentAuditLog, c.PaymentOrder,
-		c.PaymentProviderInstance, c.PromoCode, c.PromoCodeUsage, c.Promotion,
-		c.PromotionPlanRule, c.PromotionUsage, c.Proxy, c.RedeemCode, c.Referral,
-		c.SalesCommissionMonthlySnapshot, c.SalesCommissionRecord,
+		c.ChannelMonitorRequestTemplate, c.ErrorPassthroughRule, c.GeneratedImage,
+		c.GiftBalanceRecord, c.Group, c.IdempotencyRecord, c.PaymentAuditLog,
+		c.PaymentOrder, c.PaymentProviderInstance, c.PromoCode, c.PromoCodeUsage,
+		c.Promotion, c.PromotionPlanRule, c.PromotionUsage, c.Proxy, c.RedeemCode,
+		c.Referral, c.SalesCommissionMonthlySnapshot, c.SalesCommissionRecord,
 		c.SalesCommissionSettlement, c.SalesCommissionSettlementItem,
 		c.SalesCommissionTier, c.SecuritySecret, c.Setting, c.SubscriptionGrant,
 		c.SubscriptionPlan, c.TLSFingerprintProfile, c.UsageCleanupTask, c.UsageLog,
@@ -488,6 +494,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.ChannelMonitorRequestTemplate.mutate(ctx, m)
 	case *ErrorPassthroughRuleMutation:
 		return c.ErrorPassthroughRule.mutate(ctx, m)
+	case *GeneratedImageMutation:
+		return c.GeneratedImage.mutate(ctx, m)
 	case *GiftBalanceRecordMutation:
 		return c.GiftBalanceRecord.mutate(ctx, m)
 	case *GroupMutation:
@@ -2127,6 +2135,139 @@ func (c *ErrorPassthroughRuleClient) mutate(ctx context.Context, m *ErrorPassthr
 		return (&ErrorPassthroughRuleDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown ErrorPassthroughRule mutation op: %q", m.Op())
+	}
+}
+
+// GeneratedImageClient is a client for the GeneratedImage schema.
+type GeneratedImageClient struct {
+	config
+}
+
+// NewGeneratedImageClient returns a client for the GeneratedImage from the given config.
+func NewGeneratedImageClient(c config) *GeneratedImageClient {
+	return &GeneratedImageClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `generatedimage.Hooks(f(g(h())))`.
+func (c *GeneratedImageClient) Use(hooks ...Hook) {
+	c.hooks.GeneratedImage = append(c.hooks.GeneratedImage, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `generatedimage.Intercept(f(g(h())))`.
+func (c *GeneratedImageClient) Intercept(interceptors ...Interceptor) {
+	c.inters.GeneratedImage = append(c.inters.GeneratedImage, interceptors...)
+}
+
+// Create returns a builder for creating a GeneratedImage entity.
+func (c *GeneratedImageClient) Create() *GeneratedImageCreate {
+	mutation := newGeneratedImageMutation(c.config, OpCreate)
+	return &GeneratedImageCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of GeneratedImage entities.
+func (c *GeneratedImageClient) CreateBulk(builders ...*GeneratedImageCreate) *GeneratedImageCreateBulk {
+	return &GeneratedImageCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *GeneratedImageClient) MapCreateBulk(slice any, setFunc func(*GeneratedImageCreate, int)) *GeneratedImageCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &GeneratedImageCreateBulk{err: fmt.Errorf("calling to GeneratedImageClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*GeneratedImageCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &GeneratedImageCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for GeneratedImage.
+func (c *GeneratedImageClient) Update() *GeneratedImageUpdate {
+	mutation := newGeneratedImageMutation(c.config, OpUpdate)
+	return &GeneratedImageUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *GeneratedImageClient) UpdateOne(_m *GeneratedImage) *GeneratedImageUpdateOne {
+	mutation := newGeneratedImageMutation(c.config, OpUpdateOne, withGeneratedImage(_m))
+	return &GeneratedImageUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *GeneratedImageClient) UpdateOneID(id int64) *GeneratedImageUpdateOne {
+	mutation := newGeneratedImageMutation(c.config, OpUpdateOne, withGeneratedImageID(id))
+	return &GeneratedImageUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for GeneratedImage.
+func (c *GeneratedImageClient) Delete() *GeneratedImageDelete {
+	mutation := newGeneratedImageMutation(c.config, OpDelete)
+	return &GeneratedImageDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *GeneratedImageClient) DeleteOne(_m *GeneratedImage) *GeneratedImageDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *GeneratedImageClient) DeleteOneID(id int64) *GeneratedImageDeleteOne {
+	builder := c.Delete().Where(generatedimage.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &GeneratedImageDeleteOne{builder}
+}
+
+// Query returns a query builder for GeneratedImage.
+func (c *GeneratedImageClient) Query() *GeneratedImageQuery {
+	return &GeneratedImageQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeGeneratedImage},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a GeneratedImage entity by its id.
+func (c *GeneratedImageClient) Get(ctx context.Context, id int64) (*GeneratedImage, error) {
+	return c.Query().Where(generatedimage.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *GeneratedImageClient) GetX(ctx context.Context, id int64) *GeneratedImage {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *GeneratedImageClient) Hooks() []Hook {
+	return c.hooks.GeneratedImage
+}
+
+// Interceptors returns the client interceptors.
+func (c *GeneratedImageClient) Interceptors() []Interceptor {
+	return c.inters.GeneratedImage
+}
+
+func (c *GeneratedImageClient) mutate(ctx context.Context, m *GeneratedImageMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&GeneratedImageCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&GeneratedImageUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&GeneratedImageUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&GeneratedImageDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown GeneratedImage mutation op: %q", m.Op())
 	}
 }
 
@@ -7090,10 +7231,11 @@ type (
 	hooks struct {
 		APIKey, Account, AccountGroup, Announcement, AnnouncementRead, ChannelMonitor,
 		ChannelMonitorDailyRollup, ChannelMonitorHistory,
-		ChannelMonitorRequestTemplate, ErrorPassthroughRule, GiftBalanceRecord, Group,
-		IdempotencyRecord, PaymentAuditLog, PaymentOrder, PaymentProviderInstance,
-		PromoCode, PromoCodeUsage, Promotion, PromotionPlanRule, PromotionUsage, Proxy,
-		RedeemCode, Referral, SalesCommissionMonthlySnapshot, SalesCommissionRecord,
+		ChannelMonitorRequestTemplate, ErrorPassthroughRule, GeneratedImage,
+		GiftBalanceRecord, Group, IdempotencyRecord, PaymentAuditLog, PaymentOrder,
+		PaymentProviderInstance, PromoCode, PromoCodeUsage, Promotion,
+		PromotionPlanRule, PromotionUsage, Proxy, RedeemCode, Referral,
+		SalesCommissionMonthlySnapshot, SalesCommissionRecord,
 		SalesCommissionSettlement, SalesCommissionSettlementItem, SalesCommissionTier,
 		SecuritySecret, Setting, SubscriptionGrant, SubscriptionPlan,
 		TLSFingerprintProfile, UsageCleanupTask, UsageLog, User, UserAllowedGroup,
@@ -7103,10 +7245,11 @@ type (
 	inters struct {
 		APIKey, Account, AccountGroup, Announcement, AnnouncementRead, ChannelMonitor,
 		ChannelMonitorDailyRollup, ChannelMonitorHistory,
-		ChannelMonitorRequestTemplate, ErrorPassthroughRule, GiftBalanceRecord, Group,
-		IdempotencyRecord, PaymentAuditLog, PaymentOrder, PaymentProviderInstance,
-		PromoCode, PromoCodeUsage, Promotion, PromotionPlanRule, PromotionUsage, Proxy,
-		RedeemCode, Referral, SalesCommissionMonthlySnapshot, SalesCommissionRecord,
+		ChannelMonitorRequestTemplate, ErrorPassthroughRule, GeneratedImage,
+		GiftBalanceRecord, Group, IdempotencyRecord, PaymentAuditLog, PaymentOrder,
+		PaymentProviderInstance, PromoCode, PromoCodeUsage, Promotion,
+		PromotionPlanRule, PromotionUsage, Proxy, RedeemCode, Referral,
+		SalesCommissionMonthlySnapshot, SalesCommissionRecord,
 		SalesCommissionSettlement, SalesCommissionSettlementItem, SalesCommissionTier,
 		SecuritySecret, Setting, SubscriptionGrant, SubscriptionPlan,
 		TLSFingerprintProfile, UsageCleanupTask, UsageLog, User, UserAllowedGroup,

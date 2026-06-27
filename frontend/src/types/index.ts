@@ -236,6 +236,7 @@ export interface PublicSettings {
   custom_menu_items: CustomMenuItem[]
   custom_endpoints: CustomEndpoint[]
   openai_use_key_model_id?: string
+  openai_image_url_cache_ttl_hours?: number
   linuxdo_oauth_enabled: boolean
   oidc_oauth_enabled: boolean
   oidc_oauth_provider_name: string

@@ -1123,6 +1123,28 @@
         </div>
       </div>
 
+      <!-- OpenAI Image response_format=url return mode -->
+      <div
+        v-if="account?.platform === 'openai' || account?.platform === 'codex2api'"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600"
+      >
+        <div class="flex items-center justify-between">
+          <div>
+            <label class="input-label mb-0">{{ t('admin.accounts.openai.imageResponseURLMode') }}</label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.openai.imageResponseURLModeDesc') }}
+            </p>
+          </div>
+          <div class="w-52">
+            <Select
+              v-model="openaiImageResponseURLMode"
+              :options="openAIImageResponseURLOptions"
+              data-testid="edit-openai-image-response-url-mode"
+            />
+          </div>
+        </div>
+      </div>
+
       <!-- Anthropic API Key 自动透传开关 -->
       <div
         v-if="account?.platform === 'anthropic' && account?.type === 'apikey'"
@@ -2025,6 +2047,8 @@ const customBaseUrl = ref('')
 const openaiPassthroughEnabled = ref(false)
 const openaiOAuthResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const openaiAPIKeyResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
+type OpenAIImageResponseURLMode = 'base64_url' | 'http_url'
+const openaiImageResponseURLMode = ref<OpenAIImageResponseURLMode>('http_url')
 const codexCLIOnlyEnabled = ref(false)
 const anthropicPassthroughEnabled = ref(false)
 const anthropicSubUsageAccountingEnabled = ref(false)
@@ -2059,6 +2083,12 @@ const openAIWSModeOptions = computed(() => [
   { value: OPENAI_WS_MODE_CTX_POOL, label: t('admin.accounts.openai.wsModeCtxPool') },
   { value: OPENAI_WS_MODE_PASSTHROUGH, label: t('admin.accounts.openai.wsModePassthrough') }
 ])
+const openAIImageResponseURLOptions = computed(() => [
+  { value: 'base64_url', label: t('admin.accounts.openai.imageResponseURLModeBase64') },
+  { value: 'http_url', label: t('admin.accounts.openai.imageResponseURLModeHTTP') }
+])
+const resolveOpenAIImageResponseURLMode = (value: unknown): OpenAIImageResponseURLMode =>
+  value === 'base64_url' ? 'base64_url' : 'http_url'
 const openaiResponsesWebSocketV2Mode = computed({
   get: () => {
     if (props.account?.type === 'apikey') {
@@ -2212,6 +2242,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   openaiPassthroughEnabled.value = false
   openaiOAuthResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
   openaiAPIKeyResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
+  openaiImageResponseURLMode.value = resolveOpenAIImageResponseURLMode(extra?.openai_image_response_url_mode)
   codexCLIOnlyEnabled.value = false
   anthropicPassthroughEnabled.value = false
   anthropicSubUsageAccountingEnabled.value = false
@@ -3238,9 +3269,11 @@ const handleSubmit = async () => {
 
     // For OpenAI OAuth/API Key accounts, handle passthrough mode in extra
     if (props.account.platform === 'openai' && (props.account.type === 'oauth' || props.account.type === 'apikey')) {
-      const currentExtra = (props.account.extra as Record<string, unknown>) || {}
+      const currentExtra = (updatePayload.extra as Record<string, unknown>) ||
+        (props.account.extra as Record<string, unknown>) || {}
       const newExtra: Record<string, unknown> = { ...currentExtra }
       const hadCodexCLIOnlyEnabled = currentExtra.codex_cli_only === true
+      newExtra.openai_image_response_url_mode = openaiImageResponseURLMode.value
       if (props.account.type === 'oauth') {
         newExtra.openai_oauth_responses_websockets_v2_mode = openaiOAuthResponsesWebSocketV2Mode.value
         newExtra.openai_oauth_responses_websockets_v2_enabled = isOpenAIWSModeEnabled(openaiOAuthResponsesWebSocketV2Mode.value)
@@ -3269,6 +3302,15 @@ const handleSubmit = async () => {
       }
 
       updatePayload.extra = newExtra
+    }
+
+    if (props.account.platform === 'codex2api') {
+      const currentExtra = (updatePayload.extra as Record<string, unknown>) ||
+        (props.account.extra as Record<string, unknown>) || {}
+      updatePayload.extra = {
+        ...currentExtra,
+        openai_image_response_url_mode: openaiImageResponseURLMode.value
+      }
     }
 
     // For apikey/bedrock accounts, handle quota_limit in extra

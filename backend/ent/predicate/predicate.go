@@ -36,6 +36,9 @@ type ChannelMonitorRequestTemplate func(*sql.Selector)
 // ErrorPassthroughRule is the predicate function for errorpassthroughrule builders.
 type ErrorPassthroughRule func(*sql.Selector)
 
+// GeneratedImage is the predicate function for generatedimage builders.
+type GeneratedImage func(*sql.Selector)
+
 // GiftBalanceRecord is the predicate function for giftbalancerecord builders.
 type GiftBalanceRecord func(*sql.Selector)
 
