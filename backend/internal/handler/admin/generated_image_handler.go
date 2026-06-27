@@ -9,6 +9,7 @@ import (
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
 )
@@ -53,6 +54,7 @@ func (h *GeneratedImageHandler) List(c *gin.Context) {
 		PaginationParams: pagination.PaginationParams{Page: page, PageSize: pageSize},
 		UserEmail:        strings.TrimSpace(c.Query("user_email")),
 	}
+	userTZ := c.Query("timezone")
 	if groupIDText := strings.TrimSpace(c.Query("group_id")); groupIDText != "" {
 		groupID, err := strconv.ParseInt(groupIDText, 10, 64)
 		if err != nil || groupID <= 0 {
@@ -62,7 +64,7 @@ func (h *GeneratedImageHandler) List(c *gin.Context) {
 		params.GroupID = groupID
 	}
 	if startText := strings.TrimSpace(c.Query("start_at")); startText != "" {
-		startAt, err := parseGeneratedImageDateParam(startText, false)
+		startAt, err := parseGeneratedImageDateParam(startText, false, userTZ)
 		if err != nil {
 			response.BadRequest(c, "Invalid start_at")
 			return
@@ -70,7 +72,7 @@ func (h *GeneratedImageHandler) List(c *gin.Context) {
 		params.StartAt = &startAt
 	}
 	if endText := strings.TrimSpace(c.Query("end_at")); endText != "" {
-		endAt, err := parseGeneratedImageDateParam(endText, true)
+		endAt, err := parseGeneratedImageDateParam(endText, true, userTZ)
 		if err != nil {
 			response.BadRequest(c, "Invalid end_at")
 			return
@@ -129,17 +131,18 @@ func (h *GeneratedImageHandler) DeleteByDateRange(c *gin.Context) {
 
 	startText := strings.TrimSpace(c.Query("start_at"))
 	endText := strings.TrimSpace(c.Query("end_at"))
+	userTZ := c.Query("timezone")
 	if startText == "" || endText == "" {
 		response.BadRequest(c, "start_at and end_at are required")
 		return
 	}
 
-	startAt, err := parseGeneratedImageDateParam(startText, false)
+	startAt, err := parseGeneratedImageDateParam(startText, false, userTZ)
 	if err != nil {
 		response.BadRequest(c, "Invalid start_at")
 		return
 	}
-	endAt, err := parseGeneratedImageDateParam(endText, true)
+	endAt, err := parseGeneratedImageDateParam(endText, true, userTZ)
 	if err != nil {
 		response.BadRequest(c, "Invalid end_at")
 		return
@@ -182,11 +185,19 @@ func generatedImageToListItem(item service.GeneratedImage) generatedImageListIte
 	}
 }
 
-func parseGeneratedImageDateParam(value string, endOfDate bool) (time.Time, error) {
+func parseGeneratedImageDateParam(value string, endOfDate bool, userTZ string) (time.Time, error) {
 	if parsed, err := time.Parse(time.RFC3339, value); err == nil {
 		return parsed, nil
 	}
-	parsed, err := time.Parse("2006-01-02", value)
+	var (
+		parsed time.Time
+		err    error
+	)
+	if strings.TrimSpace(userTZ) != "" {
+		parsed, err = timezone.ParseInUserLocation("2006-01-02", value, userTZ)
+	} else {
+		parsed, err = time.Parse("2006-01-02", value)
+	}
 	if err != nil {
 		return time.Time{}, err
 	}

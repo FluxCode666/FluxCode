@@ -121,6 +121,22 @@ func TestGeneratedImageHandlerNormalizesSingleDayRFC3339Range(t *testing.T) {
 	require.Equal(t, time.Date(2026, 6, 28, 0, 0, 0, 0, time.UTC), store.lastDeleteEnd)
 }
 
+func TestGeneratedImageHandlerParsesDateOnlyRangeInUserTimezone(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	store := &generatedImageHandlerStoreStub{}
+	handler := NewGeneratedImageHandler(store)
+	router := gin.New()
+	router.GET("/admin/generated-images", handler.List)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/admin/generated-images?start_at=2026-06-28&end_at=2026-06-28&timezone=Asia%2FShanghai", nil)
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, time.Date(2026, 6, 27, 16, 0, 0, 0, time.UTC), store.lastListParams.StartAt.UTC())
+	require.Equal(t, time.Date(2026, 6, 28, 16, 0, 0, 0, time.UTC), store.lastListParams.EndAt.UTC())
+}
+
 type generatedImageHandlerStoreStub struct {
 	items           []service.GeneratedImage
 	content         []byte
