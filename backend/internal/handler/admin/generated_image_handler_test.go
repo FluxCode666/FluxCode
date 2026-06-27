@@ -96,6 +96,31 @@ func TestGeneratedImageHandlerListAndContent(t *testing.T) {
 	require.Equal(t, float64(3), deleteData["deleted_count"])
 }
 
+func TestGeneratedImageHandlerNormalizesSingleDayRFC3339Range(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	store := &generatedImageHandlerStoreStub{}
+	handler := NewGeneratedImageHandler(store)
+	router := gin.New()
+	router.GET("/admin/generated-images", handler.List)
+	router.DELETE("/admin/generated-images", handler.DeleteByDateRange)
+
+	listRec := httptest.NewRecorder()
+	listReq := httptest.NewRequest(http.MethodGet, "/admin/generated-images?start_at=2026-06-27T00:00:00Z&end_at=2026-06-27T00:00:00Z", nil)
+	router.ServeHTTP(listRec, listReq)
+
+	require.Equal(t, http.StatusOK, listRec.Code)
+	require.Equal(t, time.Date(2026, 6, 27, 0, 0, 0, 0, time.UTC), *store.lastListParams.StartAt)
+	require.Equal(t, time.Date(2026, 6, 28, 0, 0, 0, 0, time.UTC), *store.lastListParams.EndAt)
+
+	deleteRec := httptest.NewRecorder()
+	deleteReq := httptest.NewRequest(http.MethodDelete, "/admin/generated-images?start_at=2026-06-27T00:00:00Z&end_at=2026-06-27T00:00:00Z", nil)
+	router.ServeHTTP(deleteRec, deleteReq)
+
+	require.Equal(t, http.StatusOK, deleteRec.Code)
+	require.Equal(t, time.Date(2026, 6, 27, 0, 0, 0, 0, time.UTC), store.lastDeleteStart)
+	require.Equal(t, time.Date(2026, 6, 28, 0, 0, 0, 0, time.UTC), store.lastDeleteEnd)
+}
+
 type generatedImageHandlerStoreStub struct {
 	items           []service.GeneratedImage
 	content         []byte

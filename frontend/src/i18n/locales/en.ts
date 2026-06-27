@@ -4454,6 +4454,7 @@ export default {
       accountName: 'Account Name',
       channelGroup: 'Channel Group',
       allGroups: 'All Groups',
+      dateRange: 'Date Range',
       startDate: 'Start Date',
       endDate: 'End Date',
       query: 'Query',

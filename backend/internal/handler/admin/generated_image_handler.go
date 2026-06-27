@@ -77,6 +77,7 @@ func (h *GeneratedImageHandler) List(c *gin.Context) {
 		}
 		params.EndAt = &endAt
 	}
+	normalizeGeneratedImageDateRange(params.StartAt, params.EndAt)
 	items, pageResult, err := h.store.List(c.Request.Context(), params)
 	if err != nil {
 		response.InternalError(c, err.Error())
@@ -143,6 +144,7 @@ func (h *GeneratedImageHandler) DeleteByDateRange(c *gin.Context) {
 		response.BadRequest(c, "Invalid end_at")
 		return
 	}
+	normalizeGeneratedImageDateRange(&startAt, &endAt)
 	if !endAt.After(startAt) {
 		response.BadRequest(c, "end_at must be after start_at")
 		return
@@ -192,4 +194,26 @@ func parseGeneratedImageDateParam(value string, endOfDate bool) (time.Time, erro
 		return parsed.AddDate(0, 0, 1), nil
 	}
 	return parsed, nil
+}
+
+func normalizeGeneratedImageDateRange(startAt, endAt *time.Time) {
+	if startAt == nil || endAt == nil || endAt.After(*startAt) {
+		return
+	}
+	if !isGeneratedImageDayStart(*startAt) {
+		return
+	}
+	endInStartLocation := endAt.In(startAt.Location())
+	if !isGeneratedImageDayStart(endInStartLocation) || !sameGeneratedImageCalendarDay(*startAt, endInStartLocation) {
+		return
+	}
+	*endAt = startAt.AddDate(0, 0, 1)
+}
+
+func isGeneratedImageDayStart(value time.Time) bool {
+	return value.Hour() == 0 && value.Minute() == 0 && value.Second() == 0 && value.Nanosecond() == 0
+}
+
+func sameGeneratedImageCalendarDay(left, right time.Time) bool {
+	return left.Year() == right.Year() && left.Month() == right.Month() && left.Day() == right.Day()
 }

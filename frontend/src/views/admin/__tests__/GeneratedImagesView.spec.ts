@@ -87,11 +87,39 @@ describe('admin GeneratedImagesView', () => {
       </select>
     `
   })
+  const dateRangePickerStub = defineComponent({
+    name: 'DateRangePicker',
+    props: {
+      startDate: {
+        type: String,
+        default: ''
+      },
+      endDate: {
+        type: String,
+        default: ''
+      }
+    },
+    emits: ['update:startDate', 'update:endDate', 'change'],
+    template: `
+      <button
+        type="button"
+        data-test="generated-images-date-range"
+        @click="
+          $emit('update:startDate', '2026-06-27');
+          $emit('update:endDate', '2026-06-27');
+          $emit('change', { startDate: '2026-06-27', endDate: '2026-06-27', preset: null });
+        "
+      >
+        {{ startDate }} - {{ endDate }}
+      </button>
+    `
+  })
 
   const defaultStubs = {
     AppLayout: { template: '<div><slot /></div>' },
     Pagination: true,
-    Select: selectStub
+    Select: selectStub,
+    DateRangePicker: dateRangePickerStub
   }
 
   beforeEach(() => {
@@ -217,8 +245,7 @@ describe('admin GeneratedImagesView', () => {
     await flushPromises()
     await wrapper.get('[data-test="generated-images-user-option-11"]').trigger('click')
     await wrapper.get('[data-test="generated-images-group-filter"]').setValue('9')
-    await wrapper.get('[data-test="generated-images-start-date"]').setValue('2026-06-20')
-    await wrapper.get('[data-test="generated-images-end-date"]').setValue('2026-06-27')
+    await wrapper.get('[data-test="generated-images-date-range"]').trigger('click')
     await wrapper.get('[data-test="generated-images-apply-filters"]').trigger('click')
     await flushPromises()
 
@@ -229,7 +256,7 @@ describe('admin GeneratedImagesView', () => {
         page_size: 50,
         user_email: 'artist@example.com',
         group_id: 9,
-        start_at: '2026-06-20',
+        start_at: '2026-06-27',
         end_at: '2026-06-27'
       },
       expect.objectContaining({
@@ -372,14 +399,13 @@ describe('admin GeneratedImagesView', () => {
 
     await flushPromises()
 
-    await wrapper.get('[data-test="generated-images-start-date"]').setValue('2026-06-20')
-    await wrapper.get('[data-test="generated-images-end-date"]').setValue('2026-06-27')
+    await wrapper.get('[data-test="generated-images-date-range"]').trigger('click')
     await wrapper.get('[data-test="generated-images-open-cleanup"]').trigger('click')
     await wrapper.get('[data-test="confirm-cleanup"]').trigger('click')
     await flushPromises()
 
     expect(deleteByDateRange).toHaveBeenCalledWith({
-      start_at: '2026-06-20',
+      start_at: '2026-06-27',
       end_at: '2026-06-27'
     })
     expect(showSuccess).toHaveBeenCalledWith('admin.generatedImages.cleanupSuccess:{"count":2}')

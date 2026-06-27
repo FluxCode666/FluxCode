@@ -4599,6 +4599,7 @@ export default {
       accountName: '账号名称',
       channelGroup: '渠道分组',
       allGroups: '全部分组',
+      dateRange: '日期范围',
       startDate: '开始日期',
       endDate: '结束日期',
       query: '查询',

@@ -13,7 +13,7 @@
       </div>
 
       <div class="rounded-lg border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-800">
-        <div class="grid gap-3 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,0.8fr)_minmax(0,0.8fr)_auto] lg:items-end">
+        <div class="grid gap-3 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(16rem,0.9fr)_auto] lg:items-end">
           <div class="relative">
             <label class="input-label">{{ t('admin.generatedImages.userEmail') }}</label>
             <input
@@ -61,23 +61,14 @@
             />
           </div>
 
-          <div>
-            <label class="input-label">{{ t('admin.generatedImages.startDate') }}</label>
-            <input
-              v-model="filters.start_at"
-              type="date"
-              class="input"
-              data-test="generated-images-start-date"
-            />
-          </div>
-
-          <div>
-            <label class="input-label">{{ t('admin.generatedImages.endDate') }}</label>
-            <input
-              v-model="filters.end_at"
-              type="date"
-              class="input"
-              data-test="generated-images-end-date"
+          <div class="min-w-0">
+            <label class="input-label">{{ t('admin.generatedImages.dateRange') }}</label>
+            <DateRangePicker
+              v-model:start-date="filters.start_at"
+              v-model:end-date="filters.end_at"
+              class="w-full"
+              data-test="generated-images-date-range"
+              @change="onDateRangeChange"
             />
           </div>
 
@@ -380,6 +371,7 @@ import { useAppStore } from '@/stores/app'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
+import DateRangePicker from '@/components/common/DateRangePicker.vue'
 import Icon from '@/components/icons/Icon.vue'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import Pagination from '@/components/common/Pagination.vue'
@@ -622,6 +614,11 @@ function selectUserEmail(email: string): void {
   filters.user_email = email
   userEmailSearch.value = email
   userEmailDropdownOpen.value = false
+}
+
+function onDateRangeChange(range: { startDate: string; endDate: string; preset: string | null }): void {
+  filters.start_at = range.startDate
+  filters.end_at = range.endDate
 }
 
 function applyFilters(): void {
