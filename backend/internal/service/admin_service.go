@@ -581,6 +581,25 @@ func (s *adminServiceImpl) GetUser(ctx context.Context, id int64) (*User, error)
 	return user, nil
 }
 
+func (s *adminServiceImpl) validateAllowedGroupsNoFallback(ctx context.Context, groupIDs []int64) error {
+	if len(groupIDs) == 0 {
+		return nil
+	}
+	if s.groupRepo == nil {
+		return infraerrors.InternalServer("GROUP_REPOSITORY_UNAVAILABLE", "group repository is not configured")
+	}
+	for _, groupID := range groupIDs {
+		group, err := s.groupRepo.GetByIDLite(ctx, groupID)
+		if err != nil {
+			return fmt.Errorf("get allowed group %d: %w", groupID, err)
+		}
+		if group.IsFallbackGroup {
+			return infraerrors.BadRequest("FALLBACK_GROUP_NOT_ASSIGNABLE", "fallback group cannot be assigned to user allowed groups")
+		}
+	}
+	return nil
+}
+
 func (s *adminServiceImpl) CreateUser(ctx context.Context, input *CreateUserInput) (*User, error) {
 	mode, tiers, err := normalizeAdminSalesCommissionConfig(
 		input.IsSales,
@@ -590,6 +609,9 @@ func (s *adminServiceImpl) CreateUser(ctx context.Context, input *CreateUserInpu
 		input.SalesCommissionTiers,
 	)
 	if err != nil {
+		return nil, err
+	}
+	if err := s.validateAllowedGroupsNoFallback(ctx, input.AllowedGroups); err != nil {
 		return nil, err
 	}
 
@@ -675,6 +697,9 @@ func (s *adminServiceImpl) UpdateUser(ctx context.Context, id int64, input *Upda
 	}
 
 	if input.AllowedGroups != nil {
+		if err := s.validateAllowedGroupsNoFallback(ctx, *input.AllowedGroups); err != nil {
+			return nil, err
+		}
 		user.AllowedGroups = *input.AllowedGroups
 	}
 	effectiveIsSales := user.IsSales
@@ -1538,6 +1563,9 @@ func (s *adminServiceImpl) AdminUpdateAPIKeyGroupID(ctx context.Context, keyID i
 		}
 		if group.Status != StatusActive {
 			return nil, infraerrors.BadRequest("GROUP_NOT_ACTIVE", "target group is not active")
+		}
+		if group.IsFallbackGroup {
+			return nil, infraerrors.BadRequest("FALLBACK_GROUP_NOT_BINDABLE", "fallback group cannot be bound to api keys")
 		}
 		// 订阅类型分组：用户须持有该分组的有效订阅才可绑定
 		if group.IsSubscriptionType() {

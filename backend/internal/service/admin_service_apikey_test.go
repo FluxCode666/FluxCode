@@ -350,6 +350,28 @@ func TestAdminService_AdminUpdateAPIKeyGroupID_GroupNotActive(t *testing.T) {
 	require.Equal(t, "GROUP_NOT_ACTIVE", infraerrors.Reason(err))
 }
 
+func TestAdminService_AdminUpdateAPIKeyGroupID_FallbackGroupBlocked(t *testing.T) {
+	existing := &APIKey{ID: 1, UserID: 42, Key: "sk-test", GroupID: nil}
+	apiKeyRepo := &apiKeyRepoStubForGroupUpdate{key: existing}
+	groupRepo := &groupRepoStubForGroupUpdate{
+		group: &Group{
+			ID:               10,
+			Name:             "fallback",
+			Status:           StatusActive,
+			Platform:         PlatformOpenAI,
+			SubscriptionType: SubscriptionTypeStandard,
+			IsFallbackGroup:  true,
+		},
+	}
+	svc := &adminServiceImpl{apiKeyRepo: apiKeyRepo, groupRepo: groupRepo}
+
+	_, err := svc.AdminUpdateAPIKeyGroupID(context.Background(), 1, int64Ptr(10))
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "fallback group cannot be bound to api keys")
+	require.Nil(t, apiKeyRepo.updated)
+}
+
 func TestAdminService_AdminUpdateAPIKeyGroupID_UpdateFails(t *testing.T) {
 	existing := &APIKey{ID: 1, Key: "sk-test", GroupID: int64Ptr(3)}
 	repo := &apiKeyRepoStubForGroupUpdate{key: existing, updateErr: errors.New("db write error")}
