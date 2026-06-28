@@ -969,22 +969,9 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 	imagePrice1K := normalizePrice(input.ImagePrice1K)
 	imagePrice2K := normalizePrice(input.ImagePrice2K)
 	imagePrice4K := normalizePrice(input.ImagePrice4K)
-
-	// 校验降级分组
-	if input.FallbackGroupID != nil {
-		if err := s.validateFallbackGroup(ctx, 0, *input.FallbackGroupID); err != nil {
-			return nil, err
-		}
-	}
 	fallbackOnInvalidRequest := input.FallbackGroupIDOnInvalidRequest
 	if fallbackOnInvalidRequest != nil && *fallbackOnInvalidRequest <= 0 {
 		fallbackOnInvalidRequest = nil
-	}
-	// 校验无效请求兜底分组
-	if fallbackOnInvalidRequest != nil {
-		if err := s.validateFallbackGroupOnInvalidRequest(ctx, 0, platform, subscriptionType, *fallbackOnInvalidRequest); err != nil {
-			return nil, err
-		}
 	}
 
 	// MCPXMLInject：默认为 true，仅当显式传入 false 时关闭
@@ -1055,6 +1042,20 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		MessagesDispatchModelConfig:     normalizeOpenAIMessagesDispatchModelConfig(input.MessagesDispatchModelConfig),
 	}
 	sanitizeGroupMessagesDispatchFields(group)
+	if err := s.validateFallbackGroupFlag(ctx, group); err != nil {
+		return nil, err
+	}
+	if group.FallbackGroupID != nil {
+		if err := s.validateFallbackGroup(ctx, 0, group.Platform, *group.FallbackGroupID); err != nil {
+			return nil, err
+		}
+	}
+	// 校验无效请求兜底分组
+	if fallbackOnInvalidRequest != nil {
+		if err := s.validateFallbackGroupOnInvalidRequest(ctx, 0, platform, subscriptionType, *fallbackOnInvalidRequest); err != nil {
+			return nil, err
+		}
+	}
 	if err := s.groupRepo.Create(ctx, group); err != nil {
 		return nil, err
 	}
@@ -1107,42 +1108,91 @@ func normalizePrice(price *float64) *float64 {
 	return price
 }
 
+func isFallbackCapablePlatform(platform string) bool {
+	return platform == PlatformAnthropic || platform == PlatformOpenAI
+}
+
+func normalizeGroupSubscriptionType(subscriptionType string) string {
+	if subscriptionType == "" {
+		return SubscriptionTypeStandard
+	}
+	return subscriptionType
+}
+
+func hasConfiguredFallbackGroupID(groupID *int64) bool {
+	return groupID != nil && *groupID > 0
+}
+
+func (s *adminServiceImpl) validateFallbackGroupFlag(ctx context.Context, group *Group) error {
+	if group == nil || !group.IsFallbackGroup {
+		return nil
+	}
+	if !isFallbackCapablePlatform(group.Platform) {
+		return fmt.Errorf("fallback group flag only supported for anthropic or openai standard groups")
+	}
+	if normalizeGroupSubscriptionType(group.SubscriptionType) != SubscriptionTypeStandard {
+		return fmt.Errorf("fallback group must be standard billing type")
+	}
+	if hasConfiguredFallbackGroupID(group.FallbackGroupID) {
+		return fmt.Errorf("fallback group cannot have fallback_group_id configured")
+	}
+	if group.ID > 0 && s.apiKeyRepo != nil {
+		count, err := s.apiKeyRepo.CountByGroupID(ctx, group.ID)
+		if err != nil {
+			return fmt.Errorf("count api keys by group: %w", err)
+		}
+		if count > 0 {
+			return fmt.Errorf("fallback group has bound api keys; migrate or unbind them first")
+		}
+	}
+	return nil
+}
+
 // validateFallbackGroup 校验降级分组的有效性
 // currentGroupID: 当前分组 ID（新建时为 0）
+// platform: 当前分组平台
 // fallbackGroupID: 降级分组 ID
-func (s *adminServiceImpl) validateFallbackGroup(ctx context.Context, currentGroupID, fallbackGroupID int64) error {
+func (s *adminServiceImpl) validateFallbackGroup(ctx context.Context, currentGroupID int64, platform string, fallbackGroupID int64) error {
 	// 不能将自己设置为降级分组
 	if currentGroupID > 0 && currentGroupID == fallbackGroupID {
 		return fmt.Errorf("cannot set self as fallback group")
 	}
-
-	visited := map[int64]struct{}{}
-	nextID := fallbackGroupID
-	for {
-		if _, seen := visited[nextID]; seen {
-			return fmt.Errorf("fallback group cycle detected")
-		}
-		visited[nextID] = struct{}{}
-		if currentGroupID > 0 && nextID == currentGroupID {
-			return fmt.Errorf("fallback group cycle detected")
-		}
-
-		// 检查降级分组是否存在
-		fallbackGroup, err := s.groupRepo.GetByIDLite(ctx, nextID)
-		if err != nil {
-			return fmt.Errorf("fallback group not found: %w", err)
-		}
-
-		// 降级分组不能启用 claude_code_only，否则会造成死循环
-		if nextID == fallbackGroupID && fallbackGroup.ClaudeCodeOnly {
-			return fmt.Errorf("fallback group cannot have claude_code_only enabled")
-		}
-
-		if fallbackGroup.FallbackGroupID == nil {
-			return nil
-		}
-		nextID = *fallbackGroup.FallbackGroupID
+	if !isFallbackCapablePlatform(platform) {
+		return fmt.Errorf("fallback group only supported for anthropic or openai groups")
 	}
+
+	fallbackGroup, err := s.groupRepo.GetByIDLite(ctx, fallbackGroupID)
+	if err != nil {
+		return fmt.Errorf("fallback group not found: %w", err)
+	}
+	if fallbackGroup.Status != StatusActive {
+		return fmt.Errorf("fallback group must be active")
+	}
+	if !fallbackGroup.IsFallbackGroup {
+		return fmt.Errorf("fallback group must be enabled as fallback group")
+	}
+	if normalizeGroupSubscriptionType(fallbackGroup.SubscriptionType) != SubscriptionTypeStandard {
+		return fmt.Errorf("fallback group cannot be subscription type")
+	}
+	if hasConfiguredFallbackGroupID(fallbackGroup.FallbackGroupID) {
+		return fmt.Errorf("fallback group cannot have fallback_group_id configured")
+	}
+	if fallbackGroup.ClaudeCodeOnly {
+		return fmt.Errorf("fallback group cannot have claude_code_only enabled")
+	}
+
+	switch platform {
+	case PlatformAnthropic:
+		if fallbackGroup.Platform != PlatformAnthropic {
+			return fmt.Errorf("anthropic group fallback target must be anthropic platform")
+		}
+	case PlatformOpenAI:
+		if fallbackGroup.Platform != PlatformOpenAI {
+			return fmt.Errorf("openai group fallback target must be openai platform")
+		}
+	}
+
+	return nil
 }
 
 // validateFallbackGroupOnInvalidRequest 校验无效请求兜底分组的有效性
@@ -1240,11 +1290,7 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 		group.ClaudeCodeOnly = *input.ClaudeCodeOnly
 	}
 	if input.FallbackGroupID != nil {
-		// 校验降级分组
 		if *input.FallbackGroupID > 0 {
-			if err := s.validateFallbackGroup(ctx, id, *input.FallbackGroupID); err != nil {
-				return nil, err
-			}
 			group.FallbackGroupID = input.FallbackGroupID
 		} else {
 			// 传入 0 或负数表示清除降级分组
@@ -1253,6 +1299,14 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	}
 	if input.IsFallbackGroup != nil {
 		group.IsFallbackGroup = *input.IsFallbackGroup
+	}
+	if err := s.validateFallbackGroupFlag(ctx, group); err != nil {
+		return nil, err
+	}
+	if hasConfiguredFallbackGroupID(group.FallbackGroupID) {
+		if err := s.validateFallbackGroup(ctx, id, group.Platform, *group.FallbackGroupID); err != nil {
+			return nil, err
+		}
 	}
 	fallbackOnInvalidRequest := group.FallbackGroupIDOnInvalidRequest
 	if input.FallbackGroupIDOnInvalidRequest != nil {

@@ -5,6 +5,7 @@ package service
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/stretchr/testify/require"
@@ -441,26 +442,26 @@ func TestAdminService_ListGroups_WithSearch(t *testing.T) {
 	})
 }
 
-func TestAdminService_ValidateFallbackGroup_DetectsCycle(t *testing.T) {
+func TestAdminService_ValidateFallbackGroup_RejectsChainedTarget(t *testing.T) {
 	groupID := int64(1)
 	fallbackID := int64(2)
 	repo := &groupRepoStubForFallbackCycle{
 		groups: map[int64]*Group{
-			groupID: {
-				ID:              groupID,
-				FallbackGroupID: &fallbackID,
-			},
 			fallbackID: {
-				ID:              fallbackID,
-				FallbackGroupID: &groupID,
+				ID:               fallbackID,
+				Platform:         PlatformAnthropic,
+				SubscriptionType: SubscriptionTypeStandard,
+				Status:           StatusActive,
+				IsFallbackGroup:  true,
+				FallbackGroupID:  &groupID,
 			},
 		},
 	}
 	svc := &adminServiceImpl{groupRepo: repo}
 
-	err := svc.validateFallbackGroup(context.Background(), groupID, fallbackID)
+	err := svc.validateFallbackGroup(context.Background(), groupID, PlatformAnthropic, fallbackID)
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "fallback group cycle")
+	require.Contains(t, err.Error(), "fallback group cannot have fallback_group_id configured")
 }
 
 type groupRepoStubForFallbackCycle struct {
@@ -538,6 +539,105 @@ type groupRepoStubForInvalidRequestFallback struct {
 	groups  map[int64]*Group
 	created *Group
 	updated *Group
+}
+
+type apiKeyRepoStubForFallbackGroupValidation struct {
+	counts map[int64]int64
+}
+
+func (s *apiKeyRepoStubForFallbackGroupValidation) CountByGroupID(_ context.Context, groupID int64) (int64, error) {
+	if s.counts == nil {
+		return 0, nil
+	}
+	return s.counts[groupID], nil
+}
+
+func (s *apiKeyRepoStubForFallbackGroupValidation) Create(context.Context, *APIKey) error {
+	panic("unexpected Create call")
+}
+
+func (s *apiKeyRepoStubForFallbackGroupValidation) GetByID(context.Context, int64) (*APIKey, error) {
+	panic("unexpected GetByID call")
+}
+
+func (s *apiKeyRepoStubForFallbackGroupValidation) GetKeyAndOwnerID(context.Context, int64) (string, int64, error) {
+	panic("unexpected GetKeyAndOwnerID call")
+}
+
+func (s *apiKeyRepoStubForFallbackGroupValidation) GetByKey(context.Context, string) (*APIKey, error) {
+	panic("unexpected GetByKey call")
+}
+
+func (s *apiKeyRepoStubForFallbackGroupValidation) GetByKeyForAuth(context.Context, string) (*APIKey, error) {
+	panic("unexpected GetByKeyForAuth call")
+}
+
+func (s *apiKeyRepoStubForFallbackGroupValidation) Update(context.Context, *APIKey) error {
+	panic("unexpected Update call")
+}
+
+func (s *apiKeyRepoStubForFallbackGroupValidation) Delete(context.Context, int64) error {
+	panic("unexpected Delete call")
+}
+
+func (s *apiKeyRepoStubForFallbackGroupValidation) ListByUserID(context.Context, int64, pagination.PaginationParams, APIKeyListFilters) ([]APIKey, *pagination.PaginationResult, error) {
+	panic("unexpected ListByUserID call")
+}
+
+func (s *apiKeyRepoStubForFallbackGroupValidation) VerifyOwnership(context.Context, int64, []int64) ([]int64, error) {
+	panic("unexpected VerifyOwnership call")
+}
+
+func (s *apiKeyRepoStubForFallbackGroupValidation) CountByUserID(context.Context, int64) (int64, error) {
+	panic("unexpected CountByUserID call")
+}
+
+func (s *apiKeyRepoStubForFallbackGroupValidation) ExistsByKey(context.Context, string) (bool, error) {
+	panic("unexpected ExistsByKey call")
+}
+
+func (s *apiKeyRepoStubForFallbackGroupValidation) ListByGroupID(context.Context, int64, pagination.PaginationParams) ([]APIKey, *pagination.PaginationResult, error) {
+	panic("unexpected ListByGroupID call")
+}
+
+func (s *apiKeyRepoStubForFallbackGroupValidation) SearchAPIKeys(context.Context, int64, string, int) ([]APIKey, error) {
+	panic("unexpected SearchAPIKeys call")
+}
+
+func (s *apiKeyRepoStubForFallbackGroupValidation) ClearGroupIDByGroupID(context.Context, int64) (int64, error) {
+	panic("unexpected ClearGroupIDByGroupID call")
+}
+
+func (s *apiKeyRepoStubForFallbackGroupValidation) UpdateGroupIDByUserAndGroup(context.Context, int64, int64, int64) (int64, error) {
+	panic("unexpected UpdateGroupIDByUserAndGroup call")
+}
+
+func (s *apiKeyRepoStubForFallbackGroupValidation) ListKeysByUserID(context.Context, int64) ([]string, error) {
+	panic("unexpected ListKeysByUserID call")
+}
+
+func (s *apiKeyRepoStubForFallbackGroupValidation) ListKeysByGroupID(context.Context, int64) ([]string, error) {
+	panic("unexpected ListKeysByGroupID call")
+}
+
+func (s *apiKeyRepoStubForFallbackGroupValidation) IncrementQuotaUsed(context.Context, int64, float64) (float64, error) {
+	panic("unexpected IncrementQuotaUsed call")
+}
+
+func (s *apiKeyRepoStubForFallbackGroupValidation) UpdateLastUsed(context.Context, int64, time.Time) error {
+	panic("unexpected UpdateLastUsed call")
+}
+
+func (s *apiKeyRepoStubForFallbackGroupValidation) IncrementRateLimitUsage(context.Context, int64, float64) error {
+	panic("unexpected IncrementRateLimitUsage call")
+}
+
+func (s *apiKeyRepoStubForFallbackGroupValidation) ResetRateLimitWindows(context.Context, int64) error {
+	panic("unexpected ResetRateLimitWindows call")
+}
+
+func (s *apiKeyRepoStubForFallbackGroupValidation) GetRateLimitData(context.Context, int64) (*APIKeyRateLimitData, error) {
+	panic("unexpected GetRateLimitData call")
 }
 
 func (s *groupRepoStubForInvalidRequestFallback) Create(_ context.Context, g *Group) error {
@@ -762,6 +862,259 @@ func TestAdminService_CreateGroup_PersistsFallbackGroupFlag(t *testing.T) {
 	require.True(t, repo.created.IsFallbackGroup)
 }
 
+func TestAdminService_CreateGroup_FallbackGroupFlagRejectsUnsupportedPlatform(t *testing.T) {
+	repo := &groupRepoStubForInvalidRequestFallback{}
+	svc := &adminServiceImpl{groupRepo: repo}
+
+	_, err := svc.CreateGroup(context.Background(), &CreateGroupInput{
+		Name:             "gemini-fallback",
+		Platform:         PlatformGemini,
+		SubscriptionType: SubscriptionTypeStandard,
+		IsFallbackGroup:  true,
+	})
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "fallback group flag only supported for anthropic or openai standard groups")
+	require.Nil(t, repo.created)
+}
+
+func TestAdminService_CreateGroup_FallbackGroupFlagRejectsSubscription(t *testing.T) {
+	repo := &groupRepoStubForInvalidRequestFallback{}
+	svc := &adminServiceImpl{groupRepo: repo}
+
+	_, err := svc.CreateGroup(context.Background(), &CreateGroupInput{
+		Name:             "openai-sub-fallback",
+		Platform:         PlatformOpenAI,
+		SubscriptionType: SubscriptionTypeSubscription,
+		IsFallbackGroup:  true,
+	})
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "fallback group must be standard billing type")
+	require.Nil(t, repo.created)
+}
+
+func TestAdminService_CreateGroup_FallbackGroupFlagRejectsChainedFallback(t *testing.T) {
+	fallbackID := int64(19)
+	repo := &groupRepoStubForInvalidRequestFallback{
+		groups: map[int64]*Group{
+			fallbackID: {
+				ID:               fallbackID,
+				Platform:         PlatformOpenAI,
+				SubscriptionType: SubscriptionTypeStandard,
+				Status:           StatusActive,
+				IsFallbackGroup:  true,
+			},
+		},
+	}
+	svc := &adminServiceImpl{groupRepo: repo}
+
+	_, err := svc.CreateGroup(context.Background(), &CreateGroupInput{
+		Name:             "fallback-with-fallback",
+		Platform:         PlatformOpenAI,
+		SubscriptionType: SubscriptionTypeStandard,
+		IsFallbackGroup:  true,
+		FallbackGroupID:  &fallbackID,
+	})
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "fallback group cannot have fallback_group_id configured")
+	require.Nil(t, repo.created)
+}
+
+func TestAdminService_CreateGroup_FallbackTargetRejectsInactive(t *testing.T) {
+	fallbackID := int64(18)
+	repo := &groupRepoStubForInvalidRequestFallback{
+		groups: map[int64]*Group{
+			fallbackID: {
+				ID:               fallbackID,
+				Platform:         PlatformOpenAI,
+				SubscriptionType: SubscriptionTypeStandard,
+				Status:           StatusDisabled,
+				IsFallbackGroup:  true,
+			},
+		},
+	}
+	svc := &adminServiceImpl{groupRepo: repo}
+
+	_, err := svc.CreateGroup(context.Background(), &CreateGroupInput{
+		Name:             "openai-entry",
+		Platform:         PlatformOpenAI,
+		SubscriptionType: SubscriptionTypeStandard,
+		FallbackGroupID:  &fallbackID,
+	})
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "fallback group must be active")
+	require.Nil(t, repo.created)
+}
+
+func TestAdminService_CreateGroup_FallbackTargetRejectsSubscription(t *testing.T) {
+	fallbackID := int64(17)
+	repo := &groupRepoStubForInvalidRequestFallback{
+		groups: map[int64]*Group{
+			fallbackID: {
+				ID:               fallbackID,
+				Platform:         PlatformOpenAI,
+				SubscriptionType: SubscriptionTypeSubscription,
+				Status:           StatusActive,
+				IsFallbackGroup:  true,
+			},
+		},
+	}
+	svc := &adminServiceImpl{groupRepo: repo}
+
+	_, err := svc.CreateGroup(context.Background(), &CreateGroupInput{
+		Name:             "openai-entry",
+		Platform:         PlatformOpenAI,
+		SubscriptionType: SubscriptionTypeStandard,
+		FallbackGroupID:  &fallbackID,
+	})
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "fallback group cannot be subscription type")
+	require.Nil(t, repo.created)
+}
+
+func TestAdminService_CreateGroup_FallbackTargetRejectsChainedFallback(t *testing.T) {
+	nextID := int64(30)
+	fallbackID := int64(16)
+	repo := &groupRepoStubForInvalidRequestFallback{
+		groups: map[int64]*Group{
+			fallbackID: {
+				ID:               fallbackID,
+				Platform:         PlatformOpenAI,
+				SubscriptionType: SubscriptionTypeStandard,
+				Status:           StatusActive,
+				IsFallbackGroup:  true,
+				FallbackGroupID:  &nextID,
+			},
+		},
+	}
+	svc := &adminServiceImpl{groupRepo: repo}
+
+	_, err := svc.CreateGroup(context.Background(), &CreateGroupInput{
+		Name:             "openai-entry",
+		Platform:         PlatformOpenAI,
+		SubscriptionType: SubscriptionTypeStandard,
+		FallbackGroupID:  &fallbackID,
+	})
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "fallback group cannot have fallback_group_id configured")
+	require.Nil(t, repo.created)
+}
+
+func TestAdminService_CreateGroup_FallbackTargetRejectsClaudeCodeOnly(t *testing.T) {
+	fallbackID := int64(15)
+	repo := &groupRepoStubForInvalidRequestFallback{
+		groups: map[int64]*Group{
+			fallbackID: {
+				ID:               fallbackID,
+				Platform:         PlatformAnthropic,
+				SubscriptionType: SubscriptionTypeStandard,
+				Status:           StatusActive,
+				IsFallbackGroup:  true,
+				ClaudeCodeOnly:   true,
+			},
+		},
+	}
+	svc := &adminServiceImpl{groupRepo: repo}
+
+	_, err := svc.CreateGroup(context.Background(), &CreateGroupInput{
+		Name:             "anthropic-entry",
+		Platform:         PlatformAnthropic,
+		SubscriptionType: SubscriptionTypeStandard,
+		FallbackGroupID:  &fallbackID,
+	})
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "fallback group cannot have claude_code_only enabled")
+	require.Nil(t, repo.created)
+}
+
+func TestAdminService_CreateGroup_FallbackTargetRequiresEnabledFlag(t *testing.T) {
+	fallbackID := int64(20)
+	repo := &groupRepoStubForInvalidRequestFallback{
+		groups: map[int64]*Group{
+			fallbackID: {ID: fallbackID, Platform: PlatformOpenAI, SubscriptionType: SubscriptionTypeStandard, Status: StatusActive},
+		},
+	}
+	svc := &adminServiceImpl{groupRepo: repo}
+
+	_, err := svc.CreateGroup(context.Background(), &CreateGroupInput{
+		Name:             "openai-entry",
+		Platform:         PlatformOpenAI,
+		SubscriptionType: SubscriptionTypeStandard,
+		FallbackGroupID:  &fallbackID,
+	})
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "fallback group must be enabled as fallback group")
+	require.Nil(t, repo.created)
+}
+
+func TestAdminService_CreateGroup_FallbackTargetMustMatchPlatform(t *testing.T) {
+	fallbackID := int64(21)
+	repo := &groupRepoStubForInvalidRequestFallback{
+		groups: map[int64]*Group{
+			fallbackID: {
+				ID:               fallbackID,
+				Platform:         PlatformAnthropic,
+				SubscriptionType: SubscriptionTypeStandard,
+				Status:           StatusActive,
+				IsFallbackGroup:  true,
+			},
+		},
+	}
+	svc := &adminServiceImpl{groupRepo: repo}
+
+	_, err := svc.CreateGroup(context.Background(), &CreateGroupInput{
+		Name:             "openai-entry",
+		Platform:         PlatformOpenAI,
+		SubscriptionType: SubscriptionTypeStandard,
+		FallbackGroupID:  &fallbackID,
+	})
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "openai group fallback target must be openai platform")
+	require.Nil(t, repo.created)
+}
+
+func TestAdminService_CreateGroup_MultipleGroupsMayShareFallbackTarget(t *testing.T) {
+	fallbackID := int64(22)
+	repo := &groupRepoStubForInvalidRequestFallback{
+		groups: map[int64]*Group{
+			fallbackID: {
+				ID:               fallbackID,
+				Platform:         PlatformOpenAI,
+				SubscriptionType: SubscriptionTypeStandard,
+				Status:           StatusActive,
+				IsFallbackGroup:  true,
+			},
+		},
+	}
+	svc := &adminServiceImpl{groupRepo: repo}
+
+	first, err := svc.CreateGroup(context.Background(), &CreateGroupInput{
+		Name:             "openai-entry-1",
+		Platform:         PlatformOpenAI,
+		SubscriptionType: SubscriptionTypeStandard,
+		FallbackGroupID:  &fallbackID,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, first)
+
+	second, err := svc.CreateGroup(context.Background(), &CreateGroupInput{
+		Name:             "openai-entry-2",
+		Platform:         PlatformOpenAI,
+		SubscriptionType: SubscriptionTypeStandard,
+		FallbackGroupID:  &fallbackID,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, second)
+}
+
 func TestAdminService_CreateGroup_InvalidRequestFallbackClearsOnZero(t *testing.T) {
 	zero := int64(0)
 	repo := &groupRepoStubForInvalidRequestFallback{}
@@ -858,6 +1211,63 @@ func TestAdminService_UpdateGroup_InvalidRequestFallbackClearsOnZero(t *testing.
 	require.NotNil(t, group)
 	require.NotNil(t, repo.updated)
 	require.Nil(t, repo.updated.FallbackGroupIDOnInvalidRequest)
+}
+
+func TestAdminService_UpdateGroup_FallbackGroupFlagRejectsBoundAPIKeys(t *testing.T) {
+	existing := &Group{
+		ID:               101,
+		Name:             "openai-existing",
+		Platform:         PlatformOpenAI,
+		SubscriptionType: SubscriptionTypeStandard,
+		Status:           StatusActive,
+	}
+	repo := &groupRepoStubForInvalidRequestFallback{
+		groups: map[int64]*Group{
+			existing.ID: existing,
+		},
+	}
+	apiKeyRepo := &apiKeyRepoStubForFallbackGroupValidation{
+		counts: map[int64]int64{
+			existing.ID: 2,
+		},
+	}
+	svc := &adminServiceImpl{groupRepo: repo, apiKeyRepo: apiKeyRepo}
+
+	enable := true
+	_, err := svc.UpdateGroup(context.Background(), existing.ID, &UpdateGroupInput{
+		IsFallbackGroup: &enable,
+	})
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "fallback group has bound api keys; migrate or unbind them first")
+	require.Nil(t, repo.updated)
+}
+
+func TestAdminService_UpdateGroup_FallbackGroupFlagRejectsExistingFallbackTarget(t *testing.T) {
+	fallbackID := int64(202)
+	existing := &Group{
+		ID:               102,
+		Name:             "openai-existing",
+		Platform:         PlatformOpenAI,
+		SubscriptionType: SubscriptionTypeStandard,
+		Status:           StatusActive,
+		FallbackGroupID:  &fallbackID,
+	}
+	repo := &groupRepoStubForInvalidRequestFallback{
+		groups: map[int64]*Group{
+			existing.ID: existing,
+		},
+	}
+	svc := &adminServiceImpl{groupRepo: repo}
+
+	enable := true
+	_, err := svc.UpdateGroup(context.Background(), existing.ID, &UpdateGroupInput{
+		IsFallbackGroup: &enable,
+	})
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "fallback group cannot have fallback_group_id configured")
+	require.Nil(t, repo.updated)
 }
 
 func TestAdminService_UpdateGroup_InvalidRequestFallbackRejectsFallbackGroup(t *testing.T) {
