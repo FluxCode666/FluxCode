@@ -14,7 +14,7 @@ import (
 	"github.com/dgraph-io/ristretto"
 )
 
-const apiKeyAuthSnapshotVersion = 6 // v6: added API key/group system prompt fields
+const apiKeyAuthSnapshotVersion = 7 // v7: added API key/group system prompt fields and group fallback flag
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int
