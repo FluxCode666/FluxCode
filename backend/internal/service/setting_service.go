@@ -35,6 +35,9 @@ var (
 )
 
 const DefaultOpenAIImageURLCacheTTLHours = 72
+const DefaultQiniuPrefix = "openai/generated-images"
+const DefaultQiniuUploadTimeoutSeconds = 30
+const DefaultQiniuTokenTTLSeconds = 3600
 
 type SettingRepository interface {
 	Get(ctx context.Context, key string) (*Setting, error)
@@ -513,6 +516,39 @@ func normalizeOpenAIImageURLCacheTTLHours(hours int) int {
 	return hours
 }
 
+func NormalizeGeneratedImageStorageSource(source string) string {
+	switch strings.ToLower(strings.TrimSpace(source)) {
+	case "", GeneratedImageStorageSourceDB:
+		return GeneratedImageStorageSourceDB
+	case GeneratedImageStorageSourceQiniu:
+		return GeneratedImageStorageSourceQiniu
+	default:
+		return ""
+	}
+}
+
+func normalizeQiniuPrefix(prefix string) string {
+	normalized := strings.Trim(strings.TrimSpace(prefix), "/")
+	if normalized == "" {
+		return DefaultQiniuPrefix
+	}
+	return normalized
+}
+
+func normalizeQiniuUploadTimeoutSeconds(seconds int) int {
+	if seconds <= 0 {
+		return DefaultQiniuUploadTimeoutSeconds
+	}
+	return seconds
+}
+
+func normalizeQiniuTokenTTLSeconds(seconds int) int {
+	if seconds <= 0 {
+		return DefaultQiniuTokenTTLSeconds
+	}
+	return seconds
+}
+
 func (s *SettingService) GetOpenAIImageURLCacheTTL(ctx context.Context) time.Duration {
 	if s == nil || s.settingRepo == nil {
 		return time.Duration(DefaultOpenAIImageURLCacheTTLHours) * time.Hour
@@ -522,6 +558,66 @@ func (s *SettingService) GetOpenAIImageURLCacheTTL(ctx context.Context) time.Dur
 		return time.Duration(DefaultOpenAIImageURLCacheTTLHours) * time.Hour
 	}
 	return time.Duration(normalizeOpenAIImageURLCacheTTLHours(parseIntSetting(raw, DefaultOpenAIImageURLCacheTTLHours))) * time.Hour
+}
+
+type GeneratedImageStorageSettings struct {
+	Source                    string
+	QiniuAccessKey            string
+	QiniuSecretKey            string
+	QiniuBucket               string
+	QiniuCDNDomain            string
+	QiniuPrefix               string
+	QiniuUseHTTPS             bool
+	QiniuUploadTimeoutSeconds int
+	QiniuTokenTTLSeconds      int
+}
+
+var generatedImageStorageSettingKeys = []string{
+	SettingKeyGeneratedImageStorageSource,
+	SettingKeyQiniuAccessKey,
+	SettingKeyQiniuSecretKey,
+	SettingKeyQiniuBucket,
+	SettingKeyQiniuCDNDomain,
+	SettingKeyQiniuPrefix,
+	SettingKeyQiniuUseHTTPS,
+	SettingKeyQiniuUploadTimeoutSeconds,
+	SettingKeyQiniuTokenTTLSeconds,
+}
+
+func (s *SettingService) GetGeneratedImageStorageSettings(ctx context.Context) (*GeneratedImageStorageSettings, error) {
+	if s == nil || s.settingRepo == nil {
+		return parseGeneratedImageStorageSettings(nil), nil
+	}
+	values, err := s.settingRepo.GetMultiple(ctx, generatedImageStorageSettingKeys)
+	if err != nil {
+		return nil, fmt.Errorf("get generated image storage settings: %w", err)
+	}
+	return parseGeneratedImageStorageSettings(values), nil
+}
+
+func parseGeneratedImageStorageSettings(settings map[string]string) *GeneratedImageStorageSettings {
+	if settings == nil {
+		settings = map[string]string{}
+	}
+	source := NormalizeGeneratedImageStorageSource(settings[SettingKeyGeneratedImageStorageSource])
+	if source == "" {
+		source = GeneratedImageStorageSourceDB
+	}
+	useHTTPS := true
+	if raw, ok := settings[SettingKeyQiniuUseHTTPS]; ok {
+		useHTTPS = raw == "true"
+	}
+	return &GeneratedImageStorageSettings{
+		Source:                    source,
+		QiniuAccessKey:            strings.TrimSpace(settings[SettingKeyQiniuAccessKey]),
+		QiniuSecretKey:            strings.TrimSpace(settings[SettingKeyQiniuSecretKey]),
+		QiniuBucket:               strings.TrimSpace(settings[SettingKeyQiniuBucket]),
+		QiniuCDNDomain:            strings.TrimRight(strings.TrimSpace(settings[SettingKeyQiniuCDNDomain]), "/"),
+		QiniuPrefix:               normalizeQiniuPrefix(settings[SettingKeyQiniuPrefix]),
+		QiniuUseHTTPS:             useHTTPS,
+		QiniuUploadTimeoutSeconds: normalizeQiniuUploadTimeoutSeconds(parseIntSetting(settings[SettingKeyQiniuUploadTimeoutSeconds], DefaultQiniuUploadTimeoutSeconds)),
+		QiniuTokenTTLSeconds:      normalizeQiniuTokenTTLSeconds(parseIntSetting(settings[SettingKeyQiniuTokenTTLSeconds], DefaultQiniuTokenTTLSeconds)),
+	}
 }
 
 // GetFrameSrcOrigins returns deduplicated http(s) origins from home_content URL,
@@ -715,6 +811,42 @@ func (s *SettingService) UpdateSettings(ctx context.Context, settings *SystemSet
 	updates[SettingKeyCustomEndpoints] = settings.CustomEndpoints
 	updates[SettingKeyOpenAIUseKeyModelID] = strings.TrimSpace(settings.OpenAIUseKeyModelID)
 	updates[SettingKeyOpenAIImageURLCacheTTLHours] = strconv.Itoa(normalizeOpenAIImageURLCacheTTLHours(settings.OpenAIImageURLCacheTTLHours))
+	generatedImageStorageSource := NormalizeGeneratedImageStorageSource(settings.GeneratedImageStorageSource)
+	if generatedImageStorageSource == "" {
+		return infraerrors.BadRequest("INVALID_GENERATED_IMAGE_STORAGE_SOURCE", "generated image storage source must be db or qiniu")
+	}
+	qiniuAccessKey := strings.TrimSpace(settings.QiniuAccessKey)
+	qiniuSecretKey := strings.TrimSpace(settings.QiniuSecretKey)
+	qiniuBucket := strings.TrimSpace(settings.QiniuBucket)
+	qiniuCDNDomain := strings.TrimRight(strings.TrimSpace(settings.QiniuCDNDomain), "/")
+	qiniuPrefix := normalizeQiniuPrefix(settings.QiniuPrefix)
+	qiniuUploadTimeoutSeconds := normalizeQiniuUploadTimeoutSeconds(settings.QiniuUploadTimeoutSeconds)
+	qiniuTokenTTLSeconds := normalizeQiniuTokenTTLSeconds(settings.QiniuTokenTTLSeconds)
+	if generatedImageStorageSource == GeneratedImageStorageSourceQiniu {
+		if qiniuAccessKey == "" {
+			return infraerrors.BadRequest("QINIU_ACCESS_KEY_REQUIRED", "qiniu access key is required when generated image storage source is qiniu")
+		}
+		if qiniuSecretKey == "" {
+			return infraerrors.BadRequest("QINIU_SECRET_KEY_REQUIRED", "qiniu secret key is required when generated image storage source is qiniu")
+		}
+		if qiniuBucket == "" {
+			return infraerrors.BadRequest("QINIU_BUCKET_REQUIRED", "qiniu bucket is required when generated image storage source is qiniu")
+		}
+		if qiniuCDNDomain == "" {
+			return infraerrors.BadRequest("QINIU_CDN_DOMAIN_REQUIRED", "qiniu cdn domain is required when generated image storage source is qiniu")
+		}
+	}
+	updates[SettingKeyGeneratedImageStorageSource] = generatedImageStorageSource
+	updates[SettingKeyQiniuAccessKey] = qiniuAccessKey
+	if qiniuSecretKey != "" {
+		updates[SettingKeyQiniuSecretKey] = qiniuSecretKey
+	}
+	updates[SettingKeyQiniuBucket] = qiniuBucket
+	updates[SettingKeyQiniuCDNDomain] = qiniuCDNDomain
+	updates[SettingKeyQiniuPrefix] = qiniuPrefix
+	updates[SettingKeyQiniuUseHTTPS] = strconv.FormatBool(settings.QiniuUseHTTPS)
+	updates[SettingKeyQiniuUploadTimeoutSeconds] = strconv.Itoa(qiniuUploadTimeoutSeconds)
+	updates[SettingKeyQiniuTokenTTLSeconds] = strconv.Itoa(qiniuTokenTTLSeconds)
 
 	// 默认配置
 	updates[SettingKeyDefaultConcurrency] = strconv.Itoa(settings.DefaultConcurrency)
@@ -1361,6 +1493,15 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyCustomEndpoints:                      "[]",
 		SettingKeyOpenAIUseKeyModelID:                  "gpt-5.5",
 		SettingKeyOpenAIImageURLCacheTTLHours:          strconv.Itoa(DefaultOpenAIImageURLCacheTTLHours),
+		SettingKeyGeneratedImageStorageSource:          GeneratedImageStorageSourceDB,
+		SettingKeyQiniuAccessKey:                       "",
+		SettingKeyQiniuSecretKey:                       "",
+		SettingKeyQiniuBucket:                          "",
+		SettingKeyQiniuCDNDomain:                       "",
+		SettingKeyQiniuPrefix:                          DefaultQiniuPrefix,
+		SettingKeyQiniuUseHTTPS:                        "true",
+		SettingKeyQiniuUploadTimeoutSeconds:            strconv.Itoa(DefaultQiniuUploadTimeoutSeconds),
+		SettingKeyQiniuTokenTTLSeconds:                 strconv.Itoa(DefaultQiniuTokenTTLSeconds),
 		SettingKeyOIDCConnectEnabled:                   "false",
 		SettingKeyOIDCConnectProviderName:              "OIDC",
 		SettingKeyDefaultConcurrency:                   strconv.Itoa(s.cfg.Default.UserConcurrency),
@@ -1412,6 +1553,7 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 // parseSettings 解析设置到结构体
 func (s *SettingService) parseSettings(settings map[string]string) *SystemSettings {
 	emailVerifyEnabled := settings[SettingKeyEmailVerifyEnabled] == "true"
+	generatedImageStorageSettings := parseGeneratedImageStorageSettings(settings)
 	result := &SystemSettings{
 		RegistrationEnabled:              settings[SettingKeyRegistrationEnabled] == "true",
 		EmailVerifyEnabled:               emailVerifyEnabled,
@@ -1453,6 +1595,16 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		CustomEndpoints:              settings[SettingKeyCustomEndpoints],
 		OpenAIUseKeyModelID:          s.getStringOrDefault(settings, SettingKeyOpenAIUseKeyModelID, "gpt-5.5"),
 		OpenAIImageURLCacheTTLHours:  normalizeOpenAIImageURLCacheTTLHours(parseIntSetting(settings[SettingKeyOpenAIImageURLCacheTTLHours], DefaultOpenAIImageURLCacheTTLHours)),
+		GeneratedImageStorageSource:  generatedImageStorageSettings.Source,
+		QiniuAccessKey:               generatedImageStorageSettings.QiniuAccessKey,
+		QiniuSecretKey:               generatedImageStorageSettings.QiniuSecretKey,
+		QiniuSecretKeyConfigured:     generatedImageStorageSettings.QiniuSecretKey != "",
+		QiniuBucket:                  generatedImageStorageSettings.QiniuBucket,
+		QiniuCDNDomain:               generatedImageStorageSettings.QiniuCDNDomain,
+		QiniuPrefix:                  generatedImageStorageSettings.QiniuPrefix,
+		QiniuUseHTTPS:                generatedImageStorageSettings.QiniuUseHTTPS,
+		QiniuUploadTimeoutSeconds:    generatedImageStorageSettings.QiniuUploadTimeoutSeconds,
+		QiniuTokenTTLSeconds:         generatedImageStorageSettings.QiniuTokenTTLSeconds,
 		BackendModeEnabled:           settings[SettingKeyBackendModeEnabled] == "true",
 	}
 	result.TableDefaultPageSize, result.TablePageSizeOptions = parseTablePreferences(

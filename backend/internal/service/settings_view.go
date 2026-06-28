@@ -79,6 +79,16 @@ type SystemSettings struct {
 	CustomEndpoints             string // JSON array of custom endpoints
 	OpenAIUseKeyModelID         string
 	OpenAIImageURLCacheTTLHours int
+	GeneratedImageStorageSource string
+	QiniuAccessKey              string
+	QiniuSecretKey              string
+	QiniuSecretKeyConfigured    bool
+	QiniuBucket                 string
+	QiniuCDNDomain              string
+	QiniuPrefix                 string
+	QiniuUseHTTPS               bool
+	QiniuUploadTimeoutSeconds   int
+	QiniuTokenTTLSeconds        int
 
 	DefaultConcurrency   int
 	DefaultBalance       float64

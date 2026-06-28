@@ -96,6 +96,15 @@ type SystemSettings struct {
 	CustomEndpoints             []CustomEndpoint `json:"custom_endpoints"`
 	OpenAIUseKeyModelID         string           `json:"openai_use_key_model_id"`
 	OpenAIImageURLCacheTTLHours int              `json:"openai_image_url_cache_ttl_hours"`
+	GeneratedImageStorageSource string           `json:"generated_image_storage_source"`
+	QiniuAccessKey              string           `json:"qiniu_access_key"`
+	QiniuSecretKeyConfigured    bool             `json:"qiniu_secret_key_configured"`
+	QiniuBucket                 string           `json:"qiniu_bucket"`
+	QiniuCDNDomain              string           `json:"qiniu_cdn_domain"`
+	QiniuPrefix                 string           `json:"qiniu_prefix"`
+	QiniuUseHTTPS               bool             `json:"qiniu_use_https"`
+	QiniuUploadTimeoutSeconds   int              `json:"qiniu_upload_timeout_seconds"`
+	QiniuTokenTTLSeconds        int              `json:"qiniu_token_ttl_seconds"`
 
 	DefaultConcurrency   int                          `json:"default_concurrency"`
 	DefaultBalance       float64                      `json:"default_balance"`

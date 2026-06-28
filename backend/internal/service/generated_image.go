@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -58,6 +59,22 @@ type GeneratedImageStore interface {
 	DeleteByDateRange(ctx context.Context, startAt, endAt time.Time) (int64, error)
 }
 
+type GeneratedImageObjectUpload struct {
+	Data        []byte
+	ContentType string
+}
+
+type GeneratedImageObject struct {
+	Key string
+	URL string
+}
+
+type GeneratedImageObjectStore interface {
+	Upload(ctx context.Context, upload GeneratedImageObjectUpload) (*GeneratedImageObject, error)
+}
+
+var ErrGeneratedImageObjectStoreDisabled = errors.New("generated image object store disabled")
+
 type GeneratedImageRecordContext struct {
 	UserID         int64
 	APIKeyID       int64
@@ -69,13 +86,14 @@ type GeneratedImageRecordContext struct {
 }
 
 type GeneratedImageRecordInput struct {
-	Meta          GeneratedImageRecordContext
-	Value         string
-	ImageData     []byte
-	ContentType   string
-	OutputFormat  string
-	Source        string
-	RevisedPrompt string
+	Meta                GeneratedImageRecordContext
+	Value               string
+	ImageData           []byte
+	ContentType         string
+	OutputFormat        string
+	Source              string
+	RevisedPrompt       string
+	ObjectUploadHandled bool
 }
 
 func (s *OpenAIGatewayService) SetGeneratedImageStore(store GeneratedImageStore) {
@@ -85,8 +103,47 @@ func (s *OpenAIGatewayService) SetGeneratedImageStore(store GeneratedImageStore)
 	s.generatedImageStore = store
 }
 
+func (s *OpenAIGatewayService) SetGeneratedImageObjectStore(store GeneratedImageObjectStore) {
+	if s == nil {
+		return
+	}
+	s.generatedImageObjectStore = store
+}
+
+func (s *OpenAIGatewayService) uploadGeneratedImageObject(ctx context.Context, data []byte, contentType string) (*GeneratedImageObject, error) {
+	if s == nil || s.generatedImageObjectStore == nil || len(data) == 0 {
+		return nil, nil
+	}
+	contentType = strings.TrimSpace(contentType)
+	if contentType == "" {
+		contentType = http.DetectContentType(data)
+	}
+	return s.generatedImageObjectStore.Upload(ctx, GeneratedImageObjectUpload{
+		Data:        append([]byte(nil), data...),
+		ContentType: contentType,
+	})
+}
+
+func (s *OpenAIGatewayService) uploadGeneratedImageObjectBestEffort(ctx context.Context, data []byte, contentType string) (string, bool, bool) {
+	if s == nil || s.generatedImageObjectStore == nil || len(data) == 0 {
+		return "", false, false
+	}
+	object, err := s.uploadGeneratedImageObject(ctx, data, contentType)
+	if err != nil {
+		if errors.Is(err, ErrGeneratedImageObjectStoreDisabled) {
+			return "", false, false
+		}
+		logger.LegacyPrintfContext(ctx, "service.openai_gateway", "[OpenAI] generated image object upload failed: %v", err)
+		return "", true, false
+	}
+	if object == nil || strings.TrimSpace(object.URL) == "" {
+		return "", true, false
+	}
+	return strings.TrimSpace(object.URL), true, true
+}
+
 func (s *OpenAIGatewayService) recordGeneratedImage(ctx context.Context, input GeneratedImageRecordInput) error {
-	if s == nil || s.generatedImageStore == nil {
+	if s == nil {
 		return nil
 	}
 	imageBytes := append([]byte(nil), input.ImageData...)
@@ -126,29 +183,41 @@ func (s *OpenAIGatewayService) recordGeneratedImage(ctx context.Context, input G
 		contentType = http.DetectContentType(imageBytes)
 	}
 
-	record := &GeneratedImage{
-		Provider:       GeneratedImageProviderOpenAI,
-		UserID:         input.Meta.UserID,
-		APIKeyID:       input.Meta.APIKeyID,
-		AccountID:      input.Meta.AccountID,
-		RequestID:      strings.TrimSpace(input.Meta.RequestID),
-		Model:          strings.TrimSpace(input.Meta.Model),
-		Prompt:         strings.TrimSpace(input.Meta.Prompt),
-		RevisedPrompt:  strings.TrimSpace(input.RevisedPrompt),
-		ResponseFormat: strings.TrimSpace(input.Meta.ResponseFormat),
-		Source:         strings.TrimSpace(input.Source),
-		ContentType:    contentType,
-		ImageData:      imageBytes,
-		SizeBytes:      len(imageBytes),
+	if s.generatedImageStore != nil {
+		record := &GeneratedImage{
+			Provider:       GeneratedImageProviderOpenAI,
+			UserID:         input.Meta.UserID,
+			APIKeyID:       input.Meta.APIKeyID,
+			AccountID:      input.Meta.AccountID,
+			RequestID:      strings.TrimSpace(input.Meta.RequestID),
+			Model:          strings.TrimSpace(input.Meta.Model),
+			Prompt:         strings.TrimSpace(input.Meta.Prompt),
+			RevisedPrompt:  strings.TrimSpace(input.RevisedPrompt),
+			ResponseFormat: strings.TrimSpace(input.Meta.ResponseFormat),
+			Source:         strings.TrimSpace(input.Source),
+			ContentType:    contentType,
+			ImageData:      imageBytes,
+			SizeBytes:      len(imageBytes),
+		}
+		if record.ResponseFormat == "" {
+			record.ResponseFormat = "b64_json"
+		}
+		if record.Source == "" {
+			record.Source = GeneratedImageSourceB64JSON
+		}
+		if _, err := s.generatedImageStore.Create(ctx, record); err != nil {
+			return err
+		}
 	}
-	if record.ResponseFormat == "" {
-		record.ResponseFormat = "b64_json"
+	if !input.ObjectUploadHandled {
+		if _, err := s.uploadGeneratedImageObject(ctx, imageBytes, contentType); err != nil {
+			if errors.Is(err, ErrGeneratedImageObjectStoreDisabled) {
+				return nil
+			}
+			return err
+		}
 	}
-	if record.Source == "" {
-		record.Source = GeneratedImageSourceB64JSON
-	}
-	_, err := s.generatedImageStore.Create(ctx, record)
-	return err
+	return nil
 }
 
 func (s *OpenAIGatewayService) recordGeneratedImageBestEffort(ctx context.Context, input GeneratedImageRecordInput) {

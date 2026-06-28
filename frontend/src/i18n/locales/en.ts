@@ -5621,6 +5621,35 @@ export default {
         versionPlaceholder: 'e.g. 1.0.0',
         versionHint: 'Version header sent to OpenAI compact endpoint. Leave empty to use default 1.0.0. Should match the version in User-Agent.',
       },
+      generatedImageStorage: {
+        title: 'Generated Image Storage',
+        description: 'Choose where generated images are stored and configure Qiniu CDN return URLs.',
+        source: 'Data source',
+        sources: {
+          db: 'DB',
+          qiniu: 'Qiniu Cloud'
+        },
+        sourceHints: {
+          db: 'Store images in the database and return local proxy URLs.',
+          qiniu: 'Upload images to Qiniu Cloud and return CDN image URLs.'
+        },
+        accessKey: 'Access Key',
+        accessKeyPlaceholder: 'Qiniu Access Key',
+        secretKey: 'Secret Key',
+        secretKeyPlaceholder: 'Qiniu Secret Key',
+        secretKeyConfiguredPlaceholder: '********',
+        secretKeyConfiguredHint: 'Secret configured. Leave empty to keep the current value.',
+        bucket: 'Bucket',
+        bucketPlaceholder: 'e.g. fluxcode-images',
+        cdnDomain: 'CDN Domain',
+        cdnDomainPlaceholder: 'e.g. https://img.example.com',
+        prefix: 'Object Prefix',
+        prefixPlaceholder: 'openai/generated-images',
+        uploadTimeoutSeconds: 'Upload Timeout (seconds)',
+        tokenTTLSeconds: 'Upload Token TTL (seconds)',
+        useHTTPS: 'Use HTTPS CDN URLs',
+        useHTTPSHint: 'When disabled, generated CDN URLs start with http://.'
+      },
       gatewayForwarding: {
         title: 'Request Forwarding',
         description: 'Control how requests are forwarded to upstream OAuth accounts',

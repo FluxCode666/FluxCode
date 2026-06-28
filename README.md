@@ -428,6 +428,10 @@ default:
   rate_multiplier: 1.0
 ```
 
+### OpenAI Images Storage (Optional)
+
+Generated image storage is configured in the Admin Settings page. You can choose `DB` to keep generated images in the database and return the existing local proxy URL, or choose `Qiniu Cloud` and fill in the Qiniu Kodo/CDN fields. When Qiniu Cloud is selected and a downstream client requests `response_format=url`, the returned `url` is the Qiniu CDN image URL.
+
 ### Sora Status (Temporarily Unavailable)
 
 > ⚠️ Sora-related features are temporarily unavailable due to technical issues in upstream integration and media delivery.

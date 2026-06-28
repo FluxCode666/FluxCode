@@ -162,6 +162,15 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		CustomEndpoints:                      dto.ParseCustomEndpoints(settings.CustomEndpoints),
 		OpenAIUseKeyModelID:                  settings.OpenAIUseKeyModelID,
 		OpenAIImageURLCacheTTLHours:          settings.OpenAIImageURLCacheTTLHours,
+		GeneratedImageStorageSource:          settings.GeneratedImageStorageSource,
+		QiniuAccessKey:                       settings.QiniuAccessKey,
+		QiniuSecretKeyConfigured:             settings.QiniuSecretKeyConfigured,
+		QiniuBucket:                          settings.QiniuBucket,
+		QiniuCDNDomain:                       settings.QiniuCDNDomain,
+		QiniuPrefix:                          settings.QiniuPrefix,
+		QiniuUseHTTPS:                        settings.QiniuUseHTTPS,
+		QiniuUploadTimeoutSeconds:            settings.QiniuUploadTimeoutSeconds,
+		QiniuTokenTTLSeconds:                 settings.QiniuTokenTTLSeconds,
 		DefaultConcurrency:                   settings.DefaultConcurrency,
 		DefaultBalance:                       settings.DefaultBalance,
 		DefaultSubscriptions:                 defaultSubscriptions,
@@ -308,6 +317,15 @@ type UpdateSettingsRequest struct {
 	CustomEndpoints             *[]dto.CustomEndpoint `json:"custom_endpoints"`
 	OpenAIUseKeyModelID         *string               `json:"openai_use_key_model_id"`
 	OpenAIImageURLCacheTTLHours *int                  `json:"openai_image_url_cache_ttl_hours"`
+	GeneratedImageStorageSource *string               `json:"generated_image_storage_source"`
+	QiniuAccessKey              *string               `json:"qiniu_access_key"`
+	QiniuSecretKey              string                `json:"qiniu_secret_key"`
+	QiniuBucket                 *string               `json:"qiniu_bucket"`
+	QiniuCDNDomain              *string               `json:"qiniu_cdn_domain"`
+	QiniuPrefix                 *string               `json:"qiniu_prefix"`
+	QiniuUseHTTPS               *bool                 `json:"qiniu_use_https"`
+	QiniuUploadTimeoutSeconds   *int                  `json:"qiniu_upload_timeout_seconds"`
+	QiniuTokenTTLSeconds        *int                  `json:"qiniu_token_ttl_seconds"`
 
 	// 默认配置
 	DefaultConcurrency   int                              `json:"default_concurrency"`
@@ -827,6 +845,85 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		customEndpointsJSON = string(endpointBytes)
 	}
 
+	generatedImageStorageSource := previousSettings.GeneratedImageStorageSource
+	if generatedImageStorageSource == "" {
+		generatedImageStorageSource = service.GeneratedImageStorageSourceDB
+	}
+	if req.GeneratedImageStorageSource != nil {
+		generatedImageStorageSource = service.NormalizeGeneratedImageStorageSource(*req.GeneratedImageStorageSource)
+		if generatedImageStorageSource == "" {
+			response.BadRequest(c, "Generated image storage source must be db or qiniu")
+			return
+		}
+	}
+	qiniuAccessKey := previousSettings.QiniuAccessKey
+	if req.QiniuAccessKey != nil {
+		qiniuAccessKey = strings.TrimSpace(*req.QiniuAccessKey)
+	}
+	qiniuSecretKey := strings.TrimSpace(req.QiniuSecretKey)
+	if qiniuSecretKey == "" {
+		qiniuSecretKey = previousSettings.QiniuSecretKey
+	}
+	qiniuBucket := previousSettings.QiniuBucket
+	if req.QiniuBucket != nil {
+		qiniuBucket = strings.TrimSpace(*req.QiniuBucket)
+	}
+	qiniuCDNDomain := previousSettings.QiniuCDNDomain
+	if req.QiniuCDNDomain != nil {
+		qiniuCDNDomain = strings.TrimRight(strings.TrimSpace(*req.QiniuCDNDomain), "/")
+	}
+	qiniuPrefix := previousSettings.QiniuPrefix
+	if req.QiniuPrefix != nil {
+		qiniuPrefix = strings.Trim(strings.TrimSpace(*req.QiniuPrefix), "/")
+	}
+	qiniuUseHTTPS := previousSettings.QiniuUseHTTPS
+	if req.QiniuUseHTTPS != nil {
+		qiniuUseHTTPS = *req.QiniuUseHTTPS
+	}
+	qiniuUploadTimeoutSeconds := previousSettings.QiniuUploadTimeoutSeconds
+	if req.QiniuUploadTimeoutSeconds != nil {
+		qiniuUploadTimeoutSeconds = *req.QiniuUploadTimeoutSeconds
+	}
+	qiniuTokenTTLSeconds := previousSettings.QiniuTokenTTLSeconds
+	if req.QiniuTokenTTLSeconds != nil {
+		qiniuTokenTTLSeconds = *req.QiniuTokenTTLSeconds
+	}
+	if qiniuUploadTimeoutSeconds <= 0 {
+		qiniuUploadTimeoutSeconds = service.DefaultQiniuUploadTimeoutSeconds
+	}
+	if qiniuTokenTTLSeconds <= 0 {
+		qiniuTokenTTLSeconds = service.DefaultQiniuTokenTTLSeconds
+	}
+	if qiniuPrefix == "" {
+		qiniuPrefix = service.DefaultQiniuPrefix
+	}
+	if generatedImageStorageSource == service.GeneratedImageStorageSourceQiniu {
+		if qiniuAccessKey == "" {
+			response.BadRequest(c, "Qiniu Access Key is required when generated image storage source is Qiniu")
+			return
+		}
+		if qiniuSecretKey == "" {
+			response.BadRequest(c, "Qiniu Secret Key is required when generated image storage source is Qiniu")
+			return
+		}
+		if qiniuBucket == "" {
+			response.BadRequest(c, "Qiniu Bucket is required when generated image storage source is Qiniu")
+			return
+		}
+		if qiniuCDNDomain == "" {
+			response.BadRequest(c, "Qiniu CDN domain is required when generated image storage source is Qiniu")
+			return
+		}
+		cdnDomainForValidation := qiniuCDNDomain
+		if !strings.Contains(cdnDomainForValidation, "://") {
+			cdnDomainForValidation = "https://" + cdnDomainForValidation
+		}
+		if err := config.ValidateAbsoluteHTTPURL(cdnDomainForValidation); err != nil {
+			response.BadRequest(c, "Qiniu CDN domain must be a valid http(s) URL or domain")
+			return
+		}
+	}
+
 	// Ops metrics collector interval validation (seconds).
 	if req.OpsMetricsIntervalSeconds != nil {
 		v := *req.OpsMetricsIntervalSeconds
@@ -953,6 +1050,15 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.OpenAIImageURLCacheTTLHours
 		}(),
+		GeneratedImageStorageSource:  generatedImageStorageSource,
+		QiniuAccessKey:               qiniuAccessKey,
+		QiniuSecretKey:               qiniuSecretKey,
+		QiniuBucket:                  qiniuBucket,
+		QiniuCDNDomain:               qiniuCDNDomain,
+		QiniuPrefix:                  qiniuPrefix,
+		QiniuUseHTTPS:                qiniuUseHTTPS,
+		QiniuUploadTimeoutSeconds:    qiniuUploadTimeoutSeconds,
+		QiniuTokenTTLSeconds:         qiniuTokenTTLSeconds,
 		DefaultConcurrency:           req.DefaultConcurrency,
 		DefaultBalance:               req.DefaultBalance,
 		DefaultSubscriptions:         defaultSubscriptions,
@@ -1201,6 +1307,15 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		CustomEndpoints:                      dto.ParseCustomEndpoints(updatedSettings.CustomEndpoints),
 		OpenAIUseKeyModelID:                  updatedSettings.OpenAIUseKeyModelID,
 		OpenAIImageURLCacheTTLHours:          updatedSettings.OpenAIImageURLCacheTTLHours,
+		GeneratedImageStorageSource:          updatedSettings.GeneratedImageStorageSource,
+		QiniuAccessKey:                       updatedSettings.QiniuAccessKey,
+		QiniuSecretKeyConfigured:             updatedSettings.QiniuSecretKeyConfigured,
+		QiniuBucket:                          updatedSettings.QiniuBucket,
+		QiniuCDNDomain:                       updatedSettings.QiniuCDNDomain,
+		QiniuPrefix:                          updatedSettings.QiniuPrefix,
+		QiniuUseHTTPS:                        updatedSettings.QiniuUseHTTPS,
+		QiniuUploadTimeoutSeconds:            updatedSettings.QiniuUploadTimeoutSeconds,
+		QiniuTokenTTLSeconds:                 updatedSettings.QiniuTokenTTLSeconds,
 		DefaultConcurrency:                   updatedSettings.DefaultConcurrency,
 		DefaultBalance:                       updatedSettings.DefaultBalance,
 		DefaultSubscriptions:                 updatedDefaultSubscriptions,
@@ -1497,6 +1612,33 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	}
 	if before.OpenAIUseKeyModelID != after.OpenAIUseKeyModelID {
 		changed = append(changed, "openai_use_key_model_id")
+	}
+	if before.GeneratedImageStorageSource != after.GeneratedImageStorageSource {
+		changed = append(changed, "generated_image_storage_source")
+	}
+	if before.QiniuAccessKey != after.QiniuAccessKey {
+		changed = append(changed, "qiniu_access_key")
+	}
+	if req.QiniuSecretKey != "" {
+		changed = append(changed, "qiniu_secret_key")
+	}
+	if before.QiniuBucket != after.QiniuBucket {
+		changed = append(changed, "qiniu_bucket")
+	}
+	if before.QiniuCDNDomain != after.QiniuCDNDomain {
+		changed = append(changed, "qiniu_cdn_domain")
+	}
+	if before.QiniuPrefix != after.QiniuPrefix {
+		changed = append(changed, "qiniu_prefix")
+	}
+	if before.QiniuUseHTTPS != after.QiniuUseHTTPS {
+		changed = append(changed, "qiniu_use_https")
+	}
+	if before.QiniuUploadTimeoutSeconds != after.QiniuUploadTimeoutSeconds {
+		changed = append(changed, "qiniu_upload_timeout_seconds")
+	}
+	if before.QiniuTokenTTLSeconds != after.QiniuTokenTTLSeconds {
+		changed = append(changed, "qiniu_token_ttl_seconds")
 	}
 	if before.EnableIdentityPatch != after.EnableIdentityPatch {
 		changed = append(changed, "enable_identity_patch")
