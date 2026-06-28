@@ -54,6 +54,70 @@ go test -tags unit ./internal/service -run '^TestGatewayService_ResolveRuntimeFa
 
 - 结果：PASS
 
+## 第二轮修复追加（Task 5 Messages 主流程覆盖子代理）
+
+### 修复说明
+
+- 在 `backend/internal/handler/gateway_handler_error_fallback_test.go` 增补了一个可控的 `Messages` 主流程测试夹具：
+  - bucket-aware 的 scheduler snapshot stub，确保切组后真的按 fallback group 重新选号；
+  - 可脚本化的 upstream stub，按账号返回 5xx / 403 / 200；
+  - 顺序余额 stub，用于驱动“初始计费通过、fallback 计费失败”场景；
+  - usage log stub，用于断言切组后的归属已经落到 fallback group/account。
+- 保持生产代码不变，只补测试与最小测试辅助。
+
+### 新增主流程测试
+
+- `TestGatewayMessagesFallback_FailoverExhaustedRetryableSwitchesGroupAndAttributesUsage`
+  - 驱动 `GatewayHandler.Messages` 走 `FailoverExhausted + 5xx` 主流程；
+  - 断言会切到 fallback group；
+  - 断言最终成功响应来自 fallback account；
+  - 断言 usage log 归属改为 fallback `group_id` / `account_id`。
+- `TestGatewayMessagesFallback_FailoverExhaustedNonRetryableKeepsOriginalTerminal`
+  - 驱动 `FailoverExhausted + 403`；
+  - 断言不切 fallback group；
+  - 断言直接返回原终态映射错误。
+- `TestGatewayMessagesFallback_BillingFailureWritesOnlyOneTerminalResponse`
+  - 驱动“原组无可用账号 -> 尝试 fallback -> fallback billing 失败”；
+  - 断言最终只写一次 billing 终态；
+  - 断言响应体不再混入 `No available accounts` 等二次写出内容。
+
+### 第二轮 RED / GREEN
+
+1. RED
+
+```bash
+cd backend
+go test ./internal/handler -run 'TestGatewayMessagesFallback' -count=1
+```
+
+- 初次结果：FAIL
+- 说明：新主流程测试先暴露出测试夹具缺少当前仓库接口方法，以及 scheduler stub 不能按 group 分桶，导致无法真实驱动 fallback 选组。
+
+2. GREEN
+
+```bash
+cd backend
+go test ./internal/handler -run 'TestGatewayMessagesFallback' -count=1
+```
+
+- 结果：PASS
+
+### 本轮 focused tests
+
+```bash
+cd backend
+go test ./internal/handler -run 'TestGateway.*Fallback|TestGatewayTrySwitchToClaudeFallbackGroup|TestGatewayMessages.*Fallback|TestGatewayErrorResponseIncludesTraceID|TestOpenAIHandleStreamingAwareError' -count=1
+```
+
+- 结果：PASS
+
+```bash
+cd backend
+go test -tags unit ./internal/service -run '^TestGatewayService_ResolveRuntimeFallbackGroup_AllowsAnthropicFallback$|^TestGatewayServiceResolveRuntimeFallbackGroup$' -count=1
+```
+
+- 结果：PASS
+
 2. handler focused tests
 
 ```bash
