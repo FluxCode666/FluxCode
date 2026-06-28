@@ -2786,6 +2786,7 @@ import {
 } from "./groupsMessagesDispatch";
 import {
   buildFallbackTargetOptions,
+  buildFallbackTargetOptionsForEdit,
   canEnableFallbackGroup,
 } from "./GroupsView.fallback";
 
@@ -2889,16 +2890,10 @@ const fallbackGroupOptions = computed(() => {
 });
 
 const fallbackGroupOptionsForEdit = computed(() => {
-  const current = editingGroup.value;
-  if (!current) {
-    return [
-      { value: null, label: t("admin.groups.fallbackGroup.noFallback") },
-    ];
-  }
-
-  return buildFallbackTargetOptions(
+  return buildFallbackTargetOptionsForEdit(
     groups.value,
-    current,
+    editingGroup.value?.id,
+    editForm.platform,
     t("admin.groups.fallbackGroup.noFallback"),
   );
 });

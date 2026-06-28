@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { AdminGroup } from '@/types'
 import {
   buildFallbackTargetOptions,
+  buildFallbackTargetOptionsForEdit,
   canEnableFallbackGroup,
   isApiKeyBindableGroup,
 } from '../GroupsView.fallback'
@@ -77,6 +78,26 @@ describe('group fallback helpers', () => {
         groups,
         baseGroup({ id: 1, platform: 'openai' }),
       ).map((option) => option.value),
+    ).toEqual([null, 2])
+  })
+
+  it('recomputes edit fallback targets when platform changes', () => {
+    const groups = [
+      baseGroup({ id: 1, platform: 'anthropic', is_fallback_group: false }),
+      baseGroup({ id: 2, name: 'openai-fallback', platform: 'openai', is_fallback_group: true }),
+      baseGroup({ id: 3, name: 'anthropic-fallback', platform: 'anthropic', is_fallback_group: true }),
+    ]
+
+    expect(
+      buildFallbackTargetOptionsForEdit(groups, 1, 'anthropic').map(
+        (option) => option.value,
+      ),
+    ).toEqual([null, 3])
+
+    expect(
+      buildFallbackTargetOptionsForEdit(groups, 1, 'openai').map(
+        (option) => option.value,
+      ),
     ).toEqual([null, 2])
   })
 

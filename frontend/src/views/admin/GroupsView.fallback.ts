@@ -43,3 +43,23 @@ export function buildFallbackTargetOptions(
 
   return options
 }
+
+export function buildFallbackTargetOptionsForEdit(
+  groups: AdminGroup[],
+  currentId: number | null | undefined,
+  platform: AdminGroup['platform'],
+  noFallbackLabel = 'No Fallback',
+): FallbackOption[] {
+  if (currentId == null) {
+    return [{ value: null, label: noFallbackLabel }]
+  }
+
+  return buildFallbackTargetOptions(
+    groups,
+    {
+      id: currentId,
+      platform,
+    },
+    noFallbackLabel,
+  )
+}
