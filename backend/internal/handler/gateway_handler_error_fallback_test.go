@@ -84,8 +84,52 @@ func TestGatewayTrySwitchToClaudeFallbackGroup_NoFallbackConfigured(t *testing.T
 		Group: &service.Group{ID: 1, Platform: service.PlatformAnthropic},
 	}
 
-	got, ok := h.trySwitchToClaudeFallbackGroup(c, zap.NewNop(), apiKey, false)
+	got, result := h.trySwitchToClaudeFallbackGroup(c, zap.NewNop(), apiKey, false)
 
-	require.False(t, ok)
+	require.Equal(t, claudeFallbackUnavailable, result)
 	require.Nil(t, got)
+}
+
+func TestGatewayHandleClaudeFallbackBillingFailure_ReturnsHandledTerminal(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+
+	h := &GatewayHandler{}
+
+	result := h.handleClaudeFallbackBillingFailure(c, service.ErrInsufficientBalance, false)
+
+	require.Equal(t, claudeFallbackHandled, result)
+	require.Equal(t, http.StatusForbidden, w.Code)
+	assert.Contains(t, w.Body.String(), "insufficient balance")
+}
+
+func TestGatewayShouldAttemptClaudeRuntimeFallback_NonRetryableFailoverExhausted(t *testing.T) {
+	shouldFallback := shouldAttemptClaudeRuntimeFallback(false, 0, 0, &service.UpstreamFailoverError{
+		StatusCode:   http.StatusBadRequest,
+		ResponseBody: []byte(`{"error":{"message":"bad request"}}`),
+	})
+
+	require.False(t, shouldFallback)
+}
+
+func TestGatewayShouldAttemptClaudeRuntimeFallback_StreamAlreadyWritten(t *testing.T) {
+	shouldFallback := shouldAttemptClaudeRuntimeFallback(false, 0, 32, &service.UpstreamFailoverError{
+		StatusCode:   http.StatusTooManyRequests,
+		ResponseBody: []byte(`{"error":{"message":"rate limited"}}`),
+	})
+
+	require.False(t, shouldFallback)
+}
+
+func TestGatewayShouldRetryClaudeRuntimeFallback_AllowsTransportLikeErrors(t *testing.T) {
+	require.True(t, shouldRetryClaudeRuntimeFallback(&service.UpstreamFailoverError{StatusCode: 0}))
+	require.True(t, shouldRetryClaudeRuntimeFallback(&service.UpstreamFailoverError{StatusCode: http.StatusRequestTimeout}))
+	require.True(t, shouldRetryClaudeRuntimeFallback(&service.UpstreamFailoverError{StatusCode: http.StatusTooManyRequests}))
+	require.True(t, shouldRetryClaudeRuntimeFallback(&service.UpstreamFailoverError{StatusCode: http.StatusBadGateway}))
+	require.False(t, shouldRetryClaudeRuntimeFallback(&service.UpstreamFailoverError{StatusCode: http.StatusUnauthorized}))
+	require.False(t, shouldRetryClaudeRuntimeFallback(&service.UpstreamFailoverError{StatusCode: http.StatusBadRequest}))
+	require.False(t, shouldRetryClaudeRuntimeFallback(&service.UpstreamFailoverError{StatusCode: http.StatusForbidden}))
+	require.False(t, shouldRetryClaudeRuntimeFallback(nil))
 }

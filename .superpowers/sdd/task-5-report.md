@@ -98,3 +98,41 @@ go test -tags unit ./internal/service -run 'TestGatewayService_ResolveRuntimeFal
 - `trySwitchToClaudeFallbackGroup` 依赖注入的 `gatewayService` / `billingCacheService` 为正常运行态；当前生产路径满足这一前提，测试也未覆盖缺失依赖分支。
 - brief 中写的是 `gateway_handler_test.go`，但仓库中没有该文件；因此本次将 handler 测试增补到现有的 `gateway_handler_error_fallback_test.go`。
 - broader service command 的失败看起来是仓库当前基线问题，已单独记录，未在本任务中顺手修复，避免越界改动。
+
+## 评审修复追加（Task 5 修复子代理）
+
+### 修复说明
+
+- 将 `trySwitchToClaudeFallbackGroup` 从二态返回改为三态协议：
+  - `claudeFallbackUnavailable`：fallback 不可用，调用方可继续原有终态处理；
+  - `claudeFallbackSwitched`：已成功切组，调用方进入 fallback 重试；
+  - `claudeFallbackHandled`：helper 已写出终态错误，调用方必须立刻 `return`，避免二次写响应。
+- 新增 `handleClaudeFallbackBillingFailure`，把 fallback group 计费失败统一归口为“已处理终态错误”，消除 `No available accounts` / `failover exhausted` 的重复写出风险。
+- 新增 `shouldRetryClaudeRuntimeFallback` / `shouldAttemptClaudeRuntimeFallback`，将 Claude runtime fallback 的跨组触发收紧为：
+  - 允许：`429`、`408`、`5xx`、以及 `StatusCode<=0` 的 transport/连接类错误；
+  - 禁止：`400`、`401`、`403` 等非 retryable request/auth/billing 类错误。
+- `FailoverExhausted` 场景下改为显式检查“最后一个上游错误是否 retryable”后才允许跨组 fallback；已写流（`c.Writer.Size()` 变化）时继续禁止切组。
+
+### 新增/增强测试
+
+- `TestGatewayHandleClaudeFallbackBillingFailure_ReturnsHandledTerminal`
+- `TestGatewayShouldAttemptClaudeRuntimeFallback_NonRetryableFailoverExhausted`
+- `TestGatewayShouldAttemptClaudeRuntimeFallback_StreamAlreadyWritten`
+- `TestGatewayShouldRetryClaudeRuntimeFallback_AllowsTransportLikeErrors`
+- 同步更新 `TestGatewayTrySwitchToClaudeFallbackGroup_NoFallbackConfigured`，断言新的三态协议。
+
+### 本次 focused tests
+
+```bash
+cd backend
+go test ./internal/handler -run 'TestGateway.*Fallback|TestGatewayTrySwitchToClaudeFallbackGroup|TestGatewayErrorResponseIncludesTraceID|TestOpenAIHandleStreamingAwareError' -count=1
+```
+
+- 结果：PASS
+
+```bash
+cd backend
+go test -tags unit ./internal/service -run '^TestGatewayService_ResolveRuntimeFallbackGroup_AllowsAnthropicFallback$|^TestGatewayServiceResolveRuntimeFallbackGroup$' -count=1
+```
+
+- 结果：PASS

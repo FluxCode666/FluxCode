@@ -523,7 +523,11 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			if err != nil {
 				if len(fs.FailedAccountIDs) == 0 {
 					if !fallbackUsed {
-						if fallbackAPIKey, ok := h.trySwitchToClaudeFallbackGroup(c, reqLog, currentAPIKey, streamStarted); ok {
+						fallbackAPIKey, fallbackResult := h.trySwitchToClaudeFallbackGroup(c, reqLog, currentAPIKey, streamStarted)
+						if fallbackResult == claudeFallbackHandled {
+							return
+						}
+						if fallbackResult == claudeFallbackSwitched {
 							currentAPIKey = fallbackAPIKey
 							currentSubscription = nil
 							fallbackUsed = true
@@ -543,8 +547,12 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				case FailoverCanceled:
 					return
 				default: // FailoverExhausted
-					if !fallbackUsed {
-						if fallbackAPIKey, ok := h.trySwitchToClaudeFallbackGroup(c, reqLog, currentAPIKey, streamStarted); ok {
+					if !fallbackUsed && shouldRetryClaudeRuntimeFallback(fs.LastFailoverErr) {
+						fallbackAPIKey, fallbackResult := h.trySwitchToClaudeFallbackGroup(c, reqLog, currentAPIKey, streamStarted)
+						if fallbackResult == claudeFallbackHandled {
+							return
+						}
+						if fallbackResult == claudeFallbackSwitched {
 							currentAPIKey = fallbackAPIKey
 							currentSubscription = nil
 							fallbackUsed = true
@@ -735,7 +743,11 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 						zap.Bool("fallback_used", fallbackUsed),
 					)
 					if !fallbackUsed {
-						if fallbackAPIKey, ok := h.trySwitchToClaudeFallbackGroup(c, reqLog, currentAPIKey, streamStarted); ok {
+						fallbackAPIKey, fallbackResult := h.trySwitchToClaudeFallbackGroup(c, reqLog, currentAPIKey, streamStarted)
+						if fallbackResult == claudeFallbackHandled {
+							return
+						}
+						if fallbackResult == claudeFallbackSwitched {
 							// 兜底重试按"直接请求兜底分组"处理：清除强制平台，允许按分组平台调度
 							ctx := context.WithValue(c.Request.Context(), ctxkey.ForcePlatform, "")
 							c.Request = c.Request.WithContext(ctx)
@@ -761,8 +773,12 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 					case FailoverContinue:
 						continue
 					case FailoverExhausted:
-						if !fallbackUsed && c.Writer.Size() == writerSizeBeforeForward {
-							if fallbackAPIKey, ok := h.trySwitchToClaudeFallbackGroup(c, reqLog, currentAPIKey, streamStarted); ok {
+						if shouldAttemptClaudeRuntimeFallback(fallbackUsed, writerSizeBeforeForward, c.Writer.Size(), fs.LastFailoverErr) {
+							fallbackAPIKey, fallbackResult := h.trySwitchToClaudeFallbackGroup(c, reqLog, currentAPIKey, streamStarted)
+							if fallbackResult == claudeFallbackHandled {
+								return
+							}
+							if fallbackResult == claudeFallbackSwitched {
 								currentAPIKey = fallbackAPIKey
 								currentSubscription = nil
 								fallbackUsed = true
@@ -928,34 +944,80 @@ func cloneAPIKeyWithFallbackGroup(apiKey *service.APIKey, fallbackGroup *service
 	return &cloned
 }
 
+type claudeFallbackResult int
+
+const (
+	claudeFallbackUnavailable claudeFallbackResult = iota
+	claudeFallbackSwitched
+	claudeFallbackHandled
+)
+
+func shouldRetryClaudeRuntimeFallback(failoverErr *service.UpstreamFailoverError) bool {
+	if failoverErr == nil {
+		return false
+	}
+	switch status := failoverErr.StatusCode; {
+	case status <= 0:
+		return true
+	case status == http.StatusRequestTimeout:
+		return true
+	case status == http.StatusTooManyRequests:
+		return true
+	case status >= 500:
+		return true
+	default:
+		return false
+	}
+}
+
+func shouldAttemptClaudeRuntimeFallback(
+	fallbackUsed bool,
+	writerSizeBeforeForward int,
+	currentWriterSize int,
+	failoverErr *service.UpstreamFailoverError,
+) bool {
+	if fallbackUsed || currentWriterSize != writerSizeBeforeForward {
+		return false
+	}
+	return shouldRetryClaudeRuntimeFallback(failoverErr)
+}
+
+func (h *GatewayHandler) handleClaudeFallbackBillingFailure(
+	c *gin.Context,
+	err error,
+	streamStarted bool,
+) claudeFallbackResult {
+	status, code, message := billingErrorDetails(err)
+	h.handleStreamingAwareError(c, status, code, message, streamStarted)
+	return claudeFallbackHandled
+}
+
 func (h *GatewayHandler) trySwitchToClaudeFallbackGroup(
 	c *gin.Context,
 	reqLog *zap.Logger,
 	apiKey *service.APIKey,
 	streamStarted bool,
-) (*service.APIKey, bool) {
+) (*service.APIKey, claudeFallbackResult) {
 	if apiKey == nil || apiKey.Group == nil || apiKey.Group.FallbackGroupID == nil {
-		return nil, false
+		return nil, claudeFallbackUnavailable
 	}
 	fallbackGroup, err := h.gatewayService.ResolveRuntimeFallbackGroup(c.Request.Context(), apiKey.Group)
 	if err != nil {
 		reqLog.Warn("gateway.runtime_fallback_group_unavailable", zap.Error(err), zap.Any("group_id", apiKey.GroupID))
-		return nil, false
+		return nil, claudeFallbackUnavailable
 	}
 	fallbackAPIKey := cloneAPIKeyWithFallbackGroup(apiKey, fallbackGroup)
 	if fallbackAPIKey == nil {
-		return nil, false
+		return nil, claudeFallbackUnavailable
 	}
 	if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), fallbackAPIKey.User, fallbackAPIKey, fallbackGroup, nil); err != nil {
-		status, code, message := billingErrorDetails(err)
-		h.handleStreamingAwareError(c, status, code, message, streamStarted)
-		return nil, false
+		return nil, h.handleClaudeFallbackBillingFailure(c, err, streamStarted)
 	}
 	reqLog.Warn("gateway.runtime_fallback_group_switch",
 		zap.Any("original_group_id", apiKey.GroupID),
 		zap.Int64("fallback_group_id", fallbackGroup.ID),
 	)
-	return fallbackAPIKey, true
+	return fallbackAPIKey, claudeFallbackSwitched
 }
 
 func cloneAPIKeyWithGroup(apiKey *service.APIKey, group *service.Group) *service.APIKey {
