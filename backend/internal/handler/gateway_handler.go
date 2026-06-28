@@ -910,15 +910,26 @@ func (h *GatewayHandler) AntigravityModels(c *gin.Context) {
 	})
 }
 
+func cloneAPIKeyWithFallbackGroup(apiKey *service.APIKey, fallbackGroup *service.Group) *service.APIKey {
+	if apiKey == nil || fallbackGroup == nil || fallbackGroup.ID <= 0 {
+		return nil
+	}
+	cloned := *apiKey
+	groupID := fallbackGroup.ID
+	cloned.GroupID = &groupID
+	cloned.Group = fallbackGroup
+	return &cloned
+}
+
 func cloneAPIKeyWithGroup(apiKey *service.APIKey, group *service.Group) *service.APIKey {
 	if apiKey == nil || group == nil {
 		return apiKey
 	}
-	cloned := *apiKey
-	groupID := group.ID
-	cloned.GroupID = &groupID
-	cloned.Group = group
-	return &cloned
+	cloned := cloneAPIKeyWithFallbackGroup(apiKey, group)
+	if cloned == nil {
+		return apiKey
+	}
+	return cloned
 }
 
 // Usage handles getting account balance and usage statistics for CC Switch integration

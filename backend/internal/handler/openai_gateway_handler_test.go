@@ -92,6 +92,44 @@ func TestOpenAIHandleStreamingAwareError_JSONEscaping(t *testing.T) {
 	}
 }
 
+func TestResolveRuntimeFallbackAPIKey_Success(t *testing.T) {
+	originalGroupID := int64(1)
+	fallbackID := int64(2)
+	apiKey := &service.APIKey{
+		ID:      10,
+		UserID:  42,
+		GroupID: &originalGroupID,
+		Group: &service.Group{
+			ID:               originalGroupID,
+			Platform:         service.PlatformOpenAI,
+			SubscriptionType: service.SubscriptionTypeStandard,
+			FallbackGroupID:  &fallbackID,
+		},
+		User: &service.User{ID: 42},
+	}
+	fallbackGroup := &service.Group{
+		ID:               fallbackID,
+		Platform:         service.PlatformOpenAI,
+		Status:           service.StatusActive,
+		SubscriptionType: service.SubscriptionTypeStandard,
+		IsFallbackGroup:  true,
+	}
+
+	got, ok := resolveRuntimeFallbackAPIKeyForTest(context.Background(), apiKey, fallbackGroup)
+
+	require.True(t, ok)
+	require.NotNil(t, got)
+	require.NotNil(t, got.GroupID)
+	require.Equal(t, fallbackID, *got.GroupID)
+	require.Same(t, fallbackGroup, got.Group)
+	require.Same(t, apiKey.User, got.User)
+}
+
+func resolveRuntimeFallbackAPIKeyForTest(_ context.Context, apiKey *service.APIKey, fallbackGroup *service.Group) (*service.APIKey, bool) {
+	cloned := cloneAPIKeyWithFallbackGroup(apiKey, fallbackGroup)
+	return cloned, cloned != nil
+}
+
 func TestOpenAIHandleStreamingAwareError_IncludesTraceIDInSSE(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()

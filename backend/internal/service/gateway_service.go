@@ -1881,6 +1881,43 @@ func (s *GatewayService) ResolveGroupByID(ctx context.Context, groupID int64) (*
 	return s.resolveGroupByID(ctx, groupID)
 }
 
+func (s *GatewayService) ResolveRuntimeFallbackGroup(ctx context.Context, group *Group) (*Group, error) {
+	if s == nil || s.groupRepo == nil {
+		return nil, fmt.Errorf("group repository unavailable")
+	}
+	return resolveRuntimeFallbackGroup(ctx, s.groupRepo.GetByIDLite, group)
+}
+
+func resolveRuntimeFallbackGroup(ctx context.Context, resolve func(context.Context, int64) (*Group, error), group *Group) (*Group, error) {
+	if group == nil || !hasConfiguredFallbackGroupID(group.FallbackGroupID) {
+		return nil, nil
+	}
+	if resolve == nil {
+		return nil, fmt.Errorf("group resolver unavailable")
+	}
+
+	fallbackGroup, err := resolve(ctx, *group.FallbackGroupID)
+	if err != nil {
+		return nil, fmt.Errorf("fallback group not found: %w", err)
+	}
+	if fallbackGroup == nil || !fallbackGroup.IsActive() {
+		return nil, fmt.Errorf("fallback group must be active")
+	}
+	if !fallbackGroup.IsFallbackGroup {
+		return nil, fmt.Errorf("fallback group must be enabled as fallback group")
+	}
+	if normalizeGroupSubscriptionType(fallbackGroup.SubscriptionType) != SubscriptionTypeStandard {
+		return nil, fmt.Errorf("fallback group must be standard billing type")
+	}
+	if hasConfiguredFallbackGroupID(fallbackGroup.FallbackGroupID) {
+		return nil, fmt.Errorf("fallback group cannot have fallback_group_id configured")
+	}
+	if group.Platform != "" && fallbackGroup.Platform != group.Platform {
+		return nil, fmt.Errorf("fallback group platform mismatch")
+	}
+	return fallbackGroup, nil
+}
+
 func (s *GatewayService) routingAccountIDsForRequest(ctx context.Context, groupID *int64, requestedModel string, platform string) []int64 {
 	if groupID == nil || requestedModel == "" || platform != PlatformAnthropic {
 		return nil
