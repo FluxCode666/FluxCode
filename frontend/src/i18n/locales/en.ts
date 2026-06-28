@@ -2355,6 +2355,14 @@ export default {
         fallbackHint: 'Non-Claude Code requests will use this group. Leave empty to reject directly.',
         noFallback: 'No Fallback (Reject)'
       },
+      fallbackGroup: {
+        enabled: 'Enable as Fallback Group',
+        enabledHint: 'When enabled, this group can only be used as a fallback target and cannot be selected directly by API keys.',
+        target: 'Fallback Group',
+        targetHint: 'When the current group is unavailable or retryable upstream errors are exhausted, requests switch to this group once.',
+        noFallback: 'No Fallback',
+        badge: 'Fallback Group'
+      },
       openaiMessages: {
         title: 'OpenAI Messages Dispatch',
         allowDispatch: 'Allow /v1/messages dispatch',
