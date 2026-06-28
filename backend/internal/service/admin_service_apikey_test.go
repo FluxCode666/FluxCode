@@ -544,3 +544,31 @@ func TestAdminService_AdminUpdateAPIKeyGroupID_Unbind_NoAllowedGroupUpdate(t *te
 	require.False(t, userRepo.addGroupCalled)
 	require.False(t, got.AutoGrantedGroupAccess)
 }
+
+func TestAdminService_ReplaceUserGroup_FallbackGroupBlocked(t *testing.T) {
+	groupRepo := &groupRepoStubForGroupUpdate{
+		group: &Group{
+			ID:               20,
+			Name:             "fallback",
+			Status:           StatusActive,
+			IsExclusive:      true,
+			SubscriptionType: SubscriptionTypeStandard,
+			IsFallbackGroup:  true,
+		},
+	}
+	userRepo := &userRepoStubForGroupUpdate{}
+	apiKeyRepo := &apiKeyRepoStubForGroupUpdate{}
+	svc := &adminServiceImpl{
+		groupRepo:  groupRepo,
+		userRepo:   userRepo,
+		apiKeyRepo: apiKeyRepo,
+	}
+
+	res, err := svc.ReplaceUserGroup(context.Background(), 42, 10, 20)
+	require.Nil(t, res)
+	require.Error(t, err)
+	require.Equal(t, "FALLBACK_GROUP_NOT_BINDABLE", infraerrors.Reason(err))
+	require.Contains(t, err.Error(), "fallback group cannot be assigned to users")
+	require.False(t, userRepo.addGroupCalled)
+	require.Nil(t, apiKeyRepo.updated)
+}

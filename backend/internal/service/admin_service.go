@@ -1660,6 +1660,9 @@ func (s *adminServiceImpl) ReplaceUserGroup(ctx context.Context, userID, oldGrou
 	if newGroup.IsSubscriptionType() {
 		return nil, infraerrors.BadRequest("GROUP_IS_SUBSCRIPTION", "subscription groups are not supported for replacement")
 	}
+	if newGroup.IsFallbackGroup {
+		return nil, infraerrors.BadRequest("FALLBACK_GROUP_NOT_BINDABLE", "fallback group cannot be assigned to users")
+	}
 
 	// 事务保证原子性
 	if s.entClient == nil {
