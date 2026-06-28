@@ -125,6 +125,29 @@ func TestResolveRuntimeFallbackAPIKey_Success(t *testing.T) {
 	require.Same(t, apiKey.User, got.User)
 }
 
+func TestCloneAPIKeyWithGroup(t *testing.T) {
+	originalGroupID := int64(9)
+	apiKey := &service.APIKey{
+		ID:      10,
+		UserID:  42,
+		GroupID: &originalGroupID,
+		Group:   &service.Group{ID: originalGroupID, Platform: service.PlatformOpenAI},
+		User:    &service.User{ID: 42},
+	}
+	group := &service.Group{ID: 0, Platform: service.PlatformOpenAI, Name: "runtime-fallback"}
+
+	got := cloneAPIKeyWithGroup(apiKey, group)
+
+	require.NotNil(t, got)
+	require.NotSame(t, apiKey, got)
+	require.NotNil(t, got.GroupID)
+	require.Equal(t, int64(0), *got.GroupID)
+	require.Same(t, group, got.Group)
+	require.Same(t, apiKey.User, got.User)
+	require.Equal(t, originalGroupID, *apiKey.GroupID)
+	require.NotSame(t, apiKey.Group, got.Group)
+}
+
 func resolveRuntimeFallbackAPIKeyForTest(_ context.Context, apiKey *service.APIKey, fallbackGroup *service.Group) (*service.APIKey, bool) {
 	cloned := cloneAPIKeyWithFallbackGroup(apiKey, fallbackGroup)
 	return cloned, cloned != nil

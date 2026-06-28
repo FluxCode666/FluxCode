@@ -349,6 +349,7 @@ func ProvideOpenAIPoolMonitorWorker(
 
 func ProvideOpenAIGatewayService(
 	accountRepo AccountRepository,
+	groupRepo GroupRepository,
 	usageLogRepo UsageLogRepository,
 	usageBillingRepo UsageBillingRepository,
 	userRepo UserRepository,
@@ -376,6 +377,7 @@ func ProvideOpenAIGatewayService(
 ) *OpenAIGatewayService {
 	svc := NewOpenAIGatewayService(
 		accountRepo,
+		groupRepo,
 		usageLogRepo,
 		usageBillingRepo,
 		userRepo,

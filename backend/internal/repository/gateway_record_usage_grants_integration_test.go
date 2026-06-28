@@ -90,6 +90,7 @@ func (s *GatewayRecordUsageGrantsSuite) SetupTest() {
 	)
 	s.openaiSvc = service.NewOpenAIGatewayService(
 		accountRepo,
+		groupRepo,
 		usageLogRepo,
 		usageBillingRepo,
 		userRepo,

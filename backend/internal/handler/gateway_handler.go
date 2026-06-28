@@ -925,11 +925,11 @@ func cloneAPIKeyWithGroup(apiKey *service.APIKey, group *service.Group) *service
 	if apiKey == nil || group == nil {
 		return apiKey
 	}
-	cloned := cloneAPIKeyWithFallbackGroup(apiKey, group)
-	if cloned == nil {
-		return apiKey
-	}
-	return cloned
+	cloned := *apiKey
+	groupID := group.ID
+	cloned.GroupID = &groupID
+	cloned.Group = group
+	return &cloned
 }
 
 // Usage handles getting account balance and usage statistics for CC Switch integration

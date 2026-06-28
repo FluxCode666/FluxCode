@@ -145,3 +145,46 @@ func TestGatewayServiceResolveRuntimeFallbackGroup(t *testing.T) {
 		})
 	}
 }
+
+func TestOpenAIGatewayServiceResolveRuntimeFallbackGroup(t *testing.T) {
+	entryID := int64(10)
+	fallbackID := int64(20)
+
+	t.Run("成功解析可用 fallback group", func(t *testing.T) {
+		groupRepo := &mockGroupRepoForGateway{groups: map[int64]*Group{
+			fallbackID: {
+				ID:               fallbackID,
+				Platform:         PlatformOpenAI,
+				Status:           StatusActive,
+				SubscriptionType: SubscriptionTypeStandard,
+				IsFallbackGroup:  true,
+			},
+		}}
+		svc := &OpenAIGatewayService{groupRepo: groupRepo}
+
+		got, err := svc.ResolveRuntimeFallbackGroup(context.Background(), &Group{
+			ID:              entryID,
+			Platform:        PlatformOpenAI,
+			FallbackGroupID: &fallbackID,
+		})
+
+		require.NoError(t, err)
+		require.NotNil(t, got)
+		require.Equal(t, fallbackID, got.ID)
+		require.Equal(t, 1, groupRepo.getByIDLiteCalls)
+	})
+
+	t.Run("group repo 为空时报错", func(t *testing.T) {
+		svc := &OpenAIGatewayService{}
+
+		got, err := svc.ResolveRuntimeFallbackGroup(context.Background(), &Group{
+			ID:              entryID,
+			Platform:        PlatformOpenAI,
+			FallbackGroupID: &fallbackID,
+		})
+
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "group repository unavailable")
+		require.Nil(t, got)
+	})
+}
