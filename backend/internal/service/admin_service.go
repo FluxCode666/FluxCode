@@ -994,10 +994,9 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 	imagePrice1K := normalizePrice(input.ImagePrice1K)
 	imagePrice2K := normalizePrice(input.ImagePrice2K)
 	imagePrice4K := normalizePrice(input.ImagePrice4K)
-	fallbackOnInvalidRequest := input.FallbackGroupIDOnInvalidRequest
-	if fallbackOnInvalidRequest != nil && *fallbackOnInvalidRequest <= 0 {
-		fallbackOnInvalidRequest = nil
-	}
+	// Deprecated: fallback_group_id_on_invalid_request will be removed in next version.
+	// Runtime fallback now uses fallback_group_id.
+	fallbackOnInvalidRequest := (*int64)(nil)
 
 	// MCPXMLInject：默认为 true，仅当显式传入 false 时关闭
 	mcpXMLInject := true
@@ -1072,12 +1071,6 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 	}
 	if group.FallbackGroupID != nil {
 		if err := s.validateFallbackGroup(ctx, 0, group.Platform, *group.FallbackGroupID); err != nil {
-			return nil, err
-		}
-	}
-	// 校验无效请求兜底分组
-	if fallbackOnInvalidRequest != nil {
-		if err := s.validateFallbackGroupOnInvalidRequest(ctx, 0, platform, subscriptionType, *fallbackOnInvalidRequest); err != nil {
 			return nil, err
 		}
 	}
@@ -1334,20 +1327,9 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 			return nil, err
 		}
 	}
-	fallbackOnInvalidRequest := group.FallbackGroupIDOnInvalidRequest
-	if input.FallbackGroupIDOnInvalidRequest != nil {
-		if *input.FallbackGroupIDOnInvalidRequest > 0 {
-			fallbackOnInvalidRequest = input.FallbackGroupIDOnInvalidRequest
-		} else {
-			fallbackOnInvalidRequest = nil
-		}
-	}
-	if fallbackOnInvalidRequest != nil {
-		if err := s.validateFallbackGroupOnInvalidRequest(ctx, id, group.Platform, group.SubscriptionType, *fallbackOnInvalidRequest); err != nil {
-			return nil, err
-		}
-	}
-	group.FallbackGroupIDOnInvalidRequest = fallbackOnInvalidRequest
+	// Deprecated: fallback_group_id_on_invalid_request will be removed in next version.
+	// Runtime fallback now uses fallback_group_id.
+	group.FallbackGroupIDOnInvalidRequest = nil
 
 	// 模型路由配置
 	if input.ModelRouting != nil {

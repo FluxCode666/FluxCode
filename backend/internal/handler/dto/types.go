@@ -116,7 +116,7 @@ type Group struct {
 	ClaudeCodeOnly  bool   `json:"claude_code_only"`
 	FallbackGroupID *int64 `json:"fallback_group_id"`
 	IsFallbackGroup bool   `json:"is_fallback_group"`
-	// Deprecated: will be removed in next version. 不再参与运行时逻辑。
+	// Deprecated: will be removed in next version. Use fallback_group_id.
 	FallbackGroupIDOnInvalidRequest *int64 `json:"fallback_group_id_on_invalid_request"`
 
 	// OpenAI Messages 调度开关（用户侧需要此字段判断是否展示 Claude Code 教程）

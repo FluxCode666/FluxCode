@@ -1218,12 +1218,9 @@
           </div>
         </div>
 
-        <!-- 无效请求兜底（仅 anthropic/antigravity 平台，且非订阅分组） -->
+        <!-- Deprecated: fallback_group_id_on_invalid_request will be removed in next version. Use fallback_group_id. -->
         <div
-          v-if="
-            ['anthropic', 'antigravity'].includes(createForm.platform) &&
-            createForm.subscription_type !== 'subscription'
-          "
+          v-if="false"
           class="border-t pt-4"
         >
           <label class="input-label">{{
@@ -2351,12 +2348,9 @@
           </div>
         </div>
 
-        <!-- 无效请求兜底（仅 anthropic/antigravity 平台，且非订阅分组） -->
+        <!-- Deprecated: fallback_group_id_on_invalid_request will be removed in next version. Use fallback_group_id. -->
         <div
-          v-if="
-            ['anthropic', 'antigravity'].includes(editForm.platform) &&
-            editForm.subscription_type !== 'subscription'
-          "
+          v-if="false"
           class="border-t pt-4"
         >
           <label class="input-label">{{
@@ -3519,6 +3513,7 @@ const handleCreateGroup = async () => {
     // 构建请求数据，包含模型路由配置
     const requestData = {
       ...createForm,
+      fallback_group_id_on_invalid_request: null,
       daily_limit_usd: normalizeOptionalLimit(
         createForm.daily_limit_usd as number | string | null,
       ),
@@ -3650,10 +3645,7 @@ const handleUpdateGroup = async () => {
       ),
       fallback_group_id:
         editForm.fallback_group_id === null ? 0 : editForm.fallback_group_id,
-      fallback_group_id_on_invalid_request:
-        editForm.fallback_group_id_on_invalid_request === null
-          ? 0
-          : editForm.fallback_group_id_on_invalid_request,
+      fallback_group_id_on_invalid_request: null,
       model_routing: convertRoutingRulesToApiFormat(
         editModelRoutingRules.value,
       ),
@@ -3744,7 +3736,6 @@ watch(
   (newVal) => {
     if (newVal === "subscription") {
       createForm.is_exclusive = true;
-      createForm.fallback_group_id_on_invalid_request = null;
     }
   },
 );
@@ -3752,9 +3743,6 @@ watch(
 watch(
   () => createForm.platform,
   (newVal) => {
-    if (!["anthropic", "antigravity"].includes(newVal)) {
-      createForm.fallback_group_id_on_invalid_request = null;
-    }
     if (newVal !== "openai") {
       resetMessagesDispatchFormState(createForm);
     }
@@ -3768,9 +3756,6 @@ watch(
 watch(
   () => editForm.platform,
   (newVal) => {
-    if (!["anthropic", "antigravity"].includes(newVal)) {
-      editForm.fallback_group_id_on_invalid_request = null;
-    }
     if (newVal !== "openai") {
       resetMessagesDispatchFormState(editForm);
     }
@@ -3784,9 +3769,6 @@ watch(
 watch(
   () => editForm.platform,
   (newVal) => {
-    if (!['anthropic', 'antigravity'].includes(newVal)) {
-      editForm.fallback_group_id_on_invalid_request = null
-    }
     if (newVal !== 'openai') {
       editForm.allow_messages_dispatch = false
       editForm.default_mapped_model = ''
