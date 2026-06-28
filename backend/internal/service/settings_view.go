@@ -63,22 +63,23 @@ type SystemSettings struct {
 	OIDCConnectUserInfoIDPath         string
 	OIDCConnectUserInfoUsernamePath   string
 
-	SiteName                    string
-	SiteLogo                    string
-	SiteSubtitle                string
-	APIBaseURL                  string
-	ContactInfo                 string
-	DocURL                      string
-	HomeContent                 string
-	HideCcsImportButton         bool
-	PurchaseSubscriptionEnabled bool
-	PurchaseSubscriptionURL     string
-	TableDefaultPageSize        int
-	TablePageSizeOptions        []int
-	CustomMenuItems             string // JSON array of custom menu items
-	CustomEndpoints             string // JSON array of custom endpoints
-	OpenAIUseKeyModelID         string
-	OpenAIImageURLCacheTTLHours int
+	SiteName                     string
+	SiteLogo                     string
+	SiteSubtitle                 string
+	APIBaseURL                   string
+	ContactInfo                  string
+	DocURL                       string
+	HomeContent                  string
+	HideCcsImportButton          bool
+	PurchaseSubscriptionEnabled  bool
+	PurchaseSubscriptionURL      string
+	TableDefaultPageSize         int
+	TablePageSizeOptions         []int
+	CustomMenuItems              string // JSON array of custom menu items
+	CustomEndpoints              string // JSON array of custom endpoints
+	OpenAIUseKeyModelID          string
+	OpenAIImageURLCacheTTLHours  int
+	GeneratedImageCleanupEnabled bool
 
 	DefaultConcurrency   int
 	DefaultBalance       float64

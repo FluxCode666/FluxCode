@@ -69,6 +69,7 @@ func TestProvideCleanup_WithMinimalDependencies_NoPanic(t *testing.T) {
 		accountExpirySvc,
 		subscriptionExpirySvc,
 		&service.UsageCleanupService{},
+		nil, // generatedImageCleanup
 		idempotencyCleanupSvc,
 		pricingSvc,
 		nil, // openAIPoolMonitorWorker

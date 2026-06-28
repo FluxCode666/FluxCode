@@ -1880,6 +1880,17 @@
                 {{ t('admin.settings.codexCLIUA.openaiImageURLCacheTTLHoursHint') }}
               </p>
             </div>
+            <div class="flex items-center justify-between border-t border-gray-100 pt-4 dark:border-dark-700">
+              <div>
+                <label class="font-medium text-gray-900 dark:text-white">
+                  {{ t('admin.settings.codexCLIUA.generatedImageCleanupEnabled') }}
+                </label>
+                <p class="text-sm text-gray-500 dark:text-gray-400">
+                  {{ t('admin.settings.codexCLIUA.generatedImageCleanupEnabledHint') }}
+                </p>
+              </div>
+              <Toggle v-model="form.generated_image_cleanup_enabled" />
+            </div>
             <div>
               <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
                 {{ t('admin.settings.codexCLIUA.userAgent') }}
@@ -3739,6 +3750,7 @@ const form = reactive<SettingsForm>({
   // Codex CLI User-Agent
   openai_use_key_model_id: 'gpt-5.5',
   openai_image_url_cache_ttl_hours: 72,
+  generated_image_cleanup_enabled: false,
   codex_cli_user_agent: '',
   codex_cli_version: '',
   // Balance & quota notification
@@ -4375,6 +4387,7 @@ async function saveSettings() {
       enable_cch_signing: form.enable_cch_signing,
       openai_use_key_model_id: form.openai_use_key_model_id,
       openai_image_url_cache_ttl_hours: Number(form.openai_image_url_cache_ttl_hours) || 72,
+      generated_image_cleanup_enabled: form.generated_image_cleanup_enabled,
       codex_cli_user_agent: form.codex_cli_user_agent,
       codex_cli_version: form.codex_cli_version,
       // Payment configuration

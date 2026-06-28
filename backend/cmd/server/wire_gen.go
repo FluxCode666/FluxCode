@@ -206,6 +206,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	gatewayService := service.ProvideGatewayService(accountRepository, groupRepository, usageLogRepository, usageBillingRepository, userRepository, userSubscriptionRepository, userGroupRateRepository, gatewayCache, configConfig, schedulerSnapshotService, concurrencyService, billingService, rateLimitService, billingCacheService, identityService, httpUpstream, deferredService, claudeTokenProvider, sessionLimitCache, rpmCache, digestSessionStore, settingService, tlsFingerprintProfileService, channelService, modelPricingResolver, balanceNotifyService, poolMonitorService, giftBalanceRepository)
 	openAIImageCache := repository.NewOpenAIImageCache(redisClient)
 	generatedImageStore := repository.NewGeneratedImageRepository(client)
+	generatedImageCleanupService := service.ProvideGeneratedImageCleanupService(generatedImageStore, settingService)
 	openAIGatewayService := service.ProvideOpenAIGatewayService(accountRepository, usageLogRepository, usageBillingRepository, userRepository, userSubscriptionRepository, userGroupRateRepository, gatewayCache, openAIImageCache, generatedImageStore, configConfig, schedulerSnapshotService, concurrencyService, billingService, rateLimitService, billingCacheService, httpUpstream, deferredService, openAITokenProvider, modelPricingResolver, channelService, balanceNotifyService, settingService, proxyUsageMetricsRepository, poolMonitorService, giftBalanceRepository)
 	geminiMessagesCompatService := service.ProvideGeminiMessagesCompatService(accountRepository, groupRepository, gatewayCache, schedulerSnapshotService, geminiTokenProvider, rateLimitService, httpUpstream, antigravityGatewayService, configConfig, settingService, poolMonitorService)
 	opsSystemLogSink := service.ProvideOpsSystemLogSink(opsRepository)
@@ -292,7 +293,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	channelMonitorRunner := service.ProvideChannelMonitorRunner(channelMonitorService, settingService)
 	paymentOrderExpiryService := service.ProvidePaymentOrderExpiryService(paymentService)
 	giftBalanceExpiryService := service.ProvideGiftBalanceExpiryService(referralService)
-	v := provideCleanup(client, redisClient, opsMetricsCollector, opsAggregationService, opsAlertEvaluatorService, opsCleanupService, opsScheduledReportService, opsSystemLogSink, schedulerSnapshotService, tokenRefreshService, accountExpiryService, subscriptionExpiryService, usageCleanupService, idempotencyCleanupService, pricingService, openAIPoolMonitorWorker, emailQueueService, billingCacheService, usageRecordWorkerPool, subscriptionService, oAuthService, openAIOAuthService, geminiOAuthService, antigravityOAuthService, openAIGatewayService, scheduledTestRunnerService, channelMonitorRunner, backupService, paymentOrderExpiryService, giftBalanceExpiryService)
+	v := provideCleanup(client, redisClient, opsMetricsCollector, opsAggregationService, opsAlertEvaluatorService, opsCleanupService, opsScheduledReportService, opsSystemLogSink, schedulerSnapshotService, tokenRefreshService, accountExpiryService, subscriptionExpiryService, usageCleanupService, generatedImageCleanupService, idempotencyCleanupService, pricingService, openAIPoolMonitorWorker, emailQueueService, billingCacheService, usageRecordWorkerPool, subscriptionService, oAuthService, openAIOAuthService, geminiOAuthService, antigravityOAuthService, openAIGatewayService, scheduledTestRunnerService, channelMonitorRunner, backupService, paymentOrderExpiryService, giftBalanceExpiryService)
 	application := &Application{
 		Server:  httpServer,
 		Cleanup: v,
@@ -332,6 +333,7 @@ func provideCleanup(
 	accountExpiry *service.AccountExpiryService,
 	subscriptionExpiry *service.SubscriptionExpiryService,
 	usageCleanup *service.UsageCleanupService,
+	generatedImageCleanup *service.GeneratedImageCleanupService,
 	idempotencyCleanup *service.IdempotencyCleanupService,
 	pricing *service.PricingService,
 	openAIPoolMonitorWorker *service.OpenAIPoolMonitorWorker,
@@ -405,6 +407,12 @@ func provideCleanup(
 			{"UsageCleanupService", func() error {
 				if usageCleanup != nil {
 					usageCleanup.Stop()
+				}
+				return nil
+			}},
+			{"GeneratedImageCleanupService", func() error {
+				if generatedImageCleanup != nil {
+					generatedImageCleanup.Stop()
 				}
 				return nil
 			}},

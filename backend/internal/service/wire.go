@@ -292,6 +292,13 @@ func ProvideUsageCleanupService(repo UsageCleanupRepository, timingWheel *Timing
 	return svc
 }
 
+// ProvideGeneratedImageCleanupService 创建并启动生图图库过期数据清理任务服务。
+func ProvideGeneratedImageCleanupService(store GeneratedImageStore, settingService *SettingService) *GeneratedImageCleanupService {
+	svc := NewGeneratedImageCleanupService(store, settingService)
+	svc.Start()
+	return svc
+}
+
 // ProvideAccountExpiryService creates and starts AccountExpiryService.
 func ProvideAccountExpiryService(accountRepo AccountRepository) *AccountExpiryService {
 	svc := NewAccountExpiryService(accountRepo, time.Minute)
@@ -719,6 +726,7 @@ var ProviderSet = wire.NewSet(
 	ProvideTimingWheelService,
 	ProvideDashboardAggregationService,
 	ProvideUsageCleanupService,
+	ProvideGeneratedImageCleanupService,
 	ProvideDeferredService,
 	NewAntigravityQuotaFetcher,
 	NewUserAttributeService,

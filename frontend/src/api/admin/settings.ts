@@ -51,6 +51,7 @@ export interface SystemSettings {
   custom_endpoints: CustomEndpoint[]
   openai_use_key_model_id: string
   openai_image_url_cache_ttl_hours: number
+  generated_image_cleanup_enabled: boolean
   // SMTP settings
   email_provider: string
   smtp_host: string
@@ -222,6 +223,7 @@ export interface UpdateSettingsRequest {
   custom_endpoints?: CustomEndpoint[]
   openai_use_key_model_id?: string
   openai_image_url_cache_ttl_hours?: number
+  generated_image_cleanup_enabled?: boolean
   email_provider?: string
   smtp_host?: string
   smtp_port?: number

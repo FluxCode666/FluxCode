@@ -542,6 +542,17 @@ func (s *SettingService) GetOpenAIImageURLCacheTTL(ctx context.Context) time.Dur
 	return time.Duration(normalizeOpenAIImageURLCacheTTLHours(parseIntSetting(raw, DefaultOpenAIImageURLCacheTTLHours))) * time.Hour
 }
 
+func (s *SettingService) IsGeneratedImageCleanupEnabled(ctx context.Context) bool {
+	if s == nil || s.settingRepo == nil {
+		return false
+	}
+	raw, err := s.settingRepo.GetValue(ctx, SettingKeyGeneratedImageCleanupEnabled)
+	if err != nil {
+		return false
+	}
+	return raw == "true"
+}
+
 // GetFrameSrcOrigins returns deduplicated http(s) origins from home_content URL,
 // purchase_subscription_url, and all custom_menu_items URLs. Used by the router layer for CSP frame-src injection.
 func (s *SettingService) GetFrameSrcOrigins(ctx context.Context) ([]string, error) {
@@ -733,6 +744,7 @@ func (s *SettingService) UpdateSettings(ctx context.Context, settings *SystemSet
 	updates[SettingKeyCustomEndpoints] = settings.CustomEndpoints
 	updates[SettingKeyOpenAIUseKeyModelID] = strings.TrimSpace(settings.OpenAIUseKeyModelID)
 	updates[SettingKeyOpenAIImageURLCacheTTLHours] = strconv.Itoa(normalizeOpenAIImageURLCacheTTLHours(settings.OpenAIImageURLCacheTTLHours))
+	updates[SettingKeyGeneratedImageCleanupEnabled] = strconv.FormatBool(settings.GeneratedImageCleanupEnabled)
 
 	// 默认配置
 	updates[SettingKeyDefaultConcurrency] = strconv.Itoa(settings.DefaultConcurrency)
@@ -1386,6 +1398,7 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyCustomEndpoints:                      "[]",
 		SettingKeyOpenAIUseKeyModelID:                  "gpt-5.5",
 		SettingKeyOpenAIImageURLCacheTTLHours:          strconv.Itoa(DefaultOpenAIImageURLCacheTTLHours),
+		SettingKeyGeneratedImageCleanupEnabled:         "false",
 		SettingKeyOIDCConnectEnabled:                   "false",
 		SettingKeyOIDCConnectProviderName:              "OIDC",
 		SettingKeyDefaultConcurrency:                   strconv.Itoa(s.cfg.Default.UserConcurrency),
@@ -1482,6 +1495,7 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		CustomEndpoints:              settings[SettingKeyCustomEndpoints],
 		OpenAIUseKeyModelID:          s.getStringOrDefault(settings, SettingKeyOpenAIUseKeyModelID, "gpt-5.5"),
 		OpenAIImageURLCacheTTLHours:  normalizeOpenAIImageURLCacheTTLHours(parseIntSetting(settings[SettingKeyOpenAIImageURLCacheTTLHours], DefaultOpenAIImageURLCacheTTLHours)),
+		GeneratedImageCleanupEnabled: settings[SettingKeyGeneratedImageCleanupEnabled] == "true",
 		BackendModeEnabled:           settings[SettingKeyBackendModeEnabled] == "true",
 	}
 	result.TableDefaultPageSize, result.TablePageSizeOptions = parseTablePreferences(

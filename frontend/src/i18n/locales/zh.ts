@@ -5751,6 +5751,9 @@ export default {
         openaiImageURLCacheTTLHours: 'OpenAI 图片 HTTP 链接缓存 TTL（小时）',
         openaiImageURLCacheTTLHoursHint:
           '当账号选择 response_format=url 返回 HTTP 临时链接时，生成图片会写入 Redis 并按此时间过期。默认 72 小时。',
+        generatedImageCleanupEnabled: '启用生图图库自动清理',
+        generatedImageCleanupEnabledHint:
+          '开启后每天凌晨 4 点按 HTTP 链接缓存 TTL 清理过期的生图图库表数据，仅删除存图记录。',
         userAgent: 'User-Agent',
         userAgentPlaceholder: '例如 codex_cli_rs/1.0.0',
         userAgentHint: '发往 OpenAI 上游的 User-Agent 请求头。留空则使用默认值 codex_cli_rs/1.0.0。',

@@ -144,6 +144,13 @@ func (r *generatedImageRepository) DeleteByDateRange(ctx context.Context, startA
 	return int64(deleted), err
 }
 
+func (r *generatedImageRepository) DeleteBefore(ctx context.Context, cutoff time.Time) (int64, error) {
+	deleted, err := r.client.GeneratedImage.Delete().
+		Where(generatedimage.CreatedAtLT(cutoff)).
+		Exec(ctx)
+	return int64(deleted), err
+}
+
 func (r *generatedImageRepository) generatedImageListPredicates(ctx context.Context, params service.GeneratedImageListParams) ([]predicate.GeneratedImage, bool, error) {
 	predicates := make([]predicate.GeneratedImage, 0, 4)
 	if params.StartAt != nil {

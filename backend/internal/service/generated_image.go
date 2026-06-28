@@ -56,6 +56,7 @@ type GeneratedImageStore interface {
 	List(ctx context.Context, params GeneratedImageListParams) ([]GeneratedImage, *pagination.PaginationResult, error)
 	GetContent(ctx context.Context, id int64) ([]byte, string, error)
 	DeleteByDateRange(ctx context.Context, startAt, endAt time.Time) (int64, error)
+	DeleteBefore(ctx context.Context, cutoff time.Time) (int64, error)
 }
 
 type GeneratedImageRecordContext struct {

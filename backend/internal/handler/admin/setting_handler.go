@@ -162,6 +162,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		CustomEndpoints:                      dto.ParseCustomEndpoints(settings.CustomEndpoints),
 		OpenAIUseKeyModelID:                  settings.OpenAIUseKeyModelID,
 		OpenAIImageURLCacheTTLHours:          settings.OpenAIImageURLCacheTTLHours,
+		GeneratedImageCleanupEnabled:         settings.GeneratedImageCleanupEnabled,
 		DefaultConcurrency:                   settings.DefaultConcurrency,
 		DefaultBalance:                       settings.DefaultBalance,
 		DefaultSubscriptions:                 defaultSubscriptions,
@@ -294,22 +295,23 @@ type UpdateSettingsRequest struct {
 	OIDCConnectUserInfoUsernamePath string `json:"oidc_connect_userinfo_username_path"`
 
 	// OEM设置
-	SiteName                    string                `json:"site_name"`
-	SiteLogo                    string                `json:"site_logo"`
-	SiteSubtitle                string                `json:"site_subtitle"`
-	APIBaseURL                  string                `json:"api_base_url"`
-	ContactInfo                 string                `json:"contact_info"`
-	DocURL                      string                `json:"doc_url"`
-	HomeContent                 string                `json:"home_content"`
-	HideCcsImportButton         bool                  `json:"hide_ccs_import_button"`
-	PurchaseSubscriptionEnabled *bool                 `json:"purchase_subscription_enabled"`
-	PurchaseSubscriptionURL     *string               `json:"purchase_subscription_url"`
-	TableDefaultPageSize        int                   `json:"table_default_page_size"`
-	TablePageSizeOptions        []int                 `json:"table_page_size_options"`
-	CustomMenuItems             *[]dto.CustomMenuItem `json:"custom_menu_items"`
-	CustomEndpoints             *[]dto.CustomEndpoint `json:"custom_endpoints"`
-	OpenAIUseKeyModelID         *string               `json:"openai_use_key_model_id"`
-	OpenAIImageURLCacheTTLHours *int                  `json:"openai_image_url_cache_ttl_hours"`
+	SiteName                     string                `json:"site_name"`
+	SiteLogo                     string                `json:"site_logo"`
+	SiteSubtitle                 string                `json:"site_subtitle"`
+	APIBaseURL                   string                `json:"api_base_url"`
+	ContactInfo                  string                `json:"contact_info"`
+	DocURL                       string                `json:"doc_url"`
+	HomeContent                  string                `json:"home_content"`
+	HideCcsImportButton          bool                  `json:"hide_ccs_import_button"`
+	PurchaseSubscriptionEnabled  *bool                 `json:"purchase_subscription_enabled"`
+	PurchaseSubscriptionURL      *string               `json:"purchase_subscription_url"`
+	TableDefaultPageSize         int                   `json:"table_default_page_size"`
+	TablePageSizeOptions         []int                 `json:"table_page_size_options"`
+	CustomMenuItems              *[]dto.CustomMenuItem `json:"custom_menu_items"`
+	CustomEndpoints              *[]dto.CustomEndpoint `json:"custom_endpoints"`
+	OpenAIUseKeyModelID          *string               `json:"openai_use_key_model_id"`
+	OpenAIImageURLCacheTTLHours  *int                  `json:"openai_image_url_cache_ttl_hours"`
+	GeneratedImageCleanupEnabled *bool                 `json:"generated_image_cleanup_enabled"`
 
 	// 默认配置
 	DefaultConcurrency   int                              `json:"default_concurrency"`
@@ -958,6 +960,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.OpenAIImageURLCacheTTLHours
 		}(),
+		GeneratedImageCleanupEnabled: func() bool {
+			if req.GeneratedImageCleanupEnabled != nil {
+				return *req.GeneratedImageCleanupEnabled
+			}
+			return previousSettings.GeneratedImageCleanupEnabled
+		}(),
 		DefaultConcurrency:           req.DefaultConcurrency,
 		DefaultBalance:               req.DefaultBalance,
 		DefaultSubscriptions:         defaultSubscriptions,
@@ -1218,6 +1226,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		CustomEndpoints:                      dto.ParseCustomEndpoints(updatedSettings.CustomEndpoints),
 		OpenAIUseKeyModelID:                  updatedSettings.OpenAIUseKeyModelID,
 		OpenAIImageURLCacheTTLHours:          updatedSettings.OpenAIImageURLCacheTTLHours,
+		GeneratedImageCleanupEnabled:         updatedSettings.GeneratedImageCleanupEnabled,
 		DefaultConcurrency:                   updatedSettings.DefaultConcurrency,
 		DefaultBalance:                       updatedSettings.DefaultBalance,
 		DefaultSubscriptions:                 updatedDefaultSubscriptions,
