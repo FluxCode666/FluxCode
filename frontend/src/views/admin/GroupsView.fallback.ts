@@ -16,12 +16,17 @@ export function canEnableFallbackGroup(
   )
 }
 
+function normalizeFallbackEntryPlatform(platform: string): string {
+  return platform === 'codex2api' ? 'openai' : platform
+}
+
 export function buildFallbackTargetOptions(
   groups: AdminGroup[],
   current: Pick<AdminGroup, 'id' | 'platform'>,
   noFallbackLabel = 'No Fallback',
 ): FallbackOption[] {
   const options: FallbackOption[] = [{ value: null, label: noFallbackLabel }]
+  const currentPlatform = normalizeFallbackEntryPlatform(current.platform)
 
   for (const group of groups) {
     if (
@@ -29,7 +34,7 @@ export function buildFallbackTargetOptions(
       group.status === 'active' &&
       group.subscription_type === 'standard' &&
       group.is_fallback_group &&
-      group.platform === current.platform &&
+      group.platform === currentPlatform &&
       !group.fallback_group_id
     ) {
       options.push({ value: group.id, label: group.name })

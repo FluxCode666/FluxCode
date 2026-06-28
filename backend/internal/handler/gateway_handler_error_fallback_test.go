@@ -97,6 +97,26 @@ func (s *gatewayMessagesGroupRepoStub) GetByIDLite(_ context.Context, id int64) 
 	return s.groups[id], nil
 }
 
+type gatewayMessagesChannelRepoStub struct {
+	service.ChannelRepository
+	channels       []service.Channel
+	groupPlatforms map[int64]string
+}
+
+func (s *gatewayMessagesChannelRepoStub) ListAll(_ context.Context) ([]service.Channel, error) {
+	return s.channels, nil
+}
+
+func (s *gatewayMessagesChannelRepoStub) GetGroupPlatforms(_ context.Context, groupIDs []int64) (map[int64]string, error) {
+	result := make(map[int64]string, len(groupIDs))
+	for _, groupID := range groupIDs {
+		if platform, ok := s.groupPlatforms[groupID]; ok {
+			result[groupID] = platform
+		}
+	}
+	return result, nil
+}
+
 type gatewayMessagesAccountRepoStub struct {
 	service.AccountRepository
 	setErrorCalls int
@@ -254,6 +274,18 @@ type gatewayMessagesTestFixture struct {
 }
 
 func newGatewayMessagesTestFixture(t *testing.T, groups map[int64]*service.Group, accounts []*service.Account, balances map[int64][]float64, responses map[int64][]*http.Response, maxSwitches int) *gatewayMessagesTestFixture {
+	return newGatewayMessagesTestFixtureWithChannelService(t, groups, accounts, balances, responses, maxSwitches, nil)
+}
+
+func newGatewayMessagesTestFixtureWithChannelService(
+	t *testing.T,
+	groups map[int64]*service.Group,
+	accounts []*service.Account,
+	balances map[int64][]float64,
+	responses map[int64][]*http.Response,
+	maxSwitches int,
+	channelService *service.ChannelService,
+) *gatewayMessagesTestFixture {
 	t.Helper()
 
 	cfg := &config.Config{}
@@ -288,7 +320,7 @@ func newGatewayMessagesTestFixture(t *testing.T, groups map[int64]*service.Group
 		nil,
 		nil,
 		nil,
-		nil,
+		channelService,
 		nil,
 		nil,
 	)
@@ -508,7 +540,42 @@ func TestGatewayMessagesFallback_FailoverExhaustedRetryableSwitchesGroupAndAttri
 		Group: primaryGroup,
 	}
 
-	fixture := newGatewayMessagesTestFixture(
+	primaryChannelID := int64(61011)
+	fallbackChannelID := int64(61012)
+	channelService := service.NewChannelService(&gatewayMessagesChannelRepoStub{
+		channels: []service.Channel{
+			{
+				ID:                 primaryChannelID,
+				Name:               "primary-channel",
+				Status:             service.StatusActive,
+				BillingModelSource: service.BillingModelSourceChannelMapped,
+				GroupIDs:           []int64{primaryGroupID},
+				ModelMapping: map[string]map[string]string{
+					service.PlatformAnthropic: {
+						"claude-sonnet-4-5": "claude-primary-4-5",
+					},
+				},
+			},
+			{
+				ID:                 fallbackChannelID,
+				Name:               "fallback-channel",
+				Status:             service.StatusActive,
+				BillingModelSource: service.BillingModelSourceChannelMapped,
+				GroupIDs:           []int64{fallbackGroupID},
+				ModelMapping: map[string]map[string]string{
+					service.PlatformAnthropic: {
+						"claude-sonnet-4-5": "claude-fallback-4-5",
+					},
+				},
+			},
+		},
+		groupPlatforms: map[int64]string{
+			primaryGroupID:  service.PlatformAnthropic,
+			fallbackGroupID: service.PlatformAnthropic,
+		},
+	}, nil)
+
+	fixture := newGatewayMessagesTestFixtureWithChannelService(
 		t,
 		map[int64]*service.Group{
 			primaryGroupID:  primaryGroup,
@@ -552,10 +619,11 @@ func TestGatewayMessagesFallback_FailoverExhaustedRetryableSwitchesGroupAndAttri
 				newGatewayMessagesJSONResponse(http.StatusInternalServerError, `{"type":"error","error":{"type":"api_error","message":"primary exhausted"}}`),
 			},
 			fallbackAccountID: {
-				newGatewayMessagesJSONResponse(http.StatusOK, `{"id":"msg_fallback","type":"message","role":"assistant","model":"claude-sonnet-4-5","content":[{"type":"text","text":"from fallback"}],"usage":{"input_tokens":0,"output_tokens":0}}`),
+				newGatewayMessagesJSONResponse(http.StatusOK, `{"id":"msg_fallback","type":"message","role":"assistant","model":"claude-fallback-4-5","content":[{"type":"text","text":"from fallback"}],"usage":{"input_tokens":0,"output_tokens":0}}`),
 			},
 		},
 		0,
+		channelService,
 	)
 	defer fixture.cleanup()
 
@@ -564,8 +632,13 @@ func TestGatewayMessagesFallback_FailoverExhaustedRetryableSwitchesGroupAndAttri
 	fixture.handler.Messages(c)
 
 	require.Equal(t, http.StatusOK, rec.Code)
-	assert.JSONEq(t, `{"id":"msg_fallback","type":"message","role":"assistant","model":"claude-sonnet-4-5","content":[{"type":"text","text":"from fallback"}],"usage":{"input_tokens":0,"output_tokens":0}}`, rec.Body.String())
+	assert.JSONEq(t, `{"id":"msg_fallback","type":"message","role":"assistant","model":"claude-fallback-4-5","content":[{"type":"text","text":"from fallback"}],"usage":{"input_tokens":0,"output_tokens":0}}`, rec.Body.String())
 	require.Equal(t, []int64{primaryAccountID, fallbackAccountID}, fixture.upstream.calls)
+	require.Len(t, fixture.upstream.requestBody[primaryAccountID], 1)
+	require.Len(t, fixture.upstream.requestBody[fallbackAccountID], 1)
+	assert.Contains(t, string(fixture.upstream.requestBody[primaryAccountID][0]), `"model":"claude-primary-4-5"`)
+	assert.Contains(t, string(fixture.upstream.requestBody[fallbackAccountID][0]), `"model":"claude-fallback-4-5"`)
+	assert.NotContains(t, string(fixture.upstream.requestBody[fallbackAccountID][0]), `"model":"claude-primary-4-5"`)
 	selected, ok := c.Get(opsAccountIDKey)
 	require.True(t, ok)
 	require.Equal(t, fallbackAccountID, selected)
@@ -574,6 +647,10 @@ func TestGatewayMessagesFallback_FailoverExhaustedRetryableSwitchesGroupAndAttri
 	require.Equal(t, fallbackGroupID, *fixture.usageRepo.lastLog.GroupID)
 	require.Equal(t, fallbackAccountID, fixture.usageRepo.lastLog.AccountID)
 	require.Equal(t, apiKeyID, fixture.usageRepo.lastLog.APIKeyID)
+	require.NotNil(t, fixture.usageRepo.lastLog.ChannelID)
+	require.Equal(t, fallbackChannelID, *fixture.usageRepo.lastLog.ChannelID)
+	require.NotNil(t, fixture.usageRepo.lastLog.ModelMappingChain)
+	require.Equal(t, "claude-sonnet-4-5→claude-fallback-4-5", *fixture.usageRepo.lastLog.ModelMappingChain)
 }
 
 func TestGatewayMessagesFallback_FailoverExhaustedNonRetryableKeepsOriginalTerminal(t *testing.T) {

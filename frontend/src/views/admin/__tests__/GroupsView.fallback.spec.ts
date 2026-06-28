@@ -81,6 +81,22 @@ describe('group fallback helpers', () => {
     ).toEqual([null, 2])
   })
 
+  it('maps openai-compatible entry platform to openai fallback targets', () => {
+    const groups = [
+      baseGroup({ id: 1, platform: 'openai' }),
+      baseGroup({ id: 2, name: 'openai-fallback', platform: 'openai', is_fallback_group: true }),
+      baseGroup({ id: 3, name: 'anthropic-fallback', platform: 'anthropic', is_fallback_group: true }),
+    ]
+
+    expect(
+      buildFallbackTargetOptionsForEdit(
+        groups,
+        1,
+        'codex2api' as unknown as AdminGroup['platform'],
+      ).map((option) => option.value),
+    ).toEqual([null, 2])
+  })
+
   it('recomputes edit fallback targets when platform changes', () => {
     const groups = [
       baseGroup({ id: 1, platform: 'anthropic', is_fallback_group: false }),

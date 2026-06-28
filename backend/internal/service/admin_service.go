@@ -1130,6 +1130,10 @@ func isFallbackCapablePlatform(platform string) bool {
 	return platform == PlatformAnthropic || platform == PlatformOpenAI
 }
 
+func isFallbackEntryPlatform(platform string) bool {
+	return platform == PlatformAnthropic || IsOpenAICompatiblePlatform(platform)
+}
+
 func normalizeGroupSubscriptionType(subscriptionType string) string {
 	if subscriptionType == "" {
 		return SubscriptionTypeStandard
@@ -1175,7 +1179,7 @@ func (s *adminServiceImpl) validateFallbackGroup(ctx context.Context, currentGro
 	if currentGroupID > 0 && currentGroupID == fallbackGroupID {
 		return fmt.Errorf("cannot set self as fallback group")
 	}
-	if !isFallbackCapablePlatform(platform) {
+	if !isFallbackEntryPlatform(platform) {
 		return fmt.Errorf("fallback group only supported for anthropic or openai groups")
 	}
 
@@ -1199,7 +1203,12 @@ func (s *adminServiceImpl) validateFallbackGroup(ctx context.Context, currentGro
 		return fmt.Errorf("fallback group cannot have claude_code_only enabled")
 	}
 
-	switch platform {
+	expectedPlatform := platform
+	if IsOpenAICompatiblePlatform(expectedPlatform) {
+		expectedPlatform = PlatformOpenAI
+	}
+
+	switch expectedPlatform {
 	case PlatformAnthropic:
 		if fallbackGroup.Platform != PlatformAnthropic {
 			return fmt.Errorf("anthropic group fallback target must be anthropic platform")

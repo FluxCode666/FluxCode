@@ -178,7 +178,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 					return
 				}
 			} else {
-				if !fallbackUsed && c.Writer.Size() == 0 && shouldRetryOpenAIRuntimeFallback(lastFailoverErr) {
+				if !fallbackUsed && !hasOpenAIResponseStarted(c, streamStarted) && shouldRetryOpenAIRuntimeFallback(lastFailoverErr) {
 					fallbackAPIKey, fallbackResult := h.trySwitchToOpenAIFallbackGroup(c, reqLog, currentAPIKey, streamStarted)
 					if fallbackResult == openAIFallbackHandled {
 						return

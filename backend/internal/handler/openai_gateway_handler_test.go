@@ -831,6 +831,110 @@ func TestOpenAIRuntimeFallbackResponses_RetryableExhaustedSwitchesToFallbackGrou
 	require.Equal(t, apiKeyID, fixture.usageRepo.lastLog.APIKeyID)
 }
 
+func TestOpenAIRuntimeFallbackResponses_SelectionExhaustedRetryableSwitchesToFallbackGroup(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	primaryGroupID := int64(85011)
+	fallbackGroupID := int64(85012)
+	primaryAccountID := int64(86011)
+	fallbackAccountID := int64(86012)
+	userID := int64(87011)
+
+	primaryGroup := &service.Group{
+		ID:                    primaryGroupID,
+		Hydrated:              true,
+		Platform:              service.PlatformCodex2API,
+		AllowMessagesDispatch: true,
+		Status:                service.StatusActive,
+		SubscriptionType:      service.SubscriptionTypeStandard,
+		FallbackGroupID:       &fallbackGroupID,
+	}
+	fallbackGroup := &service.Group{
+		ID:                    fallbackGroupID,
+		Hydrated:              true,
+		Platform:              service.PlatformOpenAI,
+		AllowMessagesDispatch: true,
+		Status:                service.StatusActive,
+		SubscriptionType:      service.SubscriptionTypeStandard,
+		IsFallbackGroup:       true,
+	}
+	apiKey := &service.APIKey{
+		ID:      88011,
+		UserID:  userID,
+		GroupID: &primaryGroupID,
+		Status:  service.StatusActive,
+		User: &service.User{
+			ID:          userID,
+			Balance:     10,
+			Concurrency: 8,
+		},
+		Group: primaryGroup,
+	}
+
+	fixture := newOpenAIHandlerRuntimeFallbackFixture(
+		t,
+		map[int64]*service.Group{
+			primaryGroupID:  primaryGroup,
+			fallbackGroupID: fallbackGroup,
+		},
+		[]*service.Account{
+			{
+				ID:          primaryAccountID,
+				Name:        "primary-500-then-exhausted",
+				Platform:    service.PlatformOpenAI,
+				Type:        service.AccountTypeAPIKey,
+				Status:      service.StatusActive,
+				Schedulable: true,
+				Concurrency: 1,
+				Priority:    1,
+				Credentials: map[string]any{"api_key": "sk-primary"},
+				AccountGroups: []service.AccountGroup{
+					{AccountID: primaryAccountID, GroupID: primaryGroupID},
+				},
+			},
+			{
+				ID:          fallbackAccountID,
+				Name:        "fallback-200",
+				Platform:    service.PlatformOpenAI,
+				Type:        service.AccountTypeAPIKey,
+				Status:      service.StatusActive,
+				Schedulable: true,
+				Concurrency: 1,
+				Priority:    1,
+				Credentials: map[string]any{"api_key": "sk-fallback"},
+				AccountGroups: []service.AccountGroup{
+					{AccountID: fallbackAccountID, GroupID: fallbackGroupID},
+				},
+			},
+		},
+		map[int64][]float64{
+			userID: {10, 10},
+		},
+		map[int64][]openAIHandlerResponseFactory{
+			primaryAccountID: {
+				newOpenAIHandlerStaticResponse(http.StatusInternalServerError, "application/json", `{"error":{"message":"primary exhausted"}}`),
+			},
+			fallbackAccountID: {
+				newOpenAIHandlerStaticResponse(http.StatusOK, "text/event-stream",
+					"data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_fallback_after_selection_exhausted\",\"object\":\"response\",\"model\":\"gpt-5.1\",\"status\":\"completed\",\"output\":[{\"type\":\"message\",\"id\":\"msg_fallback\",\"role\":\"assistant\",\"status\":\"completed\",\"content\":[{\"type\":\"output_text\",\"text\":\"from fallback\"}]}],\"usage\":{\"input_tokens\":3,\"output_tokens\":2,\"total_tokens\":5}}}\n\n"),
+			},
+		},
+		1,
+	)
+	defer fixture.cleanup()
+
+	c, rec := newOpenAIResponsesContext(t, primaryGroup, apiKey, `{"model":"gpt-5.1","stream":false,"input":"hello"}`)
+
+	fixture.handler.Responses(c)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	assert.Contains(t, rec.Body.String(), `"id":"resp_fallback_after_selection_exhausted"`)
+	require.Equal(t, []int64{primaryAccountID, fallbackAccountID}, fixture.upstream.calls)
+	require.NotNil(t, fixture.usageRepo.lastLog)
+	require.NotNil(t, fixture.usageRepo.lastLog.GroupID)
+	require.Equal(t, fallbackGroupID, *fixture.usageRepo.lastLog.GroupID)
+}
+
 func TestOpenAIRuntimeFallbackResponses_StreamStartedDoesNotSwitchGroup(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
@@ -1199,6 +1303,20 @@ func TestOpenAIHandleStreamingAwareError_IncludesTraceIDInSSE(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "trace-stream-1", parsed["trace_id"])
 	assert.Equal(t, "request-stream-1", parsed["request_id"])
+}
+
+func TestHasOpenAIResponseStarted_TreatsUnwrittenRecorderAsNotStarted(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodGet, "/", nil)
+
+	require.Equal(t, -1, c.Writer.Size())
+	require.False(t, c.Writer.Written())
+	require.False(t, hasOpenAIResponseStarted(c, false))
+
+	c.String(http.StatusOK, "written")
+	require.True(t, hasOpenAIResponseStarted(c, false))
 }
 
 func TestOpenAIHandleStreamingAwareError_NonStreaming(t *testing.T) {

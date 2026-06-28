@@ -157,8 +157,6 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 	reqModel := parsedReq.Model
 	reqStream := parsedReq.Stream
 	reqLog = reqLog.With(zap.String("model", reqModel), zap.Bool("stream", reqStream))
-
-	// 解析渠道级模型映射
 	channelMapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, reqModel)
 
 	// 设置 max_tokens=1 + haiku 探测请求标识到 context 中
@@ -504,6 +502,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 	currentAPIKey := apiKey
 	currentSubscription := subscription
 	fallbackUsed := false
+	baseParsedReq := parsedReq
 
 	// 单账号分组提前设置 SingleAccountRetry 标记，让 Service 层首次 503 就不设模型限流标记。
 	// 避免单账号分组收到 503 (MODEL_CAPACITY_EXHAUSTED) 时设 29s 限流，导致后续请求连续快速失败。
@@ -519,7 +518,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 	accountLoop:
 		for {
 			// 选择支持该模型的账号
-			selection, err := h.gatewayService.SelectAccountWithLoadAwareness(c.Request.Context(), currentAPIKey.GroupID, sessionKey, reqModel, fs.FailedAccountIDs, parsedReq.MetadataUserID, subject.UserID)
+			selection, err := h.gatewayService.SelectAccountWithLoadAwareness(c.Request.Context(), currentAPIKey.GroupID, sessionKey, reqModel, fs.FailedAccountIDs, baseParsedReq.MetadataUserID, subject.UserID)
 			if err != nil {
 				if len(fs.FailedAccountIDs) == 0 {
 					if !fallbackUsed {
@@ -573,7 +572,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 
 			// 检查请求拦截（预热请求、SUGGESTION MODE等）
 			if account.IsInterceptWarmupEnabled() {
-				interceptType := detectInterceptType(body, reqModel, parsedReq.MaxTokens, reqStream, isClaudeCodeClient)
+				interceptType := detectInterceptType(body, reqModel, baseParsedReq.MaxTokens, reqStream, isClaudeCodeClient)
 				if interceptType != InterceptTypeNone {
 					if selection.Acquired && selection.ReleaseFunc != nil {
 						selection.ReleaseFunc()
@@ -639,6 +638,16 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			// 账号槽位/等待计数需要在超时或断开时安全回收
 			accountReleaseFunc = wrapReleaseOnDone(c.Request.Context(), accountReleaseFunc)
 
+			parsedReq, forwardBody, channelMapping, err := h.prepareClaudeAttemptRequest(c.Request.Context(), currentAPIKey.GroupID, reqModel, body)
+			if err != nil {
+				reqLog.Error("gateway.prepare_claude_attempt_request_failed",
+					zap.Any("group_id", currentAPIKey.GroupID),
+					zap.Error(err),
+				)
+				h.handleStreamingAwareError(c, http.StatusInternalServerError, "api_error", "Failed to prepare request body", streamStarted)
+				return
+			}
+
 			// ===== 用户消息串行队列 START =====
 			var queueRelease func()
 			umqMode := h.getUserMsgQueueMode(account, parsedReq)
@@ -691,13 +700,6 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			parsedReq.OnUpstreamAccepted = queueRelease
 			// ===== 用户消息串行队列 END =====
 
-			// 应用渠道模型映射到请求
-			if channelMapping.Mapped {
-				parsedReq.Model = channelMapping.MappedModel
-				parsedReq.Body = h.gatewayService.ReplaceModelInBody(parsedReq.Body, channelMapping.MappedModel)
-				body = h.gatewayService.ReplaceModelInBody(body, channelMapping.MappedModel)
-			}
-
 			// 转发请求 - 根据账号平台分流
 			c.Set("parsed_request", parsedReq)
 			var result *service.ForwardResult
@@ -708,7 +710,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			// 记录 Forward 前已写入字节数，Forward 后若增加则说明 SSE 内容已发，禁止 failover
 			writerSizeBeforeForward := c.Writer.Size()
 			if account.Platform == service.PlatformAntigravity && account.Type != service.AccountTypeAPIKey {
-				result, err = h.antigravityGatewayService.Forward(requestCtx, c, account, body, hasBoundSession)
+				result, err = h.antigravityGatewayService.Forward(requestCtx, c, account, forwardBody, hasBoundSession)
 			} else {
 				result, err = h.gatewayService.Forward(requestCtx, c, account, parsedReq)
 			}
@@ -868,6 +870,28 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			return
 		}
 	}
+}
+
+func (h *GatewayHandler) prepareClaudeAttemptRequest(
+	ctx context.Context,
+	groupID *int64,
+	reqModel string,
+	body []byte,
+) (*service.ParsedRequest, []byte, service.ChannelMappingResult, error) {
+	parsedReq, err := service.ParseGatewayRequest(body, domain.PlatformAnthropic)
+	if err != nil {
+		return nil, nil, service.ChannelMappingResult{}, err
+	}
+
+	channelMapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(ctx, groupID, reqModel)
+	forwardBody := body
+	if channelMapping.Mapped {
+		parsedReq.Model = channelMapping.MappedModel
+		parsedReq.Body = h.gatewayService.ReplaceModelInBody(parsedReq.Body, channelMapping.MappedModel)
+		forwardBody = h.gatewayService.ReplaceModelInBody(body, channelMapping.MappedModel)
+	}
+
+	return parsedReq, forwardBody, channelMapping, nil
 }
 
 // Models handles listing available models

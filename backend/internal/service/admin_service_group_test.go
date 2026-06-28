@@ -986,6 +986,35 @@ func TestAdminService_CreateGroup_FallbackTargetMustMatchPlatform(t *testing.T) 
 	require.Nil(t, repo.created)
 }
 
+func TestAdminService_CreateGroup_OpenAICompatibleEntryAllowsOpenAIFallbackTarget(t *testing.T) {
+	fallbackID := int64(211)
+	repo := &groupRepoStubForInvalidRequestFallback{
+		groups: map[int64]*Group{
+			fallbackID: {
+				ID:               fallbackID,
+				Platform:         PlatformOpenAI,
+				SubscriptionType: SubscriptionTypeStandard,
+				Status:           StatusActive,
+				IsFallbackGroup:  true,
+			},
+		},
+	}
+	svc := &adminServiceImpl{groupRepo: repo}
+
+	group, err := svc.CreateGroup(context.Background(), &CreateGroupInput{
+		Name:             "codex2api-entry",
+		Platform:         PlatformCodex2API,
+		SubscriptionType: SubscriptionTypeStandard,
+		FallbackGroupID:  &fallbackID,
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, group)
+	require.NotNil(t, repo.created)
+	require.NotNil(t, repo.created.FallbackGroupID)
+	require.Equal(t, fallbackID, *repo.created.FallbackGroupID)
+}
+
 func TestAdminService_CreateGroup_MultipleGroupsMayShareFallbackTarget(t *testing.T) {
 	fallbackID := int64(22)
 	repo := &groupRepoStubForInvalidRequestFallback{

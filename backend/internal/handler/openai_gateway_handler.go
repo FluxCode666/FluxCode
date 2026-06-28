@@ -99,6 +99,19 @@ func shouldAttemptOpenAIRuntimeFallback(
 	return shouldRetryOpenAIRuntimeFallback(failoverErr)
 }
 
+func hasOpenAIResponseStarted(c *gin.Context, streamStarted bool) bool {
+	if streamStarted {
+		return true
+	}
+	if c == nil || c.Writer == nil {
+		return false
+	}
+	if c.Writer.Written() {
+		return true
+	}
+	return c.Writer.Size() > 0
+}
+
 func (h *OpenAIGatewayHandler) trySwitchToOpenAIFallbackGroupWithBillingHandler(
 	c *gin.Context,
 	reqLog *zap.Logger,
@@ -420,7 +433,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 				h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "Service temporarily unavailable", streamStarted)
 				return
 			}
-			if !fallbackUsed && c.Writer.Size() == 0 && shouldRetryOpenAIRuntimeFallback(lastFailoverErr) {
+			if !fallbackUsed && !hasOpenAIResponseStarted(c, streamStarted) && shouldRetryOpenAIRuntimeFallback(lastFailoverErr) {
 				fallbackAPIKey, fallbackResult := h.trySwitchToOpenAIFallbackGroup(c, reqLog, currentAPIKey, streamStarted)
 				if fallbackResult == openAIFallbackHandled {
 					return
@@ -856,7 +869,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 				h.anthropicStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "Service temporarily unavailable", streamStarted)
 				return
 			} else {
-				if !fallbackUsed && c.Writer.Size() == 0 && shouldRetryOpenAIRuntimeFallback(lastFailoverErr) {
+				if !fallbackUsed && !hasOpenAIResponseStarted(c, streamStarted) && shouldRetryOpenAIRuntimeFallback(lastFailoverErr) {
 					fallbackAPIKey, fallbackResult := h.trySwitchToOpenAIFallbackGroupForAnthropicMessages(c, reqLog, currentAPIKey, streamStarted)
 					if fallbackResult == openAIFallbackHandled {
 						return
