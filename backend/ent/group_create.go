@@ -315,6 +315,20 @@ func (_c *GroupCreate) SetNillableFallbackGroupID(v *int64) *GroupCreate {
 	return _c
 }
 
+// SetIsFallbackGroup sets the "is_fallback_group" field.
+func (_c *GroupCreate) SetIsFallbackGroup(v bool) *GroupCreate {
+	_c.mutation.SetIsFallbackGroup(v)
+	return _c
+}
+
+// SetNillableIsFallbackGroup sets the "is_fallback_group" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableIsFallbackGroup(v *bool) *GroupCreate {
+	if v != nil {
+		_c.SetIsFallbackGroup(*v)
+	}
+	return _c
+}
+
 // SetFallbackGroupIDOnInvalidRequest sets the "fallback_group_id_on_invalid_request" field.
 func (_c *GroupCreate) SetFallbackGroupIDOnInvalidRequest(v int64) *GroupCreate {
 	_c.mutation.SetFallbackGroupIDOnInvalidRequest(v)
@@ -630,6 +644,10 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultClaudeCodeOnly
 		_c.mutation.SetClaudeCodeOnly(v)
 	}
+	if _, ok := _c.mutation.IsFallbackGroup(); !ok {
+		v := group.DefaultIsFallbackGroup
+		_c.mutation.SetIsFallbackGroup(v)
+	}
 	if _, ok := _c.mutation.ModelRoutingEnabled(); !ok {
 		v := group.DefaultModelRoutingEnabled
 		_c.mutation.SetModelRoutingEnabled(v)
@@ -731,6 +749,9 @@ func (_c *GroupCreate) check() error {
 	}
 	if _, ok := _c.mutation.ClaudeCodeOnly(); !ok {
 		return &ValidationError{Name: "claude_code_only", err: errors.New(`ent: missing required field "Group.claude_code_only"`)}
+	}
+	if _, ok := _c.mutation.IsFallbackGroup(); !ok {
+		return &ValidationError{Name: "is_fallback_group", err: errors.New(`ent: missing required field "Group.is_fallback_group"`)}
 	}
 	if _, ok := _c.mutation.ModelRoutingEnabled(); !ok {
 		return &ValidationError{Name: "model_routing_enabled", err: errors.New(`ent: missing required field "Group.model_routing_enabled"`)}
@@ -874,6 +895,10 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.FallbackGroupID(); ok {
 		_spec.SetField(group.FieldFallbackGroupID, field.TypeInt64, value)
 		_node.FallbackGroupID = &value
+	}
+	if value, ok := _c.mutation.IsFallbackGroup(); ok {
+		_spec.SetField(group.FieldIsFallbackGroup, field.TypeBool, value)
+		_node.IsFallbackGroup = value
 	}
 	if value, ok := _c.mutation.FallbackGroupIDOnInvalidRequest(); ok {
 		_spec.SetField(group.FieldFallbackGroupIDOnInvalidRequest, field.TypeInt64, value)
@@ -1420,6 +1445,18 @@ func (u *GroupUpsert) AddFallbackGroupID(v int64) *GroupUpsert {
 // ClearFallbackGroupID clears the value of the "fallback_group_id" field.
 func (u *GroupUpsert) ClearFallbackGroupID() *GroupUpsert {
 	u.SetNull(group.FieldFallbackGroupID)
+	return u
+}
+
+// SetIsFallbackGroup sets the "is_fallback_group" field.
+func (u *GroupUpsert) SetIsFallbackGroup(v bool) *GroupUpsert {
+	u.Set(group.FieldIsFallbackGroup, v)
+	return u
+}
+
+// UpdateIsFallbackGroup sets the "is_fallback_group" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateIsFallbackGroup() *GroupUpsert {
+	u.SetExcluded(group.FieldIsFallbackGroup)
 	return u
 }
 
@@ -2027,6 +2064,20 @@ func (u *GroupUpsertOne) UpdateFallbackGroupID() *GroupUpsertOne {
 func (u *GroupUpsertOne) ClearFallbackGroupID() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.ClearFallbackGroupID()
+	})
+}
+
+// SetIsFallbackGroup sets the "is_fallback_group" field.
+func (u *GroupUpsertOne) SetIsFallbackGroup(v bool) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetIsFallbackGroup(v)
+	})
+}
+
+// UpdateIsFallbackGroup sets the "is_fallback_group" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateIsFallbackGroup() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateIsFallbackGroup()
 	})
 }
 
@@ -2826,6 +2877,20 @@ func (u *GroupUpsertBulk) UpdateFallbackGroupID() *GroupUpsertBulk {
 func (u *GroupUpsertBulk) ClearFallbackGroupID() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.ClearFallbackGroupID()
+	})
+}
+
+// SetIsFallbackGroup sets the "is_fallback_group" field.
+func (u *GroupUpsertBulk) SetIsFallbackGroup(v bool) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetIsFallbackGroup(v)
+	})
+}
+
+// UpdateIsFallbackGroup sets the "is_fallback_group" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateIsFallbackGroup() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateIsFallbackGroup()
 	})
 }
 

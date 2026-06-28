@@ -425,6 +425,20 @@ func (_u *GroupUpdate) ClearFallbackGroupID() *GroupUpdate {
 	return _u
 }
 
+// SetIsFallbackGroup sets the "is_fallback_group" field.
+func (_u *GroupUpdate) SetIsFallbackGroup(v bool) *GroupUpdate {
+	_u.mutation.SetIsFallbackGroup(v)
+	return _u
+}
+
+// SetNillableIsFallbackGroup sets the "is_fallback_group" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableIsFallbackGroup(v *bool) *GroupUpdate {
+	if v != nil {
+		_u.SetIsFallbackGroup(*v)
+	}
+	return _u
+}
+
 // SetFallbackGroupIDOnInvalidRequest sets the "fallback_group_id_on_invalid_request" field.
 func (_u *GroupUpdate) SetFallbackGroupIDOnInvalidRequest(v int64) *GroupUpdate {
 	_u.mutation.ResetFallbackGroupIDOnInvalidRequest()
@@ -1018,6 +1032,9 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.FallbackGroupIDCleared() {
 		_spec.ClearField(group.FieldFallbackGroupID, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.IsFallbackGroup(); ok {
+		_spec.SetField(group.FieldIsFallbackGroup, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.FallbackGroupIDOnInvalidRequest(); ok {
 		_spec.SetField(group.FieldFallbackGroupIDOnInvalidRequest, field.TypeInt64, value)
@@ -1772,6 +1789,20 @@ func (_u *GroupUpdateOne) ClearFallbackGroupID() *GroupUpdateOne {
 	return _u
 }
 
+// SetIsFallbackGroup sets the "is_fallback_group" field.
+func (_u *GroupUpdateOne) SetIsFallbackGroup(v bool) *GroupUpdateOne {
+	_u.mutation.SetIsFallbackGroup(v)
+	return _u
+}
+
+// SetNillableIsFallbackGroup sets the "is_fallback_group" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableIsFallbackGroup(v *bool) *GroupUpdateOne {
+	if v != nil {
+		_u.SetIsFallbackGroup(*v)
+	}
+	return _u
+}
+
 // SetFallbackGroupIDOnInvalidRequest sets the "fallback_group_id_on_invalid_request" field.
 func (_u *GroupUpdateOne) SetFallbackGroupIDOnInvalidRequest(v int64) *GroupUpdateOne {
 	_u.mutation.ResetFallbackGroupIDOnInvalidRequest()
@@ -2395,6 +2426,9 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	}
 	if _u.mutation.FallbackGroupIDCleared() {
 		_spec.ClearField(group.FieldFallbackGroupID, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.IsFallbackGroup(); ok {
+		_spec.SetField(group.FieldIsFallbackGroup, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.FallbackGroupIDOnInvalidRequest(); ok {
 		_spec.SetField(group.FieldFallbackGroupIDOnInvalidRequest, field.TypeInt64, value)

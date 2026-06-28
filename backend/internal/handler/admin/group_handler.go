@@ -99,6 +99,7 @@ type CreateGroupRequest struct {
 	ImagePrice4K                    *float64 `json:"image_price_4k"`
 	ClaudeCodeOnly                  bool     `json:"claude_code_only"`
 	FallbackGroupID                 *int64   `json:"fallback_group_id"`
+	IsFallbackGroup                 bool     `json:"is_fallback_group"`
 	FallbackGroupIDOnInvalidRequest *int64   `json:"fallback_group_id_on_invalid_request"`
 	// 模型路由配置（仅 anthropic 平台使用）
 	ModelRouting        map[string][]int64 `json:"model_routing"`
@@ -136,6 +137,7 @@ type UpdateGroupRequest struct {
 	ImagePrice4K                    *float64 `json:"image_price_4k"`
 	ClaudeCodeOnly                  *bool    `json:"claude_code_only"`
 	FallbackGroupID                 *int64   `json:"fallback_group_id"`
+	IsFallbackGroup                 *bool    `json:"is_fallback_group"`
 	FallbackGroupIDOnInvalidRequest *int64   `json:"fallback_group_id_on_invalid_request"`
 	// 模型路由配置（仅 anthropic 平台使用）
 	ModelRouting        map[string][]int64 `json:"model_routing"`
@@ -258,6 +260,7 @@ func (h *GroupHandler) Create(c *gin.Context) {
 		ImagePrice4K:                    req.ImagePrice4K,
 		ClaudeCodeOnly:                  req.ClaudeCodeOnly,
 		FallbackGroupID:                 req.FallbackGroupID,
+		IsFallbackGroup:                 req.IsFallbackGroup,
 		FallbackGroupIDOnInvalidRequest: req.FallbackGroupIDOnInvalidRequest,
 		ModelRouting:                    req.ModelRouting,
 		ModelRoutingEnabled:             req.ModelRoutingEnabled,
@@ -311,6 +314,7 @@ func (h *GroupHandler) Update(c *gin.Context) {
 		ImagePrice4K:                    req.ImagePrice4K,
 		ClaudeCodeOnly:                  req.ClaudeCodeOnly,
 		FallbackGroupID:                 req.FallbackGroupID,
+		IsFallbackGroup:                 req.IsFallbackGroup,
 		FallbackGroupIDOnInvalidRequest: req.FallbackGroupIDOnInvalidRequest,
 		ModelRouting:                    req.ModelRouting,
 		ModelRoutingEnabled:             req.ModelRoutingEnabled,

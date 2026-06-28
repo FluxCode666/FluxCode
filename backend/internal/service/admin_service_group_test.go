@@ -742,6 +742,26 @@ func TestAdminService_CreateGroup_InvalidRequestFallbackAllowsAntigravity(t *tes
 	require.Equal(t, fallbackID, *repo.created.FallbackGroupIDOnInvalidRequest)
 }
 
+func TestAdminService_CreateGroup_PersistsFallbackGroupFlag(t *testing.T) {
+	repo := &groupRepoStubForInvalidRequestFallback{}
+	svc := &adminServiceImpl{groupRepo: repo}
+
+	group, err := svc.CreateGroup(context.Background(), &CreateGroupInput{
+		Name:                 "fallback-openai",
+		Platform:             PlatformOpenAI,
+		SubscriptionType:     SubscriptionTypeStandard,
+		IsFallbackGroup:      true,
+		RateMultiplier:       1,
+		SystemPromptMode:     "inherit",
+		SupportedModelScopes: []string{},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, group)
+	require.NotNil(t, repo.created)
+	require.True(t, repo.created.IsFallbackGroup)
+}
+
 func TestAdminService_CreateGroup_InvalidRequestFallbackClearsOnZero(t *testing.T) {
 	zero := int64(0)
 	repo := &groupRepoStubForInvalidRequestFallback{}
