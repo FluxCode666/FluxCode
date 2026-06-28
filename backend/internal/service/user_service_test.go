@@ -52,6 +52,11 @@ func (m *mockUserRepo) DisableTotp(context.Context, int64) error                
 func (m *mockUserRepo) RemoveGroupFromUserAllowedGroups(context.Context, int64, int64) error {
 	return nil
 }
+func (m *mockUserRepo) GetByReferralCode(context.Context, string) (*User, error) { return &User{}, nil }
+func (m *mockUserRepo) UpdateReferralCode(context.Context, int64, string) error  { return nil }
+func (m *mockUserRepo) UpdateReferredBy(context.Context, int64, int64) error     { return nil }
+func (m *mockUserRepo) IsFirstRecharge(context.Context, int64) (bool, error)     { return false, nil }
+func (m *mockUserRepo) ListActiveUserIDs(context.Context) ([]int64, error)       { return nil, nil }
 
 // --- mock: APIKeyAuthCacheInvalidator ---
 

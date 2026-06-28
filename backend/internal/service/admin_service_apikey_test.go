@@ -42,6 +42,9 @@ func (s *userRepoStubForGroupUpdate) GetByEmail(context.Context, string) (*User,
 func (s *userRepoStubForGroupUpdate) GetFirstAdmin(context.Context) (*User, error) {
 	panic("unexpected")
 }
+func (s *userRepoStubForGroupUpdate) GetByReferralCode(context.Context, string) (*User, error) {
+	panic("unexpected")
+}
 func (s *userRepoStubForGroupUpdate) Update(context.Context, *User) error { panic("unexpected") }
 func (s *userRepoStubForGroupUpdate) Delete(context.Context, int64) error { panic("unexpected") }
 func (s *userRepoStubForGroupUpdate) List(context.Context, pagination.PaginationParams) ([]User, *pagination.PaginationResult, error) {
@@ -71,6 +74,18 @@ func (s *userRepoStubForGroupUpdate) UpdateTotpSecret(context.Context, int64, *s
 func (s *userRepoStubForGroupUpdate) EnableTotp(context.Context, int64) error  { panic("unexpected") }
 func (s *userRepoStubForGroupUpdate) DisableTotp(context.Context, int64) error { panic("unexpected") }
 func (s *userRepoStubForGroupUpdate) RemoveGroupFromUserAllowedGroups(context.Context, int64, int64) error {
+	panic("unexpected")
+}
+func (s *userRepoStubForGroupUpdate) UpdateReferralCode(context.Context, int64, string) error {
+	panic("unexpected")
+}
+func (s *userRepoStubForGroupUpdate) UpdateReferredBy(context.Context, int64, int64) error {
+	panic("unexpected")
+}
+func (s *userRepoStubForGroupUpdate) IsFirstRecharge(context.Context, int64) (bool, error) {
+	panic("unexpected")
+}
+func (s *userRepoStubForGroupUpdate) ListActiveUserIDs(context.Context) ([]int64, error) {
 	panic("unexpected")
 }
 

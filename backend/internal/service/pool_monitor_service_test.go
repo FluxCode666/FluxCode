@@ -377,8 +377,8 @@ func TestPoolMonitorService_DisabledProxyScheduleMode_ReadsConfig(t *testing.T) 
 func TestFilterAccountsByDisabledProxyScheduleMode_DirectMode_KeepsAll(t *testing.T) {
 	accounts := []Account{
 		{ID: 1, ProxyID: nil},
-		{ID: 2, ProxyID: ptrInt64(10), Proxy: &Proxy{ID: 10, Status: StatusActive}},
-		{ID: 3, ProxyID: ptrInt64(20), Proxy: &Proxy{ID: 20, Status: "disabled"}},
+		{ID: 2, ProxyID: ptrInt64ForTest(10), Proxy: &Proxy{ID: 10, Status: StatusActive}},
+		{ID: 3, ProxyID: ptrInt64ForTest(20), Proxy: &Proxy{ID: 20, Status: "disabled"}},
 	}
 	result := filterAccountsByDisabledProxyScheduleMode(accounts, DisabledProxyScheduleModeDirectWithoutProxy)
 	require.Len(t, result, 3)
@@ -396,7 +396,7 @@ func TestFilterAccountsByDisabledProxyScheduleMode_ExcludeMode_KeepsNoProxy(t *t
 func TestFilterAccountsByDisabledProxyScheduleMode_ExcludeMode_KeepsActiveProxy(t *testing.T) {
 	accounts := []Account{
 		{ID: 1, ProxyID: nil},
-		{ID: 2, ProxyID: ptrInt64(10), Proxy: &Proxy{ID: 10, Status: StatusActive}},
+		{ID: 2, ProxyID: ptrInt64ForTest(10), Proxy: &Proxy{ID: 10, Status: StatusActive}},
 	}
 	result := filterAccountsByDisabledProxyScheduleMode(accounts, DisabledProxyScheduleModeExcludeAccount)
 	require.Len(t, result, 2)
@@ -405,9 +405,9 @@ func TestFilterAccountsByDisabledProxyScheduleMode_ExcludeMode_KeepsActiveProxy(
 func TestFilterAccountsByDisabledProxyScheduleMode_ExcludeMode_DropsInactiveProxy(t *testing.T) {
 	accounts := []Account{
 		{ID: 1, ProxyID: nil},
-		{ID: 2, ProxyID: ptrInt64(10), Proxy: &Proxy{ID: 10, Status: StatusActive}},
-		{ID: 3, ProxyID: ptrInt64(20), Proxy: &Proxy{ID: 20, Status: "disabled"}},
-		{ID: 4, ProxyID: ptrInt64(30), Proxy: nil}, // dangling proxy reference
+		{ID: 2, ProxyID: ptrInt64ForTest(10), Proxy: &Proxy{ID: 10, Status: StatusActive}},
+		{ID: 3, ProxyID: ptrInt64ForTest(20), Proxy: &Proxy{ID: 20, Status: "disabled"}},
+		{ID: 4, ProxyID: ptrInt64ForTest(30), Proxy: nil}, // dangling proxy reference
 	}
 	result := filterAccountsByDisabledProxyScheduleMode(accounts, DisabledProxyScheduleModeExcludeAccount)
 	require.Len(t, result, 2)
@@ -417,7 +417,7 @@ func TestFilterAccountsByDisabledProxyScheduleMode_ExcludeMode_DropsInactiveProx
 
 func TestFilterAccountsByDisabledProxyScheduleMode_UnrecognizedMode_KeepsAll(t *testing.T) {
 	accounts := []Account{
-		{ID: 1, ProxyID: ptrInt64(10), Proxy: &Proxy{ID: 10, Status: "disabled"}},
+		{ID: 1, ProxyID: ptrInt64ForTest(10), Proxy: &Proxy{ID: 10, Status: "disabled"}},
 		{ID: 2, ProxyID: nil},
 	}
 	result := filterAccountsByDisabledProxyScheduleMode(accounts, "unknown_mode")
@@ -436,7 +436,7 @@ func (s *stubDisabledProxyScheduleModeProvider) DisabledProxyScheduleMode(_ cont
 func TestOpenAIGatewayService_ApplyDisabledProxyScheduleMode_NilProvider_ReturnsAll(t *testing.T) {
 	svc := &OpenAIGatewayService{}
 	accounts := []Account{
-		{ID: 1, ProxyID: ptrInt64(10), Proxy: &Proxy{ID: 10, Status: "disabled"}},
+		{ID: 1, ProxyID: ptrInt64ForTest(10), Proxy: &Proxy{ID: 10, Status: "disabled"}},
 		{ID: 2, ProxyID: nil},
 	}
 	result := svc.applyDisabledProxyScheduleMode(context.Background(), accounts)
@@ -449,9 +449,9 @@ func TestOpenAIGatewayService_ApplyDisabledProxyScheduleMode_ExcludeMode_DropsDi
 	}
 	accounts := []Account{
 		{ID: 1, ProxyID: nil},
-		{ID: 2, ProxyID: ptrInt64(10), Proxy: &Proxy{ID: 10, Status: StatusActive}},
-		{ID: 3, ProxyID: ptrInt64(20), Proxy: &Proxy{ID: 20, Status: "disabled"}},
-		{ID: 4, ProxyID: ptrInt64(30), Proxy: nil},
+		{ID: 2, ProxyID: ptrInt64ForTest(10), Proxy: &Proxy{ID: 10, Status: StatusActive}},
+		{ID: 3, ProxyID: ptrInt64ForTest(20), Proxy: &Proxy{ID: 20, Status: "disabled"}},
+		{ID: 4, ProxyID: ptrInt64ForTest(30), Proxy: nil},
 	}
 	result := svc.applyDisabledProxyScheduleMode(context.Background(), accounts)
 	require.Len(t, result, 2)
@@ -464,7 +464,7 @@ func TestOpenAIGatewayService_ApplyDisabledProxyScheduleMode_DirectMode_KeepsAll
 		disabledProxyMode: &stubDisabledProxyScheduleModeProvider{mode: DisabledProxyScheduleModeDirectWithoutProxy},
 	}
 	accounts := []Account{
-		{ID: 1, ProxyID: ptrInt64(10), Proxy: &Proxy{ID: 10, Status: "disabled"}},
+		{ID: 1, ProxyID: ptrInt64ForTest(10), Proxy: &Proxy{ID: 10, Status: "disabled"}},
 		{ID: 2, ProxyID: nil},
 	}
 	result := svc.applyDisabledProxyScheduleMode(context.Background(), accounts)
@@ -474,7 +474,7 @@ func TestOpenAIGatewayService_ApplyDisabledProxyScheduleMode_DirectMode_KeepsAll
 func TestGatewayService_ApplyDisabledProxyScheduleMode_NilProvider_ReturnsAll(t *testing.T) {
 	svc := &GatewayService{}
 	accounts := []Account{
-		{ID: 1, ProxyID: ptrInt64(10), Proxy: &Proxy{ID: 10, Status: "disabled"}},
+		{ID: 1, ProxyID: ptrInt64ForTest(10), Proxy: &Proxy{ID: 10, Status: "disabled"}},
 	}
 	result := svc.applyDisabledProxyScheduleMode(context.Background(), accounts)
 	require.Len(t, result, 1)
@@ -486,8 +486,8 @@ func TestGatewayService_ApplyDisabledProxyScheduleMode_ExcludeMode_DropsDisabled
 	}
 	accounts := []Account{
 		{ID: 1, ProxyID: nil},
-		{ID: 2, ProxyID: ptrInt64(10), Proxy: &Proxy{ID: 10, Status: StatusActive}},
-		{ID: 3, ProxyID: ptrInt64(20), Proxy: &Proxy{ID: 20, Status: "disabled"}},
+		{ID: 2, ProxyID: ptrInt64ForTest(10), Proxy: &Proxy{ID: 10, Status: StatusActive}},
+		{ID: 3, ProxyID: ptrInt64ForTest(20), Proxy: &Proxy{ID: 20, Status: "disabled"}},
 	}
 	result := svc.applyDisabledProxyScheduleMode(context.Background(), accounts)
 	require.Len(t, result, 2)
@@ -512,7 +512,7 @@ func TestIsAccountExcludedByDisabledProxy_NilAccount(t *testing.T) {
 }
 
 func TestIsAccountExcludedByDisabledProxy_DirectMode_NeverExcluded(t *testing.T) {
-	a := &Account{ID: 1, ProxyID: ptrInt64(10), Proxy: &Proxy{ID: 10, Status: "disabled"}}
+	a := &Account{ID: 1, ProxyID: ptrInt64ForTest(10), Proxy: &Proxy{ID: 10, Status: "disabled"}}
 	require.False(t, isAccountExcludedByDisabledProxy(a, DisabledProxyScheduleModeDirectWithoutProxy))
 }
 
@@ -522,17 +522,17 @@ func TestIsAccountExcludedByDisabledProxy_ExcludeMode_NoProxy(t *testing.T) {
 }
 
 func TestIsAccountExcludedByDisabledProxy_ExcludeMode_ActiveProxy(t *testing.T) {
-	a := &Account{ID: 1, ProxyID: ptrInt64(10), Proxy: &Proxy{ID: 10, Status: StatusActive}}
+	a := &Account{ID: 1, ProxyID: ptrInt64ForTest(10), Proxy: &Proxy{ID: 10, Status: StatusActive}}
 	require.False(t, isAccountExcludedByDisabledProxy(a, DisabledProxyScheduleModeExcludeAccount))
 }
 
 func TestIsAccountExcludedByDisabledProxy_ExcludeMode_DisabledProxy(t *testing.T) {
-	a := &Account{ID: 1, ProxyID: ptrInt64(10), Proxy: &Proxy{ID: 10, Status: "disabled"}}
+	a := &Account{ID: 1, ProxyID: ptrInt64ForTest(10), Proxy: &Proxy{ID: 10, Status: "disabled"}}
 	require.True(t, isAccountExcludedByDisabledProxy(a, DisabledProxyScheduleModeExcludeAccount))
 }
 
 func TestIsAccountExcludedByDisabledProxy_ExcludeMode_NilProxy(t *testing.T) {
-	a := &Account{ID: 1, ProxyID: ptrInt64(10), Proxy: nil}
+	a := &Account{ID: 1, ProxyID: ptrInt64ForTest(10), Proxy: nil}
 	require.True(t, isAccountExcludedByDisabledProxy(a, DisabledProxyScheduleModeExcludeAccount))
 }
 
@@ -542,7 +542,7 @@ func TestIsAccountExcludedByDisabledProxy_ExcludeMode_NilProxy(t *testing.T) {
 
 func TestOpenAIGatewayService_IsAccountBlockedByDisabledProxy_NilProvider(t *testing.T) {
 	svc := &OpenAIGatewayService{}
-	a := &Account{ID: 1, ProxyID: ptrInt64(10), Proxy: &Proxy{ID: 10, Status: "disabled"}}
+	a := &Account{ID: 1, ProxyID: ptrInt64ForTest(10), Proxy: &Proxy{ID: 10, Status: "disabled"}}
 	require.False(t, svc.isAccountBlockedByDisabledProxy(context.Background(), a))
 }
 
@@ -550,7 +550,7 @@ func TestOpenAIGatewayService_IsAccountBlockedByDisabledProxy_ExcludeMode_Blocks
 	svc := &OpenAIGatewayService{
 		disabledProxyMode: &stubDisabledProxyScheduleModeProvider{mode: DisabledProxyScheduleModeExcludeAccount},
 	}
-	a := &Account{ID: 1, ProxyID: ptrInt64(10), Proxy: &Proxy{ID: 10, Status: "disabled"}}
+	a := &Account{ID: 1, ProxyID: ptrInt64ForTest(10), Proxy: &Proxy{ID: 10, Status: "disabled"}}
 	require.True(t, svc.isAccountBlockedByDisabledProxy(context.Background(), a))
 }
 
@@ -558,7 +558,7 @@ func TestOpenAIGatewayService_IsAccountBlockedByDisabledProxy_ExcludeMode_Allows
 	svc := &OpenAIGatewayService{
 		disabledProxyMode: &stubDisabledProxyScheduleModeProvider{mode: DisabledProxyScheduleModeExcludeAccount},
 	}
-	a := &Account{ID: 1, ProxyID: ptrInt64(10), Proxy: &Proxy{ID: 10, Status: StatusActive}}
+	a := &Account{ID: 1, ProxyID: ptrInt64ForTest(10), Proxy: &Proxy{ID: 10, Status: StatusActive}}
 	require.False(t, svc.isAccountBlockedByDisabledProxy(context.Background(), a))
 }
 
@@ -569,7 +569,7 @@ func TestOpenAIGatewayService_IsAccountBlockedByDisabledProxy_ExcludeMode_Allows
 func TestGeminiMessagesCompatService_ApplyDisabledProxyScheduleMode_NilProvider(t *testing.T) {
 	svc := &GeminiMessagesCompatService{}
 	accounts := []Account{
-		{ID: 1, ProxyID: ptrInt64(10), Proxy: &Proxy{ID: 10, Status: "disabled"}},
+		{ID: 1, ProxyID: ptrInt64ForTest(10), Proxy: &Proxy{ID: 10, Status: "disabled"}},
 	}
 	result := svc.applyDisabledProxyScheduleMode(context.Background(), accounts)
 	require.Len(t, result, 1)
@@ -581,8 +581,8 @@ func TestGeminiMessagesCompatService_ApplyDisabledProxyScheduleMode_ExcludeMode(
 	}
 	accounts := []Account{
 		{ID: 1, ProxyID: nil},
-		{ID: 2, ProxyID: ptrInt64(10), Proxy: &Proxy{ID: 10, Status: StatusActive}},
-		{ID: 3, ProxyID: ptrInt64(20), Proxy: &Proxy{ID: 20, Status: "disabled"}},
+		{ID: 2, ProxyID: ptrInt64ForTest(10), Proxy: &Proxy{ID: 10, Status: StatusActive}},
+		{ID: 3, ProxyID: ptrInt64ForTest(20), Proxy: &Proxy{ID: 20, Status: "disabled"}},
 	}
 	result := svc.applyDisabledProxyScheduleMode(context.Background(), accounts)
 	require.Len(t, result, 2)
@@ -596,7 +596,7 @@ func TestGeminiMessagesCompatService_ApplyDisabledProxyScheduleMode_ExcludeMode(
 
 func TestGatewayService_IsAccountBlockedByDisabledProxy_NilProvider(t *testing.T) {
 	svc := &GatewayService{}
-	a := &Account{ID: 1, ProxyID: ptrInt64(10), Proxy: &Proxy{ID: 10, Status: "disabled"}}
+	a := &Account{ID: 1, ProxyID: ptrInt64ForTest(10), Proxy: &Proxy{ID: 10, Status: "disabled"}}
 	require.False(t, svc.isAccountBlockedByDisabledProxy(context.Background(), a))
 }
 
@@ -604,7 +604,7 @@ func TestGatewayService_IsAccountBlockedByDisabledProxy_ExcludeMode_Blocks(t *te
 	svc := &GatewayService{
 		disabledProxyMode: &stubDisabledProxyScheduleModeProvider{mode: DisabledProxyScheduleModeExcludeAccount},
 	}
-	a := &Account{ID: 1, ProxyID: ptrInt64(10), Proxy: &Proxy{ID: 10, Status: "disabled"}}
+	a := &Account{ID: 1, ProxyID: ptrInt64ForTest(10), Proxy: &Proxy{ID: 10, Status: "disabled"}}
 	require.True(t, svc.isAccountBlockedByDisabledProxy(context.Background(), a))
 }
 
@@ -612,7 +612,7 @@ func TestGatewayService_IsAccountBlockedByDisabledProxy_ExcludeMode_AllowsActive
 	svc := &GatewayService{
 		disabledProxyMode: &stubDisabledProxyScheduleModeProvider{mode: DisabledProxyScheduleModeExcludeAccount},
 	}
-	a := &Account{ID: 1, ProxyID: ptrInt64(10), Proxy: &Proxy{ID: 10, Status: StatusActive}}
+	a := &Account{ID: 1, ProxyID: ptrInt64ForTest(10), Proxy: &Proxy{ID: 10, Status: StatusActive}}
 	require.False(t, svc.isAccountBlockedByDisabledProxy(context.Background(), a))
 }
 
@@ -622,7 +622,7 @@ func TestGatewayService_IsAccountBlockedByDisabledProxy_ExcludeMode_AllowsActive
 
 func TestGeminiMessagesCompatService_IsAccountBlockedByDisabledProxy_NilProvider(t *testing.T) {
 	svc := &GeminiMessagesCompatService{}
-	a := &Account{ID: 1, ProxyID: ptrInt64(10), Proxy: &Proxy{ID: 10, Status: "disabled"}}
+	a := &Account{ID: 1, ProxyID: ptrInt64ForTest(10), Proxy: &Proxy{ID: 10, Status: "disabled"}}
 	require.False(t, svc.isAccountBlockedByDisabledProxy(context.Background(), a))
 }
 
@@ -630,7 +630,7 @@ func TestGeminiMessagesCompatService_IsAccountBlockedByDisabledProxy_ExcludeMode
 	svc := &GeminiMessagesCompatService{
 		disabledProxyMode: &stubDisabledProxyScheduleModeProvider{mode: DisabledProxyScheduleModeExcludeAccount},
 	}
-	a := &Account{ID: 1, ProxyID: ptrInt64(10), Proxy: &Proxy{ID: 10, Status: "disabled"}}
+	a := &Account{ID: 1, ProxyID: ptrInt64ForTest(10), Proxy: &Proxy{ID: 10, Status: "disabled"}}
 	require.True(t, svc.isAccountBlockedByDisabledProxy(context.Background(), a))
 }
 
@@ -644,17 +644,17 @@ func TestEffectiveProxyURL_NilProxy(t *testing.T) {
 }
 
 func TestEffectiveProxyURL_ActiveProxy(t *testing.T) {
-	a := &Account{ID: 1, ProxyID: ptrInt64(10), Proxy: &Proxy{ID: 10, Protocol: "http", Host: "127.0.0.1", Port: 8080, Status: StatusActive}}
+	a := &Account{ID: 1, ProxyID: ptrInt64ForTest(10), Proxy: &Proxy{ID: 10, Protocol: "http", Host: "127.0.0.1", Port: 8080, Status: StatusActive}}
 	require.Equal(t, "http://127.0.0.1:8080", a.EffectiveProxyURL())
 }
 
 func TestEffectiveProxyURL_DisabledProxy(t *testing.T) {
-	a := &Account{ID: 1, ProxyID: ptrInt64(10), Proxy: &Proxy{ID: 10, Protocol: "http", Host: "127.0.0.1", Port: 8080, Status: "disabled"}}
+	a := &Account{ID: 1, ProxyID: ptrInt64ForTest(10), Proxy: &Proxy{ID: 10, Protocol: "http", Host: "127.0.0.1", Port: 8080, Status: "disabled"}}
 	require.Equal(t, "", a.EffectiveProxyURL(), "disabled proxy should return empty string (direct connection)")
 }
 
 func TestEffectiveProxyURL_DanglingProxyID(t *testing.T) {
-	a := &Account{ID: 1, ProxyID: ptrInt64(10), Proxy: nil}
+	a := &Account{ID: 1, ProxyID: ptrInt64ForTest(10), Proxy: nil}
 	require.Equal(t, "", a.EffectiveProxyURL(), "dangling proxy reference should return empty string")
 }
 
@@ -663,4 +663,4 @@ func TestEffectiveProxyURL_NilAccount(t *testing.T) {
 	require.Equal(t, "", a.EffectiveProxyURL())
 }
 
-func ptrInt64(i int64) *int64 { return &i }
+func ptrInt64ForTest(i int64) *int64 { return &i }

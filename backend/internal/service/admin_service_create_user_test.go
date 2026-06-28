@@ -102,13 +102,13 @@ func TestAdminService_CreateUser_WithTieredSalesCommissionConfig(t *testing.T) {
 
 	minMonthlySales := 100.0
 	input := &CreateUserInput{
-		Email:                         "tiered-user@test.com",
-		Password:                      "strong-pass",
-		IsSales:                       true,
-		SalesCommissionMode:           SalesCommissionModeTiered,
+		Email:                          "tiered-user@test.com",
+		Password:                       "strong-pass",
+		IsSales:                        true,
+		SalesCommissionMode:            SalesCommissionModeTiered,
 		SalesCommissionMinMonthlySales: minMonthlySales,
 		SalesCommissionTiers: []SalesCommissionTier{
-			{MonthSalesFromCNY: 0, MonthSalesToCNY: float64Ptr(500), CommissionRate: 10},
+			{MonthSalesFromCNY: 0, MonthSalesToCNY: float64PtrForTest(500), CommissionRate: 10},
 			{MonthSalesFromCNY: 500, CommissionRate: 15},
 		},
 	}
@@ -130,6 +130,6 @@ func TestAdminService_CreateUser_WithTieredSalesCommissionConfig(t *testing.T) {
 	require.Equal(t, 2, repo.created[0].SalesCommissionTiers[1].SortOrder)
 }
 
-func float64Ptr(v float64) *float64 {
+func float64PtrForTest(v float64) *float64 {
 	return &v
 }
