@@ -1,4 +1,5 @@
 import type { AdminGroup } from '@/types'
+export { isApiKeyBindableGroup } from '@/utils/apiKeyGroupSelection'
 
 export interface FallbackOption {
   value: number | null
@@ -13,12 +14,6 @@ export function canEnableFallbackGroup(
     (group.platform === 'openai' || group.platform === 'anthropic') &&
     group.subscription_type === 'standard'
   )
-}
-
-export function isApiKeyBindableGroup(
-  group: Pick<AdminGroup, 'is_fallback_group'>,
-): boolean {
-  return !group.is_fallback_group
 }
 
 export function buildFallbackTargetOptions(
