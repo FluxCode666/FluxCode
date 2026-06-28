@@ -1042,7 +1042,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		MessagesDispatchModelConfig:     normalizeOpenAIMessagesDispatchModelConfig(input.MessagesDispatchModelConfig),
 	}
 	sanitizeGroupMessagesDispatchFields(group)
-	if err := s.validateFallbackGroupFlag(ctx, group); err != nil {
+	if err := s.validateFallbackGroupFlag(ctx, group, false); err != nil {
 		return nil, err
 	}
 	if group.FallbackGroupID != nil {
@@ -1123,7 +1123,7 @@ func hasConfiguredFallbackGroupID(groupID *int64) bool {
 	return groupID != nil && *groupID > 0
 }
 
-func (s *adminServiceImpl) validateFallbackGroupFlag(ctx context.Context, group *Group) error {
+func (s *adminServiceImpl) validateFallbackGroupFlag(ctx context.Context, group *Group, previousIsFallbackGroup bool) error {
 	if group == nil || !group.IsFallbackGroup {
 		return nil
 	}
@@ -1136,7 +1136,7 @@ func (s *adminServiceImpl) validateFallbackGroupFlag(ctx context.Context, group 
 	if hasConfiguredFallbackGroupID(group.FallbackGroupID) {
 		return fmt.Errorf("fallback group cannot have fallback_group_id configured")
 	}
-	if group.ID > 0 && s.apiKeyRepo != nil {
+	if group.ID > 0 && !previousIsFallbackGroup && s.apiKeyRepo != nil {
 		count, err := s.apiKeyRepo.CountByGroupID(ctx, group.ID)
 		if err != nil {
 			return fmt.Errorf("count api keys by group: %w", err)
@@ -1231,6 +1231,7 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	if err != nil {
 		return nil, err
 	}
+	previousIsFallbackGroup := group.IsFallbackGroup
 
 	if input.Name != "" {
 		group.Name = input.Name
@@ -1300,7 +1301,7 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	if input.IsFallbackGroup != nil {
 		group.IsFallbackGroup = *input.IsFallbackGroup
 	}
-	if err := s.validateFallbackGroupFlag(ctx, group); err != nil {
+	if err := s.validateFallbackGroupFlag(ctx, group, previousIsFallbackGroup); err != nil {
 		return nil, err
 	}
 	if hasConfiguredFallbackGroupID(group.FallbackGroupID) {

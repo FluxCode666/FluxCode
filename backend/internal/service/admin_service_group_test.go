@@ -1243,6 +1243,58 @@ func TestAdminService_UpdateGroup_FallbackGroupFlagRejectsBoundAPIKeys(t *testin
 	require.Nil(t, repo.updated)
 }
 
+func TestAdminService_UpdateGroup_FallbackGroupFlagAllowsNonEnablementEdits(t *testing.T) {
+	existing := &Group{
+		ID:               103,
+		Name:             "openai-existing",
+		Platform:         PlatformOpenAI,
+		SubscriptionType: SubscriptionTypeStandard,
+		Status:           StatusActive,
+		IsFallbackGroup:  true,
+	}
+	repo := &groupRepoStubForInvalidRequestFallback{
+		groups: map[int64]*Group{
+			existing.ID: existing,
+		},
+	}
+	apiKeyRepo := &apiKeyRepoStubForFallbackGroupValidation{
+		counts: map[int64]int64{
+			existing.ID: 2,
+		},
+	}
+	svc := &adminServiceImpl{groupRepo: repo, apiKeyRepo: apiKeyRepo}
+
+	t.Run("keep nil fallback flag", func(t *testing.T) {
+		group, err := svc.UpdateGroup(context.Background(), existing.ID, &UpdateGroupInput{
+			Name:   "openai-existing-renamed",
+			Status: StatusActive,
+		})
+
+		require.NoError(t, err)
+		require.NotNil(t, group)
+		require.NotNil(t, repo.updated)
+		require.Equal(t, "openai-existing-renamed", repo.updated.Name)
+		require.True(t, repo.updated.IsFallbackGroup)
+	})
+
+	repo.updated = nil
+
+	t.Run("explicit true does not revalidate bindings", func(t *testing.T) {
+		enable := true
+		group, err := svc.UpdateGroup(context.Background(), existing.ID, &UpdateGroupInput{
+			Name:            "openai-existing-retouched",
+			Status:          StatusActive,
+			IsFallbackGroup: &enable,
+		})
+
+		require.NoError(t, err)
+		require.NotNil(t, group)
+		require.NotNil(t, repo.updated)
+		require.Equal(t, "openai-existing-retouched", repo.updated.Name)
+		require.True(t, repo.updated.IsFallbackGroup)
+	})
+}
+
 func TestAdminService_UpdateGroup_FallbackGroupFlagRejectsExistingFallbackTarget(t *testing.T) {
 	fallbackID := int64(202)
 	existing := &Group{
