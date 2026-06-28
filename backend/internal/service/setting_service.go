@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"net/url"
 	"sort"
 	"strconv"
@@ -35,6 +36,7 @@ var (
 )
 
 const DefaultOpenAIImageURLCacheTTLHours = 72
+const DefaultDashboardFireworksThreshold = 20.0
 
 type SettingRepository interface {
 	Get(ctx context.Context, key string) (*Setting, error)
@@ -234,6 +236,8 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyBackendModeEnabled,
 		SettingKeyAttractPopupTitle,
 		SettingKeyAttractPopupMarkdown,
+		SettingKeyDashboardFireworksEnabled,
+		SettingKeyDashboardFireworksThreshold,
 		SettingPaymentEnabled,
 		SettingKeyOIDCConnectEnabled,
 		SettingKeyOIDCConnectProviderName,
@@ -316,6 +320,8 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		BackendModeEnabled:               settings[SettingKeyBackendModeEnabled] == "true",
 		AttractPopupTitle:                settings[SettingKeyAttractPopupTitle],
 		AttractPopupMarkdown:             settings[SettingKeyAttractPopupMarkdown],
+		DashboardFireworksEnabled:        settings[SettingKeyDashboardFireworksEnabled] != "false",
+		DashboardFireworksThreshold:      parseDashboardFireworksThreshold(settings[SettingKeyDashboardFireworksThreshold]),
 		PaymentEnabled:                   settings[SettingPaymentEnabled] == "true",
 		OIDCOAuthEnabled:                 oidcEnabled,
 		OIDCOAuthProviderName:            oidcProviderName,
@@ -381,6 +387,8 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		BackendModeEnabled               bool            `json:"backend_mode_enabled"`
 		AttractPopupTitle                string          `json:"attract_popup_title,omitempty"`
 		AttractPopupMarkdown             string          `json:"attract_popup_markdown,omitempty"`
+		DashboardFireworksEnabled        bool            `json:"dashboard_fireworks_enabled"`
+		DashboardFireworksThreshold      float64         `json:"dashboard_fireworks_threshold"`
 		PaymentEnabled                   bool            `json:"payment_enabled"`
 		OIDCOAuthEnabled                 bool            `json:"oidc_oauth_enabled"`
 		OIDCOAuthProviderName            string          `json:"oidc_oauth_provider_name"`
@@ -419,6 +427,8 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		BackendModeEnabled:               settings.BackendModeEnabled,
 		AttractPopupTitle:                settings.AttractPopupTitle,
 		AttractPopupMarkdown:             settings.AttractPopupMarkdown,
+		DashboardFireworksEnabled:        settings.DashboardFireworksEnabled,
+		DashboardFireworksThreshold:      settings.DashboardFireworksThreshold,
 		PaymentEnabled:                   settings.PaymentEnabled,
 		OIDCOAuthEnabled:                 settings.OIDCOAuthEnabled,
 		OIDCOAuthProviderName:            settings.OIDCOAuthProviderName,
@@ -502,6 +512,14 @@ func parseIntSetting(raw string, fallback int) int {
 	value, err := strconv.Atoi(strings.TrimSpace(raw))
 	if err != nil {
 		return fallback
+	}
+	return value
+}
+
+func parseDashboardFireworksThreshold(raw string) float64 {
+	value, err := strconv.ParseFloat(strings.TrimSpace(raw), 64)
+	if err != nil || value < 0 || math.IsNaN(value) || math.IsInf(value, 0) {
+		return DefaultDashboardFireworksThreshold
 	}
 	return value
 }
@@ -782,6 +800,13 @@ func (s *SettingService) UpdateSettings(ctx context.Context, settings *SystemSet
 	updates[SettingKeyRedeemDeliveryText] = settings.RedeemDeliveryText
 	updates[SettingKeyAttractPopupTitle] = settings.AttractPopupTitle
 	updates[SettingKeyAttractPopupMarkdown] = settings.AttractPopupMarkdown
+	updates[SettingKeyDashboardFireworksEnabled] = strconv.FormatBool(settings.DashboardFireworksEnabled)
+	updates[SettingKeyDashboardFireworksThreshold] = strconv.FormatFloat(
+		parseDashboardFireworksThreshold(strconv.FormatFloat(settings.DashboardFireworksThreshold, 'f', -1, 64)),
+		'f',
+		-1,
+		64,
+	)
 
 	// Gateway forwarding behavior
 	updates[SettingKeyEnableFingerprintUnification] = strconv.FormatBool(settings.EnableFingerprintUnification)
@@ -1404,6 +1429,10 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 
 		// 分组隔离（默认不允许未分组 Key 调度）
 		SettingKeyAllowUngroupedKeyScheduling: "false",
+
+		// Dashboard fireworks
+		SettingKeyDashboardFireworksEnabled:   "true",
+		SettingKeyDashboardFireworksThreshold: strconv.FormatFloat(DefaultDashboardFireworksThreshold, 'f', -1, 64),
 	}
 
 	return s.settingRepo.SetMultiple(ctx, defaults)
@@ -1713,6 +1742,8 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	result.RedeemDeliveryText = s.getStringOrDefault(settings, SettingKeyRedeemDeliveryText, "${redeemCodes}")
 	result.AttractPopupTitle = settings[SettingKeyAttractPopupTitle]
 	result.AttractPopupMarkdown = settings[SettingKeyAttractPopupMarkdown]
+	result.DashboardFireworksEnabled = settings[SettingKeyDashboardFireworksEnabled] != "false"
+	result.DashboardFireworksThreshold = parseDashboardFireworksThreshold(settings[SettingKeyDashboardFireworksThreshold])
 
 	// Gateway forwarding behavior (defaults: fingerprint=true, metadata_passthrough=false, cch_signing=false)
 	if v, ok := settings[SettingKeyEnableFingerprintUnification]; ok && v != "" {

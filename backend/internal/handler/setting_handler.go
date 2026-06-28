@@ -63,6 +63,8 @@ func (h *SettingHandler) GetPublicSettings(c *gin.Context) {
 		BackendModeEnabled:               settings.BackendModeEnabled,
 		AttractPopupTitle:                settings.AttractPopupTitle,
 		AttractPopupMarkdown:             settings.AttractPopupMarkdown,
+		DashboardFireworksEnabled:        settings.DashboardFireworksEnabled,
+		DashboardFireworksThreshold:      settings.DashboardFireworksThreshold,
 		PaymentEnabled:                   settings.PaymentEnabled,
 		Version:                          h.version,
 		BalanceLowNotifyEnabled:          settings.BalanceLowNotifyEnabled,

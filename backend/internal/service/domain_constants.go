@@ -316,6 +316,10 @@ const (
 	// SettingKeyAttractPopupMarkdown 引流弹窗 Markdown 内容
 	SettingKeyAttractPopupMarkdown = "attract_popup_markdown"
 
+	// Dashboard fireworks
+	SettingKeyDashboardFireworksEnabled   = "dashboard_fireworks_enabled"
+	SettingKeyDashboardFireworksThreshold = "dashboard_fireworks_threshold"
+
 	// Gateway Forwarding Behavior
 	// SettingKeyEnableFingerprintUnification 是否统一 OAuth 账号的 X-Stainless-* 指纹头（默认 true）
 	SettingKeyEnableFingerprintUnification = "enable_fingerprint_unification"

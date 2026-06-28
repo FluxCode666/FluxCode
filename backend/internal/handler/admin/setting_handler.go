@@ -194,6 +194,8 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		RedeemDeliveryText:                   settings.RedeemDeliveryText,
 		AttractPopupTitle:                    settings.AttractPopupTitle,
 		AttractPopupMarkdown:                 settings.AttractPopupMarkdown,
+		DashboardFireworksEnabled:            settings.DashboardFireworksEnabled,
+		DashboardFireworksThreshold:          settings.DashboardFireworksThreshold,
 		EnableFingerprintUnification:         settings.EnableFingerprintUnification,
 		EnableMetadataPassthrough:            settings.EnableMetadataPassthrough,
 		EnableCCHSigning:                     settings.EnableCCHSigning,
@@ -357,6 +359,9 @@ type UpdateSettingsRequest struct {
 	RedeemDeliveryText   string `json:"redeem_delivery_text"`
 	AttractPopupTitle    string `json:"attract_popup_title"`
 	AttractPopupMarkdown string `json:"attract_popup_markdown"`
+
+	DashboardFireworksEnabled   *bool    `json:"dashboard_fireworks_enabled"`
+	DashboardFireworksThreshold *float64 `json:"dashboard_fireworks_threshold"`
 
 	// Gateway forwarding behavior
 	EnableFingerprintUnification *bool `json:"enable_fingerprint_unification"`
@@ -981,6 +986,18 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		RedeemDeliveryText:           req.RedeemDeliveryText,
 		AttractPopupTitle:            req.AttractPopupTitle,
 		AttractPopupMarkdown:         req.AttractPopupMarkdown,
+		DashboardFireworksEnabled: func() bool {
+			if req.DashboardFireworksEnabled != nil {
+				return *req.DashboardFireworksEnabled
+			}
+			return previousSettings.DashboardFireworksEnabled
+		}(),
+		DashboardFireworksThreshold: func() float64 {
+			if req.DashboardFireworksThreshold != nil {
+				return *req.DashboardFireworksThreshold
+			}
+			return previousSettings.DashboardFireworksThreshold
+		}(),
 		OpsMonitoringEnabled: func() bool {
 			if req.OpsMonitoringEnabled != nil {
 				return *req.OpsMonitoringEnabled
@@ -1233,6 +1250,8 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		RedeemDeliveryText:                   updatedSettings.RedeemDeliveryText,
 		AttractPopupTitle:                    updatedSettings.AttractPopupTitle,
 		AttractPopupMarkdown:                 updatedSettings.AttractPopupMarkdown,
+		DashboardFireworksEnabled:            updatedSettings.DashboardFireworksEnabled,
+		DashboardFireworksThreshold:          updatedSettings.DashboardFireworksThreshold,
 		EnableFingerprintUnification:         updatedSettings.EnableFingerprintUnification,
 		EnableMetadataPassthrough:            updatedSettings.EnableMetadataPassthrough,
 		EnableCCHSigning:                     updatedSettings.EnableCCHSigning,
@@ -1568,6 +1587,12 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	}
 	if before.AttractPopupMarkdown != after.AttractPopupMarkdown {
 		changed = append(changed, "attract_popup_markdown")
+	}
+	if before.DashboardFireworksEnabled != after.DashboardFireworksEnabled {
+		changed = append(changed, "dashboard_fireworks_enabled")
+	}
+	if before.DashboardFireworksThreshold != after.DashboardFireworksThreshold {
+		changed = append(changed, "dashboard_fireworks_threshold")
 	}
 	if before.CustomEndpoints != after.CustomEndpoints {
 		changed = append(changed, "custom_endpoints")

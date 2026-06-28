@@ -5462,6 +5462,14 @@ export default {
         defaultInterval: 'Default check interval (seconds)',
         defaultIntervalHint: 'Default interval used when creating monitors. Range: 15 - 3600 seconds.'
       },
+      dashboardFireworks: {
+        title: 'Dashboard Fireworks',
+        description: 'Play a one-time desktop fireworks animation when today\'s actual spend is above the threshold.',
+        enabled: 'Enable Dashboard Fireworks',
+        enabledHint: 'Desktop only. H5/mobile never plays the animation.',
+        threshold: 'Trigger Threshold (USD)',
+        thresholdHint: 'Triggers when today\'s actual spend is higher than this amount. Each user sees it once per day.'
+      },
       registration: {
         title: 'Registration Settings',
         description: 'Control user registration and verification',

@@ -145,6 +145,9 @@ type SystemSettings struct {
 	AttractPopupTitle    string `json:"attract_popup_title"`
 	AttractPopupMarkdown string `json:"attract_popup_markdown"`
 
+	DashboardFireworksEnabled   bool    `json:"dashboard_fireworks_enabled"`
+	DashboardFireworksThreshold float64 `json:"dashboard_fireworks_threshold"`
+
 	// Gateway forwarding behavior
 	EnableFingerprintUnification bool `json:"enable_fingerprint_unification"`
 	EnableMetadataPassthrough    bool `json:"enable_metadata_passthrough"`
@@ -228,6 +231,8 @@ type PublicSettings struct {
 	BackendModeEnabled               bool             `json:"backend_mode_enabled"`
 	AttractPopupTitle                string           `json:"attract_popup_title,omitempty"`
 	AttractPopupMarkdown             string           `json:"attract_popup_markdown,omitempty"`
+	DashboardFireworksEnabled        bool             `json:"dashboard_fireworks_enabled"`
+	DashboardFireworksThreshold      float64          `json:"dashboard_fireworks_threshold"`
 	PaymentEnabled                   bool             `json:"payment_enabled"`
 	Version                          string           `json:"version"`
 	BalanceLowNotifyEnabled          bool             `json:"balance_low_notify_enabled"`

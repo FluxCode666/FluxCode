@@ -336,5 +336,50 @@ describe('useAppStore', () => {
       expect(localStorage.getItem('table-page-size')).toBeNull()
       expect(localStorage.getItem('table-page-size-source')).toBeNull()
     })
+
+    it('fetchPublicSettings(force) 会缓存仪表盘礼花配置', async () => {
+      vi.mocked(getPublicSettings).mockResolvedValue({
+        registration_enabled: false,
+        email_verify_enabled: false,
+        registration_email_suffix_whitelist: [],
+        promo_code_enabled: true,
+        password_reset_enabled: false,
+        invitation_code_enabled: false,
+        turnstile_enabled: false,
+        turnstile_site_key: '',
+        site_name: 'Fireworks Site',
+        site_logo: '',
+        site_subtitle: '',
+        api_base_url: '',
+        contact_info: '',
+        doc_url: '',
+        home_content: '',
+        hide_ccs_import_button: false,
+        payment_enabled: false,
+        table_default_page_size: 20,
+        table_page_size_options: [10, 20, 50, 100],
+        custom_menu_items: [],
+        custom_endpoints: [],
+        linuxdo_oauth_enabled: false,
+        oidc_oauth_enabled: false,
+        oidc_oauth_provider_name: 'OIDC',
+        backend_mode_enabled: false,
+        channel_monitor_enabled: false,
+        dashboard_fireworks_enabled: false,
+        dashboard_fireworks_threshold: 42.5,
+        version: '1.0.0',
+        balance_low_notify_enabled: false,
+        account_quota_notify_enabled: false,
+        balance_low_notify_threshold: 0,
+        referral_enabled: false,
+        referral_sales_enabled: false,
+      })
+
+      const store = useAppStore()
+      await store.fetchPublicSettings(true)
+
+      expect(store.dashboardFireworksEnabled).toBe(false)
+      expect(store.dashboardFireworksThreshold).toBe(42.5)
+    })
   })
 })

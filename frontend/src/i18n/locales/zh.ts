@@ -5594,6 +5594,14 @@ export default {
         defaultInterval: '默认检测间隔（秒）',
         defaultIntervalHint: '新建监控项时使用的默认间隔，范围 15 - 3600 秒。'
       },
+      dashboardFireworks: {
+        title: '仪表盘礼花',
+        description: '当用户今日实际消费高于阈值时，在 PC 端仪表盘播放一次左右礼花动画',
+        enabled: '启用仪表盘礼花',
+        enabledHint: '仅 PC 端触发；H5 端始终不播放。',
+        threshold: '触发阈值（USD）',
+        thresholdHint: '用户今日实际消费高于此金额时触发。同一用户同一天只播放一次。'
+      },
       registration: {
         title: '注册设置',
         description: '控制用户注册和验证',

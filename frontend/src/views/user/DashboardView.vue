@@ -1,5 +1,6 @@
 <template>
   <AppLayout>
+    <DashboardFireworks v-if="showDashboardFireworks" />
     <div class="space-y-6">
       <div v-if="loading" class="flex items-center justify-center py-12"><LoadingSpinner /></div>
       <template v-else-if="stats">
@@ -15,16 +16,21 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'; import { useAuthStore } from '@/stores/auth'; import { usageAPI, type UserDashboardStats as UserStatsType } from '@/api/usage'
+import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'; import { useAuthStore } from '@/stores/auth'; import { useAppStore } from '@/stores'; import { usageAPI, type UserDashboardStats as UserStatsType } from '@/api/usage'
 import AppLayout from '@/components/layout/AppLayout.vue'; import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import UserDashboardStats from '@/components/user/dashboard/UserDashboardStats.vue'; import UserDashboardCharts from '@/components/user/dashboard/UserDashboardCharts.vue'
 import UserDashboardRecentUsage from '@/components/user/dashboard/UserDashboardRecentUsage.vue'; import UserDashboardQuickActions from '@/components/user/dashboard/UserDashboardQuickActions.vue'
+import DashboardFireworks from '@/components/user/dashboard/DashboardFireworks.vue'
 import type { UsageLog, TrendDataPoint, ModelStat } from '@/types'
 import { fillTrendDataGaps } from '@/utils/trendFill'
+import { isMobileDevice } from '@/utils/device'
+import { markDashboardFireworksShown, shouldTriggerDashboardFireworks } from './dashboardFireworks'
 
-const authStore = useAuthStore(); const user = computed(() => authStore.user)
+const authStore = useAuthStore(); const appStore = useAppStore(); const user = computed(() => authStore.user)
 const stats = ref<UserStatsType | null>(null); const loading = ref(false); const loadingUsage = ref(false); const loadingCharts = ref(false)
 const trendData = ref<TrendDataPoint[]>([]); const modelStats = ref<ModelStat[]>([]); const recentUsage = ref<UsageLog[]>([])
+const showDashboardFireworks = ref(false)
+let dashboardFireworksTimer: number | null = null
 
 type TimeRangeTab = '24h' | '7d' | '14d' | '30d'
 const formatLD = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
@@ -45,10 +51,31 @@ const applyTimeRange = (value: TimeRangeTab) => {
 applyTimeRange(timeRange.value)
 watch(timeRange, (val) => { applyTimeRange(val); loadCharts() })
 
-const loadStats = async () => { loading.value = true; try { await authStore.refreshUser(); stats.value = await usageAPI.getDashboardStats() } catch (error) { console.error('Failed to load dashboard stats:', error) } finally { loading.value = false } }
+const maybeShowDashboardFireworks = () => {
+  const currentStats = stats.value
+  if (!currentStats) return
+
+  const options = {
+    enabled: appStore.dashboardFireworksEnabled,
+    threshold: appStore.dashboardFireworksThreshold,
+    todayActualCost: currentStats.today_actual_cost,
+    isMobile: isMobileDevice(),
+    userId: user.value?.id,
+  }
+
+  if (!shouldTriggerDashboardFireworks(options)) return
+
+  markDashboardFireworksShown(options)
+  showDashboardFireworks.value = true
+  if (dashboardFireworksTimer) window.clearTimeout(dashboardFireworksTimer)
+  dashboardFireworksTimer = window.setTimeout(() => { showDashboardFireworks.value = false }, 2600)
+}
+
+const loadStats = async () => { loading.value = true; try { await appStore.fetchPublicSettings(); await authStore.refreshUser(); stats.value = await usageAPI.getDashboardStats(); maybeShowDashboardFireworks() } catch (error) { console.error('Failed to load dashboard stats:', error) } finally { loading.value = false } }
 const loadCharts = async () => { loadingCharts.value = true; try { const res = await Promise.all([usageAPI.getDashboardTrend({ start_date: startDate.value, end_date: endDate.value, granularity: granularity.value as any }), usageAPI.getDashboardModels({ start_date: startDate.value, end_date: endDate.value })]); let filled = fillTrendDataGaps(res[0].trend || [], startDate.value, endDate.value, granularity.value as 'day' | 'hour', timeRange.value === '24h' ? { startHour: startHour.value } : undefined); if (timeRange.value === '24h') { filled = filled.map(d => ({ ...d, date: d.date.split(' ')[1] || d.date })) }; trendData.value = filled; modelStats.value = res[1].models || [] } catch (error) { console.error('Failed to load charts:', error) } finally { loadingCharts.value = false } }
 const loadRecent = async () => { loadingUsage.value = true; try { const res = await usageAPI.getByDateRange(startDate.value, endDate.value); recentUsage.value = res.items.slice(0, 5) } catch (error) { console.error('Failed to load recent usage:', error) } finally { loadingUsage.value = false } }
 const refreshAll = () => { loadStats(); loadCharts(); loadRecent() }
 
 onMounted(() => { refreshAll() })
+onBeforeUnmount(() => { if (dashboardFireworksTimer) window.clearTimeout(dashboardFireworksTimer) })
 </script>

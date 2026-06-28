@@ -100,6 +100,31 @@ func TestSettingService_GetPublicSettings_ChannelMonitorEnabled(t *testing.T) {
 	require.True(t, settings.ChannelMonitorEnabled)
 }
 
+func TestSettingService_GetPublicSettings_DashboardFireworksDefaults(t *testing.T) {
+	repo := &settingPublicRepoStub{values: map[string]string{}}
+	svc := NewSettingService(repo, &config.Config{})
+
+	settings, err := svc.GetPublicSettings(context.Background())
+	require.NoError(t, err)
+	require.True(t, settings.DashboardFireworksEnabled)
+	require.Equal(t, 20.0, settings.DashboardFireworksThreshold)
+}
+
+func TestSettingService_GetPublicSettings_DashboardFireworksConfigured(t *testing.T) {
+	repo := &settingPublicRepoStub{
+		values: map[string]string{
+			SettingKeyDashboardFireworksEnabled:   "false",
+			SettingKeyDashboardFireworksThreshold: "42.5",
+		},
+	}
+	svc := NewSettingService(repo, &config.Config{})
+
+	settings, err := svc.GetPublicSettings(context.Background())
+	require.NoError(t, err)
+	require.False(t, settings.DashboardFireworksEnabled)
+	require.Equal(t, 42.5, settings.DashboardFireworksThreshold)
+}
+
 func TestSettingService_GetPublicSettings_ExposesOpenAIUseKeyModelID(t *testing.T) {
 	repo := &settingPublicRepoStub{
 		values: map[string]string{

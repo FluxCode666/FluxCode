@@ -129,6 +129,10 @@ type SystemSettings struct {
 	AttractPopupTitle    string
 	AttractPopupMarkdown string
 
+	// Dashboard fireworks
+	DashboardFireworksEnabled   bool
+	DashboardFireworksThreshold float64
+
 	// Gateway forwarding behavior
 	EnableFingerprintUnification bool // 是否统一 OAuth 账号的指纹头（默认 true）
 	EnableMetadataPassthrough    bool // 是否透传客户端原始 metadata（默认 false）
@@ -194,6 +198,9 @@ type PublicSettings struct {
 	// 引流弹窗（公开设置，前端需要读取）
 	AttractPopupTitle    string
 	AttractPopupMarkdown string
+
+	DashboardFireworksEnabled   bool
+	DashboardFireworksThreshold float64
 
 	BalanceLowNotifyEnabled     bool
 	AccountQuotaNotifyEnabled   bool
