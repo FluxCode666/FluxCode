@@ -1,9 +1,11 @@
 package handler
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -13,6 +15,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	pkghttputil "github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	coderws "github.com/coder/websocket"
@@ -159,7 +162,7 @@ func TestOpenAIRuntimeFallbackContext_SwitchesGroupAndPlatform(t *testing.T) {
 		GroupID: &originalID,
 		Group: &service.Group{
 			ID:               originalID,
-			Platform:         service.PlatformOpenAI,
+			Platform:         service.PlatformCodex2API,
 			SubscriptionType: service.SubscriptionTypeStandard,
 			FallbackGroupID:  &fallbackID,
 		},
@@ -179,6 +182,300 @@ func TestOpenAIRuntimeFallbackContext_SwitchesGroupAndPlatform(t *testing.T) {
 	require.Equal(t, fallbackID, *got.GroupID)
 	require.Equal(t, service.PlatformOpenAI, got.Group.Platform)
 	require.Equal(t, service.PlatformOpenAI, resolveOpenAICompatibleGroupPlatform(got))
+}
+
+type openAIHandlerAccountRepoStub struct {
+	service.AccountRepository
+	accounts []service.Account
+}
+
+func (s *openAIHandlerAccountRepoStub) GetByID(_ context.Context, id int64) (*service.Account, error) {
+	for i := range s.accounts {
+		if s.accounts[i].ID == id {
+			account := s.accounts[i]
+			return &account, nil
+		}
+	}
+	return nil, errors.New("account not found")
+}
+
+func (s *openAIHandlerAccountRepoStub) ListSchedulableByGroupIDAndPlatform(_ context.Context, groupID int64, platform string) ([]service.Account, error) {
+	return s.listByGroupAndPlatforms(groupID, []string{platform}), nil
+}
+
+func (s *openAIHandlerAccountRepoStub) ListSchedulableByGroupIDAndPlatforms(_ context.Context, groupID int64, platforms []string) ([]service.Account, error) {
+	return s.listByGroupAndPlatforms(groupID, platforms), nil
+}
+
+func (s *openAIHandlerAccountRepoStub) ListSchedulableByPlatform(_ context.Context, platform string) ([]service.Account, error) {
+	return s.listByPlatforms([]string{platform}), nil
+}
+
+func (s *openAIHandlerAccountRepoStub) ListSchedulableByPlatforms(_ context.Context, platforms []string) ([]service.Account, error) {
+	return s.listByPlatforms(platforms), nil
+}
+
+func (s *openAIHandlerAccountRepoStub) ListSchedulableUngroupedByPlatform(_ context.Context, platform string) ([]service.Account, error) {
+	return s.listByPlatforms([]string{platform}), nil
+}
+
+func (s *openAIHandlerAccountRepoStub) ListSchedulableUngroupedByPlatforms(_ context.Context, platforms []string) ([]service.Account, error) {
+	return s.listByPlatforms(platforms), nil
+}
+
+func (s *openAIHandlerAccountRepoStub) SetError(context.Context, int64, string) error {
+	return nil
+}
+
+func (s *openAIHandlerAccountRepoStub) SetBanned(context.Context, int64, string) error {
+	return nil
+}
+
+func (s *openAIHandlerAccountRepoStub) SetTempUnschedulable(context.Context, int64, time.Time, string) error {
+	return nil
+}
+
+func (s *openAIHandlerAccountRepoStub) IncrementQuotaUsed(context.Context, int64, float64) error {
+	return nil
+}
+
+func (s *openAIHandlerAccountRepoStub) listByGroupAndPlatforms(groupID int64, platforms []string) []service.Account {
+	platformSet := make(map[string]struct{}, len(platforms))
+	for _, platform := range platforms {
+		platformSet[platform] = struct{}{}
+	}
+	result := make([]service.Account, 0, len(s.accounts))
+	for _, account := range s.accounts {
+		if _, ok := platformSet[account.Platform]; !ok {
+			continue
+		}
+		if !account.IsSchedulable() {
+			continue
+		}
+		for _, accountGroup := range account.AccountGroups {
+			if accountGroup.GroupID == groupID {
+				result = append(result, account)
+				break
+			}
+		}
+	}
+	return result
+}
+
+func (s *openAIHandlerAccountRepoStub) listByPlatforms(platforms []string) []service.Account {
+	platformSet := make(map[string]struct{}, len(platforms))
+	for _, platform := range platforms {
+		platformSet[platform] = struct{}{}
+	}
+	result := make([]service.Account, 0, len(s.accounts))
+	for _, account := range s.accounts {
+		if _, ok := platformSet[account.Platform]; ok && account.IsSchedulable() {
+			result = append(result, account)
+		}
+	}
+	return result
+}
+
+type openAIHandlerResponseFactory func() *http.Response
+
+type openAIHandlerHTTPUpstreamStub struct {
+	calls       []int64
+	requestBody map[int64][][]byte
+	responses   map[int64][]openAIHandlerResponseFactory
+}
+
+func (s *openAIHandlerHTTPUpstreamStub) Do(req *http.Request, _ string, accountID int64, _ int) (*http.Response, error) {
+	return s.dispatch(req, accountID)
+}
+
+func (s *openAIHandlerHTTPUpstreamStub) DoWithTLS(req *http.Request, _ string, accountID int64, _ int, _ *tlsfingerprint.Profile) (*http.Response, error) {
+	return s.dispatch(req, accountID)
+}
+
+func (s *openAIHandlerHTTPUpstreamStub) dispatch(req *http.Request, accountID int64) (*http.Response, error) {
+	s.calls = append(s.calls, accountID)
+	if req != nil && req.Body != nil {
+		body, _ := io.ReadAll(req.Body)
+		if s.requestBody == nil {
+			s.requestBody = make(map[int64][][]byte)
+		}
+		s.requestBody[accountID] = append(s.requestBody[accountID], body)
+		req.Body = io.NopCloser(bytes.NewReader(body))
+	}
+
+	series := s.responses[accountID]
+	if len(series) == 0 {
+		return nil, errors.New("unexpected upstream call")
+	}
+	factory := series[0]
+	if len(series) > 1 {
+		s.responses[accountID] = series[1:]
+	} else {
+		delete(s.responses, accountID)
+	}
+	return factory(), nil
+}
+
+type errorAfterEOFReadCloser struct {
+	reader *bytes.Reader
+	err    error
+	fired  bool
+}
+
+func (r *errorAfterEOFReadCloser) Read(p []byte) (int, error) {
+	if r.fired {
+		return 0, io.EOF
+	}
+	n, err := r.reader.Read(p)
+	if err == io.EOF {
+		if n > 0 {
+			return n, nil
+		}
+		r.fired = true
+		return 0, r.err
+	}
+	return n, err
+}
+
+func (r *errorAfterEOFReadCloser) Close() error {
+	return nil
+}
+
+type openAIHandlerRuntimeFallbackFixture struct {
+	handler   *OpenAIGatewayHandler
+	usageRepo *gatewayMessagesUsageLogRepoStub
+	upstream  *openAIHandlerHTTPUpstreamStub
+	cleanup   func()
+}
+
+func newOpenAIHandlerRuntimeFallbackFixture(
+	t *testing.T,
+	groups map[int64]*service.Group,
+	accounts []*service.Account,
+	balances map[int64][]float64,
+	responses map[int64][]openAIHandlerResponseFactory,
+	maxSwitches int,
+) *openAIHandlerRuntimeFallbackFixture {
+	t.Helper()
+
+	cfg := &config.Config{}
+	cfg.Default.RateMultiplier = 1
+	billingCacheSvc := service.NewBillingCacheService(&gatewayMessagesBillingCacheStub{balances: balances}, nil, nil, nil, nil, cfg)
+	snapshotSvc := service.NewSchedulerSnapshotService(&gatewayMessagesSchedulerCacheStub{accounts: accounts}, nil, nil, nil, nil)
+	usageRepo := &gatewayMessagesUsageLogRepoStub{}
+	upstream := &openAIHandlerHTTPUpstreamStub{responses: responses}
+
+	accountCopies := make([]service.Account, 0, len(accounts))
+	for _, account := range accounts {
+		if account != nil {
+			accountCopies = append(accountCopies, *account)
+		}
+	}
+	accountRepo := &openAIHandlerAccountRepoStub{accounts: accountCopies}
+	gatewaySvc := service.NewOpenAIGatewayService(
+		accountRepo,
+		&gatewayMessagesGroupRepoStub{groups: groups},
+		usageRepo,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		cfg,
+		snapshotSvc,
+		service.NewConcurrencyService(&gatewayMessagesConcurrencyCacheStub{}),
+		service.NewBillingService(cfg, nil),
+		nil,
+		billingCacheSvc,
+		upstream,
+		&service.DeferredService{},
+		nil,
+		nil,
+		nil,
+		nil,
+	)
+
+	handler := &OpenAIGatewayHandler{
+		gatewayService:      gatewaySvc,
+		billingCacheService: billingCacheSvc,
+		apiKeyService:       &service.APIKeyService{},
+		concurrencyHelper:   NewConcurrencyHelper(service.NewConcurrencyService(&gatewayMessagesConcurrencyCacheStub{}), SSEPingFormatComment, 0),
+		maxAccountSwitches:  maxSwitches,
+	}
+
+	return &openAIHandlerRuntimeFallbackFixture{
+		handler:   handler,
+		usageRepo: usageRepo,
+		upstream:  upstream,
+		cleanup: func() {
+			billingCacheSvc.Stop()
+		},
+	}
+}
+
+func newOpenAIHandlerStaticResponse(statusCode int, contentType, body string) openAIHandlerResponseFactory {
+	return func() *http.Response {
+		return &http.Response{
+			StatusCode: statusCode,
+			Header:     http.Header{"Content-Type": []string{contentType}},
+			Body:       io.NopCloser(strings.NewReader(body)),
+		}
+	}
+}
+
+func newOpenAIHandlerStreamingErrorResponse(body string, err error) openAIHandlerResponseFactory {
+	return func() *http.Response {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+			Body: &errorAfterEOFReadCloser{
+				reader: bytes.NewReader([]byte(body)),
+				err:    err,
+			},
+		}
+	}
+}
+
+func newOpenAIResponsesContext(t *testing.T, group *service.Group, apiKey *service.APIKey, body string) (*gin.Context, *httptest.ResponseRecorder) {
+	t.Helper()
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	req := httptest.NewRequest(http.MethodPost, "/openai/v1/responses", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(context.WithValue(req.Context(), ctxkey.Group, group))
+	c.Request = req
+	c.Set(string(middleware.ContextKeyAPIKey), apiKey)
+	c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{UserID: apiKey.UserID, Concurrency: 8})
+	return c, rec
+}
+
+func newOpenAIChatCompletionsContext(t *testing.T, group *service.Group, apiKey *service.APIKey, body string) (*gin.Context, *httptest.ResponseRecorder) {
+	t.Helper()
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	req := httptest.NewRequest(http.MethodPost, "/openai/v1/chat/completions", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(context.WithValue(req.Context(), ctxkey.Group, group))
+	c.Request = req
+	c.Set(string(middleware.ContextKeyAPIKey), apiKey)
+	c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{UserID: apiKey.UserID, Concurrency: 8})
+	return c, rec
+}
+
+func newOpenAIImagesContext(t *testing.T, group *service.Group, apiKey *service.APIKey, body string) (*gin.Context, *httptest.ResponseRecorder) {
+	t.Helper()
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	req := httptest.NewRequest(http.MethodPost, "/v1/images/generations", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(context.WithValue(req.Context(), ctxkey.Group, group))
+	c.Request = req
+	c.Set(string(middleware.ContextKeyAPIKey), apiKey)
+	c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{UserID: apiKey.UserID, Concurrency: 8})
+	return c, rec
 }
 
 func resolveRuntimeFallbackAPIKeyForTest(_ context.Context, apiKey *service.APIKey, fallbackGroup *service.Group) (*service.APIKey, bool) {
@@ -422,6 +719,463 @@ func TestOpenAIRuntimeFallbackBillingFailure_WritesOnlyOneTerminalResponse(t *te
 	assert.Contains(t, rec.Body.String(), "insufficient balance")
 	assert.NotContains(t, rec.Body.String(), "Service temporarily unavailable")
 	assert.NotContains(t, rec.Body.String(), "No available accounts")
+}
+
+func TestOpenAIRuntimeFallbackResponses_RetryableExhaustedSwitchesToFallbackGroup(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	primaryGroupID := int64(8501)
+	fallbackGroupID := int64(8502)
+	primaryAccountID := int64(8601)
+	fallbackAccountID := int64(8602)
+	userID := int64(8701)
+	apiKeyID := int64(8801)
+
+	primaryGroup := &service.Group{
+		ID:                    primaryGroupID,
+		Hydrated:              true,
+		Platform:              service.PlatformCodex2API,
+		AllowMessagesDispatch: true,
+		Status:                service.StatusActive,
+		SubscriptionType:      service.SubscriptionTypeStandard,
+		FallbackGroupID:       &fallbackGroupID,
+	}
+	fallbackGroup := &service.Group{
+		ID:                    fallbackGroupID,
+		Hydrated:              true,
+		Platform:              service.PlatformOpenAI,
+		AllowMessagesDispatch: true,
+		Status:                service.StatusActive,
+		SubscriptionType:      service.SubscriptionTypeStandard,
+		IsFallbackGroup:       true,
+	}
+	apiKey := &service.APIKey{
+		ID:      apiKeyID,
+		UserID:  userID,
+		GroupID: &primaryGroupID,
+		Status:  service.StatusActive,
+		User: &service.User{
+			ID:          userID,
+			Balance:     10,
+			Concurrency: 8,
+		},
+		Group: primaryGroup,
+	}
+
+	fixture := newOpenAIHandlerRuntimeFallbackFixture(
+		t,
+		map[int64]*service.Group{
+			primaryGroupID:  primaryGroup,
+			fallbackGroupID: fallbackGroup,
+		},
+		[]*service.Account{
+			{
+				ID:          primaryAccountID,
+				Name:        "primary-500",
+				Platform:    service.PlatformOpenAI,
+				Type:        service.AccountTypeAPIKey,
+				Status:      service.StatusActive,
+				Schedulable: true,
+				Concurrency: 1,
+				Priority:    1,
+				Credentials: map[string]any{"api_key": "sk-primary"},
+				AccountGroups: []service.AccountGroup{
+					{AccountID: primaryAccountID, GroupID: primaryGroupID},
+				},
+			},
+			{
+				ID:          fallbackAccountID,
+				Name:        "fallback-200",
+				Platform:    service.PlatformOpenAI,
+				Type:        service.AccountTypeAPIKey,
+				Status:      service.StatusActive,
+				Schedulable: true,
+				Concurrency: 1,
+				Priority:    1,
+				Credentials: map[string]any{"api_key": "sk-fallback"},
+				AccountGroups: []service.AccountGroup{
+					{AccountID: fallbackAccountID, GroupID: fallbackGroupID},
+				},
+			},
+		},
+		map[int64][]float64{
+			userID: {10, 10},
+		},
+		map[int64][]openAIHandlerResponseFactory{
+			primaryAccountID: {
+				newOpenAIHandlerStaticResponse(http.StatusInternalServerError, "application/json", `{"error":{"message":"primary exhausted"}}`),
+			},
+			fallbackAccountID: {
+				newOpenAIHandlerStaticResponse(http.StatusOK, "text/event-stream",
+					"data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_fallback\",\"object\":\"response\",\"model\":\"gpt-5.1\",\"status\":\"completed\",\"output\":[{\"type\":\"message\",\"id\":\"msg_fallback\",\"role\":\"assistant\",\"status\":\"completed\",\"content\":[{\"type\":\"output_text\",\"text\":\"from fallback\"}]}],\"usage\":{\"input_tokens\":3,\"output_tokens\":2,\"total_tokens\":5}}}\n\n"),
+			},
+		},
+		0,
+	)
+	defer fixture.cleanup()
+
+	c, rec := newOpenAIResponsesContext(t, primaryGroup, apiKey, `{"model":"gpt-5.1","stream":false,"input":"hello"}`)
+
+	fixture.handler.Responses(c)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	assert.Contains(t, rec.Body.String(), `"id":"resp_fallback"`)
+	require.Equal(t, []int64{primaryAccountID, fallbackAccountID}, fixture.upstream.calls)
+	selected, ok := c.Get(opsAccountIDKey)
+	require.True(t, ok)
+	require.Equal(t, fallbackAccountID, selected)
+	require.NotNil(t, fixture.usageRepo.lastLog)
+	require.NotNil(t, fixture.usageRepo.lastLog.GroupID)
+	require.Equal(t, fallbackGroupID, *fixture.usageRepo.lastLog.GroupID)
+	require.Equal(t, fallbackAccountID, fixture.usageRepo.lastLog.AccountID)
+	require.Equal(t, apiKeyID, fixture.usageRepo.lastLog.APIKeyID)
+}
+
+func TestOpenAIRuntimeFallbackResponses_StreamStartedDoesNotSwitchGroup(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	primaryGroupID := int64(8901)
+	fallbackGroupID := int64(8902)
+	primaryAccountID := int64(9001)
+	fallbackAccountID := int64(9002)
+	userID := int64(9101)
+
+	primaryGroup := &service.Group{
+		ID:                    primaryGroupID,
+		Hydrated:              true,
+		Platform:              service.PlatformCodex2API,
+		AllowMessagesDispatch: true,
+		Status:                service.StatusActive,
+		SubscriptionType:      service.SubscriptionTypeStandard,
+		FallbackGroupID:       &fallbackGroupID,
+	}
+	fallbackGroup := &service.Group{
+		ID:                    fallbackGroupID,
+		Hydrated:              true,
+		Platform:              service.PlatformOpenAI,
+		AllowMessagesDispatch: true,
+		Status:                service.StatusActive,
+		SubscriptionType:      service.SubscriptionTypeStandard,
+		IsFallbackGroup:       true,
+	}
+	apiKey := &service.APIKey{
+		ID:      9201,
+		UserID:  userID,
+		GroupID: &primaryGroupID,
+		Status:  service.StatusActive,
+		User: &service.User{
+			ID:          userID,
+			Balance:     10,
+			Concurrency: 8,
+		},
+		Group: primaryGroup,
+	}
+
+	fixture := newOpenAIHandlerRuntimeFallbackFixture(
+		t,
+		map[int64]*service.Group{
+			primaryGroupID:  primaryGroup,
+			fallbackGroupID: fallbackGroup,
+		},
+		[]*service.Account{
+			{
+				ID:          primaryAccountID,
+				Name:        "primary-stream-error",
+				Platform:    service.PlatformOpenAI,
+				Type:        service.AccountTypeAPIKey,
+				Status:      service.StatusActive,
+				Schedulable: true,
+				Concurrency: 1,
+				Priority:    1,
+				Credentials: map[string]any{"api_key": "sk-primary"},
+				AccountGroups: []service.AccountGroup{
+					{AccountID: primaryAccountID, GroupID: primaryGroupID},
+				},
+			},
+			{
+				ID:          fallbackAccountID,
+				Name:        "fallback-unused",
+				Platform:    service.PlatformOpenAI,
+				Type:        service.AccountTypeAPIKey,
+				Status:      service.StatusActive,
+				Schedulable: true,
+				Concurrency: 1,
+				Priority:    1,
+				Credentials: map[string]any{"api_key": "sk-fallback"},
+				AccountGroups: []service.AccountGroup{
+					{AccountID: fallbackAccountID, GroupID: fallbackGroupID},
+				},
+			},
+		},
+		map[int64][]float64{
+			userID: {10},
+		},
+		map[int64][]openAIHandlerResponseFactory{
+			primaryAccountID: {
+				newOpenAIHandlerStreamingErrorResponse(
+					"data: {\"type\":\"response.output_text.delta\",\"delta\":\"hello\"}\n\n",
+					errors.New("stream read failed"),
+				),
+			},
+			fallbackAccountID: {
+				newOpenAIHandlerStaticResponse(http.StatusOK, "text/event-stream",
+					"data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_should_not_be_used\",\"status\":\"completed\",\"usage\":{\"input_tokens\":1,\"output_tokens\":1}}}\n\n"),
+			},
+		},
+		0,
+	)
+	defer fixture.cleanup()
+
+	c, rec := newOpenAIResponsesContext(t, primaryGroup, apiKey, `{"model":"gpt-5.1","stream":true,"input":"hello"}`)
+
+	fixture.handler.Responses(c)
+
+	require.Equal(t, []int64{primaryAccountID}, fixture.upstream.calls)
+	assert.Contains(t, rec.Body.String(), `"delta":"hello"`)
+	assert.NotContains(t, rec.Body.String(), "resp_should_not_be_used")
+	assert.Nil(t, fixture.usageRepo.lastLog)
+}
+
+func TestOpenAIRuntimeFallbackChatCompletions_NonRetryableDoesNotFallback(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	testCases := []struct {
+		name   string
+		status int
+	}{
+		{name: "bad_request", status: http.StatusBadRequest},
+		{name: "unauthorized", status: http.StatusUnauthorized},
+		{name: "forbidden", status: http.StatusForbidden},
+	}
+
+	for _, tt := range testCases {
+		t.Run(tt.name, func(t *testing.T) {
+			primaryGroupID := int64(9301)
+			fallbackGroupID := int64(9302)
+			primaryAccountID := int64(9401)
+			fallbackAccountID := int64(9402)
+			userID := int64(9501)
+
+			primaryGroup := &service.Group{
+				ID:               primaryGroupID,
+				Hydrated:         true,
+				Platform:         service.PlatformCodex2API,
+				Status:           service.StatusActive,
+				SubscriptionType: service.SubscriptionTypeStandard,
+				FallbackGroupID:  &fallbackGroupID,
+			}
+			fallbackGroup := &service.Group{
+				ID:               fallbackGroupID,
+				Hydrated:         true,
+				Platform:         service.PlatformOpenAI,
+				Status:           service.StatusActive,
+				SubscriptionType: service.SubscriptionTypeStandard,
+				IsFallbackGroup:  true,
+			}
+			apiKey := &service.APIKey{
+				ID:      9601,
+				UserID:  userID,
+				GroupID: &primaryGroupID,
+				Status:  service.StatusActive,
+				User: &service.User{
+					ID:          userID,
+					Balance:     10,
+					Concurrency: 8,
+				},
+				Group: primaryGroup,
+			}
+
+			fixture := newOpenAIHandlerRuntimeFallbackFixture(
+				t,
+				map[int64]*service.Group{
+					primaryGroupID:  primaryGroup,
+					fallbackGroupID: fallbackGroup,
+				},
+				[]*service.Account{
+					{
+						ID:          primaryAccountID,
+						Name:        "primary-non-retryable",
+						Platform:    service.PlatformOpenAI,
+						Type:        service.AccountTypeAPIKey,
+						Status:      service.StatusActive,
+						Schedulable: true,
+						Concurrency: 1,
+						Priority:    1,
+						Credentials: map[string]any{"api_key": "sk-primary"},
+						AccountGroups: []service.AccountGroup{
+							{AccountID: primaryAccountID, GroupID: primaryGroupID},
+						},
+					},
+					{
+						ID:          fallbackAccountID,
+						Name:        "fallback-unused",
+						Platform:    service.PlatformOpenAI,
+						Type:        service.AccountTypeAPIKey,
+						Status:      service.StatusActive,
+						Schedulable: true,
+						Concurrency: 1,
+						Priority:    1,
+						Credentials: map[string]any{"api_key": "sk-fallback"},
+						AccountGroups: []service.AccountGroup{
+							{AccountID: fallbackAccountID, GroupID: fallbackGroupID},
+						},
+					},
+				},
+				map[int64][]float64{
+					userID: {10},
+				},
+				map[int64][]openAIHandlerResponseFactory{
+					primaryAccountID: {
+						newOpenAIHandlerStaticResponse(tt.status, "application/json", `{"error":{"message":"non retryable upstream"}}`),
+					},
+					fallbackAccountID: {
+						newOpenAIHandlerStaticResponse(http.StatusOK, "text/event-stream",
+							"data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_should_not_be_used\",\"status\":\"completed\",\"usage\":{\"input_tokens\":1,\"output_tokens\":1}}}\n\n"),
+					},
+				},
+				0,
+			)
+			defer fixture.cleanup()
+
+			c, rec := newOpenAIChatCompletionsContext(t, primaryGroup, apiKey, `{"model":"gpt-5.1","stream":false,"messages":[{"role":"user","content":"hello"}]}`)
+
+			fixture.handler.ChatCompletions(c)
+
+			require.NotEqual(t, http.StatusOK, rec.Code)
+			require.Equal(t, []int64{primaryAccountID}, fixture.upstream.calls)
+			assert.NotContains(t, rec.Body.String(), "resp_should_not_be_used")
+			assert.Nil(t, fixture.usageRepo.lastLog)
+		})
+	}
+}
+
+func TestOpenAIRuntimeFallbackImages_FallbackBillingFailureWritesOnlyOneTerminalResponse(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	primaryGroupID := int64(9701)
+	fallbackGroupID := int64(9702)
+	userID := int64(9801)
+
+	primaryGroup := &service.Group{
+		ID:                    primaryGroupID,
+		Hydrated:              true,
+		Platform:              service.PlatformCodex2API,
+		AllowMessagesDispatch: true,
+		Status:                service.StatusActive,
+		SubscriptionType:      service.SubscriptionTypeStandard,
+		FallbackGroupID:       &fallbackGroupID,
+	}
+	fallbackGroup := &service.Group{
+		ID:                    fallbackGroupID,
+		Hydrated:              true,
+		Platform:              service.PlatformOpenAI,
+		AllowMessagesDispatch: true,
+		Status:                service.StatusActive,
+		SubscriptionType:      service.SubscriptionTypeStandard,
+		IsFallbackGroup:       true,
+	}
+	apiKey := &service.APIKey{
+		ID:      9901,
+		UserID:  userID,
+		GroupID: &primaryGroupID,
+		Status:  service.StatusActive,
+		User: &service.User{
+			ID:          userID,
+			Balance:     1,
+			Concurrency: 8,
+		},
+		Group: primaryGroup,
+	}
+
+	fixture := newOpenAIHandlerRuntimeFallbackFixture(
+		t,
+		map[int64]*service.Group{
+			primaryGroupID:  primaryGroup,
+			fallbackGroupID: fallbackGroup,
+		},
+		nil,
+		map[int64][]float64{
+			userID: {1, 0},
+		},
+		map[int64][]openAIHandlerResponseFactory{},
+		0,
+	)
+	defer fixture.cleanup()
+
+	c, rec := newOpenAIImagesContext(t, primaryGroup, apiKey, `{"model":"gpt-image-1","prompt":"hello","response_format":"b64_json"}`)
+
+	fixture.handler.Images(c)
+
+	require.Equal(t, http.StatusForbidden, rec.Code)
+	assert.Contains(t, rec.Body.String(), "insufficient balance")
+	assert.NotContains(t, rec.Body.String(), "No available compatible accounts")
+	assert.Empty(t, fixture.upstream.calls)
+	assert.Nil(t, fixture.usageRepo.lastLog)
+}
+
+func TestOpenAIRuntimeFallbackMessages_FallbackBillingFailureUsesAnthropicErrorWriter(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	primaryGroupID := int64(10001)
+	fallbackGroupID := int64(10002)
+	userID := int64(10101)
+
+	primaryGroup := &service.Group{
+		ID:                    primaryGroupID,
+		Hydrated:              true,
+		Platform:              service.PlatformCodex2API,
+		AllowMessagesDispatch: true,
+		Status:                service.StatusActive,
+		SubscriptionType:      service.SubscriptionTypeStandard,
+		FallbackGroupID:       &fallbackGroupID,
+	}
+	fallbackGroup := &service.Group{
+		ID:                    fallbackGroupID,
+		Hydrated:              true,
+		Platform:              service.PlatformOpenAI,
+		AllowMessagesDispatch: true,
+		Status:                service.StatusActive,
+		SubscriptionType:      service.SubscriptionTypeStandard,
+		IsFallbackGroup:       true,
+	}
+	apiKey := &service.APIKey{
+		ID:      10201,
+		UserID:  userID,
+		GroupID: &primaryGroupID,
+		Status:  service.StatusActive,
+		User: &service.User{
+			ID:          userID,
+			Balance:     1,
+			Concurrency: 8,
+		},
+		Group: primaryGroup,
+	}
+
+	fixture := newOpenAIHandlerRuntimeFallbackFixture(
+		t,
+		map[int64]*service.Group{
+			primaryGroupID:  primaryGroup,
+			fallbackGroupID: fallbackGroup,
+		},
+		nil,
+		map[int64][]float64{
+			userID: {1, 0},
+		},
+		map[int64][]openAIHandlerResponseFactory{},
+		0,
+	)
+	defer fixture.cleanup()
+
+	c, rec := newGatewayMessagesContext(t, primaryGroup, apiKey)
+
+	fixture.handler.Messages(c)
+
+	require.Equal(t, http.StatusForbidden, rec.Code)
+	assert.Contains(t, rec.Body.String(), `"type":"error"`)
+	assert.Contains(t, rec.Body.String(), "insufficient balance")
+	assert.NotContains(t, rec.Body.String(), "Service temporarily unavailable")
+	assert.Empty(t, fixture.upstream.calls)
+	assert.Nil(t, fixture.usageRepo.lastLog)
 }
 
 func TestOpenAIHandleStreamingAwareError_IncludesTraceIDInSSE(t *testing.T) {

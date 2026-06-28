@@ -1912,7 +1912,11 @@ func resolveRuntimeFallbackGroup(ctx context.Context, resolve func(context.Conte
 	if hasConfiguredFallbackGroupID(fallbackGroup.FallbackGroupID) {
 		return nil, fmt.Errorf("fallback group cannot have fallback_group_id configured")
 	}
-	if group.Platform != "" && fallbackGroup.Platform != group.Platform {
+	expectedPlatform := group.Platform
+	if IsOpenAICompatiblePlatform(expectedPlatform) {
+		expectedPlatform = PlatformOpenAI
+	}
+	if expectedPlatform != "" && fallbackGroup.Platform != expectedPlatform {
 		return nil, fmt.Errorf("fallback group platform mismatch")
 	}
 	return fallbackGroup, nil

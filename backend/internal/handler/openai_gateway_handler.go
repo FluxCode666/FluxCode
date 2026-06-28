@@ -837,7 +837,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 				zap.Error(err),
 				zap.Int("excluded_account_count", len(failedAccountIDs)),
 			)
-			if len(failedAccountIDs) == 0 {
+			if len(failedAccountIDs) == 0 && !fallbackUsed {
 				fallbackAPIKey, fallbackResult := h.trySwitchToOpenAIFallbackGroupForAnthropicMessages(c, reqLog, currentAPIKey, streamStarted)
 				if fallbackResult == openAIFallbackHandled {
 					return

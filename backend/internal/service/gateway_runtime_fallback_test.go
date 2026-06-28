@@ -188,3 +188,29 @@ func TestOpenAIGatewayServiceResolveRuntimeFallbackGroup(t *testing.T) {
 		require.Nil(t, got)
 	})
 }
+
+func TestOpenAIGatewayService_ResolveRuntimeFallbackGroup_AllowsOpenAICompatibleEntryToOpenAIFallback(t *testing.T) {
+	entryID := int64(110)
+	fallbackID := int64(120)
+	groupRepo := &mockGroupRepoForGateway{groups: map[int64]*Group{
+		fallbackID: {
+			ID:               fallbackID,
+			Platform:         PlatformOpenAI,
+			Status:           StatusActive,
+			SubscriptionType: SubscriptionTypeStandard,
+			IsFallbackGroup:  true,
+		},
+	}}
+	svc := &OpenAIGatewayService{groupRepo: groupRepo}
+
+	got, err := svc.ResolveRuntimeFallbackGroup(context.Background(), &Group{
+		ID:              entryID,
+		Platform:        PlatformCodex2API,
+		FallbackGroupID: &fallbackID,
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	require.Equal(t, fallbackID, got.ID)
+	require.Equal(t, 1, groupRepo.getByIDLiteCalls)
+}
