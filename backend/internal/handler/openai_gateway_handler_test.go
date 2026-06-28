@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	pkghttputil "github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
@@ -20,6 +21,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
+	"go.uber.org/zap"
 )
 
 func TestOpenAIHandleStreamingAwareError_JSONEscaping(t *testing.T) {
@@ -148,9 +150,278 @@ func TestCloneAPIKeyWithGroup(t *testing.T) {
 	require.NotSame(t, apiKey.Group, got.Group)
 }
 
+func TestOpenAIRuntimeFallbackContext_SwitchesGroupAndPlatform(t *testing.T) {
+	originalID := int64(100)
+	fallbackID := int64(101)
+	apiKey := &service.APIKey{
+		ID:      1,
+		UserID:  42,
+		GroupID: &originalID,
+		Group: &service.Group{
+			ID:               originalID,
+			Platform:         service.PlatformOpenAI,
+			SubscriptionType: service.SubscriptionTypeStandard,
+			FallbackGroupID:  &fallbackID,
+		},
+		User: &service.User{ID: 42},
+	}
+	fallbackGroup := &service.Group{
+		ID:               fallbackID,
+		Platform:         service.PlatformOpenAI,
+		Status:           service.StatusActive,
+		SubscriptionType: service.SubscriptionTypeStandard,
+		IsFallbackGroup:  true,
+	}
+
+	got := cloneAPIKeyWithFallbackGroup(apiKey, fallbackGroup)
+
+	require.NotNil(t, got)
+	require.Equal(t, fallbackID, *got.GroupID)
+	require.Equal(t, service.PlatformOpenAI, got.Group.Platform)
+	require.Equal(t, service.PlatformOpenAI, resolveOpenAICompatibleGroupPlatform(got))
+}
+
 func resolveRuntimeFallbackAPIKeyForTest(_ context.Context, apiKey *service.APIKey, fallbackGroup *service.Group) (*service.APIKey, bool) {
 	cloned := cloneAPIKeyWithFallbackGroup(apiKey, fallbackGroup)
 	return cloned, cloned != nil
+}
+
+type openAIFallbackSwitchTestHarness struct {
+	handler *OpenAIGatewayHandler
+	cleanup func()
+}
+
+func newOpenAIFallbackSwitchTestHarness(
+	t *testing.T,
+	groups map[int64]*service.Group,
+	balances map[int64][]float64,
+) *openAIFallbackSwitchTestHarness {
+	t.Helper()
+
+	cfg := &config.Config{}
+	billingCacheSvc := service.NewBillingCacheService(&gatewayMessagesBillingCacheStub{balances: balances}, nil, nil, nil, nil, cfg)
+	gatewaySvc := service.NewOpenAIGatewayService(
+		nil,
+		&gatewayMessagesGroupRepoStub{groups: groups},
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		cfg,
+		nil,
+		nil,
+		service.NewBillingService(cfg, nil),
+		nil,
+		billingCacheSvc,
+		nil,
+		&service.DeferredService{},
+		nil,
+		nil,
+		nil,
+		nil,
+	)
+
+	return &openAIFallbackSwitchTestHarness{
+		handler: &OpenAIGatewayHandler{
+			gatewayService:      gatewaySvc,
+			billingCacheService: billingCacheSvc,
+		},
+		cleanup: func() {
+			billingCacheSvc.Stop()
+		},
+	}
+}
+
+func newOpenAIFallbackContext(t *testing.T) (*gin.Context, *httptest.ResponseRecorder) {
+	t.Helper()
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/openai/v1/responses", strings.NewReader(`{"model":"gpt-5.1","stream":false}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+	return c, rec
+}
+
+func newOpenAIRecordUsageServiceForFallbackTest(usageRepo service.UsageLogRepository) *service.OpenAIGatewayService {
+	cfg := &config.Config{}
+	cfg.Default.RateMultiplier = 1
+	return service.NewOpenAIGatewayService(
+		nil,
+		nil,
+		usageRepo,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		cfg,
+		nil,
+		nil,
+		service.NewBillingService(cfg, nil),
+		nil,
+		&service.BillingCacheService{},
+		nil,
+		&service.DeferredService{},
+		nil,
+		nil,
+		nil,
+		nil,
+	)
+}
+
+func TestOpenAIRuntimeFallbackSelectionFailure_SwitchesGroupAndAttributesUsage(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	primaryGroupID := int64(5101)
+	fallbackGroupID := int64(5102)
+	userID := int64(7101)
+
+	primaryGroup := &service.Group{
+		ID:               primaryGroupID,
+		Platform:         service.PlatformOpenAI,
+		Status:           service.StatusActive,
+		SubscriptionType: service.SubscriptionTypeStandard,
+		FallbackGroupID:  &fallbackGroupID,
+	}
+	fallbackGroup := &service.Group{
+		ID:               fallbackGroupID,
+		Platform:         service.PlatformOpenAI,
+		Status:           service.StatusActive,
+		SubscriptionType: service.SubscriptionTypeStandard,
+		IsFallbackGroup:  true,
+	}
+	apiKey := &service.APIKey{
+		ID:      8101,
+		UserID:  userID,
+		GroupID: &primaryGroupID,
+		Status:  service.StatusActive,
+		User: &service.User{
+			ID:          userID,
+			Balance:     10,
+			Concurrency: 8,
+		},
+		Group: primaryGroup,
+	}
+
+	harness := newOpenAIFallbackSwitchTestHarness(
+		t,
+		map[int64]*service.Group{
+			primaryGroupID:  primaryGroup,
+			fallbackGroupID: fallbackGroup,
+		},
+		map[int64][]float64{
+			userID: {10},
+		},
+	)
+	defer harness.cleanup()
+
+	c, _ := newOpenAIFallbackContext(t)
+	fallbackAPIKey, result := harness.handler.trySwitchToOpenAIFallbackGroup(c, zap.NewNop(), apiKey, false)
+
+	require.Equal(t, openAIFallbackSwitched, result)
+	require.NotNil(t, fallbackAPIKey)
+	require.NotNil(t, fallbackAPIKey.GroupID)
+	require.Equal(t, fallbackGroupID, *fallbackAPIKey.GroupID)
+	require.Same(t, fallbackGroup, fallbackAPIKey.Group)
+
+	usageRepo := &gatewayMessagesUsageLogRepoStub{}
+	usageSvc := newOpenAIRecordUsageServiceForFallbackTest(usageRepo)
+	err := usageSvc.RecordUsage(context.Background(), &service.OpenAIRecordUsageInput{
+		Result: &service.OpenAIForwardResult{
+			RequestID: "resp_fallback_usage",
+			Usage: service.OpenAIUsage{
+				InputTokens:  3,
+				OutputTokens: 4,
+			},
+			Model:    "gpt-5.1",
+			Duration: time.Second,
+		},
+		APIKey:           fallbackAPIKey,
+		User:             fallbackAPIKey.User,
+		Account:          &service.Account{ID: 6102, Platform: service.PlatformOpenAI, Type: service.AccountTypeOAuth},
+		InboundEndpoint:  "/openai/v1/responses",
+		UpstreamEndpoint: "https://api.openai.com/v1/responses",
+	})
+	require.NoError(t, err)
+	require.NotNil(t, usageRepo.lastLog)
+	require.NotNil(t, usageRepo.lastLog.GroupID)
+	require.Equal(t, fallbackGroupID, *usageRepo.lastLog.GroupID)
+}
+
+func TestOpenAIRuntimeFallbackFailoverExhaustedRetryable_AttemptsFallback(t *testing.T) {
+	require.True(t, shouldRetryOpenAIRuntimeFallback(&service.UpstreamFailoverError{StatusCode: 0}))
+	require.True(t, shouldRetryOpenAIRuntimeFallback(&service.UpstreamFailoverError{StatusCode: http.StatusRequestTimeout}))
+	require.True(t, shouldRetryOpenAIRuntimeFallback(&service.UpstreamFailoverError{StatusCode: http.StatusTooManyRequests}))
+	require.True(t, shouldRetryOpenAIRuntimeFallback(&service.UpstreamFailoverError{StatusCode: http.StatusBadGateway}))
+	require.True(t, shouldAttemptOpenAIRuntimeFallback(false, 0, 0, &service.UpstreamFailoverError{StatusCode: http.StatusInternalServerError}))
+}
+
+func TestOpenAIRuntimeFallbackFailoverExhaustedNonRetryable_DoesNotFallback(t *testing.T) {
+	require.False(t, shouldRetryOpenAIRuntimeFallback(&service.UpstreamFailoverError{StatusCode: http.StatusUnauthorized}))
+	require.False(t, shouldRetryOpenAIRuntimeFallback(&service.UpstreamFailoverError{StatusCode: http.StatusBadRequest}))
+	require.False(t, shouldRetryOpenAIRuntimeFallback(&service.UpstreamFailoverError{StatusCode: http.StatusForbidden}))
+	require.False(t, shouldRetryOpenAIRuntimeFallback(nil))
+	require.False(t, shouldAttemptOpenAIRuntimeFallback(false, 0, 0, &service.UpstreamFailoverError{StatusCode: http.StatusForbidden}))
+	require.False(t, shouldAttemptOpenAIRuntimeFallback(false, 0, 16, &service.UpstreamFailoverError{StatusCode: http.StatusTooManyRequests}))
+}
+
+func TestOpenAIRuntimeFallbackBillingFailure_WritesOnlyOneTerminalResponse(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	primaryGroupID := int64(5401)
+	fallbackGroupID := int64(5402)
+	userID := int64(7401)
+
+	primaryGroup := &service.Group{
+		ID:               primaryGroupID,
+		Platform:         service.PlatformOpenAI,
+		Status:           service.StatusActive,
+		SubscriptionType: service.SubscriptionTypeStandard,
+		FallbackGroupID:  &fallbackGroupID,
+	}
+	fallbackGroup := &service.Group{
+		ID:               fallbackGroupID,
+		Platform:         service.PlatformOpenAI,
+		Status:           service.StatusActive,
+		SubscriptionType: service.SubscriptionTypeStandard,
+		IsFallbackGroup:  true,
+	}
+	apiKey := &service.APIKey{
+		ID:      8401,
+		UserID:  userID,
+		GroupID: &primaryGroupID,
+		Status:  service.StatusActive,
+		User: &service.User{
+			ID:          userID,
+			Balance:     1,
+			Concurrency: 8,
+		},
+		Group: primaryGroup,
+	}
+
+	harness := newOpenAIFallbackSwitchTestHarness(
+		t,
+		map[int64]*service.Group{
+			primaryGroupID:  primaryGroup,
+			fallbackGroupID: fallbackGroup,
+		},
+		map[int64][]float64{
+			userID: {0},
+		},
+	)
+	defer harness.cleanup()
+
+	c, rec := newOpenAIFallbackContext(t)
+	fallbackAPIKey, result := harness.handler.trySwitchToOpenAIFallbackGroup(c, zap.NewNop(), apiKey, false)
+
+	require.Nil(t, fallbackAPIKey)
+	require.Equal(t, openAIFallbackHandled, result)
+	require.Equal(t, http.StatusForbidden, rec.Code)
+	assert.Contains(t, rec.Body.String(), "insufficient balance")
+	assert.NotContains(t, rec.Body.String(), "Service temporarily unavailable")
+	assert.NotContains(t, rec.Body.String(), "No available accounts")
 }
 
 func TestOpenAIHandleStreamingAwareError_IncludesTraceIDInSSE(t *testing.T) {

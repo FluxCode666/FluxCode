@@ -87,8 +87,6 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 	}
 	setOpsEndpointContext(c, "", int16(service.RequestTypeFromLegacy(parsed.Stream, false)))
 
-	channelMapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, parsed.Model)
-
 	if h.errorPassthroughService != nil {
 		service.BindErrorPassthroughService(c, h.errorPassthroughService)
 	}
@@ -120,14 +118,17 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 	failedAccountIDs := make(map[int64]struct{})
 	sameAccountRetryCount := make(map[int64]int)
 	var lastFailoverErr *service.UpstreamFailoverError
-	platform := resolveOpenAICompatibleGroupPlatform(apiKey)
+	currentAPIKey := apiKey
+	currentSubscription := subscription
+	fallbackUsed := false
 
 	for {
+		platform := resolveOpenAICompatibleGroupPlatform(currentAPIKey)
 		reqLog.Debug("openai.images.account_selecting", zap.Int("excluded_account_count", len(failedAccountIDs)))
 		selection, scheduleDecision, err := h.gatewayService.SelectAccountWithSchedulerForImagesForPlatform(
 			c.Request.Context(),
 			platform,
-			apiKey.GroupID,
+			currentAPIKey.GroupID,
 			sessionHash,
 			parsed.Model,
 			failedAccountIDs,
@@ -139,8 +140,40 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 				zap.Int("excluded_account_count", len(failedAccountIDs)),
 			)
 			if len(failedAccountIDs) == 0 {
+				if !fallbackUsed {
+					fallbackAPIKey, fallbackResult := h.trySwitchToOpenAIFallbackGroup(c, reqLog, currentAPIKey, streamStarted)
+					if fallbackResult == openAIFallbackHandled {
+						return
+					}
+					if fallbackResult == openAIFallbackSwitched {
+						currentAPIKey = fallbackAPIKey
+						currentSubscription = nil
+						fallbackUsed = true
+						switchCount = 0
+						failedAccountIDs = make(map[int64]struct{})
+						sameAccountRetryCount = make(map[int64]int)
+						lastFailoverErr = nil
+						continue
+					}
+				}
 				h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "No available compatible accounts", streamStarted)
 				return
+			}
+			if !fallbackUsed && c.Writer.Size() == 0 && shouldRetryOpenAIRuntimeFallback(lastFailoverErr) {
+				fallbackAPIKey, fallbackResult := h.trySwitchToOpenAIFallbackGroup(c, reqLog, currentAPIKey, streamStarted)
+				if fallbackResult == openAIFallbackHandled {
+					return
+				}
+				if fallbackResult == openAIFallbackSwitched {
+					currentAPIKey = fallbackAPIKey
+					currentSubscription = nil
+					fallbackUsed = true
+					switchCount = 0
+					failedAccountIDs = make(map[int64]struct{})
+					sameAccountRetryCount = make(map[int64]int)
+					lastFailoverErr = nil
+					continue
+				}
 			}
 			if lastFailoverErr != nil {
 				h.handleFailoverExhausted(c, lastFailoverErr, streamStarted)
@@ -168,13 +201,15 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 		reqLog.Debug("openai.images.account_selected", zap.Int64("account_id", account.ID), zap.String("account_name", account.Name))
 		setOpsSelectedAccount(c, account.ID, account.Platform)
 
-		accountReleaseFunc, acquired := h.acquireResponsesAccountSlot(c, apiKey.GroupID, sessionHash, selection, parsed.Stream, &streamStarted, reqLog)
+		accountReleaseFunc, acquired := h.acquireResponsesAccountSlot(c, currentAPIKey.GroupID, sessionHash, selection, parsed.Stream, &streamStarted, reqLog)
 		if !acquired {
 			return
 		}
 
 		service.SetOpsLatencyMs(c, service.OpsRoutingLatencyMsKey, time.Since(routingStart).Milliseconds())
 		forwardStart := time.Now()
+		writerSizeBeforeForward := c.Writer.Size()
+		channelMapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), currentAPIKey.GroupID, parsed.Model)
 		result, err := h.gatewayService.ForwardImages(c.Request.Context(), c, account, body, parsed, channelMapping.MappedModel, &service.GeneratedImageRecordContext{
 			UserID:   subject.UserID,
 			APIKeyID: apiKey.ID,
@@ -218,6 +253,22 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 				failedAccountIDs[account.ID] = struct{}{}
 				lastFailoverErr = failoverErr
 				if switchCount >= maxAccountSwitches {
+					if shouldAttemptOpenAIRuntimeFallback(fallbackUsed, writerSizeBeforeForward, c.Writer.Size(), failoverErr) {
+						fallbackAPIKey, fallbackResult := h.trySwitchToOpenAIFallbackGroup(c, reqLog, currentAPIKey, streamStarted)
+						if fallbackResult == openAIFallbackHandled {
+							return
+						}
+						if fallbackResult == openAIFallbackSwitched {
+							currentAPIKey = fallbackAPIKey
+							currentSubscription = nil
+							fallbackUsed = true
+							switchCount = 0
+							failedAccountIDs = make(map[int64]struct{})
+							sameAccountRetryCount = make(map[int64]int)
+							lastFailoverErr = nil
+							continue
+						}
+					}
 					h.handleFailoverExhausted(c, failoverErr, streamStarted)
 					return
 				}
@@ -264,10 +315,10 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 		h.submitUsageRecordTask(c.Request.Context(), func(ctx context.Context) {
 			if err := h.gatewayService.RecordUsage(ctx, &service.OpenAIRecordUsageInput{
 				Result:             result,
-				APIKey:             apiKey,
-				User:               apiKey.User,
+				APIKey:             currentAPIKey,
+				User:               currentAPIKey.User,
 				Account:            account,
-				Subscription:       subscription,
+				Subscription:       currentSubscription,
 				InboundEndpoint:    GetInboundEndpoint(c),
 				UpstreamEndpoint:   GetUpstreamEndpoint(c, account.Platform),
 				UserAgent:          userAgent,
@@ -279,8 +330,8 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 				logger.FromContext(c.Request.Context()).With(
 					zap.String("component", "handler.openai_gateway.images"),
 					zap.Int64("user_id", subject.UserID),
-					zap.Int64("api_key_id", apiKey.ID),
-					zap.Any("group_id", apiKey.GroupID),
+					zap.Int64("api_key_id", currentAPIKey.ID),
+					zap.Any("group_id", currentAPIKey.GroupID),
 					zap.String("model", parsed.Model),
 					zap.Int64("account_id", account.ID),
 				).Error("openai.images.record_usage_failed", zap.Error(err))

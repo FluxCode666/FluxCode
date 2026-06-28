@@ -61,6 +61,143 @@ func resolveOpenAICompatibleGroupPlatform(apiKey *service.APIKey) string {
 	return service.PlatformOpenAI
 }
 
+type openAIFallbackResult int
+
+const (
+	openAIFallbackUnavailable openAIFallbackResult = iota
+	openAIFallbackSwitched
+	openAIFallbackHandled
+)
+
+func shouldRetryOpenAIRuntimeFallback(failoverErr *service.UpstreamFailoverError) bool {
+	if failoverErr == nil {
+		return false
+	}
+	switch status := failoverErr.StatusCode; {
+	case status <= 0:
+		return true
+	case status == http.StatusRequestTimeout:
+		return true
+	case status == http.StatusTooManyRequests:
+		return true
+	case status >= 500:
+		return true
+	default:
+		return false
+	}
+}
+
+func shouldAttemptOpenAIRuntimeFallback(
+	fallbackUsed bool,
+	writerSizeBeforeForward int,
+	currentWriterSize int,
+	failoverErr *service.UpstreamFailoverError,
+) bool {
+	if fallbackUsed || currentWriterSize != writerSizeBeforeForward {
+		return false
+	}
+	return shouldRetryOpenAIRuntimeFallback(failoverErr)
+}
+
+func (h *OpenAIGatewayHandler) trySwitchToOpenAIFallbackGroupWithBillingHandler(
+	c *gin.Context,
+	reqLog *zap.Logger,
+	apiKey *service.APIKey,
+	streamStarted bool,
+	unavailableLogKey string,
+	platformMismatchLogKey string,
+	switchLogKey string,
+	handleBillingFailure func(error) openAIFallbackResult,
+) (*service.APIKey, openAIFallbackResult) {
+	if apiKey == nil || apiKey.Group == nil || apiKey.Group.FallbackGroupID == nil {
+		return nil, openAIFallbackUnavailable
+	}
+	fallbackGroup, err := h.gatewayService.ResolveRuntimeFallbackGroup(c.Request.Context(), apiKey.Group)
+	if err != nil {
+		reqLog.Warn(unavailableLogKey, zap.Error(err), zap.Any("group_id", apiKey.GroupID))
+		return nil, openAIFallbackUnavailable
+	}
+	if fallbackGroup.Platform != service.PlatformOpenAI {
+		reqLog.Warn(platformMismatchLogKey,
+			zap.String("fallback_platform", fallbackGroup.Platform),
+			zap.Int64("fallback_group_id", fallbackGroup.ID),
+		)
+		return nil, openAIFallbackUnavailable
+	}
+	fallbackAPIKey := cloneAPIKeyWithFallbackGroup(apiKey, fallbackGroup)
+	if fallbackAPIKey == nil {
+		return nil, openAIFallbackUnavailable
+	}
+	if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), fallbackAPIKey.User, fallbackAPIKey, fallbackGroup, nil); err != nil {
+		return nil, handleBillingFailure(err)
+	}
+	reqLog.Warn(switchLogKey,
+		zap.Any("original_group_id", apiKey.GroupID),
+		zap.Int64("fallback_group_id", fallbackGroup.ID),
+	)
+	return fallbackAPIKey, openAIFallbackSwitched
+}
+
+func (h *OpenAIGatewayHandler) handleOpenAIFallbackBillingFailure(
+	c *gin.Context,
+	err error,
+	streamStarted bool,
+) openAIFallbackResult {
+	status, code, message := billingErrorDetails(err)
+	h.handleStreamingAwareError(c, status, code, message, streamStarted)
+	return openAIFallbackHandled
+}
+
+func (h *OpenAIGatewayHandler) handleOpenAIMessagesFallbackBillingFailure(
+	c *gin.Context,
+	err error,
+	streamStarted bool,
+) openAIFallbackResult {
+	status, code, message := billingErrorDetails(err)
+	h.anthropicStreamingAwareError(c, status, code, message, streamStarted)
+	return openAIFallbackHandled
+}
+
+func (h *OpenAIGatewayHandler) trySwitchToOpenAIFallbackGroup(
+	c *gin.Context,
+	reqLog *zap.Logger,
+	apiKey *service.APIKey,
+	streamStarted bool,
+) (*service.APIKey, openAIFallbackResult) {
+	return h.trySwitchToOpenAIFallbackGroupWithBillingHandler(
+		c,
+		reqLog,
+		apiKey,
+		streamStarted,
+		"openai.runtime_fallback_group_unavailable",
+		"openai.runtime_fallback_group_platform_mismatch",
+		"openai.runtime_fallback_group_switch",
+		func(err error) openAIFallbackResult {
+			return h.handleOpenAIFallbackBillingFailure(c, err, streamStarted)
+		},
+	)
+}
+
+func (h *OpenAIGatewayHandler) trySwitchToOpenAIFallbackGroupForAnthropicMessages(
+	c *gin.Context,
+	reqLog *zap.Logger,
+	apiKey *service.APIKey,
+	streamStarted bool,
+) (*service.APIKey, openAIFallbackResult) {
+	return h.trySwitchToOpenAIFallbackGroupWithBillingHandler(
+		c,
+		reqLog,
+		apiKey,
+		streamStarted,
+		"openai_messages.runtime_fallback_group_unavailable",
+		"openai_messages.runtime_fallback_group_platform_mismatch",
+		"openai_messages.runtime_fallback_group_switch",
+		func(err error) openAIFallbackResult {
+			return h.handleOpenAIMessagesFallbackBillingFailure(c, err, streamStarted)
+		},
+	)
+}
+
 // NewOpenAIGatewayHandler creates a new OpenAIGatewayHandler
 func NewOpenAIGatewayHandler(
 	gatewayService *service.OpenAIGatewayService,
@@ -199,9 +336,6 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	setOpsRequestContext(c, reqModel, reqStream, body)
 	setOpsEndpointContext(c, "", int16(service.RequestTypeFromLegacy(reqStream, false)))
 
-	// 解析渠道级模型映射
-	channelMapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, reqModel)
-
 	// 提前校验 function_call_output 是否具备可关联上下文，避免上游 400。
 	if !h.validateFunctionCallOutputRequest(c, body, reqLog) {
 		return
@@ -243,15 +377,18 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	failedAccountIDs := make(map[int64]struct{})
 	sameAccountRetryCount := make(map[int64]int)
 	var lastFailoverErr *service.UpstreamFailoverError
-	platform := resolveOpenAICompatibleGroupPlatform(apiKey)
+	currentAPIKey := apiKey
+	currentSubscription := subscription
+	fallbackUsed := false
 
 	for {
+		platform := resolveOpenAICompatibleGroupPlatform(currentAPIKey)
 		// Select account supporting the requested model
 		reqLog.Debug("openai.account_selecting", zap.Int("excluded_account_count", len(failedAccountIDs)))
 		selection, scheduleDecision, err := h.gatewayService.SelectAccountWithSchedulerForPlatform(
 			c.Request.Context(),
 			platform,
-			apiKey.GroupID,
+			currentAPIKey.GroupID,
 			previousResponseID,
 			sessionHash,
 			reqModel,
@@ -264,8 +401,40 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 				zap.Int("excluded_account_count", len(failedAccountIDs)),
 			)
 			if len(failedAccountIDs) == 0 {
+				if !fallbackUsed {
+					fallbackAPIKey, fallbackResult := h.trySwitchToOpenAIFallbackGroup(c, reqLog, currentAPIKey, streamStarted)
+					if fallbackResult == openAIFallbackHandled {
+						return
+					}
+					if fallbackResult == openAIFallbackSwitched {
+						currentAPIKey = fallbackAPIKey
+						currentSubscription = nil
+						fallbackUsed = true
+						switchCount = 0
+						failedAccountIDs = make(map[int64]struct{})
+						sameAccountRetryCount = make(map[int64]int)
+						lastFailoverErr = nil
+						continue
+					}
+				}
 				h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "Service temporarily unavailable", streamStarted)
 				return
+			}
+			if !fallbackUsed && c.Writer.Size() == 0 && shouldRetryOpenAIRuntimeFallback(lastFailoverErr) {
+				fallbackAPIKey, fallbackResult := h.trySwitchToOpenAIFallbackGroup(c, reqLog, currentAPIKey, streamStarted)
+				if fallbackResult == openAIFallbackHandled {
+					return
+				}
+				if fallbackResult == openAIFallbackSwitched {
+					currentAPIKey = fallbackAPIKey
+					currentSubscription = nil
+					fallbackUsed = true
+					switchCount = 0
+					failedAccountIDs = make(map[int64]struct{})
+					sameAccountRetryCount = make(map[int64]int)
+					lastFailoverErr = nil
+					continue
+				}
 			}
 			if lastFailoverErr != nil {
 				h.handleFailoverExhausted(c, lastFailoverErr, streamStarted)
@@ -295,7 +464,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		reqLog.Debug("openai.account_selected", zap.Int64("account_id", account.ID), zap.String("account_name", account.Name))
 		setOpsSelectedAccount(c, account.ID, account.Platform)
 
-		accountReleaseFunc, acquired := h.acquireResponsesAccountSlot(c, apiKey.GroupID, sessionHash, selection, reqStream, &streamStarted, reqLog)
+		accountReleaseFunc, acquired := h.acquireResponsesAccountSlot(c, currentAPIKey.GroupID, sessionHash, selection, reqStream, &streamStarted, reqLog)
 		if !acquired {
 			return
 		}
@@ -303,6 +472,8 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		// Forward request
 		service.SetOpsLatencyMs(c, service.OpsRoutingLatencyMsKey, time.Since(routingStart).Milliseconds())
 		forwardStart := time.Now()
+		writerSizeBeforeForward := c.Writer.Size()
+		channelMapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), currentAPIKey.GroupID, reqModel)
 		// 应用渠道模型映射到请求体
 		forwardBody := body
 		if channelMapping.Mapped {
@@ -349,6 +520,22 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 				failedAccountIDs[account.ID] = struct{}{}
 				lastFailoverErr = failoverErr
 				if switchCount >= maxAccountSwitches {
+					if shouldAttemptOpenAIRuntimeFallback(fallbackUsed, writerSizeBeforeForward, c.Writer.Size(), failoverErr) {
+						fallbackAPIKey, fallbackResult := h.trySwitchToOpenAIFallbackGroup(c, reqLog, currentAPIKey, streamStarted)
+						if fallbackResult == openAIFallbackHandled {
+							return
+						}
+						if fallbackResult == openAIFallbackSwitched {
+							currentAPIKey = fallbackAPIKey
+							currentSubscription = nil
+							fallbackUsed = true
+							switchCount = 0
+							failedAccountIDs = make(map[int64]struct{})
+							sameAccountRetryCount = make(map[int64]int)
+							lastFailoverErr = nil
+							continue
+						}
+					}
 					h.handleFailoverExhausted(c, failoverErr, streamStarted)
 					return
 				}
@@ -393,10 +580,10 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		h.submitUsageRecordTask(c.Request.Context(), func(ctx context.Context) {
 			if err := h.gatewayService.RecordUsage(ctx, &service.OpenAIRecordUsageInput{
 				Result:             result,
-				APIKey:             apiKey,
-				User:               apiKey.User,
+				APIKey:             currentAPIKey,
+				User:               currentAPIKey.User,
 				Account:            account,
-				Subscription:       subscription,
+				Subscription:       currentSubscription,
 				InboundEndpoint:    GetInboundEndpoint(c),
 				UpstreamEndpoint:   GetUpstreamEndpoint(c, account.Platform),
 				UserAgent:          userAgent,
@@ -408,8 +595,8 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 				logger.FromContext(c.Request.Context()).With(
 					zap.String("component", "handler.openai_gateway.responses"),
 					zap.Int64("user_id", subject.UserID),
-					zap.Int64("api_key_id", apiKey.ID),
-					zap.Any("group_id", apiKey.GroupID),
+					zap.Int64("api_key_id", currentAPIKey.ID),
+					zap.Any("group_id", currentAPIKey.GroupID),
 					zap.String("model", reqModel),
 					zap.Int64("account_id", account.ID),
 				).Error("openai.record_usage_failed", zap.Error(err))
@@ -575,9 +762,6 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 	setOpsRequestContext(c, reqModel, reqStream, body)
 	setOpsEndpointContext(c, "", int16(service.RequestTypeFromLegacy(reqStream, false)))
 
-	// 解析渠道级模型映射
-	channelMappingMsg, _ := h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, reqModel)
-
 	// 绑定错误透传服务，允许 service 层在非 failover 错误场景复用规则。
 	if h.errorPassthroughService != nil {
 		service.BindErrorPassthroughService(c, h.errorPassthroughService)
@@ -626,10 +810,13 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 	failedAccountIDs := make(map[int64]struct{})
 	sameAccountRetryCount := make(map[int64]int)
 	var lastFailoverErr *service.UpstreamFailoverError
+	currentAPIKey := apiKey
+	currentSubscription := subscription
+	fallbackUsed := false
 	effectiveMappedModel := preferredMappedModel
-	platform := resolveOpenAICompatibleGroupPlatform(apiKey)
 
 	for {
+		platform := resolveOpenAICompatibleGroupPlatform(currentAPIKey)
 		currentRoutingModel := routingModel
 		if effectiveMappedModel != "" {
 			currentRoutingModel = effectiveMappedModel
@@ -638,7 +825,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 		selection, scheduleDecision, err := h.gatewayService.SelectAccountWithSchedulerForPlatform(
 			c.Request.Context(),
 			platform,
-			apiKey.GroupID,
+			currentAPIKey.GroupID,
 			"", // no previous_response_id
 			sessionHash,
 			currentRoutingModel,
@@ -651,11 +838,41 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 				zap.Int("excluded_account_count", len(failedAccountIDs)),
 			)
 			if len(failedAccountIDs) == 0 {
-				if err != nil {
-					h.anthropicStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "Service temporarily unavailable", streamStarted)
+				fallbackAPIKey, fallbackResult := h.trySwitchToOpenAIFallbackGroupForAnthropicMessages(c, reqLog, currentAPIKey, streamStarted)
+				if fallbackResult == openAIFallbackHandled {
 					return
 				}
+				if fallbackResult == openAIFallbackSwitched {
+					currentAPIKey = fallbackAPIKey
+					currentSubscription = nil
+					fallbackUsed = true
+					effectiveMappedModel = resolveOpenAIMessagesDispatchMappedModel(currentAPIKey, reqModel)
+					switchCount = 0
+					failedAccountIDs = make(map[int64]struct{})
+					sameAccountRetryCount = make(map[int64]int)
+					lastFailoverErr = nil
+					continue
+				}
+				h.anthropicStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "Service temporarily unavailable", streamStarted)
+				return
 			} else {
+				if !fallbackUsed && c.Writer.Size() == 0 && shouldRetryOpenAIRuntimeFallback(lastFailoverErr) {
+					fallbackAPIKey, fallbackResult := h.trySwitchToOpenAIFallbackGroupForAnthropicMessages(c, reqLog, currentAPIKey, streamStarted)
+					if fallbackResult == openAIFallbackHandled {
+						return
+					}
+					if fallbackResult == openAIFallbackSwitched {
+						currentAPIKey = fallbackAPIKey
+						currentSubscription = nil
+						fallbackUsed = true
+						effectiveMappedModel = resolveOpenAIMessagesDispatchMappedModel(currentAPIKey, reqModel)
+						switchCount = 0
+						failedAccountIDs = make(map[int64]struct{})
+						sameAccountRetryCount = make(map[int64]int)
+						lastFailoverErr = nil
+						continue
+					}
+				}
 				if lastFailoverErr != nil {
 					h.handleAnthropicFailoverExhausted(c, lastFailoverErr, streamStarted)
 				} else {
@@ -674,13 +891,15 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 		_ = scheduleDecision
 		setOpsSelectedAccount(c, account.ID, account.Platform)
 
-		accountReleaseFunc, acquired := h.acquireResponsesAccountSlot(c, apiKey.GroupID, sessionHash, selection, reqStream, &streamStarted, reqLog)
+		accountReleaseFunc, acquired := h.acquireResponsesAccountSlot(c, currentAPIKey.GroupID, sessionHash, selection, reqStream, &streamStarted, reqLog)
 		if !acquired {
 			return
 		}
 
 		service.SetOpsLatencyMs(c, service.OpsRoutingLatencyMsKey, time.Since(routingStart).Milliseconds())
 		forwardStart := time.Now()
+		writerSizeBeforeForward := c.Writer.Size()
+		channelMappingMsg, _ := h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), currentAPIKey.GroupID, reqModel)
 
 		defaultMappedModel := strings.TrimSpace(effectiveMappedModel)
 		// 应用渠道模型映射到请求体
@@ -730,6 +949,23 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 				failedAccountIDs[account.ID] = struct{}{}
 				lastFailoverErr = failoverErr
 				if switchCount >= maxAccountSwitches {
+					if shouldAttemptOpenAIRuntimeFallback(fallbackUsed, writerSizeBeforeForward, c.Writer.Size(), failoverErr) {
+						fallbackAPIKey, fallbackResult := h.trySwitchToOpenAIFallbackGroupForAnthropicMessages(c, reqLog, currentAPIKey, streamStarted)
+						if fallbackResult == openAIFallbackHandled {
+							return
+						}
+						if fallbackResult == openAIFallbackSwitched {
+							currentAPIKey = fallbackAPIKey
+							currentSubscription = nil
+							fallbackUsed = true
+							effectiveMappedModel = resolveOpenAIMessagesDispatchMappedModel(currentAPIKey, reqModel)
+							switchCount = 0
+							failedAccountIDs = make(map[int64]struct{})
+							sameAccountRetryCount = make(map[int64]int)
+							lastFailoverErr = nil
+							continue
+						}
+					}
 					h.handleAnthropicFailoverExhausted(c, failoverErr, streamStarted)
 					return
 				}
@@ -764,10 +1000,10 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 		h.submitUsageRecordTask(c.Request.Context(), func(ctx context.Context) {
 			if err := h.gatewayService.RecordUsage(ctx, &service.OpenAIRecordUsageInput{
 				Result:             result,
-				APIKey:             apiKey,
-				User:               apiKey.User,
+				APIKey:             currentAPIKey,
+				User:               currentAPIKey.User,
 				Account:            account,
-				Subscription:       subscription,
+				Subscription:       currentSubscription,
 				InboundEndpoint:    GetInboundEndpoint(c),
 				UpstreamEndpoint:   GetUpstreamEndpoint(c, account.Platform),
 				UserAgent:          userAgent,
@@ -779,8 +1015,8 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 				logger.FromContext(c.Request.Context()).With(
 					zap.String("component", "handler.openai_gateway.messages"),
 					zap.Int64("user_id", subject.UserID),
-					zap.Int64("api_key_id", apiKey.ID),
-					zap.Any("group_id", apiKey.GroupID),
+					zap.Int64("api_key_id", currentAPIKey.ID),
+					zap.Any("group_id", currentAPIKey.GroupID),
 					zap.String("model", reqModel),
 					zap.Int64("account_id", account.ID),
 				).Error("openai_messages.record_usage_failed", zap.Error(err))
