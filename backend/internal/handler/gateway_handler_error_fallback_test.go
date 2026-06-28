@@ -9,9 +9,11 @@ import (
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
+	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
 )
 
 func TestGatewayEnsureForwardErrorResponse_WritesFallbackWhenNotWritten(t *testing.T) {
@@ -69,4 +71,21 @@ func TestGatewayHandleStreamingAwareError_IncludesTraceIDInSSE(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "trace-claude-stream-1", parsed["trace_id"])
 	assert.Equal(t, "request-claude-stream-1", parsed["request_id"])
+}
+
+func TestGatewayTrySwitchToClaudeFallbackGroup_NoFallbackConfigured(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+
+	h := &GatewayHandler{}
+	apiKey := &service.APIKey{
+		Group: &service.Group{ID: 1, Platform: service.PlatformAnthropic},
+	}
+
+	got, ok := h.trySwitchToClaudeFallbackGroup(c, zap.NewNop(), apiKey, false)
+
+	require.False(t, ok)
+	require.Nil(t, got)
 }

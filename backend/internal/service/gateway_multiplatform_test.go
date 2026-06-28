@@ -304,6 +304,35 @@ func ptr[T any](v T) *T {
 	return &v
 }
 
+func TestGatewayService_ResolveRuntimeFallbackGroup_AllowsAnthropicFallback(t *testing.T) {
+	groupID := int64(70)
+	fallbackID := int64(71)
+	group := &Group{
+		ID:               groupID,
+		Platform:         PlatformAnthropic,
+		Status:           StatusActive,
+		SubscriptionType: SubscriptionTypeStandard,
+		FallbackGroupID:  &fallbackID,
+	}
+	fallback := &Group{
+		ID:               fallbackID,
+		Platform:         PlatformAnthropic,
+		Status:           StatusActive,
+		SubscriptionType: SubscriptionTypeStandard,
+		IsFallbackGroup:  true,
+	}
+	svc := &GatewayService{
+		groupRepo: &mockGroupRepoForGateway{
+			groups: map[int64]*Group{fallbackID: fallback},
+		},
+	}
+
+	got, err := svc.ResolveRuntimeFallbackGroup(context.Background(), group)
+
+	require.NoError(t, err)
+	require.Same(t, fallback, got)
+}
+
 // TestGatewayService_SelectAccountForModelWithPlatform_Anthropic 测试 anthropic 单平台选择
 func TestGatewayService_SelectAccountForModelWithPlatform_Anthropic(t *testing.T) {
 	ctx := context.Background()

@@ -503,10 +503,6 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 
 	currentAPIKey := apiKey
 	currentSubscription := subscription
-	var fallbackGroupID *int64
-	if apiKey.Group != nil {
-		fallbackGroupID = apiKey.Group.FallbackGroupIDOnInvalidRequest
-	}
 	fallbackUsed := false
 
 	// 单账号分组提前设置 SingleAccountRetry 标记，让 Service 层首次 503 就不设模型限流标记。
@@ -520,11 +516,21 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 		fs := NewFailoverState(h.maxAccountSwitches, hasBoundSession)
 		retryWithFallback := false
 
+	accountLoop:
 		for {
 			// 选择支持该模型的账号
 			selection, err := h.gatewayService.SelectAccountWithLoadAwareness(c.Request.Context(), currentAPIKey.GroupID, sessionKey, reqModel, fs.FailedAccountIDs, parsedReq.MetadataUserID, subject.UserID)
 			if err != nil {
 				if len(fs.FailedAccountIDs) == 0 {
+					if !fallbackUsed {
+						if fallbackAPIKey, ok := h.trySwitchToClaudeFallbackGroup(c, reqLog, currentAPIKey, streamStarted); ok {
+							currentAPIKey = fallbackAPIKey
+							currentSubscription = nil
+							fallbackUsed = true
+							retryWithFallback = true
+							break accountLoop
+						}
+					}
 					h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "No available accounts: "+err.Error(), streamStarted)
 					return
 				}
@@ -537,6 +543,15 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				case FailoverCanceled:
 					return
 				default: // FailoverExhausted
+					if !fallbackUsed {
+						if fallbackAPIKey, ok := h.trySwitchToClaudeFallbackGroup(c, reqLog, currentAPIKey, streamStarted); ok {
+							currentAPIKey = fallbackAPIKey
+							currentSubscription = nil
+							fallbackUsed = true
+							retryWithFallback = true
+							break accountLoop
+						}
+					}
 					if fs.LastFailoverErr != nil {
 						h.handleFailoverExhausted(c, fs.LastFailoverErr, platform, streamStarted)
 					} else {
@@ -710,43 +725,26 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 
 				var promptTooLongErr *service.PromptTooLongError
 				if errors.As(err, &promptTooLongErr) {
+					var configuredFallbackGroupID any
+					if currentAPIKey != nil && currentAPIKey.Group != nil {
+						configuredFallbackGroupID = currentAPIKey.Group.FallbackGroupID
+					}
 					reqLog.Warn("gateway.prompt_too_long_from_antigravity",
 						zap.Any("current_group_id", currentAPIKey.GroupID),
-						zap.Any("fallback_group_id", fallbackGroupID),
+						zap.Any("fallback_group_id", configuredFallbackGroupID),
 						zap.Bool("fallback_used", fallbackUsed),
 					)
-					if !fallbackUsed && fallbackGroupID != nil && *fallbackGroupID > 0 {
-						fallbackGroup, err := h.gatewayService.ResolveGroupByID(c.Request.Context(), *fallbackGroupID)
-						if err != nil {
-							reqLog.Warn("gateway.resolve_fallback_group_failed", zap.Int64("fallback_group_id", *fallbackGroupID), zap.Error(err))
-							_ = h.antigravityGatewayService.WriteMappedClaudeError(c, account, promptTooLongErr.StatusCode, promptTooLongErr.RequestID, promptTooLongErr.Body)
-							return
+					if !fallbackUsed {
+						if fallbackAPIKey, ok := h.trySwitchToClaudeFallbackGroup(c, reqLog, currentAPIKey, streamStarted); ok {
+							// 兜底重试按"直接请求兜底分组"处理：清除强制平台，允许按分组平台调度
+							ctx := context.WithValue(c.Request.Context(), ctxkey.ForcePlatform, "")
+							c.Request = c.Request.WithContext(ctx)
+							currentAPIKey = fallbackAPIKey
+							currentSubscription = nil
+							fallbackUsed = true
+							retryWithFallback = true
+							break accountLoop
 						}
-						if fallbackGroup.Platform != service.PlatformAnthropic ||
-							fallbackGroup.SubscriptionType == service.SubscriptionTypeSubscription ||
-							fallbackGroup.FallbackGroupIDOnInvalidRequest != nil {
-							reqLog.Warn("gateway.fallback_group_invalid",
-								zap.Int64("fallback_group_id", fallbackGroup.ID),
-								zap.String("fallback_platform", fallbackGroup.Platform),
-								zap.String("fallback_subscription_type", fallbackGroup.SubscriptionType),
-							)
-							_ = h.antigravityGatewayService.WriteMappedClaudeError(c, account, promptTooLongErr.StatusCode, promptTooLongErr.RequestID, promptTooLongErr.Body)
-							return
-						}
-						fallbackAPIKey := cloneAPIKeyWithGroup(apiKey, fallbackGroup)
-						if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), fallbackAPIKey.User, fallbackAPIKey, fallbackGroup, nil); err != nil {
-							status, code, message := billingErrorDetails(err)
-							h.handleStreamingAwareError(c, status, code, message, streamStarted)
-							return
-						}
-						// 兜底重试按"直接请求兜底分组"处理：清除强制平台，允许按分组平台调度
-						ctx := context.WithValue(c.Request.Context(), ctxkey.ForcePlatform, "")
-						c.Request = c.Request.WithContext(ctx)
-						currentAPIKey = fallbackAPIKey
-						currentSubscription = nil
-						fallbackUsed = true
-						retryWithFallback = true
-						break
 					}
 					_ = h.antigravityGatewayService.WriteMappedClaudeError(c, account, promptTooLongErr.StatusCode, promptTooLongErr.RequestID, promptTooLongErr.Body)
 					return
@@ -763,6 +761,15 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 					case FailoverContinue:
 						continue
 					case FailoverExhausted:
+						if !fallbackUsed && c.Writer.Size() == writerSizeBeforeForward {
+							if fallbackAPIKey, ok := h.trySwitchToClaudeFallbackGroup(c, reqLog, currentAPIKey, streamStarted); ok {
+								currentAPIKey = fallbackAPIKey
+								currentSubscription = nil
+								fallbackUsed = true
+								retryWithFallback = true
+								break accountLoop
+							}
+						}
 						h.handleFailoverExhausted(c, fs.LastFailoverErr, account.Platform, streamStarted)
 						return
 					case FailoverCanceled:
@@ -919,6 +926,36 @@ func cloneAPIKeyWithFallbackGroup(apiKey *service.APIKey, fallbackGroup *service
 	cloned.GroupID = &groupID
 	cloned.Group = fallbackGroup
 	return &cloned
+}
+
+func (h *GatewayHandler) trySwitchToClaudeFallbackGroup(
+	c *gin.Context,
+	reqLog *zap.Logger,
+	apiKey *service.APIKey,
+	streamStarted bool,
+) (*service.APIKey, bool) {
+	if apiKey == nil || apiKey.Group == nil || apiKey.Group.FallbackGroupID == nil {
+		return nil, false
+	}
+	fallbackGroup, err := h.gatewayService.ResolveRuntimeFallbackGroup(c.Request.Context(), apiKey.Group)
+	if err != nil {
+		reqLog.Warn("gateway.runtime_fallback_group_unavailable", zap.Error(err), zap.Any("group_id", apiKey.GroupID))
+		return nil, false
+	}
+	fallbackAPIKey := cloneAPIKeyWithFallbackGroup(apiKey, fallbackGroup)
+	if fallbackAPIKey == nil {
+		return nil, false
+	}
+	if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), fallbackAPIKey.User, fallbackAPIKey, fallbackGroup, nil); err != nil {
+		status, code, message := billingErrorDetails(err)
+		h.handleStreamingAwareError(c, status, code, message, streamStarted)
+		return nil, false
+	}
+	reqLog.Warn("gateway.runtime_fallback_group_switch",
+		zap.Any("original_group_id", apiKey.GroupID),
+		zap.Int64("fallback_group_id", fallbackGroup.ID),
+	)
+	return fallbackAPIKey, true
 }
 
 func cloneAPIKeyWithGroup(apiKey *service.APIKey, group *service.Group) *service.APIKey {
