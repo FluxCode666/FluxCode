@@ -86,6 +86,10 @@ func (s *generatedImageStoreStub) DeleteByDateRange(ctx context.Context, startAt
 	return 0, nil
 }
 
+func (s *generatedImageStoreStub) DeleteBefore(ctx context.Context, cutoff time.Time) (int64, error) {
+	return 0, nil
+}
+
 func TestGeneratedImageRecordNormalizesDataURL(t *testing.T) {
 	store := &generatedImageStoreStub{}
 	svc := &OpenAIGatewayService{}

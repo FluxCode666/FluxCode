@@ -164,3 +164,7 @@ func (s *generatedImageHandlerStoreStub) DeleteByDateRange(ctx context.Context, 
 	s.lastDeleteEnd = endAt
 	return 3, nil
 }
+
+func (s *generatedImageHandlerStoreStub) DeleteBefore(ctx context.Context, cutoff time.Time) (int64, error) {
+	return 0, nil
+}
