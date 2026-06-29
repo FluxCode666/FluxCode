@@ -15,4 +15,9 @@ describe('user DashboardView fireworks integration', () => {
     expect(viewSource).toContain('today_actual_cost')
     expect(viewSource).toContain('isMobileDevice')
   })
+
+  it('keeps the fireworks layer mounted long enough for the demo physics arc', () => {
+    expect(viewSource).toContain('const DASHBOARD_FIREWORKS_DURATION_MS = 3200')
+    expect(viewSource).toContain('window.setTimeout(() => { showDashboardFireworks.value = false }, DASHBOARD_FIREWORKS_DURATION_MS)')
+  })
 })

@@ -30,6 +30,7 @@ const authStore = useAuthStore(); const appStore = useAppStore(); const user = c
 const stats = ref<UserStatsType | null>(null); const loading = ref(false); const loadingUsage = ref(false); const loadingCharts = ref(false)
 const trendData = ref<TrendDataPoint[]>([]); const modelStats = ref<ModelStat[]>([]); const recentUsage = ref<UsageLog[]>([])
 const showDashboardFireworks = ref(false)
+const DASHBOARD_FIREWORKS_DURATION_MS = 3200
 let dashboardFireworksTimer: number | null = null
 
 type TimeRangeTab = '24h' | '7d' | '14d' | '30d'
@@ -68,7 +69,7 @@ const maybeShowDashboardFireworks = () => {
   markDashboardFireworksShown(options)
   showDashboardFireworks.value = true
   if (dashboardFireworksTimer) window.clearTimeout(dashboardFireworksTimer)
-  dashboardFireworksTimer = window.setTimeout(() => { showDashboardFireworks.value = false }, 2600)
+  dashboardFireworksTimer = window.setTimeout(() => { showDashboardFireworks.value = false }, DASHBOARD_FIREWORKS_DURATION_MS)
 }
 
 const loadStats = async () => { loading.value = true; try { await appStore.fetchPublicSettings(); await authStore.refreshUser(); stats.value = await usageAPI.getDashboardStats(); maybeShowDashboardFireworks() } catch (error) { console.error('Failed to load dashboard stats:', error) } finally { loading.value = false } }
