@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+
 import { mount } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
 
@@ -27,5 +30,15 @@ describe('DashboardFireworks', () => {
     expect(source.default).toContain('const speed = randRange(random, 760, 1080)')
     expect(source.default).toContain('0.5 * gravity * time * time')
     expect(source.default).not.toContain('dashboard-fireworks__emitter')
+  })
+
+  it('delays the launch by two seconds in both the component and demo', async () => {
+    const source = await import('../DashboardFireworks.vue?raw')
+    const demoSource = readFileSync(resolve(process.cwd(), '../demo/fireworks-45-demo.html'), 'utf8')
+
+    expect(source.default).toContain('const LAUNCH_DELAY_SECONDS = 2')
+    expect(source.default).toContain('LAUNCH_DELAY_SECONDS +')
+    expect(demoSource).toContain('const LAUNCH_DELAY_SECONDS = 2')
+    expect(demoSource).toContain('LAUNCH_DELAY_SECONDS +')
   })
 })

@@ -550,6 +550,7 @@
     const layer = document.getElementById('fireworksLayer')
     const palette = ['#dc2626', '#ef4444', '#b91c1c', '#ffffff', '#fee2e2', '#f59e0b']
     const shapes = ['strip', 'strip', 'strip', 'shard', 'triangle', 'dot', 'tiny']
+    const LAUNCH_DELAY_SECONDS = 2
 
     function rand(min, max) {
       return Math.random() * (max - min) + min
@@ -582,7 +583,7 @@
       const strip = shape === 'strip'
       const width = tiny ? rand(2, 4) : dot ? rand(4, 7) : strip ? rand(3, 6) : rand(7, 13)
       const height = tiny ? rand(2, 4) : dot ? width : strip ? rand(12, 24) : rand(7, 15)
-      const delay = (index % 28) * rand(0.004, 0.012) + Math.floor(index / 28) * 0.026
+      const delay = LAUNCH_DELAY_SECONDS + (index % 28) * rand(0.004, 0.012) + Math.floor(index / 28) * 0.026
       const duration = rand(1850, 2500)
       const durationSeconds = duration / 1000
       const spin = direction * rand(260, 1040)
@@ -639,7 +640,7 @@
 
     window.addEventListener('load', () => {
       launch('dense')
-      window.setTimeout(() => launch('normal'), 3300)
+      window.setTimeout(() => launch('normal'), LAUNCH_DELAY_SECONDS * 1000 + 3300)
     })
   </script>
 </body>

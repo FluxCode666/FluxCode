@@ -25,6 +25,7 @@ interface FireworkPiece {
 }
 
 const PIECES_PER_SIDE = 130
+const LAUNCH_DELAY_SECONDS = 2
 const palette = ['#dc2626', '#ef4444', '#b91c1c', '#ffffff', '#fee2e2', '#f59e0b']
 const shapes: FireworkShape[] = ['strip', 'strip', 'strip', 'shard', 'triangle', 'dot', 'tiny']
 const samples = [
@@ -98,7 +99,8 @@ function createPiece(side: FireworkSide, index: number, total: number): Firework
       : strip
         ? randRange(random, 12, 24)
         : randRange(random, 7, 15)
-  const delay = (index % 28) * randRange(random, 0.004, 0.012) + Math.floor(index / 28) * 0.026
+  const delay =
+    LAUNCH_DELAY_SECONDS + (index % 28) * randRange(random, 0.004, 0.012) + Math.floor(index / 28) * 0.026
   const duration = randRange(random, 1850, 2500)
   const durationSeconds = duration / 1000
   const spin = direction * randRange(random, 260, 1040)
