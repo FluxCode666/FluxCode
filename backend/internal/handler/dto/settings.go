@@ -80,22 +80,23 @@ type SystemSettings struct {
 	OIDCConnectUserInfoIDPath         string `json:"oidc_connect_userinfo_id_path"`
 	OIDCConnectUserInfoUsernamePath   string `json:"oidc_connect_userinfo_username_path"`
 
-	SiteName                    string           `json:"site_name"`
-	SiteLogo                    string           `json:"site_logo"`
-	SiteSubtitle                string           `json:"site_subtitle"`
-	APIBaseURL                  string           `json:"api_base_url"`
-	ContactInfo                 string           `json:"contact_info"`
-	DocURL                      string           `json:"doc_url"`
-	HomeContent                 string           `json:"home_content"`
-	HideCcsImportButton         bool             `json:"hide_ccs_import_button"`
-	PurchaseSubscriptionEnabled bool             `json:"purchase_subscription_enabled"`
-	PurchaseSubscriptionURL     string           `json:"purchase_subscription_url"`
-	TableDefaultPageSize        int              `json:"table_default_page_size"`
-	TablePageSizeOptions        []int            `json:"table_page_size_options"`
-	CustomMenuItems             []CustomMenuItem `json:"custom_menu_items"`
-	CustomEndpoints             []CustomEndpoint `json:"custom_endpoints"`
-	OpenAIUseKeyModelID         string           `json:"openai_use_key_model_id"`
-	OpenAIImageURLCacheTTLHours int              `json:"openai_image_url_cache_ttl_hours"`
+	SiteName                     string           `json:"site_name"`
+	SiteLogo                     string           `json:"site_logo"`
+	SiteSubtitle                 string           `json:"site_subtitle"`
+	APIBaseURL                   string           `json:"api_base_url"`
+	ContactInfo                  string           `json:"contact_info"`
+	DocURL                       string           `json:"doc_url"`
+	HomeContent                  string           `json:"home_content"`
+	HideCcsImportButton          bool             `json:"hide_ccs_import_button"`
+	PurchaseSubscriptionEnabled  bool             `json:"purchase_subscription_enabled"`
+	PurchaseSubscriptionURL      string           `json:"purchase_subscription_url"`
+	TableDefaultPageSize         int              `json:"table_default_page_size"`
+	TablePageSizeOptions         []int            `json:"table_page_size_options"`
+	CustomMenuItems              []CustomMenuItem `json:"custom_menu_items"`
+	CustomEndpoints              []CustomEndpoint `json:"custom_endpoints"`
+	OpenAIUseKeyModelID          string           `json:"openai_use_key_model_id"`
+	OpenAIImageURLCacheTTLHours  int              `json:"openai_image_url_cache_ttl_hours"`
+	GeneratedImageCleanupEnabled bool             `json:"generated_image_cleanup_enabled"`
 
 	DefaultConcurrency   int                          `json:"default_concurrency"`
 	DefaultBalance       float64                      `json:"default_balance"`
@@ -144,6 +145,9 @@ type SystemSettings struct {
 	RedeemDeliveryText   string `json:"redeem_delivery_text"`
 	AttractPopupTitle    string `json:"attract_popup_title"`
 	AttractPopupMarkdown string `json:"attract_popup_markdown"`
+
+	DashboardFireworksEnabled   bool    `json:"dashboard_fireworks_enabled"`
+	DashboardFireworksThreshold float64 `json:"dashboard_fireworks_threshold"`
 
 	// Gateway forwarding behavior
 	EnableFingerprintUnification bool `json:"enable_fingerprint_unification"`
@@ -228,6 +232,8 @@ type PublicSettings struct {
 	BackendModeEnabled               bool             `json:"backend_mode_enabled"`
 	AttractPopupTitle                string           `json:"attract_popup_title,omitempty"`
 	AttractPopupMarkdown             string           `json:"attract_popup_markdown,omitempty"`
+	DashboardFireworksEnabled        bool             `json:"dashboard_fireworks_enabled"`
+	DashboardFireworksThreshold      float64          `json:"dashboard_fireworks_threshold"`
 	PaymentEnabled                   bool             `json:"payment_enabled"`
 	Version                          string           `json:"version"`
 	BalanceLowNotifyEnabled          bool             `json:"balance_low_notify_enabled"`

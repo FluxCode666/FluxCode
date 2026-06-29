@@ -238,6 +238,20 @@ func TestSettingService_UpdateSettings_ChannelMonitorFields(t *testing.T) {
 	require.Equal(t, "120", repo.updates[SettingKeyChannelMonitorDefaultIntervalSeconds])
 }
 
+func TestSettingService_UpdateSettings_DashboardFireworksFields(t *testing.T) {
+	repo := &settingUpdateRepoStub{}
+	svc := NewSettingService(repo, &config.Config{})
+
+	err := svc.UpdateSettings(context.Background(), &SystemSettings{
+		DashboardFireworksEnabled:   false,
+		DashboardFireworksThreshold: 35.75,
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, "false", repo.updates[SettingKeyDashboardFireworksEnabled])
+	require.Equal(t, "35.75", repo.updates[SettingKeyDashboardFireworksThreshold])
+}
+
 func TestSettingService_UpdateSettings_OpenAIUseKeyModelID(t *testing.T) {
 	repo := &settingUpdateRepoStub{}
 	svc := NewSettingService(repo, &config.Config{})

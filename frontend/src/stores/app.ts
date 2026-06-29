@@ -35,6 +35,8 @@ export const useAppStore = defineStore('app', () => {
   // 引流弹窗文案（来自 public settings，可在后台配置；内容支持 Markdown）
   const attractPopupTitle = ref<string>('')
   const attractPopupMarkdown = ref<string>('')
+  const dashboardFireworksEnabled = ref<boolean>(true)
+  const dashboardFireworksThreshold = ref<number>(20)
   const cachedPublicSettings = ref<PublicSettings | null>(null)
 
   // Version cache state
@@ -48,6 +50,11 @@ export const useAppStore = defineStore('app', () => {
 
   // Auto-incrementing ID for toasts
   let toastIdCounter = 0
+
+  function normalizeDashboardFireworksThreshold(value: unknown): number {
+    const parsed = typeof value === 'number' ? value : Number(value)
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : 20
+  }
 
   // ==================== Computed ====================
 
@@ -305,6 +312,10 @@ export const useAppStore = defineStore('app', () => {
     docUrl.value = config.doc_url || ''
     attractPopupTitle.value = config.attract_popup_title || ''
     attractPopupMarkdown.value = config.attract_popup_markdown || ''
+    dashboardFireworksEnabled.value = config.dashboard_fireworks_enabled !== false
+    dashboardFireworksThreshold.value = normalizeDashboardFireworksThreshold(
+      config.dashboard_fireworks_threshold
+    )
     publicSettingsLoaded.value = true
   }
 
@@ -351,6 +362,8 @@ export const useAppStore = defineStore('app', () => {
         oidc_oauth_provider_name: 'OIDC',
         backend_mode_enabled: false,
         channel_monitor_enabled: false,
+        dashboard_fireworks_enabled: dashboardFireworksEnabled.value,
+        dashboard_fireworks_threshold: dashboardFireworksThreshold.value,
         version: siteVersion.value,
         balance_low_notify_enabled: false,
         account_quota_notify_enabled: false,
@@ -419,6 +432,8 @@ export const useAppStore = defineStore('app', () => {
     docUrl,
     attractPopupTitle,
     attractPopupMarkdown,
+    dashboardFireworksEnabled,
+    dashboardFireworksThreshold,
     cachedPublicSettings,
 
     // Version state

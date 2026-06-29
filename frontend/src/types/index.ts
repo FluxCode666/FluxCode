@@ -244,6 +244,8 @@ export interface PublicSettings {
   channel_monitor_enabled?: boolean
   attract_popup_title?: string
   attract_popup_markdown?: string
+  dashboard_fireworks_enabled?: boolean
+  dashboard_fireworks_threshold?: number
   version: string
   balance_low_notify_enabled: boolean
   account_quota_notify_enabled: boolean

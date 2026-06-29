@@ -5470,6 +5470,14 @@ export default {
         defaultInterval: 'Default check interval (seconds)',
         defaultIntervalHint: 'Default interval used when creating monitors. Range: 15 - 3600 seconds.'
       },
+      dashboardFireworks: {
+        title: 'Dashboard Fireworks',
+        description: 'Play a one-time desktop fireworks animation when today\'s actual spend is above the threshold.',
+        enabled: 'Enable Dashboard Fireworks',
+        enabledHint: 'Desktop only. H5/mobile never plays the animation.',
+        threshold: 'Trigger Threshold (USD)',
+        thresholdHint: 'Triggers when today\'s actual spend is higher than this amount. Each user sees it once per day.'
+      },
       registration: {
         title: 'Registration Settings',
         description: 'Control user registration and verification',
@@ -5622,6 +5630,9 @@ export default {
         openaiImageURLCacheTTLHours: 'OpenAI image HTTP URL cache TTL (hours)',
         openaiImageURLCacheTTLHoursHint:
           'When an account returns HTTP temporary links for response_format=url, generated images are stored in Redis and expire after this duration. Default is 72 hours.',
+        generatedImageCleanupEnabled: 'Enable generated image cleanup',
+        generatedImageCleanupEnabledHint:
+          'When enabled, archived generated image rows older than the HTTP URL cache TTL are cleared every day at 4 AM.',
         userAgent: 'User-Agent',
         userAgentPlaceholder: 'e.g. codex_cli_rs/1.0.0',
         userAgentHint: 'User-Agent header sent to OpenAI upstream. Leave empty to use default codex_cli_rs/1.0.0.',
