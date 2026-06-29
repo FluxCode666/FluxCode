@@ -63,32 +63,33 @@ type SystemSettings struct {
 	OIDCConnectUserInfoIDPath         string
 	OIDCConnectUserInfoUsernamePath   string
 
-	SiteName                    string
-	SiteLogo                    string
-	SiteSubtitle                string
-	APIBaseURL                  string
-	ContactInfo                 string
-	DocURL                      string
-	HomeContent                 string
-	HideCcsImportButton         bool
-	PurchaseSubscriptionEnabled bool
-	PurchaseSubscriptionURL     string
-	TableDefaultPageSize        int
-	TablePageSizeOptions        []int
-	CustomMenuItems             string // JSON array of custom menu items
-	CustomEndpoints             string // JSON array of custom endpoints
-	OpenAIUseKeyModelID         string
-	OpenAIImageURLCacheTTLHours int
-	GeneratedImageStorageSource string
-	QiniuAccessKey              string
-	QiniuSecretKey              string
-	QiniuSecretKeyConfigured    bool
-	QiniuBucket                 string
-	QiniuCDNDomain              string
-	QiniuPrefix                 string
-	QiniuUseHTTPS               bool
-	QiniuUploadTimeoutSeconds   int
-	QiniuTokenTTLSeconds        int
+	SiteName                     string
+	SiteLogo                     string
+	SiteSubtitle                 string
+	APIBaseURL                   string
+	ContactInfo                  string
+	DocURL                       string
+	HomeContent                  string
+	HideCcsImportButton          bool
+	PurchaseSubscriptionEnabled  bool
+	PurchaseSubscriptionURL      string
+	TableDefaultPageSize         int
+	TablePageSizeOptions         []int
+	CustomMenuItems              string // JSON array of custom menu items
+	CustomEndpoints              string // JSON array of custom endpoints
+	OpenAIUseKeyModelID          string
+	OpenAIImageURLCacheTTLHours  int
+	GeneratedImageStorageSource  string
+	QiniuAccessKey               string
+	QiniuSecretKey               string
+	QiniuSecretKeyConfigured     bool
+	QiniuBucket                  string
+	QiniuCDNDomain               string
+	QiniuPrefix                  string
+	QiniuUseHTTPS                bool
+	QiniuUploadTimeoutSeconds    int
+	QiniuTokenTTLSeconds         int
+	GeneratedImageCleanupEnabled bool
 
 	DefaultConcurrency   int
 	DefaultBalance       float64
@@ -138,6 +139,10 @@ type SystemSettings struct {
 	RedeemDeliveryText   string
 	AttractPopupTitle    string
 	AttractPopupMarkdown string
+
+	// Dashboard fireworks
+	DashboardFireworksEnabled   bool
+	DashboardFireworksThreshold float64
 
 	// Gateway forwarding behavior
 	EnableFingerprintUnification bool // 是否统一 OAuth 账号的指纹头（默认 true）
@@ -204,6 +209,9 @@ type PublicSettings struct {
 	// 引流弹窗（公开设置，前端需要读取）
 	AttractPopupTitle    string
 	AttractPopupMarkdown string
+
+	DashboardFireworksEnabled   bool
+	DashboardFireworksThreshold float64
 
 	BalanceLowNotifyEnabled     bool
 	AccountQuotaNotifyEnabled   bool

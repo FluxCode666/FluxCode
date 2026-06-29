@@ -62,6 +62,7 @@ export interface SystemSettings {
   qiniu_use_https: boolean
   qiniu_upload_timeout_seconds: number
   qiniu_token_ttl_seconds: number
+  generated_image_cleanup_enabled: boolean
   // SMTP settings
   email_provider: string
   smtp_host: string
@@ -161,6 +162,8 @@ export interface SystemSettings {
   redeem_delivery_text: string
   attract_popup_title: string
   attract_popup_markdown: string
+  dashboard_fireworks_enabled: boolean
+  dashboard_fireworks_threshold: number
 
   // Gateway forwarding behavior
   enable_fingerprint_unification: boolean
@@ -240,6 +243,7 @@ export interface UpdateSettingsRequest {
   qiniu_use_https?: boolean
   qiniu_upload_timeout_seconds?: number
   qiniu_token_ttl_seconds?: number
+  generated_image_cleanup_enabled?: boolean
   email_provider?: string
   smtp_host?: string
   smtp_port?: number
@@ -318,6 +322,8 @@ export interface UpdateSettingsRequest {
   redeem_delivery_text?: string
   attract_popup_title?: string
   attract_popup_markdown?: string
+  dashboard_fireworks_enabled?: boolean
+  dashboard_fireworks_threshold?: number
 
   enable_fingerprint_unification?: boolean
   enable_metadata_passthrough?: boolean

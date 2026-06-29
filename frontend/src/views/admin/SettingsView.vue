@@ -1880,6 +1880,17 @@
                 {{ t('admin.settings.codexCLIUA.openaiImageURLCacheTTLHoursHint') }}
               </p>
             </div>
+            <div class="flex items-center justify-between border-t border-gray-100 pt-4 dark:border-dark-700">
+              <div>
+                <label class="font-medium text-gray-900 dark:text-white">
+                  {{ t('admin.settings.codexCLIUA.generatedImageCleanupEnabled') }}
+                </label>
+                <p class="text-sm text-gray-500 dark:text-gray-400">
+                  {{ t('admin.settings.codexCLIUA.generatedImageCleanupEnabledHint') }}
+                </p>
+              </div>
+              <Toggle v-model="form.generated_image_cleanup_enabled" />
+            </div>
             <div>
               <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
                 {{ t('admin.settings.codexCLIUA.userAgent') }}
@@ -2721,6 +2732,53 @@
               />
               <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
                 {{ t('admin.settings.channelMonitor.defaultIntervalHint') }}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Dashboard Fireworks -->
+        <div class="card">
+          <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+              {{ t('admin.settings.dashboardFireworks.title') }}
+            </h2>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              {{ t('admin.settings.dashboardFireworks.description') }}
+            </p>
+          </div>
+          <div class="space-y-5 p-6">
+            <div class="flex items-center justify-between">
+              <div>
+                <label class="font-medium text-gray-900 dark:text-white">
+                  {{ t('admin.settings.dashboardFireworks.enabled') }}
+                </label>
+                <p class="text-sm text-gray-500 dark:text-gray-400">
+                  {{ t('admin.settings.dashboardFireworks.enabledHint') }}
+                </p>
+              </div>
+              <Toggle v-model="form.dashboard_fireworks_enabled" />
+            </div>
+
+            <div
+              v-if="form.dashboard_fireworks_enabled"
+              class="border-t border-gray-100 pt-4 dark:border-dark-700"
+            >
+              <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                {{ t('admin.settings.dashboardFireworks.threshold') }}
+              </label>
+              <div class="flex items-center gap-2">
+                <span class="text-sm font-semibold text-gray-500 dark:text-gray-400">$</span>
+                <input
+                  v-model.number="form.dashboard_fireworks_threshold"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  class="input w-40"
+                />
+              </div>
+              <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.settings.dashboardFireworks.thresholdHint') }}
               </p>
             </div>
           </div>
@@ -3863,6 +3921,8 @@ const form = reactive<SettingsForm>({
   redeem_delivery_text: '',
   attract_popup_title: '',
   attract_popup_markdown: '',
+  dashboard_fireworks_enabled: true,
+  dashboard_fireworks_threshold: 20,
   // Gateway forwarding behavior
   enable_fingerprint_unification: true,
   enable_metadata_passthrough: false,
@@ -3880,6 +3940,7 @@ const form = reactive<SettingsForm>({
   qiniu_use_https: true,
   qiniu_upload_timeout_seconds: 30,
   qiniu_token_ttl_seconds: 3600,
+  generated_image_cleanup_enabled: false,
   codex_cli_user_agent: '',
   codex_cli_version: '',
   // Balance & quota notification
@@ -4412,6 +4473,11 @@ async function saveSettings() {
       3600,
       Math.max(15, Number(form.channel_monitor_default_interval_seconds || 60))
     )
+    const normalizedDashboardFireworksThreshold = Number(form.dashboard_fireworks_threshold)
+    form.dashboard_fireworks_threshold =
+      Number.isFinite(normalizedDashboardFireworksThreshold) && normalizedDashboardFireworksThreshold >= 0
+        ? normalizedDashboardFireworksThreshold
+        : 20
 
     const payload: UpdateSettingsRequest = {
       registration_enabled: form.registration_enabled,
@@ -4509,6 +4575,8 @@ async function saveSettings() {
       redeem_delivery_text: form.redeem_delivery_text,
       attract_popup_title: form.attract_popup_title,
       attract_popup_markdown: form.attract_popup_markdown,
+      dashboard_fireworks_enabled: form.dashboard_fireworks_enabled,
+      dashboard_fireworks_threshold: form.dashboard_fireworks_threshold,
       enable_fingerprint_unification: form.enable_fingerprint_unification,
       enable_metadata_passthrough: form.enable_metadata_passthrough,
       enable_cch_signing: form.enable_cch_signing,
@@ -4523,6 +4591,7 @@ async function saveSettings() {
       qiniu_use_https: form.qiniu_use_https,
       qiniu_upload_timeout_seconds: Number(form.qiniu_upload_timeout_seconds) || 30,
       qiniu_token_ttl_seconds: Number(form.qiniu_token_ttl_seconds) || 3600,
+      generated_image_cleanup_enabled: form.generated_image_cleanup_enabled,
       codex_cli_user_agent: form.codex_cli_user_agent,
       codex_cli_version: form.codex_cli_version,
       // Payment configuration

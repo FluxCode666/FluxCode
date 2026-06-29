@@ -1,0 +1,647 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>45度礼花碎片 Demo</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #1e293b;
+      --muted: #64748b;
+      --line: #e2e8f0;
+      --paper: #f8fafc;
+      --panel: rgb(255 255 255 / 0.82);
+      --red: #dc2626;
+      --gold: #f59e0b;
+      --violet: #8b5cf6;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      overflow: hidden;
+      color: var(--ink);
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background:
+        linear-gradient(90deg, rgb(248 250 252 / 0.92), rgb(255 255 255 / 0.84)),
+        radial-gradient(circle at 52% 0%, rgb(139 92 246 / 0.18), transparent 32%),
+        var(--paper);
+    }
+
+    .stage {
+      position: relative;
+      min-height: 100vh;
+      overflow: hidden;
+    }
+
+    .accent {
+      position: fixed;
+      inset: 0 0 auto;
+      height: 5px;
+      background: linear-gradient(90deg, #7c3aed, #ec4899, #ef4444);
+      z-index: 12;
+    }
+
+    .shell {
+      display: grid;
+      grid-template-columns: 236px 1fr;
+      min-height: 100vh;
+    }
+
+    .sidebar {
+      padding: 28px 22px;
+      border-right: 1px solid var(--line);
+      background: rgb(255 255 255 / 0.76);
+      backdrop-filter: blur(16px);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 28px;
+      font-size: 20px;
+      font-weight: 800;
+      letter-spacing: 0;
+    }
+
+    .brand-mark {
+      width: 28px;
+      height: 28px;
+      border-radius: 8px;
+      background:
+        linear-gradient(135deg, #111827 0 48%, transparent 48%),
+        linear-gradient(45deg, #ef4444, #f59e0b);
+      box-shadow: 0 10px 22px rgb(239 68 68 / 0.24);
+    }
+
+    .nav {
+      display: grid;
+      gap: 12px;
+      color: #334155;
+      font-weight: 650;
+    }
+
+    .nav span {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-height: 32px;
+    }
+
+    .nav i {
+      display: inline-block;
+      width: 18px;
+      height: 18px;
+      border: 2px solid #94a3b8;
+      border-radius: 5px;
+    }
+
+    .reward {
+      position: absolute;
+      left: 8px;
+      right: 8px;
+      bottom: 34px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: white;
+      box-shadow: 0 12px 30px rgb(15 23 42 / 0.08);
+    }
+
+    .gift {
+      display: grid;
+      place-items: center;
+      width: 36px;
+      height: 36px;
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      color: var(--red);
+      font-weight: 900;
+    }
+
+    .content {
+      position: relative;
+      padding: 22px 24px 42px;
+    }
+
+    .topbar {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 18px;
+      align-items: center;
+      margin-bottom: 18px;
+    }
+
+    .search {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      width: min(460px, 100%);
+      height: 48px;
+      padding: 0 18px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: white;
+      box-shadow: 0 10px 34px rgb(15 23 42 / 0.07);
+      color: #94a3b8;
+      font-weight: 600;
+    }
+
+    .toolbar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      height: 38px;
+      padding: 0 14px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: white;
+      color: #334155;
+      font-weight: 750;
+      box-shadow: 0 8px 24px rgb(15 23 42 / 0.06);
+    }
+
+    .chip.hot {
+      border-color: transparent;
+      color: white;
+      background: linear-gradient(135deg, #8b5cf6, #ec4899);
+    }
+
+    .tabs {
+      display: flex;
+      gap: 28px;
+      align-items: center;
+      height: 38px;
+      color: #475569;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+
+    .tabs span:nth-child(2) {
+      color: #7c3aed;
+      position: relative;
+    }
+
+    .tabs span:nth-child(2)::after {
+      content: "";
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: -11px;
+      height: 3px;
+      border-radius: 999px;
+      background: #7c3aed;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(120px, 1fr));
+      grid-auto-rows: 112px;
+      gap: 12px;
+      margin-top: 16px;
+    }
+
+    .tile {
+      position: relative;
+      overflow: hidden;
+      border-radius: 8px;
+      background:
+        linear-gradient(135deg, rgb(255 255 255 / 0.12), transparent),
+        var(--tile);
+      box-shadow: 0 10px 26px rgb(15 23 42 / 0.14);
+    }
+
+    .tile::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(circle at 24% 18%, rgb(255 255 255 / 0.72), transparent 18%),
+        radial-gradient(circle at 76% 80%, rgb(15 23 42 / 0.28), transparent 28%);
+      mix-blend-mode: overlay;
+    }
+
+    .tile:nth-child(1) { --tile: linear-gradient(135deg, #334155, #111827); grid-row: span 2; }
+    .tile:nth-child(2) { --tile: linear-gradient(135deg, #bae6fd, #fef2f2); grid-row: span 3; }
+    .tile:nth-child(3) { --tile: linear-gradient(135deg, #f97316, #0f172a); grid-row: span 3; }
+    .tile:nth-child(4) { --tile: linear-gradient(135deg, #93c5fd, #f8fafc); }
+    .tile:nth-child(5) { --tile: linear-gradient(135deg, #92400e, #fde68a); grid-row: span 2; }
+    .tile:nth-child(6) { --tile: linear-gradient(135deg, #e2e8f0, #dc2626); grid-row: span 2; }
+    .tile:nth-child(7) { --tile: linear-gradient(135deg, #312e81, #0f172a); grid-row: span 2; }
+    .tile:nth-child(8) { --tile: linear-gradient(135deg, #22c55e, #fde68a, #fb7185); }
+    .tile:nth-child(9) { --tile: linear-gradient(135deg, #60a5fa, #fef3c7); grid-row: span 2; }
+    .tile:nth-child(10) { --tile: linear-gradient(135deg, #f8fafc, #cbd5e1); grid-row: span 2; }
+    .tile:nth-child(11) { --tile: linear-gradient(135deg, #fde68a, #ef4444); grid-row: span 2; }
+    .tile:nth-child(12) { --tile: linear-gradient(135deg, #111827, #475569); grid-row: span 2; }
+
+    .composer {
+      position: fixed;
+      left: 50%;
+      bottom: 26px;
+      z-index: 8;
+      width: min(430px, calc(100vw - 48px));
+      height: 54px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 0 8px 0 22px;
+      border: 1px solid rgb(226 232 240 / 0.9);
+      border-radius: 999px;
+      background: rgb(255 255 255 / 0.9);
+      box-shadow: 0 18px 50px rgb(15 23 42 / 0.16);
+      transform: translateX(-50%);
+      backdrop-filter: blur(18px);
+    }
+
+    .composer span {
+      color: #64748b;
+      font-weight: 700;
+    }
+
+    .spark-button {
+      width: 44px;
+      height: 44px;
+      border: 0;
+      border-radius: 999px;
+      color: white;
+      cursor: pointer;
+      font-size: 18px;
+      font-weight: 900;
+      background: linear-gradient(135deg, #9333ea, #ec4899);
+      box-shadow: 0 12px 28px rgb(147 51 234 / 0.34);
+    }
+
+    .toast {
+      position: fixed;
+      top: 84px;
+      right: 24px;
+      z-index: 9;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 310px;
+      padding: 12px 16px;
+      border: 1px solid #86efac;
+      border-radius: 10px;
+      background: rgb(255 255 255 / 0.94);
+      box-shadow: 0 18px 46px rgb(15 23 42 / 0.14);
+      font-weight: 700;
+    }
+
+    .toast-image {
+      width: 46px;
+      height: 46px;
+      border-radius: 8px;
+      background: linear-gradient(135deg, #fb7185, #111827);
+    }
+
+    .fireworks-layer {
+      position: fixed;
+      inset: 0;
+      z-index: 20;
+      pointer-events: none;
+      overflow: hidden;
+    }
+
+    .piece {
+      position: absolute;
+      top: 62vh;
+      left: var(--start-x);
+      width: var(--w);
+      height: var(--h);
+      border-radius: var(--radius);
+      background: var(--c);
+      opacity: 0;
+      transform: translate(0, var(--origin-y)) rotate(var(--r0)) scale(0.55);
+      transform-origin: center;
+      box-shadow: 0 0 8px rgb(255 255 255 / 0.36);
+      animation: freeFallConfetti var(--dur) linear var(--delay) both;
+      will-change: transform, opacity;
+    }
+
+    .piece.shard {
+      clip-path: polygon(0 0, 100% 18%, 64% 100%, 12% 78%);
+      border-radius: 1px;
+    }
+
+    .piece.triangle {
+      clip-path: polygon(50% 0, 100% 100%, 0 78%);
+      border-radius: 1px;
+    }
+
+    .piece.dot {
+      border-radius: 999px;
+    }
+
+    .piece.tiny {
+      filter: saturate(1.4);
+    }
+
+    @keyframes freeFallConfetti {
+      0% {
+        opacity: 0;
+        transform: translate(0, var(--origin-y)) rotate(var(--r0)) scale(0.4);
+      }
+      3% {
+        opacity: 1;
+      }
+      5% {
+        opacity: 1;
+        transform:
+          translate(var(--p05-x), calc(var(--origin-y) + var(--p05-y)))
+          rotate(calc(var(--spin) * 0.08))
+          scale(0.92);
+      }
+      12% {
+        opacity: 1;
+        transform:
+          translate(var(--p12-x), calc(var(--origin-y) + var(--p12-y)))
+          rotate(calc(var(--spin) * 0.18))
+          scale(1);
+      }
+      22% {
+        opacity: 1;
+        transform:
+          translate(var(--p22-x), calc(var(--origin-y) + var(--p22-y)))
+          rotate(calc(var(--spin) * 0.33))
+          scale(0.98);
+      }
+      36% {
+        opacity: 0.96;
+        transform:
+          translate(var(--p36-x), calc(var(--origin-y) + var(--p36-y)))
+          rotate(calc(var(--spin) * 0.52))
+          scale(0.94);
+      }
+      52% {
+        opacity: 0.94;
+        transform:
+          translate(var(--p52-x), calc(var(--origin-y) + var(--p52-y)))
+          rotate(calc(var(--spin) * 0.70))
+          scale(0.94);
+      }
+      72% {
+        opacity: 0.78;
+        transform:
+          translate(var(--p72-x), calc(var(--origin-y) + var(--p72-y)))
+          rotate(calc(var(--spin) * 0.88))
+          scale(0.86);
+      }
+      90% {
+        opacity: 0.42;
+        transform:
+          translate(var(--p90-x), calc(var(--origin-y) + var(--p90-y)))
+          rotate(calc(var(--spin) * 0.98))
+          scale(0.78);
+      }
+      100% {
+        opacity: 0;
+        transform:
+          translate(var(--p100-x), calc(var(--origin-y) + var(--p100-y)))
+          rotate(var(--spin))
+          scale(0.66);
+      }
+    }
+
+    .control-panel {
+      position: fixed;
+      left: 258px;
+      bottom: 26px;
+      z-index: 30;
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      padding: 10px;
+      border: 1px solid rgb(226 232 240 / 0.88);
+      border-radius: 12px;
+      background: rgb(255 255 255 / 0.84);
+      box-shadow: 0 16px 40px rgb(15 23 42 / 0.14);
+      backdrop-filter: blur(16px);
+    }
+
+    .control-panel button {
+      height: 38px;
+      border: 0;
+      border-radius: 8px;
+      padding: 0 14px;
+      color: white;
+      cursor: pointer;
+      font-weight: 800;
+      background: #111827;
+    }
+
+    .control-panel button.secondary {
+      color: #111827;
+      background: #f1f5f9;
+    }
+
+    @media (max-width: 860px) {
+      .shell {
+        grid-template-columns: 1fr;
+      }
+
+      .sidebar,
+      .control-panel {
+        display: none;
+      }
+
+      .grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="stage">
+    <div class="accent"></div>
+    <div class="shell">
+      <aside class="sidebar">
+        <div class="brand"><span class="brand-mark"></span>Firework Lab</div>
+        <nav class="nav">
+          <span><i></i>首页</span>
+          <span><i></i>会员专享</span>
+          <span><i></i>我的保存</span>
+          <span><i></i>工作流</span>
+          <span><i></i>生成图片</span>
+          <span><i></i>生成视频</span>
+          <span><i></i>动作控制</span>
+        </nav>
+        <div class="reward">
+          <div class="gift">礼</div>
+          <div>
+            <strong>消费达标</strong><br />
+            <small>今日 $20+</small>
+          </div>
+        </div>
+      </aside>
+
+      <main class="content">
+        <div class="topbar">
+          <div class="search">搜索 prompt / 风格 / sref</div>
+          <div class="toolbar">
+            <span class="chip hot">升级</span>
+            <span class="chip">35</span>
+          </div>
+        </div>
+
+        <div class="tabs">
+          <span>全部</span>
+          <span>GPT Image</span>
+          <span>Nano Banana</span>
+          <span>Seedance 2.0</span>
+          <span>Midjourney</span>
+          <span>插画</span>
+          <span>3D</span>
+        </div>
+
+        <section class="grid" aria-label="demo dashboard cards">
+          <div class="tile"></div>
+          <div class="tile"></div>
+          <div class="tile"></div>
+          <div class="tile"></div>
+          <div class="tile"></div>
+          <div class="tile"></div>
+          <div class="tile"></div>
+          <div class="tile"></div>
+          <div class="tile"></div>
+          <div class="tile"></div>
+          <div class="tile"></div>
+          <div class="tile"></div>
+        </section>
+      </main>
+    </div>
+
+    <div class="toast">
+      <span class="toast-image"></span>
+      <span>已保存至「My Save」</span>
+    </div>
+
+    <div class="composer">
+      <span>让产品或页面更有庆祝感</span>
+      <button class="spark-button" type="button" aria-label="Replay">✦</button>
+    </div>
+
+    <div class="control-panel">
+      <button type="button" data-mode="normal">重播</button>
+      <button type="button" class="secondary" data-mode="dense">更碎</button>
+      <button type="button" class="secondary" data-mode="burst">爆量</button>
+    </div>
+
+    <div class="fireworks-layer" id="fireworksLayer" aria-hidden="true"></div>
+  </div>
+
+  <script>
+    const layer = document.getElementById('fireworksLayer')
+    const palette = ['#dc2626', '#ef4444', '#b91c1c', '#ffffff', '#fee2e2', '#f59e0b']
+    const shapes = ['strip', 'strip', 'strip', 'shard', 'triangle', 'dot', 'tiny']
+    const LAUNCH_DELAY_SECONDS = 2
+
+    function rand(min, max) {
+      return Math.random() * (max - min) + min
+    }
+
+    function pick(list) {
+      return list[Math.floor(Math.random() * list.length)]
+    }
+
+    function projectilePoint(v0x, v0y, gravity, time, wind) {
+      return {
+        x: v0x * time + 0.5 * wind * time * time,
+        y: v0y * time + 0.5 * gravity * time * time,
+      }
+    }
+
+    function createPiece(side, index, total) {
+      const piece = document.createElement('span')
+      const shape = pick(shapes)
+      const direction = side === 'left' ? 1 : -1
+      const launchAngle = rand(56, 66) * Math.PI / 180
+      const speed = rand(760, 1080)
+      const v0x = Math.cos(launchAngle) * speed * direction
+      const v0y = -Math.sin(launchAngle) * speed
+      const gravity = rand(1500, 1900)
+      const wind = rand(-55, 75) * direction
+      const originY = rand(-42, 42)
+      const tiny = shape === 'tiny'
+      const dot = shape === 'dot'
+      const strip = shape === 'strip'
+      const width = tiny ? rand(2, 4) : dot ? rand(4, 7) : strip ? rand(3, 6) : rand(7, 13)
+      const height = tiny ? rand(2, 4) : dot ? width : strip ? rand(12, 24) : rand(7, 15)
+      const delay = LAUNCH_DELAY_SECONDS + (index % 28) * rand(0.004, 0.012) + Math.floor(index / 28) * 0.026
+      const duration = rand(1850, 2500)
+      const durationSeconds = duration / 1000
+      const spin = direction * rand(260, 1040)
+      const samples = [
+        ['05', 0.05],
+        ['12', 0.12],
+        ['22', 0.22],
+        ['36', 0.36],
+        ['52', 0.52],
+        ['72', 0.72],
+        ['90', 0.90],
+        ['100', 1.00],
+      ]
+
+      piece.className = `piece ${shape}`
+      piece.style.setProperty('--start-x', side === 'left' ? '18px' : 'calc(100vw - 18px)')
+      piece.style.setProperty('--origin-y', `${originY.toFixed(1)}px`)
+      piece.dataset.v0x = v0x.toFixed(1)
+      piece.dataset.v0y = v0y.toFixed(1)
+      piece.dataset.gravity = gravity.toFixed(1)
+      samples.forEach(([name, fraction]) => {
+        const point = projectilePoint(v0x, v0y, gravity, durationSeconds * fraction, wind)
+        piece.style.setProperty(`--p${name}-x`, `${point.x.toFixed(1)}px`)
+        piece.style.setProperty(`--p${name}-y`, `${point.y.toFixed(1)}px`)
+      })
+      piece.style.setProperty('--w', `${width.toFixed(1)}px`)
+      piece.style.setProperty('--h', `${height.toFixed(1)}px`)
+      piece.style.setProperty('--radius', dot ? '999px' : `${rand(0.5, 2.5).toFixed(1)}px`)
+      piece.style.setProperty('--c', pick(palette))
+      piece.style.setProperty('--delay', `${delay.toFixed(3)}s`)
+      piece.style.setProperty('--dur', `${duration.toFixed(0)}ms`)
+      piece.style.setProperty('--r0', `${rand(-48, 48).toFixed(1)}deg`)
+      piece.style.setProperty('--spin', `${spin.toFixed(1)}deg`)
+      piece.style.zIndex = String(total - index)
+
+      return piece
+    }
+
+    function launch(mode = 'normal') {
+      layer.replaceChildren()
+
+      const count = mode === 'burst' ? 220 : mode === 'dense' ? 170 : 130
+      for (let i = 0; i < count; i += 1) {
+        layer.appendChild(createPiece('left', i, count))
+        layer.appendChild(createPiece('right', i, count))
+      }
+    }
+
+    document.querySelectorAll('[data-mode]').forEach((button) => {
+      button.addEventListener('click', () => launch(button.dataset.mode))
+    })
+
+    document.querySelector('.spark-button').addEventListener('click', () => launch('dense'))
+
+    window.addEventListener('load', () => {
+      launch('dense')
+      window.setTimeout(() => launch('normal'), LAUNCH_DELAY_SECONDS * 1000 + 3300)
+    })
+  </script>
+</body>
+</html>

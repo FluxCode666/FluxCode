@@ -83,6 +83,7 @@ func provideCleanup(
 	accountExpiry *service.AccountExpiryService,
 	subscriptionExpiry *service.SubscriptionExpiryService,
 	usageCleanup *service.UsageCleanupService,
+	generatedImageCleanup *service.GeneratedImageCleanupService,
 	idempotencyCleanup *service.IdempotencyCleanupService,
 	pricing *service.PricingService,
 	openAIPoolMonitorWorker *service.OpenAIPoolMonitorWorker,
@@ -157,6 +158,12 @@ func provideCleanup(
 			{"UsageCleanupService", func() error {
 				if usageCleanup != nil {
 					usageCleanup.Stop()
+				}
+				return nil
+			}},
+			{"GeneratedImageCleanupService", func() error {
+				if generatedImageCleanup != nil {
+					generatedImageCleanup.Stop()
 				}
 				return nil
 			}},

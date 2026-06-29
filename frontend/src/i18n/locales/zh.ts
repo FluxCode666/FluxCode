@@ -5594,6 +5594,14 @@ export default {
         defaultInterval: '默认检测间隔（秒）',
         defaultIntervalHint: '新建监控项时使用的默认间隔，范围 15 - 3600 秒。'
       },
+      dashboardFireworks: {
+        title: '仪表盘礼花',
+        description: '当用户今日实际消费高于阈值时，在 PC 端仪表盘播放一次左右礼花动画',
+        enabled: '启用仪表盘礼花',
+        enabledHint: '仅 PC 端触发；H5 端始终不播放。',
+        threshold: '触发阈值（USD）',
+        thresholdHint: '用户今日实际消费高于此金额时触发。同一用户同一天只播放一次。'
+      },
       registration: {
         title: '注册设置',
         description: '控制用户注册和验证',
@@ -5743,6 +5751,9 @@ export default {
         openaiImageURLCacheTTLHours: 'OpenAI 图片 HTTP 链接缓存 TTL（小时）',
         openaiImageURLCacheTTLHoursHint:
           '当账号选择 response_format=url 返回 HTTP 临时链接时，生成图片会写入 Redis 并按此时间过期。默认 72 小时。',
+        generatedImageCleanupEnabled: '启用生图图库自动清理',
+        generatedImageCleanupEnabledHint:
+          '开启后每天凌晨 4 点按 HTTP 链接缓存 TTL 清理过期的生图图库表数据，仅删除存图记录。',
         userAgent: 'User-Agent',
         userAgentPlaceholder: '例如 codex_cli_rs/1.0.0',
         userAgentHint: '发往 OpenAI 上游的 User-Agent 请求头。留空则使用默认值 codex_cli_rs/1.0.0。',

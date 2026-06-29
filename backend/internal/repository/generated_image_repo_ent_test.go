@@ -260,3 +260,50 @@ func TestGeneratedImageRepositoryDeleteByDateRangeDeletesOnlyGeneratedImages(t *
 	require.NoError(t, err)
 	require.Equal(t, 2, count)
 }
+
+func TestGeneratedImageRepositoryDeleteBeforeDeletesOnlyExpiredGeneratedImages(t *testing.T) {
+	repo, client, _ := newGeneratedImageEntRepo(t)
+	ctx := context.Background()
+	cutoff := time.Date(2026, 6, 28, 4, 0, 0, 0, time.UTC)
+
+	expired, err := repo.Create(ctx, &service.GeneratedImage{
+		Provider:       service.GeneratedImageProviderOpenAI,
+		UserID:         1,
+		APIKeyID:       2,
+		AccountID:      3,
+		ResponseFormat: "b64_json",
+		Source:         "b64_json",
+		ContentType:    "image/png",
+		ImageData:      []byte("expired"),
+		SizeBytes:      len("expired"),
+		CreatedAt:      cutoff.Add(-time.Nanosecond),
+	})
+	require.NoError(t, err)
+	atCutoff, err := repo.Create(ctx, &service.GeneratedImage{
+		Provider:       service.GeneratedImageProviderOpenAI,
+		UserID:         1,
+		APIKeyID:       2,
+		AccountID:      3,
+		ResponseFormat: "b64_json",
+		Source:         "b64_json",
+		ContentType:    "image/png",
+		ImageData:      []byte("at-cutoff"),
+		SizeBytes:      len("at-cutoff"),
+		CreatedAt:      cutoff,
+	})
+	require.NoError(t, err)
+
+	deleted, err := repo.DeleteBefore(ctx, cutoff)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), deleted)
+
+	_, _, err = repo.GetContent(ctx, expired.ID)
+	require.True(t, dbent.IsNotFound(err))
+	data, _, err := repo.GetContent(ctx, atCutoff.ID)
+	require.NoError(t, err)
+	require.Equal(t, []byte("at-cutoff"), data)
+
+	count, err := client.GeneratedImage.Query().Count(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 1, count)
+}
