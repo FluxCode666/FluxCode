@@ -17,6 +17,8 @@ export interface DefaultSubscriptionSetting {
   validity_days: number
 }
 
+export type GeneratedImageStorageSource = 'db' | 'qiniu' | string
+
 /**
  * System settings interface
  */
@@ -51,6 +53,16 @@ export interface SystemSettings {
   custom_endpoints: CustomEndpoint[]
   openai_use_key_model_id: string
   openai_image_url_cache_ttl_hours: number
+  generated_image_storage_source: GeneratedImageStorageSource
+  generated_image_storage_config_source: GeneratedImageStorageSource
+  qiniu_access_key: string
+  qiniu_secret_key_configured: boolean
+  qiniu_bucket: string
+  qiniu_cdn_domain: string
+  qiniu_prefix: string
+  qiniu_use_https: boolean
+  qiniu_upload_timeout_seconds: number
+  qiniu_token_ttl_seconds: number
   generated_image_cleanup_enabled: boolean
   // SMTP settings
   email_provider: string
@@ -223,6 +235,16 @@ export interface UpdateSettingsRequest {
   custom_endpoints?: CustomEndpoint[]
   openai_use_key_model_id?: string
   openai_image_url_cache_ttl_hours?: number
+  generated_image_storage_source?: GeneratedImageStorageSource
+  generated_image_storage_config_source?: GeneratedImageStorageSource
+  qiniu_access_key?: string
+  qiniu_secret_key?: string
+  qiniu_bucket?: string
+  qiniu_cdn_domain?: string
+  qiniu_prefix?: string
+  qiniu_use_https?: boolean
+  qiniu_upload_timeout_seconds?: number
+  qiniu_token_ttl_seconds?: number
   generated_image_cleanup_enabled?: boolean
   email_provider?: string
   smtp_host?: string

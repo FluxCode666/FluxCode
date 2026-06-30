@@ -36,6 +36,9 @@ var (
 )
 
 const DefaultOpenAIImageURLCacheTTLHours = 72
+const DefaultQiniuPrefix = "openai/generated-images"
+const DefaultQiniuUploadTimeoutSeconds = 30
+const DefaultQiniuTokenTTLSeconds = 3600
 const DefaultDashboardFireworksThreshold = 20.0
 
 type SettingRepository interface {
@@ -531,6 +534,39 @@ func normalizeOpenAIImageURLCacheTTLHours(hours int) int {
 	return hours
 }
 
+func NormalizeGeneratedImageStorageSource(source string) string {
+	switch strings.ToLower(strings.TrimSpace(source)) {
+	case "", GeneratedImageStorageSourceDB:
+		return GeneratedImageStorageSourceDB
+	case GeneratedImageStorageSourceQiniu:
+		return GeneratedImageStorageSourceQiniu
+	default:
+		return ""
+	}
+}
+
+func normalizeQiniuPrefix(prefix string) string {
+	normalized := strings.Trim(strings.TrimSpace(prefix), "/")
+	if normalized == "" {
+		return DefaultQiniuPrefix
+	}
+	return normalized
+}
+
+func normalizeQiniuUploadTimeoutSeconds(seconds int) int {
+	if seconds <= 0 {
+		return DefaultQiniuUploadTimeoutSeconds
+	}
+	return seconds
+}
+
+func normalizeQiniuTokenTTLSeconds(seconds int) int {
+	if seconds <= 0 {
+		return DefaultQiniuTokenTTLSeconds
+	}
+	return seconds
+}
+
 func (s *SettingService) GetOpenAIImageURLCacheTTL(ctx context.Context) time.Duration {
 	if s == nil || s.settingRepo == nil {
 		return time.Duration(DefaultOpenAIImageURLCacheTTLHours) * time.Hour
@@ -540,6 +576,77 @@ func (s *SettingService) GetOpenAIImageURLCacheTTL(ctx context.Context) time.Dur
 		return time.Duration(DefaultOpenAIImageURLCacheTTLHours) * time.Hour
 	}
 	return time.Duration(normalizeOpenAIImageURLCacheTTLHours(parseIntSetting(raw, DefaultOpenAIImageURLCacheTTLHours))) * time.Hour
+}
+
+type GeneratedImageStorageSettings struct {
+	Source                    string
+	ConfigSource              string
+	QiniuAccessKey            string
+	QiniuSecretKey            string
+	QiniuBucket               string
+	QiniuCDNDomain            string
+	QiniuPrefix               string
+	QiniuUseHTTPS             bool
+	QiniuUploadTimeoutSeconds int
+	QiniuTokenTTLSeconds      int
+}
+
+var generatedImageStorageSettingKeys = []string{
+	SettingKeyGeneratedImageStorageSource,
+	SettingKeyGeneratedImageStorageConfigSource,
+	SettingKeyQiniuAccessKey,
+	SettingKeyQiniuSecretKey,
+	SettingKeyQiniuBucket,
+	SettingKeyQiniuCDNDomain,
+	SettingKeyQiniuPrefix,
+	SettingKeyQiniuUseHTTPS,
+	SettingKeyQiniuUploadTimeoutSeconds,
+	SettingKeyQiniuTokenTTLSeconds,
+}
+
+func (s *SettingService) GetGeneratedImageStorageSettings(ctx context.Context) (*GeneratedImageStorageSettings, error) {
+	if s == nil || s.settingRepo == nil {
+		return parseGeneratedImageStorageSettings(nil), nil
+	}
+	values, err := s.settingRepo.GetMultiple(ctx, generatedImageStorageSettingKeys)
+	if err != nil {
+		return nil, fmt.Errorf("get generated image storage settings: %w", err)
+	}
+	return parseGeneratedImageStorageSettings(values), nil
+}
+
+func parseGeneratedImageStorageSettings(settings map[string]string) *GeneratedImageStorageSettings {
+	if settings == nil {
+		settings = map[string]string{}
+	}
+	source := NormalizeGeneratedImageStorageSource(settings[SettingKeyGeneratedImageStorageSource])
+	if source == "" {
+		source = GeneratedImageStorageSourceDB
+	}
+	rawConfigSource := strings.TrimSpace(settings[SettingKeyGeneratedImageStorageConfigSource])
+	configSource := source
+	if rawConfigSource != "" {
+		configSource = NormalizeGeneratedImageStorageSource(rawConfigSource)
+	}
+	if configSource == "" {
+		configSource = source
+	}
+	useHTTPS := true
+	if raw, ok := settings[SettingKeyQiniuUseHTTPS]; ok {
+		useHTTPS = raw == "true"
+	}
+	return &GeneratedImageStorageSettings{
+		Source:                    source,
+		ConfigSource:              configSource,
+		QiniuAccessKey:            strings.TrimSpace(settings[SettingKeyQiniuAccessKey]),
+		QiniuSecretKey:            strings.TrimSpace(settings[SettingKeyQiniuSecretKey]),
+		QiniuBucket:               strings.TrimSpace(settings[SettingKeyQiniuBucket]),
+		QiniuCDNDomain:            strings.TrimRight(strings.TrimSpace(settings[SettingKeyQiniuCDNDomain]), "/"),
+		QiniuPrefix:               normalizeQiniuPrefix(settings[SettingKeyQiniuPrefix]),
+		QiniuUseHTTPS:             useHTTPS,
+		QiniuUploadTimeoutSeconds: normalizeQiniuUploadTimeoutSeconds(parseIntSetting(settings[SettingKeyQiniuUploadTimeoutSeconds], DefaultQiniuUploadTimeoutSeconds)),
+		QiniuTokenTTLSeconds:      normalizeQiniuTokenTTLSeconds(parseIntSetting(settings[SettingKeyQiniuTokenTTLSeconds], DefaultQiniuTokenTTLSeconds)),
+	}
 }
 
 func (s *SettingService) IsGeneratedImageCleanupEnabled(ctx context.Context) bool {
@@ -744,6 +851,50 @@ func (s *SettingService) UpdateSettings(ctx context.Context, settings *SystemSet
 	updates[SettingKeyCustomEndpoints] = settings.CustomEndpoints
 	updates[SettingKeyOpenAIUseKeyModelID] = strings.TrimSpace(settings.OpenAIUseKeyModelID)
 	updates[SettingKeyOpenAIImageURLCacheTTLHours] = strconv.Itoa(normalizeOpenAIImageURLCacheTTLHours(settings.OpenAIImageURLCacheTTLHours))
+	generatedImageStorageSource := NormalizeGeneratedImageStorageSource(settings.GeneratedImageStorageSource)
+	if generatedImageStorageSource == "" {
+		return infraerrors.BadRequest("INVALID_GENERATED_IMAGE_STORAGE_SOURCE", "generated image storage source must be db or qiniu")
+	}
+	generatedImageStorageConfigSource := generatedImageStorageSource
+	if rawConfigSource := strings.TrimSpace(settings.GeneratedImageStorageConfigSource); rawConfigSource != "" {
+		generatedImageStorageConfigSource = NormalizeGeneratedImageStorageSource(rawConfigSource)
+		if generatedImageStorageConfigSource == "" {
+			return infraerrors.BadRequest("INVALID_GENERATED_IMAGE_STORAGE_CONFIG_SOURCE", "generated image storage config source must be db or qiniu")
+		}
+	}
+	qiniuAccessKey := strings.TrimSpace(settings.QiniuAccessKey)
+	qiniuSecretKey := strings.TrimSpace(settings.QiniuSecretKey)
+	qiniuBucket := strings.TrimSpace(settings.QiniuBucket)
+	qiniuCDNDomain := strings.TrimRight(strings.TrimSpace(settings.QiniuCDNDomain), "/")
+	qiniuPrefix := normalizeQiniuPrefix(settings.QiniuPrefix)
+	qiniuUploadTimeoutSeconds := normalizeQiniuUploadTimeoutSeconds(settings.QiniuUploadTimeoutSeconds)
+	qiniuTokenTTLSeconds := normalizeQiniuTokenTTLSeconds(settings.QiniuTokenTTLSeconds)
+	if generatedImageStorageSource == GeneratedImageStorageSourceQiniu {
+		if qiniuAccessKey == "" {
+			return infraerrors.BadRequest("QINIU_ACCESS_KEY_REQUIRED", "qiniu access key is required when generated image storage source is qiniu")
+		}
+		if qiniuSecretKey == "" {
+			return infraerrors.BadRequest("QINIU_SECRET_KEY_REQUIRED", "qiniu secret key is required when generated image storage source is qiniu")
+		}
+		if qiniuBucket == "" {
+			return infraerrors.BadRequest("QINIU_BUCKET_REQUIRED", "qiniu bucket is required when generated image storage source is qiniu")
+		}
+		if qiniuCDNDomain == "" {
+			return infraerrors.BadRequest("QINIU_CDN_DOMAIN_REQUIRED", "qiniu cdn domain is required when generated image storage source is qiniu")
+		}
+	}
+	updates[SettingKeyGeneratedImageStorageSource] = generatedImageStorageSource
+	updates[SettingKeyGeneratedImageStorageConfigSource] = generatedImageStorageConfigSource
+	updates[SettingKeyQiniuAccessKey] = qiniuAccessKey
+	if qiniuSecretKey != "" {
+		updates[SettingKeyQiniuSecretKey] = qiniuSecretKey
+	}
+	updates[SettingKeyQiniuBucket] = qiniuBucket
+	updates[SettingKeyQiniuCDNDomain] = qiniuCDNDomain
+	updates[SettingKeyQiniuPrefix] = qiniuPrefix
+	updates[SettingKeyQiniuUseHTTPS] = strconv.FormatBool(settings.QiniuUseHTTPS)
+	updates[SettingKeyQiniuUploadTimeoutSeconds] = strconv.Itoa(qiniuUploadTimeoutSeconds)
+	updates[SettingKeyQiniuTokenTTLSeconds] = strconv.Itoa(qiniuTokenTTLSeconds)
 	updates[SettingKeyGeneratedImageCleanupEnabled] = strconv.FormatBool(settings.GeneratedImageCleanupEnabled)
 
 	// 默认配置
@@ -1398,6 +1549,16 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyCustomEndpoints:                      "[]",
 		SettingKeyOpenAIUseKeyModelID:                  "gpt-5.5",
 		SettingKeyOpenAIImageURLCacheTTLHours:          strconv.Itoa(DefaultOpenAIImageURLCacheTTLHours),
+		SettingKeyGeneratedImageStorageSource:          GeneratedImageStorageSourceDB,
+		SettingKeyGeneratedImageStorageConfigSource:    GeneratedImageStorageSourceDB,
+		SettingKeyQiniuAccessKey:                       "",
+		SettingKeyQiniuSecretKey:                       "",
+		SettingKeyQiniuBucket:                          "",
+		SettingKeyQiniuCDNDomain:                       "",
+		SettingKeyQiniuPrefix:                          DefaultQiniuPrefix,
+		SettingKeyQiniuUseHTTPS:                        "true",
+		SettingKeyQiniuUploadTimeoutSeconds:            strconv.Itoa(DefaultQiniuUploadTimeoutSeconds),
+		SettingKeyQiniuTokenTTLSeconds:                 strconv.Itoa(DefaultQiniuTokenTTLSeconds),
 		SettingKeyGeneratedImageCleanupEnabled:         "false",
 		SettingKeyOIDCConnectEnabled:                   "false",
 		SettingKeyOIDCConnectProviderName:              "OIDC",
@@ -1454,6 +1615,7 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 // parseSettings 解析设置到结构体
 func (s *SettingService) parseSettings(settings map[string]string) *SystemSettings {
 	emailVerifyEnabled := settings[SettingKeyEmailVerifyEnabled] == "true"
+	generatedImageStorageSettings := parseGeneratedImageStorageSettings(settings)
 	result := &SystemSettings{
 		RegistrationEnabled:              settings[SettingKeyRegistrationEnabled] == "true",
 		EmailVerifyEnabled:               emailVerifyEnabled,
@@ -1468,35 +1630,46 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 			parseIntSetting(settings[SettingKeyChannelMonitorDefaultIntervalSeconds], ChannelMonitorFallbackIntervalSecond),
 			ChannelMonitorFallbackIntervalSecond,
 		),
-		EmailProvider:                NormalizeEmailProvider(settings[SettingKeyEmailProvider]),
-		SMTPHost:                     settings[SettingKeySMTPHost],
-		SMTPUsername:                 settings[SettingKeySMTPUsername],
-		SMTPFrom:                     settings[SettingKeySMTPFrom],
-		SMTPFromName:                 settings[SettingKeySMTPFromName],
-		SMTPUseTLS:                   settings[SettingKeySMTPUseTLS] == "true",
-		SMTPPasswordConfigured:       settings[SettingKeySMTPPassword] != "",
-		ResendFrom:                   settings[SettingKeyResendFrom],
-		ResendFromName:               settings[SettingKeyResendFromName],
-		ResendAPIKeyConfigured:       settings[SettingKeyResendAPIKey] != "",
-		TurnstileEnabled:             settings[SettingKeyTurnstileEnabled] == "true",
-		TurnstileSiteKey:             settings[SettingKeyTurnstileSiteKey],
-		TurnstileSecretKeyConfigured: settings[SettingKeyTurnstileSecretKey] != "",
-		SiteName:                     s.getStringOrDefault(settings, SettingKeySiteName, "FluxCode"),
-		SiteLogo:                     settings[SettingKeySiteLogo],
-		SiteSubtitle:                 s.getStringOrDefault(settings, SettingKeySiteSubtitle, "Subscription to API Conversion Platform"),
-		APIBaseURL:                   settings[SettingKeyAPIBaseURL],
-		ContactInfo:                  settings[SettingKeyContactInfo],
-		DocURL:                       settings[SettingKeyDocURL],
-		HomeContent:                  settings[SettingKeyHomeContent],
-		HideCcsImportButton:          settings[SettingKeyHideCcsImportButton] == "true",
-		PurchaseSubscriptionEnabled:  settings[SettingKeyPurchaseSubscriptionEnabled] == "true",
-		PurchaseSubscriptionURL:      strings.TrimSpace(settings[SettingKeyPurchaseSubscriptionURL]),
-		CustomMenuItems:              settings[SettingKeyCustomMenuItems],
-		CustomEndpoints:              settings[SettingKeyCustomEndpoints],
-		OpenAIUseKeyModelID:          s.getStringOrDefault(settings, SettingKeyOpenAIUseKeyModelID, "gpt-5.5"),
-		OpenAIImageURLCacheTTLHours:  normalizeOpenAIImageURLCacheTTLHours(parseIntSetting(settings[SettingKeyOpenAIImageURLCacheTTLHours], DefaultOpenAIImageURLCacheTTLHours)),
-		GeneratedImageCleanupEnabled: settings[SettingKeyGeneratedImageCleanupEnabled] == "true",
-		BackendModeEnabled:           settings[SettingKeyBackendModeEnabled] == "true",
+		EmailProvider:                     NormalizeEmailProvider(settings[SettingKeyEmailProvider]),
+		SMTPHost:                          settings[SettingKeySMTPHost],
+		SMTPUsername:                      settings[SettingKeySMTPUsername],
+		SMTPFrom:                          settings[SettingKeySMTPFrom],
+		SMTPFromName:                      settings[SettingKeySMTPFromName],
+		SMTPUseTLS:                        settings[SettingKeySMTPUseTLS] == "true",
+		SMTPPasswordConfigured:            settings[SettingKeySMTPPassword] != "",
+		ResendFrom:                        settings[SettingKeyResendFrom],
+		ResendFromName:                    settings[SettingKeyResendFromName],
+		ResendAPIKeyConfigured:            settings[SettingKeyResendAPIKey] != "",
+		TurnstileEnabled:                  settings[SettingKeyTurnstileEnabled] == "true",
+		TurnstileSiteKey:                  settings[SettingKeyTurnstileSiteKey],
+		TurnstileSecretKeyConfigured:      settings[SettingKeyTurnstileSecretKey] != "",
+		SiteName:                          s.getStringOrDefault(settings, SettingKeySiteName, "FluxCode"),
+		SiteLogo:                          settings[SettingKeySiteLogo],
+		SiteSubtitle:                      s.getStringOrDefault(settings, SettingKeySiteSubtitle, "Subscription to API Conversion Platform"),
+		APIBaseURL:                        settings[SettingKeyAPIBaseURL],
+		ContactInfo:                       settings[SettingKeyContactInfo],
+		DocURL:                            settings[SettingKeyDocURL],
+		HomeContent:                       settings[SettingKeyHomeContent],
+		HideCcsImportButton:               settings[SettingKeyHideCcsImportButton] == "true",
+		PurchaseSubscriptionEnabled:       settings[SettingKeyPurchaseSubscriptionEnabled] == "true",
+		PurchaseSubscriptionURL:           strings.TrimSpace(settings[SettingKeyPurchaseSubscriptionURL]),
+		CustomMenuItems:                   settings[SettingKeyCustomMenuItems],
+		CustomEndpoints:                   settings[SettingKeyCustomEndpoints],
+		OpenAIUseKeyModelID:               s.getStringOrDefault(settings, SettingKeyOpenAIUseKeyModelID, "gpt-5.5"),
+		OpenAIImageURLCacheTTLHours:       normalizeOpenAIImageURLCacheTTLHours(parseIntSetting(settings[SettingKeyOpenAIImageURLCacheTTLHours], DefaultOpenAIImageURLCacheTTLHours)),
+		GeneratedImageStorageSource:       generatedImageStorageSettings.Source,
+		GeneratedImageStorageConfigSource: generatedImageStorageSettings.ConfigSource,
+		QiniuAccessKey:                    generatedImageStorageSettings.QiniuAccessKey,
+		QiniuSecretKey:                    generatedImageStorageSettings.QiniuSecretKey,
+		QiniuSecretKeyConfigured:          generatedImageStorageSettings.QiniuSecretKey != "",
+		QiniuBucket:                       generatedImageStorageSettings.QiniuBucket,
+		QiniuCDNDomain:                    generatedImageStorageSettings.QiniuCDNDomain,
+		QiniuPrefix:                       generatedImageStorageSettings.QiniuPrefix,
+		QiniuUseHTTPS:                     generatedImageStorageSettings.QiniuUseHTTPS,
+		QiniuUploadTimeoutSeconds:         generatedImageStorageSettings.QiniuUploadTimeoutSeconds,
+		QiniuTokenTTLSeconds:              generatedImageStorageSettings.QiniuTokenTTLSeconds,
+		GeneratedImageCleanupEnabled:      settings[SettingKeyGeneratedImageCleanupEnabled] == "true",
+		BackendModeEnabled:                settings[SettingKeyBackendModeEnabled] == "true",
 	}
 	result.TableDefaultPageSize, result.TablePageSizeOptions = parseTablePreferences(
 		settings[SettingKeyTableDefaultPageSize],

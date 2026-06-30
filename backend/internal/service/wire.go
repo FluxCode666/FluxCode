@@ -364,6 +364,7 @@ func ProvideOpenAIGatewayService(
 	cache GatewayCache,
 	openAIImageCache OpenAIImageCache,
 	generatedImageStore GeneratedImageStore,
+	generatedImageObjectStore GeneratedImageObjectStore,
 	cfg *config.Config,
 	schedulerSnapshot *SchedulerSnapshotService,
 	concurrencyService *ConcurrencyService,
@@ -404,6 +405,7 @@ func ProvideOpenAIGatewayService(
 	)
 	svc.SetOpenAIImageCache(openAIImageCache)
 	svc.SetGeneratedImageStore(generatedImageStore)
+	svc.SetGeneratedImageObjectStore(generatedImageObjectStore)
 	svc.SetSettingService(settingService)
 	svc.SetProxyMetricsRepo(proxyMetricsRepo)
 	svc.SetDisabledProxyScheduleModeProvider(disabledProxyModeProvider)

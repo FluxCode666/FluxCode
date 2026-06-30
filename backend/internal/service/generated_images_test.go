@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
@@ -62,6 +63,68 @@ func TestForwardOpenAIImagesAPIKeyRecordsGeneratedImages(t *testing.T) {
 	require.Equal(t, len("hello"), record.SizeBytes)
 }
 
+func TestForwardOpenAIImagesAPIKeyUploadsGeneratedImagesWhenB64JSONRequested(t *testing.T) {
+	body := []byte(`{"prompt":"draw a cat","response_format":"b64_json"}`)
+	c, _ := newOpenAIImagesForwardTestContext(body)
+	upstream := &httpUpstreamRecorder{
+		resp: &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body: io.NopCloser(strings.NewReader(
+				`{"created":1710000000,"data":[{"b64_json":"aGVsbG8=","output_format":"png"}]}`,
+			)),
+		},
+	}
+	objectStore := &generatedImageObjectStoreStub{url: "https://cdn.example.com/openai/generated.png"}
+	svc := newOpenAIImagesForwardTestService(upstream)
+	svc.SetGeneratedImageObjectStore(objectStore)
+	account := newOpenAIImagesAPIKeyTestAccount()
+	parsed, err := svc.ParseOpenAIImagesRequest(c, body)
+	require.NoError(t, err)
+
+	result, err := svc.ForwardImages(context.Background(), c, account, body, parsed, "")
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Len(t, objectStore.uploads, 1)
+	require.Equal(t, []byte("hello"), objectStore.uploads[0].Data)
+	require.Equal(t, "image/png", objectStore.uploads[0].ContentType)
+}
+
+func TestForwardOpenAIImagesAPIKeyFallsBackToProxyWhenObjectStoreUploadFails(t *testing.T) {
+	body := []byte(`{"prompt":"draw a cat","response_format":"url"}`)
+	c, rec := newOpenAIImagesForwardTestContext(body)
+	upstream := &httpUpstreamRecorder{
+		resp: &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body: io.NopCloser(strings.NewReader(
+				`{"created":1710000000,"data":[{"b64_json":"aGVsbG8=","output_format":"png"}]}`,
+			)),
+		},
+	}
+	cache := newOpenAIImagesFakeImageCache()
+	objectStore := &generatedImageObjectStoreStub{err: errors.New("qiniu unavailable")}
+	svc := newOpenAIImagesForwardTestService(upstream)
+	svc.SetOpenAIImageCache(cache)
+	svc.SetGeneratedImageObjectStore(objectStore)
+	account := newOpenAIImagesAPIKeyTestAccount()
+	parsed, err := svc.ParseOpenAIImagesRequest(c, body)
+	require.NoError(t, err)
+
+	result, err := svc.ForwardImages(context.Background(), c, account, body, parsed, "")
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	proxyURL := gjson.GetBytes(rec.Body.Bytes(), "data.0.url").String()
+	require.Contains(t, proxyURL, "proxy.example.test/v1/images/proxy/")
+	require.False(t, gjson.GetBytes(rec.Body.Bytes(), "data.0.b64_json").Exists())
+	require.Len(t, objectStore.uploads, 1)
+	require.Len(t, cache.sets, 1)
+	require.Equal(t, []byte("hello"), cache.sets[0].data)
+	require.Equal(t, "image/png", cache.sets[0].contentType)
+}
+
 type generatedImageStoreStub struct {
 	created []GeneratedImage
 }
@@ -88,6 +151,24 @@ func (s *generatedImageStoreStub) DeleteByDateRange(ctx context.Context, startAt
 
 func (s *generatedImageStoreStub) DeleteBefore(ctx context.Context, cutoff time.Time) (int64, error) {
 	return 0, nil
+}
+
+type generatedImageObjectStoreStub struct {
+	uploads []GeneratedImageObjectUpload
+	url     string
+	err     error
+}
+
+func (s *generatedImageObjectStoreStub) Upload(ctx context.Context, upload GeneratedImageObjectUpload) (*GeneratedImageObject, error) {
+	copy := GeneratedImageObjectUpload{
+		Data:        append([]byte(nil), upload.Data...),
+		ContentType: upload.ContentType,
+	}
+	s.uploads = append(s.uploads, copy)
+	if s.err != nil {
+		return nil, s.err
+	}
+	return &GeneratedImageObject{URL: s.url}, nil
 }
 
 func TestGeneratedImageRecordNormalizesDataURL(t *testing.T) {

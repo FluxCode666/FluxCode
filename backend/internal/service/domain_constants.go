@@ -46,6 +46,11 @@ const (
 	SystemPromptUserScopeBlacklist = "blacklist"
 )
 
+const (
+	GeneratedImageStorageSourceDB    = "db"
+	GeneratedImageStorageSourceQiniu = "qiniu"
+)
+
 func IsOpenAICompatiblePlatform(platform string) bool {
 	return platform == PlatformOpenAI || platform == PlatformCodex2API
 }
@@ -196,6 +201,18 @@ const (
 	SettingKeyOpenAIUseKeyModelID          = "openai_use_key_model_id"       // 用户侧 OpenAI/Codex 一键配置默认模型 ID
 	SettingKeyOpenAIImageURLCacheTTLHours  = "openai_image_url_cache_ttl_hours"
 	SettingKeyGeneratedImageCleanupEnabled = "generated_image_cleanup_enabled"
+
+	// 生图存储设置
+	SettingKeyGeneratedImageStorageSource       = "generated_image_storage_source"        // db/qiniu, actual storage source
+	SettingKeyGeneratedImageStorageConfigSource = "generated_image_storage_config_source" // db/qiniu, settings panel source
+	SettingKeyQiniuAccessKey                    = "qiniu_access_key"
+	SettingKeyQiniuSecretKey                    = "qiniu_secret_key"
+	SettingKeyQiniuBucket                       = "qiniu_bucket"
+	SettingKeyQiniuCDNDomain                    = "qiniu_cdn_domain"
+	SettingKeyQiniuPrefix                       = "qiniu_prefix"
+	SettingKeyQiniuUseHTTPS                     = "qiniu_use_https"
+	SettingKeyQiniuUploadTimeoutSeconds         = "qiniu_upload_timeout_seconds"
+	SettingKeyQiniuTokenTTLSeconds              = "qiniu_token_ttl_seconds"
 
 	// 默认配置
 	SettingKeyDefaultConcurrency   = "default_concurrency"   // 新用户默认并发量

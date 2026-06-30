@@ -337,33 +337,34 @@ var defaultOpenAICodexSnapshotPersistThrottle = newAccountWriteThrottle(openAICo
 
 // OpenAIGatewayService handles OpenAI API gateway operations
 type OpenAIGatewayService struct {
-	accountRepo           AccountRepository
-	usageLogRepo          UsageLogRepository
-	usageBillingRepo      UsageBillingRepository
-	userRepo              UserRepository
-	userSubRepo           UserSubscriptionRepository
-	cache                 GatewayCache
-	openAIImageCache      OpenAIImageCache
-	generatedImageStore   GeneratedImageStore
-	cfg                   *config.Config
-	codexDetector         CodexClientRestrictionDetector
-	schedulerSnapshot     *SchedulerSnapshotService
-	concurrencyService    *ConcurrencyService
-	billingService        *BillingService
-	rateLimitService      *RateLimitService
-	billingCacheService   *BillingCacheService
-	userGroupRateResolver *userGroupRateResolver
-	httpUpstream          HTTPUpstream
-	deferredService       *DeferredService
-	openAITokenProvider   *OpenAITokenProvider
-	proxyMetricsRepo      ProxyUsageMetricsRepository
-	toolCorrector         *CodexToolCorrector
-	openaiWSResolver      OpenAIWSProtocolResolver
-	resolver              *ModelPricingResolver
-	channelService        *ChannelService
-	balanceNotifyService  *BalanceNotifyService
-	disabledProxyMode     DisabledProxyScheduleModeProvider
-	settingService        *SettingService
+	accountRepo               AccountRepository
+	usageLogRepo              UsageLogRepository
+	usageBillingRepo          UsageBillingRepository
+	userRepo                  UserRepository
+	userSubRepo               UserSubscriptionRepository
+	cache                     GatewayCache
+	openAIImageCache          OpenAIImageCache
+	generatedImageStore       GeneratedImageStore
+	generatedImageObjectStore GeneratedImageObjectStore
+	cfg                       *config.Config
+	codexDetector             CodexClientRestrictionDetector
+	schedulerSnapshot         *SchedulerSnapshotService
+	concurrencyService        *ConcurrencyService
+	billingService            *BillingService
+	rateLimitService          *RateLimitService
+	billingCacheService       *BillingCacheService
+	userGroupRateResolver     *userGroupRateResolver
+	httpUpstream              HTTPUpstream
+	deferredService           *DeferredService
+	openAITokenProvider       *OpenAITokenProvider
+	proxyMetricsRepo          ProxyUsageMetricsRepository
+	toolCorrector             *CodexToolCorrector
+	openaiWSResolver          OpenAIWSProtocolResolver
+	resolver                  *ModelPricingResolver
+	channelService            *ChannelService
+	balanceNotifyService      *BalanceNotifyService
+	disabledProxyMode         DisabledProxyScheduleModeProvider
+	settingService            *SettingService
 
 	openaiWSPoolOnce              sync.Once
 	openaiWSStateStoreOnce        sync.Once
