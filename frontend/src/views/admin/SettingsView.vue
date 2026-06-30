@@ -1933,7 +1933,7 @@
             </p>
           </div>
           <div class="space-y-5 p-6">
-            <div class="grid gap-5 lg:grid-cols-2">
+            <div class="space-y-5">
               <div>
                 <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
                   {{ t('admin.settings.generatedImageStorage.useSource') }}

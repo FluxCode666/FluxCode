@@ -39,4 +39,8 @@ describe('SettingsView generated image storage settings', () => {
     expect(en.admin.settings.generatedImageStorage.sources.db).toBe('DB')
     expect(en.admin.settings.generatedImageStorage.sources.qiniu).toBe('Qiniu Cloud')
   })
+
+  it('stacks active and configuration source controls vertically', () => {
+    expect(settingsViewSource).not.toContain('grid gap-5 lg:grid-cols-2')
+  })
 })
