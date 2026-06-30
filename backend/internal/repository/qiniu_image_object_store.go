@@ -7,6 +7,7 @@ import (
 	"io"
 	"mime"
 	"net/http"
+	"path"
 	"strings"
 	"time"
 
@@ -140,10 +141,12 @@ func (s *qiniuGeneratedImageObjectStore) Upload(ctx context.Context, upload serv
 		return nil, fmt.Errorf("create qiniu upload policy: %w", err)
 	}
 	upToken := uptoken.NewSigner(policy, credentials.NewCredentials(s.accessKey, s.secretKey))
+	fileName := path.Base(key)
 	objectOptions := &uploader.ObjectOptions{
 		UpToken:     upToken,
 		BucketName:  s.bucket,
 		ObjectName:  &key,
+		FileName:    fileName,
 		ContentType: contentType,
 	}
 

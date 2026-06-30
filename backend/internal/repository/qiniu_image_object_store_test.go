@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"io"
+	"path"
 	"strings"
 	"testing"
 	"time"
@@ -39,6 +40,7 @@ func TestQiniuGeneratedImageObjectStoreUploadBuildsObjectAndCDNURL(t *testing.T)
 	require.NotNil(t, fakeUploader.objectOptions.ObjectName)
 	require.True(t, strings.HasPrefix(*fakeUploader.objectOptions.ObjectName, "openai/generated/"))
 	require.True(t, strings.HasSuffix(*fakeUploader.objectOptions.ObjectName, ".png"))
+	require.Equal(t, path.Base(*fakeUploader.objectOptions.ObjectName), fakeUploader.objectOptions.FileName)
 	require.Equal(t, "image/png", fakeUploader.objectOptions.ContentType)
 	require.NotNil(t, fakeUploader.objectOptions.UpToken)
 	require.Equal(t, *fakeUploader.objectOptions.ObjectName, object.Key)

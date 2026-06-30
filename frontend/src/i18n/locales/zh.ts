@@ -5763,8 +5763,10 @@ export default {
       },
       generatedImageStorage: {
         title: '生图存储',
-        description: '选择生成图片的存储来源，并配置七牛云 CDN 返回链接。',
+        description: '分别选择生图实际使用的数据源，以及当前要配置的数据源。',
         source: '数据源',
+        useSource: '使用数据源',
+        configSource: '配置数据源',
         sources: {
           db: 'DB',
           qiniu: '七牛云'
@@ -5772,6 +5774,10 @@ export default {
         sourceHints: {
           db: '图片写入数据库，URL 响应返回本地代理链接。',
           qiniu: '图片上传七牛云，URL 响应返回 CDN 图片链接。'
+        },
+        configHints: {
+          db: 'DB 存储无需额外配置。',
+          qiniu: '配置七牛云密钥、Bucket 和 CDN 域名。'
         },
         accessKey: 'Access Key',
         accessKeyPlaceholder: '七牛云 Access Key',

@@ -1933,56 +1933,106 @@
             </p>
           </div>
           <div class="space-y-5 p-6">
-            <div>
-              <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                {{ t('admin.settings.generatedImageStorage.source') }}
-              </label>
-              <div class="grid gap-2 sm:grid-cols-2">
-                <button
-                  type="button"
-                  :class="[
-                    'flex min-h-[76px] items-start gap-3 rounded-lg border p-4 text-left transition',
-                    form.generated_image_storage_source === 'db'
-                      ? 'border-primary-500 bg-primary-50 text-primary-900 dark:border-primary-400 dark:bg-primary-900/20 dark:text-primary-100'
-                      : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300 dark:border-dark-700 dark:bg-dark-800 dark:text-gray-200'
-                  ]"
-                  @click="setGeneratedImageStorageSource('db')"
-                >
-                  <Icon name="database" size="md" class="mt-0.5 flex-shrink-0" />
-                  <span>
-                    <span class="block text-sm font-medium">
-                      {{ t('admin.settings.generatedImageStorage.sources.db') }}
+            <div class="grid gap-5 lg:grid-cols-2">
+              <div>
+                <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {{ t('admin.settings.generatedImageStorage.useSource') }}
+                </label>
+                <div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
+                  <button
+                    type="button"
+                    :class="[
+                      'flex min-h-[76px] items-start gap-3 rounded-lg border p-4 text-left transition',
+                      form.generated_image_storage_source === 'db'
+                        ? 'border-primary-500 bg-primary-50 text-primary-900 dark:border-primary-400 dark:bg-primary-900/20 dark:text-primary-100'
+                        : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300 dark:border-dark-700 dark:bg-dark-800 dark:text-gray-200'
+                    ]"
+                    @click="setGeneratedImageStorageSource('db')"
+                  >
+                    <Icon name="database" size="md" class="mt-0.5 flex-shrink-0" />
+                    <span>
+                      <span class="block text-sm font-medium">
+                        {{ t('admin.settings.generatedImageStorage.sources.db') }}
+                      </span>
+                      <span class="mt-1 block text-xs text-gray-500 dark:text-gray-400">
+                        {{ t('admin.settings.generatedImageStorage.sourceHints.db') }}
+                      </span>
                     </span>
-                    <span class="mt-1 block text-xs text-gray-500 dark:text-gray-400">
-                      {{ t('admin.settings.generatedImageStorage.sourceHints.db') }}
+                  </button>
+                  <button
+                    type="button"
+                    :class="[
+                      'flex min-h-[76px] items-start gap-3 rounded-lg border p-4 text-left transition',
+                      form.generated_image_storage_source === 'qiniu'
+                        ? 'border-primary-500 bg-primary-50 text-primary-900 dark:border-primary-400 dark:bg-primary-900/20 dark:text-primary-100'
+                        : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300 dark:border-dark-700 dark:bg-dark-800 dark:text-gray-200'
+                    ]"
+                    @click="setGeneratedImageStorageSource('qiniu')"
+                  >
+                    <Icon name="cloud" size="md" class="mt-0.5 flex-shrink-0" />
+                    <span>
+                      <span class="block text-sm font-medium">
+                        {{ t('admin.settings.generatedImageStorage.sources.qiniu') }}
+                      </span>
+                      <span class="mt-1 block text-xs text-gray-500 dark:text-gray-400">
+                        {{ t('admin.settings.generatedImageStorage.sourceHints.qiniu') }}
+                      </span>
                     </span>
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  :class="[
-                    'flex min-h-[76px] items-start gap-3 rounded-lg border p-4 text-left transition',
-                    form.generated_image_storage_source === 'qiniu'
-                      ? 'border-primary-500 bg-primary-50 text-primary-900 dark:border-primary-400 dark:bg-primary-900/20 dark:text-primary-100'
-                      : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300 dark:border-dark-700 dark:bg-dark-800 dark:text-gray-200'
-                  ]"
-                  @click="setGeneratedImageStorageSource('qiniu')"
-                >
-                  <Icon name="cloud" size="md" class="mt-0.5 flex-shrink-0" />
-                  <span>
-                    <span class="block text-sm font-medium">
-                      {{ t('admin.settings.generatedImageStorage.sources.qiniu') }}
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {{ t('admin.settings.generatedImageStorage.configSource') }}
+                </label>
+                <div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
+                  <button
+                    type="button"
+                    :class="[
+                      'flex min-h-[76px] items-start gap-3 rounded-lg border p-4 text-left transition',
+                      form.generated_image_storage_config_source === 'db'
+                        ? 'border-primary-500 bg-primary-50 text-primary-900 dark:border-primary-400 dark:bg-primary-900/20 dark:text-primary-100'
+                        : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300 dark:border-dark-700 dark:bg-dark-800 dark:text-gray-200'
+                    ]"
+                    @click="setGeneratedImageStorageConfigSource('db')"
+                  >
+                    <Icon name="database" size="md" class="mt-0.5 flex-shrink-0" />
+                    <span>
+                      <span class="block text-sm font-medium">
+                        {{ t('admin.settings.generatedImageStorage.sources.db') }}
+                      </span>
+                      <span class="mt-1 block text-xs text-gray-500 dark:text-gray-400">
+                        {{ t('admin.settings.generatedImageStorage.configHints.db') }}
+                      </span>
                     </span>
-                    <span class="mt-1 block text-xs text-gray-500 dark:text-gray-400">
-                      {{ t('admin.settings.generatedImageStorage.sourceHints.qiniu') }}
+                  </button>
+                  <button
+                    type="button"
+                    :class="[
+                      'flex min-h-[76px] items-start gap-3 rounded-lg border p-4 text-left transition',
+                      form.generated_image_storage_config_source === 'qiniu'
+                        ? 'border-primary-500 bg-primary-50 text-primary-900 dark:border-primary-400 dark:bg-primary-900/20 dark:text-primary-100'
+                        : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300 dark:border-dark-700 dark:bg-dark-800 dark:text-gray-200'
+                    ]"
+                    @click="setGeneratedImageStorageConfigSource('qiniu')"
+                  >
+                    <Icon name="cloud" size="md" class="mt-0.5 flex-shrink-0" />
+                    <span>
+                      <span class="block text-sm font-medium">
+                        {{ t('admin.settings.generatedImageStorage.sources.qiniu') }}
+                      </span>
+                      <span class="mt-1 block text-xs text-gray-500 dark:text-gray-400">
+                        {{ t('admin.settings.generatedImageStorage.configHints.qiniu') }}
+                      </span>
                     </span>
-                  </span>
-                </button>
+                  </button>
+                </div>
               </div>
             </div>
 
             <div
-              v-if="form.generated_image_storage_source === 'qiniu'"
+              v-if="form.generated_image_storage_config_source === 'qiniu'"
               class="space-y-4 border-t border-gray-100 pt-5 dark:border-dark-700"
             >
               <div class="grid gap-4 md:grid-cols-2">
@@ -3931,6 +3981,7 @@ const form = reactive<SettingsForm>({
   openai_use_key_model_id: 'gpt-5.5',
   openai_image_url_cache_ttl_hours: 72,
   generated_image_storage_source: 'db',
+  generated_image_storage_config_source: 'db',
   qiniu_access_key: '',
   qiniu_secret_key: '',
   qiniu_secret_key_configured: false,
@@ -3953,6 +4004,10 @@ const form = reactive<SettingsForm>({
 
 function setGeneratedImageStorageSource(source: GeneratedImageStorageSource) {
   form.generated_image_storage_source = source
+}
+
+function setGeneratedImageStorageConfigSource(source: GeneratedImageStorageSource) {
+  form.generated_image_storage_config_source = source
 }
 
 // Proxies for web search emulation ProxySelector
@@ -4583,6 +4638,7 @@ async function saveSettings() {
       openai_use_key_model_id: form.openai_use_key_model_id,
       openai_image_url_cache_ttl_hours: Number(form.openai_image_url_cache_ttl_hours) || 72,
       generated_image_storage_source: form.generated_image_storage_source || 'db',
+      generated_image_storage_config_source: form.generated_image_storage_config_source || form.generated_image_storage_source || 'db',
       qiniu_access_key: form.qiniu_access_key,
       qiniu_secret_key: form.qiniu_secret_key || undefined,
       qiniu_bucket: form.qiniu_bucket,

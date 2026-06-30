@@ -62,6 +62,7 @@ func TestSettingService_ParseSettings_DefaultsGeneratedImageStorageToDB(t *testi
 	settings := svc.parseSettings(map[string]string{})
 
 	require.Equal(t, GeneratedImageStorageSourceDB, settings.GeneratedImageStorageSource)
+	require.Equal(t, GeneratedImageStorageSourceDB, settings.GeneratedImageStorageConfigSource)
 	require.Equal(t, "openai/generated-images", settings.QiniuPrefix)
 	require.True(t, settings.QiniuUseHTTPS)
 	require.Equal(t, 30, settings.QiniuUploadTimeoutSeconds)
@@ -69,24 +70,37 @@ func TestSettingService_ParseSettings_DefaultsGeneratedImageStorageToDB(t *testi
 	require.False(t, settings.QiniuSecretKeyConfigured)
 }
 
+func TestSettingService_ParseSettings_DefaultsGeneratedImageStorageConfigSourceToUseSource(t *testing.T) {
+	svc := NewSettingService(&generatedImageStorageSettingRepoStub{}, &config.Config{})
+
+	settings := svc.parseSettings(map[string]string{
+		SettingKeyGeneratedImageStorageSource: GeneratedImageStorageSourceQiniu,
+	})
+
+	require.Equal(t, GeneratedImageStorageSourceQiniu, settings.GeneratedImageStorageSource)
+	require.Equal(t, GeneratedImageStorageSourceQiniu, settings.GeneratedImageStorageConfigSource)
+}
+
 func TestSettingService_UpdateSettings_GeneratedImageStorageQiniuFields(t *testing.T) {
 	repo := &generatedImageStorageSettingRepoStub{}
 	svc := NewSettingService(repo, &config.Config{})
 
 	err := svc.UpdateSettings(context.Background(), &SystemSettings{
-		GeneratedImageStorageSource: GeneratedImageStorageSourceQiniu,
-		QiniuAccessKey:              " ak ",
-		QiniuSecretKey:              " sk ",
-		QiniuBucket:                 " generated-images ",
-		QiniuCDNDomain:              " cdn.example.com ",
-		QiniuPrefix:                 " openai/generated ",
-		QiniuUseHTTPS:               true,
-		QiniuUploadTimeoutSeconds:   15,
-		QiniuTokenTTLSeconds:        600,
+		GeneratedImageStorageSource:       GeneratedImageStorageSourceQiniu,
+		GeneratedImageStorageConfigSource: GeneratedImageStorageSourceQiniu,
+		QiniuAccessKey:                    " ak ",
+		QiniuSecretKey:                    " sk ",
+		QiniuBucket:                       " generated-images ",
+		QiniuCDNDomain:                    " cdn.example.com ",
+		QiniuPrefix:                       " openai/generated ",
+		QiniuUseHTTPS:                     true,
+		QiniuUploadTimeoutSeconds:         15,
+		QiniuTokenTTLSeconds:              600,
 	})
 
 	require.NoError(t, err)
 	require.Equal(t, GeneratedImageStorageSourceQiniu, repo.updates[SettingKeyGeneratedImageStorageSource])
+	require.Equal(t, GeneratedImageStorageSourceQiniu, repo.updates[SettingKeyGeneratedImageStorageConfigSource])
 	require.Equal(t, "ak", repo.updates[SettingKeyQiniuAccessKey])
 	require.Equal(t, "sk", repo.updates[SettingKeyQiniuSecretKey])
 	require.Equal(t, "generated-images", repo.updates[SettingKeyQiniuBucket])
@@ -95,6 +109,22 @@ func TestSettingService_UpdateSettings_GeneratedImageStorageQiniuFields(t *testi
 	require.Equal(t, "true", repo.updates[SettingKeyQiniuUseHTTPS])
 	require.Equal(t, "15", repo.updates[SettingKeyQiniuUploadTimeoutSeconds])
 	require.Equal(t, "600", repo.updates[SettingKeyQiniuTokenTTLSeconds])
+}
+
+func TestSettingService_UpdateSettings_AllowsConfiguringQiniuWhileUsingDB(t *testing.T) {
+	repo := &generatedImageStorageSettingRepoStub{}
+	svc := NewSettingService(repo, &config.Config{})
+
+	err := svc.UpdateSettings(context.Background(), &SystemSettings{
+		GeneratedImageStorageSource:       GeneratedImageStorageSourceDB,
+		GeneratedImageStorageConfigSource: GeneratedImageStorageSourceQiniu,
+		QiniuPrefix:                       "openai/generated",
+		QiniuUseHTTPS:                     true,
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, GeneratedImageStorageSourceDB, repo.updates[SettingKeyGeneratedImageStorageSource])
+	require.Equal(t, GeneratedImageStorageSourceQiniu, repo.updates[SettingKeyGeneratedImageStorageConfigSource])
 }
 
 func TestSettingService_UpdateSettings_RejectsInvalidGeneratedImageStorageSource(t *testing.T) {
@@ -107,6 +137,20 @@ func TestSettingService_UpdateSettings_RejectsInvalidGeneratedImageStorageSource
 
 	require.Error(t, err)
 	require.Equal(t, "INVALID_GENERATED_IMAGE_STORAGE_SOURCE", infraerrors.Reason(err))
+	require.Nil(t, repo.updates)
+}
+
+func TestSettingService_UpdateSettings_RejectsInvalidGeneratedImageStorageConfigSource(t *testing.T) {
+	repo := &generatedImageStorageSettingRepoStub{}
+	svc := NewSettingService(repo, &config.Config{})
+
+	err := svc.UpdateSettings(context.Background(), &SystemSettings{
+		GeneratedImageStorageSource:       GeneratedImageStorageSourceDB,
+		GeneratedImageStorageConfigSource: "filesystem",
+	})
+
+	require.Error(t, err)
+	require.Equal(t, "INVALID_GENERATED_IMAGE_STORAGE_CONFIG_SOURCE", infraerrors.Reason(err))
 	require.Nil(t, repo.updates)
 }
 

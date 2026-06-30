@@ -5634,8 +5634,10 @@ export default {
       },
       generatedImageStorage: {
         title: 'Generated Image Storage',
-        description: 'Choose where generated images are stored and configure Qiniu CDN return URLs.',
+        description: 'Choose the active generated image source separately from the source currently being configured.',
         source: 'Data source',
+        useSource: 'Active source',
+        configSource: 'Configuration source',
         sources: {
           db: 'DB',
           qiniu: 'Qiniu Cloud'
@@ -5643,6 +5645,10 @@ export default {
         sourceHints: {
           db: 'Store images in the database and return local proxy URLs.',
           qiniu: 'Upload images to Qiniu Cloud and return CDN image URLs.'
+        },
+        configHints: {
+          db: 'DB storage does not need extra configuration.',
+          qiniu: 'Configure Qiniu keys, bucket, and CDN domain.'
         },
         accessKey: 'Access Key',
         accessKeyPlaceholder: 'Qiniu Access Key',

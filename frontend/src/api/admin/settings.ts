@@ -54,6 +54,7 @@ export interface SystemSettings {
   openai_use_key_model_id: string
   openai_image_url_cache_ttl_hours: number
   generated_image_storage_source: GeneratedImageStorageSource
+  generated_image_storage_config_source: GeneratedImageStorageSource
   qiniu_access_key: string
   qiniu_secret_key_configured: boolean
   qiniu_bucket: string
@@ -235,6 +236,7 @@ export interface UpdateSettingsRequest {
   openai_use_key_model_id?: string
   openai_image_url_cache_ttl_hours?: number
   generated_image_storage_source?: GeneratedImageStorageSource
+  generated_image_storage_config_source?: GeneratedImageStorageSource
   qiniu_access_key?: string
   qiniu_secret_key?: string
   qiniu_bucket?: string

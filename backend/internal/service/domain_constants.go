@@ -203,15 +203,16 @@ const (
 	SettingKeyGeneratedImageCleanupEnabled = "generated_image_cleanup_enabled"
 
 	// 生图存储设置
-	SettingKeyGeneratedImageStorageSource = "generated_image_storage_source" // db/qiniu
-	SettingKeyQiniuAccessKey              = "qiniu_access_key"
-	SettingKeyQiniuSecretKey              = "qiniu_secret_key"
-	SettingKeyQiniuBucket                 = "qiniu_bucket"
-	SettingKeyQiniuCDNDomain              = "qiniu_cdn_domain"
-	SettingKeyQiniuPrefix                 = "qiniu_prefix"
-	SettingKeyQiniuUseHTTPS               = "qiniu_use_https"
-	SettingKeyQiniuUploadTimeoutSeconds   = "qiniu_upload_timeout_seconds"
-	SettingKeyQiniuTokenTTLSeconds        = "qiniu_token_ttl_seconds"
+	SettingKeyGeneratedImageStorageSource       = "generated_image_storage_source"        // db/qiniu, actual storage source
+	SettingKeyGeneratedImageStorageConfigSource = "generated_image_storage_config_source" // db/qiniu, settings panel source
+	SettingKeyQiniuAccessKey                    = "qiniu_access_key"
+	SettingKeyQiniuSecretKey                    = "qiniu_secret_key"
+	SettingKeyQiniuBucket                       = "qiniu_bucket"
+	SettingKeyQiniuCDNDomain                    = "qiniu_cdn_domain"
+	SettingKeyQiniuPrefix                       = "qiniu_prefix"
+	SettingKeyQiniuUseHTTPS                     = "qiniu_use_https"
+	SettingKeyQiniuUploadTimeoutSeconds         = "qiniu_upload_timeout_seconds"
+	SettingKeyQiniuTokenTTLSeconds              = "qiniu_token_ttl_seconds"
 
 	// 默认配置
 	SettingKeyDefaultConcurrency   = "default_concurrency"   // 新用户默认并发量
