@@ -5769,6 +5769,41 @@ export default {
         versionPlaceholder: '例如 1.0.0',
         versionHint: '发往 OpenAI compact 端点的 Version 请求头。留空则使用默认值 1.0.0。需与 User-Agent 中的版本保持一致。',
       },
+      generatedImageStorage: {
+        title: '生图存储',
+        description: '分别选择生图实际使用的数据源，以及当前要配置的数据源。',
+        source: '数据源',
+        useSource: '使用数据源',
+        configSource: '配置数据源',
+        sources: {
+          db: 'DB',
+          qiniu: '七牛云'
+        },
+        sourceHints: {
+          db: '图片写入数据库，URL 响应返回本地代理链接。',
+          qiniu: '图片上传七牛云，URL 响应返回 CDN 图片链接。'
+        },
+        configHints: {
+          db: 'DB 存储无需额外配置。',
+          qiniu: '配置七牛云密钥、Bucket 和 CDN 域名。'
+        },
+        accessKey: 'Access Key',
+        accessKeyPlaceholder: '七牛云 Access Key',
+        secretKey: 'Secret Key',
+        secretKeyPlaceholder: '七牛云 Secret Key',
+        secretKeyConfiguredPlaceholder: '********',
+        secretKeyConfiguredHint: 'Secret Key 已配置，留空以保留当前值。',
+        bucket: 'Bucket',
+        bucketPlaceholder: '例如 fluxcode-images',
+        cdnDomain: 'CDN 域名',
+        cdnDomainPlaceholder: '例如 https://img.example.com',
+        prefix: '对象前缀',
+        prefixPlaceholder: 'openai/generated-images',
+        uploadTimeoutSeconds: '上传超时（秒）',
+        tokenTTLSeconds: '上传凭证有效期（秒）',
+        useHTTPS: '使用 HTTPS CDN 链接',
+        useHTTPSHint: '关闭后将生成 http:// 开头的 CDN URL。'
+      },
       gatewayForwarding: {
         title: '请求转发行为',
         description: '控制请求转发到上游 OAuth 账号时的行为',

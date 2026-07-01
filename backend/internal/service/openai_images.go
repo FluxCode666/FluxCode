@@ -929,17 +929,18 @@ func (s *OpenAIGatewayService) transformOpenAIImagesAPIKeyResponse(
 				if err != nil {
 					return nil, err
 				}
-				renderedURL, err := s.renderOpenAIImagesResolvedResponseURL(ctx, c, imageBytes, resolvedContentType, responseURLMode)
+				renderedURL, objectUploadHandled, err := s.renderOpenAIImagesResolvedResponseURL(ctx, c, imageBytes, resolvedContentType, responseURLMode)
 				if err != nil {
 					return nil, err
 				}
 				s.recordGeneratedImageBestEffort(ctx, GeneratedImageRecordInput{
-					Meta:          itemRecordCtx,
-					ImageData:     imageBytes,
-					ContentType:   resolvedContentType,
-					OutputFormat:  outputFormat,
-					Source:        GeneratedImageSourceUpstreamURL,
-					RevisedPrompt: revisedPrompt,
+					Meta:                itemRecordCtx,
+					ImageData:           imageBytes,
+					ContentType:         resolvedContentType,
+					OutputFormat:        outputFormat,
+					Source:              GeneratedImageSourceUpstreamURL,
+					RevisedPrompt:       revisedPrompt,
+					ObjectUploadHandled: objectUploadHandled,
 				})
 				out, _ = sjson.SetBytes(out, basePath+".url", renderedURL)
 				out, _ = sjson.DeleteBytes(out, basePath+".b64_json")
@@ -951,17 +952,18 @@ func (s *OpenAIGatewayService) transformOpenAIImagesAPIKeyResponse(
 				if err != nil {
 					return nil, err
 				}
-				renderedURL, err := s.renderOpenAIImagesResolvedResponseURL(ctx, c, imageBytes, resolvedContentType, responseURLMode)
+				renderedURL, objectUploadHandled, err := s.renderOpenAIImagesResolvedResponseURL(ctx, c, imageBytes, resolvedContentType, responseURLMode)
 				if err != nil {
 					return nil, err
 				}
 				s.recordGeneratedImageBestEffort(ctx, GeneratedImageRecordInput{
-					Meta:          itemRecordCtx,
-					ImageData:     imageBytes,
-					ContentType:   resolvedContentType,
-					OutputFormat:  outputFormat,
-					Source:        GeneratedImageSourceB64JSON,
-					RevisedPrompt: revisedPrompt,
+					Meta:                itemRecordCtx,
+					ImageData:           imageBytes,
+					ContentType:         resolvedContentType,
+					OutputFormat:        outputFormat,
+					Source:              GeneratedImageSourceB64JSON,
+					RevisedPrompt:       revisedPrompt,
+					ObjectUploadHandled: objectUploadHandled,
 				})
 				out, _ = sjson.SetBytes(out, basePath+".url", renderedURL)
 				out, _ = sjson.DeleteBytes(out, basePath+".b64_json")
@@ -1118,17 +1120,18 @@ func (s *OpenAIGatewayService) transformOpenAIImagesAPIKeyStreamPayload(
 			if err != nil {
 				return nil, err
 			}
-			renderedURL, err := s.renderOpenAIImagesResolvedResponseURL(ctx, c, imageBytes, resolvedContentType, responseURLMode)
+			renderedURL, objectUploadHandled, err := s.renderOpenAIImagesResolvedResponseURL(ctx, c, imageBytes, resolvedContentType, responseURLMode)
 			if err != nil {
 				return nil, err
 			}
 			s.recordGeneratedImageBestEffort(ctx, GeneratedImageRecordInput{
-				Meta:          recordCtx,
-				ImageData:     imageBytes,
-				ContentType:   resolvedContentType,
-				OutputFormat:  outputFormat,
-				Source:        GeneratedImageSourceUpstreamURL,
-				RevisedPrompt: revisedPrompt,
+				Meta:                recordCtx,
+				ImageData:           imageBytes,
+				ContentType:         resolvedContentType,
+				OutputFormat:        outputFormat,
+				Source:              GeneratedImageSourceUpstreamURL,
+				RevisedPrompt:       revisedPrompt,
+				ObjectUploadHandled: objectUploadHandled,
 			})
 			out, _ = sjson.SetBytes(out, "url", renderedURL)
 			out, _ = sjson.DeleteBytes(out, "b64_json")
@@ -1139,17 +1142,18 @@ func (s *OpenAIGatewayService) transformOpenAIImagesAPIKeyStreamPayload(
 		if err != nil {
 			return nil, err
 		}
-		renderedURL, err := s.renderOpenAIImagesResolvedResponseURL(ctx, c, imageBytes, resolvedContentType, responseURLMode)
+		renderedURL, objectUploadHandled, err := s.renderOpenAIImagesResolvedResponseURL(ctx, c, imageBytes, resolvedContentType, responseURLMode)
 		if err != nil {
 			return nil, err
 		}
 		s.recordGeneratedImageBestEffort(ctx, GeneratedImageRecordInput{
-			Meta:          recordCtx,
-			ImageData:     imageBytes,
-			ContentType:   resolvedContentType,
-			OutputFormat:  outputFormat,
-			Source:        GeneratedImageSourceB64JSON,
-			RevisedPrompt: revisedPrompt,
+			Meta:                recordCtx,
+			ImageData:           imageBytes,
+			ContentType:         resolvedContentType,
+			OutputFormat:        outputFormat,
+			Source:              GeneratedImageSourceB64JSON,
+			RevisedPrompt:       revisedPrompt,
+			ObjectUploadHandled: objectUploadHandled,
 		})
 		out, _ = sjson.SetBytes(out, "url", renderedURL)
 		out, _ = sjson.DeleteBytes(out, "b64_json")
@@ -1191,10 +1195,10 @@ func (s *OpenAIGatewayService) renderOpenAIImagesResponseURL(
 	value string,
 	contentType string,
 	responseURLMode string,
-) (string, error) {
+) (string, bool, error) {
 	imageBytes, resolvedContentType, err := s.resolveOpenAIImagesResponseImageBytes(ctx, c, value, contentType)
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
 	return s.renderOpenAIImagesResolvedResponseURL(ctx, c, imageBytes, resolvedContentType, responseURLMode)
 }
@@ -1205,15 +1209,22 @@ func (s *OpenAIGatewayService) renderOpenAIImagesResolvedResponseURL(
 	imageBytes []byte,
 	resolvedContentType string,
 	responseURLMode string,
-) (string, error) {
+) (string, bool, error) {
 	mode := normalizeOpenAIImageResponseURLMode(responseURLMode)
 	if resolvedContentType == "" {
 		resolvedContentType = "image/png"
 	}
 	if mode == OpenAIImageResponseURLModeHTTPURL {
-		return s.cacheOpenAIImagesResponseURL(ctx, c, imageBytes, resolvedContentType)
+		if url, objectUploadHandled, ok := s.uploadGeneratedImageObjectBestEffort(ctx, imageBytes, resolvedContentType); ok {
+			return url, objectUploadHandled, nil
+		} else if objectUploadHandled {
+			url, err := s.cacheOpenAIImagesResponseURL(ctx, c, imageBytes, resolvedContentType)
+			return url, true, err
+		}
+		url, err := s.cacheOpenAIImagesResponseURL(ctx, c, imageBytes, resolvedContentType)
+		return url, false, err
 	}
-	return "data:" + resolvedContentType + ";base64," + base64.StdEncoding.EncodeToString(imageBytes), nil
+	return "data:" + resolvedContentType + ";base64," + base64.StdEncoding.EncodeToString(imageBytes), false, nil
 }
 
 func (s *OpenAIGatewayService) resolveOpenAIImagesResponseImageBytes(

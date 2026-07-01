@@ -292,6 +292,41 @@ func TestForwardOpenAIImagesAPIKeyReturnsHTTPURLByDefaultFromB64JSON(t *testing.
 	require.Equal(t, []byte("hello"), proxyRec.Body.Bytes())
 }
 
+func TestForwardOpenAIImagesAPIKeyReturnsObjectStoreURLWhenHTTPURLRequested(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	body := []byte(`{"prompt":"draw a cat","response_format":"url"}`)
+	c, rec := newOpenAIImagesForwardTestContext(body)
+	upstream := &httpUpstreamRecorder{
+		resp: &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body: io.NopCloser(strings.NewReader(
+				`{"created":1710000000,"data":[{"b64_json":"aGVsbG8=","output_format":"png"}]}`,
+			)),
+		},
+	}
+	cache := newOpenAIImagesFakeImageCache()
+	objectStore := &generatedImageObjectStoreStub{url: "https://cdn.example.com/openai/generated.png"}
+	svc := newOpenAIImagesForwardTestService(upstream)
+	svc.SetOpenAIImageCache(cache)
+	svc.SetGeneratedImageObjectStore(objectStore)
+	account := newOpenAIImagesAPIKeyTestAccount()
+	parsed, err := svc.ParseOpenAIImagesRequest(c, body)
+	require.NoError(t, err)
+
+	result, err := svc.ForwardImages(context.Background(), c, account, body, parsed, "")
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, "https://cdn.example.com/openai/generated.png", gjson.GetBytes(rec.Body.Bytes(), "data.0.url").String())
+	require.False(t, gjson.GetBytes(rec.Body.Bytes(), "data.0.b64_json").Exists())
+	require.Len(t, objectStore.uploads, 1)
+	require.Equal(t, []byte("hello"), objectStore.uploads[0].Data)
+	require.Equal(t, "image/png", objectStore.uploads[0].ContentType)
+	require.Empty(t, cache.sets)
+}
+
 func TestForwardOpenAIImagesAPIKeyReturnsHTTPURLModeFromUpstreamURLWithConfiguredTTL(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	imageBytes := []byte("downloaded-png-bytes")
