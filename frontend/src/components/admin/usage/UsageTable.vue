@@ -121,14 +121,20 @@
             >
               {{ row.original_group?.name }}
             </div>
-            <div class="mt-1 flex min-w-0 items-center gap-2 pl-3">
-              <span class="h-4 w-px shrink-0 bg-indigo-300 dark:bg-indigo-700" aria-hidden="true"></span>
-              <span class="shrink-0 rounded border border-indigo-200 bg-indigo-50 px-1.5 py-0.5 text-[10px] font-medium leading-3 text-indigo-700 dark:border-indigo-800 dark:bg-indigo-950 dark:text-indigo-300">
-                兜底
+            <div
+              data-test="usage-fallback-group-row"
+              class="mt-0.5 flex min-w-0 items-center gap-1.5"
+            >
+              <span
+                data-test="usage-fallback-group-arrow"
+                class="shrink-0 text-sm font-medium leading-5 text-blue-600 dark:text-blue-300"
+                aria-hidden="true"
+              >
+                ↳
               </span>
               <span
                 data-test="usage-fallback-group"
-                class="truncate font-medium leading-5 text-indigo-700 dark:text-indigo-300"
+                class="truncate font-medium leading-5 text-blue-700 dark:text-blue-300"
                 :title="row.group?.name"
               >
                 {{ row.group?.name }}

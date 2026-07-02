@@ -231,12 +231,17 @@ describe('admin UsageTable tooltip', () => {
 
     const groupCell = wrapper.get('[data-test="usage-group-cell"]')
     const originalGroup = groupCell.get('[data-test="usage-original-group"]')
+    const fallbackRow = groupCell.get('[data-test="usage-fallback-group-row"]')
+    const fallbackArrow = groupCell.get('[data-test="usage-fallback-group-arrow"]')
     const fallbackGroup = groupCell.get('[data-test="usage-fallback-group"]')
 
     expect(originalGroup.text()).toBe('Primary Group')
-    expect(groupCell.text()).toContain('兜底')
+    expect(fallbackArrow.text()).toBe('↳')
     expect(fallbackGroup.text()).toBe('Fallback Group')
+    expect(fallbackRow.text()).not.toContain('兜底')
+    expect(fallbackRow.classes()).not.toContain('pl-4')
     expect(groupCell.text()).not.toContain('|—>')
+    expect(groupCell.find('.w-px').exists()).toBe(false)
     expect(
       originalGroup.element.compareDocumentPosition(fallbackGroup.element) &
       Node.DOCUMENT_POSITION_FOLLOWING
