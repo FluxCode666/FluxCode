@@ -152,13 +152,14 @@ func TestAdminService_CreateGroup_WithImagePricing(t *testing.T) {
 	price4K := 0.30
 
 	input := &CreateGroupInput{
-		Name:           "test-group",
-		Description:    "Test group",
-		Platform:       PlatformAntigravity,
-		RateMultiplier: 1.0,
-		ImagePrice1K:   &price1K,
-		ImagePrice2K:   &price2K,
-		ImagePrice4K:   &price4K,
+		Name:                 "test-group",
+		Description:          "Test group",
+		Platform:             PlatformAntigravity,
+		RateMultiplier:       1.0,
+		ImagePrice1K:         &price1K,
+		ImagePrice2K:         &price2K,
+		ImagePrice4K:         &price4K,
+		AllowImageGeneration: true,
 	}
 
 	group, err := svc.CreateGroup(context.Background(), input)
@@ -170,6 +171,8 @@ func TestAdminService_CreateGroup_WithImagePricing(t *testing.T) {
 	require.NotNil(t, repo.created.ImagePrice1K)
 	require.NotNil(t, repo.created.ImagePrice2K)
 	require.NotNil(t, repo.created.ImagePrice4K)
+	require.True(t, group.AllowImageGeneration)
+	require.True(t, repo.created.AllowImageGeneration)
 	require.InDelta(t, 0.10, *repo.created.ImagePrice1K, 0.0001)
 	require.InDelta(t, 0.15, *repo.created.ImagePrice2K, 0.0001)
 	require.InDelta(t, 0.30, *repo.created.ImagePrice4K, 0.0001)
@@ -213,11 +216,13 @@ func TestAdminService_UpdateGroup_WithImagePricing(t *testing.T) {
 	price1K := 0.12
 	price2K := 0.18
 	price4K := 0.36
+	allowImageGeneration := true
 
 	input := &UpdateGroupInput{
-		ImagePrice1K: &price1K,
-		ImagePrice2K: &price2K,
-		ImagePrice4K: &price4K,
+		ImagePrice1K:         &price1K,
+		ImagePrice2K:         &price2K,
+		ImagePrice4K:         &price4K,
+		AllowImageGeneration: &allowImageGeneration,
 	}
 
 	group, err := svc.UpdateGroup(context.Background(), 1, input)
@@ -229,6 +234,7 @@ func TestAdminService_UpdateGroup_WithImagePricing(t *testing.T) {
 	require.NotNil(t, repo.updated.ImagePrice1K)
 	require.NotNil(t, repo.updated.ImagePrice2K)
 	require.NotNil(t, repo.updated.ImagePrice4K)
+	require.True(t, repo.updated.AllowImageGeneration)
 	require.InDelta(t, 0.12, *repo.updated.ImagePrice1K, 0.0001)
 	require.InDelta(t, 0.18, *repo.updated.ImagePrice2K, 0.0001)
 	require.InDelta(t, 0.36, *repo.updated.ImagePrice4K, 0.0001)

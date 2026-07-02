@@ -666,6 +666,7 @@ var (
 		{Name: "image_price_1k", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "decimal(20,8)"}},
 		{Name: "image_price_2k", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "decimal(20,8)"}},
 		{Name: "image_price_4k", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "decimal(20,8)"}},
+		{Name: "allow_image_generation", Type: field.TypeBool, Default: false},
 		{Name: "claude_code_only", Type: field.TypeBool, Default: false},
 		{Name: "fallback_group_id", Type: field.TypeInt64, Nullable: true},
 		{Name: "is_fallback_group", Type: field.TypeBool, Default: false},
@@ -710,7 +711,7 @@ var (
 			{
 				Name:    "group_is_fallback_group",
 				Unique:  false,
-				Columns: []*schema.Column{GroupsColumns[22]},
+				Columns: []*schema.Column{GroupsColumns[23]},
 			},
 			{
 				Name:    "group_deleted_at",
@@ -720,7 +721,7 @@ var (
 			{
 				Name:    "group_sort_order",
 				Unique:  false,
-				Columns: []*schema.Column{GroupsColumns[28]},
+				Columns: []*schema.Column{GroupsColumns[29]},
 			},
 		},
 	}
