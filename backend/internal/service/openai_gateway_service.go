@@ -4753,6 +4753,7 @@ type OpenAIRecordUsageInput struct {
 	User               *User
 	Account            *Account
 	Subscription       *UserSubscription
+	OriginalGroupID    *int64
 	BilledAt           time.Time
 	InboundEndpoint    string
 	UpstreamEndpoint   string
@@ -4881,6 +4882,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		ReasoningEffort:     result.ReasoningEffort,
 		InboundEndpoint:     optionalTrimmedStringPtr(input.InboundEndpoint),
 		UpstreamEndpoint:    optionalTrimmedStringPtr(input.UpstreamEndpoint),
+		OriginalGroupID:     input.OriginalGroupID,
 		InputTokens:         actualInputTokens,
 		OutputTokens:        result.Usage.OutputTokens,
 		CacheCreationTokens: result.Usage.CacheCreationInputTokens,

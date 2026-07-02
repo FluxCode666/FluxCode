@@ -44,6 +44,7 @@ const DataTableStub = {
         <slot name="cell-model" :row="row" :value="row.model" />
         <slot name="cell-trace_id" :row="row" :value="row.trace_id" />
         <slot name="cell-request_id" :row="row" :value="row.request_id" />
+        <slot name="cell-group" :row="row" />
         <slot name="cell-cost" :row="row" />
       </div>
     </div>
@@ -190,6 +191,48 @@ describe('admin UsageTable tooltip', () => {
     expect(text).toContain('trace-admin-1')
     expect(text).toContain('Upstream Request ID')
     expect(text).toContain('req-upstream-1')
+  })
+
+  it('shows original group above fallback group for fallback usage rows', () => {
+    const row = {
+      request_id: 'req-admin-fallback-group',
+      model: 'gpt-5',
+      original_group_id: 101,
+      original_group: { id: 101, name: 'Primary Group' },
+      group_id: 202,
+      group: { id: 202, name: 'Fallback Group' },
+      actual_cost: 0,
+      total_cost: 0,
+      account_rate_multiplier: 1,
+      rate_multiplier: 1,
+      input_cost: 0,
+      output_cost: 0,
+      cache_creation_cost: 0,
+      cache_read_cost: 0,
+      input_tokens: 0,
+      output_tokens: 0,
+    }
+
+    const wrapper = mount(UsageTable, {
+      props: {
+        data: [row],
+        loading: false,
+        columns: [],
+      },
+      global: {
+        stubs: {
+          DataTable: DataTableStub,
+          EmptyState: true,
+          Icon: true,
+          Teleport: true,
+        },
+      },
+    })
+
+    const text = wrapper.text()
+    expect(text).toContain('Primary Group')
+    expect(text).toContain('|—> Fallback Group')
+    expect(text.indexOf('Primary Group')).toBeLessThan(text.indexOf('|—> Fallback Group'))
   })
 
   it('wraps long request ids and models inside their cells', () => {

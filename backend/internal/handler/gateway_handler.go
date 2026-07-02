@@ -501,6 +501,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 
 	currentAPIKey := apiKey
 	currentSubscription := subscription
+	originalRuntimeGroupID := copyGroupIDPtr(apiKey.GroupID)
 	fallbackUsed := false
 	baseParsedReq := parsedReq
 
@@ -845,6 +846,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 					User:               currentAPIKey.User,
 					Account:            account,
 					Subscription:       currentSubscription,
+					OriginalGroupID:    originalGroupIDForRuntimeFallback(fallbackUsed, originalRuntimeGroupID, currentAPIKey.GroupID),
 					InboundEndpoint:    inboundEndpoint,
 					UpstreamEndpoint:   upstreamEndpoint,
 					UserAgent:          userAgent,
@@ -966,6 +968,25 @@ func cloneAPIKeyWithFallbackGroup(apiKey *service.APIKey, fallbackGroup *service
 	cloned.GroupID = &groupID
 	cloned.Group = fallbackGroup
 	return &cloned
+}
+
+func copyGroupIDPtr(groupID *int64) *int64 {
+	if groupID == nil {
+		return nil
+	}
+	value := *groupID
+	return &value
+}
+
+func originalGroupIDForRuntimeFallback(fallbackUsed bool, originalGroupID *int64, currentGroupID *int64) *int64 {
+	if !fallbackUsed || originalGroupID == nil {
+		return nil
+	}
+	if currentGroupID != nil && *currentGroupID == *originalGroupID {
+		return nil
+	}
+	value := *originalGroupID
+	return &value
 }
 
 type claudeFallbackResult int

@@ -638,6 +638,7 @@ func TestOpenAIRuntimeFallbackSelectionFailure_SwitchesGroupAndAttributesUsage(t
 		APIKey:           fallbackAPIKey,
 		User:             fallbackAPIKey.User,
 		Account:          &service.Account{ID: 6102, Platform: service.PlatformOpenAI, Type: service.AccountTypeOAuth},
+		OriginalGroupID:  &primaryGroupID,
 		InboundEndpoint:  "/openai/v1/responses",
 		UpstreamEndpoint: "https://api.openai.com/v1/responses",
 	})
@@ -645,6 +646,21 @@ func TestOpenAIRuntimeFallbackSelectionFailure_SwitchesGroupAndAttributesUsage(t
 	require.NotNil(t, usageRepo.lastLog)
 	require.NotNil(t, usageRepo.lastLog.GroupID)
 	require.Equal(t, fallbackGroupID, *usageRepo.lastLog.GroupID)
+	require.NotNil(t, usageRepo.lastLog.OriginalGroupID)
+	require.Equal(t, primaryGroupID, *usageRepo.lastLog.OriginalGroupID)
+}
+
+func TestOriginalGroupIDForRuntimeFallback_OnlyRecordsRealGroupSwitch(t *testing.T) {
+	originalGroupID := int64(101)
+	fallbackGroupID := int64(202)
+
+	require.Nil(t, originalGroupIDForRuntimeFallback(false, &originalGroupID, &fallbackGroupID))
+	require.Nil(t, originalGroupIDForRuntimeFallback(true, nil, &fallbackGroupID))
+	require.Nil(t, originalGroupIDForRuntimeFallback(true, &originalGroupID, &originalGroupID))
+
+	actual := originalGroupIDForRuntimeFallback(true, &originalGroupID, &fallbackGroupID)
+	require.NotNil(t, actual)
+	require.Equal(t, originalGroupID, *actual)
 }
 
 func TestOpenAIRuntimeFallbackFailoverExhaustedRetryable_AttemptsFallback(t *testing.T) {

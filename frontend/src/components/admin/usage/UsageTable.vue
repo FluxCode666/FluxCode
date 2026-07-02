@@ -109,7 +109,19 @@
         </template>
 
         <template #cell-group="{ row }">
-          <span v-if="row.group" class="inline-flex items-center rounded px-2 py-0.5 text-xs font-medium bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-200">
+          <div
+            v-if="hasFallbackGroupChain(row)"
+            data-test="usage-group-cell"
+            class="min-w-0 space-y-0.5 text-xs leading-5"
+          >
+            <div class="truncate font-medium text-gray-900 dark:text-white" :title="row.original_group?.name">
+              {{ row.original_group?.name }}
+            </div>
+            <div class="truncate pl-2 text-indigo-700 dark:text-indigo-300" :title="row.group?.name">
+              |—&gt; {{ row.group?.name }}
+            </div>
+          </div>
+          <span v-else-if="row.group" class="inline-flex items-center rounded px-2 py-0.5 text-xs font-medium bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-200">
             {{ row.group.name }}
           </span>
           <span v-else class="text-sm text-gray-400 dark:text-gray-500">-</span>
@@ -422,6 +434,16 @@ defineEmits<{
   sort: [key: string, order: 'asc' | 'desc']
 }>()
 const { t } = useI18n()
+
+function hasFallbackGroupChain(row: AdminUsageLog): boolean {
+  return Boolean(
+    row.original_group &&
+    row.group &&
+    row.original_group_id != null &&
+    row.group_id != null &&
+    row.original_group_id !== row.group_id
+  )
+}
 
 // Tooltip state - cost
 const tooltipVisible = ref(false)

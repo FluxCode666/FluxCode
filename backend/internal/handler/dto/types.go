@@ -389,8 +389,9 @@ type UsageLog struct {
 	// UpstreamEndpoint is the normalized upstream endpoint path, e.g. /v1/responses.
 	UpstreamEndpoint *string `json:"upstream_endpoint,omitempty"`
 
-	GroupID        *int64 `json:"group_id"`
-	SubscriptionID *int64 `json:"subscription_id"`
+	GroupID         *int64 `json:"group_id"`
+	OriginalGroupID *int64 `json:"original_group_id,omitempty"`
+	SubscriptionID  *int64 `json:"subscription_id"`
 
 	InputTokens         int `json:"input_tokens"`
 	OutputTokens        int `json:"output_tokens"`
@@ -431,10 +432,11 @@ type UsageLog struct {
 
 	CreatedAt time.Time `json:"created_at"`
 
-	User         *User             `json:"user,omitempty"`
-	APIKey       *APIKey           `json:"api_key,omitempty"`
-	Group        *Group            `json:"group,omitempty"`
-	Subscription *UserSubscription `json:"subscription,omitempty"`
+	User          *User             `json:"user,omitempty"`
+	APIKey        *APIKey           `json:"api_key,omitempty"`
+	Group         *Group            `json:"group,omitempty"`
+	OriginalGroup *Group            `json:"original_group,omitempty"`
+	Subscription  *UserSubscription `json:"subscription,omitempty"`
 }
 
 // AdminUsageLog 是管理员接口使用的 usage log DTO（包含管理员字段）。

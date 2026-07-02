@@ -127,8 +127,9 @@ type UsageLog struct {
 	// UpstreamEndpoint is the normalized upstream endpoint path, e.g. /v1/responses.
 	UpstreamEndpoint *string
 
-	GroupID        *int64
-	SubscriptionID *int64
+	GroupID         *int64
+	OriginalGroupID *int64
+	SubscriptionID  *int64
 
 	InputTokens         int
 	OutputTokens        int
@@ -172,11 +173,12 @@ type UsageLog struct {
 
 	CreatedAt time.Time
 
-	User         *User
-	APIKey       *APIKey
-	Account      *Account
-	Group        *Group
-	Subscription *UserSubscription
+	User          *User
+	APIKey        *APIKey
+	Account       *Account
+	Group         *Group
+	OriginalGroup *Group
+	Subscription  *UserSubscription
 }
 
 func (u *UsageLog) TotalTokens() int {

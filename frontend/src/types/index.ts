@@ -1147,6 +1147,7 @@ export interface UsageLog {
   upstream_endpoint?: string | null
 
   group_id: number | null
+  original_group_id?: number | null
   subscription_id: number | null
 
   input_tokens: number
@@ -1189,6 +1190,7 @@ export interface UsageLog {
   user?: User
   api_key?: ApiKey
   group?: Group
+  original_group?: Group
   subscription?: UserSubscription
 }
 

@@ -120,6 +120,7 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 	var lastFailoverErr *service.UpstreamFailoverError
 	currentAPIKey := apiKey
 	currentSubscription := subscription
+	originalRuntimeGroupID := copyGroupIDPtr(apiKey.GroupID)
 	fallbackUsed := false
 
 	for {
@@ -319,6 +320,7 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 				User:               currentAPIKey.User,
 				Account:            account,
 				Subscription:       currentSubscription,
+				OriginalGroupID:    originalGroupIDForRuntimeFallback(fallbackUsed, originalRuntimeGroupID, currentAPIKey.GroupID),
 				InboundEndpoint:    GetInboundEndpoint(c),
 				UpstreamEndpoint:   GetUpstreamEndpoint(c, account.Platform),
 				UserAgent:          userAgent,

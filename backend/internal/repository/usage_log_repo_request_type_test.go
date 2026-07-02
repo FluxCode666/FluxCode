@@ -51,6 +51,7 @@ func TestUsageLogRepositoryCreateSyncRequestTypeAndLegacyFields(t *testing.T) {
 			log.RequestedModel,
 			sqlmock.AnyArg(), // upstream_model
 			sqlmock.AnyArg(), // group_id
+			sqlmock.AnyArg(), // original_group_id
 			sqlmock.AnyArg(), // subscription_id
 			log.InputTokens,
 			log.OutputTokens,
@@ -130,6 +131,7 @@ func TestUsageLogRepositoryCreate_PersistsServiceTier(t *testing.T) {
 			log.RequestID,
 			log.Model,
 			log.RequestedModel,
+			sqlmock.AnyArg(),
 			sqlmock.AnyArg(),
 			sqlmock.AnyArg(),
 			sqlmock.AnyArg(),
@@ -235,6 +237,25 @@ func TestPrepareUsageLogInsert_ArgCountMatchesTypes(t *testing.T) {
 	})
 
 	require.Len(t, prepared.args, len(usageLogInsertArgTypes))
+}
+
+func TestPrepareUsageLogInsert_PersistsOriginalGroupID(t *testing.T) {
+	originalGroupID := int64(101)
+	fallbackGroupID := int64(202)
+	prepared := prepareUsageLogInsert(&service.UsageLog{
+		UserID:          1,
+		APIKeyID:        2,
+		AccountID:       3,
+		RequestID:       "req-original-group",
+		Model:           "gpt-5",
+		GroupID:         &fallbackGroupID,
+		OriginalGroupID: &originalGroupID,
+		CreatedAt:       time.Date(2025, 1, 6, 12, 0, 0, 0, time.UTC),
+	})
+
+	require.Len(t, prepared.args, len(usageLogInsertArgTypes))
+	require.Equal(t, sql.NullInt64{Int64: fallbackGroupID, Valid: true}, prepared.args[8])
+	require.Equal(t, sql.NullInt64{Int64: originalGroupID, Valid: true}, prepared.args[9])
 }
 
 func TestCoalesceTrimmedString(t *testing.T) {
@@ -586,6 +607,7 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{Valid: true, String: "gpt-5"}, // requested_model
 			sql.NullString{},  // upstream_model
 			sql.NullInt64{},   // group_id
+			sql.NullInt64{},   // original_group_id
 			sql.NullInt64{},   // subscription_id
 			1,                 // input_tokens
 			2,                 // output_tokens
@@ -648,6 +670,7 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{},
 			sql.NullInt64{},
 			sql.NullInt64{},
+			sql.NullInt64{},
 			1, 2, 3, 4, 5, 6,
 			0, 0.0, // image_output_tokens, image_output_cost
 			0.1, 0.2, 0.3, 0.4, 1.0, 0.9,
@@ -696,6 +719,7 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			"gpt-5.4",
 			sql.NullString{Valid: true, String: "gpt-5.4"},
 			sql.NullString{},
+			sql.NullInt64{},
 			sql.NullInt64{},
 			sql.NullInt64{},
 			1, 2, 3, 4, 5, 6,

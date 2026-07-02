@@ -396,6 +396,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	var lastFailoverErr *service.UpstreamFailoverError
 	currentAPIKey := apiKey
 	currentSubscription := subscription
+	originalRuntimeGroupID := copyGroupIDPtr(apiKey.GroupID)
 	fallbackUsed := false
 
 	for {
@@ -601,6 +602,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 				User:               currentAPIKey.User,
 				Account:            account,
 				Subscription:       currentSubscription,
+				OriginalGroupID:    originalGroupIDForRuntimeFallback(fallbackUsed, originalRuntimeGroupID, currentAPIKey.GroupID),
 				InboundEndpoint:    GetInboundEndpoint(c),
 				UpstreamEndpoint:   GetUpstreamEndpoint(c, account.Platform),
 				UserAgent:          userAgent,
@@ -829,6 +831,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 	var lastFailoverErr *service.UpstreamFailoverError
 	currentAPIKey := apiKey
 	currentSubscription := subscription
+	originalRuntimeGroupID := copyGroupIDPtr(apiKey.GroupID)
 	fallbackUsed := false
 	effectiveMappedModel := preferredMappedModel
 
@@ -1021,6 +1024,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 				User:               currentAPIKey.User,
 				Account:            account,
 				Subscription:       currentSubscription,
+				OriginalGroupID:    originalGroupIDForRuntimeFallback(fallbackUsed, originalRuntimeGroupID, currentAPIKey.GroupID),
 				InboundEndpoint:    GetInboundEndpoint(c),
 				UpstreamEndpoint:   GetUpstreamEndpoint(c, account.Platform),
 				UserAgent:          userAgent,
