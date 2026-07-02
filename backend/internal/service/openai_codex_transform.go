@@ -719,24 +719,18 @@ func normalizeOpenAIResponsesImageGenerationTools(reqBody map[string]any) bool {
 }
 
 func ensureOpenAIResponsesImageGenerationTool(reqBody map[string]any) bool {
-	if len(reqBody) == 0 {
+	if len(reqBody) == 0 || isCodexSparkModel(firstNonEmptyString(reqBody["model"])) {
 		return false
 	}
-	if isCodexSparkModel(firstNonEmptyString(reqBody["model"])) {
-		return false
-	}
-
 	tool := map[string]any{
 		"type":          "image_generation",
 		"output_format": "png",
 	}
-
 	rawTools, ok := reqBody["tools"]
 	if !ok || rawTools == nil {
 		reqBody["tools"] = []any{tool}
 		return true
 	}
-
 	tools, ok := rawTools.([]any)
 	if !ok {
 		reqBody["tools"] = []any{tool}
@@ -744,15 +738,55 @@ func ensureOpenAIResponsesImageGenerationTool(reqBody map[string]any) bool {
 	}
 	for _, rawTool := range tools {
 		toolMap, ok := rawTool.(map[string]any)
-		if !ok {
-			continue
-		}
-		if strings.TrimSpace(firstNonEmptyString(toolMap["type"])) == "image_generation" {
+		if ok && strings.TrimSpace(firstNonEmptyString(toolMap["type"])) == "image_generation" {
 			return false
 		}
 	}
-
 	reqBody["tools"] = append(tools, tool)
+	return true
+}
+
+func ensureOpenAIResponsesImageGenerationToolChoiceAuto(reqBody map[string]any) bool {
+	if len(reqBody) == 0 || !hasOpenAIImageGenerationTool(reqBody) {
+		return false
+	}
+	if isCodexSparkModel(firstNonEmptyString(reqBody["model"])) {
+		return false
+	}
+	if _, ok := reqBody["tool_choice"]; ok {
+		return false
+	}
+	reqBody["tool_choice"] = "auto"
+	return true
+}
+
+func stripCodexSparkImageGenerationTools(reqBody map[string]any) bool {
+	rawTools, ok := reqBody["tools"]
+	if !ok || rawTools == nil {
+		return false
+	}
+	tools, ok := rawTools.([]any)
+	if !ok {
+		return false
+	}
+	filtered := make([]any, 0, len(tools))
+	removed := false
+	for _, rawTool := range tools {
+		toolMap, ok := rawTool.(map[string]any)
+		if ok && strings.TrimSpace(firstNonEmptyString(toolMap["type"])) == "image_generation" {
+			removed = true
+			continue
+		}
+		filtered = append(filtered, rawTool)
+	}
+	if !removed {
+		return false
+	}
+	if len(filtered) == 0 {
+		delete(reqBody, "tools")
+	} else {
+		reqBody["tools"] = filtered
+	}
 	return true
 }
 

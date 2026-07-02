@@ -452,6 +452,61 @@ func TestApplyCodexOAuthTransform_StringInputWithToolsField(t *testing.T) {
 	require.Len(t, input, 1)
 }
 
+func TestEnsureOpenAIResponsesImageGenerationTool_NoTools(t *testing.T) {
+	reqBody := map[string]any{"model": "gpt-5.5", "input": "write code"}
+	modified := ensureOpenAIResponsesImageGenerationTool(reqBody)
+	require.True(t, modified)
+	require.True(t, hasOpenAIImageGenerationTool(reqBody))
+	require.Equal(t, "png", reqBody["tools"].([]any)[0].(map[string]any)["output_format"])
+}
+
+func TestEnsureOpenAIResponsesImageGenerationTool_AppendsToExistingTools(t *testing.T) {
+	reqBody := map[string]any{
+		"model": "gpt-5.5",
+		"tools": []any{map[string]any{"type": "web_search"}},
+	}
+	modified := ensureOpenAIResponsesImageGenerationTool(reqBody)
+	require.True(t, modified)
+	tools := reqBody["tools"].([]any)
+	require.Len(t, tools, 2)
+	require.Equal(t, "web_search", tools[0].(map[string]any)["type"])
+	require.Equal(t, "image_generation", tools[1].(map[string]any)["type"])
+}
+
+func TestEnsureOpenAIResponsesImageGenerationTool_PreservesExistingImageTool(t *testing.T) {
+	reqBody := map[string]any{
+		"model": "gpt-5.5",
+		"tools": []any{map[string]any{"type": "image_generation", "output_format": "webp"}},
+	}
+	modified := ensureOpenAIResponsesImageGenerationTool(reqBody)
+	require.False(t, modified)
+	require.Equal(t, "webp", reqBody["tools"].([]any)[0].(map[string]any)["output_format"])
+}
+
+func TestEnsureOpenAIResponsesImageGenerationToolChoiceAuto(t *testing.T) {
+	reqBody := map[string]any{"tools": []any{map[string]any{"type": "image_generation"}}}
+	modified := ensureOpenAIResponsesImageGenerationToolChoiceAuto(reqBody)
+	require.True(t, modified)
+	require.Equal(t, "auto", reqBody["tool_choice"])
+
+	modified = ensureOpenAIResponsesImageGenerationToolChoiceAuto(reqBody)
+	require.False(t, modified)
+	require.Equal(t, "auto", reqBody["tool_choice"])
+}
+
+func TestStripCodexSparkImageGenerationTools(t *testing.T) {
+	reqBody := map[string]any{
+		"model": "gpt-5.3-codex-spark",
+		"tools": []any{
+			map[string]any{"type": "image_generation"},
+			map[string]any{"type": "web_search"},
+		},
+	}
+	require.True(t, stripCodexSparkImageGenerationTools(reqBody))
+	require.False(t, hasOpenAIImageGenerationTool(reqBody))
+	require.Len(t, reqBody["tools"].([]any), 1)
+}
+
 func TestExtractSystemMessagesFromInput(t *testing.T) {
 	t.Run("no system messages", func(t *testing.T) {
 		reqBody := map[string]any{
