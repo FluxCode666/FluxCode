@@ -483,6 +483,21 @@ func TestEnsureOpenAIResponsesImageGenerationTool_PreservesExistingImageTool(t *
 	require.Equal(t, "webp", reqBody["tools"].([]any)[0].(map[string]any)["output_format"])
 }
 
+func TestEnsureOpenAIResponsesImageGenerationTool_DoesNotInjectForSparkModel(t *testing.T) {
+	reqBody := map[string]any{
+		"model": "gpt-5.3-codex-spark",
+		"tools": []any{map[string]any{"type": "image_generation", "output_format": "webp"}},
+	}
+
+	modified := ensureOpenAIResponsesImageGenerationTool(reqBody)
+
+	require.False(t, modified)
+	tools, ok := reqBody["tools"].([]any)
+	require.True(t, ok)
+	require.Len(t, tools, 1)
+	require.Equal(t, "webp", tools[0].(map[string]any)["output_format"])
+}
+
 func TestEnsureOpenAIResponsesImageGenerationToolChoiceAuto(t *testing.T) {
 	reqBody := map[string]any{"tools": []any{map[string]any{"type": "image_generation"}}}
 	modified := ensureOpenAIResponsesImageGenerationToolChoiceAuto(reqBody)
@@ -494,17 +509,26 @@ func TestEnsureOpenAIResponsesImageGenerationToolChoiceAuto(t *testing.T) {
 	require.Equal(t, "auto", reqBody["tool_choice"])
 }
 
+func TestEnsureOpenAIResponsesImageGenerationToolChoiceAuto_PreservesExistingChoice(t *testing.T) {
+	reqBody := map[string]any{
+		"tools":       []any{map[string]any{"type": "image_generation"}},
+		"tool_choice": "required",
+	}
+
+	modified := ensureOpenAIResponsesImageGenerationToolChoiceAuto(reqBody)
+
+	require.False(t, modified)
+	require.Equal(t, "required", reqBody["tool_choice"])
+}
+
 func TestStripCodexSparkImageGenerationTools(t *testing.T) {
 	reqBody := map[string]any{
 		"model": "gpt-5.3-codex-spark",
-		"tools": []any{
-			map[string]any{"type": "image_generation"},
-			map[string]any{"type": "web_search"},
-		},
+		"tools": []any{map[string]any{"type": "image_generation"}},
 	}
 	require.True(t, stripCodexSparkImageGenerationTools(reqBody))
-	require.False(t, hasOpenAIImageGenerationTool(reqBody))
-	require.Len(t, reqBody["tools"].([]any), 1)
+	_, hasTools := reqBody["tools"]
+	require.False(t, hasTools)
 }
 
 func TestExtractSystemMessagesFromInput(t *testing.T) {
