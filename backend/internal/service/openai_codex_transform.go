@@ -620,7 +620,21 @@ const (
 )
 
 func isCodexSparkModel(model string) bool {
-	return normalizeCodexModel(model) == "gpt-5.3-codex-spark"
+	model = strings.TrimSpace(strings.ToLower(model))
+	if model == "" {
+		return false
+	}
+	if idx := strings.LastIndex(model, "/"); idx >= 0 {
+		model = model[idx+1:]
+	}
+	model = strings.NewReplacer(" ", "-", "_", "-").Replace(model)
+	parts := strings.FieldsFunc(model, func(r rune) bool {
+		return r == '-'
+	})
+	if len(parts) < 4 {
+		return false
+	}
+	return parts[0] == "gpt" && parts[1] == "5.3" && parts[2] == "codex" && parts[3] == "spark"
 }
 
 func hasOpenAIImageGenerationTool(reqBody map[string]any) bool {
