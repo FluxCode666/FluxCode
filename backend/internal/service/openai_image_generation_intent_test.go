@@ -1,3 +1,5 @@
+//go:build !unit
+
 package service
 
 import "testing"
@@ -41,6 +43,25 @@ func TestIsImageGenerationIntent(t *testing.T) {
 }
 
 func TestIsImageGenerationIntentMap(t *testing.T) {
+	if got := ImageGenerationPermissionMessage(); got != "Image generation is not enabled for this group" {
+		t.Fatalf("ImageGenerationPermissionMessage() = %q, want %q", got, "Image generation is not enabled for this group")
+	}
+
+	if !IsImageGenerationIntentMap("/v1/responses", "gpt-5.5", map[string]any{
+		"model": "gpt-image-2",
+	}) {
+		t.Fatalf("map with image model must be image intent")
+	}
+	if !IsImageGenerationIntentMap("/v1/responses", "gpt-5.5", map[string]any{
+		"tool_choice": "image_generation",
+	}) {
+		t.Fatalf("map with tool_choice string must be image intent")
+	}
+	if !IsImageGenerationIntentMap("/v1/responses", "gpt-5.5", map[string]any{
+		"tool_choice": map[string]any{"type": "image_generation"},
+	}) {
+		t.Fatalf("map with tool_choice object must be image intent")
+	}
 	reqBody := map[string]any{
 		"model": "gpt-5.5",
 		"tools": []any{map[string]any{"type": "image_generation"}},
@@ -51,8 +72,4 @@ func TestIsImageGenerationIntentMap(t *testing.T) {
 	if IsImageGenerationIntentMap("/v1/responses", "gpt-5.5", map[string]any{"input": "write code"}) {
 		t.Fatalf("plain map must not be image intent")
 	}
-}
-
-func float64PtrForTest(v float64) *float64 {
-	return &v
 }

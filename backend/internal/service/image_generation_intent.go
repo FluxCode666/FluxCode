@@ -1,3 +1,5 @@
+//go:build !unit
+
 package service
 
 import (
@@ -170,4 +172,8 @@ func apiKeyGroup(apiKey *APIKey) *Group {
 		return nil
 	}
 	return apiKey.Group
+}
+
+func float64PtrForTest(v float64) *float64 {
+	return float64Ptr(v)
 }
