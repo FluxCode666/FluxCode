@@ -338,6 +338,7 @@ var defaultOpenAICodexSnapshotPersistThrottle = newAccountWriteThrottle(openAICo
 // OpenAIGatewayService handles OpenAI API gateway operations
 type OpenAIGatewayService struct {
 	accountRepo               AccountRepository
+	groupRepo                 GroupRepository
 	usageLogRepo              UsageLogRepository
 	usageBillingRepo          UsageBillingRepository
 	userRepo                  UserRepository
@@ -386,6 +387,7 @@ type OpenAIGatewayService struct {
 // NewOpenAIGatewayService creates a new OpenAIGatewayService
 func NewOpenAIGatewayService(
 	accountRepo AccountRepository,
+	groupRepo GroupRepository,
 	usageLogRepo UsageLogRepository,
 	usageBillingRepo UsageBillingRepository,
 	userRepo UserRepository,
@@ -407,6 +409,7 @@ func NewOpenAIGatewayService(
 ) *OpenAIGatewayService {
 	svc := &OpenAIGatewayService{
 		accountRepo:         accountRepo,
+		groupRepo:           groupRepo,
 		usageLogRepo:        usageLogRepo,
 		usageBillingRepo:    usageBillingRepo,
 		userRepo:            userRepo,
@@ -439,6 +442,16 @@ func NewOpenAIGatewayService(
 	}
 	svc.logOpenAIWSModeBootstrap()
 	return svc
+}
+
+func (s *OpenAIGatewayService) ResolveRuntimeFallbackGroup(ctx context.Context, group *Group) (*Group, error) {
+	if s == nil {
+		return nil, fmt.Errorf("openai gateway service unavailable")
+	}
+	if s.groupRepo == nil {
+		return nil, fmt.Errorf("group repository unavailable")
+	}
+	return resolveRuntimeFallbackGroup(ctx, s.groupRepo.GetByIDLite, group)
 }
 
 func (s *OpenAIGatewayService) SetProxyMetricsRepo(repo ProxyUsageMetricsRepository) {
@@ -4740,6 +4753,7 @@ type OpenAIRecordUsageInput struct {
 	User               *User
 	Account            *Account
 	Subscription       *UserSubscription
+	OriginalGroupID    *int64
 	BilledAt           time.Time
 	InboundEndpoint    string
 	UpstreamEndpoint   string
@@ -4868,6 +4882,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		ReasoningEffort:     result.ReasoningEffort,
 		InboundEndpoint:     optionalTrimmedStringPtr(input.InboundEndpoint),
 		UpstreamEndpoint:    optionalTrimmedStringPtr(input.UpstreamEndpoint),
+		OriginalGroupID:     input.OriginalGroupID,
 		InputTokens:         actualInputTokens,
 		OutputTokens:        result.Usage.OutputTokens,
 		CacheCreationTokens: result.Usage.CacheCreationInputTokens,

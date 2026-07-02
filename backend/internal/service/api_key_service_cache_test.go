@@ -250,6 +250,7 @@ func TestAPIKeyService_SnapshotRoundTrip_PreservesMessagesDispatchModelConfig(t 
 			Status:                StatusActive,
 			SubscriptionType:      SubscriptionTypeStandard,
 			RateMultiplier:        1,
+			IsFallbackGroup:       true,
 			AllowMessagesDispatch: true,
 			DefaultMappedModel:    "gpt-5.4",
 			MessagesDispatchModelConfig: OpenAIMessagesDispatchModelConfig{
@@ -268,6 +269,7 @@ func TestAPIKeyService_SnapshotRoundTrip_PreservesMessagesDispatchModelConfig(t 
 
 	require.NotNil(t, roundTrip)
 	require.NotNil(t, roundTrip.Group)
+	require.True(t, roundTrip.Group.IsFallbackGroup)
 	require.Equal(t, apiKey.Group.MessagesDispatchModelConfig, roundTrip.Group.MessagesDispatchModelConfig)
 }
 

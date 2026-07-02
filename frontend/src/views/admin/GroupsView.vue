@@ -90,10 +90,18 @@
           default-sort-order="asc"
           @sort="handleSort"
         >
-          <template #cell-name="{ value }">
-            <span class="font-medium text-gray-900 dark:text-white">{{
-              value
-            }}</span>
+          <template #cell-name="{ row, value }">
+            <div class="flex flex-wrap items-center gap-2">
+              <span class="font-medium text-gray-900 dark:text-white">{{
+                value
+              }}</span>
+              <span
+                v-if="row.is_fallback_group"
+                class="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
+              >
+                {{ t("admin.groups.fallbackGroup.badge") }}
+              </span>
+            </div>
           </template>
 
           <template #cell-platform="{ value }">
@@ -887,20 +895,53 @@
               }}
             </span>
           </div>
-          <!-- 降级分组选择（仅当启用 claude_code_only 时显示） -->
-          <div v-if="createForm.claude_code_only" class="mt-3">
-            <label class="input-label">{{
-              t("admin.groups.claudeCode.fallbackGroup")
-            }}</label>
-            <Select
-              v-model="createForm.fallback_group_id"
-              :options="fallbackGroupOptions"
-              :placeholder="t('admin.groups.claudeCode.noFallback')"
+        </div>
+
+        <div v-if="canEnableFallbackGroup(createForm)" class="border-t pt-4">
+          <label class="input-label">{{
+            t("admin.groups.fallbackGroup.enabled")
+          }}</label>
+          <button
+            type="button"
+            @click="createForm.is_fallback_group = !createForm.is_fallback_group"
+            class="relative inline-flex h-6 w-12 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none"
+            :class="
+              createForm.is_fallback_group
+                ? 'bg-primary-500'
+                : 'bg-gray-300 dark:bg-dark-600'
+            "
+          >
+            <span
+              class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
+              :class="
+                createForm.is_fallback_group ? 'translate-x-6' : 'translate-x-1'
+              "
             />
-            <p class="input-hint">
-              {{ t("admin.groups.claudeCode.fallbackHint") }}
-            </p>
-          </div>
+          </button>
+          <p class="input-hint">
+            {{ t("admin.groups.fallbackGroup.enabledHint") }}
+          </p>
+        </div>
+
+        <div
+          v-if="canEnableFallbackGroup(createForm) && !createForm.is_fallback_group"
+          class="border-t pt-4"
+        >
+          <label class="input-label">{{
+            t("admin.groups.fallbackGroup.target")
+          }}</label>
+          <Select
+            v-model="createForm.fallback_group_id"
+            :options="fallbackGroupOptions"
+            :placeholder="t('admin.groups.fallbackGroup.noFallback')"
+          />
+          <p class="input-hint">
+            {{
+              createForm.platform === "anthropic" && createForm.claude_code_only
+                ? t("admin.groups.claudeCode.fallbackHint")
+                : t("admin.groups.fallbackGroup.targetHint")
+            }}
+          </p>
         </div>
 
         <!-- OpenAI Messages 调度配置（仅 openai 平台） -->
@@ -1216,27 +1257,6 @@
               />
             </button>
           </div>
-        </div>
-
-        <!-- 无效请求兜底（仅 anthropic/antigravity 平台，且非订阅分组） -->
-        <div
-          v-if="
-            ['anthropic', 'antigravity'].includes(createForm.platform) &&
-            createForm.subscription_type !== 'subscription'
-          "
-          class="border-t pt-4"
-        >
-          <label class="input-label">{{
-            t("admin.groups.invalidRequestFallback.title")
-          }}</label>
-          <Select
-            v-model="createForm.fallback_group_id_on_invalid_request"
-            :options="invalidRequestFallbackOptions"
-            :placeholder="t('admin.groups.invalidRequestFallback.noFallback')"
-          />
-          <p class="input-hint">
-            {{ t("admin.groups.invalidRequestFallback.hint") }}
-          </p>
         </div>
 
         <!-- 模型路由配置（仅 anthropic 平台） -->
@@ -2020,20 +2040,53 @@
               }}
             </span>
           </div>
-          <!-- 降级分组选择（仅当启用 claude_code_only 时显示） -->
-          <div v-if="editForm.claude_code_only" class="mt-3">
-            <label class="input-label">{{
-              t("admin.groups.claudeCode.fallbackGroup")
-            }}</label>
-            <Select
-              v-model="editForm.fallback_group_id"
-              :options="fallbackGroupOptionsForEdit"
-              :placeholder="t('admin.groups.claudeCode.noFallback')"
+        </div>
+
+        <div v-if="canEnableFallbackGroup(editForm)" class="border-t pt-4">
+          <label class="input-label">{{
+            t("admin.groups.fallbackGroup.enabled")
+          }}</label>
+          <button
+            type="button"
+            @click="editForm.is_fallback_group = !editForm.is_fallback_group"
+            class="relative inline-flex h-6 w-12 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none"
+            :class="
+              editForm.is_fallback_group
+                ? 'bg-primary-500'
+                : 'bg-gray-300 dark:bg-dark-600'
+            "
+          >
+            <span
+              class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
+              :class="
+                editForm.is_fallback_group ? 'translate-x-6' : 'translate-x-1'
+              "
             />
-            <p class="input-hint">
-              {{ t("admin.groups.claudeCode.fallbackHint") }}
-            </p>
-          </div>
+          </button>
+          <p class="input-hint">
+            {{ t("admin.groups.fallbackGroup.enabledHint") }}
+          </p>
+        </div>
+
+        <div
+          v-if="canEnableFallbackGroup(editForm) && !editForm.is_fallback_group"
+          class="border-t pt-4"
+        >
+          <label class="input-label">{{
+            t("admin.groups.fallbackGroup.target")
+          }}</label>
+          <Select
+            v-model="editForm.fallback_group_id"
+            :options="fallbackGroupOptionsForEdit"
+            :placeholder="t('admin.groups.fallbackGroup.noFallback')"
+          />
+          <p class="input-hint">
+            {{
+              editForm.platform === "anthropic" && editForm.claude_code_only
+                ? t("admin.groups.claudeCode.fallbackHint")
+                : t("admin.groups.fallbackGroup.targetHint")
+            }}
+          </p>
         </div>
 
         <!-- OpenAI Messages 调度配置（仅 openai 平台） -->
@@ -2349,27 +2402,6 @@
               />
             </button>
           </div>
-        </div>
-
-        <!-- 无效请求兜底（仅 anthropic/antigravity 平台，且非订阅分组） -->
-        <div
-          v-if="
-            ['anthropic', 'antigravity'].includes(editForm.platform) &&
-            editForm.subscription_type !== 'subscription'
-          "
-          class="border-t pt-4"
-        >
-          <label class="input-label">{{
-            t("admin.groups.invalidRequestFallback.title")
-          }}</label>
-          <Select
-            v-model="editForm.fallback_group_id_on_invalid_request"
-            :options="invalidRequestFallbackOptionsForEdit"
-            :placeholder="t('admin.groups.invalidRequestFallback.noFallback')"
-          />
-          <p class="input-hint">
-            {{ t("admin.groups.invalidRequestFallback.hint") }}
-          </p>
         </div>
 
         <!-- 模型路由配置（仅 anthropic 平台） -->
@@ -2752,6 +2784,11 @@ import {
   resetMessagesDispatchFormState,
   type MessagesDispatchMappingRow,
 } from "./groupsMessagesDispatch";
+import {
+  buildFallbackTargetOptions,
+  buildFallbackTargetOptionsForEdit,
+  canEnableFallbackGroup,
+} from "./GroupsView.fallback";
 
 const { t } = useI18n();
 const appStore = useAppStore();
@@ -2841,78 +2878,24 @@ const systemPromptModeOptions = computed(() => [
   { value: "append" as SystemPromptMode, label: t("systemPrompt.modes.append"), description: t("systemPrompt.modeTooltips.append") },
 ]);
 
-// 降级分组选项（创建时）- 仅包含 anthropic 平台且未启用 claude_code_only 的分组
 const fallbackGroupOptions = computed(() => {
-  const options: { value: number | null; label: string }[] = [
-    { value: null, label: t("admin.groups.claudeCode.noFallback") },
-  ];
-  const eligibleGroups = groups.value.filter(
-    (g) =>
-      g.platform === "anthropic" &&
-      !g.claude_code_only &&
-      g.status === "active",
+  return buildFallbackTargetOptions(
+    groups.value,
+    {
+      id: 0,
+      platform: createForm.platform,
+    },
+    t("admin.groups.fallbackGroup.noFallback"),
   );
-  eligibleGroups.forEach((g) => {
-    options.push({ value: g.id, label: g.name });
-  });
-  return options;
 });
 
-// 降级分组选项（编辑时）- 排除自身
 const fallbackGroupOptionsForEdit = computed(() => {
-  const options: { value: number | null; label: string }[] = [
-    { value: null, label: t("admin.groups.claudeCode.noFallback") },
-  ];
-  const currentId = editingGroup.value?.id;
-  const eligibleGroups = groups.value.filter(
-    (g) =>
-      g.platform === "anthropic" &&
-      !g.claude_code_only &&
-      g.status === "active" &&
-      g.id !== currentId,
+  return buildFallbackTargetOptionsForEdit(
+    groups.value,
+    editingGroup.value?.id,
+    editForm.platform,
+    t("admin.groups.fallbackGroup.noFallback"),
   );
-  eligibleGroups.forEach((g) => {
-    options.push({ value: g.id, label: g.name });
-  });
-  return options;
-});
-
-// 无效请求兜底分组选项（创建时）- 仅包含 anthropic 平台、非订阅且未配置兜底的分组
-const invalidRequestFallbackOptions = computed(() => {
-  const options: { value: number | null; label: string }[] = [
-    { value: null, label: t("admin.groups.invalidRequestFallback.noFallback") },
-  ];
-  const eligibleGroups = groups.value.filter(
-    (g) =>
-      g.platform === "anthropic" &&
-      g.status === "active" &&
-      g.subscription_type !== "subscription" &&
-      g.fallback_group_id_on_invalid_request === null,
-  );
-  eligibleGroups.forEach((g) => {
-    options.push({ value: g.id, label: g.name });
-  });
-  return options;
-});
-
-// 无效请求兜底分组选项（编辑时）- 排除自身
-const invalidRequestFallbackOptionsForEdit = computed(() => {
-  const options: { value: number | null; label: string }[] = [
-    { value: null, label: t("admin.groups.invalidRequestFallback.noFallback") },
-  ];
-  const currentId = editingGroup.value?.id;
-  const eligibleGroups = groups.value.filter(
-    (g) =>
-      g.platform === "anthropic" &&
-      g.status === "active" &&
-      g.subscription_type !== "subscription" &&
-      g.fallback_group_id_on_invalid_request === null &&
-      g.id !== currentId,
-  );
-  eligibleGroups.forEach((g) => {
-    options.push({ value: g.id, label: g.name });
-  });
-  return options;
 });
 
 // 复制账号的源分组选项（创建时）- 仅包含相同平台且有账号的分组
@@ -3012,6 +2995,7 @@ const createForm = reactive({
   // Claude Code 客户端限制（仅 anthropic 平台使用）
   claude_code_only: false,
   fallback_group_id: null as number | null,
+  is_fallback_group: false,
   fallback_group_id_on_invalid_request: null as number | null,
   // OpenAI Messages 调度配置（仅 openai 平台使用）
   allow_messages_dispatch: false,
@@ -3294,6 +3278,7 @@ const editForm = reactive({
   // Claude Code 客户端限制（仅 anthropic 平台使用）
   claude_code_only: false,
   fallback_group_id: null as number | null,
+  is_fallback_group: false,
   fallback_group_id_on_invalid_request: null as number | null,
   // OpenAI Messages 调度配置（仅 openai 平台使用）
   allow_messages_dispatch: false,
@@ -3480,6 +3465,7 @@ const closeCreateModal = () => {
   createForm.image_price_4k = null;
   createForm.claude_code_only = false;
   createForm.fallback_group_id = null;
+  createForm.is_fallback_group = false;
   createForm.fallback_group_id_on_invalid_request = null;
   resetMessagesDispatchFormState(createForm);
   createForm.require_oauth_only = false;
@@ -3519,6 +3505,10 @@ const handleCreateGroup = async () => {
     // 构建请求数据，包含模型路由配置
     const requestData = {
       ...createForm,
+      fallback_group_id: createForm.is_fallback_group
+        ? null
+        : createForm.fallback_group_id,
+      fallback_group_id_on_invalid_request: null,
       daily_limit_usd: normalizeOptionalLimit(
         createForm.daily_limit_usd as number | string | null,
       ),
@@ -3585,6 +3575,7 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.image_price_4k = group.image_price_4k;
   editForm.claude_code_only = group.claude_code_only || false;
   editForm.fallback_group_id = group.fallback_group_id;
+  editForm.is_fallback_group = group.is_fallback_group ?? false;
   editForm.fallback_group_id_on_invalid_request =
     group.fallback_group_id_on_invalid_request;
   const messagesDispatchFormState = messagesDispatchConfigToFormState(
@@ -3649,11 +3640,12 @@ const handleUpdateGroup = async () => {
         editForm.monthly_limit_usd as number | string | null,
       ),
       fallback_group_id:
-        editForm.fallback_group_id === null ? 0 : editForm.fallback_group_id,
-      fallback_group_id_on_invalid_request:
-        editForm.fallback_group_id_on_invalid_request === null
+        editForm.is_fallback_group
           ? 0
-          : editForm.fallback_group_id_on_invalid_request,
+          : editForm.fallback_group_id === null
+            ? 0
+            : editForm.fallback_group_id,
+      fallback_group_id_on_invalid_request: null,
       model_routing: convertRoutingRulesToApiFormat(
         editModelRoutingRules.value,
       ),
@@ -3744,7 +3736,6 @@ watch(
   (newVal) => {
     if (newVal === "subscription") {
       createForm.is_exclusive = true;
-      createForm.fallback_group_id_on_invalid_request = null;
     }
   },
 );
@@ -3752,9 +3743,6 @@ watch(
 watch(
   () => createForm.platform,
   (newVal) => {
-    if (!["anthropic", "antigravity"].includes(newVal)) {
-      createForm.fallback_group_id_on_invalid_request = null;
-    }
     if (newVal !== "openai") {
       resetMessagesDispatchFormState(createForm);
     }
@@ -3762,15 +3750,37 @@ watch(
       createForm.require_oauth_only = false;
       createForm.require_privacy_set = false;
     }
+
+    if (!canEnableFallbackGroup(createForm)) {
+      createForm.is_fallback_group = false;
+      createForm.fallback_group_id = null;
+    }
+  },
+);
+
+watch(
+  () => createForm.subscription_type,
+  () => {
+    if (!canEnableFallbackGroup(createForm)) {
+      createForm.is_fallback_group = false;
+      createForm.fallback_group_id = null;
+    }
+  },
+);
+
+watch(
+  () => createForm.is_fallback_group,
+  (isFallback) => {
+    if (isFallback) {
+      createForm.fallback_group_id = null;
+      createForm.claude_code_only = false;
+    }
   },
 );
 
 watch(
   () => editForm.platform,
   (newVal) => {
-    if (!["anthropic", "antigravity"].includes(newVal)) {
-      editForm.fallback_group_id_on_invalid_request = null;
-    }
     if (newVal !== "openai") {
       resetMessagesDispatchFormState(editForm);
     }
@@ -3778,15 +3788,37 @@ watch(
       editForm.require_oauth_only = false;
       editForm.require_privacy_set = false;
     }
+
+    if (!canEnableFallbackGroup(editForm)) {
+      editForm.is_fallback_group = false;
+      editForm.fallback_group_id = null;
+    }
+  },
+);
+
+watch(
+  () => editForm.subscription_type,
+  () => {
+    if (!canEnableFallbackGroup(editForm)) {
+      editForm.is_fallback_group = false;
+      editForm.fallback_group_id = null;
+    }
+  },
+);
+
+watch(
+  () => editForm.is_fallback_group,
+  (isFallback) => {
+    if (isFallback) {
+      editForm.fallback_group_id = null;
+      editForm.claude_code_only = false;
+    }
   },
 );
 
 watch(
   () => editForm.platform,
   (newVal) => {
-    if (!['anthropic', 'antigravity'].includes(newVal)) {
-      editForm.fallback_group_id_on_invalid_request = null
-    }
     if (newVal !== 'openai') {
       editForm.allow_messages_dispatch = false
       editForm.default_mapped_model = ''

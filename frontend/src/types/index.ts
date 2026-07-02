@@ -540,6 +540,8 @@ export interface Group {
   // Claude Code 客户端限制
   claude_code_only: boolean
   fallback_group_id: number | null
+  is_fallback_group: boolean
+  // Deprecated: will be removed in next version. Use fallback_group_id.
   fallback_group_id_on_invalid_request: number | null
   // OpenAI Messages 调度开关（用户侧需要此字段判断是否展示 Claude Code 教程）
   allow_messages_dispatch?: boolean
@@ -656,6 +658,8 @@ export interface CreateGroupRequest {
   image_price_4k?: number | null
   claude_code_only?: boolean
   fallback_group_id?: number | null
+  is_fallback_group?: boolean
+  // Deprecated: will be removed in next version. Use fallback_group_id.
   fallback_group_id_on_invalid_request?: number | null
   mcp_xml_inject?: boolean
   supported_model_scopes?: string[]
@@ -683,6 +687,8 @@ export interface UpdateGroupRequest {
   image_price_4k?: number | null
   claude_code_only?: boolean
   fallback_group_id?: number | null
+  is_fallback_group?: boolean
+  // Deprecated: will be removed in next version. Use fallback_group_id.
   fallback_group_id_on_invalid_request?: number | null
   mcp_xml_inject?: boolean
   supported_model_scopes?: string[]
@@ -1141,6 +1147,7 @@ export interface UsageLog {
   upstream_endpoint?: string | null
 
   group_id: number | null
+  original_group_id?: number | null
   subscription_id: number | null
 
   input_tokens: number
@@ -1183,6 +1190,7 @@ export interface UsageLog {
   user?: User
   api_key?: ApiKey
   group?: Group
+  original_group?: Group
   subscription?: UserSubscription
 }
 

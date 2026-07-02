@@ -42,6 +42,9 @@ func (s *userRepoStubForGroupUpdate) GetByEmail(context.Context, string) (*User,
 func (s *userRepoStubForGroupUpdate) GetFirstAdmin(context.Context) (*User, error) {
 	panic("unexpected")
 }
+func (s *userRepoStubForGroupUpdate) GetByReferralCode(context.Context, string) (*User, error) {
+	panic("unexpected")
+}
 func (s *userRepoStubForGroupUpdate) Update(context.Context, *User) error { panic("unexpected") }
 func (s *userRepoStubForGroupUpdate) Delete(context.Context, int64) error { panic("unexpected") }
 func (s *userRepoStubForGroupUpdate) List(context.Context, pagination.PaginationParams) ([]User, *pagination.PaginationResult, error) {
@@ -71,6 +74,18 @@ func (s *userRepoStubForGroupUpdate) UpdateTotpSecret(context.Context, int64, *s
 func (s *userRepoStubForGroupUpdate) EnableTotp(context.Context, int64) error  { panic("unexpected") }
 func (s *userRepoStubForGroupUpdate) DisableTotp(context.Context, int64) error { panic("unexpected") }
 func (s *userRepoStubForGroupUpdate) RemoveGroupFromUserAllowedGroups(context.Context, int64, int64) error {
+	panic("unexpected")
+}
+func (s *userRepoStubForGroupUpdate) UpdateReferralCode(context.Context, int64, string) error {
+	panic("unexpected")
+}
+func (s *userRepoStubForGroupUpdate) UpdateReferredBy(context.Context, int64, int64) error {
+	panic("unexpected")
+}
+func (s *userRepoStubForGroupUpdate) IsFirstRecharge(context.Context, int64) (bool, error) {
+	panic("unexpected")
+}
+func (s *userRepoStubForGroupUpdate) ListActiveUserIDs(context.Context) ([]int64, error) {
 	panic("unexpected")
 }
 
@@ -335,6 +350,28 @@ func TestAdminService_AdminUpdateAPIKeyGroupID_GroupNotActive(t *testing.T) {
 	require.Equal(t, "GROUP_NOT_ACTIVE", infraerrors.Reason(err))
 }
 
+func TestAdminService_AdminUpdateAPIKeyGroupID_FallbackGroupBlocked(t *testing.T) {
+	existing := &APIKey{ID: 1, UserID: 42, Key: "sk-test", GroupID: nil}
+	apiKeyRepo := &apiKeyRepoStubForGroupUpdate{key: existing}
+	groupRepo := &groupRepoStubForGroupUpdate{
+		group: &Group{
+			ID:               10,
+			Name:             "fallback",
+			Status:           StatusActive,
+			Platform:         PlatformOpenAI,
+			SubscriptionType: SubscriptionTypeStandard,
+			IsFallbackGroup:  true,
+		},
+	}
+	svc := &adminServiceImpl{apiKeyRepo: apiKeyRepo, groupRepo: groupRepo}
+
+	_, err := svc.AdminUpdateAPIKeyGroupID(context.Background(), 1, int64Ptr(10))
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "fallback group cannot be bound to api keys")
+	require.Nil(t, apiKeyRepo.updated)
+}
+
 func TestAdminService_AdminUpdateAPIKeyGroupID_UpdateFails(t *testing.T) {
 	existing := &APIKey{ID: 1, Key: "sk-test", GroupID: int64Ptr(3)}
 	repo := &apiKeyRepoStubForGroupUpdate{key: existing, updateErr: errors.New("db write error")}
@@ -506,4 +543,32 @@ func TestAdminService_AdminUpdateAPIKeyGroupID_Unbind_NoAllowedGroupUpdate(t *te
 	// 解绑时不修改 allowed_groups
 	require.False(t, userRepo.addGroupCalled)
 	require.False(t, got.AutoGrantedGroupAccess)
+}
+
+func TestAdminService_ReplaceUserGroup_FallbackGroupBlocked(t *testing.T) {
+	groupRepo := &groupRepoStubForGroupUpdate{
+		group: &Group{
+			ID:               20,
+			Name:             "fallback",
+			Status:           StatusActive,
+			IsExclusive:      true,
+			SubscriptionType: SubscriptionTypeStandard,
+			IsFallbackGroup:  true,
+		},
+	}
+	userRepo := &userRepoStubForGroupUpdate{}
+	apiKeyRepo := &apiKeyRepoStubForGroupUpdate{}
+	svc := &adminServiceImpl{
+		groupRepo:  groupRepo,
+		userRepo:   userRepo,
+		apiKeyRepo: apiKeyRepo,
+	}
+
+	res, err := svc.ReplaceUserGroup(context.Background(), 42, 10, 20)
+	require.Nil(t, res)
+	require.Error(t, err)
+	require.Equal(t, "FALLBACK_GROUP_NOT_BINDABLE", infraerrors.Reason(err))
+	require.Contains(t, err.Error(), "fallback group cannot be assigned to users")
+	require.False(t, userRepo.addGroupCalled)
+	require.Nil(t, apiKeyRepo.updated)
 }

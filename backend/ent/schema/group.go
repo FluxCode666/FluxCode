@@ -103,10 +103,13 @@ func (Group) Fields() []ent.Field {
 			Optional().
 			Nillable().
 			Comment("非 Claude Code 请求降级使用的分组 ID"),
+		field.Bool("is_fallback_group").
+			Default(false).
+			Comment("是否允许作为其他分组的兜底目标"),
 		field.Int64("fallback_group_id_on_invalid_request").
 			Optional().
 			Nillable().
-			Comment("无效请求兜底使用的分组 ID"),
+			Comment("Deprecated: will be removed in next version. 无效请求兜底使用的分组 ID，不再参与运行时逻辑"),
 
 		// 模型路由配置 (added by migration 040)
 		field.JSON("model_routing", map[string][]int64{}).
@@ -180,6 +183,7 @@ func (Group) Indexes() []ent.Index {
 		index.Fields("platform"),
 		index.Fields("subscription_type"),
 		index.Fields("is_exclusive"),
+		index.Fields("is_fallback_group"),
 		index.Fields("deleted_at"),
 		index.Fields("sort_order"),
 	}

@@ -1088,6 +1088,7 @@ import TablePageLayout from '@/components/layout/TablePageLayout.vue'
 	import GroupBadge from '@/components/common/GroupBadge.vue'
 	import GroupOptionItem from '@/components/common/GroupOptionItem.vue'
 	import type { ApiKey, Group, PublicSettings, SubscriptionType, GroupPlatform, SystemPromptMode } from '@/types'
+import { isSelectableApiKeyGroup } from './KeysView.groups'
 import type { Column } from '@/components/common/types'
 import type { BatchApiKeyUsageStats } from '@/api/usage'
 import { buildCcswitchProviderDeepLink, type CcswitchProviderApp } from '@/utils/ccswitchDeepLink'
@@ -1278,15 +1279,17 @@ const onStatusFilterChange = (value: string | number | boolean | null) => {
 
 // Convert groups to Select options format with rate multiplier and subscription type
 const groupOptions = computed(() =>
-  groups.value.map((group) => ({
-    value: group.id,
-    label: group.name,
-    description: group.description,
-    rate: group.rate_multiplier,
-    userRate: userGroupRates.value[group.id] ?? null,
-    subscriptionType: group.subscription_type,
-    platform: group.platform
-  }))
+  groups.value
+    .filter(isSelectableApiKeyGroup)
+    .map((group) => ({
+      value: group.id,
+      label: group.name,
+      description: group.description,
+      rate: group.rate_multiplier,
+      userRate: userGroupRates.value[group.id] ?? null,
+      subscriptionType: group.subscription_type,
+      platform: group.platform
+    }))
 )
 
 // Group dropdown search

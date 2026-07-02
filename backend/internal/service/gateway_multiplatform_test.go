@@ -304,6 +304,35 @@ func ptr[T any](v T) *T {
 	return &v
 }
 
+func TestGatewayService_ResolveRuntimeFallbackGroup_AllowsAnthropicFallback(t *testing.T) {
+	groupID := int64(70)
+	fallbackID := int64(71)
+	group := &Group{
+		ID:               groupID,
+		Platform:         PlatformAnthropic,
+		Status:           StatusActive,
+		SubscriptionType: SubscriptionTypeStandard,
+		FallbackGroupID:  &fallbackID,
+	}
+	fallback := &Group{
+		ID:               fallbackID,
+		Platform:         PlatformAnthropic,
+		Status:           StatusActive,
+		SubscriptionType: SubscriptionTypeStandard,
+		IsFallbackGroup:  true,
+	}
+	svc := &GatewayService{
+		groupRepo: &mockGroupRepoForGateway{
+			groups: map[int64]*Group{fallbackID: fallback},
+		},
+	}
+
+	got, err := svc.ResolveRuntimeFallbackGroup(context.Background(), group)
+
+	require.NoError(t, err)
+	require.Same(t, fallback, got)
+}
+
 // TestGatewayService_SelectAccountForModelWithPlatform_Anthropic 测试 anthropic 单平台选择
 func TestGatewayService_SelectAccountForModelWithPlatform_Anthropic(t *testing.T) {
 	ctx := context.Background()
@@ -1989,6 +2018,10 @@ func (m *mockConcurrencyCache) CleanupExpiredAccountSlots(ctx context.Context, a
 	return nil
 }
 
+func (m *mockConcurrencyCache) CleanupExpiredSlotsByScan(ctx context.Context) error {
+	return nil
+}
+
 func (m *mockConcurrencyCache) CleanupStaleProcessSlots(ctx context.Context, activeRequestPrefix string) error {
 	return nil
 }
@@ -3255,7 +3288,7 @@ func TestGatewayService_GroupResolution_FallbackUsesLiteOnce(t *testing.T) {
 	account, err := svc.SelectAccountForModelWithExclusions(ctx, &groupID, "", "claude-3-5-sonnet-20241022", nil)
 	require.NoError(t, err)
 	require.NotNil(t, account)
-	require.Equal(t, 1, groupRepo.getByIDCalls) // +1 for require_privacy_set check
+	require.Equal(t, 0, groupRepo.getByIDCalls)
 	require.Equal(t, 1, groupRepo.getByIDLiteCalls)
 }
 

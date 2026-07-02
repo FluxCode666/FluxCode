@@ -207,6 +207,7 @@ func groupFromServiceBase(g *service.Group) Group {
 		ImagePrice4K:                    g.ImagePrice4K,
 		ClaudeCodeOnly:                  g.ClaudeCodeOnly,
 		FallbackGroupID:                 g.FallbackGroupID,
+		IsFallbackGroup:                 g.IsFallbackGroup,
 		FallbackGroupIDOnInvalidRequest: g.FallbackGroupIDOnInvalidRequest,
 		AllowMessagesDispatch:           g.AllowMessagesDispatch,
 		RequireOAuthOnly:                g.RequireOAuthOnly,
@@ -612,6 +613,7 @@ func usageLogFromServiceUser(l *service.UsageLog) UsageLog {
 		InboundEndpoint:       l.InboundEndpoint,
 		UpstreamEndpoint:      l.UpstreamEndpoint,
 		GroupID:               l.GroupID,
+		OriginalGroupID:       l.OriginalGroupID,
 		SubscriptionID:        l.SubscriptionID,
 		InputTokens:           l.InputTokens,
 		OutputTokens:          l.OutputTokens,
@@ -642,6 +644,7 @@ func usageLogFromServiceUser(l *service.UsageLog) UsageLog {
 		User:                  UserFromServiceShallow(l.User),
 		APIKey:                APIKeyFromService(l.APIKey),
 		Group:                 GroupFromServiceShallow(l.Group),
+		OriginalGroup:         GroupFromServiceShallow(l.OriginalGroup),
 		Subscription:          UserSubscriptionFromService(l.Subscription),
 	}
 }

@@ -2430,6 +2430,14 @@ export default {
         fallbackHint: '非 Claude Code 请求将使用此分组，留空则直接拒绝',
         noFallback: '不降级（直接拒绝）'
       },
+      fallbackGroup: {
+        enabled: '启用为兜底分组',
+        enabledHint: '启用后，此分组只能作为其他分组的兜底目标，不能被 API Key 直接选择。',
+        target: '兜底分组',
+        targetHint: '当前分组不可用或上游可重试错误耗尽后，将切换到该分组重试一次。',
+        noFallback: '不使用兜底',
+        badge: '兜底分组'
+      },
       openaiMessages: {
         title: 'OpenAI Messages 调度配置',
         allowDispatch: '允许 /v1/messages 调度',

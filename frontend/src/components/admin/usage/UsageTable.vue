@@ -109,7 +109,39 @@
         </template>
 
         <template #cell-group="{ row }">
-          <span v-if="row.group" class="inline-flex items-center rounded px-2 py-0.5 text-xs font-medium bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-200">
+          <div
+            v-if="hasFallbackGroupChain(row)"
+            data-test="usage-group-cell"
+            class="min-w-0 text-xs"
+          >
+            <div
+              data-test="usage-original-group"
+              class="truncate font-medium leading-5 text-gray-900 dark:text-white"
+              :title="row.original_group?.name"
+            >
+              {{ row.original_group?.name }}
+            </div>
+            <div
+              data-test="usage-fallback-group-row"
+              class="mt-0.5 flex min-w-0 items-center gap-1.5"
+            >
+              <span
+                data-test="usage-fallback-group-arrow"
+                class="shrink-0 text-sm font-medium leading-5 text-blue-600 dark:text-blue-300"
+                aria-hidden="true"
+              >
+                ↳
+              </span>
+              <span
+                data-test="usage-fallback-group"
+                class="truncate font-medium leading-5 text-blue-700 dark:text-blue-300"
+                :title="row.group?.name"
+              >
+                {{ row.group?.name }}
+              </span>
+            </div>
+          </div>
+          <span v-else-if="row.group" class="inline-flex items-center rounded px-2 py-0.5 text-xs font-medium bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-200">
             {{ row.group.name }}
           </span>
           <span v-else class="text-sm text-gray-400 dark:text-gray-500">-</span>
@@ -422,6 +454,16 @@ defineEmits<{
   sort: [key: string, order: 'asc' | 'desc']
 }>()
 const { t } = useI18n()
+
+function hasFallbackGroupChain(row: AdminUsageLog): boolean {
+  return Boolean(
+    row.original_group &&
+    row.group &&
+    row.original_group_id != null &&
+    row.group_id != null &&
+    row.original_group_id !== row.group_id
+  )
+}
 
 // Tooltip state - cost
 const tooltipVisible = ref(false)

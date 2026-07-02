@@ -129,7 +129,7 @@ func TestSalesCommissionService_HandleBalanceRechargeCompleted_AllowsTieredSales
 // 而不是 "只对超出门槛部分计提"。本笔之前未达门槛的记录由仓储层 Reprice 阶段补算。
 func TestCalculateSalesCommission_TieredThresholdCrossing(t *testing.T) {
 	calc, err := CalculateSalesCommission(90, 60, SalesCommissionModeTiered, 0, 100, []SalesCommissionTier{
-		{MonthSalesFromCNY: 0, MonthSalesToCNY: float64Ptr(200), CommissionRate: 10},
+		{MonthSalesFromCNY: 0, MonthSalesToCNY: float64PtrForTest(200), CommissionRate: 10},
 		{MonthSalesFromCNY: 200, CommissionRate: 20},
 	})
 
@@ -172,8 +172,8 @@ func TestCalculateSalesCommission_TieredBelowThreshold(t *testing.T) {
 func TestCalculateSalesCommission_TieredCrossesMultipleSegments(t *testing.T) {
 	// 0~10000 => 5%, 10000~20000 => 8%, 20000~ => 10%
 	calc, err := CalculateSalesCommission(15000, 8000, SalesCommissionModeTiered, 0, 0, []SalesCommissionTier{
-		{MonthSalesFromCNY: 0, MonthSalesToCNY: float64Ptr(10000), CommissionRate: 5},
-		{MonthSalesFromCNY: 10000, MonthSalesToCNY: float64Ptr(20000), CommissionRate: 8},
+		{MonthSalesFromCNY: 0, MonthSalesToCNY: float64PtrForTest(10000), CommissionRate: 5},
+		{MonthSalesFromCNY: 10000, MonthSalesToCNY: float64PtrForTest(20000), CommissionRate: 8},
 		{MonthSalesFromCNY: 20000, CommissionRate: 10},
 	})
 
@@ -277,8 +277,8 @@ func TestRecomputeMonthlyCommissionRecords_TieredBackfillsPriorRecordsOnCrossing
 			CommissionMode:     SalesCommissionModeTiered,
 			MinMonthlySalesCNY: 10000,
 			Tiers: []SalesCommissionTier{
-				{MonthSalesFromCNY: 0, MonthSalesToCNY: float64Ptr(10000), CommissionRate: 5},
-				{MonthSalesFromCNY: 10000, MonthSalesToCNY: float64Ptr(20000), CommissionRate: 8},
+				{MonthSalesFromCNY: 0, MonthSalesToCNY: float64PtrForTest(10000), CommissionRate: 5},
+				{MonthSalesFromCNY: 10000, MonthSalesToCNY: float64PtrForTest(20000), CommissionRate: 8},
 				{MonthSalesFromCNY: 20000, CommissionRate: 10},
 			},
 		},
@@ -379,8 +379,8 @@ func TestCalculateMonthlyCommissionCurve_TieredMatchesSpecExamples(t *testing.T)
 	snapshot := SalesCommissionSnapshot{
 		CommissionMode: SalesCommissionModeTiered,
 		Tiers: []SalesCommissionTier{
-			{MonthSalesFromCNY: 0, MonthSalesToCNY: float64Ptr(10000), CommissionRate: 5},
-			{MonthSalesFromCNY: 10000, MonthSalesToCNY: float64Ptr(20000), CommissionRate: 8},
+			{MonthSalesFromCNY: 0, MonthSalesToCNY: float64PtrForTest(10000), CommissionRate: 5},
+			{MonthSalesFromCNY: 10000, MonthSalesToCNY: float64PtrForTest(20000), CommissionRate: 8},
 			{MonthSalesFromCNY: 20000, CommissionRate: 10},
 		},
 	}
@@ -839,9 +839,9 @@ func TestSalesCommissionService_RecomputeMissingCommissions_ProcessesAllCandidat
 	t.Parallel()
 
 	orders := []*dbent.PaymentOrder{
-		{ID: 101, UserID: 20, OrderType: payment.OrderTypeBalance, Status: payment.OrderStatusCompleted, PayAmount: 100, Amount: 100, PaidAt: timePtr(time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC))},
-		{ID: 102, UserID: 21, OrderType: payment.OrderTypeBalance, Status: payment.OrderStatusCompleted, PayAmount: 200, Amount: 200, PaidAt: timePtr(time.Date(2026, 5, 2, 12, 0, 0, 0, time.UTC))},
-		{ID: 103, UserID: 22, OrderType: payment.OrderTypeBalance, Status: payment.OrderStatusCompleted, PayAmount: 300, Amount: 300, PaidAt: timePtr(time.Date(2026, 5, 3, 12, 0, 0, 0, time.UTC))},
+		{ID: 101, UserID: 20, OrderType: payment.OrderTypeBalance, Status: payment.OrderStatusCompleted, PayAmount: 100, Amount: 100, PaidAt: timePtrForTest(time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC))},
+		{ID: 102, UserID: 21, OrderType: payment.OrderTypeBalance, Status: payment.OrderStatusCompleted, PayAmount: 200, Amount: 200, PaidAt: timePtrForTest(time.Date(2026, 5, 2, 12, 0, 0, 0, time.UTC))},
+		{ID: 103, UserID: 22, OrderType: payment.OrderTypeBalance, Status: payment.OrderStatusCompleted, PayAmount: 300, Amount: 300, PaidAt: timePtrForTest(time.Date(2026, 5, 3, 12, 0, 0, 0, time.UTC))},
 	}
 	repo := &salesCommissionRepoStub{missingOrders: orders}
 	refRepo := &salesCommissionReferralRepoStub{
@@ -877,9 +877,9 @@ func TestSalesCommissionService_RecomputeMissingCommissions_FailedOrderDoesNotAb
 	t.Parallel()
 
 	orders := []*dbent.PaymentOrder{
-		{ID: 201, UserID: 20, OrderType: payment.OrderTypeBalance, Status: payment.OrderStatusCompleted, PayAmount: 100, Amount: 100, PaidAt: timePtr(time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC))},
-		{ID: 202, UserID: 21, OrderType: payment.OrderTypeBalance, Status: payment.OrderStatusCompleted, PayAmount: 200, Amount: 200, PaidAt: timePtr(time.Date(2026, 5, 2, 0, 0, 0, 0, time.UTC))},
-		{ID: 203, UserID: 22, OrderType: payment.OrderTypeBalance, Status: payment.OrderStatusCompleted, PayAmount: 300, Amount: 300, PaidAt: timePtr(time.Date(2026, 5, 3, 0, 0, 0, 0, time.UTC))},
+		{ID: 201, UserID: 20, OrderType: payment.OrderTypeBalance, Status: payment.OrderStatusCompleted, PayAmount: 100, Amount: 100, PaidAt: timePtrForTest(time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC))},
+		{ID: 202, UserID: 21, OrderType: payment.OrderTypeBalance, Status: payment.OrderStatusCompleted, PayAmount: 200, Amount: 200, PaidAt: timePtrForTest(time.Date(2026, 5, 2, 0, 0, 0, 0, time.UTC))},
+		{ID: 203, UserID: 22, OrderType: payment.OrderTypeBalance, Status: payment.OrderStatusCompleted, PayAmount: 300, Amount: 300, PaidAt: timePtrForTest(time.Date(2026, 5, 3, 0, 0, 0, 0, time.UTC))},
 	}
 	repo := &salesCommissionRepoStub{
 		missingOrders:              orders,
@@ -928,7 +928,7 @@ func completedBalanceOrder() *dbent.PaymentOrder {
 		Status:      payment.OrderStatusCompleted,
 		PayAmount:   100,
 		Amount:      100,
-		CompletedAt: timePtr(time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC)),
+		CompletedAt: timePtrForTest(time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC)),
 	}
 }
 
@@ -938,7 +938,7 @@ func salesCommissionMonthStartForTest(eventAt time.Time) time.Time {
 	return time.Date(local.Year(), local.Month(), 1, 0, 0, 0, 0, time.UTC)
 }
 
-func timePtr(t time.Time) *time.Time {
+func timePtrForTest(t time.Time) *time.Time {
 	return &t
 }
 

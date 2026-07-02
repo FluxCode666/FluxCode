@@ -151,6 +151,30 @@ func TestUsageLogFromService_FallsBackToLegacyModelWhenRequestedModelMissing(t *
 	require.Equal(t, "claude-3", adminDTO.Model)
 }
 
+func TestUsageLogFromServiceAdmin_IncludesOriginalGroupForFallbackUsage(t *testing.T) {
+	t.Parallel()
+
+	originalGroupID := int64(101)
+	fallbackGroupID := int64(202)
+	log := &service.UsageLog{
+		RequestID:       "req_fallback_group",
+		Model:           "gpt-5",
+		GroupID:         &fallbackGroupID,
+		OriginalGroupID: &originalGroupID,
+		Group:           &service.Group{ID: fallbackGroupID, Name: "兜底分组"},
+		OriginalGroup:   &service.Group{ID: originalGroupID, Name: "原分组"},
+	}
+
+	adminDTO := UsageLogFromServiceAdmin(log)
+
+	require.NotNil(t, adminDTO.OriginalGroupID)
+	require.Equal(t, originalGroupID, *adminDTO.OriginalGroupID)
+	require.NotNil(t, adminDTO.OriginalGroup)
+	require.Equal(t, "原分组", adminDTO.OriginalGroup.Name)
+	require.NotNil(t, adminDTO.Group)
+	require.Equal(t, "兜底分组", adminDTO.Group.Name)
+}
+
 func f64Ptr(value float64) *float64 {
 	return &value
 }

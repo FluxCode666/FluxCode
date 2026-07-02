@@ -21,6 +21,14 @@ func (c *snapshotHydrationCache) SetSnapshot(ctx context.Context, bucket Schedul
 	return nil
 }
 
+func (c *snapshotHydrationCache) SetSnapshotIndex(ctx context.Context, bucket SchedulerBucket, accounts []Account) error {
+	return nil
+}
+
+func (c *snapshotHydrationCache) WriteAccounts(ctx context.Context, accounts []Account) error {
+	return nil
+}
+
 func (c *snapshotHydrationCache) GetAccount(ctx context.Context, accountID int64) (*Account, error) {
 	if c.accounts == nil {
 		return nil, nil

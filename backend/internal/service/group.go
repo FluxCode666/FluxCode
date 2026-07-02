@@ -32,10 +32,12 @@ type Group struct {
 	ImagePrice2K *float64
 	ImagePrice4K *float64
 
-	// Claude Code 客户端限制
+	// Claude Code 客户端限制与通用分组兜底
 	ClaudeCodeOnly  bool
 	FallbackGroupID *int64
-	// 无效请求兜底分组（仅 anthropic 平台使用）
+	IsFallbackGroup bool
+	// Deprecated: will be removed in next version.
+	// 无效请求兜底分组不再参与运行时逻辑；prompt too long 等兜底统一使用 FallbackGroupID。
 	FallbackGroupIDOnInvalidRequest *int64
 
 	// 模型路由配置

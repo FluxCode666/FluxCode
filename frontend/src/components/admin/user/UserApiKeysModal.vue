@@ -107,6 +107,7 @@ import type { AdminUser, AdminGroup, ApiKey } from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import GroupBadge from '@/components/common/GroupBadge.vue'
 import GroupOptionItem from '@/components/common/GroupOptionItem.vue'
+import { filterRebindableApiKeyGroups } from '@/utils/apiKeyGroupSelection'
 
 const props = defineProps<{ show: boolean; user: AdminUser | null }>()
 const emit = defineEmits(['close'])
@@ -162,7 +163,7 @@ const load = async () => {
 const loadGroups = async () => {
   try {
     const groups = await adminAPI.groups.getAll()
-    allGroups.value = groups
+    allGroups.value = filterRebindableApiKeyGroups(groups)
   } catch (error) {
     console.error('Failed to load groups:', error)
   }

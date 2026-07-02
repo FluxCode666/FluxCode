@@ -186,6 +186,7 @@ import { adminAPI } from '@/api/admin'
 import type { AdminUser, Group, GroupPlatform } from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import PlatformIcon from '@/components/common/PlatformIcon.vue'
+import { filterAssignableAllowedGroups } from '@/utils/apiKeyGroupSelection'
 
 interface GroupRateConfig {
   groupId: number
@@ -228,8 +229,8 @@ const load = async () => {
   loading.value = true
   try {
     const res = await adminAPI.groups.list(1, 1000)
-    // 只显示标准类型且活跃的分组
-    groups.value = res.items.filter((g) => g.subscription_type === 'standard' && g.status === 'active')
+    // 只显示可分配给 API Key 的标准活跃分组
+    groups.value = filterAssignableAllowedGroups(res.items)
 
     // 初始化配置
     const userAllowedGroups = props.user?.allowed_groups || []

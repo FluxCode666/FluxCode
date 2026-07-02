@@ -58,6 +58,8 @@ const (
 	FieldClaudeCodeOnly = "claude_code_only"
 	// FieldFallbackGroupID holds the string denoting the fallback_group_id field in the database.
 	FieldFallbackGroupID = "fallback_group_id"
+	// FieldIsFallbackGroup holds the string denoting the is_fallback_group field in the database.
+	FieldIsFallbackGroup = "is_fallback_group"
 	// FieldFallbackGroupIDOnInvalidRequest holds the string denoting the fallback_group_id_on_invalid_request field in the database.
 	FieldFallbackGroupIDOnInvalidRequest = "fallback_group_id_on_invalid_request"
 	// FieldModelRouting holds the string denoting the model_routing field in the database.
@@ -176,6 +178,7 @@ var Columns = []string{
 	FieldImagePrice4k,
 	FieldClaudeCodeOnly,
 	FieldFallbackGroupID,
+	FieldIsFallbackGroup,
 	FieldFallbackGroupIDOnInvalidRequest,
 	FieldModelRouting,
 	FieldModelRoutingEnabled,
@@ -250,6 +253,8 @@ var (
 	DefaultDefaultValidityDays int
 	// DefaultClaudeCodeOnly holds the default value on creation for the "claude_code_only" field.
 	DefaultClaudeCodeOnly bool
+	// DefaultIsFallbackGroup holds the default value on creation for the "is_fallback_group" field.
+	DefaultIsFallbackGroup bool
 	// DefaultModelRoutingEnabled holds the default value on creation for the "model_routing_enabled" field.
 	DefaultModelRoutingEnabled bool
 	// DefaultMcpXMLInject holds the default value on creation for the "mcp_xml_inject" field.
@@ -383,6 +388,11 @@ func ByClaudeCodeOnly(opts ...sql.OrderTermOption) OrderOption {
 // ByFallbackGroupID orders the results by the fallback_group_id field.
 func ByFallbackGroupID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldFallbackGroupID, opts...).ToFunc()
+}
+
+// ByIsFallbackGroup orders the results by the is_fallback_group field.
+func ByIsFallbackGroup(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldIsFallbackGroup, opts...).ToFunc()
 }
 
 // ByFallbackGroupIDOnInvalidRequest orders the results by the fallback_group_id_on_invalid_request field.

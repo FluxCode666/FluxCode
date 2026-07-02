@@ -160,6 +160,11 @@ func FallbackGroupID(v int64) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldFallbackGroupID, v))
 }
 
+// IsFallbackGroup applies equality check predicate on the "is_fallback_group" field. It's identical to IsFallbackGroupEQ.
+func IsFallbackGroup(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldIsFallbackGroup, v))
+}
+
 // FallbackGroupIDOnInvalidRequest applies equality check predicate on the "fallback_group_id_on_invalid_request" field. It's identical to FallbackGroupIDOnInvalidRequestEQ.
 func FallbackGroupIDOnInvalidRequest(v int64) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldFallbackGroupIDOnInvalidRequest, v))
@@ -1243,6 +1248,16 @@ func FallbackGroupIDIsNil() predicate.Group {
 // FallbackGroupIDNotNil applies the NotNil predicate on the "fallback_group_id" field.
 func FallbackGroupIDNotNil() predicate.Group {
 	return predicate.Group(sql.FieldNotNull(FieldFallbackGroupID))
+}
+
+// IsFallbackGroupEQ applies the EQ predicate on the "is_fallback_group" field.
+func IsFallbackGroupEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldIsFallbackGroup, v))
+}
+
+// IsFallbackGroupNEQ applies the NEQ predicate on the "is_fallback_group" field.
+func IsFallbackGroupNEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldIsFallbackGroup, v))
 }
 
 // FallbackGroupIDOnInvalidRequestEQ applies the EQ predicate on the "fallback_group_id_on_invalid_request" field.

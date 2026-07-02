@@ -1881,6 +1881,47 @@ func (s *GatewayService) ResolveGroupByID(ctx context.Context, groupID int64) (*
 	return s.resolveGroupByID(ctx, groupID)
 }
 
+func (s *GatewayService) ResolveRuntimeFallbackGroup(ctx context.Context, group *Group) (*Group, error) {
+	if s == nil || s.groupRepo == nil {
+		return nil, fmt.Errorf("group repository unavailable")
+	}
+	return resolveRuntimeFallbackGroup(ctx, s.groupRepo.GetByIDLite, group)
+}
+
+func resolveRuntimeFallbackGroup(ctx context.Context, resolve func(context.Context, int64) (*Group, error), group *Group) (*Group, error) {
+	if group == nil || !hasConfiguredFallbackGroupID(group.FallbackGroupID) {
+		return nil, nil
+	}
+	if resolve == nil {
+		return nil, fmt.Errorf("group resolver unavailable")
+	}
+
+	fallbackGroup, err := resolve(ctx, *group.FallbackGroupID)
+	if err != nil {
+		return nil, fmt.Errorf("fallback group not found: %w", err)
+	}
+	if fallbackGroup == nil || !fallbackGroup.IsActive() {
+		return nil, fmt.Errorf("fallback group must be active")
+	}
+	if !fallbackGroup.IsFallbackGroup {
+		return nil, fmt.Errorf("fallback group must be enabled as fallback group")
+	}
+	if normalizeGroupSubscriptionType(fallbackGroup.SubscriptionType) != SubscriptionTypeStandard {
+		return nil, fmt.Errorf("fallback group must be standard billing type")
+	}
+	if hasConfiguredFallbackGroupID(fallbackGroup.FallbackGroupID) {
+		return nil, fmt.Errorf("fallback group cannot have fallback_group_id configured")
+	}
+	expectedPlatform := group.Platform
+	if IsOpenAICompatiblePlatform(expectedPlatform) {
+		expectedPlatform = PlatformOpenAI
+	}
+	if expectedPlatform != "" && fallbackGroup.Platform != expectedPlatform {
+		return nil, fmt.Errorf("fallback group platform mismatch")
+	}
+	return fallbackGroup, nil
+}
+
 func (s *GatewayService) routingAccountIDsForRequest(ctx context.Context, groupID *int64, requestedModel string, platform string) []int64 {
 	if groupID == nil || requestedModel == "" || platform != PlatformAnthropic {
 		return nil
@@ -7309,6 +7350,7 @@ type RecordUsageInput struct {
 	User               *User
 	Account            *Account
 	Subscription       *UserSubscription  // 可选：订阅信息
+	OriginalGroupID    *int64             // 触发兜底前的入口原分组；未兜底时为空
 	BilledAt           time.Time          // 计费归属时刻（用于按 grant 活跃集分摊）
 	InboundEndpoint    string             // 入站端点（客户端请求路径）
 	UpstreamEndpoint   string             // 上游端点（标准化后的上游路径）
@@ -7744,6 +7786,7 @@ func (s *GatewayService) RecordUsage(ctx context.Context, input *RecordUsageInpu
 		User:               input.User,
 		Account:            input.Account,
 		Subscription:       input.Subscription,
+		OriginalGroupID:    input.OriginalGroupID,
 		BilledAt:           input.BilledAt,
 		InboundEndpoint:    input.InboundEndpoint,
 		UpstreamEndpoint:   input.UpstreamEndpoint,
@@ -7766,6 +7809,7 @@ type RecordUsageLongContextInput struct {
 	User                  *User
 	Account               *Account
 	Subscription          *UserSubscription  // 可选：订阅信息
+	OriginalGroupID       *int64             // 触发兜底前的入口原分组；未兜底时为空
 	InboundEndpoint       string             // 入站端点（客户端请求路径）
 	UpstreamEndpoint      string             // 上游端点（标准化后的上游路径）
 	UserAgent             string             // 请求的 User-Agent
@@ -7787,6 +7831,7 @@ func (s *GatewayService) RecordUsageWithLongContext(ctx context.Context, input *
 		User:               input.User,
 		Account:            input.Account,
 		Subscription:       input.Subscription,
+		OriginalGroupID:    input.OriginalGroupID,
 		InboundEndpoint:    input.InboundEndpoint,
 		UpstreamEndpoint:   input.UpstreamEndpoint,
 		UserAgent:          input.UserAgent,
@@ -7808,6 +7853,7 @@ type recordUsageCoreInput struct {
 	User               *User
 	Account            *Account
 	Subscription       *UserSubscription
+	OriginalGroupID    *int64
 	BilledAt           time.Time // 计费归属时刻（用于按 grant 活跃集分摊）
 	InboundEndpoint    string
 	UpstreamEndpoint   string
@@ -8120,6 +8166,7 @@ func (s *GatewayService) buildRecordUsageLog(
 		UserAgent:             optionalTrimmedStringPtr(input.UserAgent),
 		IPAddress:             optionalTrimmedStringPtr(input.IPAddress),
 		GroupID:               apiKey.GroupID,
+		OriginalGroupID:       input.OriginalGroupID,
 		SubscriptionID:        optionalSubscriptionID(subscription),
 		CreatedAt:             input.BilledAt,
 	}
