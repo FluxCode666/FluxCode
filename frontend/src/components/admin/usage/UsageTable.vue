@@ -112,13 +112,27 @@
           <div
             v-if="hasFallbackGroupChain(row)"
             data-test="usage-group-cell"
-            class="min-w-0 space-y-0.5 text-xs leading-5"
+            class="min-w-0 text-xs"
           >
-            <div class="truncate font-medium text-gray-900 dark:text-white" :title="row.original_group?.name">
+            <div
+              data-test="usage-original-group"
+              class="truncate font-medium leading-5 text-gray-900 dark:text-white"
+              :title="row.original_group?.name"
+            >
               {{ row.original_group?.name }}
             </div>
-            <div class="truncate pl-2 text-indigo-700 dark:text-indigo-300" :title="row.group?.name">
-              |—&gt; {{ row.group?.name }}
+            <div class="mt-1 flex min-w-0 items-center gap-2 pl-3">
+              <span class="h-4 w-px shrink-0 bg-indigo-300 dark:bg-indigo-700" aria-hidden="true"></span>
+              <span class="shrink-0 rounded border border-indigo-200 bg-indigo-50 px-1.5 py-0.5 text-[10px] font-medium leading-3 text-indigo-700 dark:border-indigo-800 dark:bg-indigo-950 dark:text-indigo-300">
+                兜底
+              </span>
+              <span
+                data-test="usage-fallback-group"
+                class="truncate font-medium leading-5 text-indigo-700 dark:text-indigo-300"
+                :title="row.group?.name"
+              >
+                {{ row.group?.name }}
+              </span>
             </div>
           </div>
           <span v-else-if="row.group" class="inline-flex items-center rounded px-2 py-0.5 text-xs font-medium bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-200">

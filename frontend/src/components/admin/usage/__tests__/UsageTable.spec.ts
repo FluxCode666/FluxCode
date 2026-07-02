@@ -229,10 +229,18 @@ describe('admin UsageTable tooltip', () => {
       },
     })
 
-    const text = wrapper.text()
-    expect(text).toContain('Primary Group')
-    expect(text).toContain('|—> Fallback Group')
-    expect(text.indexOf('Primary Group')).toBeLessThan(text.indexOf('|—> Fallback Group'))
+    const groupCell = wrapper.get('[data-test="usage-group-cell"]')
+    const originalGroup = groupCell.get('[data-test="usage-original-group"]')
+    const fallbackGroup = groupCell.get('[data-test="usage-fallback-group"]')
+
+    expect(originalGroup.text()).toBe('Primary Group')
+    expect(groupCell.text()).toContain('兜底')
+    expect(fallbackGroup.text()).toBe('Fallback Group')
+    expect(groupCell.text()).not.toContain('|—>')
+    expect(
+      originalGroup.element.compareDocumentPosition(fallbackGroup.element) &
+      Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy()
   })
 
   it('wraps long request ids and models inside their cells', () => {
