@@ -25,7 +25,7 @@
 - 不直接复制上游实现代码，不做 git 合并，不做 cherry-pick。
 - 不重构无关 OpenAI gateway 流程。
 - 不改变 `/v1/images/generations`、`/v1/images/edits` 的既有生图接口语义，除非它们需要复用 group 生图权限 helper。
-- 不在本设计中实现 Responses image account whitelist；该主题已有独立设计。
+- 不在本设计中实现 Responses image account whitelist；账号级生图模型白名单不属于本次上游行为对齐范围。
 
 ## 推荐架构
 
