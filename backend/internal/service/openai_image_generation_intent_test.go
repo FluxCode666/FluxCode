@@ -1,5 +1,3 @@
-//go:build !unit
-
 package service
 
 import "testing"
@@ -42,11 +40,13 @@ func TestIsImageGenerationIntent(t *testing.T) {
 	}
 }
 
-func TestIsImageGenerationIntentMap(t *testing.T) {
+func TestImageGenerationPermissionMessage(t *testing.T) {
 	if got := ImageGenerationPermissionMessage(); got != "Image generation is not enabled for this group" {
 		t.Fatalf("ImageGenerationPermissionMessage() = %q, want %q", got, "Image generation is not enabled for this group")
 	}
+}
 
+func TestIsImageGenerationIntentMap(t *testing.T) {
 	if !IsImageGenerationIntentMap("/v1/responses", "gpt-5.5", map[string]any{
 		"model": "gpt-image-2",
 	}) {
