@@ -985,6 +985,10 @@ func shouldRetryClaudeRuntimeFallback(failoverErr *service.UpstreamFailoverError
 		return true
 	case status == http.StatusRequestTimeout:
 		return true
+	case status == http.StatusForbidden:
+		// Some upstreams report account-level balance or access exhaustion as 403.
+		// A fallback group may have different upstream accounts available.
+		return true
 	case status == http.StatusTooManyRequests:
 		return true
 	case status >= 500:

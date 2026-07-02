@@ -650,17 +650,17 @@ func TestOpenAIRuntimeFallbackSelectionFailure_SwitchesGroupAndAttributesUsage(t
 func TestOpenAIRuntimeFallbackFailoverExhaustedRetryable_AttemptsFallback(t *testing.T) {
 	require.True(t, shouldRetryOpenAIRuntimeFallback(&service.UpstreamFailoverError{StatusCode: 0}))
 	require.True(t, shouldRetryOpenAIRuntimeFallback(&service.UpstreamFailoverError{StatusCode: http.StatusRequestTimeout}))
+	require.True(t, shouldRetryOpenAIRuntimeFallback(&service.UpstreamFailoverError{StatusCode: http.StatusForbidden}))
 	require.True(t, shouldRetryOpenAIRuntimeFallback(&service.UpstreamFailoverError{StatusCode: http.StatusTooManyRequests}))
 	require.True(t, shouldRetryOpenAIRuntimeFallback(&service.UpstreamFailoverError{StatusCode: http.StatusBadGateway}))
+	require.True(t, shouldAttemptOpenAIRuntimeFallback(false, 0, 0, &service.UpstreamFailoverError{StatusCode: http.StatusForbidden}))
 	require.True(t, shouldAttemptOpenAIRuntimeFallback(false, 0, 0, &service.UpstreamFailoverError{StatusCode: http.StatusInternalServerError}))
 }
 
 func TestOpenAIRuntimeFallbackFailoverExhaustedNonRetryable_DoesNotFallback(t *testing.T) {
 	require.False(t, shouldRetryOpenAIRuntimeFallback(&service.UpstreamFailoverError{StatusCode: http.StatusUnauthorized}))
 	require.False(t, shouldRetryOpenAIRuntimeFallback(&service.UpstreamFailoverError{StatusCode: http.StatusBadRequest}))
-	require.False(t, shouldRetryOpenAIRuntimeFallback(&service.UpstreamFailoverError{StatusCode: http.StatusForbidden}))
 	require.False(t, shouldRetryOpenAIRuntimeFallback(nil))
-	require.False(t, shouldAttemptOpenAIRuntimeFallback(false, 0, 0, &service.UpstreamFailoverError{StatusCode: http.StatusForbidden}))
 	require.False(t, shouldAttemptOpenAIRuntimeFallback(false, 0, 16, &service.UpstreamFailoverError{StatusCode: http.StatusTooManyRequests}))
 }
 
@@ -1049,7 +1049,6 @@ func TestOpenAIRuntimeFallbackChatCompletions_NonRetryableDoesNotFallback(t *tes
 	}{
 		{name: "bad_request", status: http.StatusBadRequest},
 		{name: "unauthorized", status: http.StatusUnauthorized},
-		{name: "forbidden", status: http.StatusForbidden},
 	}
 
 	for _, tt := range testCases {
@@ -1151,6 +1150,108 @@ func TestOpenAIRuntimeFallbackChatCompletions_NonRetryableDoesNotFallback(t *tes
 			assert.Nil(t, fixture.usageRepo.lastLog)
 		})
 	}
+}
+
+func TestOpenAIRuntimeFallbackChatCompletions_ForbiddenSwitchesToFallbackGroup(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	primaryGroupID := int64(9311)
+	fallbackGroupID := int64(9312)
+	primaryAccountID := int64(9411)
+	fallbackAccountID := int64(9412)
+	userID := int64(9511)
+
+	primaryGroup := &service.Group{
+		ID:               primaryGroupID,
+		Hydrated:         true,
+		Platform:         service.PlatformOpenAI,
+		Status:           service.StatusActive,
+		SubscriptionType: service.SubscriptionTypeStandard,
+		FallbackGroupID:  &fallbackGroupID,
+	}
+	fallbackGroup := &service.Group{
+		ID:               fallbackGroupID,
+		Hydrated:         true,
+		Platform:         service.PlatformOpenAI,
+		Status:           service.StatusActive,
+		SubscriptionType: service.SubscriptionTypeStandard,
+		IsFallbackGroup:  true,
+	}
+	apiKey := &service.APIKey{
+		ID:      9611,
+		UserID:  userID,
+		GroupID: &primaryGroupID,
+		Status:  service.StatusActive,
+		User: &service.User{
+			ID:          userID,
+			Balance:     10,
+			Concurrency: 8,
+		},
+		Group: primaryGroup,
+	}
+
+	fixture := newOpenAIHandlerRuntimeFallbackFixture(
+		t,
+		map[int64]*service.Group{
+			primaryGroupID:  primaryGroup,
+			fallbackGroupID: fallbackGroup,
+		},
+		[]*service.Account{
+			{
+				ID:          primaryAccountID,
+				Name:        "primary-403",
+				Platform:    service.PlatformOpenAI,
+				Type:        service.AccountTypeAPIKey,
+				Status:      service.StatusActive,
+				Schedulable: true,
+				Concurrency: 1,
+				Priority:    1,
+				Credentials: map[string]any{"api_key": "sk-primary"},
+				AccountGroups: []service.AccountGroup{
+					{AccountID: primaryAccountID, GroupID: primaryGroupID},
+				},
+			},
+			{
+				ID:          fallbackAccountID,
+				Name:        "fallback-200",
+				Platform:    service.PlatformOpenAI,
+				Type:        service.AccountTypeAPIKey,
+				Status:      service.StatusActive,
+				Schedulable: true,
+				Concurrency: 1,
+				Priority:    1,
+				Credentials: map[string]any{"api_key": "sk-fallback"},
+				AccountGroups: []service.AccountGroup{
+					{AccountID: fallbackAccountID, GroupID: fallbackGroupID},
+				},
+			},
+		},
+		map[int64][]float64{
+			userID: {10},
+		},
+		map[int64][]openAIHandlerResponseFactory{
+			primaryAccountID: {
+				newOpenAIHandlerStaticResponse(http.StatusForbidden, "application/json", `{"error":{"message":"insufficient balance"}}`),
+			},
+			fallbackAccountID: {
+				newOpenAIHandlerStaticResponse(http.StatusOK, "text/event-stream",
+					"data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_forbidden_fallback\",\"status\":\"completed\",\"usage\":{\"input_tokens\":1,\"output_tokens\":1}}}\n\n"),
+			},
+		},
+		0,
+	)
+	defer fixture.cleanup()
+
+	c, rec := newOpenAIChatCompletionsContext(t, primaryGroup, apiKey, `{"model":"gpt-5.1","stream":false,"messages":[{"role":"user","content":"hello"}]}`)
+
+	fixture.handler.ChatCompletions(c)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, []int64{primaryAccountID, fallbackAccountID}, fixture.upstream.calls)
+	assert.Contains(t, rec.Body.String(), "resp_forbidden_fallback")
+	require.NotNil(t, fixture.usageRepo.lastLog)
+	require.NotNil(t, fixture.usageRepo.lastLog.GroupID)
+	require.Equal(t, fallbackGroupID, *fixture.usageRepo.lastLog.GroupID)
 }
 
 func TestOpenAIRuntimeFallbackImages_FallbackBillingFailureWritesOnlyOneTerminalResponse(t *testing.T) {

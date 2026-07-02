@@ -490,14 +490,14 @@ func TestGatewayShouldAttemptClaudeRuntimeFallback_StreamAlreadyWritten(t *testi
 	require.False(t, shouldFallback)
 }
 
-func TestGatewayShouldRetryClaudeRuntimeFallback_AllowsTransportLikeErrors(t *testing.T) {
+func TestGatewayShouldRetryClaudeRuntimeFallback_AllowsRetryableStatuses(t *testing.T) {
 	require.True(t, shouldRetryClaudeRuntimeFallback(&service.UpstreamFailoverError{StatusCode: 0}))
 	require.True(t, shouldRetryClaudeRuntimeFallback(&service.UpstreamFailoverError{StatusCode: http.StatusRequestTimeout}))
+	require.True(t, shouldRetryClaudeRuntimeFallback(&service.UpstreamFailoverError{StatusCode: http.StatusForbidden}))
 	require.True(t, shouldRetryClaudeRuntimeFallback(&service.UpstreamFailoverError{StatusCode: http.StatusTooManyRequests}))
 	require.True(t, shouldRetryClaudeRuntimeFallback(&service.UpstreamFailoverError{StatusCode: http.StatusBadGateway}))
 	require.False(t, shouldRetryClaudeRuntimeFallback(&service.UpstreamFailoverError{StatusCode: http.StatusUnauthorized}))
 	require.False(t, shouldRetryClaudeRuntimeFallback(&service.UpstreamFailoverError{StatusCode: http.StatusBadRequest}))
-	require.False(t, shouldRetryClaudeRuntimeFallback(&service.UpstreamFailoverError{StatusCode: http.StatusForbidden}))
 	require.False(t, shouldRetryClaudeRuntimeFallback(nil))
 }
 
@@ -653,7 +653,7 @@ func TestGatewayMessagesFallback_FailoverExhaustedRetryableSwitchesGroupAndAttri
 	require.Equal(t, "claude-sonnet-4-5→claude-fallback-4-5", *fixture.usageRepo.lastLog.ModelMappingChain)
 }
 
-func TestGatewayMessagesFallback_FailoverExhaustedNonRetryableKeepsOriginalTerminal(t *testing.T) {
+func TestGatewayMessagesFallback_FailoverExhaustedForbiddenSwitchesGroup(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	primaryGroupID := int64(6201)
@@ -714,7 +714,7 @@ func TestGatewayMessagesFallback_FailoverExhaustedNonRetryableKeepsOriginalTermi
 			},
 			{
 				ID:          fallbackAccountID,
-				Name:        "fallback-unused",
+				Name:        "fallback-200",
 				Platform:    service.PlatformAnthropic,
 				Type:        service.AccountTypeAPIKey,
 				Status:      service.StatusActive,
@@ -735,7 +735,7 @@ func TestGatewayMessagesFallback_FailoverExhaustedNonRetryableKeepsOriginalTermi
 				newGatewayMessagesJSONResponse(http.StatusForbidden, `{"type":"error","error":{"type":"permission_error","message":"forbidden upstream"}}`),
 			},
 			fallbackAccountID: {
-				newGatewayMessagesJSONResponse(http.StatusOK, `{"id":"msg_should_not_be_used","type":"message","role":"assistant","model":"claude-sonnet-4-5","content":[{"type":"text","text":"unexpected"}],"usage":{"input_tokens":0,"output_tokens":0}}`),
+				newGatewayMessagesJSONResponse(http.StatusOK, `{"id":"msg_forbidden_fallback","type":"message","role":"assistant","model":"claude-sonnet-4-5","content":[{"type":"text","text":"fallback ok"}],"usage":{"input_tokens":3,"output_tokens":2}}`),
 			},
 		},
 		0,
@@ -746,10 +746,12 @@ func TestGatewayMessagesFallback_FailoverExhaustedNonRetryableKeepsOriginalTermi
 
 	fixture.handler.Messages(c)
 
-	require.Equal(t, http.StatusBadGateway, rec.Code)
-	assert.Contains(t, rec.Body.String(), "Upstream access forbidden, please contact administrator")
-	require.Equal(t, []int64{primaryAccountID}, fixture.upstream.calls)
-	assert.Nil(t, fixture.usageRepo.lastLog)
+	require.Equal(t, http.StatusOK, rec.Code)
+	assert.Contains(t, rec.Body.String(), "msg_forbidden_fallback")
+	require.Equal(t, []int64{primaryAccountID, fallbackAccountID}, fixture.upstream.calls)
+	require.NotNil(t, fixture.usageRepo.lastLog)
+	require.NotNil(t, fixture.usageRepo.lastLog.GroupID)
+	require.Equal(t, fallbackGroupID, *fixture.usageRepo.lastLog.GroupID)
 }
 
 func TestGatewayMessagesFallback_BillingFailureWritesOnlyOneTerminalResponse(t *testing.T) {
