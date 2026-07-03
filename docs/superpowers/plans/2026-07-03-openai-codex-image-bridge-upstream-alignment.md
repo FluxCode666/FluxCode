@@ -19,7 +19,7 @@ The workspace may still contain a temporary no-op change in:
 
 Do not preserve that no-op behavior as the final implementation. Replace it with the policy-gated behavior described here.
 
-The deleted document `docs/superpowers/specs/2026-07-02-openai-responses-image-generation-account-whitelist-design.md` is intentionally out of scope. Do not reintroduce account-level `gpt-image-*` whitelist scheduling in this implementation.
+The deprecated account-level image whitelist design is intentionally out of scope. Do not reintroduce account-level `gpt-image-*` whitelist scheduling in this implementation.
 
 Run Go commands from `backend/`. Run git commands from the repository root `/Volumes/T7/project/new/FluxCode`.
 
@@ -1210,10 +1210,13 @@ Expected: PASS, or document known unrelated failures. Before this work, the pack
 - [ ] **Step 4: Check for deprecated whitelist design references**
 
 ```bash
-rg -n 'openai-responses-image-generation-account-whitelist|该主题已有独立设计|Responses image account whitelist' docs backend
+deprecated_doc_pattern='openai-responses-image-generation-account-''whitelist'
+deprecated_pointer_pattern='该主题已有''独立设计'
+whitelist_non_goal_pattern='Responses image account ''whitelist'
+rg -n "$deprecated_doc_pattern|$deprecated_pointer_pattern|$whitelist_non_goal_pattern" docs backend
 ```
 
-Expected: only the alignment spec non-goal line may mention `Responses image account whitelist`; no reference should point to the deleted design file.
+Expected: only the alignment spec non-goal line may match; no reference should point to the deleted design file.
 
 - [ ] **Step 5: Check git status**
 
