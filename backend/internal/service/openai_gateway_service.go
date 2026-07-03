@@ -2044,6 +2044,12 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		}
 		return nil, errors.New("openai ws v1 is temporarily unsupported; use ws v2")
 	}
+	apiKey := getAPIKeyFromContext(c)
+	imageGenerationAllowed := GroupAllowsImageGeneration(apiKeyGroup(apiKey))
+	imageIntent := IsImageGenerationIntent("/v1/responses", reqModel, body)
+	if imageIntent && !imageGenerationAllowed {
+		return nil, denyOpenAIImageGenerationForGroup(c)
+	}
 	passthroughEnabled := account.IsOpenAIPassthroughEnabled()
 	if passthroughEnabled {
 		// 透传分支只需要轻量提取字段，避免热路径全量 Unmarshal。
@@ -2055,14 +2061,8 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	if err != nil {
 		return nil, err
 	}
-	apiKey := getAPIKeyFromContext(c)
-	imageGenerationAllowed := GroupAllowsImageGeneration(apiKeyGroup(apiKey))
 	codexImageGenerationBridgeEnabled := isCodexCLI && imageGenerationAllowed && s.isCodexImageGenerationBridgeEnabled(ctx, account, apiKey)
 	isCompactRequest := isOpenAIResponsesCompactPath(c)
-	imageIntent := IsImageGenerationIntent("/v1/responses", reqModel, body)
-	if imageIntent && !imageGenerationAllowed {
-		return nil, denyOpenAIImageGenerationForGroup(c)
-	}
 
 	if v, ok := reqBody["model"].(string); ok {
 		reqModel = v

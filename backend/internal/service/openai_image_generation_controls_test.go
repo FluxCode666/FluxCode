@@ -91,6 +91,22 @@ func TestOpenAIGatewayForward_ExplicitImageToolDeniedWhenGroupDisallows(t *testi
 	require.Nil(t, upstream.lastReq)
 }
 
+func TestOpenAIGatewayForward_ExplicitImageToolDeniedBeforePassthrough(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	upstream := &httpUpstreamRecorder{resp: newImageControlResponse()}
+	svc := newImageControlService(upstream)
+	c, rec := newImageControlContext("/v1/responses", false, "codex_cli_rs/0.98.0")
+	account := newImageControlAccount()
+	account.Extra = map[string]any{"openai_passthrough": true}
+
+	_, err := svc.Forward(context.Background(), c, account, []byte(`{"model":"gpt-5.5","instructions":"draw","input":"draw","tools":[{"type":"image_generation"}],"stream":false}`))
+
+	require.Error(t, err)
+	require.Equal(t, http.StatusForbidden, rec.Code)
+	require.Contains(t, rec.Body.String(), ImageGenerationPermissionMessage())
+	require.Nil(t, upstream.lastReq)
+}
+
 func TestOpenAIGatewayForward_ExplicitImageToolStillForwardsWhenBridgeDisabled(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	upstream := &httpUpstreamRecorder{resp: newImageControlResponse()}
