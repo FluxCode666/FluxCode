@@ -2061,14 +2061,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	isCompactRequest := isOpenAIResponsesCompactPath(c)
 	imageIntent := IsImageGenerationIntent("/v1/responses", reqModel, body)
 	if imageIntent && !imageGenerationAllowed {
-		setOpsUpstreamError(c, http.StatusForbidden, ImageGenerationPermissionMessage(), "")
-		c.JSON(http.StatusForbidden, response.WithErrorCorrelation(c, gin.H{
-			"error": gin.H{
-				"type":    "permission_error",
-				"message": ImageGenerationPermissionMessage(),
-			},
-		}))
-		return nil, errors.New("image generation disabled for group")
+		return nil, denyOpenAIImageGenerationForGroup(c)
 	}
 
 	if v, ok := reqBody["model"].(string); ok {
@@ -2185,14 +2178,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	upstreamModel := billingModel
 	imageIntent = imageIntent || IsImageGenerationIntentMap("/v1/responses", upstreamModel, reqBody)
 	if imageIntent && !imageGenerationAllowed {
-		setOpsUpstreamError(c, http.StatusForbidden, ImageGenerationPermissionMessage(), "")
-		c.JSON(http.StatusForbidden, response.WithErrorCorrelation(c, gin.H{
-			"error": gin.H{
-				"type":    "permission_error",
-				"message": ImageGenerationPermissionMessage(),
-			},
-		}))
-		return nil, errors.New("image generation disabled for group")
+		return nil, denyOpenAIImageGenerationForGroup(c)
 	}
 
 	if normalizeOpenAIResponsesImageOnlyModel(reqBody) {
@@ -2240,6 +2226,10 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		return nil, err
 	}
 	if isCodexSparkModel(upstreamModel) && stripCodexSparkImageGenerationTools(reqBody) {
+		bodyModified = true
+		disablePatch()
+	}
+	if isCodexSparkModel(upstreamModel) && stripCodexSparkImageGenerationToolChoice(reqBody) {
 		bodyModified = true
 		disablePatch()
 	}
@@ -2755,6 +2745,28 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			FirstTokenMs:    firstTokenMs,
 		}, nil
 	}
+}
+
+func denyOpenAIImageGenerationForGroup(c *gin.Context) error {
+	setOpsUpstreamError(c, http.StatusForbidden, ImageGenerationPermissionMessage(), "")
+	c.JSON(http.StatusForbidden, response.WithErrorCorrelation(c, gin.H{
+		"error": gin.H{
+			"type":    "permission_error",
+			"message": ImageGenerationPermissionMessage(),
+		},
+	}))
+	return errors.New("image generation disabled for group")
+}
+
+func stripCodexSparkImageGenerationToolChoice(reqBody map[string]any) bool {
+	if len(reqBody) == 0 {
+		return false
+	}
+	if !openAIAnyToolChoiceSelectsImageGeneration(reqBody["tool_choice"]) {
+		return false
+	}
+	delete(reqBody, "tool_choice")
+	return true
 }
 
 func (s *OpenAIGatewayService) forwardOpenAIPassthrough(

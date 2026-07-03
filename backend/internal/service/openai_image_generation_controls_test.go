@@ -130,3 +130,33 @@ func TestOpenAIGatewayForward_SparkStripsImageToolBeforeUpstream(t *testing.T) {
 	require.False(t, gjson.GetBytes(upstream.lastBody, `tools.#(type=="image_generation")`).Exists())
 	require.Equal(t, "web_search", gjson.GetBytes(upstream.lastBody, "tools.0.type").String())
 }
+
+func TestOpenAIGatewayForward_SparkStripsImageToolBeforeUpstream_RemovesImageToolChoice(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	cases := []struct {
+		name       string
+		toolChoice string
+	}{
+		{name: "string", toolChoice: `"image_generation"`},
+		{name: "type object", toolChoice: `{"type":"image_generation"}`},
+		{name: "nested tool object", toolChoice: `{"tool":{"type":"image_generation"}}`},
+		{name: "function object", toolChoice: `{"function":{"name":"image_generation"}}`},
+	}
+
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			upstream := &httpUpstreamRecorder{resp: newImageControlResponse()}
+			svc := newImageControlService(upstream)
+			c, _ := newImageControlContext("/v1/responses", true, "codex_cli_rs/0.98.0")
+
+			body := `{"model":"gpt-5.3-codex-spark","input":"write code","tools":[{"type":"image_generation"},{"type":"web_search"}],"tool_choice":` + tt.toolChoice + `}`
+			_, err := svc.Forward(context.Background(), c, newImageControlAccount(), []byte(body))
+
+			require.NoError(t, err)
+			require.False(t, gjson.GetBytes(upstream.lastBody, `tools.#(type=="image_generation")`).Exists())
+			require.Equal(t, "web_search", gjson.GetBytes(upstream.lastBody, "tools.0.type").String())
+			require.False(t, gjson.GetBytes(upstream.lastBody, "tool_choice").Exists())
+		})
+	}
+}
