@@ -339,6 +339,26 @@
               </div>
             </div>
 
+            <div v-if="section.platform === 'openai'" class="border-t border-gray-200 pt-3 dark:border-dark-600">
+              <div class="flex items-center justify-between gap-4">
+                <div>
+                  <label class="text-xs font-medium text-gray-700 dark:text-gray-300">
+                    {{ t('admin.channels.form.codexImageGenerationBridge') }}
+                  </label>
+                  <p class="mt-0.5 text-[11px] text-gray-500 dark:text-gray-400">
+                    {{ t('admin.channels.form.codexImageGenerationBridgeHint') }}
+                  </p>
+                </div>
+                <div class="w-44">
+                  <Select
+                    v-model="section.codex_image_generation_bridge_mode"
+                    :options="codexImageGenerationBridgeOptions"
+                    data-testid="channel-openai-codex-image-generation-bridge"
+                  />
+                </div>
+              </div>
+            </div>
+
             <!-- Model Mapping -->
             <div>
               <div class="mb-1 flex items-center justify-between">
@@ -643,8 +663,11 @@ interface PlatformSection {
   model_mapping: Record<string, string>
   model_pricing: PricingFormEntry[]
   web_search_emulation: boolean
+  codex_image_generation_bridge_mode: CodexImageGenerationBridgeMode
   account_stats_pricing_rules: FormPricingRule[]
 }
+
+type CodexImageGenerationBridgeMode = 'inherit' | 'enabled' | 'disabled'
 
 // ── Table columns ──
 const columns = computed<Column[]>(() => [
@@ -672,6 +695,12 @@ const billingModelSourceOptions = computed(() => [
   { value: 'channel_mapped', label: t('admin.channels.form.billingModelSourceChannelMapped', 'Bill by channel-mapped model') },
   { value: 'requested', label: t('admin.channels.form.billingModelSourceRequested', 'Bill by requested model') },
   { value: 'upstream', label: t('admin.channels.form.billingModelSourceUpstream', 'Bill by final upstream model') }
+])
+
+const codexImageGenerationBridgeOptions = computed(() => [
+  { value: 'inherit', label: t('admin.channels.form.codexImageGenerationBridgeInherit', 'Inherit') },
+  { value: 'enabled', label: t('admin.channels.form.codexImageGenerationBridgeEnabled', 'Enabled') },
+  { value: 'disabled', label: t('admin.channels.form.codexImageGenerationBridgeDisabled', 'Disabled') },
 ])
 
 // ── State ──
@@ -738,6 +767,7 @@ function addPlatformSection(platform: GroupPlatform) {
     model_mapping: {},
     model_pricing: [],
     web_search_emulation: false,
+    codex_image_generation_bridge_mode: 'inherit',
     account_stats_pricing_rules: [],
   })
 }
@@ -1047,7 +1077,38 @@ function formToAPI(): { group_ids: number[], model_pricing: ChannelModelPricing[
     delete featuresConfig.web_search_emulation
   }
 
+  const codexBridge: Record<string, boolean> = {}
+  for (const section of form.platforms) {
+    if (!section.enabled || section.platform !== 'openai') continue
+    if (section.codex_image_generation_bridge_mode === 'enabled') {
+      codexBridge[section.platform] = true
+    } else if (section.codex_image_generation_bridge_mode === 'disabled') {
+      codexBridge[section.platform] = false
+    }
+  }
+  if (Object.keys(codexBridge).length > 0) {
+    featuresConfig.codex_image_generation_bridge = codexBridge
+  } else {
+    delete featuresConfig.codex_image_generation_bridge
+  }
+
   return { group_ids, model_pricing, model_mapping, features_config: featuresConfig }
+}
+
+function resolveCodexImageGenerationBridgeMode(
+  value: unknown,
+  platform: GroupPlatform
+): CodexImageGenerationBridgeMode {
+  if (typeof value === 'boolean') {
+    return value ? 'enabled' : 'disabled'
+  }
+  if (value && typeof value === 'object') {
+    const platformValue = (value as Record<string, unknown>)[platform]
+    if (typeof platformValue === 'boolean') {
+      return platformValue ? 'enabled' : 'disabled'
+    }
+  }
+  return 'inherit'
 }
 
 function apiToForm(channel: Channel): PlatformSection[] {
@@ -1095,6 +1156,10 @@ function apiToForm(channel: Channel): PlatformSection[] {
     const fc = channel.features_config
     const wsEmulation = fc?.web_search_emulation as Record<string, boolean> | undefined
     const webSearchEnabled = wsEmulation?.[platform] === true
+    const codexImageGenerationBridgeMode = resolveCodexImageGenerationBridgeMode(
+      fc?.codex_image_generation_bridge,
+      platform
+    )
 
     sections.push({
       platform,
@@ -1104,6 +1169,7 @@ function apiToForm(channel: Channel): PlatformSection[] {
       model_mapping: { ...mapping },
       model_pricing: pricing,
       web_search_emulation: webSearchEnabled,
+      codex_image_generation_bridge_mode: codexImageGenerationBridgeMode,
       account_stats_pricing_rules: [],
     })
   }

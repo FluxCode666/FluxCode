@@ -287,6 +287,20 @@ func (_c *GroupCreate) SetNillableImagePrice4k(v *float64) *GroupCreate {
 	return _c
 }
 
+// SetAllowImageGeneration sets the "allow_image_generation" field.
+func (_c *GroupCreate) SetAllowImageGeneration(v bool) *GroupCreate {
+	_c.mutation.SetAllowImageGeneration(v)
+	return _c
+}
+
+// SetNillableAllowImageGeneration sets the "allow_image_generation" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableAllowImageGeneration(v *bool) *GroupCreate {
+	if v != nil {
+		_c.SetAllowImageGeneration(*v)
+	}
+	return _c
+}
+
 // SetClaudeCodeOnly sets the "claude_code_only" field.
 func (_c *GroupCreate) SetClaudeCodeOnly(v bool) *GroupCreate {
 	_c.mutation.SetClaudeCodeOnly(v)
@@ -640,6 +654,10 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultDefaultValidityDays
 		_c.mutation.SetDefaultValidityDays(v)
 	}
+	if _, ok := _c.mutation.AllowImageGeneration(); !ok {
+		v := group.DefaultAllowImageGeneration
+		_c.mutation.SetAllowImageGeneration(v)
+	}
 	if _, ok := _c.mutation.ClaudeCodeOnly(); !ok {
 		v := group.DefaultClaudeCodeOnly
 		_c.mutation.SetClaudeCodeOnly(v)
@@ -746,6 +764,9 @@ func (_c *GroupCreate) check() error {
 	}
 	if _, ok := _c.mutation.DefaultValidityDays(); !ok {
 		return &ValidationError{Name: "default_validity_days", err: errors.New(`ent: missing required field "Group.default_validity_days"`)}
+	}
+	if _, ok := _c.mutation.AllowImageGeneration(); !ok {
+		return &ValidationError{Name: "allow_image_generation", err: errors.New(`ent: missing required field "Group.allow_image_generation"`)}
 	}
 	if _, ok := _c.mutation.ClaudeCodeOnly(); !ok {
 		return &ValidationError{Name: "claude_code_only", err: errors.New(`ent: missing required field "Group.claude_code_only"`)}
@@ -887,6 +908,10 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.ImagePrice4k(); ok {
 		_spec.SetField(group.FieldImagePrice4k, field.TypeFloat64, value)
 		_node.ImagePrice4k = &value
+	}
+	if value, ok := _c.mutation.AllowImageGeneration(); ok {
+		_spec.SetField(group.FieldAllowImageGeneration, field.TypeBool, value)
+		_node.AllowImageGeneration = value
 	}
 	if value, ok := _c.mutation.ClaudeCodeOnly(); ok {
 		_spec.SetField(group.FieldClaudeCodeOnly, field.TypeBool, value)
@@ -1409,6 +1434,18 @@ func (u *GroupUpsert) AddImagePrice4k(v float64) *GroupUpsert {
 // ClearImagePrice4k clears the value of the "image_price_4k" field.
 func (u *GroupUpsert) ClearImagePrice4k() *GroupUpsert {
 	u.SetNull(group.FieldImagePrice4k)
+	return u
+}
+
+// SetAllowImageGeneration sets the "allow_image_generation" field.
+func (u *GroupUpsert) SetAllowImageGeneration(v bool) *GroupUpsert {
+	u.Set(group.FieldAllowImageGeneration, v)
+	return u
+}
+
+// UpdateAllowImageGeneration sets the "allow_image_generation" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateAllowImageGeneration() *GroupUpsert {
+	u.SetExcluded(group.FieldAllowImageGeneration)
 	return u
 }
 
@@ -2022,6 +2059,20 @@ func (u *GroupUpsertOne) UpdateImagePrice4k() *GroupUpsertOne {
 func (u *GroupUpsertOne) ClearImagePrice4k() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.ClearImagePrice4k()
+	})
+}
+
+// SetAllowImageGeneration sets the "allow_image_generation" field.
+func (u *GroupUpsertOne) SetAllowImageGeneration(v bool) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetAllowImageGeneration(v)
+	})
+}
+
+// UpdateAllowImageGeneration sets the "allow_image_generation" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateAllowImageGeneration() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateAllowImageGeneration()
 	})
 }
 
@@ -2835,6 +2886,20 @@ func (u *GroupUpsertBulk) UpdateImagePrice4k() *GroupUpsertBulk {
 func (u *GroupUpsertBulk) ClearImagePrice4k() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.ClearImagePrice4k()
+	})
+}
+
+// SetAllowImageGeneration sets the "allow_image_generation" field.
+func (u *GroupUpsertBulk) SetAllowImageGeneration(v bool) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetAllowImageGeneration(v)
+	})
+}
+
+// UpdateAllowImageGeneration sets the "allow_image_generation" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateAllowImageGeneration() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateAllowImageGeneration()
 	})
 }
 

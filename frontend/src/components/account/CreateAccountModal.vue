@@ -2415,6 +2415,27 @@
         </div>
       </div>
 
+      <div
+        v-if="form.platform === 'openai'"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600"
+      >
+        <div class="flex items-center justify-between gap-4">
+          <div>
+            <label class="input-label mb-0">{{ t('admin.accounts.openai.codexImageGenerationBridge') }}</label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.openai.codexImageGenerationBridgeDesc') }}
+            </p>
+          </div>
+          <div class="w-64">
+            <Select
+              v-model="codexImageGenerationBridgeMode"
+              :options="codexImageGenerationBridgeOptions"
+              data-testid="create-openai-codex-image-generation-bridge"
+            />
+          </div>
+        </div>
+      </div>
+
       <!-- Anthropic API Key 自动透传开关 -->
       <div
         v-if="form.platform === 'anthropic' && accountCategory === 'apikey'"
@@ -3153,6 +3174,8 @@ const openaiOAuthResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF
 const openaiAPIKeyResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 type OpenAIImageResponseURLMode = 'base64_url' | 'http_url'
 const openaiImageResponseURLMode = ref<OpenAIImageResponseURLMode>('http_url')
+type CodexImageGenerationBridgeMode = 'inherit' | 'enabled' | 'disabled'
+const codexImageGenerationBridgeMode = ref<CodexImageGenerationBridgeMode>('inherit')
 const codexCLIOnlyEnabled = ref(false)
 const anthropicPassthroughEnabled = ref(false)
 const anthropicSubUsageAccountingEnabled = ref(false)
@@ -3268,6 +3291,12 @@ const openAIWSModeOptions = computed(() => [
 const openAIImageResponseURLOptions = computed(() => [
   { value: 'base64_url', label: t('admin.accounts.openai.imageResponseURLModeBase64') },
   { value: 'http_url', label: t('admin.accounts.openai.imageResponseURLModeHTTP') }
+])
+
+const codexImageGenerationBridgeOptions = computed(() => [
+  { value: 'inherit', label: t('admin.accounts.openai.codexImageGenerationBridgeInherit') },
+  { value: 'enabled', label: t('admin.accounts.openai.codexImageGenerationBridgeEnabled') },
+  { value: 'disabled', label: t('admin.accounts.openai.codexImageGenerationBridgeDisabled') },
 ])
 
 const openaiResponsesWebSocketV2Mode = computed({
@@ -3899,6 +3928,7 @@ const resetForm = () => {
   openaiOAuthResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
   openaiAPIKeyResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
   openaiImageResponseURLMode.value = 'http_url'
+  codexImageGenerationBridgeMode.value = 'inherit'
   codexCLIOnlyEnabled.value = false
   anthropicPassthroughEnabled.value = false
   anthropicSubUsageAccountingEnabled.value = false
@@ -3971,6 +4001,7 @@ const buildOpenAIExtra = (base?: Record<string, unknown>): Record<string, unknow
       delete extra.openai_passthrough
       delete extra.openai_oauth_passthrough
     }
+    applyCodexImageGenerationBridgeOverride(extra)
 
     if (accountCategory.value === 'oauth-based' && codexCLIOnlyEnabled.value) {
       extra.codex_cli_only = true
@@ -3980,6 +4011,16 @@ const buildOpenAIExtra = (base?: Record<string, unknown>): Record<string, unknow
   }
 
   return Object.keys(extra).length > 0 ? extra : undefined
+}
+
+const applyCodexImageGenerationBridgeOverride = (extra: Record<string, unknown>) => {
+  delete extra.codex_image_generation_bridge
+  delete extra.codex_image_generation_bridge_enabled
+  if (codexImageGenerationBridgeMode.value === 'enabled') {
+    extra.codex_image_generation_bridge = true
+  } else if (codexImageGenerationBridgeMode.value === 'disabled') {
+    extra.codex_image_generation_bridge = false
+  }
 }
 
 const buildAnthropicExtra = (base?: Record<string, unknown>): Record<string, unknown> | undefined => {

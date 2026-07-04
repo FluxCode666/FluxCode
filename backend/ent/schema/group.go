@@ -94,6 +94,9 @@ func (Group) Fields() []ent.Field {
 			Optional().
 			Nillable().
 			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"}),
+		field.Bool("allow_image_generation").
+			Default(false).
+			Comment("是否允许该分组使用图片生成能力"),
 
 		// Claude Code 客户端限制 (added by migration 029)
 		field.Bool("claude_code_only").

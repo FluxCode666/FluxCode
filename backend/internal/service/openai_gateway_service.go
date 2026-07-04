@@ -2044,6 +2044,12 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		}
 		return nil, errors.New("openai ws v1 is temporarily unsupported; use ws v2")
 	}
+	apiKey := getAPIKeyFromContext(c)
+	imageGenerationAllowed := GroupAllowsImageGeneration(apiKeyGroup(apiKey))
+	imageIntent := IsImageGenerationIntent("/v1/responses", reqModel, body)
+	if imageIntent && !imageGenerationAllowed {
+		return nil, denyOpenAIImageGenerationForGroup(c)
+	}
 	passthroughEnabled := account.IsOpenAIPassthroughEnabled()
 	if passthroughEnabled {
 		// 透传分支只需要轻量提取字段，避免热路径全量 Unmarshal。
@@ -2055,6 +2061,8 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	if err != nil {
 		return nil, err
 	}
+	codexImageGenerationBridgeEnabled := isCodexCLI && imageGenerationAllowed && s.isCodexImageGenerationBridgeEnabled(ctx, account, apiKey)
+	isCompactRequest := isOpenAIResponsesCompactPath(c)
 
 	if v, ok := reqBody["model"].(string); ok {
 		reqModel = v
@@ -2137,10 +2145,15 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		markPatchSet("instructions", "You are a helpful coding assistant.")
 	}
 
-	if isCodexCLI && ensureOpenAIResponsesImageGenerationTool(reqBody) {
+	if codexImageGenerationBridgeEnabled && !isCompactRequest && ensureOpenAIResponsesImageGenerationTool(reqBody) {
 		bodyModified = true
 		disablePatch()
 		logger.LegacyPrintfContext(ctx, "service.openai_gateway", "[OpenAI] Injected /responses image_generation tool for Codex client")
+	}
+	if codexImageGenerationBridgeEnabled && !isCompactRequest && ensureOpenAIResponsesImageGenerationToolChoiceAuto(reqBody) {
+		bodyModified = true
+		disablePatch()
+		logger.LegacyPrintfContext(ctx, "service.openai_gateway", "[OpenAI] Set /responses image_generation tool_choice=auto for Codex client")
 	}
 
 	if normalizeOpenAIResponsesImageGenerationTools(reqBody) {
@@ -2148,7 +2161,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		disablePatch()
 		logger.LegacyPrintfContext(ctx, "service.openai_gateway", "[OpenAI] Normalized /responses image_generation tool payload")
 	}
-	if isCodexCLI && applyCodexImageGenerationBridgeInstructions(reqBody) {
+	if codexImageGenerationBridgeEnabled && !isCompactRequest && applyCodexImageGenerationBridgeInstructions(reqBody) {
 		bodyModified = true
 		disablePatch()
 		logger.LegacyPrintfContext(ctx, "service.openai_gateway", "[OpenAI] Added Codex image_generation bridge instructions")
@@ -2163,6 +2176,10 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		markPatchSet("model", billingModel)
 	}
 	upstreamModel := billingModel
+	imageIntent = imageIntent || IsImageGenerationIntentMap("/v1/responses", upstreamModel, reqBody)
+	if imageIntent && !imageGenerationAllowed {
+		return nil, denyOpenAIImageGenerationForGroup(c)
+	}
 
 	if normalizeOpenAIResponsesImageOnlyModel(reqBody) {
 		bodyModified = true
@@ -2207,6 +2224,14 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			},
 		}))
 		return nil, err
+	}
+	if isCodexSparkModel(upstreamModel) && stripCodexSparkImageGenerationTools(reqBody) {
+		bodyModified = true
+		disablePatch()
+	}
+	if isCodexSparkModel(upstreamModel) && stripCodexSparkImageGenerationToolChoice(reqBody) {
+		bodyModified = true
+		disablePatch()
 	}
 
 	// OpenAI OAuth 账号走 ChatGPT internal Codex endpoint，需要将模型名规范化为
@@ -2720,6 +2745,28 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			FirstTokenMs:    firstTokenMs,
 		}, nil
 	}
+}
+
+func denyOpenAIImageGenerationForGroup(c *gin.Context) error {
+	setOpsUpstreamError(c, http.StatusForbidden, ImageGenerationPermissionMessage(), "")
+	c.JSON(http.StatusForbidden, response.WithErrorCorrelation(c, gin.H{
+		"error": gin.H{
+			"type":    "permission_error",
+			"message": ImageGenerationPermissionMessage(),
+		},
+	}))
+	return errors.New("image generation disabled for group")
+}
+
+func stripCodexSparkImageGenerationToolChoice(reqBody map[string]any) bool {
+	if len(reqBody) == 0 {
+		return false
+	}
+	if !openAIAnyToolChoiceSelectsImageGeneration(reqBody["tool_choice"]) {
+		return false
+	}
+	delete(reqBody, "tool_choice")
+	return true
 }
 
 func (s *OpenAIGatewayService) forwardOpenAIPassthrough(

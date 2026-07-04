@@ -2612,6 +2612,52 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 	}
 
 	isCodexCLI := openai.IsCodexOfficialClientByHeaders(c.GetHeader("User-Agent"), c.GetHeader("originator")) || (s.cfg != nil && s.cfg.Gateway.ForceCodexCLI)
+	apiKey := getAPIKeyFromContext(c)
+	imageGenerationAllowed := GroupAllowsImageGeneration(apiKeyGroup(apiKey))
+	if IsImageGenerationIntent("/v1/responses", firstPayload.originalModel, firstPayload.payloadRaw) && !imageGenerationAllowed {
+		return NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, ImageGenerationPermissionMessage(), nil)
+	}
+	codexBridgeEnabled := isCodexCLI && imageGenerationAllowed && s.isCodexImageGenerationBridgeEnabled(ctx, account, apiKey)
+	upstreamModel := strings.TrimSpace(openAIWSPayloadStringFromRaw(firstPayload.payloadRaw, "model"))
+	shouldMutateFirstPayload := codexBridgeEnabled || isCodexSparkModel(upstreamModel)
+	if shouldMutateFirstPayload {
+		payloadMap := make(map[string]any)
+		if err := json.Unmarshal(firstPayload.payloadRaw, &payloadMap); err != nil {
+			return NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "invalid websocket request payload", err)
+		}
+		bridgeModified := false
+		if codexBridgeEnabled {
+			if ensureOpenAIResponsesImageGenerationTool(payloadMap) {
+				bridgeModified = true
+			}
+			if ensureOpenAIResponsesImageGenerationToolChoiceAuto(payloadMap) {
+				bridgeModified = true
+			}
+			if normalizeOpenAIResponsesImageGenerationTools(payloadMap) {
+				bridgeModified = true
+			}
+			if applyCodexImageGenerationBridgeInstructions(payloadMap) {
+				bridgeModified = true
+			}
+		}
+		if model, ok := payloadMap["model"].(string); ok {
+			upstreamModel = strings.TrimSpace(model)
+		}
+		if isCodexSparkModel(upstreamModel) && stripCodexSparkImageGenerationTools(payloadMap) {
+			bridgeModified = true
+		}
+		if isCodexSparkModel(upstreamModel) && stripCodexSparkImageGenerationToolChoice(payloadMap) {
+			bridgeModified = true
+		}
+		if bridgeModified {
+			rebuilt, err := json.Marshal(payloadMap)
+			if err != nil {
+				return NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "invalid websocket request payload", err)
+			}
+			firstPayload.payloadRaw = rebuilt
+			firstPayload.payloadBytes = len(rebuilt)
+		}
+	}
 	wsHeaders, _ := s.buildOpenAIWSHeaders(c, account, token, wsDecision, isCodexCLI, turnState, strings.TrimSpace(c.GetHeader(openAIWSTurnMetadataHeader)), firstPayload.promptCacheKey)
 	baseAcquireReq := openAIWSAcquireRequest{
 		Account:      account,
