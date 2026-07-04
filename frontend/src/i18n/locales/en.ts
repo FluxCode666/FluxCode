@@ -2367,6 +2367,8 @@ export default {
         title: 'OpenAI Messages Dispatch',
         allowDispatch: 'Allow /v1/messages dispatch',
         allowDispatchHint: 'When enabled, API keys in this OpenAI group can dispatch requests through /v1/messages endpoint',
+        allowImageGeneration: 'Allow image generation tool',
+        allowImageGenerationHint: 'When enabled, API keys in this group may receive the Codex image generation bridge image_generation tool.',
         familyMappingTitle: 'Family Default Mapping',
         familyMappingHint: 'Requests that match the Opus, Sonnet, or Haiku families will prefer the target model configured here.',
         opusModel: 'Opus Target Model',
@@ -2596,6 +2598,11 @@ export default {
         webSearchEmulation: 'Web Search Emulation',
         webSearchEmulationHint: '⚠️ When enabled, all accounts in this channel\'s Anthropic groups will intercept web_search requests. Use with caution.',
         webSearchEmulationGlobalDisabled: 'Please enable the global switch first in Settings → Gateway → Web Search Emulation',
+        codexImageGenerationBridge: 'Codex image generation bridge',
+        codexImageGenerationBridgeHint: 'Controls whether this channel overrides the global Codex image generation bridge setting for OpenAI accounts.',
+        codexImageGenerationBridgeInherit: 'Follow system setting',
+        codexImageGenerationBridgeEnabled: 'Force enabled',
+        codexImageGenerationBridgeDisabled: 'Force disabled',
         basicSettings: 'Basic Settings',
         addPlatform: 'Add Platform',
         noPlatforms: 'Click "Add Platform" to start configuring the channel',
@@ -3264,6 +3271,12 @@ export default {
           'When downstream response_format=url, return either a base64 data URL or an HTTP temporary link cached and proxied by this system.',
         imageResponseURLModeBase64: 'Base64 URL (default)',
         imageResponseURLModeHTTP: 'HTTP temporary link',
+        codexImageGenerationBridge: 'Codex image generation bridge',
+        codexImageGenerationBridgeDesc:
+          'Controls whether this OpenAI account overrides the channel/system Codex image generation bridge setting.',
+        codexImageGenerationBridgeInherit: 'Follow channel/system setting',
+        codexImageGenerationBridgeEnabled: 'Force enabled',
+        codexImageGenerationBridgeDisabled: 'Force disabled',
         codexCLIOnly: 'Codex official clients only',
         codexCLIOnlyDesc:
           'Only applies to OpenAI OAuth. When enabled, only Codex official client families are allowed; when disabled, the gateway bypasses this restriction and keeps existing behavior.',
@@ -5630,6 +5643,9 @@ export default {
         openaiImageURLCacheTTLHours: 'OpenAI image HTTP URL cache TTL (hours)',
         openaiImageURLCacheTTLHoursHint:
           'When an account returns HTTP temporary links for response_format=url, generated images are stored in Redis and expire after this duration. Default is 72 hours.',
+        imageGenerationBridge: 'Codex image generation bridge',
+        imageGenerationBridgeHint:
+          'When enabled, eligible Codex OpenAI /v1/responses requests may automatically receive the image_generation tool. Group permission, channel overrides, and account overrides still apply.',
         generatedImageCleanupEnabled: 'Enable generated image cleanup',
         generatedImageCleanupEnabledHint:
           'When enabled, archived generated image rows older than the HTTP URL cache TTL are cleared every day at 4 AM.',

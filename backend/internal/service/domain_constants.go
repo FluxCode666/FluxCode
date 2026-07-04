@@ -345,6 +345,8 @@ const (
 	SettingKeyEnableMetadataPassthrough = "enable_metadata_passthrough"
 	// SettingKeyEnableCCHSigning 是否对 billing header 中的 cch 进行 xxHash64 签名（默认 false）
 	SettingKeyEnableCCHSigning = "enable_cch_signing"
+	// SettingKeyCodexImageGenerationBridgeEnabled 是否为 Codex /v1/responses 自动注入 image_generation bridge（默认 false）
+	SettingKeyCodexImageGenerationBridgeEnabled = "codex_image_generation_bridge_enabled"
 
 	// Balance Low Notification
 	SettingKeyBalanceLowNotifyEnabled     = "balance_low_notify_enabled"      // 全局开关

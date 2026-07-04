@@ -160,9 +160,10 @@ type SystemSettings struct {
 	DashboardFireworksThreshold float64 `json:"dashboard_fireworks_threshold"`
 
 	// Gateway forwarding behavior
-	EnableFingerprintUnification bool `json:"enable_fingerprint_unification"`
-	EnableMetadataPassthrough    bool `json:"enable_metadata_passthrough"`
-	EnableCCHSigning             bool `json:"enable_cch_signing"`
+	EnableFingerprintUnification      bool `json:"enable_fingerprint_unification"`
+	EnableMetadataPassthrough         bool `json:"enable_metadata_passthrough"`
+	EnableCCHSigning                  bool `json:"enable_cch_signing"`
+	CodexImageGenerationBridgeEnabled bool `json:"codex_image_generation_bridge_enabled"`
 
 	// Codex CLI User-Agent
 	CodexCLIUserAgent string `json:"codex_cli_user_agent"`

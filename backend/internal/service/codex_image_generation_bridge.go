@@ -75,5 +75,8 @@ func (s *OpenAIGatewayService) isCodexImageGenerationBridgeEnabled(ctx context.C
 			return *override
 		}
 	}
+	if s != nil && s.settingService != nil {
+		return s.settingService.IsCodexImageGenerationBridgeEnabled(ctx)
+	}
 	return s != nil && s.cfg != nil && s.cfg.Gateway.CodexImageGenerationBridgeEnabled
 }

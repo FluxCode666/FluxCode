@@ -2442,6 +2442,8 @@ export default {
         title: 'OpenAI Messages 调度配置',
         allowDispatch: '允许 /v1/messages 调度',
         allowDispatchHint: '启用后，此 OpenAI 分组的 API Key 可以通过 /v1/messages 端点调度请求',
+        allowImageGeneration: '允许生图工具',
+        allowImageGenerationHint: '启用后，此分组的 API Key 才允许 Codex 生图 Bridge 注入 image_generation 工具。',
         familyMappingTitle: '系列默认映射',
         familyMappingHint: '当请求命中 Opus、Sonnet、Haiku 系列时，会优先使用这里配置的目标模型。',
         opusModel: 'Opus 映射模型',
@@ -2664,6 +2666,11 @@ export default {
         webSearchEmulation: 'Web Search 模拟',
         webSearchEmulationHint: '⚠️ 开启后该渠道下所有 Anthropic 分组的账号将自动拦截 web_search 请求，请谨慎操作',
         webSearchEmulationGlobalDisabled: '请先在系统设置 → 网关 → Web Search 模拟中启用全局开关',
+        codexImageGenerationBridge: 'Codex 生图 Bridge',
+        codexImageGenerationBridgeHint: '控制该渠道 OpenAI 账号是否覆盖系统全局 Codex 生图 Bridge 开关。',
+        codexImageGenerationBridgeInherit: '跟随系统设置',
+        codexImageGenerationBridgeEnabled: '强制开启',
+        codexImageGenerationBridgeDisabled: '强制关闭',
         basicSettings: '基础设置',
         addPlatform: '添加平台',
         noPlatforms: '点击"添加平台"开始配置渠道',
@@ -3413,6 +3420,12 @@ export default {
           '当下游 response_format=url 时，选择返回 data URL 形式的 base64，或返回由本系统缓存代理的 HTTP 临时链接。',
         imageResponseURLModeBase64: 'Base64 URL（默认）',
         imageResponseURLModeHTTP: 'HTTP 临时链接',
+        codexImageGenerationBridge: 'Codex 生图 Bridge',
+        codexImageGenerationBridgeDesc:
+          '控制该 OpenAI 账号是否覆盖渠道/系统的 Codex 生图 Bridge 开关。',
+        codexImageGenerationBridgeInherit: '跟随渠道/系统设置',
+        codexImageGenerationBridgeEnabled: '强制开启',
+        codexImageGenerationBridgeDisabled: '强制关闭',
         codexCLIOnly: '仅允许 Codex 官方客户端',
         codexCLIOnlyDesc: '仅对 OpenAI OAuth 生效。开启后仅允许 Codex 官方客户端家族访问；关闭后完全绕过并保持原逻辑。',
         modelRestrictionDisabledByPassthrough: '已开启自动透传：模型白名单/映射不会生效。',
@@ -5759,6 +5772,9 @@ export default {
         openaiImageURLCacheTTLHours: 'OpenAI 图片 HTTP 链接缓存 TTL（小时）',
         openaiImageURLCacheTTLHoursHint:
           '当账号选择 response_format=url 返回 HTTP 临时链接时，生成图片会写入 Redis 并按此时间过期。默认 72 小时。',
+        imageGenerationBridge: 'Codex 生图 Bridge',
+        imageGenerationBridgeHint:
+          '启用后，允许符合条件的 Codex OpenAI /v1/responses 请求自动注入 image_generation 工具；仍会受分组权限、渠道和账号覆盖项控制。',
         generatedImageCleanupEnabled: '启用生图图库自动清理',
         generatedImageCleanupEnabledHint:
           '开启后每天凌晨 4 点按 HTTP 链接缓存 TTL 清理过期的生图图库表数据，仅删除存图记录。',

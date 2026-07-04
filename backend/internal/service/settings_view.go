@@ -146,9 +146,10 @@ type SystemSettings struct {
 	DashboardFireworksThreshold float64
 
 	// Gateway forwarding behavior
-	EnableFingerprintUnification bool // 是否统一 OAuth 账号的指纹头（默认 true）
-	EnableMetadataPassthrough    bool // 是否透传客户端原始 metadata（默认 false）
-	EnableCCHSigning             bool // 是否对 billing header cch 进行签名（默认 false）
+	EnableFingerprintUnification      bool // 是否统一 OAuth 账号的指纹头（默认 true）
+	EnableMetadataPassthrough         bool // 是否透传客户端原始 metadata（默认 false）
+	EnableCCHSigning                  bool // 是否对 billing header cch 进行签名（默认 false）
+	CodexImageGenerationBridgeEnabled bool // 是否为 Codex /v1/responses 自动注入 image_generation bridge（默认 false）
 
 	// Codex CLI User-Agent 配置
 	CodexCLIUserAgent string // 发往 OpenAI 上游的 User-Agent 头（默认 "codex_cli_rs/1.0.0"）

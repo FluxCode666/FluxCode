@@ -207,6 +207,10 @@ gateway:
   #
   # 注意：开启后会影响所有客户端的行为（不仅限于 VS Code / Codex CLI），请谨慎开启。
   force_codex_cli: false
+  # Enable Codex image_generation bridge injection for eligible OpenAI /v1/responses requests.
+  # 启用后，符合条件的 Codex OpenAI /v1/responses 请求会自动注入 image_generation 工具。
+  # 仍会受分组 allow_image_generation 权限、渠道覆盖项和账号覆盖项控制。
+  codex_image_generation_bridge_enabled: false
   # Optional: template file used to build the final top-level Codex `instructions`.
   # 可选：用于构建最终 Codex 顶层 `instructions` 的模板文件路径。
   #

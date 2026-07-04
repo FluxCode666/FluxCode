@@ -43,6 +43,29 @@ func TestCodexImageGenerationBridgeOverridePrecedence(t *testing.T) {
 	}
 }
 
+func TestCodexImageGenerationBridgeUsesRuntimeSettingBeforeConfig(t *testing.T) {
+	repo := &openAIImagesSettingRepoStub{values: map[string]string{
+		SettingKeyCodexImageGenerationBridgeEnabled: "true",
+	}}
+	settingService := NewSettingService(repo, &config.Config{
+		Gateway: config.GatewayConfig{CodexImageGenerationBridgeEnabled: false},
+	})
+	svc := &OpenAIGatewayService{
+		cfg:            &config.Config{Gateway: config.GatewayConfig{CodexImageGenerationBridgeEnabled: false}},
+		settingService: settingService,
+	}
+
+	got := svc.isCodexImageGenerationBridgeEnabled(
+		context.Background(),
+		&Account{Platform: PlatformOpenAI},
+		nil,
+	)
+
+	if !got {
+		t.Fatalf("isCodexImageGenerationBridgeEnabled() = false, want true from runtime setting")
+	}
+}
+
 type codexImageBridgeChannelRepo struct {
 	channel        Channel
 	groupPlatforms map[int64]string

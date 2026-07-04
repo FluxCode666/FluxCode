@@ -226,4 +226,26 @@ describe('EditAccountModal', () => {
 
     expect(modeSelect.element.value).toBe('http_url')
   })
+
+  it('edits the OpenAI Codex image bridge override in account extra', async () => {
+    const account = buildAccount()
+    account.extra = {
+      codex_image_generation_bridge: false
+    }
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+    const overrideSelect = wrapper.get<HTMLSelectElement>('[data-testid="edit-openai-codex-image-generation-bridge"]')
+
+    expect(overrideSelect.element.value).toBe('disabled')
+
+    await overrideSelect.setValue('enabled')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.codex_image_generation_bridge).toBe(true)
+  })
 })

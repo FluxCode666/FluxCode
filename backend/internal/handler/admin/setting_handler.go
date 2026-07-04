@@ -210,6 +210,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		EnableFingerprintUnification:         settings.EnableFingerprintUnification,
 		EnableMetadataPassthrough:            settings.EnableMetadataPassthrough,
 		EnableCCHSigning:                     settings.EnableCCHSigning,
+		CodexImageGenerationBridgeEnabled:    settings.CodexImageGenerationBridgeEnabled,
 		CodexCLIUserAgent:                    settings.CodexCLIUserAgent,
 		CodexCLIVersion:                      settings.CodexCLIVersion,
 		WebSearchEmulationEnabled:            settings.WebSearchEmulationEnabled,
@@ -386,9 +387,10 @@ type UpdateSettingsRequest struct {
 	DashboardFireworksThreshold *float64 `json:"dashboard_fireworks_threshold"`
 
 	// Gateway forwarding behavior
-	EnableFingerprintUnification *bool `json:"enable_fingerprint_unification"`
-	EnableMetadataPassthrough    *bool `json:"enable_metadata_passthrough"`
-	EnableCCHSigning             *bool `json:"enable_cch_signing"`
+	EnableFingerprintUnification      *bool `json:"enable_fingerprint_unification"`
+	EnableMetadataPassthrough         *bool `json:"enable_metadata_passthrough"`
+	EnableCCHSigning                  *bool `json:"enable_cch_signing"`
+	CodexImageGenerationBridgeEnabled *bool `json:"codex_image_generation_bridge_enabled"`
 
 	// Codex CLI User-Agent
 	CodexCLIUserAgent *string `json:"codex_cli_user_agent"`
@@ -1168,6 +1170,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.EnableCCHSigning
 		}(),
+		CodexImageGenerationBridgeEnabled: func() bool {
+			if req.CodexImageGenerationBridgeEnabled != nil {
+				return *req.CodexImageGenerationBridgeEnabled
+			}
+			return previousSettings.CodexImageGenerationBridgeEnabled
+		}(),
 		CodexCLIUserAgent: func() string {
 			if req.CodexCLIUserAgent != nil {
 				return strings.TrimSpace(*req.CodexCLIUserAgent)
@@ -1394,6 +1402,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		EnableFingerprintUnification:         updatedSettings.EnableFingerprintUnification,
 		EnableMetadataPassthrough:            updatedSettings.EnableMetadataPassthrough,
 		EnableCCHSigning:                     updatedSettings.EnableCCHSigning,
+		CodexImageGenerationBridgeEnabled:    updatedSettings.CodexImageGenerationBridgeEnabled,
 		CodexCLIUserAgent:                    updatedSettings.CodexCLIUserAgent,
 		CodexCLIVersion:                      updatedSettings.CodexCLIVersion,
 		BalanceLowNotifyEnabled:              updatedSettings.BalanceLowNotifyEnabled,

@@ -170,6 +170,7 @@ export interface SystemSettings {
   enable_fingerprint_unification: boolean
   enable_metadata_passthrough: boolean
   enable_cch_signing: boolean
+  codex_image_generation_bridge_enabled: boolean
 
   // Codex CLI User-Agent
   codex_cli_user_agent: string
@@ -330,6 +331,7 @@ export interface UpdateSettingsRequest {
   enable_fingerprint_unification?: boolean
   enable_metadata_passthrough?: boolean
   enable_cch_signing?: boolean
+  codex_image_generation_bridge_enabled?: boolean
 
   // Codex CLI User-Agent
   codex_cli_user_agent?: string

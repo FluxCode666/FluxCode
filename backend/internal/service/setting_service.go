@@ -975,6 +975,7 @@ func (s *SettingService) UpdateSettings(ctx context.Context, settings *SystemSet
 	updates[SettingKeyEnableFingerprintUnification] = strconv.FormatBool(settings.EnableFingerprintUnification)
 	updates[SettingKeyEnableMetadataPassthrough] = strconv.FormatBool(settings.EnableMetadataPassthrough)
 	updates[SettingKeyEnableCCHSigning] = strconv.FormatBool(settings.EnableCCHSigning)
+	updates[SettingKeyCodexImageGenerationBridgeEnabled] = strconv.FormatBool(settings.CodexImageGenerationBridgeEnabled)
 
 	// Balance low notification
 	updates[SettingKeyBalanceLowNotifyEnabled] = strconv.FormatBool(settings.BalanceLowNotifyEnabled)
@@ -1276,6 +1277,25 @@ func (s *SettingService) GetCodexCLIConfig(ctx context.Context) (userAgent, vers
 		return r.ua, r.ver
 	}
 	return "", ""
+}
+
+func (s *SettingService) IsCodexImageGenerationBridgeEnabled(ctx context.Context) bool {
+	fallback := false
+	if s != nil && s.cfg != nil {
+		fallback = s.cfg.Gateway.CodexImageGenerationBridgeEnabled
+	}
+	if s == nil || s.settingRepo == nil {
+		return fallback
+	}
+	value, err := s.settingRepo.GetValue(ctx, SettingKeyCodexImageGenerationBridgeEnabled)
+	if err != nil {
+		return fallback
+	}
+	parsed, err := strconv.ParseBool(strings.TrimSpace(value))
+	if err != nil {
+		return fallback
+	}
+	return parsed
 }
 
 // GetSystemPromptSettings returns platform-level system prompt settings and user scope.
@@ -1940,6 +1960,15 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	}
 	result.EnableMetadataPassthrough = settings[SettingKeyEnableMetadataPassthrough] == "true"
 	result.EnableCCHSigning = settings[SettingKeyEnableCCHSigning] == "true"
+	if v, ok := settings[SettingKeyCodexImageGenerationBridgeEnabled]; ok && strings.TrimSpace(v) != "" {
+		if parsed, err := strconv.ParseBool(strings.TrimSpace(v)); err == nil {
+			result.CodexImageGenerationBridgeEnabled = parsed
+		} else if s.cfg != nil {
+			result.CodexImageGenerationBridgeEnabled = s.cfg.Gateway.CodexImageGenerationBridgeEnabled
+		}
+	} else if s.cfg != nil {
+		result.CodexImageGenerationBridgeEnabled = s.cfg.Gateway.CodexImageGenerationBridgeEnabled
+	}
 
 	// Codex CLI User-Agent 配置
 	result.CodexCLIUserAgent = settings[SettingKeyCodexCLIUserAgent]

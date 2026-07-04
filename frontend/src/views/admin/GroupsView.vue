@@ -985,6 +985,22 @@
             {{ t("admin.groups.openaiMessages.allowDispatchHint") }}
           </p>
 
+          <div class="mt-4 flex items-center justify-between border-t border-gray-100 pt-4 dark:border-dark-700">
+            <div>
+              <label class="text-sm text-gray-600 dark:text-gray-400">{{
+                t("admin.groups.openaiMessages.allowImageGeneration")
+              }}</label>
+              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                {{ t("admin.groups.openaiMessages.allowImageGenerationHint") }}
+              </p>
+            </div>
+            <input
+              v-model="createForm.allow_image_generation"
+              type="checkbox"
+              class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-dark-500"
+            />
+          </div>
+
           <div v-if="createForm.allow_messages_dispatch" class="mt-3">
             <div
               class="relative overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-dark-600 dark:bg-dark-800"
@@ -2130,6 +2146,22 @@
             {{ t("admin.groups.openaiMessages.allowDispatchHint") }}
           </p>
 
+          <div class="mt-4 flex items-center justify-between border-t border-gray-100 pt-4 dark:border-dark-700">
+            <div>
+              <label class="text-sm text-gray-600 dark:text-gray-400">{{
+                t("admin.groups.openaiMessages.allowImageGeneration")
+              }}</label>
+              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                {{ t("admin.groups.openaiMessages.allowImageGenerationHint") }}
+              </p>
+            </div>
+            <input
+              v-model="editForm.allow_image_generation"
+              type="checkbox"
+              class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-dark-500"
+            />
+          </div>
+
           <div v-if="editForm.allow_messages_dispatch" class="mt-3">
             <div
               class="relative overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-dark-600 dark:bg-dark-800"
@@ -2998,6 +3030,7 @@ const createForm = reactive({
   is_fallback_group: false,
   fallback_group_id_on_invalid_request: null as number | null,
   // OpenAI Messages 调度配置（仅 openai 平台使用）
+  allow_image_generation: false,
   allow_messages_dispatch: false,
   opus_mapped_model: createMessagesDispatchDefaults.opus_mapped_model,
   sonnet_mapped_model: createMessagesDispatchDefaults.sonnet_mapped_model,
@@ -3281,6 +3314,7 @@ const editForm = reactive({
   is_fallback_group: false,
   fallback_group_id_on_invalid_request: null as number | null,
   // OpenAI Messages 调度配置（仅 openai 平台使用）
+  allow_image_generation: false,
   allow_messages_dispatch: false,
   default_mapped_model: '',
   opus_mapped_model: editMessagesDispatchDefaults.opus_mapped_model,
@@ -3467,6 +3501,7 @@ const closeCreateModal = () => {
   createForm.fallback_group_id = null;
   createForm.is_fallback_group = false;
   createForm.fallback_group_id_on_invalid_request = null;
+  createForm.allow_image_generation = false;
   resetMessagesDispatchFormState(createForm);
   createForm.require_oauth_only = false;
   createForm.require_privacy_set = false;
@@ -3578,6 +3613,7 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.is_fallback_group = group.is_fallback_group ?? false;
   editForm.fallback_group_id_on_invalid_request =
     group.fallback_group_id_on_invalid_request;
+  editForm.allow_image_generation = group.allow_image_generation ?? false;
   const messagesDispatchFormState = messagesDispatchConfigToFormState(
     group.messages_dispatch_model_config,
   );
