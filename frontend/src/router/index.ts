@@ -55,6 +55,16 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/integration-docs',
+    name: 'IntegrationDocs',
+    component: () => import('@/views/IntegrationDocsView.vue'),
+    meta: {
+      requiresAuth: false,
+      title: 'Integration Docs',
+      titleKey: 'integrationDocs.metaTitle'
+    }
+  },
+  {
     path: '/channel-status',
     name: 'PublicChannelStatus',
     component: () => import('@/views/ChannelStatusPublicView.vue'),

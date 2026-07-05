@@ -32,6 +32,7 @@ vi.mock('vue-i18n', () => ({
     t: (key: string) => {
       const map: Record<string, string> = {
         'home.nav.pricing': '购买入口',
+        'home.nav.integrationDocs': '接入文档',
         'home.nav.docs': '使用文档',
         'home.nav.channelStatus': '渠道状态',
         'home.nav.menu': '菜单',
@@ -83,11 +84,13 @@ describe('PublicHeader', () => {
     await wrapper.vm.$nextTick()
 
     expect(wrapper.find('a[data-to="/channel-status"]').exists()).toBe(true)
+    expect(wrapper.find('a[data-to="/integration-docs"]').exists()).toBe(true)
 
     await wrapper.get('button[title="菜单"]').trigger('click')
     await wrapper.vm.$nextTick()
 
     expect(wrapper.findAll('a[data-to="/channel-status"]').length).toBe(2)
+    expect(wrapper.findAll('a[data-to="/integration-docs"]').length).toBe(2)
     expect(authStoreState.checkAuth).toHaveBeenCalledTimes(1)
   })
 
@@ -113,10 +116,12 @@ describe('PublicHeader', () => {
     await wrapper.vm.$nextTick()
 
     expect(wrapper.find('a[data-to="/channel-status"]').exists()).toBe(false)
+    expect(wrapper.find('a[data-to="/integration-docs"]').exists()).toBe(true)
 
     await wrapper.get('button[title="菜单"]').trigger('click')
     await wrapper.vm.$nextTick()
 
     expect(wrapper.find('a[data-to="/channel-status"]').exists()).toBe(false)
+    expect(wrapper.findAll('a[data-to="/integration-docs"]').length).toBe(2)
   })
 })

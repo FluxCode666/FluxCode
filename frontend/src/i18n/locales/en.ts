@@ -13,6 +13,7 @@ export default {
     nav: {
       features: 'Features',
       pricing: 'Pricing',
+      integrationDocs: 'Integration Docs',
       docs: 'Docs',
       channelStatus: 'Channel Status',
       menu: 'Menu'
@@ -89,6 +90,108 @@ export default {
     },
     footer: {
       allRightsReserved: 'All rights reserved.'
+    }
+  },
+
+  integrationDocs: {
+    metaTitle: 'Integration Docs',
+    nav: {
+      overview: 'Overview'
+    },
+    hero: {
+      badge: 'Developer Access',
+      title: 'Integration Docs',
+      subtitle:
+        'Standard integration guidance for SDKs, backend services, and automation scripts, covering OpenAI Chat, OpenAI Responses, Anthropic Messages, and OpenAI image generation APIs.',
+      cards: {
+        baseUrl: 'Base URL',
+        auth: 'Default Auth',
+        compatibility: 'Compatible Protocols'
+      }
+    },
+    sidebar: {
+      title: 'On This Page'
+    },
+    overview: {
+      title: 'Integration Overview',
+      description:
+        'If you already use the official OpenAI or Anthropic protocols, most clients can switch to this site by replacing only the Base URL and API key.',
+      callout:
+        'Use the standard `/v1/*` paths whenever possible. That keeps official SDKs, backend middleware, and custom scripts easier to maintain and upgrade.',
+      pathsTitle: 'Standard Paths',
+      pathsDescription: 'These paths can be used directly under your site domain for standard protocol access.',
+      notesTitle: 'Integration Notes',
+      steps: {
+        step1: {
+          title: 'Create an API Key',
+          description: 'Create a usable key in the dashboard and confirm its group has access to the required models or protocol capabilities.'
+        },
+        step2: {
+          title: 'Replace the Base URL',
+          description: 'Replace the official OpenAI or Anthropic domain with this site domain while keeping the standard protocol path format.'
+        },
+        step3: {
+          title: 'Send a Minimal Request',
+          description: 'Validate a successful 200 response with the minimal examples below, then add streaming, tools, or image parameters step by step.'
+        }
+      },
+      notes: {
+        item1: 'OpenAI-compatible protocols normally use `Authorization: Bearer <API_KEY>`; for Anthropic-compatible traffic, `x-api-key` plus `anthropic-version` is recommended.',
+        item2: 'Use a model name that is currently enabled in your dashboard. Available models may differ by group, plan, or channel.',
+        item3: 'When you need streaming, add `stream: true` to the request body and keep the rest of your existing SDK parameters unchanged.',
+        item4: 'For OpenAI Images, when you request `response_format=url`, the returned image domain follows the site’s current image storage configuration.'
+      }
+    },
+    fields: {
+      method: 'Method',
+      endpoint: 'Endpoint',
+      authHeader: 'Auth Header',
+      contentType: 'Content Type',
+      versionHeader: 'Version Header',
+      exampleCurl: 'cURL Example',
+      exampleJavascript: 'JavaScript Example'
+    },
+    sections: {
+      openaiChat: {
+        badge: 'OpenAI Compatible',
+        title: 'OpenAI Chat Protocol',
+        description: 'Best for clients or services that already use `chat.completions` and want to keep the standard `messages` payload.',
+        bullets: {
+          item1: 'The request path is `POST /v1/chat/completions`, using the standard `messages` array body.',
+          item2: 'If you rely on older OpenAI SDKs, this is usually the smoothest migration path: change only the domain and key.',
+          item3: 'You can continue sending common fields such as `temperature`, `stream`, `tools`, and `tool_choice`.'
+        }
+      },
+      openaiResponses: {
+        badge: 'OpenAI Native',
+        title: 'OpenAI Responses Protocol',
+        description: 'Recommended for new projects, agent workflows, Codex-style clients, or apps that want a unified text and tool-calling surface.',
+        bullets: {
+          item1: 'The request path is `POST /v1/responses`, typically centered around `model`, `instructions`, and `input`.',
+          item2: 'If your client already uses a recent OpenAI SDK or the Responses schema, prefer this integration path.',
+          item3: 'Tool calls, image bridges, and streaming expansion are also easier to extend on top of the Responses protocol.'
+        }
+      },
+      anthropicMessages: {
+        badge: 'Anthropic Compatible',
+        title: 'Anthropic Messages Protocol',
+        description: 'Best for Claude SDKs, Claude Code-style clients, or internal systems that already integrate through Anthropic `messages`.',
+        bullets: {
+          item1: 'The request path is `POST /v1/messages`; explicitly sending `anthropic-version: 2023-06-01` is recommended.',
+          item2: 'Authentication can use `x-api-key` directly; if your gateway standardizes on Bearer auth, this service also accepts it.',
+          item3: 'Keep Anthropic-native fields such as `max_tokens`, `system`, `stream`, and `tools` as-is.'
+        }
+      },
+      openaiImages: {
+        badge: 'OpenAI Images',
+        title: 'OpenAI Image Generation API',
+        description: 'For text-to-image generation with OpenAI Images-compatible calls, suitable for built-in image tools, posters, and marketing creatives.',
+        bullets: {
+          item1: 'The request path is `POST /v1/images/generations`, with common fields such as `model`, `prompt`, `size`, and `response_format`.',
+          item2: 'If you also need image editing or masking, you can extend the same auth flow to `POST /v1/images/edits`.',
+          item3: 'When `response_format=url` is requested, the returned image URL follows the current image storage and CDN configuration of the site.'
+        }
+      }
     }
   },
 
