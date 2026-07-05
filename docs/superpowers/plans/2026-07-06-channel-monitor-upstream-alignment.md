@@ -24,7 +24,7 @@
 
 - `backend/migrations/126_channel_monitor_jitter.sql`: Adds the nullable-safe `jitter_seconds` column, default, and check constraint.
 - `backend/ent/schema/channel_monitor.go`: Declares the ent field and comment.
-- `backend/ent/*channelmonitor*`: Generated ent files after `go generate ./ent`.
+- `backend/ent/*channelmonitor*`: Generated ent files from Task 1 after `go generate ./ent`.
 - `backend/internal/service/channel_monitor_const.go`: Adds the public error for invalid jitter.
 - `backend/internal/service/channel_monitor_types.go`: Adds `JitterSeconds` to monitor models and create/update params.
 - `backend/internal/service/channel_monitor_validate.go`: Adds `validateJitter`.
@@ -47,6 +47,14 @@
 **Files:**
 - Create: `backend/migrations/126_channel_monitor_jitter.sql`
 - Modify: `backend/ent/schema/channel_monitor.go`
+- Modify: `backend/ent/channelmonitor.go`
+- Modify: `backend/ent/channelmonitor/channelmonitor.go`
+- Modify: `backend/ent/channelmonitor/where.go`
+- Modify: `backend/ent/channelmonitor_create.go`
+- Modify: `backend/ent/channelmonitor_update.go`
+- Modify: `backend/ent/migrate/schema.go`
+- Modify: `backend/ent/mutation.go`
+- Modify: other `backend/ent/*` files changed by `go generate ./ent`
 - Modify: `backend/internal/service/channel_monitor_const.go`
 - Modify: `backend/internal/service/channel_monitor_types.go`
 - Modify: `backend/internal/service/channel_monitor_validate.go`
@@ -300,6 +308,32 @@ In `Update` params, add:
 
 - [ ] **Step 10: Run validation tests**
 
+Run ent generation before any package that imports `repository` or `handler`, because those files now call generated `JitterSeconds` APIs:
+
+```bash
+cd backend && go generate ./ent
+```
+
+Expected: command exits with code 0 and generated ent files include `JitterSeconds`.
+
+Verify:
+
+```bash
+rg -n "JitterSeconds|jitter_seconds|FieldJitterSeconds" backend/ent
+```
+
+Expected: output includes:
+
+```text
+backend/ent/channelmonitor.go
+backend/ent/channelmonitor/channelmonitor.go
+backend/ent/channelmonitor_create.go
+backend/ent/channelmonitor_update.go
+backend/ent/migrate/schema.go
+```
+
+- [ ] **Step 11: Run validation tests**
+
 Run:
 
 ```bash
@@ -308,11 +342,11 @@ cd backend && go test ./internal/service -run 'TestValidateChannelMonitorJitter|
 
 Expected: PASS.
 
-- [ ] **Step 11: Commit**
+- [ ] **Step 12: Commit**
 
 ```bash
 git add backend/migrations/126_channel_monitor_jitter.sql \
-  backend/ent/schema/channel_monitor.go \
+  backend/ent \
   backend/internal/service/channel_monitor_const.go \
   backend/internal/service/channel_monitor_types.go \
   backend/internal/service/channel_monitor_validate.go \
@@ -877,24 +911,16 @@ git commit -m "feat(channel-monitor): expose jitter in admin form"
 
 ---
 
-### Task 4: Generate Ent Code And Verify End-To-End
+### Task 4: Final Verification And Scope Review
 
 **Files:**
-- Modify: `backend/ent/channelmonitor.go`
-- Modify: `backend/ent/channelmonitor/channelmonitor.go`
-- Modify: `backend/ent/channelmonitor/where.go`
-- Modify: `backend/ent/channelmonitor_create.go`
-- Modify: `backend/ent/channelmonitor_query.go`
-- Modify: `backend/ent/channelmonitor_update.go`
-- Modify: `backend/ent/migrate/schema.go`
-- Modify: `backend/ent/mutation.go`
-- Modify: other `backend/ent/*` files changed by `go generate ./ent`
+- Modify only if verification exposes a concrete defect in files changed by Tasks 1-3.
 
 **Interfaces:**
-- Consumes: `backend/ent/schema/channel_monitor.go`.
-- Produces: generated ent APIs `SetJitterSeconds`, `JitterSeconds`, `channelmonitor.FieldJitterSeconds`, and SQL migration metadata.
+- Consumes: completed Tasks 1-3.
+- Produces: a verified branch with default-closed channel monitor behavior and no unrelated changes.
 
-- [ ] **Step 1: Generate ent code**
+- [ ] **Step 1: Confirm generated ent code is current**
 
 Run:
 
@@ -902,7 +928,7 @@ Run:
 cd backend && go generate ./ent
 ```
 
-Expected: command exits with code 0 and generated ent files include `JitterSeconds`.
+Expected: command exits with code 0 and `git diff -- backend/ent` is empty. If generation changes files, inspect the diff and commit it with the verification fixes in Step 7.
 
 - [ ] **Step 2: Verify generated field exists**
 
@@ -993,11 +1019,13 @@ Expected: committed and uncommitted diff is limited to channel monitor backend, 
 ?? frontend/pnpm-workspace.yaml
 ```
 
-- [ ] **Step 7: Commit generated code and verification fixes**
+- [ ] **Step 7: Commit verification fixes if any**
 
 ```bash
-git add backend/ent backend/migrations/126_channel_monitor_jitter.sql \
-  backend/internal/service backend/internal/repository backend/internal/handler/admin/channel_monitor_handler.go \
-  frontend/src/api/admin/channelMonitor.ts frontend/src/components/admin/monitor frontend/src/i18n/locales/zh.ts frontend/src/i18n/locales/en.ts
-git commit -m "chore(channel-monitor): regenerate ent for jitter"
+if ! git diff --quiet; then
+  git add backend/ent backend/migrations/126_channel_monitor_jitter.sql \
+    backend/internal/service backend/internal/repository backend/internal/handler/admin/channel_monitor_handler.go \
+    frontend/src/api/admin/channelMonitor.ts frontend/src/components/admin/monitor frontend/src/i18n/locales/zh.ts frontend/src/i18n/locales/en.ts
+  git commit -m "chore(channel-monitor): finalize jitter verification"
+fi
 ```
