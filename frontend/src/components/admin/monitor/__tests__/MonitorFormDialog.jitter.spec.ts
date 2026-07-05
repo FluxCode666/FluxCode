@@ -107,6 +107,13 @@ function mountDialog(props: { show?: boolean; monitor?: ChannelMonitor | null } 
   })
 }
 
+async function fillRequiredFields(wrapper: ReturnType<typeof mountDialog>) {
+  await wrapper.get('input[placeholder="admin.channelMonitor.form.namePlaceholder"]').setValue('Monitor')
+  await wrapper.get('input[placeholder="admin.channelMonitor.form.endpointPlaceholder"]').setValue('https://api.example.com')
+  await wrapper.get('input[placeholder="admin.channelMonitor.form.apiKeyPlaceholder"]').setValue('sk-test')
+  await wrapper.get('input[placeholder="admin.channelMonitor.form.primaryModelPlaceholder"]').setValue('claude-sonnet-4')
+}
+
 describe('MonitorFormDialog jitter', () => {
   beforeEach(() => {
     createMonitor.mockReset()
@@ -136,10 +143,7 @@ describe('MonitorFormDialog jitter', () => {
   it('submits jitter_seconds in create payload', async () => {
     const wrapper = mountDialog()
 
-    await wrapper.get('input[placeholder="admin.channelMonitor.form.namePlaceholder"]').setValue('Monitor')
-    await wrapper.get('input[placeholder="admin.channelMonitor.form.endpointPlaceholder"]').setValue('https://api.example.com')
-    await wrapper.get('input[placeholder="admin.channelMonitor.form.apiKeyPlaceholder"]').setValue('sk-test')
-    await wrapper.get('input[placeholder="admin.channelMonitor.form.primaryModelPlaceholder"]').setValue('claude-sonnet-4')
+    await fillRequiredFields(wrapper)
     await wrapper.get('[data-testid="monitor-jitter-input"]').setValue(9)
     await wrapper.get('form').trigger('submit.prevent')
 
@@ -156,5 +160,30 @@ describe('MonitorFormDialog jitter', () => {
 
     const input = wrapper.get<HTMLInputElement>('[data-testid="monitor-jitter-input"]')
     expect(input.element.value).toBe('15')
+  })
+
+  it('clamps oversize jitter in submit payload', async () => {
+    const wrapper = mountDialog()
+
+    await fillRequiredFields(wrapper)
+    await wrapper.get('[data-testid="monitor-interval-input"]').setValue(30)
+    await wrapper.get('[data-testid="monitor-jitter-input"]').setValue(999)
+    await wrapper.get('form').trigger('submit.prevent')
+
+    expect(createMonitor).toHaveBeenCalledWith(expect.objectContaining({
+      jitter_seconds: 15,
+    }))
+  })
+
+  it('clamps negative jitter in submit payload', async () => {
+    const wrapper = mountDialog()
+
+    await fillRequiredFields(wrapper)
+    await wrapper.get('[data-testid="monitor-jitter-input"]').setValue(-1)
+    await wrapper.get('form').trigger('submit.prevent')
+
+    expect(createMonitor).toHaveBeenCalledWith(expect.objectContaining({
+      jitter_seconds: 0,
+    }))
   })
 })

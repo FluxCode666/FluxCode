@@ -81,3 +81,29 @@ Tests  5 passed (5)
 ## 疑问或担忧
 
 - 测试输出包含 `Browserslist: browsers data (caniuse-lite) is 7 months old` 警告；这不是本任务引入的问题，也不影响本次结果。
+
+## Fix after review
+
+- reviewer 指出 `jitter_seconds` 只在 `interval_seconds` 变化时被压到上限，直接输入非法值后提交仍可能带出 `-1` 或超上限值；这个问题已在 `MonitorFormDialog.vue` 修复。
+- 本次新增统一的 `normalizeJitterSeconds()`，同时用于：
+  - `form.jitter_seconds` watcher：用户直接输入非法值时立即归一化
+  - `form.interval_seconds` watcher：保留 interval 变小时 UI 及时收缩的行为
+  - `buildPayload()`：提交前再次兜底，保证 payload 一定满足约束
+- 新增测试覆盖真实提交场景：
+  - 直接输入超上限 `jitter_seconds` 后提交，payload 被 clamp 到 `maxJitterSeconds`
+  - 直接输入负数 `jitter_seconds` 后提交，payload 被 clamp 到 `0`
+
+命令：
+
+```bash
+cd frontend && npm run test -- --run src/components/admin/monitor/__tests__/MonitorFormDialog.jitter.spec.ts src/views/admin/__tests__/ChannelMonitorView.spec.ts
+```
+
+关键输出：
+
+```text
+✓ src/components/admin/monitor/__tests__/MonitorFormDialog.jitter.spec.ts (6 tests)
+✓ src/views/admin/__tests__/ChannelMonitorView.spec.ts (1 test)
+Test Files  2 passed (2)
+Tests  7 passed (7)
+```

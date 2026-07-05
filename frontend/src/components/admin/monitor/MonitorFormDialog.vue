@@ -306,6 +306,12 @@ const form = reactive<MonitorForm>({
 
 const maxJitterSeconds = computed<number>(() => Math.max(0, (Number(form.interval_seconds) || 0) - 15))
 
+function normalizeJitterSeconds(value: unknown): number {
+  const numeric = typeof value === 'number' ? value : Number(value)
+  if (!Number.isFinite(numeric)) return 0
+  return Math.max(0, Math.min(numeric, maxJitterSeconds.value))
+}
+
 let suppressFormWatchers = false
 
 // 可用模板列表（进入 dialog 时一次性拉取 cache；按 provider / api mode 过滤）。
@@ -436,8 +442,16 @@ watch(() => form.api_mode, () => {
 }, { flush: 'sync' })
 
 watch(() => form.interval_seconds, () => {
-  if (form.jitter_seconds > maxJitterSeconds.value) {
-    form.jitter_seconds = maxJitterSeconds.value
+  const normalized = normalizeJitterSeconds(form.jitter_seconds)
+  if (normalized !== form.jitter_seconds) {
+    form.jitter_seconds = normalized
+  }
+})
+
+watch(() => form.jitter_seconds, (value) => {
+  const normalized = normalizeJitterSeconds(value)
+  if (normalized !== value) {
+    form.jitter_seconds = normalized
   }
 })
 
@@ -539,7 +553,7 @@ function buildPayload(): CreateParams {
     group_name: form.group_name.trim(),
     enabled: form.enabled,
     interval_seconds: form.interval_seconds,
-    jitter_seconds: form.jitter_seconds || 0,
+    jitter_seconds: normalizeJitterSeconds(form.jitter_seconds),
     template_id: form.template_id,
     extra_headers: form.extra_headers,
     body_override_mode: form.body_override_mode,
