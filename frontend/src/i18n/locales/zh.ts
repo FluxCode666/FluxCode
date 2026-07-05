@@ -2753,6 +2753,8 @@ export default {
         groupNamePlaceholder: '可选，用于在用户视图中聚合显示',
         intervalSeconds: '检测间隔 (秒)',
         intervalSecondsHint: '范围：15 - 3600 秒',
+        jitterSeconds: '随机抖动 (秒)',
+        jitterSecondsHint: '每轮检测在间隔基础上随机提前或延后，最大值为检测间隔减 15 秒；0 表示固定间隔。',
         enabled: '启用监控',
         kindRequired: '请选择供应商'
       },

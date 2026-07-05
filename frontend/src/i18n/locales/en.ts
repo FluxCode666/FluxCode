@@ -2685,6 +2685,8 @@ export default {
         groupNamePlaceholder: 'Optional, used to group rows in user view',
         intervalSeconds: 'Interval (seconds)',
         intervalSecondsHint: 'Range: 15 - 3600 seconds',
+        jitterSeconds: 'Jitter (seconds)',
+        jitterSecondsHint: 'Randomly runs each check earlier or later within this range. Maximum is interval minus 15 seconds; 0 keeps a fixed interval.',
         enabled: 'Enable monitor',
         kindRequired: 'Please select a provider'
       },
