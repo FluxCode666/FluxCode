@@ -33,6 +33,13 @@ func validateInterval(seconds int) error {
 	return nil
 }
 
+func validateJitter(jitterSec, intervalSec int) error {
+	if jitterSec < 0 || intervalSec-jitterSec < monitorMinIntervalSeconds {
+		return ErrChannelMonitorInvalidJitter
+	}
+	return nil
+}
+
 func NormalizeChannelMonitorInterval(value int, defaultValue int) int {
 	if value <= 0 {
 		value = defaultValue
