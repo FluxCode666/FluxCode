@@ -2,10 +2,10 @@ package service
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/stretchr/testify/require"
 )
 
@@ -85,63 +85,86 @@ func TestChannelMonitorRunnerEnabledCanRun(t *testing.T) {
 	require.True(t, runner.canRun(context.Background()))
 }
 
-func TestChannelMonitorRunnerDefaultDisabledStartupPreloadsSchedulesBeforeEnable(t *testing.T) {
-	settingRepo := &channelMonitorSettingsRepoStub{
-		values: map[string]string{
-			SettingKeyChannelMonitorEnabled:                "false",
-			SettingKeyChannelMonitorDefaultIntervalSeconds: "60",
-		},
-	}
-	settingService := NewSettingService(settingRepo, &config.Config{})
-	monitorRepo := &channelMonitorRunnerRepoStub{
+func TestChannelMonitorRunnerStartsWhenSettingEnabledAfterDefaultDisabledStartup(t *testing.T) {
+	svc := &channelMonitorRunnerSvcStub{
 		monitors: []*ChannelMonitor{
 			{
 				ID:              42,
 				Name:            "post-enable",
 				Enabled:         true,
-				IntervalSeconds: 60,
+				IntervalSeconds: 1,
 			},
 		},
 	}
-	monitorService := &ChannelMonitorService{repo: monitorRepo}
-
-	runner := ProvideChannelMonitorRunner(monitorService, settingService)
+	runtime := &channelMonitorRuntimeStub{
+		settings: ChannelMonitorRuntimeSettings{Enabled: false},
+	}
+	runner := newChannelMonitorRunner(svc, runtime)
 	defer runner.Stop()
 
-	require.Equal(t, 1, monitorRepo.listEnabledCalls)
-	require.Len(t, runner.tasks, 1)
+	runner.Start()
 
-	err := settingService.UpdateSettings(context.Background(), &SystemSettings{
-		ChannelMonitorEnabled:                true,
-		ChannelMonitorDefaultIntervalSeconds: 60,
-	})
+	require.Eventually(t, func() bool {
+		return svc.ListCalls() == 1 && len(runner.tasks) == 1
+	}, time.Second, 10*time.Millisecond)
+	require.Equal(t, 0, svc.RunCalls())
 
-	require.NoError(t, err)
-	require.Equal(t, 1, monitorRepo.listEnabledCalls)
+	runtime.SetEnabled(true)
+
+	require.Eventually(t, func() bool {
+		return svc.RunCalls() > 0
+	}, 1500*time.Millisecond, 20*time.Millisecond)
+	require.Equal(t, 1, svc.ListCalls())
 }
 
 type channelMonitorRuntimeStub struct {
+	mu       sync.RWMutex
 	settings ChannelMonitorRuntimeSettings
 }
 
 func (s *channelMonitorRuntimeStub) GetChannelMonitorRuntime(context.Context) ChannelMonitorRuntimeSettings {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	return s.settings
 }
 
+func (s *channelMonitorRuntimeStub) SetEnabled(enabled bool) {
+	s.mu.Lock()
+	s.settings.Enabled = enabled
+	s.mu.Unlock()
+}
+
 type channelMonitorRunnerSvcStub struct {
+	mu        sync.Mutex
 	listCalls int
 	runCalls  int
 	monitors  []*ChannelMonitor
 }
 
 func (s *channelMonitorRunnerSvcStub) ListEnabledMonitors(context.Context) ([]*ChannelMonitor, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.listCalls++
 	return s.monitors, nil
 }
 
 func (s *channelMonitorRunnerSvcStub) RunCheck(context.Context, int64) ([]*CheckResult, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.runCalls++
 	return nil, nil
+}
+
+func (s *channelMonitorRunnerSvcStub) ListCalls() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.listCalls
+}
+
+func (s *channelMonitorRunnerSvcStub) RunCalls() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.runCalls
 }
 
 type channelMonitorRunnerRepoStub struct {
