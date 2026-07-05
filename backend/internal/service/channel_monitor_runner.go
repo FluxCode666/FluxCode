@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"log/slog"
+	"math/rand/v2"
 	"sync"
 	"time"
 
@@ -41,7 +42,20 @@ type scheduledMonitor struct {
 	id       int64
 	name     string
 	interval time.Duration
+	jitter   time.Duration
 	cancel   context.CancelFunc
+}
+
+func (t *scheduledMonitor) nextDelay() time.Duration {
+	if t.jitter <= 0 {
+		return t.interval
+	}
+	offset := time.Duration(rand.Int64N(int64(2*t.jitter) + 1))
+	delay := t.interval - t.jitter + offset
+	if floor := monitorMinIntervalSeconds * time.Second; delay < floor {
+		return floor
+	}
+	return delay
 }
 
 func NewChannelMonitorRunner(svc *ChannelMonitorService, runtimeProvider ChannelMonitorRuntimeProvider) *ChannelMonitorRunner {
@@ -70,10 +84,6 @@ func (r *ChannelMonitorRunner) canRun(ctx context.Context) bool {
 
 func (r *ChannelMonitorRunner) Start() {
 	if r == nil || r.svc == nil {
-		return
-	}
-	if !r.canRun(context.Background()) {
-		slog.Info("channel_monitor: runner disabled at startup")
 		return
 	}
 	r.mu.Lock()
@@ -110,6 +120,10 @@ func (r *ChannelMonitorRunner) Schedule(m *ChannelMonitor) {
 		slog.Error("channel_monitor: skip schedule for invalid interval", "monitor_id", m.ID, "interval_seconds", m.IntervalSeconds)
 		return
 	}
+	jitter := time.Duration(m.JitterSeconds) * time.Second
+	if jitter < 0 {
+		jitter = 0
+	}
 
 	r.mu.Lock()
 	if r.stopped {
@@ -129,6 +143,7 @@ func (r *ChannelMonitorRunner) Schedule(m *ChannelMonitor) {
 		id:       m.ID,
 		name:     m.Name,
 		interval: interval,
+		jitter:   jitter,
 		cancel:   cancel,
 	}
 	r.tasks[m.ID] = task
@@ -175,14 +190,15 @@ func (r *ChannelMonitorRunner) runScheduled(ctx context.Context, task *scheduled
 	defer r.wg.Done()
 
 	r.fire(ctx, task)
-	ticker := time.NewTicker(task.interval)
-	defer ticker.Stop()
+	timer := time.NewTimer(task.nextDelay())
+	defer timer.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-ticker.C:
+		case <-timer.C:
 			r.fire(ctx, task)
+			timer.Reset(task.nextDelay())
 		}
 	}
 }

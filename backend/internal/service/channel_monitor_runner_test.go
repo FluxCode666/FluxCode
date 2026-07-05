@@ -17,7 +17,7 @@ func TestChannelMonitorRunnerDefaultDisabledSkipsChecks(t *testing.T) {
 	require.False(t, runner.canRun(context.Background()))
 }
 
-func TestChannelMonitorRunnerStartDefaultDisabledSkipsScheduling(t *testing.T) {
+func TestChannelMonitorRunnerStartDefaultDisabledSchedulesButSkipsChecks(t *testing.T) {
 	svc := &channelMonitorRunnerSvcStub{
 		monitors: []*ChannelMonitor{
 			{
@@ -25,6 +25,7 @@ func TestChannelMonitorRunnerStartDefaultDisabledSkipsScheduling(t *testing.T) {
 				Name:            "disabled-startup",
 				Enabled:         true,
 				IntervalSeconds: 60,
+				JitterSeconds:   5,
 			},
 		},
 	}
@@ -34,9 +35,46 @@ func TestChannelMonitorRunnerStartDefaultDisabledSkipsScheduling(t *testing.T) {
 	defer runner.Stop()
 
 	runner.Start()
+	time.Sleep(20 * time.Millisecond)
 
-	require.Equal(t, 0, svc.listCalls)
-	require.Empty(t, runner.tasks)
+	require.Equal(t, 1, svc.listCalls)
+	require.Equal(t, 0, svc.runCalls)
+	require.Len(t, runner.tasks, 1)
+	require.Equal(t, 5*time.Second, runner.tasks[10].jitter)
+}
+
+func TestScheduledMonitorNextDelayNoJitter(t *testing.T) {
+	task := &scheduledMonitor{
+		interval: 60 * time.Second,
+		jitter:   0,
+	}
+
+	require.Equal(t, 60*time.Second, task.nextDelay())
+}
+
+func TestScheduledMonitorNextDelayWithJitterStaysInRange(t *testing.T) {
+	task := &scheduledMonitor{
+		interval: 60 * time.Second,
+		jitter:   10 * time.Second,
+	}
+
+	for i := 0; i < 100; i++ {
+		delay := task.nextDelay()
+		require.GreaterOrEqual(t, delay, 50*time.Second)
+		require.LessOrEqual(t, delay, 70*time.Second)
+	}
+}
+
+func TestScheduledMonitorNextDelayClampsToMinimum(t *testing.T) {
+	task := &scheduledMonitor{
+		interval: 15 * time.Second,
+		jitter:   20 * time.Second,
+	}
+
+	for i := 0; i < 100; i++ {
+		delay := task.nextDelay()
+		require.GreaterOrEqual(t, delay, 15*time.Second)
+	}
 }
 
 func TestChannelMonitorRunnerEnabledCanRun(t *testing.T) {
@@ -47,7 +85,7 @@ func TestChannelMonitorRunnerEnabledCanRun(t *testing.T) {
 	require.True(t, runner.canRun(context.Background()))
 }
 
-func TestChannelMonitorRunnerStartsWhenSettingEnabledAfterDefaultDisabledStartup(t *testing.T) {
+func TestChannelMonitorRunnerDefaultDisabledStartupPreloadsSchedulesBeforeEnable(t *testing.T) {
 	settingRepo := &channelMonitorSettingsRepoStub{
 		values: map[string]string{
 			SettingKeyChannelMonitorEnabled:                "false",
@@ -70,7 +108,8 @@ func TestChannelMonitorRunnerStartsWhenSettingEnabledAfterDefaultDisabledStartup
 	runner := ProvideChannelMonitorRunner(monitorService, settingService)
 	defer runner.Stop()
 
-	require.Equal(t, 0, monitorRepo.listEnabledCalls)
+	require.Equal(t, 1, monitorRepo.listEnabledCalls)
+	require.Len(t, runner.tasks, 1)
 
 	err := settingService.UpdateSettings(context.Background(), &SystemSettings{
 		ChannelMonitorEnabled:                true,
@@ -91,6 +130,7 @@ func (s *channelMonitorRuntimeStub) GetChannelMonitorRuntime(context.Context) Ch
 
 type channelMonitorRunnerSvcStub struct {
 	listCalls int
+	runCalls  int
 	monitors  []*ChannelMonitor
 }
 
@@ -100,6 +140,7 @@ func (s *channelMonitorRunnerSvcStub) ListEnabledMonitors(context.Context) ([]*C
 }
 
 func (s *channelMonitorRunnerSvcStub) RunCheck(context.Context, int64) ([]*CheckResult, error) {
+	s.runCalls++
 	return nil, nil
 }
 
