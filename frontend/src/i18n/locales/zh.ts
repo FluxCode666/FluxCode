@@ -147,7 +147,16 @@ export default {
       contentType: '内容类型',
       versionHeader: '协议版本 Header',
       exampleCurl: 'cURL 示例',
-      exampleJavascript: 'JavaScript 示例'
+      exampleJavascript: 'JavaScript 示例',
+      parametersTitle: '请求参数',
+      parameterName: '参数名',
+      parameterType: '类型',
+      parameterRequired: '是否必填',
+      parameterDescription: '说明',
+      requiredLabel: '必填',
+      optionalLabel: '可选',
+      supportedValues: '支持值',
+      exampleTabsTitle: '调用示例'
     },
     sections: {
       openaiChat: {

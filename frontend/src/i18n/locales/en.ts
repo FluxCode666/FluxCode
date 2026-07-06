@@ -149,7 +149,16 @@ export default {
       contentType: 'Content Type',
       versionHeader: 'Version Header',
       exampleCurl: 'cURL Example',
-      exampleJavascript: 'JavaScript Example'
+      exampleJavascript: 'JavaScript Example',
+      parametersTitle: 'Request Parameters',
+      parameterName: 'Parameter',
+      parameterType: 'Type',
+      parameterRequired: 'Required',
+      parameterDescription: 'Description',
+      requiredLabel: 'Required',
+      optionalLabel: 'Optional',
+      supportedValues: 'Supported values',
+      exampleTabsTitle: 'Code Examples'
     },
     sections: {
       openaiChat: {
