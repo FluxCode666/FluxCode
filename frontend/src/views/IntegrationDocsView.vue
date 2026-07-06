@@ -1,71 +1,176 @@
 <template>
-  <div class="min-h-screen bg-[#faf7f2] text-gray-900 dark:bg-dark-950 dark:text-gray-100">
+  <div class="min-h-screen bg-[#f6f1e8] text-gray-900 dark:bg-dark-950 dark:text-gray-100">
     <PublicHeader :site-name="siteName" :site-logo="siteLogo" />
 
     <main class="pt-24 pb-20">
-      <section class="relative overflow-hidden">
+      <section class="relative overflow-hidden border-b border-black/5 dark:border-white/10">
         <div class="pointer-events-none absolute inset-0">
-          <div class="absolute -top-40 right-[-80px] h-[360px] w-[360px] rounded-full bg-primary-500/15 blur-3xl dark:bg-primary-500/10"></div>
-          <div class="absolute -bottom-32 left-[-100px] h-[300px] w-[300px] rounded-full bg-sky-500/10 blur-3xl dark:bg-sky-500/10"></div>
-          <div class="absolute inset-0 opacity-[0.28] [background-image:radial-gradient(rgba(0,0,0,0.06)_1px,transparent_1px)] [background-size:22px_22px] dark:opacity-[0.08]"></div>
+          <div class="absolute left-1/2 top-0 h-[420px] w-[420px] -translate-x-1/2 rounded-full bg-[#b89a7a]/20 blur-3xl dark:bg-primary-500/10"></div>
+          <div class="absolute -top-24 right-[-40px] h-[280px] w-[280px] rounded-full bg-[#7b6857]/12 blur-3xl dark:bg-primary-500/10"></div>
+          <div class="absolute -bottom-28 left-[-80px] h-[260px] w-[260px] rounded-full bg-[#dbc8b0]/35 blur-3xl dark:bg-sky-500/10"></div>
+          <div class="absolute inset-0 opacity-[0.2] [background-image:linear-gradient(rgba(123,104,87,0.08)_1px,transparent_1px),linear-gradient(90deg,rgba(123,104,87,0.08)_1px,transparent_1px)] [background-size:96px_96px] dark:opacity-[0.05]"></div>
         </div>
 
         <div class="relative mx-auto max-w-6xl px-6 py-16 lg:py-20">
-          <div class="max-w-3xl">
-            <span class="inline-flex items-center rounded-full border border-[#7b6857]/15 bg-white/70 px-4 py-1.5 text-sm font-medium text-[#7b6857] shadow-sm backdrop-blur dark:border-white/10 dark:bg-white/5 dark:text-primary-200">
-              {{ t('integrationDocs.hero.badge') }}
-            </span>
-            <h1 class="mt-6 text-4xl font-semibold tracking-tight text-gray-900 dark:text-white sm:text-5xl">
-              {{ t('integrationDocs.hero.title') }}
-            </h1>
-            <p class="mt-4 text-base leading-relaxed text-gray-600 dark:text-dark-300 sm:text-lg">
-              {{ t('integrationDocs.hero.subtitle') }}
-            </p>
-          </div>
+          <div class="grid gap-8 lg:grid-cols-[minmax(0,1.1fr)_360px] lg:items-start">
+            <div class="max-w-3xl">
+              <span class="inline-flex items-center rounded-full border border-[#7b6857]/15 bg-white/75 px-4 py-1.5 text-sm font-medium text-[#7b6857] shadow-sm backdrop-blur dark:border-white/10 dark:bg-white/5 dark:text-primary-200">
+                {{ t('integrationDocs.hero.badge') }}
+              </span>
+              <h1 class="mt-6 max-w-2xl text-4xl font-semibold tracking-tight text-gray-900 dark:text-white sm:text-5xl lg:text-[3.6rem]">
+                {{ t('integrationDocs.hero.title') }}
+              </h1>
+              <p class="mt-4 max-w-2xl text-base leading-relaxed text-gray-600 dark:text-dark-300 sm:text-lg">
+                {{ t('integrationDocs.hero.subtitle') }}
+              </p>
 
-          <div class="mt-10 grid gap-4 md:grid-cols-3">
-            <div class="rounded-3xl border border-black/5 bg-white/75 p-5 shadow-sm backdrop-blur dark:border-white/10 dark:bg-dark-900/40">
-              <div class="text-sm font-medium text-gray-500 dark:text-dark-300">
-                {{ t('integrationDocs.hero.cards.baseUrl') }}
+              <div class="mt-8 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <div
+                  v-for="metric in heroMetrics"
+                  :key="metric.label"
+                  class="rounded-[28px] border border-[#7b6857]/10 bg-white/78 px-4 py-4 shadow-sm backdrop-blur dark:border-white/10 dark:bg-dark-900/40"
+                >
+                  <div class="text-2xl font-semibold tracking-tight text-[#5f4e40] dark:text-white">
+                    {{ metric.value }}
+                  </div>
+                  <div class="mt-1 text-xs uppercase tracking-[0.16em] text-gray-500 dark:text-dark-300">
+                    {{ metric.label }}
+                  </div>
+                </div>
               </div>
-              <div class="mt-3 break-all font-mono text-sm text-gray-900 dark:text-white">
-                {{ baseUrl }}
+
+              <div class="mt-6 grid gap-4 md:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
+                <div class="rounded-[28px] border border-[#7b6857]/10 bg-white/80 p-5 shadow-sm backdrop-blur dark:border-white/10 dark:bg-dark-900/40">
+                  <div class="text-xs font-semibold uppercase tracking-[0.16em] text-[#7b6857] dark:text-primary-200">
+                    {{ t('integrationDocs.hero.cards.baseUrl') }}
+                  </div>
+                  <div class="mt-3 break-all rounded-2xl bg-[#221b16] px-4 py-3 font-mono text-sm text-[#f7efe5]">
+                    {{ baseUrl }}
+                  </div>
+                  <div class="mt-4 flex flex-wrap gap-2">
+                    <span
+                      v-for="path in standardPaths"
+                      :key="`hero-path-${path}`"
+                      class="rounded-full border border-[#7b6857]/12 bg-[#f4ede2] px-3 py-1 text-xs font-medium text-[#6d5c4d] dark:border-white/10 dark:bg-white/5 dark:text-dark-200"
+                    >
+                      {{ path }}
+                    </span>
+                  </div>
+                </div>
+
+                <div class="rounded-[28px] border border-[#7b6857]/10 bg-[#2d241d] p-5 text-[#f4e8db] shadow-[0_20px_60px_rgba(53,41,33,0.18)] dark:border-white/10 dark:bg-dark-900/70">
+                  <div class="text-xs font-semibold uppercase tracking-[0.16em] text-[#d4b896]">
+                    {{ t('integrationDocs.hero.cards.auth') }}
+                  </div>
+                  <div class="mt-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 font-mono text-sm text-white">
+                    Authorization: Bearer {{ apiKeyPlaceholder }}
+                  </div>
+                  <div class="mt-4 text-xs uppercase tracking-[0.16em] text-[#d4b896]">
+                    {{ t('integrationDocs.hero.cards.compatibility') }}
+                  </div>
+                  <div class="mt-3 flex flex-wrap gap-2">
+                    <span
+                      v-for="item in compatibilityChips"
+                      :key="item"
+                      class="rounded-full border border-white/10 bg-white/8 px-3 py-1 text-xs font-medium text-[#f4e8db]"
+                    >
+                      {{ item }}
+                    </span>
+                  </div>
+                </div>
               </div>
             </div>
-            <div class="rounded-3xl border border-black/5 bg-white/75 p-5 shadow-sm backdrop-blur dark:border-white/10 dark:bg-dark-900/40">
-              <div class="text-sm font-medium text-gray-500 dark:text-dark-300">
-                {{ t('integrationDocs.hero.cards.auth') }}
+
+            <div class="rounded-[32px] border border-[#7b6857]/10 bg-white/82 p-5 shadow-[0_22px_60px_rgba(91,73,55,0.12)] backdrop-blur dark:border-white/10 dark:bg-dark-900/45">
+              <div class="flex items-center justify-between">
+                <div>
+                  <div class="text-xs font-semibold uppercase tracking-[0.16em] text-[#7b6857] dark:text-primary-200">
+                    {{ localizeText(text('协议矩阵', 'Protocol Matrix')) }}
+                  </div>
+                  <div class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">
+                    {{ localizeText(text('按协议直接落地', 'Ship by protocol')) }}
+                  </div>
+                </div>
+                <div class="rounded-full border border-[#7b6857]/12 bg-[#f4ede2] px-3 py-1 text-xs font-medium text-[#6d5c4d] dark:border-white/10 dark:bg-white/5 dark:text-dark-200">
+                  {{ localizeText(text('4 组示例', '4 example sets')) }}
+                </div>
               </div>
-              <div class="mt-3 font-mono text-sm text-gray-900 dark:text-white">
-                Authorization: Bearer {{ apiKeyPlaceholder }}
+
+              <div class="mt-5 space-y-3">
+                <a
+                  v-for="card in heroProtocolCards"
+                  :key="card.id"
+                  :href="`#${card.id}`"
+                  class="group block rounded-[24px] border border-[#7b6857]/10 bg-[#fcfaf6] p-4 transition-all duration-200 hover:-translate-y-0.5 hover:border-[#7b6857]/18 hover:bg-white dark:border-white/10 dark:bg-dark-950/35 dark:hover:bg-dark-950/50"
+                >
+                  <div class="flex items-start justify-between gap-4">
+                    <div class="min-w-0">
+                      <div class="text-sm font-semibold text-gray-900 dark:text-white">
+                        {{ card.title }}
+                      </div>
+                      <div class="mt-1 text-xs leading-relaxed text-gray-500 dark:text-dark-300">
+                        {{ card.endpoint }}
+                      </div>
+                    </div>
+                    <div class="rounded-full bg-[#efe4d6] px-2.5 py-1 text-xs font-semibold text-[#6f5a49] dark:bg-white/10 dark:text-dark-100">
+                      {{ card.paramCount }}
+                    </div>
+                  </div>
+                </a>
               </div>
-            </div>
-            <div class="rounded-3xl border border-black/5 bg-white/75 p-5 shadow-sm backdrop-blur dark:border-white/10 dark:bg-dark-900/40">
-              <div class="text-sm font-medium text-gray-500 dark:text-dark-300">
-                {{ t('integrationDocs.hero.cards.compatibility') }}
-              </div>
-              <div class="mt-3 text-sm text-gray-900 dark:text-white">
-                OpenAI Chat / Responses / Anthropic Messages / Images
+
+              <div class="mt-5 rounded-[24px] border border-dashed border-[#7b6857]/14 bg-[#f7f0e7] px-4 py-3 text-sm leading-relaxed text-[#6f5a49] dark:border-white/10 dark:bg-white/5 dark:text-dark-200">
+                {{ localizeText(text('每个协议区块都内置参数表、请求头说明和 4 种语言调用示例。', 'Each protocol block includes request parameters, header guidance, and code samples in four languages.')) }}
               </div>
             </div>
           </div>
         </div>
       </section>
 
-      <section class="mx-auto max-w-6xl px-6 py-12 lg:grid lg:grid-cols-[240px_minmax(0,1fr)] lg:gap-8">
+      <section class="mx-auto max-w-6xl px-6 py-12 lg:grid lg:grid-cols-[260px_minmax(0,1fr)] lg:gap-8">
         <aside class="mb-8 lg:sticky lg:top-28 lg:mb-0 lg:self-start">
-          <div class="rounded-3xl border border-black/5 bg-white/75 p-5 shadow-sm backdrop-blur dark:border-white/10 dark:bg-dark-900/40">
+          <div class="rounded-[30px] border border-[#7b6857]/10 bg-white/80 p-5 shadow-[0_18px_45px_rgba(91,73,55,0.08)] backdrop-blur dark:border-white/10 dark:bg-dark-900/40">
             <div class="text-sm font-semibold text-gray-900 dark:text-white">
               {{ t('integrationDocs.sidebar.title') }}
             </div>
-            <nav class="mt-4 flex flex-col gap-2">
+            <p class="mt-2 text-sm leading-relaxed text-gray-500 dark:text-dark-300">
+              {{ localizeText(text('从协议说明、参数到示例代码，按协议快速定位。', 'Jump from protocol details to parameters and code samples.')) }}
+            </p>
+            <nav class="mt-5 flex flex-col gap-2">
               <a
                 v-for="item in pageNav"
                 :key="item.id"
                 :href="`#${item.id}`"
-                class="rounded-2xl px-3 py-2 text-sm text-gray-600 transition-colors hover:bg-black/5 hover:text-gray-900 dark:text-dark-300 dark:hover:bg-white/10 dark:hover:text-white"
+                :aria-current="activeSectionId === item.id ? 'location' : undefined"
+                class="group flex items-center justify-between rounded-2xl border px-3 py-3 text-sm transition-all"
+                :class="
+                  activeSectionId === item.id
+                    ? 'border-[#7b6857]/16 bg-[#f1e5d8] text-gray-900 shadow-sm dark:border-white/10 dark:bg-white/12 dark:text-white'
+                    : 'border-transparent text-gray-600 hover:border-[#7b6857]/10 hover:bg-[#f6efe6] hover:text-gray-900 dark:text-dark-300 dark:hover:border-white/10 dark:hover:bg-white/10 dark:hover:text-white'
+                "
+                @click="setActiveSection(item.id)"
               >
-                {{ item.label }}
+                <span class="flex items-center gap-2 font-medium">
+                  <span
+                    class="h-2 w-2 rounded-full transition-colors"
+                    :class="
+                      activeSectionId === item.id
+                        ? 'bg-[#7b6857] dark:bg-primary-200'
+                        : 'bg-[#d7c3ae] group-hover:bg-[#7b6857] dark:bg-white/15 dark:group-hover:bg-dark-100'
+                    "
+                  ></span>
+                  {{ item.label }}
+                </span>
+                <span
+                  class="text-xs transition-colors"
+                  :class="
+                    activeSectionId === item.id
+                      ? 'text-[#7b6857] dark:text-dark-100'
+                      : 'text-gray-400 group-hover:text-[#7b6857] dark:text-dark-400 dark:group-hover:text-dark-100'
+                  "
+                >
+                  {{ item.meta }}
+                </span>
               </a>
             </nav>
           </div>
@@ -73,82 +178,16 @@
 
         <div class="space-y-8">
           <section
-            id="overview"
-            class="rounded-[32px] border border-black/5 bg-white/75 p-6 shadow-sm backdrop-blur dark:border-white/10 dark:bg-dark-900/40 sm:p-8"
-          >
-            <div class="max-w-3xl">
-              <h2 class="text-2xl font-semibold tracking-tight text-gray-900 dark:text-white">
-                {{ t('integrationDocs.overview.title') }}
-              </h2>
-              <p class="mt-3 text-base leading-relaxed text-gray-600 dark:text-dark-300">
-                {{ t('integrationDocs.overview.description') }}
-              </p>
-            </div>
-
-            <div class="mt-6 rounded-3xl border border-primary-500/15 bg-primary-500/5 p-5 text-sm leading-relaxed text-gray-700 dark:border-primary-400/20 dark:bg-primary-500/10 dark:text-dark-200">
-              {{ t('integrationDocs.overview.callout') }}
-            </div>
-
-            <div class="mt-8 grid gap-4 md:grid-cols-3">
-              <div
-                v-for="step in quickstartSteps"
-                :key="step.title"
-                class="rounded-3xl border border-black/5 bg-neutral-50/80 p-5 dark:border-white/10 dark:bg-dark-950/30"
-              >
-                <div class="text-sm font-semibold text-[#7b6857] dark:text-primary-300">
-                  {{ step.step }}
-                </div>
-                <div class="mt-2 text-base font-semibold text-gray-900 dark:text-white">
-                  {{ step.title }}
-                </div>
-                <p class="mt-2 text-sm leading-relaxed text-gray-600 dark:text-dark-300">
-                  {{ step.description }}
-                </p>
-              </div>
-            </div>
-
-            <div class="mt-8 grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-              <div class="rounded-3xl border border-black/5 bg-neutral-50/80 p-5 dark:border-white/10 dark:bg-dark-950/30">
-                <div class="text-base font-semibold text-gray-900 dark:text-white">
-                  {{ t('integrationDocs.overview.pathsTitle') }}
-                </div>
-                <p class="mt-2 text-sm leading-relaxed text-gray-600 dark:text-dark-300">
-                  {{ t('integrationDocs.overview.pathsDescription') }}
-                </p>
-                <div class="mt-4 space-y-3">
-                  <div
-                    v-for="path in standardPaths"
-                    :key="path"
-                    class="rounded-2xl bg-slate-900 px-4 py-3 font-mono text-sm text-slate-100"
-                  >
-                    {{ path }}
-                  </div>
-                </div>
-              </div>
-
-              <div class="rounded-3xl border border-black/5 bg-neutral-50/80 p-5 dark:border-white/10 dark:bg-dark-950/30">
-                <div class="text-base font-semibold text-gray-900 dark:text-white">
-                  {{ t('integrationDocs.overview.notesTitle') }}
-                </div>
-                <ul class="mt-4 space-y-3 text-sm leading-relaxed text-gray-600 dark:text-dark-300">
-                  <li v-for="tip in overviewTips" :key="tip" class="flex gap-3">
-                    <span class="mt-1 h-2 w-2 rounded-full bg-[#7b6857] dark:bg-primary-300"></span>
-                    <span>{{ tip }}</span>
-                  </li>
-                </ul>
-              </div>
-            </div>
-          </section>
-
-          <section
             v-for="section in protocols"
             :id="section.id"
             :key="section.id"
-            class="rounded-[32px] border border-black/5 bg-white/75 p-6 shadow-sm backdrop-blur dark:border-white/10 dark:bg-dark-900/40 sm:p-8"
+            class="relative overflow-hidden rounded-[32px] border border-[#7b6857]/10 bg-white/80 p-6 shadow-[0_22px_60px_rgba(91,73,55,0.08)] backdrop-blur dark:border-white/10 dark:bg-dark-900/40 sm:p-8 scroll-mt-32"
           >
+            <div class="pointer-events-none absolute right-0 top-0 h-40 w-40 rounded-full bg-[#e7d8c4]/55 blur-3xl dark:bg-primary-500/10"></div>
+            <div class="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-[#b89a7a]/70 to-transparent dark:via-white/20"></div>
             <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
               <div class="max-w-3xl">
-                <span class="inline-flex items-center rounded-full border border-[#7b6857]/15 bg-[#7b6857]/8 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-[#7b6857] dark:border-primary-400/20 dark:bg-primary-500/10 dark:text-primary-200">
+                <span class="inline-flex items-center rounded-full border border-[#7b6857]/15 bg-[#f5ece0] px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-[#7b6857] dark:border-primary-400/20 dark:bg-primary-500/10 dark:text-primary-200">
                   {{ section.badge }}
                 </span>
                 <h2 class="mt-4 text-2xl font-semibold tracking-tight text-gray-900 dark:text-white">
@@ -157,9 +196,18 @@
                 <p class="mt-3 text-base leading-relaxed text-gray-600 dark:text-dark-300">
                   {{ section.description }}
                 </p>
+                <div class="mt-5 flex flex-wrap gap-2">
+                  <span
+                    v-for="chip in sectionSummaryChips(section)"
+                    :key="`${section.id}-${chip}`"
+                    class="rounded-full border border-[#7b6857]/10 bg-[#f7efe4] px-3 py-1 text-xs font-medium text-[#6d5c4d] dark:border-white/10 dark:bg-white/5 dark:text-dark-200"
+                  >
+                    {{ chip }}
+                  </span>
+                </div>
               </div>
 
-              <div class="rounded-3xl border border-black/5 bg-neutral-50/80 p-4 text-sm dark:border-white/10 dark:bg-dark-950/30 lg:min-w-[260px]">
+              <div class="rounded-[28px] border border-[#7b6857]/10 bg-[#fbf8f2] p-4 text-sm shadow-sm dark:border-white/10 dark:bg-dark-950/30 lg:min-w-[280px]">
                 <div class="text-xs font-medium uppercase tracking-[0.16em] text-gray-500 dark:text-dark-300">
                   {{ t('integrationDocs.fields.endpoint') }}
                 </div>
@@ -167,7 +215,7 @@
                   <div
                     v-for="endpoint in section.endpoints"
                     :key="`${section.id}-${endpoint}`"
-                    class="rounded-2xl bg-slate-900 px-3 py-2 font-mono text-sm text-slate-100"
+                    class="rounded-2xl border border-[#7b6857]/10 bg-[#231d17] px-3 py-2 font-mono text-sm text-[#f8efe3]"
                   >
                     {{ endpoint }}
                   </div>
@@ -185,7 +233,7 @@
               <div
                 v-for="header in section.headers"
                 :key="`${section.id}-${header.label}`"
-                class="rounded-3xl border border-black/5 bg-neutral-50/80 p-4 dark:border-white/10 dark:bg-dark-950/30"
+                class="rounded-[24px] border border-[#7b6857]/10 bg-[#fcfaf6] p-4 dark:border-white/10 dark:bg-dark-950/30"
               >
                 <div class="text-xs font-medium uppercase tracking-[0.16em] text-gray-500 dark:text-dark-300">
                   {{ header.label }}
@@ -197,7 +245,11 @@
             </div>
 
             <ul class="mt-6 space-y-3 text-sm leading-relaxed text-gray-600 dark:text-dark-300">
-              <li v-for="item in section.bullets" :key="item" class="flex gap-3">
+              <li
+                v-for="item in section.bullets"
+                :key="item"
+                class="flex gap-3 rounded-[24px] border border-[#7b6857]/8 bg-[#fbf8f2] px-4 py-3 dark:border-white/10 dark:bg-dark-950/25"
+              >
                 <span class="mt-1 h-2 w-2 rounded-full bg-[#7b6857] dark:bg-primary-300"></span>
                 <span>{{ item }}</span>
               </li>
@@ -213,12 +265,25 @@
                     {{ section.parameterNotice }}
                   </p>
                 </div>
+                <div class="flex flex-wrap gap-2">
+                  <span
+                    class="rounded-full border border-[#7b6857]/10 bg-[#f7efe4] px-3 py-1 text-xs font-medium text-[#6d5c4d] dark:border-white/10 dark:bg-white/5 dark:text-dark-200"
+                  >
+                    {{ localizeText(text(`${section.params.length} 个主参数`, `${section.params.length} primary fields`)) }}
+                  </span>
+                  <span
+                    v-if="section.extraParameterGroups.length"
+                    class="rounded-full border border-[#7b6857]/10 bg-[#f7efe4] px-3 py-1 text-xs font-medium text-[#6d5c4d] dark:border-white/10 dark:bg-white/5 dark:text-dark-200"
+                  >
+                    {{ localizeText(text(`${section.extraParameterGroups.length} 组扩展参数`, `${section.extraParameterGroups.length} extension groups`)) }}
+                  </span>
+                </div>
               </div>
 
-              <div class="mt-4 overflow-hidden rounded-3xl border border-black/5 dark:border-white/10">
+              <div class="mt-4 overflow-hidden rounded-[28px] border border-[#7b6857]/10 bg-white/70 shadow-sm dark:border-white/10 dark:bg-dark-900/30">
                 <div class="overflow-x-auto">
                   <table class="min-w-full divide-y divide-black/5 text-sm dark:divide-white/10">
-                    <thead class="bg-neutral-50/80 dark:bg-dark-950/30">
+                    <thead class="bg-[#f7efe4] dark:bg-dark-950/30">
                       <tr>
                         <th class="px-4 py-3 text-left font-semibold text-gray-900 dark:text-white">
                           {{ t('integrationDocs.fields.parameterName') }}
@@ -235,9 +300,13 @@
                       </tr>
                     </thead>
                     <tbody class="divide-y divide-black/5 bg-white/70 dark:divide-white/10 dark:bg-dark-900/30">
-                      <tr v-for="param in section.params" :key="`${section.id}-${param.name}`">
+                      <tr
+                        v-for="param in section.params"
+                        :key="`${section.id}-${param.name}`"
+                        class="transition-colors hover:bg-[#fcf7f0] dark:hover:bg-white/5"
+                      >
                         <td class="px-4 py-4 align-top">
-                          <code class="rounded bg-black/5 px-2 py-1 text-[13px] text-gray-900 dark:bg-white/10 dark:text-white">
+                          <code class="rounded-xl bg-[#f2e6d9] px-2 py-1 text-[13px] text-gray-900 dark:bg-white/10 dark:text-white">
                             {{ param.name }}
                           </code>
                         </td>
@@ -276,7 +345,7 @@
               <div
                 v-for="group in section.extraParameterGroups"
                 :key="`${section.id}-${localizeText(group.title)}`"
-                class="mt-6"
+                class="mt-6 rounded-[28px] border border-[#7b6857]/10 bg-[#fcfaf6] p-5 dark:border-white/10 dark:bg-dark-950/20"
               >
                 <div class="flex flex-col gap-2">
                   <h4 class="text-base font-semibold text-gray-900 dark:text-white">
@@ -287,10 +356,10 @@
                   </p>
                 </div>
 
-                <div class="mt-4 overflow-hidden rounded-3xl border border-black/5 dark:border-white/10">
+                <div class="mt-4 overflow-hidden rounded-[24px] border border-[#7b6857]/10 bg-white/70 dark:border-white/10 dark:bg-dark-900/30">
                   <div class="overflow-x-auto">
                     <table class="min-w-full divide-y divide-black/5 text-sm dark:divide-white/10">
-                      <thead class="bg-neutral-50/80 dark:bg-dark-950/30">
+                      <thead class="bg-[#f7efe4] dark:bg-dark-950/30">
                         <tr>
                           <th class="px-4 py-3 text-left font-semibold text-gray-900 dark:text-white">
                             {{ t('integrationDocs.fields.parameterName') }}
@@ -310,9 +379,10 @@
                         <tr
                           v-for="param in group.params"
                           :key="`${section.id}-${localizeText(group.title)}-${param.name}`"
+                          class="transition-colors hover:bg-[#fcf7f0] dark:hover:bg-white/5"
                         >
                           <td class="px-4 py-4 align-top">
-                            <code class="rounded bg-black/5 px-2 py-1 text-[13px] text-gray-900 dark:bg-white/10 dark:text-white">
+                            <code class="rounded-xl bg-[#f2e6d9] px-2 py-1 text-[13px] text-gray-900 dark:bg-white/10 dark:text-white">
                               {{ param.name }}
                             </code>
                           </td>
@@ -351,21 +421,26 @@
             </div>
 
             <div class="mt-8">
-              <div class="mb-3 text-sm font-semibold text-gray-900 dark:text-white">
-                {{ t('integrationDocs.fields.exampleTabsTitle') }}
+              <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div class="text-sm font-semibold text-gray-900 dark:text-white">
+                  {{ t('integrationDocs.fields.exampleTabsTitle') }}
+                </div>
+                <div class="rounded-full border border-[#7b6857]/10 bg-[#f7efe4] px-3 py-1 text-xs font-medium text-[#6d5c4d] dark:border-white/10 dark:bg-white/5 dark:text-dark-200">
+                  {{ localizeText(text(`${section.examples.length} 种语言切换`, `${section.examples.length} switchable languages`)) }}
+                </div>
               </div>
-              <div class="flex flex-wrap gap-2">
+              <div class="mt-4 inline-flex flex-wrap gap-2 rounded-[24px] border border-[#7b6857]/10 bg-[#fbf8f2] p-2 dark:border-white/10 dark:bg-dark-950/25">
                 <button
                   v-for="example in section.examples"
                   :key="`${section.id}-${example.id}`"
                   type="button"
                   :data-testid="`example-tab-${section.id}-${example.id}`"
                   :aria-pressed="activeExampleTab(section.id) === example.id"
-                  class="rounded-full px-4 py-2 text-sm font-medium transition-colors"
+                  class="rounded-full px-4 py-2 text-sm font-medium transition-all"
                   :class="
                     activeExampleTab(section.id) === example.id
-                      ? 'bg-[#7b6857] text-white shadow-sm dark:bg-white dark:text-gray-900'
-                      : 'bg-white/70 text-gray-700 hover:bg-black/5 dark:bg-dark-950/40 dark:text-dark-200 dark:hover:bg-white/10'
+                      ? 'bg-[#7b6857] text-white shadow-[0_10px_25px_rgba(123,104,87,0.25)] dark:bg-white dark:text-gray-900'
+                      : 'bg-transparent text-gray-700 hover:bg-white hover:text-gray-900 dark:text-dark-200 dark:hover:bg-white/10 dark:hover:text-white'
                   "
                   @click="setActiveExampleTab(section.id, example.id)"
                 >
@@ -373,10 +448,36 @@
                 </button>
               </div>
 
-              <div class="mt-4 rounded-3xl bg-slate-900 p-4 text-[14px] text-slate-100">
+              <div class="mt-4 overflow-hidden rounded-[28px] border border-[#231d17] bg-[#231d17] text-[14px] text-[#f7efe5] shadow-[0_25px_70px_rgba(35,29,23,0.22)]">
+                <div class="flex items-center justify-between border-b border-white/10 px-4 py-3">
+                  <div class="flex items-center gap-2">
+                    <span class="h-2.5 w-2.5 rounded-full bg-[#c7765d]"></span>
+                    <span class="h-2.5 w-2.5 rounded-full bg-[#d9b267]"></span>
+                    <span class="h-2.5 w-2.5 rounded-full bg-[#7caa73]"></span>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <div class="rounded-full border border-white/10 bg-white/5 px-3 py-1 font-mono text-xs text-[#d9c8b6]">
+                      {{ section.endpoints[0] }}
+                    </div>
+                    <button
+                      type="button"
+                      :data-testid="`example-copy-${section.id}`"
+                      class="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-[#f7efe5] transition-all hover:bg-white/10"
+                      :aria-label="copiedExampleSectionId === section.id ? t('common.copied') : t('keys.copyToClipboard')"
+                      @click="copyExampleSnippet(section)"
+                    >
+                      <Icon
+                        :name="copiedExampleSectionId === section.id ? 'check' : 'clipboard'"
+                        size="sm"
+                        :stroke-width="2"
+                      />
+                      <span>{{ copiedExampleSectionId === section.id ? t('common.copied') : t('keys.copyToClipboard') }}</span>
+                    </button>
+                  </div>
+                </div>
                 <pre
                   :data-testid="`example-code-${section.id}`"
-                  class="overflow-x-auto font-mono leading-relaxed"
+                  class="overflow-x-auto p-4 font-mono leading-relaxed"
                 ><code v-text="activeExampleSnippet(section)"></code></pre>
               </div>
             </div>
@@ -388,10 +489,12 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores'
 import PublicHeader from '@/components/layout/PublicHeader.vue'
+import Icon from '@/components/icons/Icon.vue'
+import { useClipboard } from '@/composables/useClipboard'
 import { resolveOpenAIUseKeyModelId } from '@/utils/openaiUseKeyModel'
 
 type LocalizedText = {
@@ -453,6 +556,7 @@ const defaultExampleTab: ExampleTabId = 'curl'
 const siteName = computed(() => appStore.siteName || 'FluxCode')
 const siteLogo = computed(() => appStore.siteLogo || '')
 const docsLocale = computed<'zh' | 'en'>(() => (locale.value || '').startsWith('zh') ? 'zh' : 'en')
+const { copyToClipboard } = useClipboard()
 
 const baseUrl = computed(() => {
   const raw = (appStore.apiBaseUrl || '').trim()
@@ -465,6 +569,10 @@ const openAIModel = computed(() => resolveOpenAIUseKeyModelId(appStore.openaiUse
 const anthropicModel = 'claude-sonnet-4-5'
 const imageModel = 'gpt-image-1'
 const activeExampleTabs = ref<Record<string, ExampleTabId>>({})
+const copiedExampleSectionId = ref<string | null>(null)
+const activeSectionId = ref('')
+let copiedResetTimer: ReturnType<typeof setTimeout> | null = null
+let sectionObserver: IntersectionObserver | null = null
 
 const standardPaths = computed(() => [
   '/v1/chat/completions',
@@ -472,31 +580,6 @@ const standardPaths = computed(() => [
   '/v1/messages',
   '/v1/images/generations',
   '/v1/images/edits'
-])
-
-const quickstartSteps = computed(() => [
-  {
-    step: '01',
-    title: t('integrationDocs.overview.steps.step1.title'),
-    description: t('integrationDocs.overview.steps.step1.description')
-  },
-  {
-    step: '02',
-    title: t('integrationDocs.overview.steps.step2.title'),
-    description: t('integrationDocs.overview.steps.step2.description')
-  },
-  {
-    step: '03',
-    title: t('integrationDocs.overview.steps.step3.title'),
-    description: t('integrationDocs.overview.steps.step3.description')
-  }
-])
-
-const overviewTips = computed(() => [
-  t('integrationDocs.overview.notes.item1'),
-  t('integrationDocs.overview.notes.item2'),
-  t('integrationDocs.overview.notes.item3'),
-  t('integrationDocs.overview.notes.item4')
 ])
 
 function text(zh: string, en: string): LocalizedText {
@@ -592,6 +675,10 @@ function activeExampleTab(sectionId: string): ExampleTabId {
   return activeExampleTabs.value[sectionId] || defaultExampleTab
 }
 
+function setActiveSection(sectionId: string): void {
+  activeSectionId.value = sectionId
+}
+
 function setActiveExampleTab(sectionId: string, exampleId: ExampleTabId): void {
   activeExampleTabs.value = {
     ...activeExampleTabs.value,
@@ -603,6 +690,23 @@ function activeExampleSnippet(section: ProtocolSection): string {
   const targetId = activeExampleTab(section.id)
   const selected = section.examples.find((item) => item.id === targetId)
   return selected?.code || section.examples[0]?.code || ''
+}
+
+async function copyExampleSnippet(section: ProtocolSection): Promise<void> {
+  const code = activeExampleSnippet(section)
+  const success = await copyToClipboard(code, t('common.copiedToClipboard'))
+  if (!success) {
+    return
+  }
+
+  copiedExampleSectionId.value = section.id
+  if (copiedResetTimer) {
+    clearTimeout(copiedResetTimer)
+  }
+  copiedResetTimer = setTimeout(() => {
+    copiedExampleSectionId.value = null
+    copiedResetTimer = null
+  }, 2000)
 }
 
 const protocols = computed<ProtocolSection[]>(() => {
@@ -1614,12 +1718,143 @@ const protocols = computed<ProtocolSection[]>(() => {
   ]
 })
 
-const pageNav = computed(() => [
-  { id: 'overview', label: t('integrationDocs.nav.overview') },
-  ...protocols.value.map((section) => ({ id: section.id, label: section.title }))
+const compatibilityChips = computed(() => [
+  'OpenAI Chat',
+  'OpenAI Responses',
+  'Anthropic Messages',
+  'OpenAI Images'
 ])
 
-onMounted(() => {
+const totalDocumentedParams = computed(() =>
+  protocols.value.reduce((sum, section) => {
+    const extraCount = section.extraParameterGroups.reduce((groupSum, group) => groupSum + group.params.length, 0)
+    return sum + section.params.length + extraCount
+  }, 0)
+)
+
+const heroMetrics = computed(() => [
+  {
+    value: String(protocols.value.length),
+    label: localizeText(text('兼容协议', 'Protocols'))
+  },
+  {
+    value: String(standardPaths.value.length),
+    label: localizeText(text('标准路径', 'Standard Paths'))
+  },
+  {
+    value: String(totalDocumentedParams.value),
+    label: localizeText(text('文档参数', 'Documented Fields'))
+  },
+  {
+    value: '4',
+    label: localizeText(text('示例语言', 'Example Languages'))
+  }
+])
+
+const heroProtocolCards = computed(() =>
+  protocols.value.map((section) => ({
+    id: section.id,
+    title: section.title,
+    endpoint: section.endpoints[0],
+    paramCount: localizeText(text(`${section.params.length} 参数`, `${section.params.length} fields`))
+  }))
+)
+
+function sectionSummaryChips(section: ProtocolSection): string[] {
+  const extraParams = section.extraParameterGroups.reduce((sum, group) => sum + group.params.length, 0)
+  const chips = [
+    localizeText(text(`${section.params.length} 个参数`, `${section.params.length} params`)),
+    localizeText(text(`${section.examples.length} 种示例`, `${section.examples.length} examples`)),
+    localizeText(text(`${section.endpoints.length} 条路径`, `${section.endpoints.length} endpoints`))
+  ]
+
+  if (extraParams > 0) {
+    chips.push(localizeText(text(`${extraParams} 个扩展字段`, `${extraParams} extension fields`)))
+  }
+
+  return chips
+}
+
+const pageNav = computed(() =>
+  protocols.value.map((section) => ({
+    id: section.id,
+    label: section.title,
+    meta: localizeText(text(`${section.params.length} 参数`, `${section.params.length} params`))
+  }))
+)
+
+const navSectionIds = computed(() => pageNav.value.map((item) => item.id))
+
+function cleanupSectionObserver(): void {
+  if (sectionObserver) {
+    sectionObserver.disconnect()
+    sectionObserver = null
+  }
+}
+
+function initSectionObserver(): void {
+  cleanupSectionObserver()
+
+  if (typeof window === 'undefined' || typeof IntersectionObserver === 'undefined') {
+    return
+  }
+
+  const sectionElements = navSectionIds.value
+    .map((id) => document.getElementById(id))
+    .filter((element): element is HTMLElement => Boolean(element))
+
+  if (!sectionElements.length) {
+    return
+  }
+
+  activeSectionId.value = navSectionIds.value[0] || ''
+
+  const visibleSections = new Set<string>()
+
+  sectionObserver = new IntersectionObserver(
+    (entries) => {
+      for (const entry of entries) {
+        const target = entry.target as HTMLElement
+        if (entry.isIntersecting) {
+          visibleSections.add(target.id)
+        } else {
+          visibleSections.delete(target.id)
+        }
+      }
+
+      const orderedVisibleSections = navSectionIds.value.filter((id) => visibleSections.has(id))
+      const currentSectionId = orderedVisibleSections[orderedVisibleSections.length - 1]
+
+      if (currentSectionId) {
+        activeSectionId.value = currentSectionId
+      }
+    },
+    {
+      rootMargin: '-18% 0px -62% 0px',
+      threshold: [0, 0.1, 0.25, 0.4]
+    }
+  )
+
+  for (const element of sectionElements) {
+    sectionObserver.observe(element)
+  }
+
+  const hashSectionId = decodeURIComponent(window.location.hash.replace(/^#/, '').trim())
+  if (hashSectionId && navSectionIds.value.includes(hashSectionId)) {
+    activeSectionId.value = hashSectionId
+  }
+}
+
+onMounted(async () => {
   appStore.fetchPublicSettings()
+  await nextTick()
+  initSectionObserver()
+})
+
+onBeforeUnmount(() => {
+  if (copiedResetTimer) {
+    clearTimeout(copiedResetTimer)
+  }
+  cleanupSectionObserver()
 })
 </script>

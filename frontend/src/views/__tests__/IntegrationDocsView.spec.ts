@@ -3,8 +3,9 @@ import { flushPromises, mount } from '@vue/test-utils'
 
 import IntegrationDocsView from '../IntegrationDocsView.vue'
 
-const { fetchPublicSettings } = vi.hoisted(() => ({
-  fetchPublicSettings: vi.fn()
+const { fetchPublicSettings, copyToClipboard } = vi.hoisted(() => ({
+  fetchPublicSettings: vi.fn(),
+  copyToClipboard: vi.fn()
 }))
 
 vi.mock('@/stores', () => ({
@@ -19,6 +20,12 @@ vi.mock('@/stores', () => ({
 
 vi.mock('@/utils/openaiUseKeyModel', () => ({
   resolveOpenAIUseKeyModelId: () => 'gpt-4.1'
+}))
+
+vi.mock('@/composables/useClipboard', () => ({
+  useClipboard: () => ({
+    copyToClipboard
+  })
 }))
 
 vi.mock('vue-i18n', async () => {
@@ -43,6 +50,9 @@ vi.mock('vue-i18n', async () => {
           'integrationDocs.fields.optionalLabel': '可选',
           'integrationDocs.fields.supportedValues': '支持值',
           'integrationDocs.fields.exampleTabsTitle': '调用示例',
+          'common.copied': '已复制',
+          'common.copiedToClipboard': '已复制到剪贴板',
+          'keys.copyToClipboard': '复制到剪贴板',
           'integrationDocs.hero.badge': '开发者接入',
           'integrationDocs.hero.title': '接入文档',
           'integrationDocs.hero.subtitle': '接入说明',
@@ -101,6 +111,8 @@ vi.mock('vue-i18n', async () => {
 describe('IntegrationDocsView', () => {
   beforeEach(() => {
     fetchPublicSettings.mockReset()
+    copyToClipboard.mockReset()
+    copyToClipboard.mockResolvedValue(true)
   })
 
   it('renders supported parameter names for each protocol section', async () => {
@@ -143,5 +155,44 @@ describe('IntegrationDocsView', () => {
     expect(wrapper.get('[data-testid="example-code-openai-chat"]').text()).toContain('import requests')
     expect(wrapper.get('[data-testid="example-code-openai-chat"]').text()).toContain('https://gateway.example.com/v1/chat/completions')
     expect(wrapper.get('[data-testid="example-code-openai-responses"]').text()).toContain('curl "https://gateway.example.com/v1/responses"')
+  })
+
+  it('copies the active example snippet', async () => {
+    const wrapper = mount(IntegrationDocsView, {
+      global: {
+        stubs: {
+          PublicHeader: true
+        }
+      }
+    })
+
+    await flushPromises()
+    await wrapper.get('[data-testid="example-tab-openai-chat-python"]').trigger('click')
+    await wrapper.get('[data-testid="example-copy-openai-chat"]').trigger('click')
+
+    expect(copyToClipboard).toHaveBeenCalledTimes(1)
+    expect(copyToClipboard).toHaveBeenCalledWith(
+      expect.stringContaining('import requests'),
+      '已复制到剪贴板'
+    )
+    expect(wrapper.get('[data-testid="example-copy-openai-chat"]').text()).toContain('已复制')
+  })
+
+  it('highlights the current elevator item when a nav item is selected', async () => {
+    const wrapper = mount(IntegrationDocsView, {
+      global: {
+        stubs: {
+          PublicHeader: true
+        }
+      }
+    })
+
+    await flushPromises()
+
+    const targetLink = wrapper.get('aside a[href="#openai-chat"]')
+    await targetLink.trigger('click')
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.get('aside a[href="#openai-chat"]').attributes('aria-current')).toBe('location')
   })
 })
