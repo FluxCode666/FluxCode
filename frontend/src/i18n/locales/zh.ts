@@ -13,6 +13,7 @@ export default {
     nav: {
       features: '功能特性',
       pricing: '购买入口',
+      integrationDocs: '接入文档',
       docs: '使用文档',
       channelStatus: '渠道状态',
       menu: '菜单'
@@ -87,6 +88,117 @@ export default {
     },
     footer: {
       allRightsReserved: '保留所有权利。'
+    }
+  },
+
+  integrationDocs: {
+    metaTitle: '接入文档',
+    nav: {
+      overview: '接入总览'
+    },
+    hero: {
+      badge: '开发者接入',
+      title: '接入文档',
+      subtitle:
+        '面向 SDK、服务端和自动化脚本的标准接入说明，覆盖 OpenAI Chat、OpenAI Responses、Anthropic Messages 与 OpenAI 生图接口。',
+      cards: {
+        baseUrl: 'Base URL',
+        auth: '默认鉴权',
+        compatibility: '兼容协议'
+      }
+    },
+    sidebar: {
+      title: '页面目录'
+    },
+    overview: {
+      title: '接入总览',
+      description:
+        '如果你已经接过 OpenAI 或 Anthropic 官方协议，大多数情况下只需要替换 Base URL 和 API Key，就可以把现有客户端直接切到当前站点。',
+      callout:
+        '推荐优先使用标准 `/v1/*` 路径。这样无论你接的是官方 SDK、服务端中间层还是自建脚本，都更容易保持兼容和后续升级。',
+      pathsTitle: '标准路径',
+      pathsDescription: '以下路径可直接用于官网域名下的标准协议接入。',
+      notesTitle: '接入注意事项',
+      steps: {
+        step1: {
+          title: '获取 API Key',
+          description: '先在控制台创建可用 Key，并确认该 Key 绑定的分组已开通对应模型或协议能力。'
+        },
+        step2: {
+          title: '替换 Base URL',
+          description: '把原来的 OpenAI 或 Anthropic 官方域名替换成当前站点域名，路径保持标准协议格式。'
+        },
+        step3: {
+          title: '发送最小请求',
+          description: '先用下方最小示例验证 200 响应，再逐步补流式、工具调用、图片参数等高级字段。'
+        }
+      },
+      notes: {
+        item1: 'OpenAI 协议默认使用 `Authorization: Bearer <API_KEY>`；Anthropic 协议建议使用 `x-api-key` 与 `anthropic-version`。',
+        item2: '模型名请填写你控制台里当前可用的模型；不同分组、套餐或渠道可用模型可能不同。',
+        item3: '需要流式输出时，直接在请求体追加 `stream: true`；其余参数沿用你当前 SDK 的写法即可。',
+        item4: 'OpenAI 生图如果返回 `response_format=url`，图片地址的具体域名会跟随站点当前的图片存储配置。'
+      }
+    },
+    fields: {
+      method: '请求方法',
+      endpoint: '请求路径',
+      authHeader: '鉴权 Header',
+      contentType: '内容类型',
+      versionHeader: '协议版本 Header',
+      exampleCurl: 'cURL 示例',
+      exampleJavascript: 'JavaScript 示例',
+      parametersTitle: '请求参数',
+      parameterName: '参数名',
+      parameterType: '类型',
+      parameterRequired: '是否必填',
+      parameterDescription: '说明',
+      requiredLabel: '必填',
+      optionalLabel: '可选',
+      supportedValues: '支持值',
+      exampleTabsTitle: '调用示例'
+    },
+    sections: {
+      openaiChat: {
+        badge: 'OpenAI Compatible',
+        title: 'OpenAI Chat 协议',
+        description: '适合已经接入 `chat.completions` 的客户端或业务服务，直接沿用 `messages` 结构即可。',
+        bullets: {
+          item1: '请求路径为 `POST /v1/chat/completions`，消息体采用标准 `messages` 数组。',
+          item2: '如需兼容旧版 OpenAI SDK，这是最平滑的替换方案；多数情况下只改域名和 Key 即可。',
+          item3: '支持继续追加 `temperature`、`stream`、`tools`、`tool_choice` 等常用字段。'
+        }
+      },
+      openaiResponses: {
+        badge: 'OpenAI Native',
+        title: 'OpenAI Responses 协议',
+        description: '适合新项目、Agent、Codex 类客户端或需要统一文本/工具调用能力的场景。',
+        bullets: {
+          item1: '请求路径为 `POST /v1/responses`，核心字段通常是 `model`、`instructions` 与 `input`。',
+          item2: '如果你的客户端使用新版 OpenAI SDK 或 Responses schema，优先接这一条链路。',
+          item3: '后续如需接工具调用、生图 bridge 或流式输出，也建议在 Responses 协议上继续扩展。'
+        }
+      },
+      anthropicMessages: {
+        badge: 'Anthropic Compatible',
+        title: 'Anthropic Messages 协议',
+        description: '适合 Claude SDK、Claude Code 风格客户端，或内部系统已经基于 `messages` 协议对接 Anthropic 的场景。',
+        bullets: {
+          item1: '请求路径为 `POST /v1/messages`，建议显式传 `anthropic-version: 2023-06-01`。',
+          item2: '鉴权可直接使用 `x-api-key`；如果你的网关层统一走 Bearer，本服务同样兼容。',
+          item3: '继续保留 `max_tokens`、`system`、`stream`、`tools` 等 Anthropic 协议字段即可。'
+        }
+      },
+      openaiImages: {
+        badge: 'OpenAI Images',
+        title: 'OpenAI 生图接口',
+        description: '用于文生图接入，兼容 OpenAI Images API 的标准调用方式，适合站内生图、海报生成和营销素材场景。',
+        bullets: {
+          item1: '请求路径为 `POST /v1/images/generations`，常用字段包括 `model`、`prompt`、`size`、`response_format`。',
+          item2: '若你的业务需要图生图或蒙版编辑，可在同一套鉴权方式下继续接 `POST /v1/images/edits`。',
+          item3: '当请求 `response_format=url` 时，返回的图片 URL 会跟随当前站点的图片存储与 CDN 配置。'
+        }
+      }
     }
   },
 
