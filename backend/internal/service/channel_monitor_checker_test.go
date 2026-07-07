@@ -20,3 +20,15 @@ func TestExtractOpenAIResponsesTextFromSSEDelta(t *testing.T) {
 
 	require.Equal(t, "14", extractOpenAIResponsesText(body))
 }
+
+func TestExtractOpenAIResponsesTextFromJSONCompletedEnvelope(t *testing.T) {
+	body := []byte(`{"type":"response.completed","response":{"id":"resp_1","status":"completed","output":[{"type":"message","content":[{"type":"output_text","text":"10"}]}]}}`)
+
+	require.Equal(t, "10", extractOpenAIResponsesText(body))
+}
+
+func TestExtractOpenAIResponsesTextFromJSONContentTypeText(t *testing.T) {
+	body := []byte(`{"id":"resp_1","status":"completed","output":[{"type":"message","content":[{"type":"text","text":"10"}]}]}`)
+
+	require.Equal(t, "10", extractOpenAIResponsesText(body))
+}

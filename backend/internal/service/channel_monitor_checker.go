@@ -246,6 +246,14 @@ func extractOpenAIResponsesText(respBytes []byte) string {
 }
 
 func extractOpenAIResponsesTextFromJSON(respBytes []byte) string {
+	rootType := gjson.GetBytes(respBytes, "type").String()
+	if rootType == "response.completed" || rootType == "response.done" {
+		if response := gjson.GetBytes(respBytes, "response"); response.Exists() && response.Type == gjson.JSON && response.Raw != "" {
+			if text := extractOpenAIResponsesTextFromJSON([]byte(response.Raw)); strings.TrimSpace(text) != "" {
+				return text
+			}
+		}
+	}
 	if text := gjson.GetBytes(respBytes, "output_text").String(); strings.TrimSpace(text) != "" {
 		return text
 	}
