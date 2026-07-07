@@ -136,6 +136,23 @@ func TestGetModelPricing_Gpt56UsesGpt54StaticFallbackWhenRemoteMissing(t *testin
 	}
 }
 
+func TestGetModelPricing_Gpt56UnknownModelDoesNotUseGpt54StaticFallback(t *testing.T) {
+	defaultPricing := &LiteLLMModelPricing{
+		InputCostPerToken:  1.25e-6,
+		OutputCostPerToken: 9.0e-6,
+	}
+	svc := &PricingService{
+		pricingData: map[string]*LiteLLMModelPricing{
+			"gpt-5.1-codex": defaultPricing,
+		},
+	}
+
+	got := svc.GetModelPricing("gpt-5.6-foo")
+	require.Same(t, defaultPricing, got)
+	require.NotEqual(t, openAIGPT54FallbackPricing, got)
+	require.NotEqual(t, openAIGPT54FallbackPricing.InputCostPerToken, got.InputCostPerToken)
+}
+
 func TestGetModelPricing_Gpt54MiniUsesDedicatedStaticFallbackWhenRemoteMissing(t *testing.T) {
 	svc := &PricingService{
 		pricingData: map[string]*LiteLLMModelPricing{

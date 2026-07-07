@@ -115,3 +115,64 @@ feat(openai): add gpt-5.6 pricing fallback
 ## 备注
 
 - 当前工作区存在未跟踪文件 `frontend/pnpm-workspace.yaml`，已按要求保持不变且不会加入提交
+
+---
+
+## 2026-07-07 reviewer Important finding 修复补充
+
+### 问题确认
+
+- reviewer 指出 `backend/internal/service/pricing_service.go` 的 `PricingService.matchOpenAIModel()` 使用 `strings.HasPrefix(model, "gpt-5.6")` 作为静态回退条件
+- 该实现会把 `gpt-5.6-foo`、`gpt-5.60` 以及未来任意 `gpt-5.6-*` 未知型号错误映射到 `openAIGPT54FallbackPricing`
+- 这与 Task 2 只允许 `gpt-5.6-sol|terra|luna` 在动态定价缺失时回退 GPT-5.4 的要求不一致
+
+### 修复内容
+
+修改文件：
+
+- `backend/internal/service/pricing_service.go`
+- `backend/internal/service/pricing_service_test.go`
+
+实现细节：
+
+- 新增 `isOpenAIGPT56StaticFallbackModel(model string) bool`
+- 仅当模型名满足以下任一条件时才允许静态回退到 GPT-5.4：
+  - 精确等于 `gpt-5.6-sol`
+  - 精确等于 `gpt-5.6-terra`
+  - 精确等于 `gpt-5.6-luna`
+  - 以上三者再追加 `-...` 后缀的规范化变体，例如日期版或能力后缀版
+- 未知型号如 `gpt-5.6-foo` 不再命中 GPT-5.4 静态价，而是保持当前代码既有的后续回退路径
+
+### 新增/更新测试
+
+- 保留并验证正例：
+  - `TestGetModelPricing_Gpt56UsesGpt54StaticFallbackWhenRemoteMissing`
+  - `TestGPT56Support_PricingServiceStaticFallback`
+- 新增负例：
+  - `TestGetModelPricing_Gpt56UnknownModelDoesNotUseGpt54StaticFallback`
+
+负例构造方式：
+
+- 仅注入 `pricingData["gpt-5.1-codex"]`
+- 调用 `svc.GetModelPricing("gpt-5.6-foo")`
+- 断言返回的是默认模型定价对象，而不是 `openAIGPT54FallbackPricing`
+
+### 验证
+
+执行：
+
+```bash
+cd backend
+go test -tags unit ./internal/service -run 'TestGetModelPricing_Gpt56UsesGpt54StaticFallbackWhenRemoteMissing|TestGPT56Support_PricingServiceStaticFallback|TestGetModelPricing_Gpt56UnknownModelDoesNotUseGpt54StaticFallback'
+```
+
+结果：
+
+```text
+ok  	github.com/Wei-Shaw/sub2api/internal/service	0.067s
+```
+
+### 范围控制
+
+- 未修改任何前端文件
+- 未处理或加入未跟踪文件 `frontend/pnpm-workspace.yaml`
