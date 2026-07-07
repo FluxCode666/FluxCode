@@ -29,7 +29,7 @@
 - 修改 `backend/internal/service/gpt55_support_test.go`：补 GPT-5.6 归一化、计费和 `PricingService` 静态 fallback 测试。
 - 修改 `backend/internal/service/billing_service.go`：GPT-5.6 计费 fallback 指向 GPT-5.4，并纳入长上下文策略。
 - 修改 `backend/internal/service/billing_service_test.go`：验证 GPT-5.6 fallback 价格和长上下文倍数。
-- 修改 `backend/internal/service/pricing_service.go`：动态定价缺失时 `gpt-5.6*` 回退到 `openAIGPT54FallbackPricing`。
+- 修改 `backend/internal/service/pricing_service.go`：动态定价缺失时，仅 `gpt-5.6-sol|terra|luna` 及其 `-suffix` 变体回退到 `openAIGPT54FallbackPricing`。
 - 修改 `backend/internal/service/pricing_service_test.go`：验证 `PricingService` 的 GPT-5.6 静态 fallback。
 - 修改 `backend/resources/model-pricing/model_prices_and_context_window.json`：新增三个 GPT-5.6 定价对象。
 - 修改 `frontend/src/composables/useModelWhitelist.ts`：OpenAI 模型列表和预设映射暴露 GPT-5.6 三个模型。
@@ -189,7 +189,7 @@ git commit -m "feat(openai): add gpt-5.6 model normalization"
 
 **Interfaces:**
 - Consumes: Task 1 产出的 `normalizeCodexModel(model string) string`。
-- Produces: `BillingService.GetModelPricing("gpt-5.6-*")` 返回 GPT-5.4 fallback 价格；`PricingService.GetModelPricing("gpt-5.6-*")` 在动态定价缺失时返回 `openAIGPT54FallbackPricing`。
+- Produces: `BillingService.GetModelPricing("gpt-5.6-sol|terra|luna")` 返回 GPT-5.4 fallback 价格；`PricingService.GetModelPricing("gpt-5.6-sol|terra|luna")` 及其 `-suffix` 变体在动态定价缺失时返回 `openAIGPT54FallbackPricing`。
 
 - [ ] **Step 1: 编写 BillingService 失败测试**
 
