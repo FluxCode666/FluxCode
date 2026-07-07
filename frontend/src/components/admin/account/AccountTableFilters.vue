@@ -79,12 +79,12 @@
     <div class="relative" ref="filterSettingsRef">
       <button
         type="button"
-        class="btn btn-secondary px-2 md:px-3"
+        class="flex items-center gap-2 whitespace-nowrap rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm text-gray-700 transition-all duration-200 hover:border-gray-300 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/30 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-200 dark:hover:border-dark-500"
         :title="t('admin.accounts.filterSettings')"
         @click="showFilterSettings = !showFilterSettings"
       >
-        <Icon name="filter" size="sm" class="md:mr-1.5" />
-        <span class="hidden md:inline">{{ t('admin.accounts.filterSettings') }}</span>
+        <Icon name="filter" size="sm" />
+        <span>{{ t('admin.accounts.filterSettings') }}</span>
       </button>
       <div
         v-if="showFilterSettings"
