@@ -239,6 +239,13 @@ func callProvider(ctx context.Context, provider, endpoint, apiKey, model, prompt
 }
 
 func extractOpenAIResponsesText(respBytes []byte) string {
+	if text := extractOpenAIResponsesTextFromSSE(string(respBytes)); strings.TrimSpace(text) != "" {
+		return text
+	}
+	return extractOpenAIResponsesTextFromJSON(respBytes)
+}
+
+func extractOpenAIResponsesTextFromJSON(respBytes []byte) string {
 	if text := gjson.GetBytes(respBytes, "output_text").String(); strings.TrimSpace(text) != "" {
 		return text
 	}
@@ -269,6 +276,46 @@ func extractOpenAIResponsesText(respBytes []byte) string {
 		return strings.Join(texts, "")
 	}
 	return gjson.GetBytes(respBytes, providerOpenAIResponsesAdapter.textPath).String()
+}
+
+func extractOpenAIResponsesTextFromSSE(body string) string {
+	var texts []string
+	var doneText string
+	var finalResponse []byte
+	for _, line := range strings.Split(body, "\n") {
+		data, ok := extractOpenAISSEDataLine(line)
+		if !ok {
+			continue
+		}
+		data = strings.TrimSpace(data)
+		if data == "" || data == "[DONE]" {
+			continue
+		}
+		switch gjson.Get(data, "type").String() {
+		case "response.output_text.delta":
+			if delta := gjson.Get(data, "delta").String(); strings.TrimSpace(delta) != "" {
+				texts = append(texts, delta)
+			}
+		case "response.output_text.done":
+			if text := gjson.Get(data, "text").String(); strings.TrimSpace(text) != "" {
+				doneText = text
+			}
+		case "response.completed", "response.done":
+			if response := gjson.Get(data, "response"); response.Exists() && response.Type == gjson.JSON && response.Raw != "" {
+				finalResponse = []byte(response.Raw)
+			}
+		}
+	}
+	if len(texts) > 0 {
+		return strings.Join(texts, "")
+	}
+	if doneText != "" {
+		return doneText
+	}
+	if len(finalResponse) > 0 {
+		return extractOpenAIResponsesTextFromJSON(finalResponse)
+	}
+	return ""
 }
 
 func mergeHeaders(base map[string]string, opts *CheckOptions) map[string]string {
