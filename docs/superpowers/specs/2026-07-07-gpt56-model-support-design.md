@@ -1,10 +1,10 @@
-# GPT-5.6 Model Support Migration Design
+# GPT-5.6 模型支持迁移设计
 
-## Context
+## 背景
 
-This branch tracks FluxCode-specific changes and is currently behind upstream `Wei-Shaw/sub2api` for the GPT-5.6 model support work. After fetching `upstream/main`, the relevant upstream change is commit `6cea1c35b` (`feat: 适配 OpenAI 新模型 gpt-5.6-sol/terra/luna`).
+当前分支包含 FluxCode 的本地改动，尚未同步上游 `Wei-Shaw/sub2api` 中 GPT-5.6 模型支持相关逻辑。拉取 `upstream/main` 后，确认相关上游提交为 `6cea1c35b`（`feat: 适配 OpenAI 新模型 gpt-5.6-sol/terra/luna`）。
 
-The upstream commit touches eight files:
+该上游提交涉及 8 个文件：
 
 - `backend/internal/pkg/openai/constants.go`
 - `backend/internal/service/billing_service.go`
@@ -15,157 +15,157 @@ The upstream commit touches eight files:
 - `frontend/src/components/keys/UseKeyModal.vue`
 - `frontend/src/composables/useModelWhitelist.ts`
 
-This branch does not have `backend/internal/service/openai_model_alias.go`; model normalization still lives in `normalizeCodexModel` inside `backend/internal/service/openai_codex_transform.go`. Therefore the migration should be semantic and hand-applied rather than cherry-picking the upstream commit.
+当前分支没有 `backend/internal/service/openai_model_alias.go`，模型归一化仍位于 `backend/internal/service/openai_codex_transform.go` 的 `normalizeCodexModel` 中。因此本次迁移应采用语义手工移植，而不是直接 cherry-pick 上游提交。
 
-## Goal
+## 目标
 
-Add support for three OpenAI GPT-5.6 models:
+为以下三个 OpenAI GPT-5.6 模型增加支持：
 
 - `gpt-5.6-sol`
 - `gpt-5.6-terra`
 - `gpt-5.6-luna`
 
-Support means:
+支持范围包括：
 
-- Models appear in the default OpenAI model list.
-- Codex/OpenAI model normalization preserves each GPT-5.6 variant instead of falling back to `gpt-5.1`.
-- OpenAI OAuth/Codex forwarding can route the exact model IDs.
-- Dynamic pricing data contains the three model entries.
-- Static pricing fallback remains available and uses GPT-5.4 pricing/long-context policy when dynamic pricing is absent.
-- Frontend model selection, preset mapping shortcuts, and OpenCode config generation expose the three models.
+- 三个模型出现在默认 OpenAI 模型列表中。
+- Codex/OpenAI 模型归一化保留各自 GPT-5.6 变体，不再回退到 `gpt-5.1`。
+- OpenAI OAuth/Codex 转发可以路由精确模型 ID。
+- 动态定价数据包含三个模型条目。
+- 动态定价缺失时，静态计费 fallback 仍可用，并沿用 GPT-5.4 的价格与长上下文策略。
+- 前端模型选择、预设映射快捷项、OpenCode 配置生成均暴露这三个模型。
 
-## Approach
+## 方案
 
-Use semantic hand migration. Do not cherry-pick `6cea1c35b` directly, and do not introduce upstream's newer `openai_model_alias.go` structure into this branch.
+采用语义手工移植。不直接 cherry-pick `6cea1c35b`，也不把上游较新的 `openai_model_alias.go` 结构引入当前分支。
 
-This keeps the patch small and aligned with the current branch's older normalization architecture.
+这样可以让补丁保持小范围，并贴合当前分支较旧的模型归一化架构。
 
-## Backend Design
+## 后端设计
 
-### Default OpenAI Models
+### 默认 OpenAI 模型
 
-In `backend/internal/pkg/openai/constants.go`, add the three GPT-5.6 model entries near the top of `DefaultModels`, before `gpt-5.5`.
+在 `backend/internal/pkg/openai/constants.go` 中，将三个 GPT-5.6 模型加入 `DefaultModels`，位置放在 `gpt-5.5` 之前。
 
-Use upstream metadata:
+使用上游元数据：
 
 - `Created`: `1780876800`
 - `OwnedBy`: `openai`
 - `Type`: `model`
-- Display names: `GPT-5.6 Sol`, `GPT-5.6 Terra`, `GPT-5.6 Luna`
+- 展示名：`GPT-5.6 Sol`、`GPT-5.6 Terra`、`GPT-5.6 Luna`
 
-Do not change `DefaultTestModel`; this branch currently uses `gpt-5.1-codex` for tests and account probes.
+不修改 `DefaultTestModel`。当前分支仍使用 `gpt-5.1-codex` 作为测试和账号探测默认模型。
 
-### Codex Model Mapping
+### Codex 模型映射
 
-In `backend/internal/service/openai_codex_transform.go`, add exact entries to `codexModelMap`:
+在 `backend/internal/service/openai_codex_transform.go` 中，为 `codexModelMap` 增加精确映射：
 
 - `gpt-5.6-sol` -> `gpt-5.6-sol`
 - `gpt-5.6-terra` -> `gpt-5.6-terra`
 - `gpt-5.6-luna` -> `gpt-5.6-luna`
 
-Update `normalizeCodexModel` so it recognizes the three models before the broader `gpt-5.5`, `gpt-5.4`, and `gpt-5` checks. It should support the current branch's alias style:
+更新 `normalizeCodexModel`，让它在更宽泛的 `gpt-5.5`、`gpt-5.4`、`gpt-5` 判断之前识别三个 GPT-5.6 模型。需要支持当前分支已有的别名风格：
 
-- Hyphenated names such as `gpt-5.6-sol-high`
-- Space-separated names such as `gpt 5.6 sol`
-- Provider-prefixed names such as `openai/gpt-5.6-sol`
+- 带连字符的名称，例如 `gpt-5.6-sol-high`
+- 空格分隔的名称，例如 `gpt 5.6 sol`
+- 带 provider 前缀的名称，例如 `openai/gpt-5.6-sol`
 
-Each GPT-5.6 variant should normalize to its exact base model, not to `gpt-5.1`, `gpt-5.4`, or `gpt-5.5`.
+每个 GPT-5.6 变体都应归一化到自身基础模型，不应落到 `gpt-5.1`、`gpt-5.4` 或 `gpt-5.5`。
 
-### Billing Fallback
+### 计费 fallback
 
-In `backend/internal/service/billing_service.go`, wire GPT-5.6 fallback prices to the existing GPT-5.4 fallback:
+在 `backend/internal/service/billing_service.go` 中，将 GPT-5.6 的 fallback 价格指向现有 GPT-5.4 fallback：
 
 - `gpt-5.6-sol`
 - `gpt-5.6-terra`
 - `gpt-5.6-luna`
 
-In `getFallbackPricing`, return those fallback entries after `normalizeCodexModel` resolves them.
+在 `getFallbackPricing` 中，`normalizeCodexModel` 解析出这些模型后，应返回对应 fallback 条目。
 
-In `isOpenAIGPT54Model`, include the three GPT-5.6 models so long-context pricing policy applies when pricing data lacks long-context multipliers.
+在 `isOpenAIGPT54Model` 中纳入三个 GPT-5.6 模型，确保定价数据缺少长上下文倍数时仍会应用 GPT-5.4 的长上下文计费策略。
 
-### Dynamic Pricing Fallback
+### 动态定价 fallback
 
-In `backend/internal/service/pricing_service.go`, update `matchOpenAIModel` so any model starting with `gpt-5.6` falls back to `openAIGPT54FallbackPricing` when dynamic pricing does not have an exact or variant match.
+在 `backend/internal/service/pricing_service.go` 中更新 `matchOpenAIModel`：当模型以 `gpt-5.6` 开头，且动态定价没有精确命中或变体命中时，回退到 `openAIGPT54FallbackPricing`。
 
-This mirrors `gpt-5.5` behavior and preserves existing GPT-5.4 mini/nano special cases.
+该行为与 `gpt-5.5` 保持一致，同时保留现有 GPT-5.4 mini/nano 的特殊 fallback。
 
-### Pricing Resource
+### 定价资源
 
-In `backend/resources/model-pricing/model_prices_and_context_window.json`, add the three upstream model objects before `gpt-5.5`.
+在 `backend/resources/model-pricing/model_prices_and_context_window.json` 中，将三个上游模型对象加入 `gpt-5.5` 之前。
 
-Use the upstream fields, including:
+使用上游字段，包括：
 
 - `max_input_tokens`: `1050000`
 - `max_output_tokens`: `128000`
-- `supported_endpoints`: `/v1/chat/completions`, `/v1/batch`, `/v1/responses`
-- Text and image input support
-- Prompt caching, reasoning, service tier, tool choice, vision, web search support
-- Long-context fields above `272k` tokens
+- `supported_endpoints`: `/v1/chat/completions`、`/v1/batch`、`/v1/responses`
+- 支持文本和图片输入
+- 支持 prompt caching、reasoning、service tier、tool choice、vision、web search
+- 包含超过 `272k` tokens 的长上下文字段
 
-## Frontend Design
+## 前端设计
 
-### Model Whitelist
+### 模型白名单
 
-In `frontend/src/composables/useModelWhitelist.ts`, add the three GPT-5.6 models to the OpenAI list near the existing GPT-5.5/GPT-5.4 entries.
+在 `frontend/src/composables/useModelWhitelist.ts` 中，将三个 GPT-5.6 模型加入 OpenAI 模型列表，位置靠近现有 GPT-5.5/GPT-5.4 条目。
 
-Add OpenAI preset mapping buttons:
+增加 OpenAI 预设映射按钮：
 
 - `GPT-5.6 Sol`
 - `GPT-5.6 Terra`
 - `GPT-5.6 Luna`
 
-Each preset maps the model to itself. Use distinct existing Tailwind color families, following the upstream choices unless they conflict with local style.
+每个预设都映射到自身模型。颜色使用已有 Tailwind 色系，优先沿用上游选择，除非与本地样式冲突。
 
 ### Use Key Modal
 
-In `frontend/src/components/keys/UseKeyModal.vue`, add GPT-5.6 entries to the generated OpenCode `openaiModels` object.
+在 `frontend/src/components/keys/UseKeyModal.vue` 中，将 GPT-5.6 条目加入生成 OpenCode 配置的 `openaiModels` 对象。
 
-Each model should use:
+每个模型使用：
 
 - `context`: `1050000`
 - `output`: `128000`
 - `store`: `false`
-- `variants`: `low`, `medium`, `high`, `xhigh`
+- `variants`: `low`、`medium`、`high`、`xhigh`
 
-Do not change the generated Codex `config.toml` default model behavior. The modal already resolves `props.openaiUseKeyModelId`; this migration only makes GPT-5.6 valid when configured or selected.
+不修改生成的 Codex `config.toml` 默认模型行为。该弹窗已经通过 `props.openaiUseKeyModelId` 解析模型；本次迁移只让 GPT-5.6 在被配置或选择时可用。
 
-## Error Handling
+## 错误处理
 
-Unknown OpenAI models should continue to return the existing pricing error path. The GPT-5.6 migration should not broaden fallback matching to arbitrary `gpt-*` models.
+未知 OpenAI 模型继续走现有定价错误路径。本次 GPT-5.6 迁移不应扩大 fallback 匹配范围到任意 `gpt-*` 模型。
 
-If dynamic pricing data is unavailable or does not contain GPT-5.6, the billing path should still calculate cost via GPT-5.4 fallback. If dynamic pricing does contain GPT-5.6, it should be preferred.
+如果动态定价数据不可用，或其中不包含 GPT-5.6，计费路径仍应通过 GPT-5.4 fallback 正常计算费用。如果动态定价中包含 GPT-5.6，则优先使用动态定价。
 
-## Testing
+## 测试
 
-Backend tests:
+后端测试：
 
-- Extend normalization tests to cover `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna`, at least one reasoning suffix, and one space-separated alias.
-- Add or extend billing fallback tests to verify GPT-5.6 uses GPT-5.4 fallback prices.
-- Add or extend long-context billing tests to verify GPT-5.6 inherits GPT-5.4 multipliers.
-- Add or extend `PricingService` fallback tests to verify dynamic pricing absence falls back to `openAIGPT54FallbackPricing`.
+- 扩展归一化测试，覆盖 `gpt-5.6-sol`、`gpt-5.6-terra`、`gpt-5.6-luna`，并至少覆盖一个 reasoning suffix 和一个空格分隔别名。
+- 新增或扩展计费 fallback 测试，验证 GPT-5.6 使用 GPT-5.4 fallback 价格。
+- 新增或扩展长上下文计费测试，验证 GPT-5.6 继承 GPT-5.4 倍数。
+- 新增或扩展 `PricingService` fallback 测试，验证动态定价缺失时回退到 `openAIGPT54FallbackPricing`。
 
-Frontend tests:
+前端测试：
 
-- Extend `useModelWhitelist` tests to assert the three models appear for OpenAI.
-- Extend model mapping tests to ensure whitelist mapping can produce self-mappings for GPT-5.6.
-- Extend `UseKeyModal` tests to assert the OpenCode generated config includes the GPT-5.6 model metadata.
+- 扩展 `useModelWhitelist` 测试，断言 OpenAI 模型列表包含三个 GPT-5.6 模型。
+- 扩展模型映射测试，确保 whitelist 模式可以为 GPT-5.6 生成自身映射。
+- 扩展 `UseKeyModal` 测试，断言 OpenCode 生成配置包含 GPT-5.6 模型元数据。
 
-Verification commands should focus on the touched areas:
+验证命令聚焦本次触达区域：
 
-- From `backend/`: `go test -tags unit ./internal/service ./internal/pkg/openai`
-- From the repo root: `pnpm --dir frontend test -- useModelWhitelist UseKeyModal`
+- 在 `backend/` 目录执行：`go test -tags unit ./internal/service ./internal/pkg/openai`
+- 在仓库根目录执行：`pnpm --dir frontend test -- useModelWhitelist UseKeyModal`
 
-If the repo's exact test command differs locally, use the closest existing targeted command from package scripts.
+如果本地仓库的实际测试命令不同，使用 package scripts 中最接近的定向命令。
 
-## Non-Goals
+## 非目标
 
-- Do not sync all of `upstream/main`.
-- Do not introduce `openai_model_alias.go`.
-- Do not change `DefaultTestModel`.
-- Do not change admin default `openai_use_key_model_id`.
-- Do not change model pricing for unrelated GPT, Claude, Gemini, xAI, or image models.
-- Do not refactor frontend model whitelist structure.
+- 不同步整个 `upstream/main`。
+- 不引入 `openai_model_alias.go`。
+- 不修改 `DefaultTestModel`。
+- 不修改管理端默认 `openai_use_key_model_id`。
+- 不修改无关 GPT、Claude、Gemini、xAI 或图片模型的价格。
+- 不重构前端模型白名单结构。
 
-## Implementation Boundary
+## 实现边界
 
-The implementation should be a small patch over the current branch. It should adapt upstream semantics to local structure and include targeted tests. Broader upstream changes, including account import, risk control, batch image, or new auth flows, are outside this migration.
+实现应是当前分支上的小范围补丁。代码应把上游语义适配到本地结构，并包含定向测试。账号导入、风控、批量图片、新认证流程等更大范围上游变更均不属于本次迁移。
