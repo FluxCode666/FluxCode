@@ -344,11 +344,23 @@ Expected: FAIL，`GetModelPricing("gpt-5.6-sol")` 返回定价缺失或落入错
 
 ```go
 	// GPT-5.6（sol / terra / luna）回退到 GPT-5.4 定价。
-	if strings.HasPrefix(model, "gpt-5.6") {
+	if isOpenAIGPT56StaticFallbackModel(model) {
 		logger.With(zap.String("component", "service.pricing")).
 			Info(fmt.Sprintf("[Pricing] OpenAI fallback matched %s -> %s", model, "gpt-5.4(static)"))
 		return openAIGPT54FallbackPricing
 	}
+```
+
+```go
+func isOpenAIGPT56StaticFallbackModel(model string) bool {
+	for _, base := range []string{"gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"} {
+		if model == base || strings.HasPrefix(model, base+"-") {
+			return true
+		}
+	}
+
+	return false
+}
 ```
 
 - [ ] **Step 6: 加入动态定价资源**
