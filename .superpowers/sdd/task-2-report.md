@@ -1,104 +1,117 @@
-# Task 2 Report: Runner Timer Jitter Scheduling
+# Task 2 报告
 
-## 实现了什么
+## 任务范围
 
-- 在 `backend/internal/service/channel_monitor_runner.go` 中为 `scheduledMonitor` 增加了 `jitter time.Duration`。
-- 新增 `(*scheduledMonitor).nextDelay() time.Duration`，按 brief 要求基于 `interval` 和 `jitter` 计算随机 delay，并在低于 `monitorMinIntervalSeconds` 时进行 clamp。
-- 调整 `ChannelMonitorRunner.Start()`：即使 `channel_monitor_enabled=false`，startup 仍会加载并注册 enabled monitors；实际是否执行检查仍由 `fire()` 内的 `canRun()` gate 控制。
-- 在 `Schedule()` 中读取 `ChannelMonitor.JitterSeconds`，转换为 `time.Duration`，并对负值做保护性归零。
-- 将 `runScheduled()` 从固定 `ticker` 改为每次触发后重新计算 delay 的 `timer` 调度。
-- 在 `backend/internal/service/channel_monitor_runner_test.go` 中新增/更新测试，覆盖：
-  - 默认关闭时 startup 仍会 preload/schedule，但不会实际 `RunCheck`
-  - `nextDelay()` 在无 jitter、有 jitter、以及需要最小值 clamp 时的行为
-  - 默认关闭 startup 的既有测试语义已更新为新要求
+- 仅实现 Task 2：后端计费、`PricingService` 动态定价 fallback、`backend/resources/model-pricing/model_prices_and_context_window.json`
+- 未修改前端白名单、`UseKeyModal` 或其他非 brief 范围内容
+- 未触碰未跟踪本地文件 `frontend/pnpm-workspace.yaml`
 
-## 测试命令和结果
+## 执行流程
 
-- RED:
-  - 命令：`cd backend && go test ./internal/service -run 'TestChannelMonitorRunnerStartDefaultDisabledSchedulesButSkipsChecks|TestScheduledMonitorNextDelay' -count=1`
-  - 结果：`FAIL`
-- GREEN:
-  - 命令：`cd backend && go test ./internal/service -run 'TestChannelMonitorRunner|TestScheduledMonitorNextDelay' -count=1`
-  - 结果：`PASS`
+### 1. 读取唯一需求来源
 
-## TDD Evidence
+- 已读取 `/Users/duegin/.codex/worktrees/fe18/FluxCode/.superpowers/sdd/task-2-brief.md`
 
-### RED
+### 2. 按 TDD 先补失败测试
 
-- 命令：
+新增测试：
 
-```bash
-cd backend && go test ./internal/service -run 'TestChannelMonitorRunnerStartDefaultDisabledSchedulesButSkipsChecks|TestScheduledMonitorNextDelay' -count=1
-```
+- `backend/internal/service/billing_service_test.go`
+  - `TestGetModelPricing_OpenAIGPT56Fallbacks`
+  - `TestCalculateCost_OpenAIGPT56LongContextAppliesWholeSessionMultipliers`
+- `backend/internal/service/pricing_service_test.go`
+  - `TestGetModelPricing_Gpt56UsesGpt54StaticFallbackWhenRemoteMissing`
+- `backend/internal/service/gpt55_support_test.go`
+  - `TestGPT56Support_BillingFallbackMatchesGPT54`
+  - `TestGPT56Support_PricingServiceStaticFallback`
 
-- 关键失败输出：
+### 3. 先跑红灯验证失败
 
-```text
-internal/service/channel_monitor_runner_test.go:43:51: runner.tasks[10].jitter undefined (type *scheduledMonitor has no field or method jitter)
-internal/service/channel_monitor_runner_test.go:49:3: unknown field jitter in struct literal of type scheduledMonitor
-internal/service/channel_monitor_runner_test.go:52:40: task.nextDelay undefined (type *scheduledMonitor has no field or method nextDelay)
-```
-
-- 为什么预期失败：
-  - 这是新增行为对应的首轮测试，旧实现还没有 `jitter` 字段，也没有 `nextDelay()`，并且 startup disabled 语义还未迁移到“会 schedule 但不 fire checks”。
-
-### GREEN
-
-- 命令：
+执行：
 
 ```bash
-cd backend && go test ./internal/service -run 'TestChannelMonitorRunner|TestScheduledMonitorNextDelay' -count=1
+cd backend
+go test -tags unit ./internal/service -run 'TestGetModelPricing_OpenAIGPT56Fallbacks|TestCalculateCost_OpenAIGPT56LongContextAppliesWholeSessionMultipliers|TestGPT56Support_BillingFallbackMatchesGPT54|TestGetModelPricing_Gpt56UsesGpt54StaticFallbackWhenRemoteMissing|TestGPT56Support_PricingServiceStaticFallback'
 ```
 
-- 关键通过输出：
+结果符合预期：
 
-```text
-ok  	github.com/Wei-Shaw/sub2api/internal/service	0.059s
-```
+- `BillingService` 对 `gpt-5.6-sol|terra|luna` 返回 `pricing not found`
+- `PricingService` 对 `gpt-5.6-*` 错误回退到了 `gpt-5.1-codex`
 
-## 修改文件
+## 实现内容
 
-- `/Volumes/T7/project/new/FluxCode/backend/internal/service/channel_monitor_runner.go`
-- `/Volumes/T7/project/new/FluxCode/backend/internal/service/channel_monitor_runner_test.go`
+### BillingService
 
-## 自审发现
+修改文件：
 
-- 改动范围保持在 runner 与对应测试文件，没有触碰其他 service、handler、repo、frontend 或默认配置。
-- `fire()` 的 `canRun()` gate 保持不变，因此本地默认 `channel_monitor_enabled=false` 时仍不会实际执行 `RunCheck`。
-- `nextDelay()` 的下限 clamp 使用现有 `monitorMinIntervalSeconds`，与 `interval_seconds - jitter_seconds >= 15` 的语义一致。
-- 定时器在首次 `fire()` 之后才创建，并在每轮触发后重新 `Reset(task.nextDelay())`，符合“每次调度重新计算 jitter delay”的需求。
-- 测试里为 startup disabled 场景增加了 `runCalls` 断言，确认 monitor 被注册但检查未执行。
+- `backend/internal/service/billing_service.go`
 
-## 疑问或担忧
+变更：
 
-- 当前只运行了 brief 指定的 runner tests，没有额外全量执行 `./internal/service` 全部测试；从任务要求看这已足够，但如果后续该模块还有依赖 startup list-call 次数的测试，建议在集成阶段再跑一遍更大范围测试。
+- 将 `gpt-5.6-sol`
+- `gpt-5.6-terra`
+- `gpt-5.6-luna`
 
-## Fix after review
+全部加入本地静态 fallback 表，并统一指向 `gpt-5.4`
 
-- reviewer 的 Important finding 已修复：`TestChannelMonitorRunnerStartsWhenSettingEnabledAfterDefaultDisabledStartup` 现在重新覆盖“startup 时 disabled、后续切换 enabled 后，已注册 task 会在下一轮调度真正触发 `RunCheck`，且不会重新 reload monitors”。
-- 测试改为使用轻量 `channelMonitorRunnerSvcStub` 和可变的 `channelMonitorRuntimeStub`，避免引入真实 `ChannelMonitorService.RunCheck` 依赖。
-- 为避免并发读写不稳定，runtime 与 runner service stub 都增加了 `sync.Mutex` 保护；等待调度触发使用 `require.Eventually`，不再依赖裸 `time.Sleep`。
+- 在 `getFallbackPricing` 的 OpenAI 分支中增加三种 `gpt-5.6-*` 命中逻辑
+- 扩展 `isOpenAIGPT54Model`，让 `gpt-5.6-*` 共享 GPT-5.4 的长上下文倍率策略
 
-- 聚焦验证命令：
+### PricingService
+
+修改文件：
+
+- `backend/internal/service/pricing_service.go`
+
+变更：
+
+- 在 `matchOpenAIModel` 中为 `gpt-5.6*` 增加静态回退
+- 当动态定价缺失时，`gpt-5.6-*` 统一返回 `openAIGPT54FallbackPricing`
+
+### 定价资源
+
+修改文件：
+
+- `backend/resources/model-pricing/model_prices_and_context_window.json`
+
+新增资源对象：
+
+- `gpt-5.6-sol`
+- `gpt-5.6-terra`
+- `gpt-5.6-luna`
+
+## 验证
+
+执行：
 
 ```bash
-cd backend && go test ./internal/service -run 'TestChannelMonitorRunnerStartsWhenSettingEnabledAfterDefaultDisabledStartup' -count=1
+cd backend
+gofmt -w internal/service/billing_service.go internal/service/billing_service_test.go internal/service/pricing_service.go internal/service/pricing_service_test.go internal/service/gpt55_support_test.go
+python3 -m json.tool resources/model-pricing/model_prices_and_context_window.json >/tmp/gpt56-pricing.json
+go test -tags unit ./internal/service -run 'TestGetModelPricing_OpenAIGPT56Fallbacks|TestCalculateCost_OpenAIGPT56LongContextAppliesWholeSessionMultipliers|TestGPT56Support_BillingFallbackMatchesGPT54|TestGetModelPricing_Gpt56UsesGpt54StaticFallbackWhenRemoteMissing|TestGPT56Support_PricingServiceStaticFallback'
 ```
 
-- 关键输出：
+结果：
+
+- `gofmt` 成功
+- JSON 校验成功
+- 指定 Go 单测全部通过
+
+测试输出摘要：
 
 ```text
-ok  	github.com/Wei-Shaw/sub2api/internal/service	1.060s
+ok  	github.com/Wei-Shaw/sub2api/internal/service	0.080s
 ```
 
-- 任务要求验证命令：
+## Git 结果
+
+计划提交信息：
 
 ```bash
-cd backend && go test ./internal/service -run 'TestChannelMonitorRunner|TestScheduledMonitorNextDelay' -count=1
+feat(openai): add gpt-5.6 pricing fallback
 ```
 
-- 关键输出：
+## 备注
 
-```text
-ok  	github.com/Wei-Shaw/sub2api/internal/service	1.092s
-```
+- 当前工作区存在未跟踪文件 `frontend/pnpm-workspace.yaml`，已按要求保持不变且不会加入提交
