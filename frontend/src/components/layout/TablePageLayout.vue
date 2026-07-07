@@ -1,5 +1,5 @@
 <template>
-  <div class="table-page-layout" :class="{ 'mobile-mode': isMobile }">
+  <div class="table-page-layout" :class="{ 'mobile-mode': isMobile, 'natural-height': naturalHeight }">
     <!-- 固定区域：操作按钮 -->
     <div v-if="$slots.actions" class="layout-section-fixed">
       <slot name="actions" />
@@ -27,6 +27,12 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
 
+withDefaults(defineProps<{
+  naturalHeight?: boolean
+}>(), {
+  naturalHeight: false
+})
+
 const isMobile = ref(false)
 
 const checkMobile = () => {
@@ -47,6 +53,9 @@ onUnmounted(() => {
 /* 桌面端：Flexbox 布局 */
 .table-page-layout {
   @apply flex flex-col gap-6;
+}
+
+.table-page-layout:not(.natural-height) {
   height: calc(100vh - 64px - 4rem); /* 减去 header + lg:p-8 的上下padding */
 }
 
@@ -67,6 +76,18 @@ onUnmounted(() => {
   @apply flex-1 overflow-x-auto overflow-y-auto;
   /* 确保横向滚动条显示在最底部 */
   scrollbar-gutter: stable;
+}
+
+.table-page-layout.natural-height .layout-section-scrollable {
+  @apply flex-none min-h-fit;
+}
+
+.table-page-layout.natural-height .table-scroll-container {
+  @apply h-auto overflow-visible;
+}
+
+.table-page-layout.natural-height .table-scroll-container :deep(.table-wrapper) {
+  @apply flex-none overflow-x-auto overflow-y-visible;
 }
 
 .table-scroll-container :deep(table) {

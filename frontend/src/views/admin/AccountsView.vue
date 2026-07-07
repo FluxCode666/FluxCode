@@ -1,6 +1,6 @@
 <template>
   <AppLayout>
-    <TablePageLayout>
+    <TablePageLayout natural-height>
       <template #filters>
         <div class="flex flex-wrap-reverse items-start justify-between gap-3">
           <AccountTableFilters
@@ -64,37 +64,6 @@
                 </div>
               </div>
 
-              <!-- Rebuild Scheduler Cache -->
-              <button
-                @click="handleRebuildSchedulerCache"
-                :disabled="schedulerRebuilding"
-                class="btn btn-secondary"
-                :title="t('admin.accounts.rebuildSchedulerCache')"
-              >
-                <Icon name="refresh" size="md" class="mr-1.5" :class="[schedulerRebuilding ? 'animate-spin' : '']" />
-                <span class="hidden md:inline">{{ schedulerRebuilding ? t('admin.accounts.rebuildSchedulerCacheRunning') : t('admin.accounts.rebuildSchedulerCache') }}</span>
-              </button>
-
-              <!-- Error Passthrough Rules -->
-              <button
-                @click="showErrorPassthrough = true"
-                class="btn btn-secondary"
-                :title="t('admin.errorPassthrough.title')"
-              >
-                <Icon name="shield" size="md" class="mr-1.5" />
-                <span class="hidden md:inline">{{ t('admin.errorPassthrough.title') }}</span>
-              </button>
-
-              <!-- TLS Fingerprint Profiles -->
-              <button
-                @click="showTLSFingerprintProfiles = true"
-                class="btn btn-secondary"
-                :title="t('admin.tlsFingerprintProfiles.title')"
-              >
-                <Icon name="lock" size="md" class="mr-1.5" />
-                <span class="hidden md:inline">{{ t('admin.tlsFingerprintProfiles.title') }}</span>
-              </button>
-
               <!-- Column Settings Dropdown -->
               <div class="relative" ref="columnDropdownRef">
                 <button
@@ -129,6 +98,33 @@
                 </div>
               </div>
             </template>
+            <template #more="{ close, itemClass }">
+              <button
+                type="button"
+                :class="itemClass"
+                :disabled="schedulerRebuilding"
+                @click="closeAndRunMoreAction(close, handleRebuildSchedulerCache)"
+              >
+                <Icon name="refresh" size="sm" class="text-gray-500 dark:text-gray-400" :class="[schedulerRebuilding ? 'animate-spin' : '']" />
+                <span>{{ schedulerRebuilding ? t('admin.accounts.rebuildSchedulerCacheRunning') : t('admin.accounts.rebuildSchedulerCache') }}</span>
+              </button>
+              <button
+                type="button"
+                :class="itemClass"
+                @click="openErrorPassthroughFromMore(close)"
+              >
+                <Icon name="shield" size="sm" class="text-gray-500 dark:text-gray-400" />
+                <span>{{ t('admin.errorPassthrough.title') }}</span>
+              </button>
+              <button
+                type="button"
+                :class="itemClass"
+                @click="openTLSFingerprintProfilesFromMore(close)"
+              >
+                <Icon name="lock" size="sm" class="text-gray-500 dark:text-gray-400" />
+                <span>{{ t('admin.tlsFingerprintProfiles.title') }}</span>
+              </button>
+            </template>
             <template #beforeCreate>
               <button @click="showImportData = true" class="btn btn-secondary">
                 {{ t('admin.accounts.dataImport') }}
@@ -154,9 +150,8 @@
       </template>
       <template #table>
         <AccountBulkActionsBar :selected-ids="selIds" @delete="handleBulkDelete" @reset-status="handleBulkResetStatus" @refresh-token="handleBulkRefreshToken" @edit="showBulkEdit = true" @clear="clearSelection" @select-page="selectPage" @toggle-schedulable="handleBulkToggleSchedulable" />
-        <div class="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <div ref="accountTableRef">
         <DataTable
-          ref="dataTableRef"
           :columns="cols"
           :data="accounts"
           :loading="loading"
@@ -168,6 +163,7 @@
           :sort-storage-key="ACCOUNT_SORT_STORAGE_KEY"
           :estimate-row-height="72"
           :overscan="5"
+          :virtual-scroll="false"
         >
           <template #header-select>
             <input
@@ -333,7 +329,7 @@ import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
 import { adminAPI } from '@/api/admin'
 import { useTableLoader } from '@/composables/useTableLoader'
-import { useSwipeSelect, type SwipeSelectVirtualContext } from '@/composables/useSwipeSelect'
+import { useSwipeSelect } from '@/composables/useSwipeSelect'
 import { useTableSelection } from '@/composables/useTableSelection'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import AppLayout from '@/components/layout/AppLayout.vue'
@@ -388,7 +384,6 @@ type AccountTableParams = {
 const proxies = ref<AccountProxy[]>([])
 const groups = ref<AdminGroup[]>([])
 const accountTableRef = ref<HTMLElement | null>(null)
-const dataTableRef = ref<InstanceType<typeof DataTable> | null>(null)
 const selPlatforms = computed<AccountPlatform[]>(() => {
   const platforms = new Set(
     accounts.value
@@ -668,18 +663,12 @@ const {
   getId: (account) => account.id
 })
 
-const swipeVirtualContext: SwipeSelectVirtualContext = {
-  getVirtualizer: () => dataTableRef.value?.virtualizer ?? null,
-  getSortedData: () => dataTableRef.value?.sortedData ?? accounts.value,
-  getRowId: (row: any) => row.id,
-}
-
 useSwipeSelect(accountTableRef, {
   isSelected,
   select,
   deselect,
   batchUpdate
-}, swipeVirtualContext)
+})
 
 const resetAutoRefreshCache = () => {
   autoRefreshETag.value = null
@@ -765,7 +754,8 @@ const isAnyModalOpen = computed(() => {
     showTest.value ||
     showStats.value ||
     showSchedulePanel.value ||
-    showErrorPassthrough.value
+    showErrorPassthrough.value ||
+    showTLSFingerprintProfiles.value
   )
 })
 
@@ -878,6 +868,23 @@ const handleRebuildSchedulerCache = async () => {
   } finally {
     schedulerRebuilding.value = false
   }
+}
+
+const closeAndRunMoreAction = (close: () => void, action: () => void | Promise<void>) => {
+  close()
+  void action()
+}
+
+const openErrorPassthroughFromMore = (close: () => void) => {
+  closeAndRunMoreAction(close, () => {
+    showErrorPassthrough.value = true
+  })
+}
+
+const openTLSFingerprintProfilesFromMore = (close: () => void) => {
+  closeAndRunMoreAction(close, () => {
+    showTLSFingerprintProfiles.value = true
+  })
 }
 
 const syncPendingListChanges = async () => {

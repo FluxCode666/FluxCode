@@ -3144,6 +3144,17 @@ export default {
       schedulingStatus: '账号调度状态',
       selectedProxies: '已选择 {count} 个代理',
       createdTime: '创建时间',
+      filterSettings: '筛选设置',
+      filterLabels: {
+        platform: '平台',
+        type: '账号类型',
+        status: '状态',
+        privacyMode: 'Privacy 状态',
+        schedulingStatus: '调度状态',
+        group: '分组',
+        proxy: '代理 IP',
+        createdAt: '创建时间'
+      },
       oauthType: 'OAuth',
       // Schedulable toggle
       schedulable: '参与调度',

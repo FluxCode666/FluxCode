@@ -3075,6 +3075,17 @@ export default {
       schedulingStatus: 'Account Scheduling Status',
       selectedProxies: '{count} proxies selected',
       createdTime: 'Created Time',
+      filterSettings: 'Filter Settings',
+      filterLabels: {
+        platform: 'Platform',
+        type: 'Account Type',
+        status: 'Status',
+        privacyMode: 'Privacy State',
+        schedulingStatus: 'Scheduling Status',
+        group: 'Group',
+        proxy: 'Proxy IP',
+        createdAt: 'Created Time'
+      },
       oauthType: 'OAuth',
       setupToken: 'Setup Token',
       apiKey: 'API Key',
