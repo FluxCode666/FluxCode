@@ -9,12 +9,14 @@
     />
     <Select
       :model-value="filters.platform"
+      v-if="isFilterVisible('platform')"
       class="w-40"
       :options="platformOptions"
       @update:model-value="updatePlatform"
       @change="$emit('change')"
     />
     <Select
+      v-if="isFilterVisible('type')"
       :model-value="filters.type"
       class="w-40"
       :options="typeOptions"
@@ -22,6 +24,7 @@
       @change="$emit('change')"
     />
     <Select
+      v-if="isFilterVisible('status')"
       :model-value="filters.status"
       class="w-40"
       :options="statusOptions"
@@ -29,6 +32,7 @@
       @change="$emit('change')"
     />
     <Select
+      v-if="isFilterVisible('privacy_mode')"
       :model-value="filters.privacy_mode"
       class="w-40"
       :options="privacyOptions"
@@ -36,6 +40,7 @@
       @change="$emit('change')"
     />
     <Select
+      v-if="isFilterVisible('schedulable_status')"
       :model-value="filters.schedulable_status"
       class="w-48"
       :options="schedulingStatusOptions"
@@ -43,13 +48,14 @@
       @change="$emit('change')"
     />
     <Select
+      v-if="isFilterVisible('group')"
       :model-value="filters.group"
       class="w-44"
       :options="groupOptions"
       @update:model-value="updateGroup"
       @change="$emit('change')"
     />
-    <div class="w-full min-w-[14rem] sm:w-56">
+    <div v-if="isFilterVisible('proxy_ids')" class="w-full min-w-[14rem] sm:w-56">
       <ProxyMultiSelectFilter
         :model-value="filters.proxy_ids || []"
         :options="proxies || []"
@@ -60,7 +66,7 @@
         @change="$emit('change')"
       />
     </div>
-    <div class="min-w-[16rem]">
+    <div v-if="isFilterVisible('created_at')" class="min-w-[16rem]">
       <DateRangePicker
         :start-date="filters.created_start_date || ''"
         :end-date="filters.created_end_date || ''"
@@ -70,14 +76,43 @@
         @change="$emit('change')"
       />
     </div>
+    <div class="relative" ref="filterSettingsRef">
+      <button
+        type="button"
+        class="flex items-center gap-2 whitespace-nowrap rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm text-gray-700 transition-all duration-200 hover:border-gray-300 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/30 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-200 dark:hover:border-dark-500"
+        :title="t('admin.accounts.filterSettings')"
+        @click="showFilterSettings = !showFilterSettings"
+      >
+        <Icon name="filter" size="sm" />
+        <span>{{ t('admin.accounts.filterSettings') }}</span>
+      </button>
+      <div
+        v-if="showFilterSettings"
+        class="absolute right-0 z-50 mt-2 w-56 origin-top-right rounded-lg border border-gray-200 bg-white shadow-lg dark:border-gray-700 dark:bg-gray-800"
+      >
+        <div class="max-h-80 overflow-y-auto p-2">
+          <button
+            v-for="filter in configurableFilters"
+            :key="filter.key"
+            type="button"
+            class="flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700"
+            @click="toggleFilterVisibility(filter.key)"
+          >
+            <span>{{ filter.label }}</span>
+            <Icon v-if="isFilterVisible(filter.key)" name="check" size="sm" class="text-primary-500" />
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import DateRangePicker from '@/components/common/DateRangePicker.vue'
+import Icon from '@/components/icons/Icon.vue'
 import ProxyMultiSelectFilter from '@/components/common/ProxyMultiSelectFilter.vue'
 import SearchInput from '@/components/common/SearchInput.vue'
 import Select from '@/components/common/Select.vue'
@@ -97,6 +132,98 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useI18n()
+
+type FilterKey =
+  | 'platform'
+  | 'type'
+  | 'status'
+  | 'privacy_mode'
+  | 'schedulable_status'
+  | 'group'
+  | 'proxy_ids'
+  | 'created_at'
+
+const FILTER_SETTINGS_STORAGE_KEY = 'account-hidden-filters'
+const DEFAULT_HIDDEN_FILTERS: FilterKey[] = ['privacy_mode', 'proxy_ids', 'type']
+const allFilterKeys: FilterKey[] = [
+  'platform',
+  'type',
+  'status',
+  'privacy_mode',
+  'schedulable_status',
+  'group',
+  'proxy_ids',
+  'created_at'
+]
+const hiddenFilters = ref<Set<FilterKey>>(new Set(DEFAULT_HIDDEN_FILTERS))
+const showFilterSettings = ref(false)
+const filterSettingsRef = ref<HTMLElement | null>(null)
+
+const isFilterKey = (value: unknown): value is FilterKey => {
+  return typeof value === 'string' && allFilterKeys.includes(value as FilterKey)
+}
+
+const loadFilterSettings = () => {
+  if (typeof window === 'undefined') return
+  try {
+    const saved = localStorage.getItem(FILTER_SETTINGS_STORAGE_KEY)
+    if (!saved) return
+    const parsed = JSON.parse(saved) as unknown
+    if (!Array.isArray(parsed)) return
+    hiddenFilters.value = new Set(parsed.filter(isFilterKey))
+  } catch (error) {
+    console.error('Failed to load account filter settings:', error)
+  }
+}
+
+const saveFilterSettings = () => {
+  if (typeof window === 'undefined') return
+  try {
+    localStorage.setItem(FILTER_SETTINGS_STORAGE_KEY, JSON.stringify([...hiddenFilters.value]))
+  } catch (error) {
+    console.error('Failed to save account filter settings:', error)
+  }
+}
+
+loadFilterSettings()
+
+const isFilterVisible = (key: FilterKey) => !hiddenFilters.value.has(key)
+
+const toggleFilterVisibility = (key: FilterKey) => {
+  const next = new Set(hiddenFilters.value)
+  if (next.has(key)) {
+    next.delete(key)
+  } else {
+    next.add(key)
+  }
+  hiddenFilters.value = next
+  saveFilterSettings()
+}
+
+const configurableFilters = computed<Array<{ key: FilterKey; label: string }>>(() => [
+  { key: 'platform', label: t('admin.accounts.filterLabels.platform') },
+  { key: 'type', label: t('admin.accounts.filterLabels.type') },
+  { key: 'status', label: t('admin.accounts.filterLabels.status') },
+  { key: 'privacy_mode', label: t('admin.accounts.filterLabels.privacyMode') },
+  { key: 'schedulable_status', label: t('admin.accounts.filterLabels.schedulingStatus') },
+  { key: 'group', label: t('admin.accounts.filterLabels.group') },
+  { key: 'proxy_ids', label: t('admin.accounts.filterLabels.proxy') },
+  { key: 'created_at', label: t('admin.accounts.filterLabels.createdAt') }
+])
+
+const handleClickOutside = (event: MouseEvent) => {
+  if (filterSettingsRef.value && !filterSettingsRef.value.contains(event.target as Node)) {
+    showFilterSettings.value = false
+  }
+}
+
+onMounted(() => {
+  document.addEventListener('click', handleClickOutside)
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener('click', handleClickOutside)
+})
 
 const emitFilters = (patch: Record<string, any>) => {
   emit('update:filters', { ...props.filters, ...patch })

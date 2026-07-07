@@ -58,6 +58,10 @@ func (ChannelMonitor) Fields() []ent.Field {
 			Default(true),
 		field.Int("interval_seconds").
 			Range(15, 3600),
+		field.Int("jitter_seconds").
+			Default(0).
+			NonNegative().
+			Comment("Per-run scheduling jitter in seconds; actual delay is interval_seconds +/- jitter_seconds, and service validation keeps the effective interval >= 15 seconds"),
 		field.Time("last_checked_at").
 			Optional().
 			Nillable(),

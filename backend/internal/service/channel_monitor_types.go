@@ -26,6 +26,7 @@ type ChannelMonitor struct {
 	GroupName           string
 	Enabled             bool
 	IntervalSeconds     int
+	JitterSeconds       int
 	LastCheckedAt       *time.Time
 	CreatedBy           int64
 	CreatedAt           time.Time
@@ -56,6 +57,7 @@ type ChannelMonitorCreateParams struct {
 	GroupName        string
 	Enabled          bool
 	IntervalSeconds  int
+	JitterSeconds    int
 	CreatedBy        int64
 	TemplateID       *int64
 	ExtraHeaders     map[string]string
@@ -74,6 +76,7 @@ type ChannelMonitorUpdateParams struct {
 	GroupName        *string
 	Enabled          *bool
 	IntervalSeconds  *int
+	JitterSeconds    *int
 	TemplateID       *int64
 	ClearTemplate    bool
 	ExtraHeaders     *map[string]string
