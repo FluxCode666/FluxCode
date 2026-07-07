@@ -85,7 +85,7 @@
 
 ### 动态定价 fallback
 
-在 `backend/internal/service/pricing_service.go` 中更新 `matchOpenAIModel`：当模型以 `gpt-5.6` 开头，且动态定价没有精确命中或变体命中时，回退到 `openAIGPT54FallbackPricing`。
+在 `backend/internal/service/pricing_service.go` 中更新 `matchOpenAIModel`：当模型是 `gpt-5.6-sol`、`gpt-5.6-terra`、`gpt-5.6-luna` 或这些基础模型的 `-suffix` 变体，且动态定价没有精确命中或变体命中时，回退到 `openAIGPT54FallbackPricing`。未知 `gpt-5.6-*` 型号不应命中 GPT-5.4 静态 fallback。
 
 该行为与 `gpt-5.5` 保持一致，同时保留现有 GPT-5.4 mini/nano 的特殊 fallback。
 
