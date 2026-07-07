@@ -48,6 +48,13 @@
               {{ t('home.nav.pricing') }}
             </router-link>
             <router-link
+              to="/integration-docs"
+              class="rounded-full px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-black/5 hover:text-gray-900 dark:text-dark-200 dark:hover:bg-white/10 dark:hover:text-white"
+              @click="closeMobileMenu"
+            >
+              {{ t('home.nav.integrationDocs') }}
+            </router-link>
+            <router-link
               to="/docs"
               class="rounded-full px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-black/5 hover:text-gray-900 dark:text-dark-200 dark:hover:bg-white/10 dark:hover:text-white"
               @click="closeMobileMenu"
@@ -188,6 +195,13 @@
                     @click="closeMobileMenu"
                   >
                     {{ t('home.nav.pricing') }}
+                  </router-link>
+                  <router-link
+                    to="/integration-docs"
+                    class="rounded-2xl border border-black/5 bg-white/70 px-4 py-3 text-sm font-medium text-gray-800 shadow-sm backdrop-blur transition-colors hover:bg-white/90 dark:border-white/10 dark:bg-dark-900/40 dark:text-dark-100 dark:hover:bg-dark-900/55"
+                    @click="closeMobileMenu"
+                  >
+                    {{ t('home.nav.integrationDocs') }}
                   </router-link>
                   <router-link
                     to="/docs"
