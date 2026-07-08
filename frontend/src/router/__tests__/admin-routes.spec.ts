@@ -78,4 +78,20 @@ describe('admin route mapping', () => {
     expect(route?.meta.requiresAuth).toBe(false)
     expect(route?.meta.titleKey).toBe('channelStatus.title')
   })
+
+  it('does not register old admin pricing plans route', async () => {
+    const { default: router } = await import('../index')
+
+    const oldRoute = router.getRoutes().find((route) => route.path === '/admin/pricing-plans')
+
+    expect(oldRoute).toBeUndefined()
+  })
+
+  it('registers public model pricing route', async () => {
+    const { default: router } = await import('../index')
+
+    const route = router.getRoutes().find((route) => route.path === '/model-pricing')
+
+    expect(route?.meta.requiresAuth).toBe(false)
+  })
 })

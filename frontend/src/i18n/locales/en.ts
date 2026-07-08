@@ -13,6 +13,7 @@ export default {
     nav: {
       features: 'Features',
       pricing: 'Pricing',
+      modelPricing: 'Model Pricing',
       integrationDocs: 'Integration Docs',
       docs: 'Docs',
       channelStatus: 'Channel Status',
@@ -518,9 +519,9 @@ export default {
     redeem: 'Redeem',
     referral: 'Referral',
     profile: 'Profile',
+    modelPricing: 'Model Pricing',
     users: 'Users',
     groups: 'Groups',
-    pricingPlans: 'Pricing Plans',
     channels: 'Channels',
     subscriptions: 'Subscriptions',
     accounts: 'Accounts',

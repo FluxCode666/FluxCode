@@ -675,6 +675,7 @@ const userNavItems = computed((): NavItem[] => {
     { path: '/dashboard', label: t('nav.dashboard'), icon: DashboardIcon },
     { path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon },
     { path: '/usage', label: t('nav.usage'), icon: ChartIcon, hideInSimpleMode: true },
+    { path: '/model-pricing', label: t('nav.modelPricing'), icon: CurrencyYenIcon },
     ...(appStore.channelMonitorEnabled
       ? [{ path: '/monitor', label: t('nav.channelStatus'), icon: SignalIcon, hideInSimpleMode: true }]
       : []),
@@ -722,6 +723,7 @@ const personalNavItems = computed((): NavItem[] => {
   const items: NavItem[] = [
     { path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon },
     { path: '/usage', label: t('nav.usage'), icon: ChartIcon, hideInSimpleMode: true },
+    { path: '/model-pricing', label: t('nav.modelPricing'), icon: CurrencyYenIcon },
     ...(appStore.channelMonitorEnabled
       ? [{ path: '/monitor', label: t('nav.channelStatus'), icon: SignalIcon, hideInSimpleMode: true }]
       : []),
@@ -791,12 +793,6 @@ const adminNavItems = computed((): NavItem[] => {
       : []),
     { path: '/admin/users', label: t('nav.users'), icon: UsersIcon, hideInSimpleMode: true },
     { path: '/admin/groups', label: t('nav.groups'), icon: FolderIcon, hideInSimpleMode: true },
-    {
-      path: '/admin/pricing-plans',
-      label: t('nav.pricingPlans'),
-      icon: CurrencyYenIcon,
-      hideInSimpleMode: true
-    },
     {
       path: '/admin/channels',
       label: t('nav.channels', '渠道管理'),

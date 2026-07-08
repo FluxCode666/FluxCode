@@ -13,6 +13,7 @@ export default {
     nav: {
       features: '功能特性',
       pricing: '购买入口',
+      modelPricing: '模型定价',
       integrationDocs: '接入文档',
       docs: '使用文档',
       channelStatus: '渠道状态',
@@ -516,9 +517,9 @@ export default {
     redeem: '兑换',
     referral: '推广中心',
     profile: '个人资料',
+    modelPricing: '模型定价',
     users: '用户管理',
     groups: '分组管理',
-    pricingPlans: '定价方案',
     channels: '渠道管理',
     subscriptions: '订阅管理',
     accounts: '账号管理',
