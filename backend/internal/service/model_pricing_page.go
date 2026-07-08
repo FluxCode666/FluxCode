@@ -75,6 +75,7 @@ type ModelPricingModelSummary struct {
 	ID                  string             `json:"id"`
 	DisplayName         string             `json:"display_name"`
 	Platform            string             `json:"platform"`
+	Platforms           []string           `json:"platforms"`
 	Capabilities        []string           `json:"capabilities"`
 	SupportedGroupCount int                `json:"supported_group_count"`
 	OfficialPrice       ModelPricingAmount `json:"official_price"`
@@ -93,6 +94,7 @@ type ModelPricingModelDetail struct {
 	ID            string                   `json:"id"`
 	DisplayName   string                   `json:"display_name"`
 	Platform      string                   `json:"platform"`
+	Platforms     []string                 `json:"platforms"`
 	Capabilities  []string                 `json:"capabilities"`
 	OfficialPrice ModelPricingAmount       `json:"official_price"`
 	Groups        []ModelPricingGroupPrice `json:"groups"`
@@ -102,7 +104,7 @@ var ErrModelPricingNotFound = errors.New("model pricing not found")
 
 type modelCatalogItem struct {
 	ID           string
-	Platform     string
+	Platforms    map[string]struct{}
 	Capabilities map[string]struct{}
 	Official     *ModelPricing
 	Groups       []modelCatalogGroup
@@ -129,7 +131,8 @@ func (s *ModelPricingPageService) ListModels(ctx context.Context, query ModelPri
 		models = append(models, ModelPricingModelSummary{
 			ID:                  item.ID,
 			DisplayName:         displayModelName(item.ID),
-			Platform:            item.Platform,
+			Platform:            item.PlatformDisplay(),
+			Platforms:           item.SortedPlatforms(),
 			Capabilities:        sortedStrings(item.Capabilities),
 			SupportedGroupCount: len(item.Groups),
 			OfficialPrice:       modelPricingToAmount(item.Official),
@@ -178,7 +181,8 @@ func (s *ModelPricingPageService) GetModel(ctx context.Context, model string) (*
 	return &ModelPricingModelDetail{
 		ID:            item.ID,
 		DisplayName:   displayModelName(item.ID),
-		Platform:      item.Platform,
+		Platform:      item.PlatformDisplay(),
+		Platforms:     item.SortedPlatforms(),
 		Capabilities:  sortedStrings(item.Capabilities),
 		OfficialPrice: modelPricingToAmount(item.Official),
 		Groups:        groups,
@@ -186,7 +190,7 @@ func (s *ModelPricingPageService) GetModel(ctx context.Context, model string) (*
 }
 
 func (s *ModelPricingPageService) buildCatalog(ctx context.Context) (map[string]*modelCatalogItem, error) {
-	channels, _, err := s.channels.List(ctx, pagination.PaginationParams{Page: 1, PageSize: 10000, SortBy: "id", SortOrder: "asc"}, StatusActive, "")
+	channels, err := s.listAllActiveChannels(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -219,12 +223,13 @@ func (s *ModelPricingPageService) buildCatalog(ctx context.Context) (map[string]
 				if item == nil {
 					item = &modelCatalogItem{
 						ID:           model,
-						Platform:     pricing.Platform,
+						Platforms:    map[string]struct{}{},
 						Capabilities: map[string]struct{}{},
 						Official:     official,
 					}
 					catalog[model] = item
 				}
+				item.addPlatform(pricing.Platform)
 				for _, capability := range NormalizeModelCapabilities(pricing.Capabilities) {
 					item.Capabilities[capability] = struct{}{}
 				}
@@ -257,7 +262,52 @@ func (s *ModelPricingPageService) buildCatalog(ctx context.Context) (map[string]
 	return catalog, nil
 }
 
+func (s *ModelPricingPageService) listAllActiveChannels(ctx context.Context) ([]Channel, error) {
+	params := pagination.PaginationParams{Page: 1, PageSize: 1000, SortBy: "id", SortOrder: "asc"}
+	all := make([]Channel, 0, params.PageSize)
+	for {
+		channels, pageResult, err := s.channels.List(ctx, params, StatusActive, "")
+		if err != nil {
+			return nil, err
+		}
+		all = append(all, channels...)
+		if len(channels) == 0 {
+			break
+		}
+		if pageResult != nil && pageResult.Pages > 0 && params.Page >= pageResult.Pages {
+			break
+		}
+		if pageResult != nil && pageResult.Total > 0 && int64(len(all)) >= pageResult.Total {
+			break
+		}
+		if pageResult == nil && len(channels) < params.Limit() {
+			break
+		}
+		params.Page++
+	}
+	return all, nil
+}
+
 func isWildcardModelPattern(model string) bool { return strings.Contains(model, "*") }
+
+func (i *modelCatalogItem) addPlatform(platform string) {
+	platform = strings.TrimSpace(platform)
+	if platform == "" {
+		return
+	}
+	if i.Platforms == nil {
+		i.Platforms = map[string]struct{}{}
+	}
+	i.Platforms[platform] = struct{}{}
+}
+
+func (i *modelCatalogItem) PlatformDisplay() string {
+	return strings.Join(i.SortedPlatforms(), ", ")
+}
+
+func (i *modelCatalogItem) SortedPlatforms() []string {
+	return sortedStrings(i.Platforms)
+}
 
 func modelPatternMatches(pattern, model string) bool {
 	pattern = strings.ToLower(strings.TrimSpace(pattern))
@@ -401,9 +451,7 @@ func attachWildcardSupportedGroups(item *modelCatalogItem, channels []Channel, g
 			if !pricingMatchesModel(pricing, item.ID) {
 				continue
 			}
-			if item.Platform == "" {
-				item.Platform = pricing.Platform
-			}
+			item.addPlatform(pricing.Platform)
 			for _, capability := range NormalizeModelCapabilities(pricing.Capabilities) {
 				item.Capabilities[capability] = struct{}{}
 			}
@@ -435,7 +483,7 @@ func pricingMatchesModel(pricing ChannelModelPricing, model string) bool {
 }
 
 func matchesModelPricingQuery(item *modelCatalogItem, query ModelPricingQuery) bool {
-	if query.Platform != "" && !strings.EqualFold(item.Platform, strings.TrimSpace(query.Platform)) {
+	if query.Platform != "" && !item.hasPlatform(query.Platform) {
 		return false
 	}
 	capability := strings.ToLower(strings.TrimSpace(query.Capability))
@@ -448,11 +496,26 @@ func matchesModelPricingQuery(item *modelCatalogItem, query ModelPricingQuery) b
 	if q == "" {
 		return true
 	}
-	if strings.Contains(strings.ToLower(item.ID), q) || strings.Contains(strings.ToLower(displayModelName(item.ID)), q) || strings.Contains(strings.ToLower(item.Platform), q) {
+	if strings.Contains(strings.ToLower(item.ID), q) || strings.Contains(strings.ToLower(displayModelName(item.ID)), q) || strings.Contains(strings.ToLower(item.PlatformDisplay()), q) {
 		return true
+	}
+	for platform := range item.Platforms {
+		if strings.Contains(strings.ToLower(platform), q) {
+			return true
+		}
 	}
 	for capability := range item.Capabilities {
 		if strings.Contains(capability, q) {
+			return true
+		}
+	}
+	return false
+}
+
+func (i *modelCatalogItem) hasPlatform(platform string) bool {
+	platform = strings.TrimSpace(platform)
+	for candidate := range i.Platforms {
+		if strings.EqualFold(candidate, platform) {
 			return true
 		}
 	}

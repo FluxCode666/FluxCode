@@ -216,7 +216,9 @@ let searchTimer: number | null = null
 let listAbortController: AbortController | null = null
 let detailAbortController: AbortController | null = null
 
-const platforms = computed(() => Array.from(new Set(models.value.map((model) => model.platform))).sort())
+const platforms = computed(() =>
+  Array.from(new Set(models.value.flatMap((model) => model.platforms?.length ? model.platforms : [model.platform]))).sort()
+)
 
 watch(searchInput, (value) => {
   if (searchTimer) {
@@ -245,7 +247,7 @@ async function loadModels() {
   error.value = false
 
   try {
-    models.value = await modelPricingAPI.listModels(
+    const nextModels = await modelPricingAPI.listModels(
       {
         q: debouncedSearch.value,
         platform: platformFilter.value,
@@ -257,6 +259,8 @@ async function loadModels() {
     if (listAbortController !== controller) {
       return
     }
+
+    models.value = nextModels
 
     if (!models.value.some((model) => model.id === selectedModelId.value)) {
       selectedModelId.value = ''
@@ -285,10 +289,11 @@ async function selectModel(modelId: string) {
   detailError.value = false
 
   try {
-    detail.value = await modelPricingAPI.getModel(modelId, { signal: controller.signal })
+    const nextDetail = await modelPricingAPI.getModel(modelId, { signal: controller.signal })
     if (detailAbortController !== controller) {
       return
     }
+    detail.value = nextDetail
   } catch (caughtError) {
     if (detailAbortController !== controller || isCanceledError(caughtError)) {
       return

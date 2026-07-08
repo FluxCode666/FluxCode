@@ -11,14 +11,30 @@ import (
 
 type modelPricingChannelListerStub struct {
 	channels []Channel
+	pages    map[int][]Channel
 	err      error
+	calls    []pagination.PaginationParams
 }
 
 func (s *modelPricingChannelListerStub) List(ctx context.Context, params pagination.PaginationParams, status, search string) ([]Channel, *pagination.PaginationResult, error) {
 	if s.err != nil {
 		return nil, nil, s.err
 	}
-	return s.channels, &pagination.PaginationResult{Total: int64(len(s.channels))}, nil
+	s.calls = append(s.calls, params)
+	if s.pages != nil {
+		pageChannels := s.pages[params.Page]
+		total := 0
+		for _, channels := range s.pages {
+			total += len(channels)
+		}
+		return pageChannels, &pagination.PaginationResult{
+			Total:    int64(total),
+			Page:     params.Page,
+			PageSize: params.Limit(),
+			Pages:    len(s.pages),
+		}, nil
+	}
+	return s.channels, &pagination.PaginationResult{Total: int64(len(s.channels)), Page: params.Page, PageSize: params.Limit(), Pages: 1}, nil
 }
 
 type modelPricingGroupListerStub struct {
@@ -167,6 +183,107 @@ func TestModelPricingPageServiceListModelsFiltersSearchPlatformAndCapability(t *
 	require.NoError(t, err)
 	require.Len(t, models, 1)
 	require.Equal(t, "claude-sonnet-4", models[0].ID)
+}
+
+func TestModelPricingPageServiceListModelsAggregatesAcrossChannelPages(t *testing.T) {
+	channels := &modelPricingChannelListerStub{pages: map[int][]Channel{
+		1: {{
+			ID:       1,
+			Status:   StatusActive,
+			GroupIDs: []int64{1},
+			ModelPricing: []ChannelModelPricing{{
+				Platform:     "anthropic",
+				Models:       []string{"claude-sonnet-4"},
+				Capabilities: []string{"chat"},
+				BillingMode:  BillingModeToken,
+			}},
+		}},
+		2: {{
+			ID:       2,
+			Status:   StatusActive,
+			GroupIDs: []int64{2},
+			ModelPricing: []ChannelModelPricing{{
+				Platform:     "anthropic",
+				Models:       []string{"claude-3-7-sonnet"},
+				Capabilities: []string{"chat"},
+				BillingMode:  BillingModeToken,
+			}},
+		}},
+	}}
+	svc := NewModelPricingPageServiceForTest(
+		channels,
+		&modelPricingGroupListerStub{groups: []Group{
+			{ID: 1, Name: "基础组", Platform: "anthropic", Status: StatusActive, RateMultiplier: 1},
+			{ID: 2, Name: "专业组", Platform: "anthropic", Status: StatusActive, RateMultiplier: 1},
+		}},
+		&modelPricingBillingStub{prices: map[string]*ModelPricing{
+			"claude-sonnet-4":   {InputPricePerToken: 0.000003},
+			"claude-3-7-sonnet": {InputPricePerToken: 0.000004},
+		}},
+	)
+
+	models, err := svc.ListModels(context.Background(), ModelPricingQuery{})
+	require.NoError(t, err)
+	require.Len(t, models, 2)
+	require.Equal(t, []int{1, 2}, []int{channels.calls[0].Page, channels.calls[1].Page})
+	require.Equal(t, 1000, channels.calls[0].Limit())
+	require.ElementsMatch(t, []string{"claude-sonnet-4", "claude-3-7-sonnet"}, []string{models[0].ID, models[1].ID})
+}
+
+func TestModelPricingPageServiceAggregatesSharedModelAcrossPlatforms(t *testing.T) {
+	svc := NewModelPricingPageServiceForTest(
+		&modelPricingChannelListerStub{channels: []Channel{
+			{
+				ID:       10,
+				Status:   StatusActive,
+				GroupIDs: []int64{1},
+				ModelPricing: []ChannelModelPricing{{
+					Platform:     "anthropic",
+					Models:       []string{"claude-sonnet-4"},
+					Capabilities: []string{"chat"},
+					BillingMode:  BillingModeToken,
+				}},
+			},
+			{
+				ID:       11,
+				Status:   StatusActive,
+				GroupIDs: []int64{2},
+				ModelPricing: []ChannelModelPricing{{
+					Platform:        "openrouter",
+					Models:          []string{"claude-sonnet-4"},
+					Capabilities:    []string{"image"},
+					BillingMode:     BillingModePerRequest,
+					PerRequestPrice: floatPtr(0.02),
+				}},
+			},
+		}},
+		&modelPricingGroupListerStub{groups: []Group{
+			{ID: 1, Name: "Anthropic 组", Platform: "anthropic", Status: StatusActive, RateMultiplier: 1},
+			{ID: 2, Name: "OpenRouter 组", Platform: "openrouter", Status: StatusActive, RateMultiplier: 1.5},
+		}},
+		&modelPricingBillingStub{prices: map[string]*ModelPricing{
+			"claude-sonnet-4": {
+				InputPricePerToken:  0.000003,
+				OutputPricePerToken: 0.000015,
+			},
+		}},
+	)
+
+	models, err := svc.ListModels(context.Background(), ModelPricingQuery{Platform: "openrouter"})
+	require.NoError(t, err)
+	require.Len(t, models, 1)
+	require.Equal(t, "anthropic, openrouter", models[0].Platform)
+	require.ElementsMatch(t, []string{"chat", "image"}, models[0].Capabilities)
+
+	detail, err := svc.GetModel(context.Background(), "claude-sonnet-4")
+	require.NoError(t, err)
+	require.Equal(t, "anthropic, openrouter", detail.Platform)
+	require.ElementsMatch(t, []string{"chat", "image"}, detail.Capabilities)
+	require.Len(t, detail.Groups, 2)
+	require.Equal(t, "Anthropic 组", detail.Groups[0].GroupName)
+	require.Equal(t, "OpenRouter 组", detail.Groups[1].GroupName)
+	require.Equal(t, BillingModePerRequest, BillingMode(detail.Groups[1].BillingMode))
+	require.Equal(t, 0.03, detail.Groups[1].Price.PerRequestPrice)
 }
 
 func floatPtr(v float64) *float64 { return &v }

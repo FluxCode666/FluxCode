@@ -33,7 +33,11 @@ func (h *ModelPricingHandler) ListModels(c *gin.Context) {
 }
 
 func (h *ModelPricingHandler) GetModel(c *gin.Context) {
-	model, err := h.service.GetModel(c.Request.Context(), c.Param("model"))
+	modelID := strings.TrimSpace(c.Query("model"))
+	if modelID == "" {
+		modelID = strings.TrimSpace(c.Param("model"))
+	}
+	model, err := h.service.GetModel(c.Request.Context(), modelID)
 	if err != nil {
 		if errors.Is(err, service.ErrModelPricingNotFound) {
 			response.ErrorWithDetails(c, http.StatusNotFound, "模型定价不存在", "MODEL_PRICING_NOT_FOUND", nil)

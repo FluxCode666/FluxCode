@@ -45,6 +45,7 @@ describe('ModelPricingPage', () => {
         id: 'claude-sonnet-4',
         display_name: 'claude-sonnet-4',
         platform: 'anthropic',
+        platforms: ['anthropic'],
         capabilities: ['chat'],
         supported_group_count: 2,
         official_price: {
@@ -63,6 +64,7 @@ describe('ModelPricingPage', () => {
       id: 'claude-sonnet-4',
       display_name: 'claude-sonnet-4',
       platform: 'anthropic',
+      platforms: ['anthropic'],
       capabilities: ['chat'],
       supported_group_count: 2,
       official_price: {
@@ -194,6 +196,7 @@ describe('ModelPricingPage', () => {
             id: 'claude-sonnet-4',
             display_name: 'claude-sonnet-4',
             platform: 'anthropic',
+            platforms: ['anthropic'],
             capabilities: ['chat'],
             supported_group_count: 2,
             official_price: {
@@ -240,6 +243,7 @@ describe('ModelPricingPage', () => {
         id: 'claude-sonnet-4',
         display_name: 'claude-sonnet-4',
         platform: 'anthropic',
+        platforms: ['anthropic'],
         capabilities: ['chat'],
         supported_group_count: 2,
         official_price: {
@@ -298,5 +302,160 @@ describe('ModelPricingPage', () => {
 
     expect(getModel).toHaveBeenCalledTimes(2)
     expect(wrapper.text()).toContain('基础组')
+  })
+
+  it('ignores stale detail responses that resolve after a newer selection', async () => {
+    let firstResolve: ((value: unknown) => void) | null = null
+    let secondResolve: ((value: unknown) => void) | null = null
+
+    listModels.mockResolvedValue([
+      {
+        id: 'claude-sonnet-4',
+        display_name: 'claude-sonnet-4',
+        platform: 'anthropic',
+        platforms: ['anthropic'],
+        capabilities: ['chat'],
+        supported_group_count: 1,
+        official_price: {
+          input_price: 0.000003,
+          output_price: 0.000015,
+          cache_write_price: 0.00000375,
+          cache_read_price: 0.0000003,
+          image_output_price: 0,
+          per_request_price: 0,
+          intervals: []
+        }
+      },
+      {
+        id: 'gpt-4.1',
+        display_name: 'gpt-4.1',
+        platform: 'openai',
+        platforms: ['openai'],
+        capabilities: ['chat'],
+        supported_group_count: 1,
+        official_price: {
+          input_price: 0.000002,
+          output_price: 0.000008,
+          cache_write_price: 0,
+          cache_read_price: 0,
+          image_output_price: 0,
+          per_request_price: 0,
+          intervals: []
+        }
+      }
+    ])
+
+    getModel.mockReset()
+    getModel
+      .mockImplementationOnce(() => new Promise((resolve) => {
+        firstResolve = resolve
+      }))
+      .mockImplementationOnce(() => new Promise((resolve) => {
+        secondResolve = resolve
+      }))
+
+    const wrapper = mount(ModelPricingPage, {
+      global: {
+        stubs: {
+          PublicHeader: true
+        }
+      }
+    })
+
+    await flushPromises()
+
+    await wrapper.get('[data-testid="model-card-claude-sonnet-4"]').trigger('click')
+    await wrapper.get('[data-testid="model-card-gpt-4.1"]').trigger('click')
+
+    secondResolve?.({
+      id: 'gpt-4.1',
+      display_name: 'gpt-4.1',
+      platform: 'openai',
+      platforms: ['openai'],
+      capabilities: ['chat'],
+      supported_group_count: 1,
+      official_price: {
+        input_price: 0.000002,
+        output_price: 0.000008,
+        cache_write_price: 0,
+        cache_read_price: 0,
+        image_output_price: 0,
+        per_request_price: 0,
+        intervals: []
+      },
+      groups: [
+        {
+          group_id: 2,
+          group_name: 'OpenAI 组',
+          rate_multiplier: 1,
+          billing_mode: 'token',
+          price: {
+            input_price: 0.000002,
+            output_price: 0.000008,
+            cache_write_price: 0,
+            cache_read_price: 0,
+            image_output_price: 0,
+            per_request_price: 0,
+            intervals: []
+          },
+          multipliers: {
+            input_price: 1,
+            output_price: 1,
+            cache_write_price: 0,
+            cache_read_price: 0,
+            image_output_price: 0,
+            per_request_price: 0
+          }
+        }
+      ]
+    })
+    await flushPromises()
+
+    firstResolve?.({
+      id: 'claude-sonnet-4',
+      display_name: 'claude-sonnet-4',
+      platform: 'anthropic',
+      platforms: ['anthropic'],
+      capabilities: ['chat'],
+      supported_group_count: 1,
+      official_price: {
+        input_price: 0.000003,
+        output_price: 0.000015,
+        cache_write_price: 0.00000375,
+        cache_read_price: 0.0000003,
+        image_output_price: 0,
+        per_request_price: 0,
+        intervals: []
+      },
+      groups: [
+        {
+          group_id: 1,
+          group_name: '基础组',
+          rate_multiplier: 2,
+          billing_mode: 'token',
+          price: {
+            input_price: 0.000006,
+            output_price: 0.00003,
+            cache_write_price: 0.0000075,
+            cache_read_price: 0.0000006,
+            image_output_price: 0,
+            per_request_price: 0,
+            intervals: []
+          },
+          multipliers: {
+            input_price: 2,
+            output_price: 2,
+            cache_write_price: 2,
+            cache_read_price: 2,
+            image_output_price: 0,
+            per_request_price: 0
+          }
+        }
+      ]
+    })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('OpenAI 组')
+    expect(wrapper.text()).not.toContain('基础组')
   })
 })

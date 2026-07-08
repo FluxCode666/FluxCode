@@ -12,6 +12,7 @@ func RegisterModelPricingRoutes(v1 *gin.RouterGroup, h *handler.Handlers) {
 	modelPricing := v1.Group("/model-pricing")
 	{
 		modelPricing.GET("/models", h.ModelPricing.ListModels)
+		modelPricing.GET("/model", h.ModelPricing.GetModel)
 		modelPricing.GET("/models/:model", h.ModelPricing.GetModel)
 	}
 }

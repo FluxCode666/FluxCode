@@ -48,6 +48,22 @@ func (s *singleModelPricingChannels) List(ctx context.Context, params pagination
 	}}, &pagination.PaginationResult{Total: 1}, nil
 }
 
+type slashModelPricingChannels struct{}
+
+func (s *slashModelPricingChannels) List(ctx context.Context, params pagination.PaginationParams, status, search string) ([]service.Channel, *pagination.PaginationResult, error) {
+	return []service.Channel{{
+		ID:       1,
+		Status:   service.StatusActive,
+		GroupIDs: []int64{2},
+		ModelPricing: []service.ChannelModelPricing{{
+			Platform:     "openrouter",
+			Models:       []string{"openai/gpt-4.1"},
+			Capabilities: []string{"chat"},
+			BillingMode:  service.BillingModeToken,
+		}},
+	}}, &pagination.PaginationResult{Total: 1}, nil
+}
+
 type singleModelPricingGroups struct{}
 
 func (s *singleModelPricingGroups) ListActive(ctx context.Context) ([]service.Group, error) {
@@ -55,6 +71,18 @@ func (s *singleModelPricingGroups) ListActive(ctx context.Context) ([]service.Gr
 		ID:             2,
 		Name:           "基础组",
 		Platform:       "anthropic",
+		Status:         service.StatusActive,
+		RateMultiplier: 1,
+	}}, nil
+}
+
+type slashModelPricingGroups struct{}
+
+func (s *slashModelPricingGroups) ListActive(ctx context.Context) ([]service.Group, error) {
+	return []service.Group{{
+		ID:             2,
+		Name:           "OpenRouter 组",
+		Platform:       "openrouter",
 		Status:         service.StatusActive,
 		RateMultiplier: 1,
 	}}, nil
@@ -128,4 +156,27 @@ func TestModelPricingHandlerGetModelReturnsLocalizedNotFound(t *testing.T) {
 	require.Equal(t, http.StatusNotFound, rec.Code)
 	require.Contains(t, rec.Body.String(), "MODEL_PRICING_NOT_FOUND")
 	require.Contains(t, rec.Body.String(), "模型定价不存在")
+}
+
+func TestModelPricingHandlerGetModelSupportsQueryParamSlashIDs(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	h := NewModelPricingHandler(service.NewModelPricingPageServiceForTest(
+		&slashModelPricingChannels{},
+		&slashModelPricingGroups{},
+		&singleModelPricingBilling{},
+	))
+	router := gin.New()
+	router.GET("/api/v1/model-pricing/model", h.GetModel)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/model-pricing/model?model=openai%2Fgpt-4.1", nil)
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var body struct {
+		Data service.ModelPricingModelDetail `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	require.Equal(t, "openai/gpt-4.1", body.Data.ID)
+	require.Equal(t, "openrouter", body.Data.Platform)
 }

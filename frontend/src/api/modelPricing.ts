@@ -36,6 +36,7 @@ export interface ModelPricingSummary {
   id: string
   display_name: string
   platform: string
+  platforms: string[]
   capabilities: ModelCapability[]
   supported_group_count: number
   official_price: ModelPricingAmount
@@ -75,7 +76,8 @@ export async function getModel(
   model: string,
   options?: { signal?: AbortSignal }
 ): Promise<ModelPricingDetail> {
-  const response = await apiClient.get<ModelPricingDetail>(`/model-pricing/models/${encodeURIComponent(model)}`, {
+  const response = await apiClient.get<ModelPricingDetail>('/model-pricing/model', {
+    params: { model },
     signal: options?.signal
   })
   return response.data
