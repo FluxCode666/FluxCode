@@ -209,6 +209,24 @@ func TestChannelModelPricingClone(t *testing.T) {
 	require.Equal(t, "tier1", original.Intervals[0].TierLabel)
 }
 
+func TestNormalizeModelCapabilities(t *testing.T) {
+	got := NormalizeModelCapabilities([]string{"chat", "", "image", "bad", "chat", " video "})
+	require.Equal(t, []string{"chat", "image", "video"}, got)
+}
+
+func TestChannelModelPricingCloneCopiesCapabilities(t *testing.T) {
+	original := ChannelModelPricing{
+		Models:       []string{"claude-sonnet-4"},
+		Capabilities: []string{"chat", "image"},
+	}
+
+	cloned := original.Clone()
+	cloned.Capabilities[0] = "video"
+
+	require.Equal(t, []string{"chat", "image"}, original.Capabilities)
+	require.Equal(t, []string{"video", "image"}, cloned.Capabilities)
+}
+
 // --- BillingMode.IsValid ---
 
 func TestBillingModeIsValid(t *testing.T) {

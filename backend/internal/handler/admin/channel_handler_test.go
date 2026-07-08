@@ -400,3 +400,19 @@ func TestPricingRequestToService_NilPriceFields(t *testing.T) {
 	require.Nil(t, r.ImageOutputPrice)
 	require.Nil(t, r.PerRequestPrice)
 }
+
+func TestChannelPricingCapabilitiesMapperRoundTrip(t *testing.T) {
+	reqs := []channelModelPricingRequest{{
+		Platform:     "anthropic",
+		Models:       []string{"claude-sonnet-4"},
+		Capabilities: []string{"chat", "bad", "chat", "image"},
+		BillingMode:  "token",
+	}}
+
+	pricing := pricingRequestToService(reqs)
+	require.Len(t, pricing, 1)
+	require.Equal(t, []string{"chat", "image"}, pricing[0].Capabilities)
+
+	resp := pricingToResponse(&pricing[0])
+	require.Equal(t, []string{"chat", "image"}, resp.Capabilities)
+}

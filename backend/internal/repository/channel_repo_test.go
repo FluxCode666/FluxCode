@@ -3,12 +3,16 @@
 package repository
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"testing"
+	"time"
 
+	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
+	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/lib/pq"
 	"github.com/stretchr/testify/require"
 )
@@ -234,4 +238,41 @@ func TestChannelListOrderBy_AllowsDescendingIDSort(t *testing.T) {
 	}
 
 	require.Equal(t, "c.id DESC, c.id DESC", channelListOrderBy(params))
+}
+
+func TestChannelRepositoryModelPricingCapabilitiesRoundTrip(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer db.Close()
+
+	repo := NewChannelRepository(db)
+	pricing := service.ChannelModelPricing{
+		ChannelID:    12,
+		Platform:     "anthropic",
+		Models:       []string{"claude-sonnet-4"},
+		Capabilities: []string{"chat", "image"},
+		BillingMode:  service.BillingModeToken,
+	}
+
+	mock.ExpectQuery(`INSERT INTO channel_model_pricing`).
+		WithArgs(
+			int64(12),
+			"anthropic",
+			[]byte(`["claude-sonnet-4"]`),
+			service.BillingModeToken,
+			pricing.InputPrice,
+			pricing.OutputPrice,
+			pricing.CacheWritePrice,
+			pricing.CacheReadPrice,
+			pricing.ImageOutputPrice,
+			pricing.PerRequestPrice,
+			[]byte(`["chat","image"]`),
+		).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "created_at", "updated_at"}).
+			AddRow(int64(99), time.Now(), time.Now()))
+
+	err = repo.CreateModelPricing(context.Background(), &pricing)
+	require.NoError(t, err)
+	require.NoError(t, mock.ExpectationsWereMet())
+	require.Equal(t, int64(99), pricing.ID)
 }

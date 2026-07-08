@@ -16,6 +16,37 @@ const (
 	BillingModeImage      BillingMode = "image"       // 图片计费（当前按次，预留 token 计费）
 )
 
+type ModelCapability string
+
+const (
+	ModelCapabilityChat  ModelCapability = "chat"
+	ModelCapabilityImage ModelCapability = "image"
+	ModelCapabilityVideo ModelCapability = "video"
+)
+
+var allowedModelCapabilities = map[string]struct{}{
+	string(ModelCapabilityChat):  {},
+	string(ModelCapabilityImage): {},
+	string(ModelCapabilityVideo): {},
+}
+
+func NormalizeModelCapabilities(input []string) []string {
+	seen := make(map[string]struct{}, len(input))
+	out := make([]string, 0, len(input))
+	for _, raw := range input {
+		capability := strings.ToLower(strings.TrimSpace(raw))
+		if _, ok := allowedModelCapabilities[capability]; !ok {
+			continue
+		}
+		if _, exists := seen[capability]; exists {
+			continue
+		}
+		seen[capability] = struct{}{}
+		out = append(out, capability)
+	}
+	return out
+}
+
 // IsValid 检查 BillingMode 是否为合法值
 func (m BillingMode) IsValid() bool {
 	switch m {
@@ -77,6 +108,7 @@ type ChannelModelPricing struct {
 	ChannelID        int64
 	Platform         string            // 所属平台（anthropic/openai/gemini/...）
 	Models           []string          // 绑定的模型列表
+	Capabilities     []string          // 展示用能力标签：chat/image/video
 	BillingMode      BillingMode       // 计费模式
 	InputPrice       *float64          // 每 token 输入价格（USD）— 向后兼容 flat 定价
 	OutputPrice      *float64          // 每 token 输出价格（USD）
@@ -163,6 +195,10 @@ func (p ChannelModelPricing) Clone() ChannelModelPricing {
 	if p.Models != nil {
 		cp.Models = make([]string, len(p.Models))
 		copy(cp.Models, p.Models)
+	}
+	if p.Capabilities != nil {
+		cp.Capabilities = make([]string, len(p.Capabilities))
+		copy(cp.Capabilities, p.Capabilities)
 	}
 	if p.Intervals != nil {
 		cp.Intervals = make([]PricingInterval, len(p.Intervals))
