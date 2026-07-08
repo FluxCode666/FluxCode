@@ -106,6 +106,22 @@
           <div v-if="detailLoading" class="text-sm text-gray-500 dark:text-dark-300">
             {{ t('common.loading', '加载中...') }}
           </div>
+          <div
+            v-else-if="detailError"
+            class="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900/40 dark:bg-red-950/30 dark:text-red-300"
+          >
+            <div class="flex items-center justify-between gap-3">
+              <span>{{ t('modelPricing.queryError', '查询异常') }}</span>
+              <button
+                data-testid="model-pricing-detail-retry"
+                type="button"
+                class="btn btn-secondary"
+                @click="retrySelectedModel"
+              >
+                {{ t('common.retry', '重试') }}
+              </button>
+            </div>
+          </div>
           <div v-else-if="!detail" class="text-sm text-gray-500 dark:text-dark-300">
             {{ t('modelPricing.selectHint', '选择模型查看分组价格') }}
           </div>
@@ -194,6 +210,7 @@ const capabilityFilter = ref<ModelCapability | ''>('')
 const loading = ref(false)
 const detailLoading = ref(false)
 const error = ref(false)
+const detailError = ref(false)
 
 let searchTimer: ReturnType<typeof setTimeout> | null = null
 let listAbortController: AbortController | null = null
@@ -214,9 +231,15 @@ watch([debouncedSearch, platformFilter, capabilityFilter], () => {
   loadModels()
 })
 
+function isCanceledError(error: unknown): boolean {
+  const candidate = error as { code?: string; name?: string; message?: string }
+  return candidate?.code === 'ERR_CANCELED' || candidate?.name === 'CanceledError' || candidate?.message === 'canceled'
+}
+
 async function loadModels() {
   listAbortController?.abort()
-  listAbortController = new AbortController()
+  const controller = new AbortController()
+  listAbortController = controller
 
   loading.value = true
   error.value = false
@@ -228,32 +251,60 @@ async function loadModels() {
         platform: platformFilter.value,
         capability: capabilityFilter.value
       },
-      { signal: listAbortController.signal }
+      { signal: controller.signal }
     )
+
+    if (listAbortController !== controller) {
+      return
+    }
 
     if (!models.value.some((model) => model.id === selectedModelId.value)) {
       selectedModelId.value = ''
       detail.value = null
+      detailError.value = false
     }
-  } catch {
+  } catch (caughtError) {
+    if (listAbortController !== controller || isCanceledError(caughtError)) {
+      return
+    }
     error.value = true
   } finally {
-    loading.value = false
+    if (listAbortController === controller) {
+      loading.value = false
+    }
   }
 }
 
 async function selectModel(modelId: string) {
   detailAbortController?.abort()
-  detailAbortController = new AbortController()
+  const controller = new AbortController()
+  detailAbortController = controller
 
   selectedModelId.value = modelId
   detailLoading.value = true
+  detailError.value = false
 
   try {
-    detail.value = await modelPricingAPI.getModel(modelId, { signal: detailAbortController.signal })
+    detail.value = await modelPricingAPI.getModel(modelId, { signal: controller.signal })
+    if (detailAbortController !== controller) {
+      return
+    }
+  } catch (caughtError) {
+    if (detailAbortController !== controller || isCanceledError(caughtError)) {
+      return
+    }
+    detail.value = null
+    detailError.value = true
   } finally {
-    detailLoading.value = false
+    if (detailAbortController === controller) {
+      detailLoading.value = false
+    }
   }
+}
+
+function retrySelectedModel() {
+  if (!selectedModelId.value) return
+  selectModel(selectedModelId.value)
 }
 
 function capabilityLabel(capability: string): string {
