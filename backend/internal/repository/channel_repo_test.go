@@ -240,7 +240,7 @@ func TestChannelListOrderBy_AllowsDescendingIDSort(t *testing.T) {
 	require.Equal(t, "c.id DESC, c.id DESC", channelListOrderBy(params))
 }
 
-func TestChannelRepositoryModelPricingCapabilitiesRoundTrip(t *testing.T) {
+func TestChannelRepositoryCreateModelPricingPersistsCapabilities(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
 	defer db.Close()
@@ -275,4 +275,103 @@ func TestChannelRepositoryModelPricingCapabilitiesRoundTrip(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, mock.ExpectationsWereMet())
 	require.Equal(t, int64(99), pricing.ID)
+}
+
+func TestChannelRepositoryListModelPricingScansCapabilities(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer db.Close()
+
+	repo := NewChannelRepository(db)
+	now := time.Now()
+
+	mock.ExpectQuery(`SELECT id, channel_id, platform, models, capabilities, billing_mode`).
+		WithArgs(int64(12)).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"id", "channel_id", "platform", "models", "capabilities", "billing_mode",
+			"input_price", "output_price", "cache_write_price", "cache_read_price",
+			"image_output_price", "per_request_price", "created_at", "updated_at",
+		}).
+			AddRow(
+				int64(99),
+				int64(12),
+				"anthropic",
+				[]byte(`["claude-sonnet-4"]`),
+				[]byte(`["chat","bad","image","chat"]`),
+				service.BillingModeToken,
+				nil, nil, nil, nil, nil, nil,
+				now, now,
+			).
+			AddRow(
+				int64(100),
+				int64(12),
+				"openai",
+				[]byte(`["gpt-5.1"]`),
+				[]byte(`{`),
+				service.BillingModePerRequest,
+				nil, nil, nil, nil, nil, nil,
+				now, now,
+			))
+
+	mock.ExpectQuery(`SELECT id, pricing_id, min_tokens, max_tokens, tier_label,`).
+		WithArgs(sqlmock.AnyArg()).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"id", "pricing_id", "min_tokens", "max_tokens", "tier_label",
+			"input_price", "output_price", "cache_write_price", "cache_read_price",
+			"per_request_price", "sort_order", "created_at", "updated_at",
+		}))
+
+	pricing, err := repo.ListModelPricing(context.Background(), 12)
+	require.NoError(t, err)
+	require.Len(t, pricing, 2)
+	require.Equal(t, []string{"chat", "image"}, pricing[0].Capabilities)
+	require.Equal(t, []string{}, pricing[1].Capabilities)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestChannelRepositoryUpdateModelPricingPersistsCapabilities(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer db.Close()
+
+	repo := NewChannelRepository(db)
+	inputPrice := 0.01
+	outputPrice := 0.02
+	cacheWritePrice := 0.003
+	cacheReadPrice := 0.001
+	imageOutputPrice := 0.05
+	perRequestPrice := 0.6
+	pricing := service.ChannelModelPricing{
+		ID:               99,
+		Platform:         "anthropic",
+		Models:           []string{"claude-sonnet-4"},
+		Capabilities:     []string{"chat", "bad", "image", "chat"},
+		BillingMode:      service.BillingModeToken,
+		InputPrice:       &inputPrice,
+		OutputPrice:      &outputPrice,
+		CacheWritePrice:  &cacheWritePrice,
+		CacheReadPrice:   &cacheReadPrice,
+		ImageOutputPrice: &imageOutputPrice,
+		PerRequestPrice:  &perRequestPrice,
+	}
+
+	mock.ExpectExec(`UPDATE channel_model_pricing`).
+		WithArgs(
+			[]byte(`["claude-sonnet-4"]`),
+			service.BillingModeToken,
+			pricing.InputPrice,
+			pricing.OutputPrice,
+			pricing.CacheWritePrice,
+			pricing.CacheReadPrice,
+			pricing.ImageOutputPrice,
+			pricing.PerRequestPrice,
+			"anthropic",
+			[]byte(`["chat","image"]`),
+			int64(99),
+		).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+
+	err = repo.UpdateModelPricing(context.Background(), &pricing)
+	require.NoError(t, err)
+	require.NoError(t, mock.ExpectationsWereMet())
 }
