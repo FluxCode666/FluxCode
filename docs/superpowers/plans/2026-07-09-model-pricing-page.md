@@ -534,18 +534,31 @@ func TestModelPricingPageServiceListModelsAggregatesConcreteEnabledChannelModels
 func TestModelPricingPageServiceGetModelAppliesChannelOverrideAndGroupMultiplier(t *testing.T) {
 	input := floatPtr(0.000006)
 	svc := NewModelPricingPageServiceForTest(
-		&modelPricingChannelListerStub{channels: []Channel{{
-			ID:      10,
-			Status:  StatusActive,
-			GroupIDs: []int64{1},
-			ModelPricing: []ChannelModelPricing{{
-				Platform:     "anthropic",
-				Models:       []string{"claude-*"},
-				Capabilities: []string{"chat", "image"},
-				BillingMode:  BillingModeToken,
-				InputPrice:   input,
+		&modelPricingChannelListerStub{channels: []Channel{
+			{
+				ID:      10,
+				Status:  StatusActive,
+				GroupIDs: []int64{},
+				ModelPricing: []ChannelModelPricing{{
+					Platform:     "anthropic",
+					Models:       []string{"claude-opus-4"},
+					Capabilities: []string{"chat"},
+					BillingMode:  BillingModeToken,
+				}},
+			},
+			{
+				ID:      11,
+				Status:  StatusActive,
+				GroupIDs: []int64{1},
+				ModelPricing: []ChannelModelPricing{{
+					Platform:     "anthropic",
+					Models:       []string{"claude-*"},
+					Capabilities: []string{"image"},
+					BillingMode:  BillingModeToken,
+					InputPrice:   input,
+				}},
 			}},
-		}}},
+		}},
 		&modelPricingGroupListerStub{groups: []Group{
 			{ID: 1, Name: "专业组", Platform: "anthropic", Status: StatusActive, RateMultiplier: 2},
 			{ID: 2, Name: "未绑定组", Platform: "anthropic", Status: StatusActive, RateMultiplier: 1},
