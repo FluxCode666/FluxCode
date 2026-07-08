@@ -202,6 +202,30 @@ export default {
     }
   },
 
+  modelPricing: {
+    title: '模型定价',
+    description: '按模型查看不同分组的调用价格',
+    searchPlaceholder: '搜索模型、平台或能力',
+    allPlatforms: '全部平台',
+    allCapabilities: '全部能力',
+    queryError: '查询异常',
+    empty: '未找到匹配模型',
+    selectHint: '选择模型查看分组价格',
+    inputOutput: '输入/输出',
+    group: '分组',
+    rate: '倍率',
+    input: '输入',
+    output: '输出',
+    cacheWrite: '缓存写入',
+    cacheRead: '缓存读取',
+    requestOrImage: '按次/图片',
+    capabilities: {
+      chat: '对话',
+      image: '图片',
+      video: '视频'
+    }
+  },
+
   systemPrompt: {
     modeLabel: '注入模式',
     promptLabel: '系统提示词',

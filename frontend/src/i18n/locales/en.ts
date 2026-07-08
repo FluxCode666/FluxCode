@@ -204,6 +204,30 @@ export default {
     }
   },
 
+  modelPricing: {
+    title: 'Model Pricing',
+    description: 'Browse model prices across available groups',
+    searchPlaceholder: 'Search model, platform, or capability',
+    allPlatforms: 'All Platforms',
+    allCapabilities: 'All Capabilities',
+    queryError: 'Query failed',
+    empty: 'No matching models found',
+    selectHint: 'Select a model to view group prices',
+    inputOutput: 'Input/Output',
+    group: 'Group',
+    rate: 'Rate',
+    input: 'Input',
+    output: 'Output',
+    cacheWrite: 'Cache Write',
+    cacheRead: 'Cache Read',
+    requestOrImage: 'Request/Image',
+    capabilities: {
+      chat: 'Chat',
+      image: 'Image',
+      video: 'Video'
+    }
+  },
+
   systemPrompt: {
     modeLabel: 'Injection Mode',
     promptLabel: 'System Prompt',
