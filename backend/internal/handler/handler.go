@@ -56,6 +56,7 @@ type Handlers struct {
 	OpenAIGateway   *OpenAIGatewayHandler
 	Setting         *SettingHandler
 	Totp            *TotpHandler
+	ModelPricing    *ModelPricingHandler
 	PricingPlan     *PricingPlanHandler
 	Payment         *PaymentHandler
 	PaymentWebhook  *PaymentWebhookHandler
