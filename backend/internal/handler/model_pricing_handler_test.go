@@ -85,6 +85,7 @@ func TestModelPricingHandlerListModelsReturnsQueryError(t *testing.T) {
 
 	require.Equal(t, http.StatusInternalServerError, rec.Code)
 	require.Contains(t, rec.Body.String(), "MODEL_PRICING_QUERY_FAILED")
+	require.Contains(t, rec.Body.String(), "模型定价查询失败")
 }
 
 func TestModelPricingHandlerGetModelReturnsDetail(t *testing.T) {
@@ -108,4 +109,23 @@ func TestModelPricingHandlerGetModelReturnsDetail(t *testing.T) {
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
 	require.Equal(t, "claude-sonnet-4", body.Data.ID)
 	require.Len(t, body.Data.Groups, 1)
+}
+
+func TestModelPricingHandlerGetModelReturnsLocalizedNotFound(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	h := NewModelPricingHandler(service.NewModelPricingPageServiceForTest(
+		&singleModelPricingChannels{},
+		&singleModelPricingGroups{},
+		&singleModelPricingBilling{},
+	))
+	router := gin.New()
+	router.GET("/api/v1/model-pricing/models/:model", h.GetModel)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/model-pricing/models/claude-opus-4", nil)
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusNotFound, rec.Code)
+	require.Contains(t, rec.Body.String(), "MODEL_PRICING_NOT_FOUND")
+	require.Contains(t, rec.Body.String(), "模型定价不存在")
 }

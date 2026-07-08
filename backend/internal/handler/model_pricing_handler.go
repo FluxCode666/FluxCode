@@ -26,7 +26,7 @@ func (h *ModelPricingHandler) ListModels(c *gin.Context) {
 		Capability: strings.TrimSpace(c.Query("capability")),
 	})
 	if err != nil {
-		response.ErrorFrom(c, infraerrors.InternalServer("MODEL_PRICING_QUERY_FAILED", "model pricing query failed"))
+		response.ErrorFrom(c, infraerrors.InternalServer("MODEL_PRICING_QUERY_FAILED", "模型定价查询失败"))
 		return
 	}
 	response.Success(c, models)
@@ -36,10 +36,10 @@ func (h *ModelPricingHandler) GetModel(c *gin.Context) {
 	model, err := h.service.GetModel(c.Request.Context(), c.Param("model"))
 	if err != nil {
 		if errors.Is(err, service.ErrModelPricingNotFound) {
-			response.ErrorWithDetails(c, http.StatusNotFound, "model pricing not found", "MODEL_PRICING_NOT_FOUND", nil)
+			response.ErrorWithDetails(c, http.StatusNotFound, "模型定价不存在", "MODEL_PRICING_NOT_FOUND", nil)
 			return
 		}
-		response.ErrorFrom(c, infraerrors.InternalServer("MODEL_PRICING_QUERY_FAILED", "model pricing query failed"))
+		response.ErrorFrom(c, infraerrors.InternalServer("MODEL_PRICING_QUERY_FAILED", "模型定价查询失败"))
 		return
 	}
 	response.Success(c, model)
