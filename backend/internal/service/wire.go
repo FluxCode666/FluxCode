@@ -746,7 +746,6 @@ var ProviderSet = wire.NewSet(
 	ProvideScheduledTestService,
 	ProvideScheduledTestRunnerService,
 	NewGroupCapacityService,
-	NewPricingPlanService,
 	NewPoolMonitorService,
 	NewAlertService,
 	wire.Bind(new(PoolMonitorConfigProvider), new(*PoolMonitorService)),

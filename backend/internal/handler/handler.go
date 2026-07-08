@@ -31,7 +31,6 @@ type AdminHandlers struct {
 	TLSFingerprintProfile  *admin.TLSFingerprintProfileHandler
 	APIKey                 *admin.AdminAPIKeyHandler
 	ScheduledTest          *admin.ScheduledTestHandler
-	PricingPlan            *admin.PricingPlanHandler
 	PoolMonitor            *admin.PoolMonitorHandler
 	Channel                *admin.ChannelHandler
 	ChannelMonitor         *admin.ChannelMonitorHandler
@@ -57,7 +56,6 @@ type Handlers struct {
 	Setting         *SettingHandler
 	Totp            *TotpHandler
 	ModelPricing    *ModelPricingHandler
-	PricingPlan     *PricingPlanHandler
 	Payment         *PaymentHandler
 	PaymentWebhook  *PaymentWebhookHandler
 	Referral        *ReferralHandler

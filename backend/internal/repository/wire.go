@@ -104,7 +104,6 @@ var ProviderSet = wire.NewSet(
 	NewUserAttributeValueRepository,
 	NewUserGroupRateRepository,
 	NewErrorPassthroughRepository,
-	NewPricingPlanRepository,
 	NewPoolAlertConfigRepository,
 	NewPoolAlertConfigCache,
 	NewProxyTransportFailureCounter,

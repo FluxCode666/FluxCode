@@ -2581,63 +2581,6 @@ export default {
       }
     },
 
-    pricingPlans: {
-      createGroup: 'Create Group',
-      createPlan: 'Create Plan',
-      editGroup: 'Edit Group',
-      editPlan: 'Edit Plan',
-      deleteGroup: 'Delete Group',
-      deleteGroupConfirm: 'Delete pricing group "{name}"? All plans in this group will also be removed.',
-      deletePlan: 'Delete Plan',
-      deletePlanConfirm: 'Delete plan "{name}" from group "{group}"?',
-      emptyTitle: 'No pricing groups yet',
-      emptyDesc: 'Create pricing groups and plans to expose purchase options on the public pricing page.',
-      failedToLoad: 'Failed to load pricing plans',
-      noPlans: 'No plans yet',
-      sortOrder: 'Sort Order',
-      columns: {
-        name: 'Name',
-        price: 'Price',
-        sortOrder: 'Sort',
-        status: 'Status',
-        actions: 'Actions'
-      },
-      groupForm: {
-        name: 'Group Name',
-        description: 'Group Description',
-        sortOrder: 'Sort Order',
-        status: 'Status'
-      },
-      planForm: {
-        group: 'Group',
-        name: 'Plan Name',
-        description: 'Plan Description',
-        iconUrl: 'Icon URL',
-        iconUrlHint: 'Optional icon URL',
-        badgeText: 'Badge Text',
-        badgeTextHint: 'e.g. Recommended / Popular',
-        priceText: 'Price Text',
-        priceTextHint: 'e.g. $19 / month. When filled, it overrides the formatted price.',
-        tagline: 'Tagline',
-        taglineHint: 'e.g. Best for individual developers',
-        priceAmount: 'Price Amount',
-        priceCurrency: 'Currency',
-        pricePeriod: 'Billing Period',
-        features: 'Features',
-        featuresHint: 'One feature per line',
-        purchaseEntries: 'Purchase Entries',
-        purchaseEntriesHint: 'Configure one or more purchase entries; they are shown in order on the public page.',
-        addPurchaseEntry: 'Add Purchase Entry',
-        dragToSort: 'Drag to sort',
-        purchaseEntryLabelPlaceholder: 'Button label, e.g. Buy Now',
-        purchaseEntryValuePlaceholder: 'Link, redeem code, or contact info',
-        removePurchaseEntry: 'Remove Entry',
-        featured: 'Featured Plan',
-        sortOrder: 'Sort Order',
-        status: 'Status'
-      }
-    },
-
     // Channel Management
     channels: {
       title: 'Channel Management',

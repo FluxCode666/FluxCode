@@ -26,7 +26,6 @@ import dataManagementAPI from './dataManagement'
 import apiKeysAPI from './apiKeys'
 import scheduledTestsAPI from './scheduledTests'
 import backupAPI from './backup'
-import pricingPlansAPI from './pricingPlans'
 import poolMonitorAPI from './poolMonitor'
 import tlsFingerprintProfileAPI from './tlsFingerprintProfile'
 import channelsAPI from './channels'
@@ -63,7 +62,6 @@ export const adminAPI = {
   apiKeys: apiKeysAPI,
   scheduledTests: scheduledTestsAPI,
   backup: backupAPI,
-  pricingPlans: pricingPlansAPI,
   poolMonitor: poolMonitorAPI,
   tlsFingerprintProfiles: tlsFingerprintProfileAPI,
   channels: channelsAPI,
@@ -98,7 +96,6 @@ export {
   apiKeysAPI,
   scheduledTestsAPI,
   backupAPI,
-  pricingPlansAPI,
   poolMonitorAPI,
   tlsFingerprintProfileAPI,
   channelsAPI,

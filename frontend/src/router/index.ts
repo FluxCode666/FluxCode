@@ -39,7 +39,7 @@ const routes: RouteRecordRaw[] = [
   {
     path: '/model-pricing',
     name: 'ModelPricing',
-    component: () => import('@/views/ModelPricingView.vue'),
+    component: () => import('@/views/ModelPricingPage.vue'),
     meta: {
       requiresAuth: false,
       title: 'Model Pricing',

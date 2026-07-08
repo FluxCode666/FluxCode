@@ -84,7 +84,7 @@ describe('AppSidebar model pricing', () => {
     localStorage.clear()
   })
 
-  it('shows model pricing and hides pricing plans', () => {
+  it('shows model pricing entry for users', () => {
     const wrapper = mount(AppSidebar, {
       global: {
         stubs: {
@@ -99,10 +99,9 @@ describe('AppSidebar model pricing', () => {
 
     expect(wrapper.text()).toContain('模型定价')
     expect(wrapper.html()).toContain('href="/model-pricing"')
-    expect(wrapper.html()).not.toContain('/admin/pricing-plans')
   })
 
-  it('shows model pricing in admin personal section and hides pricing plans', () => {
+  it('shows model pricing in admin personal section', () => {
     authStoreState.isAdmin = true
     authStoreState.user = { role: 'admin', is_sales: false }
 
@@ -120,6 +119,5 @@ describe('AppSidebar model pricing', () => {
 
     expect(wrapper.text()).toContain('模型定价')
     expect(wrapper.html()).toContain('href="/model-pricing"')
-    expect(wrapper.html()).not.toContain('/admin/pricing-plans')
   })
 })

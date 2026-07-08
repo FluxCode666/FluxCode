@@ -2649,63 +2649,6 @@ export default {
       }
     },
 
-    pricingPlans: {
-      createGroup: '创建分组',
-      createPlan: '创建方案',
-      editGroup: '编辑分组',
-      editPlan: '编辑方案',
-      deleteGroup: '删除分组',
-      deleteGroupConfirm: '确定要删除定价分组“{name}”吗？该分组下的所有方案都会一并删除。',
-      deletePlan: '删除方案',
-      deletePlanConfirm: '确定要删除方案“{name}”吗？所属分组：{group}。',
-      emptyTitle: '暂无定价分组',
-      emptyDesc: '创建定价分组和方案后，前台购买入口会在这里展示。',
-      failedToLoad: '加载定价方案失败',
-      noPlans: '暂无方案',
-      sortOrder: '排序',
-      columns: {
-        name: '名称',
-        price: '价格',
-        sortOrder: '排序',
-        status: '状态',
-        actions: '操作'
-      },
-      groupForm: {
-        name: '分组名称',
-        description: '分组描述',
-        sortOrder: '排序',
-        status: '状态'
-      },
-      planForm: {
-        group: '所属分组',
-        name: '方案名称',
-        description: '方案描述',
-        iconUrl: '图标 URL',
-        iconUrlHint: '填写图标地址，可留空',
-        badgeText: '徽标文本',
-        badgeTextHint: '例如：推荐 / 热门',
-        priceText: '价格文案',
-        priceTextHint: '例如：￥199 / 月；填写后优先展示',
-        tagline: '副标题',
-        taglineHint: '例如：适合个人开发者',
-        priceAmount: '价格数值',
-        priceCurrency: '货币',
-        pricePeriod: '计费周期',
-        features: '功能亮点',
-        featuresHint: '每行填写一条功能说明',
-        purchaseEntries: '购买入口',
-        purchaseEntriesHint: '可配置多个购买入口，前台会按顺序展示。',
-        addPurchaseEntry: '添加购买入口',
-        dragToSort: '拖拽排序',
-        purchaseEntryLabelPlaceholder: '按钮文案，例如：立即购买',
-        purchaseEntryValuePlaceholder: '链接、兑换码或联系方式',
-        removePurchaseEntry: '移除购买入口',
-        featured: '推荐方案',
-        sortOrder: '排序',
-        status: '状态'
-      }
-    },
-
     // Channel Management
     channels: {
       title: '渠道管理',

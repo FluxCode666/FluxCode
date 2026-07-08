@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 
-import ModelPricingView from '../ModelPricingView.vue'
+import ModelPricingPage from '../ModelPricingPage.vue'
 
 const { listModels, getModel, fetchPublicSettings } = vi.hoisted(() => ({
   listModels: vi.fn(),
@@ -33,7 +33,7 @@ vi.mock('vue-i18n', async () => {
   }
 })
 
-describe('ModelPricingView', () => {
+describe('ModelPricingPage', () => {
   beforeEach(() => {
     vi.useFakeTimers()
     listModels.mockReset()
@@ -109,7 +109,7 @@ describe('ModelPricingView', () => {
   })
 
   it('renders model cards and loads model detail after click', async () => {
-    const wrapper = mount(ModelPricingView, {
+    const wrapper = mount(ModelPricingPage, {
       global: {
         stubs: {
           PublicHeader: true
@@ -132,7 +132,7 @@ describe('ModelPricingView', () => {
   })
 
   it('debounces search for 300ms', async () => {
-    const wrapper = mount(ModelPricingView, {
+    const wrapper = mount(ModelPricingPage, {
       global: {
         stubs: {
           PublicHeader: true
@@ -157,7 +157,7 @@ describe('ModelPricingView', () => {
   it('shows query error and retries', async () => {
     listModels.mockRejectedValueOnce(new Error('network'))
 
-    const wrapper = mount(ModelPricingView, {
+    const wrapper = mount(ModelPricingPage, {
       global: {
         stubs: {
           PublicHeader: true
@@ -209,7 +209,7 @@ describe('ModelPricingView', () => {
         ])
       }))
 
-    const wrapper = mount(ModelPricingView, {
+    const wrapper = mount(ModelPricingPage, {
       global: {
         stubs: {
           PublicHeader: true
@@ -278,7 +278,7 @@ describe('ModelPricingView', () => {
         ]
       })
 
-    const wrapper = mount(ModelPricingView, {
+    const wrapper = mount(ModelPricingPage, {
       global: {
         stubs: {
           PublicHeader: true

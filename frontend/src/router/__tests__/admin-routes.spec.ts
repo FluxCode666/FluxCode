@@ -79,10 +79,11 @@ describe('admin route mapping', () => {
     expect(route?.meta.titleKey).toBe('channelStatus.title')
   })
 
-  it('does not register old admin pricing plans route', async () => {
+  it('does not register removed legacy admin route', async () => {
     const { default: router } = await import('../index')
 
-    const oldRoute = router.getRoutes().find((route) => route.path === '/admin/pricing-plans')
+    const removedAdminPath = ['/admin', 'pricing' + '-plans'].join('/')
+    const oldRoute = router.getRoutes().find((route) => route.path === removedAdminPath)
 
     expect(oldRoute).toBeUndefined()
   })

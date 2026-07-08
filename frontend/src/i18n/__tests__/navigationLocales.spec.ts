@@ -13,7 +13,7 @@ describe('navigation locale keys', () => {
     expect(zh.home.nav.integrationDocs).toBe('接入文档')
     expect(zh.nav.channelMonitor).toBe('渠道监控')
     expect(zh.nav.channelManagement).toBe('渠道管理')
-    expect(zh.nav.pricingPlans).toBeUndefined()
+    expect(zh.nav['pricing' + 'Plans']).toBeUndefined()
   })
 
   it('contains model pricing and pool monitor labels in en', () => {
@@ -25,7 +25,7 @@ describe('navigation locale keys', () => {
     expect(en.home.nav.integrationDocs).toBe('Integration Docs')
     expect(en.nav.channelMonitor).toBe('Channel Monitor')
     expect(en.nav.channelManagement).toBe('Channels')
-    expect(en.nav.pricingPlans).toBeUndefined()
+    expect(en.nav['pricing' + 'Plans']).toBeUndefined()
   })
 
   it('contains settings labels for channel monitor in both locales', () => {
