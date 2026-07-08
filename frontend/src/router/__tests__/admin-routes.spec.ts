@@ -94,4 +94,20 @@ describe('admin route mapping', () => {
 
     expect(route?.meta.requiresAuth).toBe(false)
   })
+
+  it('does not register old public pricing route', async () => {
+    const { default: router } = await import('../index')
+
+    const oldRoute = router.getRoutes().find((route) => route.path === '/pricing')
+
+    expect(oldRoute).toBeUndefined()
+  })
+
+  it('keeps purchase and order routes registered', async () => {
+    const { default: router } = await import('../index')
+
+    expect(router.getRoutes().find((route) => route.path === '/purchase')).toBeDefined()
+    expect(router.getRoutes().find((route) => route.path === '/orders')).toBeDefined()
+    expect(router.getRoutes().find((route) => route.path === '/admin/orders/plans')).toBeDefined()
+  })
 })
