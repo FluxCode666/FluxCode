@@ -618,10 +618,7 @@ import {
   apiToPlatformSections,
   distributeRulesToPlatformSections,
   formToChannelAPI,
-  type CodexImageGenerationBridgeMode,
-  type FormPricingRule,
   type PlatformSection,
-  resolveCodexImageGenerationBridgeMode,
 } from '@/components/admin/channel/pricingMappings'
 import type { AdminGroup, GroupPlatform } from '@/types'
 import type { Column } from '@/components/common/types'
@@ -1253,7 +1250,7 @@ async function handleSubmit() {
         restrict_models: form.restrict_models,
         features_config,
         apply_pricing_to_account_stats: form.apply_pricing_to_account_stats,
-        account_stats_pricing_rules: accountStatsRulesToAPI()
+        account_stats_pricing_rules: accountStatsRulesToAPI(form.platforms)
       }
       await adminAPI.channels.update(editingChannel.value.id, req)
       appStore.showSuccess(t('admin.channels.updateSuccess', 'Channel updated'))
@@ -1268,7 +1265,7 @@ async function handleSubmit() {
         restrict_models: form.restrict_models,
         features_config,
         apply_pricing_to_account_stats: form.apply_pricing_to_account_stats,
-        account_stats_pricing_rules: accountStatsRulesToAPI()
+        account_stats_pricing_rules: accountStatsRulesToAPI(form.platforms)
       }
       await adminAPI.channels.create(req)
       appStore.showSuccess(t('admin.channels.createSuccess', 'Channel created'))
