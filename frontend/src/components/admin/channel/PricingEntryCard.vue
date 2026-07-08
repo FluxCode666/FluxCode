@@ -94,6 +94,28 @@
           </div>
         </div>
 
+        <div class="mt-3">
+          <label class="text-xs font-medium text-gray-500 dark:text-gray-400">
+            {{ t('admin.channels.form.capabilities', '能力标签') }}
+          </label>
+          <div class="mt-2 flex flex-wrap gap-2">
+            <label
+              v-for="option in capabilityOptions"
+              :key="option.value"
+              class="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-gray-200 px-2 py-1 text-xs dark:border-dark-600"
+            >
+              <input
+                :data-testid="`capability-${option.value}`"
+                type="checkbox"
+                class="rounded border-gray-300 text-primary-600"
+                :checked="normalizedCapabilities.includes(option.value)"
+                @change="toggleCapability(option.value, ($event.target as HTMLInputElement).checked)"
+              />
+              <span>{{ capabilityLabel(option.value) }}</span>
+            </label>
+          </div>
+        </div>
+
         <!-- Token mode -->
         <div v-if="entry.billing_mode === 'token'">
           <!-- Default prices (fallback when no interval matches) -->
@@ -234,8 +256,8 @@ import Icon from '@/components/icons/Icon.vue'
 import IntervalRow from './IntervalRow.vue'
 import ModelTagInput from './ModelTagInput.vue'
 import type { PricingFormEntry, IntervalFormEntry } from './types'
-import { perTokenToMTok, getPlatformTagClass } from './types'
-import type { BillingMode } from '@/api/admin/channels'
+import { MODEL_CAPABILITY_OPTIONS, normalizeCapabilities, perTokenToMTok, getPlatformTagClass } from './types'
+import type { BillingMode, ModelCapability } from '@/api/admin/channels'
 import channelsAPI from '@/api/admin/channels'
 
 const { t } = useI18n()
@@ -258,11 +280,25 @@ const billingModeOptions = computed(() => [
   { value: 'per_request', label: t('admin.channels.billingMode.perRequest', '按次') },
   { value: 'image', label: t('admin.channels.billingMode.image', '图片（按次）') }
 ])
+const capabilityOptions = MODEL_CAPABILITY_OPTIONS
+const normalizedCapabilities = computed(() => normalizeCapabilities(props.entry.capabilities))
 
 const billingModeLabel = computed(() => {
   const opt = billingModeOptions.value.find(o => o.value === props.entry.billing_mode)
   return opt ? opt.label : props.entry.billing_mode
 })
+
+function capabilityLabel(value: ModelCapability): string {
+  if (value === 'chat') return t('admin.channels.form.capabilityChat', '对话')
+  if (value === 'image') return t('admin.channels.form.capabilityImage', '图片')
+  return t('admin.channels.form.capabilityVideo', '视频')
+}
+
+function toggleCapability(value: ModelCapability, checked: boolean) {
+  const next = normalizedCapabilities.value.filter((item) => item !== value)
+  if (checked) next.push(value)
+  emit('update', { ...props.entry, capabilities: next })
+}
 
 function emitField(field: keyof PricingFormEntry, value: string) {
   emit('update', { ...props.entry, [field]: value === '' ? null : value })

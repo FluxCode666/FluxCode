@@ -1,4 +1,4 @@
-import type { BillingMode, PricingInterval } from '@/api/admin/channels'
+import type { BillingMode, PricingInterval, ModelCapability } from '@/api/admin/channels'
 
 export interface IntervalFormEntry {
   min_tokens: number
@@ -14,6 +14,7 @@ export interface IntervalFormEntry {
 
 export interface PricingFormEntry {
   models: string[]
+  capabilities: ModelCapability[]
   billing_mode: BillingMode
   input_price: number | string | null
   output_price: number | string | null
@@ -22,6 +23,24 @@ export interface PricingFormEntry {
   image_output_price: number | string | null
   per_request_price: number | string | null
   intervals: IntervalFormEntry[]
+}
+
+export const MODEL_CAPABILITY_OPTIONS: { value: ModelCapability; label: string }[] = [
+  { value: 'chat', label: '对话' },
+  { value: 'image', label: '图片' },
+  { value: 'video', label: '视频' }
+]
+
+export function normalizeCapabilities(input: unknown): ModelCapability[] {
+  if (!Array.isArray(input)) return []
+  const allowed: ModelCapability[] = ['chat', 'image', 'video']
+  const out: ModelCapability[] = []
+  for (const item of input) {
+    if (allowed.includes(item as ModelCapability) && !out.includes(item as ModelCapability)) {
+      out.push(item as ModelCapability)
+    }
+  }
+  return out
 }
 
 // 价格转换：后端存 per-token，前端显示 per-MTok ($/1M tokens)

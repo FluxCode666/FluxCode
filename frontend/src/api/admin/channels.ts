@@ -6,6 +6,7 @@
 import { apiClient } from '../client'
 
 export type BillingMode = 'token' | 'per_request' | 'image'
+export type ModelCapability = 'chat' | 'image' | 'video'
 
 export interface PricingInterval {
   id?: number
@@ -24,6 +25,7 @@ export interface ChannelModelPricing {
   id?: number
   platform: string
   models: string[]
+  capabilities: ModelCapability[]
   billing_mode: BillingMode
   input_price: number | null
   output_price: number | null
