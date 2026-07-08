@@ -212,7 +212,7 @@ const detailLoading = ref(false)
 const error = ref(false)
 const detailError = ref(false)
 
-let searchTimer: ReturnType<typeof setTimeout> | null = null
+let searchTimer: number | null = null
 let listAbortController: AbortController | null = null
 let detailAbortController: AbortController | null = null
 
