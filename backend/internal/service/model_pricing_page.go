@@ -448,38 +448,53 @@ func attachWildcardSupportedGroups(item *modelCatalogItem, channels []Channel, g
 			continue
 		}
 		for _, pricing := range channel.ModelPricing {
-			if !pricingMatchesModel(pricing, item.ID) {
+			if !wildcardPricingMatchesModel(pricing, item.ID) {
 				continue
 			}
-			item.addPlatform(pricing.Platform)
-			for _, capability := range NormalizeModelCapabilities(pricing.Capabilities) {
-				item.Capabilities[capability] = struct{}{}
-			}
+			contributed := false
 			for _, groupID := range channel.GroupIDs {
 				group, ok := groupsByID[groupID]
 				if !ok || group.Platform != pricing.Platform {
 					continue
 				}
 				resolved := resolveDisplayPricing(*item.Official, pricing)
-				item.Groups = appendOrReplaceGroup(item.Groups, modelCatalogGroup{
+				if appendGroupIfMissing(&item.Groups, modelCatalogGroup{
 					GroupID:        group.ID,
 					GroupName:      group.Name,
 					RateMultiplier: normalizeRateMultiplier(group.RateMultiplier),
 					BillingMode:    normalizeBillingMode(pricing.BillingMode),
 					Resolved:       resolved,
-				})
+				}) {
+					contributed = true
+				}
+			}
+			if contributed {
+				item.addPlatform(pricing.Platform)
+				for _, capability := range NormalizeModelCapabilities(pricing.Capabilities) {
+					item.Capabilities[capability] = struct{}{}
+				}
 			}
 		}
 	}
 }
 
-func pricingMatchesModel(pricing ChannelModelPricing, model string) bool {
+func wildcardPricingMatchesModel(pricing ChannelModelPricing, model string) bool {
 	for _, pattern := range pricing.Models {
-		if modelPatternMatches(pattern, model) {
+		if isWildcardModelPattern(pattern) && modelPatternMatches(pattern, model) {
 			return true
 		}
 	}
 	return false
+}
+
+func appendGroupIfMissing(groups *[]modelCatalogGroup, next modelCatalogGroup) bool {
+	for i := range *groups {
+		if (*groups)[i].GroupID == next.GroupID {
+			return false
+		}
+	}
+	*groups = append(*groups, next)
+	return true
 }
 
 func matchesModelPricingQuery(item *modelCatalogItem, query ModelPricingQuery) bool {

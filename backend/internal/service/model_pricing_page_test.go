@@ -159,6 +159,51 @@ func TestModelPricingPageServiceGetModelAppliesChannelOverrideAndGroupMultiplier
 	require.Equal(t, 2.0, detail.Groups[0].Multipliers.OutputPrice)
 }
 
+func TestModelPricingPageServiceGetModelKeepsExactPricingBeforeWildcard(t *testing.T) {
+	exactInput := floatPtr(0.000006)
+	wildcardInput := floatPtr(0.000009)
+	svc := NewModelPricingPageServiceForTest(
+		&modelPricingChannelListerStub{channels: []Channel{{
+			ID:       10,
+			Status:   StatusActive,
+			GroupIDs: []int64{1},
+			ModelPricing: []ChannelModelPricing{
+				{
+					Platform:     "anthropic",
+					Models:       []string{"claude-opus-4"},
+					Capabilities: []string{"chat"},
+					BillingMode:  BillingModeToken,
+					InputPrice:   exactInput,
+				},
+				{
+					Platform:     "anthropic",
+					Models:       []string{"claude-*"},
+					Capabilities: []string{"image"},
+					BillingMode:  BillingModeToken,
+					InputPrice:   wildcardInput,
+				},
+			},
+		}}},
+		&modelPricingGroupListerStub{groups: []Group{
+			{ID: 1, Name: "基础组", Platform: "anthropic", Status: StatusActive, RateMultiplier: 2},
+		}},
+		&modelPricingBillingStub{prices: map[string]*ModelPricing{
+			"claude-opus-4": {
+				InputPricePerToken:  0.000003,
+				OutputPricePerToken: 0.000015,
+			},
+		}},
+	)
+
+	detail, err := svc.GetModel(context.Background(), "claude-opus-4")
+	require.NoError(t, err)
+	require.Len(t, detail.Groups, 1)
+	require.Equal(t, "基础组", detail.Groups[0].GroupName)
+	require.Equal(t, 0.000012, detail.Groups[0].Price.InputPrice)
+	require.Equal(t, 4.0, detail.Groups[0].Multipliers.InputPrice)
+	require.Equal(t, []string{"chat"}, detail.Capabilities)
+}
+
 func TestModelPricingPageServiceListModelsFiltersSearchPlatformAndCapability(t *testing.T) {
 	svc := NewModelPricingPageServiceForTest(
 		&modelPricingChannelListerStub{channels: []Channel{{
