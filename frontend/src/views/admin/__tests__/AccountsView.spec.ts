@@ -270,4 +270,64 @@ describe('admin AccountsView', () => {
     expect(refreshCredentials).toHaveBeenCalledWith(42)
     expect(showError).toHaveBeenCalledWith(message)
   })
+
+  it('moves account import and export actions into the more menu', async () => {
+    const wrapper = mount(AccountsView, {
+      global: {
+        stubs: {
+          AppLayout: { template: '<div><slot /></div>' },
+          TablePageLayout: {
+            template: '<div><slot name="filters" /><slot name="table" /><slot name="pagination" /></div>'
+          },
+          AccountTableFilters: AccountTableFiltersStub,
+          AccountTableActions: {
+            methods: {
+              close: vi.fn()
+            },
+            template: `
+              <div>
+                <div data-test="main-actions">
+                  <slot name="beforeCreate" />
+                </div>
+                <div data-test="more-actions">
+                  <slot name="more" :close="close" item-class="more-item" />
+                </div>
+              </div>
+            `
+          },
+          AccountBulkActionsBar: true,
+          DataTable: DataTableStub,
+          Pagination: true,
+          CreateAccountModal: true,
+          EditAccountModal: true,
+          ReAuthAccountModal: true,
+          AccountTestModal: true,
+          AccountStatsModal: true,
+          ScheduledTestsPanel: true,
+          AccountActionMenu: true,
+          SyncFromCrsModal: true,
+          ImportDataModal: true,
+          BulkEditAccountModal: true,
+          TempUnschedStatusModal: true,
+          ConfirmDialog: true,
+          ErrorPassthroughRulesModal: true,
+          TLSFingerprintProfilesModal: true,
+          AccountStatusIndicator: true,
+          AccountUsageCell: true,
+          AccountTodayStatsCell: true,
+          AccountGroupsCell: true,
+          AccountCapacityCell: true,
+          PlatformTypeBadge: true,
+          Icon: true
+        }
+      }
+    })
+
+    await flushPromises()
+
+    expect(wrapper.get('[data-test="main-actions"]').text()).not.toContain('admin.accounts.dataImport')
+    expect(wrapper.get('[data-test="main-actions"]').text()).not.toContain('admin.accounts.dataExport')
+    expect(wrapper.get('[data-test="more-actions"]').text()).toContain('admin.accounts.dataImport')
+    expect(wrapper.get('[data-test="more-actions"]').text()).toContain('admin.accounts.dataExport')
+  })
 })

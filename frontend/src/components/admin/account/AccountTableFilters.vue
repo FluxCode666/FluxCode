@@ -1,12 +1,42 @@
 <template>
   <div class="flex flex-wrap items-center gap-3">
-    <SearchInput
-      :model-value="searchQuery"
-      :placeholder="t('admin.accounts.searchAccounts')"
-      class="w-full sm:w-64"
-      @update:model-value="$emit('update:searchQuery', $event)"
-      @search="$emit('change')"
-    />
+    <div class="flex w-full flex-nowrap items-center gap-2 sm:w-auto">
+      <SearchInput
+        :model-value="searchQuery"
+        :placeholder="t('admin.accounts.searchAccounts')"
+        class="min-w-0 flex-1 sm:w-64"
+        @update:model-value="$emit('update:searchQuery', $event)"
+        @search="$emit('change')"
+      />
+      <div class="relative shrink-0" ref="filterSettingsRef">
+        <button
+          type="button"
+          class="flex items-center gap-2 whitespace-nowrap rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-700 transition-all duration-200 hover:border-gray-300 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/30 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-200 dark:hover:border-dark-500"
+          :title="t('admin.accounts.filterSettings')"
+          @click="showFilterSettings = !showFilterSettings"
+        >
+          <Icon name="filter" size="sm" />
+          <span class="hidden sm:inline">{{ t('admin.accounts.filterSettings') }}</span>
+        </button>
+        <div
+          v-if="showFilterSettings"
+          class="absolute right-0 z-50 mt-2 w-56 origin-top-right rounded-lg border border-gray-200 bg-white shadow-lg dark:border-gray-700 dark:bg-gray-800"
+        >
+          <div class="max-h-80 overflow-y-auto p-2">
+            <button
+              v-for="filter in configurableFilters"
+              :key="filter.key"
+              type="button"
+              class="flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700"
+              @click="toggleFilterVisibility(filter.key)"
+            >
+              <span>{{ filter.label }}</span>
+              <Icon v-if="isFilterVisible(filter.key)" name="check" size="sm" class="text-primary-500" />
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
     <Select
       :model-value="filters.platform"
       v-if="isFilterVisible('platform')"
@@ -75,34 +105,6 @@
         @update:end-date="updateCreatedEndDate"
         @change="$emit('change')"
       />
-    </div>
-    <div class="relative" ref="filterSettingsRef">
-      <button
-        type="button"
-        class="flex items-center gap-2 whitespace-nowrap rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm text-gray-700 transition-all duration-200 hover:border-gray-300 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/30 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-200 dark:hover:border-dark-500"
-        :title="t('admin.accounts.filterSettings')"
-        @click="showFilterSettings = !showFilterSettings"
-      >
-        <Icon name="filter" size="sm" />
-        <span>{{ t('admin.accounts.filterSettings') }}</span>
-      </button>
-      <div
-        v-if="showFilterSettings"
-        class="absolute right-0 z-50 mt-2 w-56 origin-top-right rounded-lg border border-gray-200 bg-white shadow-lg dark:border-gray-700 dark:bg-gray-800"
-      >
-        <div class="max-h-80 overflow-y-auto p-2">
-          <button
-            v-for="filter in configurableFilters"
-            :key="filter.key"
-            type="button"
-            class="flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700"
-            @click="toggleFilterVisibility(filter.key)"
-          >
-            <span>{{ filter.label }}</span>
-            <Icon v-if="isFilterVisible(filter.key)" name="check" size="sm" class="text-primary-500" />
-          </button>
-        </div>
-      </div>
     </div>
   </div>
 </template>
