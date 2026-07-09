@@ -73,3 +73,46 @@ func TestGPT55Support_PricingServiceStaticFallback(t *testing.T) {
 	require.InDelta(t, 2.0, got.LongContextInputCostMultiplier, 1e-12)
 	require.InDelta(t, 1.5, got.LongContextOutputCostMultiplier, 1e-12)
 }
+
+func TestGPT56Support_NormalizeCodexModel(t *testing.T) {
+	cases := map[string]string{
+		"gpt-5.6-sol":         "gpt-5.6-sol",
+		"gpt-5.6-sol-high":    "gpt-5.6-sol",
+		"gpt 5.6 sol":         "gpt-5.6-sol",
+		"gpt-5.6-terra":       "gpt-5.6-terra",
+		"gpt-5.6-terra-xhigh": "gpt-5.6-terra",
+		"gpt 5.6 terra":       "gpt-5.6-terra",
+		"gpt-5.6-luna":        "gpt-5.6-luna",
+		"gpt-5.6-luna-medium": "gpt-5.6-luna",
+		"gpt 5.6 luna":        "gpt-5.6-luna",
+	}
+
+	for input, expected := range cases {
+		require.Equal(t, expected, normalizeCodexModel(input))
+	}
+}
+
+func TestGPT56Support_BillingFallbackMatchesGPT54(t *testing.T) {
+	svc := NewBillingService(&config.Config{}, nil)
+
+	pricing, err := svc.GetModelPricing("gpt-5.6-sol")
+	require.NoError(t, err)
+	require.NotNil(t, pricing)
+	require.InDelta(t, 2.5e-6, pricing.InputPricePerToken, 1e-12)
+	require.InDelta(t, 15e-6, pricing.OutputPricePerToken, 1e-12)
+	require.Equal(t, 272000, pricing.LongContextInputThreshold)
+}
+
+func TestGPT56Support_PricingServiceStaticFallback(t *testing.T) {
+	svc := &PricingService{
+		pricingData: map[string]*LiteLLMModelPricing{
+			"gpt-5.1-codex": {InputCostPerToken: 1.25e-6},
+		},
+	}
+
+	got := svc.GetModelPricing("gpt-5.6-sol")
+	require.NotNil(t, got)
+	require.InDelta(t, 2.5e-6, got.InputCostPerToken, 1e-12)
+	require.InDelta(t, 1.5e-5, got.OutputCostPerToken, 1e-12)
+	require.Equal(t, 272000, got.LongContextInputTokenThreshold)
+}

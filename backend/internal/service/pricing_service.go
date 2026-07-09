@@ -794,7 +794,13 @@ func (s *PricingService) matchOpenAIModel(model string) *LiteLLMModelPricing {
 		}
 	}
 
-	// GPT-5.5 回退到 GPT-5.4 定价
+	// GPT-5.6 仅 sol / terra / luna 及其规范后缀回退到 GPT-5.4 定价。
+	if isOpenAIGPT56StaticFallbackModel(model) {
+		logger.With(zap.String("component", "service.pricing")).
+			Info(fmt.Sprintf("[Pricing] OpenAI fallback matched %s -> %s", model, "gpt-5.4(static)"))
+		return openAIGPT54FallbackPricing
+	}
+
 	if strings.HasPrefix(model, "gpt-5.5") {
 		logger.With(zap.String("component", "service.pricing")).
 			Info(fmt.Sprintf("[Pricing] OpenAI fallback matched %s -> %s", model, "gpt-5.4(static)"))
@@ -827,6 +833,15 @@ func (s *PricingService) matchOpenAIModel(model string) *LiteLLMModelPricing {
 	}
 
 	return nil
+}
+
+func isOpenAIGPT56StaticFallbackModel(model string) bool {
+	for _, allowed := range []string{"gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"} {
+		if model == allowed || strings.HasPrefix(model, allowed+"-") {
+			return true
+		}
+	}
+	return false
 }
 
 // generateOpenAIModelVariants 生成 OpenAI 模型的回退变体列表
