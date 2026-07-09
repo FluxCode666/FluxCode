@@ -115,6 +115,44 @@ func TestGetModelPricing_Gpt55UsesGpt54StaticFallbackWhenRemoteMissing(t *testin
 	require.InDelta(t, 1.5, got.LongContextOutputCostMultiplier, 1e-12)
 }
 
+func TestGetModelPricing_Gpt56UsesGpt54StaticFallbackWhenRemoteMissing(t *testing.T) {
+	svc := &PricingService{
+		pricingData: map[string]*LiteLLMModelPricing{
+			"gpt-5.1-codex": {InputCostPerToken: 1.25e-6},
+		},
+	}
+
+	for _, model := range []string{"gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"} {
+		t.Run(model, func(t *testing.T) {
+			got := svc.GetModelPricing(model)
+			require.NotNil(t, got)
+			require.InDelta(t, 2.5e-6, got.InputCostPerToken, 1e-12)
+			require.InDelta(t, 1.5e-5, got.OutputCostPerToken, 1e-12)
+			require.InDelta(t, 2.5e-7, got.CacheReadInputTokenCost, 1e-12)
+			require.Equal(t, 272000, got.LongContextInputTokenThreshold)
+			require.InDelta(t, 2.0, got.LongContextInputCostMultiplier, 1e-12)
+			require.InDelta(t, 1.5, got.LongContextOutputCostMultiplier, 1e-12)
+		})
+	}
+}
+
+func TestGetModelPricing_Gpt56UnknownModelDoesNotUseGpt54StaticFallback(t *testing.T) {
+	defaultPricing := &LiteLLMModelPricing{
+		InputCostPerToken:  1.25e-6,
+		OutputCostPerToken: 9.0e-6,
+	}
+	svc := &PricingService{
+		pricingData: map[string]*LiteLLMModelPricing{
+			"gpt-5.1-codex": defaultPricing,
+		},
+	}
+
+	got := svc.GetModelPricing("gpt-5.6-foo")
+	require.Same(t, defaultPricing, got)
+	require.NotEqual(t, openAIGPT54FallbackPricing, got)
+	require.NotEqual(t, openAIGPT54FallbackPricing.InputCostPerToken, got.InputCostPerToken)
+}
+
 func TestGetModelPricing_Gpt54MiniUsesDedicatedStaticFallbackWhenRemoteMissing(t *testing.T) {
 	svc := &PricingService{
 		pricingData: map[string]*LiteLLMModelPricing{

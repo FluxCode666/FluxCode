@@ -10,6 +10,9 @@ describe('useModelWhitelist', () => {
   it('openai 模型列表包含 GPT-5.5 与 GPT-5.4 官方快照', () => {
     const models = getModelsByPlatform('openai')
 
+    expect(models).toContain('gpt-5.6-sol')
+    expect(models).toContain('gpt-5.6-terra')
+    expect(models).toContain('gpt-5.6-luna')
     expect(models).toContain('gpt-5.5')
     expect(models).toContain('gpt-5.4')
     expect(models).toContain('gpt-5.4-mini')
@@ -70,6 +73,16 @@ describe('useModelWhitelist', () => {
     expect(mapping).toEqual({
       'gpt-5.4-mini': 'gpt-5.4-mini',
       'gpt-5.4-nano': 'gpt-5.4-nano'
+    })
+  })
+
+  it('whitelist keeps GPT-5.6 exact mappings', () => {
+    const mapping = buildModelMappingObject('whitelist', ['gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna'], [])
+
+    expect(mapping).toEqual({
+      'gpt-5.6-sol': 'gpt-5.6-sol',
+      'gpt-5.6-terra': 'gpt-5.6-terra',
+      'gpt-5.6-luna': 'gpt-5.6-luna'
     })
   })
 })
