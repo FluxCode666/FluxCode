@@ -55,6 +55,12 @@ export interface ModelPricingSummary {
   lowest_group_price: ModelPricingAmount
 }
 
+export interface ModelPricingGroupOption {
+  id: number
+  name: string
+  platform: string
+}
+
 export interface ModelPricingGroupPrice {
   group_id: number
   group_name: string
@@ -72,6 +78,7 @@ export interface ListModelPricingParams {
   q?: string
   platform?: string
   capability?: ModelCapability | ''
+  group_id?: number
 }
 
 export async function listModels(
@@ -80,6 +87,15 @@ export async function listModels(
 ): Promise<ModelPricingSummary[]> {
   const response = await apiClient.get<ModelPricingSummary[]>('/model-pricing/models', {
     params,
+    signal: options?.signal
+  })
+  return response.data
+}
+
+export async function listGroups(
+  options?: { signal?: AbortSignal }
+): Promise<ModelPricingGroupOption[]> {
+  const response = await apiClient.get<ModelPricingGroupOption[]>('/model-pricing/groups', {
     signal: options?.signal
   })
   return response.data
@@ -98,6 +114,7 @@ export async function getModel(
 
 export const modelPricingAPI = {
   listModels,
+  listGroups,
   getModel
 }
 

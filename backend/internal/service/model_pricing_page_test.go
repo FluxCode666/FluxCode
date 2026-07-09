@@ -271,6 +271,67 @@ func TestModelPricingPageServiceListModelsFiltersSearchPlatformAndCapability(t *
 	require.Equal(t, "claude-sonnet-4", models[0].ID)
 }
 
+func TestModelPricingPageServiceListGroupsReturnsVisibleStandardGroupsOnly(t *testing.T) {
+	svc := NewModelPricingPageServiceForTest(
+		&modelPricingChannelListerStub{},
+		&modelPricingGroupListerStub{groups: []Group{
+			{ID: 1, Name: "基础组", Platform: "anthropic", Status: StatusActive, SubscriptionType: SubscriptionTypeStandard},
+			{ID: 2, Name: "兼容旧数据组", Platform: "openai", Status: StatusActive},
+			{ID: 3, Name: "订阅组", Platform: "anthropic", Status: StatusActive, SubscriptionType: SubscriptionTypeSubscription},
+			{ID: 4, Name: "禁用组", Platform: "anthropic", Status: StatusDisabled, SubscriptionType: SubscriptionTypeStandard},
+			{ID: 5, Name: "兜底组", Platform: "anthropic", Status: StatusActive, SubscriptionType: SubscriptionTypeStandard, IsFallbackGroup: true},
+		}},
+		&modelPricingBillingStub{},
+	)
+
+	groups, err := svc.ListGroups(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, []ModelPricingGroupOption{
+		{ID: 1, Name: "基础组", Platform: "anthropic"},
+		{ID: 2, Name: "兼容旧数据组", Platform: "openai"},
+	}, groups)
+}
+
+func TestModelPricingPageServiceListModelsFiltersByGroupID(t *testing.T) {
+	svc := NewModelPricingPageServiceForTest(
+		&modelPricingChannelListerStub{channels: []Channel{
+			{
+				ID:       10,
+				Status:   StatusActive,
+				GroupIDs: []int64{1},
+				ModelPricing: []ChannelModelPricing{{
+					Platform:    "anthropic",
+					Models:      []string{"claude-sonnet-4"},
+					BillingMode: BillingModeToken,
+				}},
+			},
+			{
+				ID:       11,
+				Status:   StatusActive,
+				GroupIDs: []int64{2},
+				ModelPricing: []ChannelModelPricing{{
+					Platform:    "openai",
+					Models:      []string{"gpt-4.1"},
+					BillingMode: BillingModeToken,
+				}},
+			},
+		}},
+		&modelPricingGroupListerStub{groups: []Group{
+			{ID: 1, Name: "Anthropic 组", Platform: "anthropic", Status: StatusActive, SubscriptionType: SubscriptionTypeStandard},
+			{ID: 2, Name: "OpenAI 组", Platform: "openai", Status: StatusActive, SubscriptionType: SubscriptionTypeStandard},
+		}},
+		&modelPricingBillingStub{prices: map[string]*ModelPricing{
+			"claude-sonnet-4": {InputPricePerToken: 0.000003},
+			"gpt-4.1":         {InputPricePerToken: 0.000002},
+		}},
+	)
+
+	models, err := svc.ListModels(context.Background(), ModelPricingQuery{GroupID: 2})
+	require.NoError(t, err)
+	require.Len(t, models, 1)
+	require.Equal(t, "gpt-4.1", models[0].ID)
+}
+
 func TestModelPricingPageServiceListModelsAggregatesAcrossChannelPages(t *testing.T) {
 	channels := &modelPricingChannelListerStub{pages: map[int][]Channel{
 		1: {{

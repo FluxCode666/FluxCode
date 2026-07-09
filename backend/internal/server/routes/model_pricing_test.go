@@ -97,6 +97,30 @@ func TestModelPricingRoutesPublicModelsPathIsRegistered(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec.Code)
 }
 
+func TestModelPricingRoutesPublicGroupsPathIsRegistered(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	v1 := router.Group("/api/v1")
+	RegisterModelPricingRoutes(v1, &handlerpkg.Handlers{
+		ModelPricing: handlerpkg.NewModelPricingHandler(service.NewModelPricingPageServiceForTest(
+			&singleModelPricingChannels{},
+			&singleModelPricingGroups{},
+			&singleModelPricingBilling{},
+		)),
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/model-pricing/groups", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var body struct {
+		Data []service.ModelPricingGroupOption `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	require.Equal(t, []service.ModelPricingGroupOption{{ID: 1, Name: "基础组", Platform: "anthropic"}}, body.Data)
+}
+
 func TestModelPricingRoutesPublicModelQueryPathSupportsSlashIDs(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()

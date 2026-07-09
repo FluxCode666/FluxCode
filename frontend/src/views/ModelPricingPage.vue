@@ -13,7 +13,7 @@
           </p>
         </div>
 
-        <div class="grid w-full gap-2 sm:grid-cols-[minmax(220px,1fr)_160px_160px] lg:max-w-2xl">
+        <div class="grid w-full gap-2 sm:grid-cols-[minmax(220px,1fr)_minmax(140px,160px)_minmax(150px,180px)_minmax(170px,200px)] lg:max-w-4xl">
           <input
             v-model="searchInput"
             data-testid="model-pricing-search"
@@ -29,6 +29,12 @@
             :model-value="capabilityFilter"
             :options="capabilityOptions"
             @update:modelValue="setCapabilityFilter"
+          />
+          <Select
+            data-testid="model-pricing-group-filter"
+            :model-value="groupFilter"
+            :options="groupOptions"
+            @update:modelValue="setGroupFilter"
           />
         </div>
       </div>
@@ -59,13 +65,16 @@
         </div>
 
         <div v-else class="grid grid-flow-dense gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          <button
+          <article
             v-for="model in models"
             :key="model.id"
             :data-testid="`model-card-${model.id}`"
-            type="button"
-            class="group relative flex min-h-[220px] w-full flex-col overflow-hidden rounded-2xl border border-black/5 bg-white/75 p-5 text-left shadow-sm transition duration-300 hover:-translate-y-1 hover:border-primary-300 hover:bg-white hover:shadow-xl hover:shadow-black/5 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 dark:border-white/10 dark:bg-dark-900/45 dark:hover:bg-dark-900/70"
+            role="button"
+            tabindex="0"
+            class="group relative flex min-h-[220px] w-full cursor-pointer flex-col overflow-hidden rounded-2xl border border-black/5 bg-white/75 p-5 text-left shadow-sm transition duration-300 hover:-translate-y-1 hover:border-primary-300 hover:bg-white hover:shadow-xl hover:shadow-black/5 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 dark:border-white/10 dark:bg-dark-900/45 dark:hover:bg-dark-900/70"
             @click="selectModel(model.id)"
+            @keydown.enter="selectModel(model.id)"
+            @keydown.space.prevent="selectModel(model.id)"
           >
             <div class="pointer-events-none absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-primary-100/50 to-transparent opacity-0 transition-opacity duration-500 group-hover:opacity-100 dark:from-primary-900/20"></div>
 
@@ -78,9 +87,18 @@
                   {{ model.platform }}
                 </div>
               </div>
-              <span class="rounded-full bg-gray-950 px-2.5 py-1 text-xs font-semibold text-white dark:bg-white dark:text-gray-950">
-                {{ model.supported_group_count }}
-              </span>
+              <div class="shrink-0">
+                <button
+                  type="button"
+                  :data-testid="`model-copy-${model.id}`"
+                  class="rounded-lg p-1.5 text-gray-500 transition hover:bg-black/5 hover:text-gray-950 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 dark:text-dark-300 dark:hover:bg-white/10 dark:hover:text-white"
+                  :title="t('modelPricing.copyModelId', '复制模型 ID')"
+                  :aria-label="t('modelPricing.copyModelId', '复制模型 ID')"
+                  @click.stop="copyModelId(model.id)"
+                >
+                  <Icon name="copy" size="sm" />
+                </button>
+              </div>
             </div>
 
             <div class="relative mt-5 flex flex-wrap gap-1.5">
@@ -107,7 +125,7 @@
                 </div>
               </div>
             </div>
-          </button>
+          </article>
         </div>
       </section>
     </main>
@@ -145,7 +163,19 @@
         <div v-else>
           <div class="mb-5 flex flex-col gap-3 border-b border-black/5 pb-5 dark:border-white/10 md:flex-row md:items-end md:justify-between">
             <div>
-              <h2 class="text-2xl font-semibold text-gray-950 dark:text-white">{{ detail.display_name || detail.id }}</h2>
+              <div class="flex items-center gap-2">
+                <h2 class="min-w-0 truncate text-2xl font-semibold text-gray-950 dark:text-white">{{ detail.display_name || detail.id }}</h2>
+                <button
+                  type="button"
+                  data-testid="model-detail-copy-id"
+                  class="shrink-0 rounded-lg p-1.5 text-gray-500 transition hover:bg-black/5 hover:text-gray-950 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 dark:text-dark-300 dark:hover:bg-white/10 dark:hover:text-white"
+                  :title="t('modelPricing.copyModelId', '复制模型 ID')"
+                  :aria-label="t('modelPricing.copyModelId', '复制模型 ID')"
+                  @click="copyModelId(detail.id)"
+                >
+                  <Icon name="copy" size="sm" />
+                </button>
+              </div>
               <div class="mt-2 flex flex-wrap items-center gap-2 text-sm text-gray-500 dark:text-dark-400">
                 <span>{{ detail.platform }}</span>
                 <span
@@ -223,15 +253,19 @@ import { useI18n } from 'vue-i18n'
 import PublicHeader from '@/components/layout/PublicHeader.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Select from '@/components/common/Select.vue'
-import { modelPricingAPI, type ModelCapability, type ModelPricingDetail, type ModelPricingSummary } from '@/api/modelPricing'
+import Icon from '@/components/icons/Icon.vue'
+import { useClipboard } from '@/composables/useClipboard'
+import { modelPricingAPI, type ModelCapability, type ModelPricingDetail, type ModelPricingGroupOption, type ModelPricingSummary } from '@/api/modelPricing'
 import { useAppStore } from '@/stores'
 
 const { t } = useI18n()
 const appStore = useAppStore()
+const { copyToClipboard } = useClipboard()
 
 const siteName = computed(() => appStore.siteName || 'FluxCode')
 const siteLogo = computed(() => appStore.siteLogo || '')
 const models = ref<ModelPricingSummary[]>([])
+const groups = ref<ModelPricingGroupOption[]>([])
 const detail = ref<ModelPricingDetail | null>(null)
 const selectedModelId = ref('')
 const detailModalOpen = ref(false)
@@ -239,6 +273,7 @@ const searchInput = ref('')
 const debouncedSearch = ref('')
 const platformFilter = ref('')
 const capabilityFilter = ref<ModelCapability | ''>('')
+const groupFilter = ref<number | ''>('')
 const loading = ref(false)
 const detailLoading = ref(false)
 const error = ref(false)
@@ -247,6 +282,7 @@ const detailError = ref(false)
 let searchTimer: number | null = null
 let listAbortController: AbortController | null = null
 let detailAbortController: AbortController | null = null
+let groupsAbortController: AbortController | null = null
 
 const platforms = computed(() =>
   Array.from(new Set(models.value.flatMap((model) => model.platforms?.length ? model.platforms : [model.platform]))).sort()
@@ -273,6 +309,14 @@ const capabilityOptions = computed(() => [
   { value: 'audio_output', label: t('modelPricing.capabilities.audio_output', '音频输出') }
 ])
 
+const groupOptions = computed(() => [
+  { value: '', label: t('modelPricing.allGroups', '全部分组') },
+  ...groups.value.map((group) => ({
+    value: group.id,
+    label: group.platform ? `${group.name} (${group.platform})` : group.name
+  }))
+])
+
 const detailTitle = computed(() => detail.value?.display_name || selectedModelId.value || t('modelPricing.title', '模型定价'))
 
 watch(searchInput, (value) => {
@@ -284,7 +328,7 @@ watch(searchInput, (value) => {
   }, 300)
 })
 
-watch([debouncedSearch, platformFilter, capabilityFilter], () => {
+watch([debouncedSearch, platformFilter, capabilityFilter, groupFilter], () => {
   loadModels()
 })
 
@@ -305,8 +349,40 @@ function setCapabilityFilter(value: string | number | boolean | null) {
   capabilityFilter.value = ''
 }
 
+function setGroupFilter(value: string | number | boolean | null) {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    groupFilter.value = value
+    return
+  }
+  if (typeof value === 'string' && value.trim() !== '') {
+    const nextValue = Number(value)
+    groupFilter.value = Number.isFinite(nextValue) ? nextValue : ''
+    return
+  }
+  groupFilter.value = ''
+}
+
 function isModelCapability(value: unknown): value is ModelCapability {
   return typeof value === 'string' && value !== '' && capabilityOptions.value.some((option) => option.value === value)
+}
+
+async function loadGroups() {
+  groupsAbortController?.abort()
+  const controller = new AbortController()
+  groupsAbortController = controller
+
+  try {
+    const nextGroups = await modelPricingAPI.listGroups({ signal: controller.signal })
+    if (groupsAbortController !== controller) {
+      return
+    }
+    groups.value = nextGroups
+  } catch (caughtError) {
+    if (groupsAbortController !== controller || isCanceledError(caughtError)) {
+      return
+    }
+    groups.value = []
+  }
 }
 
 async function loadModels() {
@@ -318,12 +394,14 @@ async function loadModels() {
   error.value = false
 
   try {
+    const params = {
+      q: debouncedSearch.value,
+      platform: platformFilter.value,
+      capability: capabilityFilter.value,
+      ...(groupFilter.value !== '' ? { group_id: groupFilter.value } : {})
+    }
     const nextModels = await modelPricingAPI.listModels(
-      {
-        q: debouncedSearch.value,
-        platform: platformFilter.value,
-        capability: capabilityFilter.value
-      },
+      params,
       { signal: controller.signal }
     )
 
@@ -390,6 +468,10 @@ function retrySelectedModel() {
   selectModel(selectedModelId.value)
 }
 
+function copyModelId(modelId: string) {
+  void copyToClipboard(modelId, t('modelPricing.modelIdCopied', '模型 ID 已复制'))
+}
+
 function capabilityLabel(capability: string): string {
   if (capability === 'streaming') return t('modelPricing.capabilities.streaming', '流式输出')
   if (capability === 'system_prompt') return t('modelPricing.capabilities.system_prompt', '系统提示词')
@@ -422,12 +504,14 @@ function formatPrice(price: number): string {
 
 onMounted(() => {
   appStore.fetchPublicSettings?.()
+  loadGroups()
   loadModels()
 })
 
 onBeforeUnmount(() => {
   listAbortController?.abort()
   detailAbortController?.abort()
+  groupsAbortController?.abort()
   if (searchTimer) {
     window.clearTimeout(searchTimer)
   }

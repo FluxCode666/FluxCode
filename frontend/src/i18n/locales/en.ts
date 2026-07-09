@@ -211,6 +211,7 @@ export default {
     searchPlaceholder: 'Search model, platform, or capability',
     allPlatforms: 'All Platforms',
     allCapabilities: 'All Capabilities',
+    allGroups: 'All Groups',
     queryError: 'Query failed',
     empty: 'No matching models found',
     selectHint: 'Select a model to view group prices',
@@ -222,6 +223,8 @@ export default {
     cacheWrite: 'Cache Write',
     cacheRead: 'Cache Read',
     requestOrImage: 'Request/Image',
+    copyModelId: 'Copy Model ID',
+    modelIdCopied: 'Model ID copied',
     capabilities: {
       streaming: 'Streaming',
       system_prompt: 'System Prompt',

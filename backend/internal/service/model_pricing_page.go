@@ -39,6 +39,13 @@ type ModelPricingQuery struct {
 	Q          string
 	Platform   string
 	Capability string
+	GroupID    int64
+}
+
+type ModelPricingGroupOption struct {
+	ID       int64  `json:"id"`
+	Name     string `json:"name"`
+	Platform string `json:"platform"`
 }
 
 type ModelPricingAmount struct {
@@ -147,6 +154,34 @@ func (s *ModelPricingPageService) ListModels(ctx context.Context, query ModelPri
 		return models[i].Platform < models[j].Platform
 	})
 	return models, nil
+}
+
+func (s *ModelPricingPageService) ListGroups(ctx context.Context) ([]ModelPricingGroupOption, error) {
+	groups, err := s.groups.ListActive(ctx)
+	if err != nil {
+		return nil, err
+	}
+	options := make([]ModelPricingGroupOption, 0, len(groups))
+	for _, group := range groups {
+		if !isModelPricingVisibleGroup(group) || !isModelPricingPayAsYouGoGroup(group) {
+			continue
+		}
+		options = append(options, ModelPricingGroupOption{
+			ID:       group.ID,
+			Name:     group.Name,
+			Platform: group.Platform,
+		})
+	}
+	sort.Slice(options, func(i, j int) bool {
+		if options[i].Platform == options[j].Platform {
+			if options[i].Name == options[j].Name {
+				return options[i].ID < options[j].ID
+			}
+			return options[i].Name < options[j].Name
+		}
+		return options[i].Platform < options[j].Platform
+	})
+	return options, nil
 }
 
 func (s *ModelPricingPageService) GetModel(ctx context.Context, model string) (*ModelPricingModelDetail, error) {
@@ -294,6 +329,10 @@ func isWildcardModelPattern(model string) bool { return strings.Contains(model, 
 
 func isModelPricingVisibleGroup(group Group) bool {
 	return group.Status == StatusActive && !group.IsFallbackGroup
+}
+
+func isModelPricingPayAsYouGoGroup(group Group) bool {
+	return group.SubscriptionType == "" || group.SubscriptionType == SubscriptionTypeStandard
 }
 
 func (i *modelCatalogItem) addPlatform(platform string) {
@@ -550,6 +589,9 @@ func matchesModelPricingQuery(item *modelCatalogItem, query ModelPricingQuery) b
 	if query.Platform != "" && !item.hasPlatform(query.Platform) {
 		return false
 	}
+	if query.GroupID > 0 && !item.hasGroup(query.GroupID) {
+		return false
+	}
 	capability := strings.ToLower(strings.TrimSpace(query.Capability))
 	if capability != "" {
 		if _, ok := item.Capabilities[capability]; !ok {
@@ -570,6 +612,15 @@ func matchesModelPricingQuery(item *modelCatalogItem, query ModelPricingQuery) b
 	}
 	for capability := range item.Capabilities {
 		if strings.Contains(capability, q) {
+			return true
+		}
+	}
+	return false
+}
+
+func (i *modelCatalogItem) hasGroup(groupID int64) bool {
+	for _, group := range i.Groups {
+		if group.GroupID == groupID {
 			return true
 		}
 	}

@@ -3,6 +3,7 @@ package handler
 import (
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
@@ -24,12 +25,22 @@ func (h *ModelPricingHandler) ListModels(c *gin.Context) {
 		Q:          strings.TrimSpace(c.Query("q")),
 		Platform:   strings.TrimSpace(c.Query("platform")),
 		Capability: strings.TrimSpace(c.Query("capability")),
+		GroupID:    parseModelPricingGroupID(c.Query("group_id")),
 	})
 	if err != nil {
 		response.ErrorFrom(c, infraerrors.InternalServer("MODEL_PRICING_QUERY_FAILED", "模型定价查询失败"))
 		return
 	}
 	response.Success(c, models)
+}
+
+func (h *ModelPricingHandler) ListGroups(c *gin.Context) {
+	groups, err := h.service.ListGroups(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, infraerrors.InternalServer("MODEL_PRICING_QUERY_FAILED", "模型定价查询失败"))
+		return
+	}
+	response.Success(c, groups)
 }
 
 func (h *ModelPricingHandler) GetModel(c *gin.Context) {
@@ -47,4 +58,16 @@ func (h *ModelPricingHandler) GetModel(c *gin.Context) {
 		return
 	}
 	response.Success(c, model)
+}
+
+func parseModelPricingGroupID(value string) int64 {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return 0
+	}
+	groupID, err := strconv.ParseInt(value, 10, 64)
+	if err != nil || groupID < 0 {
+		return 0
+	}
+	return groupID
 }

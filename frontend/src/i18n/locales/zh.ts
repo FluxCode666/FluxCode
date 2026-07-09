@@ -209,6 +209,7 @@ export default {
     searchPlaceholder: '搜索模型、平台或能力',
     allPlatforms: '全部平台',
     allCapabilities: '全部能力',
+    allGroups: '全部分组',
     queryError: '查询异常',
     empty: '未找到匹配模型',
     selectHint: '选择模型查看分组价格',
@@ -220,6 +221,8 @@ export default {
     cacheWrite: '缓存写入',
     cacheRead: '缓存读取',
     requestOrImage: '按次/图片',
+    copyModelId: '复制模型 ID',
+    modelIdCopied: '模型 ID 已复制',
     capabilities: {
       streaming: '流式输出',
       system_prompt: '系统提示词',

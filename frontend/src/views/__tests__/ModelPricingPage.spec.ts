@@ -3,15 +3,17 @@ import { flushPromises, mount } from '@vue/test-utils'
 
 import ModelPricingPage from '../ModelPricingPage.vue'
 
-const { listModels, getModel, fetchPublicSettings } = vi.hoisted(() => ({
+const { listModels, getModel, listGroups, fetchPublicSettings, copyToClipboard } = vi.hoisted(() => ({
   listModels: vi.fn(),
   getModel: vi.fn(),
-  fetchPublicSettings: vi.fn()
+  listGroups: vi.fn(),
+  fetchPublicSettings: vi.fn(),
+  copyToClipboard: vi.fn()
 }))
 
 vi.mock('@/api/modelPricing', () => ({
-  modelPricingAPI: { listModels, getModel },
-  default: { listModels, getModel }
+  modelPricingAPI: { listModels, getModel, listGroups },
+  default: { listModels, getModel, listGroups }
 }))
 
 vi.mock('@/stores', () => ({
@@ -21,6 +23,12 @@ vi.mock('@/stores', () => ({
     fetchPublicSettings
   }),
   useAuthStore: () => ({ isAuthenticated: false, isAdmin: false })
+}))
+
+vi.mock('@/composables/useClipboard', () => ({
+  useClipboard: () => ({
+    copyToClipboard
+  })
 }))
 
 vi.mock('vue-i18n', async () => {
@@ -44,12 +52,25 @@ const BaseDialogStub = {
   `
 }
 
+const SelectStub = {
+  props: ['modelValue', 'options'],
+  emits: ['update:modelValue'],
+  template: `
+    <button type="button" :data-testid="$attrs['data-testid']" @click="$emit('update:modelValue', options?.[1]?.value ?? '')">
+      {{ options?.[0]?.label }}
+    </button>
+  `
+}
+
 describe('ModelPricingPage', () => {
   beforeEach(() => {
     vi.useFakeTimers()
     listModels.mockReset()
     getModel.mockReset()
+    listGroups.mockReset()
     fetchPublicSettings.mockReset()
+    copyToClipboard.mockReset()
+    copyToClipboard.mockResolvedValue(true)
 
     listModels.mockResolvedValue([
       {
@@ -78,6 +99,10 @@ describe('ModelPricingPage', () => {
           intervals: []
         }
       }
+    ])
+
+    listGroups.mockResolvedValue([
+      { id: 1, name: '基础组', platform: 'anthropic' }
     ])
 
     getModel.mockResolvedValue({
@@ -149,10 +174,11 @@ describe('ModelPricingPage', () => {
     expect(wrapper.text()).toContain('视频生成')
     expect(wrapper.text()).toContain('音频输入')
     expect(wrapper.text()).toContain('音频输出')
-    expect(wrapper.text()).toContain('2')
     expect(wrapper.find('[data-testid="base-dialog"]').exists()).toBe(false)
-    expect(wrapper.get('[data-testid="model-card-claude-sonnet-4"]').text()).toContain('$6.00000/M')
-    expect(wrapper.get('[data-testid="model-card-claude-sonnet-4"]').text()).toContain('$30.0000/M')
+    const modelCard = wrapper.get('[data-testid="model-card-claude-sonnet-4"]')
+    expect(modelCard.text()).not.toContain('2')
+    expect(modelCard.text()).toContain('$6.00000/M')
+    expect(modelCard.text()).toContain('$30.0000/M')
 
     await wrapper.get('[data-testid="model-card-claude-sonnet-4"]').trigger('click')
     await flushPromises()
@@ -163,6 +189,34 @@ describe('ModelPricingPage', () => {
     expect(wrapper.text()).toContain('基础组')
     expect(wrapper.text()).toContain('2.00x')
     expect(wrapper.text()).not.toContain('$6.00000/M · 2.00x')
+  })
+
+  it('copies model id from list cards and detail modal', async () => {
+    const wrapper = mount(ModelPricingPage, {
+      global: {
+        stubs: {
+          PublicHeader: true,
+          BaseDialog: BaseDialogStub
+        }
+      }
+    })
+
+    await flushPromises()
+
+    await wrapper.get('[data-testid="model-copy-claude-sonnet-4"]').trigger('click')
+    await flushPromises()
+
+    expect(copyToClipboard).toHaveBeenCalledWith('claude-sonnet-4', '模型 ID 已复制')
+    expect(getModel).not.toHaveBeenCalled()
+    expect(wrapper.find('[data-testid="base-dialog"]').exists()).toBe(false)
+
+    await wrapper.get('[data-testid="model-card-claude-sonnet-4"]').trigger('click')
+    await flushPromises()
+
+    await wrapper.get('[data-testid="model-detail-copy-id"]').trigger('click')
+    await flushPromises()
+
+    expect(copyToClipboard).toHaveBeenLastCalledWith('claude-sonnet-4', '模型 ID 已复制')
   })
 
   it('debounces search for 300ms', async () => {
@@ -187,6 +241,31 @@ describe('ModelPricingPage', () => {
     await flushPromises()
 
     expect(listModels).toHaveBeenCalledWith({ q: 'claude', platform: '', capability: '' }, expect.any(Object))
+  })
+
+  it('loads pay-as-you-go groups and filters models by selected group', async () => {
+    const wrapper = mount(ModelPricingPage, {
+      global: {
+        stubs: {
+          PublicHeader: true,
+          BaseDialog: BaseDialogStub,
+          Select: SelectStub
+        }
+      }
+    })
+
+    await flushPromises()
+
+    expect(listGroups).toHaveBeenCalledTimes(1)
+    expect(wrapper.text()).toContain('全部分组')
+
+    await wrapper.get('[data-testid="model-pricing-group-filter"]').trigger('click')
+    await flushPromises()
+
+    expect(listModels).toHaveBeenLastCalledWith(
+      { q: '', platform: '', capability: '', group_id: 1 },
+      expect.any(Object)
+    )
   })
 
   it('shows query error and retries', async () => {
