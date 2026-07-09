@@ -13,7 +13,7 @@ export default {
     nav: {
       features: '功能特性',
       pricing: '购买入口',
-      modelPricing: '模型定价',
+      modelPricing: '模型广场',
       integrationDocs: '接入文档',
       docs: '使用文档',
       channelStatus: '渠道状态',
@@ -221,9 +221,18 @@ export default {
     cacheRead: '缓存读取',
     requestOrImage: '按次/图片',
     capabilities: {
-      chat: '对话',
-      image: '图片',
-      video: '视频'
+      streaming: '流式输出',
+      system_prompt: '系统提示词',
+      function_calling: '函数调用',
+      tools: '工具',
+      json_mode: 'JSON 模式',
+      structured_output: '结构化输出',
+      prompt_cache: '提示词缓存',
+      vision: '视觉理解',
+      image_generation: '图片生成',
+      video_generation: '视频生成',
+      audio_input: '音频输入',
+      audio_output: '音频输出'
     }
   },
 
@@ -517,7 +526,7 @@ export default {
     redeem: '兑换',
     referral: '推广中心',
     profile: '个人资料',
-    modelPricing: '模型定价',
+    modelPricing: '模型广场',
     users: '用户管理',
     groups: '分组管理',
     channels: '渠道管理',

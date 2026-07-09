@@ -73,11 +73,11 @@ func TestModelPricingPageServiceListModelsAggregatesConcreteEnabledChannelModels
 		&modelPricingChannelListerStub{channels: []Channel{{
 			ID:       10,
 			Status:   StatusActive,
-			GroupIDs: []int64{1, 2},
+			GroupIDs: []int64{1, 2, 3},
 			ModelPricing: []ChannelModelPricing{{
 				Platform:     "anthropic",
 				Models:       []string{"claude-sonnet-4", "claude-*"},
-				Capabilities: []string{"chat"},
+				Capabilities: []string{"streaming"},
 				BillingMode:  BillingModeToken,
 				InputPrice:   input,
 				OutputPrice:  output,
@@ -86,6 +86,7 @@ func TestModelPricingPageServiceListModelsAggregatesConcreteEnabledChannelModels
 		&modelPricingGroupListerStub{groups: []Group{
 			{ID: 1, Name: "基础组", Platform: "anthropic", Status: StatusActive, RateMultiplier: 1.2},
 			{ID: 2, Name: "禁用组", Platform: "anthropic", Status: StatusDisabled, RateMultiplier: 1.0},
+			{ID: 3, Name: "兜底组", Platform: "anthropic", Status: StatusActive, IsFallbackGroup: true, RateMultiplier: 0.1},
 		}},
 		&modelPricingBillingStub{prices: map[string]*ModelPricing{
 			"claude-sonnet-4": {
@@ -102,9 +103,49 @@ func TestModelPricingPageServiceListModelsAggregatesConcreteEnabledChannelModels
 	require.Len(t, models, 1)
 	require.Equal(t, "claude-sonnet-4", models[0].ID)
 	require.Equal(t, "anthropic", models[0].Platform)
-	require.Equal(t, []string{"chat"}, models[0].Capabilities)
+	require.Equal(t, []string{"streaming"}, models[0].Capabilities)
 	require.Equal(t, 1, models[0].SupportedGroupCount)
 	require.Equal(t, 0.000003, models[0].OfficialPrice.InputPrice)
+	require.InEpsilon(t, 0.0000036, models[0].LowestGroupPrice.InputPrice, 0.000001)
+	require.InEpsilon(t, 0.000018, models[0].LowestGroupPrice.OutputPrice, 0.000001)
+}
+
+func TestModelPricingPageServiceListModelsUsesLowestGroupPrice(t *testing.T) {
+	input := floatPtr(0.000006)
+	output := floatPtr(0.000012)
+	svc := NewModelPricingPageServiceForTest(
+		&modelPricingChannelListerStub{channels: []Channel{{
+			ID:       10,
+			Status:   StatusActive,
+			GroupIDs: []int64{1, 2},
+			ModelPricing: []ChannelModelPricing{{
+				Platform:     "anthropic",
+				Models:       []string{"claude-sonnet-4"},
+				Capabilities: []string{"streaming"},
+				BillingMode:  BillingModeToken,
+				InputPrice:   input,
+				OutputPrice:  output,
+			}},
+		}}},
+		&modelPricingGroupListerStub{groups: []Group{
+			{ID: 1, Name: "专业组", Platform: "anthropic", Status: StatusActive, RateMultiplier: 2},
+			{ID: 2, Name: "基础组", Platform: "anthropic", Status: StatusActive, RateMultiplier: 1},
+		}},
+		&modelPricingBillingStub{prices: map[string]*ModelPricing{
+			"claude-sonnet-4": {
+				InputPricePerToken:  0.000003,
+				OutputPricePerToken: 0.000015,
+			},
+		}},
+	)
+
+	models, err := svc.ListModels(context.Background(), ModelPricingQuery{})
+	require.NoError(t, err)
+	require.Len(t, models, 1)
+	require.Equal(t, 2, models[0].SupportedGroupCount)
+	require.Equal(t, 0.000003, models[0].OfficialPrice.InputPrice)
+	require.Equal(t, 0.000006, models[0].LowestGroupPrice.InputPrice)
+	require.Equal(t, 0.000012, models[0].LowestGroupPrice.OutputPrice)
 }
 
 func TestModelPricingPageServiceGetModelAppliesChannelOverrideAndGroupMultiplier(t *testing.T) {
@@ -118,7 +159,7 @@ func TestModelPricingPageServiceGetModelAppliesChannelOverrideAndGroupMultiplier
 				ModelPricing: []ChannelModelPricing{{
 					Platform:     "anthropic",
 					Models:       []string{"claude-opus-4"},
-					Capabilities: []string{"chat"},
+					Capabilities: []string{"streaming"},
 					BillingMode:  BillingModeToken,
 				}},
 			},
@@ -129,7 +170,7 @@ func TestModelPricingPageServiceGetModelAppliesChannelOverrideAndGroupMultiplier
 				ModelPricing: []ChannelModelPricing{{
 					Platform:     "anthropic",
 					Models:       []string{"claude-*"},
-					Capabilities: []string{"image"},
+					Capabilities: []string{"tools"},
 					BillingMode:  BillingModeToken,
 					InputPrice:   input,
 				}},
@@ -150,7 +191,7 @@ func TestModelPricingPageServiceGetModelAppliesChannelOverrideAndGroupMultiplier
 	detail, err := svc.GetModel(context.Background(), "claude-opus-4")
 	require.NoError(t, err)
 	require.Equal(t, "claude-opus-4", detail.ID)
-	require.Equal(t, []string{"chat", "image"}, detail.Capabilities)
+	require.Equal(t, []string{"streaming", "tools"}, detail.Capabilities)
 	require.Len(t, detail.Groups, 1)
 	require.Equal(t, "专业组", detail.Groups[0].GroupName)
 	require.Equal(t, 0.000012, detail.Groups[0].Price.InputPrice)
@@ -171,14 +212,14 @@ func TestModelPricingPageServiceGetModelKeepsExactPricingBeforeWildcard(t *testi
 				{
 					Platform:     "anthropic",
 					Models:       []string{"claude-opus-4"},
-					Capabilities: []string{"chat"},
+					Capabilities: []string{"streaming"},
 					BillingMode:  BillingModeToken,
 					InputPrice:   exactInput,
 				},
 				{
 					Platform:     "anthropic",
 					Models:       []string{"claude-*"},
-					Capabilities: []string{"image"},
+					Capabilities: []string{"tools"},
 					BillingMode:  BillingModeToken,
 					InputPrice:   wildcardInput,
 				},
@@ -201,7 +242,7 @@ func TestModelPricingPageServiceGetModelKeepsExactPricingBeforeWildcard(t *testi
 	require.Equal(t, "基础组", detail.Groups[0].GroupName)
 	require.Equal(t, 0.000012, detail.Groups[0].Price.InputPrice)
 	require.Equal(t, 4.0, detail.Groups[0].Multipliers.InputPrice)
-	require.Equal(t, []string{"chat"}, detail.Capabilities)
+	require.Equal(t, []string{"streaming"}, detail.Capabilities)
 }
 
 func TestModelPricingPageServiceListModelsFiltersSearchPlatformAndCapability(t *testing.T) {
@@ -211,8 +252,8 @@ func TestModelPricingPageServiceListModelsFiltersSearchPlatformAndCapability(t *
 			Status:   StatusActive,
 			GroupIDs: []int64{1},
 			ModelPricing: []ChannelModelPricing{
-				{Platform: "anthropic", Models: []string{"claude-sonnet-4"}, Capabilities: []string{"chat"}, BillingMode: BillingModeToken},
-				{Platform: "openai", Models: []string{"gpt-image-1"}, Capabilities: []string{"image"}, BillingMode: BillingModeToken},
+				{Platform: "anthropic", Models: []string{"claude-sonnet-4"}, Capabilities: []string{"streaming"}, BillingMode: BillingModeToken},
+				{Platform: "openai", Models: []string{"gpt-image-1"}, Capabilities: []string{"tools"}, BillingMode: BillingModeToken},
 			},
 		}}},
 		&modelPricingGroupListerStub{groups: []Group{
@@ -224,7 +265,7 @@ func TestModelPricingPageServiceListModelsFiltersSearchPlatformAndCapability(t *
 		}},
 	)
 
-	models, err := svc.ListModels(context.Background(), ModelPricingQuery{Q: "chat", Platform: "anthropic", Capability: "chat"})
+	models, err := svc.ListModels(context.Background(), ModelPricingQuery{Q: "streaming", Platform: "anthropic", Capability: "streaming"})
 	require.NoError(t, err)
 	require.Len(t, models, 1)
 	require.Equal(t, "claude-sonnet-4", models[0].ID)
@@ -239,7 +280,7 @@ func TestModelPricingPageServiceListModelsAggregatesAcrossChannelPages(t *testin
 			ModelPricing: []ChannelModelPricing{{
 				Platform:     "anthropic",
 				Models:       []string{"claude-sonnet-4"},
-				Capabilities: []string{"chat"},
+				Capabilities: []string{"streaming"},
 				BillingMode:  BillingModeToken,
 			}},
 		}},
@@ -250,7 +291,7 @@ func TestModelPricingPageServiceListModelsAggregatesAcrossChannelPages(t *testin
 			ModelPricing: []ChannelModelPricing{{
 				Platform:     "anthropic",
 				Models:       []string{"claude-3-7-sonnet"},
-				Capabilities: []string{"chat"},
+				Capabilities: []string{"streaming"},
 				BillingMode:  BillingModeToken,
 			}},
 		}},
@@ -285,7 +326,7 @@ func TestModelPricingPageServiceAggregatesSharedModelAcrossPlatforms(t *testing.
 				ModelPricing: []ChannelModelPricing{{
 					Platform:     "anthropic",
 					Models:       []string{"claude-sonnet-4"},
-					Capabilities: []string{"chat"},
+					Capabilities: []string{"streaming"},
 					BillingMode:  BillingModeToken,
 				}},
 			},
@@ -296,7 +337,7 @@ func TestModelPricingPageServiceAggregatesSharedModelAcrossPlatforms(t *testing.
 				ModelPricing: []ChannelModelPricing{{
 					Platform:        "openrouter",
 					Models:          []string{"claude-sonnet-4"},
-					Capabilities:    []string{"image"},
+					Capabilities:    []string{"tools"},
 					BillingMode:     BillingModePerRequest,
 					PerRequestPrice: floatPtr(0.02),
 				}},
@@ -318,12 +359,12 @@ func TestModelPricingPageServiceAggregatesSharedModelAcrossPlatforms(t *testing.
 	require.NoError(t, err)
 	require.Len(t, models, 1)
 	require.Equal(t, "anthropic, openrouter", models[0].Platform)
-	require.ElementsMatch(t, []string{"chat", "image"}, models[0].Capabilities)
+	require.ElementsMatch(t, []string{"streaming", "tools"}, models[0].Capabilities)
 
 	detail, err := svc.GetModel(context.Background(), "claude-sonnet-4")
 	require.NoError(t, err)
 	require.Equal(t, "anthropic, openrouter", detail.Platform)
-	require.ElementsMatch(t, []string{"chat", "image"}, detail.Capabilities)
+	require.ElementsMatch(t, []string{"streaming", "tools"}, detail.Capabilities)
 	require.Len(t, detail.Groups, 2)
 	require.Equal(t, "Anthropic 组", detail.Groups[0].GroupName)
 	require.Equal(t, "OpenRouter 组", detail.Groups[1].GroupName)

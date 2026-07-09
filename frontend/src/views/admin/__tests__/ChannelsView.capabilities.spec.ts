@@ -25,7 +25,7 @@ const baseSections: PlatformSection[] = [
     model_pricing: [
       {
         models: ['claude-sonnet-4'],
-        capabilities: ['chat', 'image', 'image'],
+        capabilities: ['streaming', 'tools', 'tools'],
         billing_mode: 'token',
         input_price: 3,
         output_price: 15,
@@ -46,7 +46,7 @@ const baseSections: PlatformSection[] = [
         pricing: [
           {
             models: ['claude-3-5-haiku'],
-            capabilities: ['video', 'video', 'chat'],
+            capabilities: ['prompt_cache', 'prompt_cache', 'streaming'],
             billing_mode: 'per_request',
             input_price: null,
             output_price: null,
@@ -75,7 +75,7 @@ const channelFixture: Channel = {
     {
       platform: 'anthropic',
       models: ['claude-sonnet-4'],
-      capabilities: ['chat', 'image'],
+      capabilities: ['streaming', 'tools'],
       billing_mode: 'token',
       input_price: 0.000003,
       output_price: 0.000015,
@@ -97,7 +97,7 @@ const channelFixture: Channel = {
         {
           platform: 'anthropic',
           models: ['claude-3-5-haiku'],
-          capabilities: ['video', 'chat'],
+          capabilities: ['prompt_cache', 'streaming'],
           billing_mode: 'per_request',
           input_price: null,
           output_price: null,
@@ -122,7 +122,7 @@ describe('ChannelsView capabilities mapping', () => {
     expect(channelPayload.model_pricing).toEqual([
       expect.objectContaining({
         models: ['claude-sonnet-4'],
-        capabilities: ['chat', 'image']
+        capabilities: ['streaming', 'tools']
       })
     ])
 
@@ -131,7 +131,7 @@ describe('ChannelsView capabilities mapping', () => {
         pricing: [
           expect.objectContaining({
             models: ['claude-3-5-haiku'],
-            capabilities: ['video', 'chat']
+            capabilities: ['prompt_cache', 'streaming']
           })
         ]
       })
@@ -142,7 +142,7 @@ describe('ChannelsView capabilities mapping', () => {
     const sections = apiToPlatformSections(channelFixture, groups, ['anthropic', 'openai'])
     distributeRulesToPlatformSections(sections, channelFixture.account_stats_pricing_rules as AccountStatsPricingRule[], groups)
 
-    expect(sections[0].model_pricing[0].capabilities).toEqual(['chat', 'image'])
-    expect(sections[0].account_stats_pricing_rules[0].pricing[0].capabilities).toEqual(['video', 'chat'])
+    expect(sections[0].model_pricing[0].capabilities).toEqual(['streaming', 'tools'])
+    expect(sections[0].account_stats_pricing_rules[0].pricing[0].capabilities).toEqual(['prompt_cache', 'streaming'])
   })
 })

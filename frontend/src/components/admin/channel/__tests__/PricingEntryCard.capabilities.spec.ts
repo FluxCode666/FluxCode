@@ -16,7 +16,7 @@ vi.mock('@/api/admin/channels', () => ({
 
 const baseEntry: PricingFormEntry = {
   models: ['claude-sonnet-4'],
-  capabilities: ['chat'],
+  capabilities: ['streaming'],
   billing_mode: 'token',
   input_price: null,
   output_price: null,
@@ -28,7 +28,7 @@ const baseEntry: PricingFormEntry = {
 }
 
 describe('PricingEntryCard capabilities', () => {
-  it('renders chat image and video capability checkboxes', () => {
+  it('renders model capability checkboxes', () => {
     const wrapper = mount(PricingEntryCard, {
       props: { entry: baseEntry, platform: 'anthropic' },
       global: {
@@ -41,12 +41,21 @@ describe('PricingEntryCard capabilities', () => {
       }
     })
 
-    expect(wrapper.find('[data-testid="capability-chat"]').exists()).toBe(true)
-    expect(wrapper.find('[data-testid="capability-image"]').exists()).toBe(true)
-    expect(wrapper.find('[data-testid="capability-video"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="capability-streaming"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="capability-system_prompt"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="capability-function_calling"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="capability-tools"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="capability-json_mode"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="capability-structured_output"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="capability-prompt_cache"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="capability-vision"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="capability-image_generation"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="capability-video_generation"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="capability-audio_input"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="capability-audio_output"]').exists()).toBe(true)
   })
 
-  it('emits updated capabilities when image is checked', async () => {
+  it('emits updated capabilities when tools is checked', async () => {
     const wrapper = mount(PricingEntryCard, {
       props: { entry: baseEntry, platform: 'anthropic' },
       global: {
@@ -59,15 +68,15 @@ describe('PricingEntryCard capabilities', () => {
       }
     })
 
-    await wrapper.get('[data-testid="capability-image"]').setValue(true)
+    await wrapper.get('[data-testid="capability-tools"]').setValue(true)
 
     const updates = wrapper.emitted('update') || []
     expect(updates.at(-1)?.[0]).toMatchObject({
-      capabilities: ['chat', 'image']
+      capabilities: ['streaming', 'tools']
     })
   })
 
-  it('emits updated capabilities when chat is unchecked after parent re-renders with image selected', async () => {
+  it('emits updated capabilities when streaming is unchecked after parent re-renders with tools selected', async () => {
     const wrapper = mount(PricingEntryCard, {
       props: { entry: baseEntry, platform: 'anthropic' },
       global: {
@@ -83,19 +92,19 @@ describe('PricingEntryCard capabilities', () => {
     await wrapper.setProps({
       entry: {
         ...baseEntry,
-        capabilities: ['chat', 'image']
+        capabilities: ['streaming', 'tools']
       }
     })
 
-    await wrapper.get('[data-testid="capability-chat"]').setValue(false)
+    await wrapper.get('[data-testid="capability-streaming"]').setValue(false)
 
     const updates = wrapper.emitted('update') || []
     expect(updates.at(-1)?.[0]).toMatchObject({
-      capabilities: ['image']
+      capabilities: ['tools']
     })
   })
 
-  it('emits updated capabilities when video is checked', async () => {
+  it('emits updated capabilities when prompt cache is checked', async () => {
     const wrapper = mount(PricingEntryCard, {
       props: { entry: baseEntry, platform: 'anthropic' },
       global: {
@@ -108,11 +117,32 @@ describe('PricingEntryCard capabilities', () => {
       }
     })
 
-    await wrapper.get('[data-testid="capability-video"]').setValue(true)
+    await wrapper.get('[data-testid="capability-prompt_cache"]').setValue(true)
 
     const updates = wrapper.emitted('update') || []
     expect(updates.at(-1)?.[0]).toMatchObject({
-      capabilities: ['chat', 'video']
+      capabilities: ['streaming', 'prompt_cache']
+    })
+  })
+
+  it('emits updated capabilities when audio output is checked', async () => {
+    const wrapper = mount(PricingEntryCard, {
+      props: { entry: baseEntry, platform: 'anthropic' },
+      global: {
+        stubs: {
+          Icon: true,
+          Select: true,
+          ModelTagInput: true,
+          IntervalRow: true
+        }
+      }
+    })
+
+    await wrapper.get('[data-testid="capability-audio_output"]').setValue(true)
+
+    const updates = wrapper.emitted('update') || []
+    expect(updates.at(-1)?.[0]).toMatchObject({
+      capabilities: ['streaming', 'audio_output']
     })
   })
 })

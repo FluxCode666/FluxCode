@@ -250,7 +250,7 @@ func TestChannelRepositoryCreateModelPricingPersistsCapabilities(t *testing.T) {
 		ChannelID:    12,
 		Platform:     "anthropic",
 		Models:       []string{"claude-sonnet-4"},
-		Capabilities: []string{"chat", "image"},
+		Capabilities: []string{"streaming", "tools"},
 		BillingMode:  service.BillingModeToken,
 	}
 
@@ -266,7 +266,7 @@ func TestChannelRepositoryCreateModelPricingPersistsCapabilities(t *testing.T) {
 			pricing.CacheReadPrice,
 			pricing.ImageOutputPrice,
 			pricing.PerRequestPrice,
-			[]byte(`["chat","image"]`),
+			[]byte(`["streaming","tools"]`),
 		).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "created_at", "updated_at"}).
 			AddRow(int64(99), time.Now(), time.Now()))
@@ -297,7 +297,7 @@ func TestChannelRepositoryListModelPricingScansCapabilities(t *testing.T) {
 				int64(12),
 				"anthropic",
 				[]byte(`["claude-sonnet-4"]`),
-				[]byte(`["chat","bad","image","chat"]`),
+				[]byte(`["streaming","bad","tools","streaming"]`),
 				service.BillingModeToken,
 				nil, nil, nil, nil, nil, nil,
 				now, now,
@@ -324,7 +324,7 @@ func TestChannelRepositoryListModelPricingScansCapabilities(t *testing.T) {
 	pricing, err := repo.ListModelPricing(context.Background(), 12)
 	require.NoError(t, err)
 	require.Len(t, pricing, 2)
-	require.Equal(t, []string{"chat", "image"}, pricing[0].Capabilities)
+	require.Equal(t, []string{"streaming", "tools"}, pricing[0].Capabilities)
 	require.Equal(t, []string{}, pricing[1].Capabilities)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
@@ -345,7 +345,7 @@ func TestChannelRepositoryUpdateModelPricingPersistsCapabilities(t *testing.T) {
 		ID:               99,
 		Platform:         "anthropic",
 		Models:           []string{"claude-sonnet-4"},
-		Capabilities:     []string{"chat", "bad", "image", "chat"},
+		Capabilities:     []string{"streaming", "bad", "tools", "streaming"},
 		BillingMode:      service.BillingModeToken,
 		InputPrice:       &inputPrice,
 		OutputPrice:      &outputPrice,
@@ -366,7 +366,7 @@ func TestChannelRepositoryUpdateModelPricingPersistsCapabilities(t *testing.T) {
 			pricing.ImageOutputPrice,
 			pricing.PerRequestPrice,
 			"anthropic",
-			[]byte(`["chat","image"]`),
+			[]byte(`["streaming","tools"]`),
 			int64(99),
 		).
 		WillReturnResult(sqlmock.NewResult(0, 1))

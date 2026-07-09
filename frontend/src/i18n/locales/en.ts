@@ -13,7 +13,7 @@ export default {
     nav: {
       features: 'Features',
       pricing: 'Pricing',
-      modelPricing: 'Model Pricing',
+      modelPricing: 'Model Square',
       integrationDocs: 'Integration Docs',
       docs: 'Docs',
       channelStatus: 'Channel Status',
@@ -223,9 +223,18 @@ export default {
     cacheRead: 'Cache Read',
     requestOrImage: 'Request/Image',
     capabilities: {
-      chat: 'Chat',
-      image: 'Image',
-      video: 'Video'
+      streaming: 'Streaming',
+      system_prompt: 'System Prompt',
+      function_calling: 'Function Calling',
+      tools: 'Tools',
+      json_mode: 'JSON Mode',
+      structured_output: 'Structured Output',
+      prompt_cache: 'Prompt Cache',
+      vision: 'Vision',
+      image_generation: 'Image Generation',
+      video_generation: 'Video Generation',
+      audio_input: 'Audio Input',
+      audio_output: 'Audio Output'
     }
   },
 
@@ -519,7 +528,7 @@ export default {
     redeem: 'Redeem',
     referral: 'Referral',
     profile: 'Profile',
-    modelPricing: 'Model Pricing',
+    modelPricing: 'Model Square',
     users: 'Users',
     groups: 'Groups',
     channels: 'Channels',

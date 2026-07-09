@@ -405,14 +405,14 @@ func TestChannelPricingCapabilitiesMapperRoundTrip(t *testing.T) {
 	reqs := []channelModelPricingRequest{{
 		Platform:     "anthropic",
 		Models:       []string{"claude-sonnet-4"},
-		Capabilities: []string{"chat", "bad", "chat", "image"},
+		Capabilities: []string{"streaming", "bad", "streaming", "tools"},
 		BillingMode:  "token",
 	}}
 
 	pricing := pricingRequestToService(reqs)
 	require.Len(t, pricing, 1)
-	require.Equal(t, []string{"chat", "image"}, pricing[0].Capabilities)
+	require.Equal(t, []string{"streaming", "tools"}, pricing[0].Capabilities)
 
 	resp := pricingToResponse(&pricing[0])
-	require.Equal(t, []string{"chat", "image"}, resp.Capabilities)
+	require.Equal(t, []string{"streaming", "tools"}, resp.Capabilities)
 }

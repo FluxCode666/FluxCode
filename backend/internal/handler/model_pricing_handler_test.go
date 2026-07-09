@@ -42,7 +42,7 @@ func (s *singleModelPricingChannels) List(ctx context.Context, params pagination
 		ModelPricing: []service.ChannelModelPricing{{
 			Platform:     "anthropic",
 			Models:       []string{"claude-sonnet-4"},
-			Capabilities: []string{"chat"},
+			Capabilities: []string{"streaming"},
 			BillingMode:  service.BillingModeToken,
 		}},
 	}}, &pagination.PaginationResult{Total: 1}, nil
@@ -58,7 +58,7 @@ func (s *slashModelPricingChannels) List(ctx context.Context, params pagination.
 		ModelPricing: []service.ChannelModelPricing{{
 			Platform:     "openrouter",
 			Models:       []string{"openai/gpt-4.1"},
-			Capabilities: []string{"chat"},
+			Capabilities: []string{"streaming"},
 			BillingMode:  service.BillingModeToken,
 		}},
 	}}, &pagination.PaginationResult{Total: 1}, nil

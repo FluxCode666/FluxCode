@@ -33,6 +33,17 @@ vi.mock('vue-i18n', async () => {
   }
 })
 
+const BaseDialogStub = {
+  props: ['show', 'title'],
+  template: `
+    <section v-if="show" data-testid="base-dialog">
+      <h3>{{ title }}</h3>
+      <slot />
+      <slot name="footer" />
+    </section>
+  `
+}
+
 describe('ModelPricingPage', () => {
   beforeEach(() => {
     vi.useFakeTimers()
@@ -46,13 +57,22 @@ describe('ModelPricingPage', () => {
         display_name: 'claude-sonnet-4',
         platform: 'anthropic',
         platforms: ['anthropic'],
-        capabilities: ['chat'],
+        capabilities: ['streaming', 'vision', 'image_generation', 'video_generation', 'audio_input', 'audio_output'],
         supported_group_count: 2,
         official_price: {
           input_price: 0.000003,
           output_price: 0.000015,
           cache_write_price: 0.00000375,
           cache_read_price: 0.0000003,
+          image_output_price: 0,
+          per_request_price: 0,
+          intervals: []
+        },
+        lowest_group_price: {
+          input_price: 0.000006,
+          output_price: 0.00003,
+          cache_write_price: 0.0000075,
+          cache_read_price: 0.0000006,
           image_output_price: 0,
           per_request_price: 0,
           intervals: []
@@ -65,7 +85,7 @@ describe('ModelPricingPage', () => {
       display_name: 'claude-sonnet-4',
       platform: 'anthropic',
       platforms: ['anthropic'],
-      capabilities: ['chat'],
+      capabilities: ['streaming', 'vision', 'image_generation', 'video_generation', 'audio_input', 'audio_output'],
       supported_group_count: 2,
       official_price: {
         input_price: 0.000003,
@@ -114,7 +134,8 @@ describe('ModelPricingPage', () => {
     const wrapper = mount(ModelPricingPage, {
       global: {
         stubs: {
-          PublicHeader: true
+          PublicHeader: true,
+          BaseDialog: BaseDialogStub
         }
       }
     })
@@ -123,21 +144,33 @@ describe('ModelPricingPage', () => {
 
     expect(wrapper.text()).toContain('claude-sonnet-4')
     expect(wrapper.text()).toContain('anthropic')
+    expect(wrapper.text()).toContain('视觉理解')
+    expect(wrapper.text()).toContain('图片生成')
+    expect(wrapper.text()).toContain('视频生成')
+    expect(wrapper.text()).toContain('音频输入')
+    expect(wrapper.text()).toContain('音频输出')
     expect(wrapper.text()).toContain('2')
+    expect(wrapper.find('[data-testid="base-dialog"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="model-card-claude-sonnet-4"]').text()).toContain('$6.00000/M')
+    expect(wrapper.get('[data-testid="model-card-claude-sonnet-4"]').text()).toContain('$30.0000/M')
 
     await wrapper.get('[data-testid="model-card-claude-sonnet-4"]').trigger('click')
     await flushPromises()
 
     expect(getModel).toHaveBeenCalledWith('claude-sonnet-4', expect.any(Object))
+    expect(wrapper.get('[data-testid="base-dialog"]').exists()).toBe(true)
+    expect(wrapper.get('[data-testid="model-pricing-detail-modal"]').exists()).toBe(true)
     expect(wrapper.text()).toContain('基础组')
     expect(wrapper.text()).toContain('2.00x')
+    expect(wrapper.text()).not.toContain('$6.00000/M · 2.00x')
   })
 
   it('debounces search for 300ms', async () => {
     const wrapper = mount(ModelPricingPage, {
       global: {
         stubs: {
-          PublicHeader: true
+          PublicHeader: true,
+          BaseDialog: BaseDialogStub
         }
       }
     })
@@ -162,7 +195,8 @@ describe('ModelPricingPage', () => {
     const wrapper = mount(ModelPricingPage, {
       global: {
         stubs: {
-          PublicHeader: true
+          PublicHeader: true,
+          BaseDialog: BaseDialogStub
         }
       }
     })
@@ -197,13 +231,22 @@ describe('ModelPricingPage', () => {
             display_name: 'claude-sonnet-4',
             platform: 'anthropic',
             platforms: ['anthropic'],
-            capabilities: ['chat'],
+            capabilities: ['streaming'],
             supported_group_count: 2,
             official_price: {
               input_price: 0.000003,
               output_price: 0.000015,
               cache_write_price: 0.00000375,
               cache_read_price: 0.0000003,
+              image_output_price: 0,
+              per_request_price: 0,
+              intervals: []
+            },
+            lowest_group_price: {
+              input_price: 0.000006,
+              output_price: 0.00003,
+              cache_write_price: 0.0000075,
+              cache_read_price: 0.0000006,
               image_output_price: 0,
               per_request_price: 0,
               intervals: []
@@ -215,7 +258,8 @@ describe('ModelPricingPage', () => {
     const wrapper = mount(ModelPricingPage, {
       global: {
         stubs: {
-          PublicHeader: true
+          PublicHeader: true,
+          BaseDialog: BaseDialogStub
         }
       }
     })
@@ -244,7 +288,7 @@ describe('ModelPricingPage', () => {
         display_name: 'claude-sonnet-4',
         platform: 'anthropic',
         platforms: ['anthropic'],
-        capabilities: ['chat'],
+        capabilities: ['streaming'],
         supported_group_count: 2,
         official_price: {
           input_price: 0.000003,
@@ -285,7 +329,8 @@ describe('ModelPricingPage', () => {
     const wrapper = mount(ModelPricingPage, {
       global: {
         stubs: {
-          PublicHeader: true
+          PublicHeader: true,
+          BaseDialog: BaseDialogStub
         }
       }
     })
@@ -295,6 +340,7 @@ describe('ModelPricingPage', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('查询异常')
+    expect(wrapper.get('[data-testid="base-dialog"]').exists()).toBe(true)
     expect(wrapper.get('[data-testid="model-pricing-detail-retry"]').exists()).toBe(true)
 
     await wrapper.get('[data-testid="model-pricing-detail-retry"]').trigger('click')
@@ -314,13 +360,22 @@ describe('ModelPricingPage', () => {
         display_name: 'claude-sonnet-4',
         platform: 'anthropic',
         platforms: ['anthropic'],
-        capabilities: ['chat'],
+        capabilities: ['streaming'],
         supported_group_count: 1,
         official_price: {
           input_price: 0.000003,
           output_price: 0.000015,
           cache_write_price: 0.00000375,
           cache_read_price: 0.0000003,
+          image_output_price: 0,
+          per_request_price: 0,
+          intervals: []
+        },
+        lowest_group_price: {
+          input_price: 0.000006,
+          output_price: 0.00003,
+          cache_write_price: 0.0000075,
+          cache_read_price: 0.0000006,
           image_output_price: 0,
           per_request_price: 0,
           intervals: []
@@ -331,9 +386,18 @@ describe('ModelPricingPage', () => {
         display_name: 'gpt-4.1',
         platform: 'openai',
         platforms: ['openai'],
-        capabilities: ['chat'],
+        capabilities: ['streaming'],
         supported_group_count: 1,
         official_price: {
+          input_price: 0.000002,
+          output_price: 0.000008,
+          cache_write_price: 0,
+          cache_read_price: 0,
+          image_output_price: 0,
+          per_request_price: 0,
+          intervals: []
+        },
+        lowest_group_price: {
           input_price: 0.000002,
           output_price: 0.000008,
           cache_write_price: 0,
@@ -357,7 +421,8 @@ describe('ModelPricingPage', () => {
     const wrapper = mount(ModelPricingPage, {
       global: {
         stubs: {
-          PublicHeader: true
+          PublicHeader: true,
+          BaseDialog: BaseDialogStub
         }
       }
     })
@@ -372,7 +437,7 @@ describe('ModelPricingPage', () => {
       display_name: 'gpt-4.1',
       platform: 'openai',
       platforms: ['openai'],
-      capabilities: ['chat'],
+      capabilities: ['streaming'],
       supported_group_count: 1,
       official_price: {
         input_price: 0.000002,
@@ -416,7 +481,7 @@ describe('ModelPricingPage', () => {
       display_name: 'claude-sonnet-4',
       platform: 'anthropic',
       platforms: ['anthropic'],
-      capabilities: ['chat'],
+      capabilities: ['streaming'],
       supported_group_count: 1,
       official_price: {
         input_price: 0.000003,

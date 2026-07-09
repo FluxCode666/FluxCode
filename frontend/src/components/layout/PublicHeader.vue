@@ -5,12 +5,9 @@
       :class="isScrolled ? 'px-4 pt-4' : 'px-0 pt-0'"
     >
       <div
-        class="mx-auto w-full origin-top transform-gpu backdrop-blur transition-[max-width,transform,border-radius,background-color,box-shadow,border-color] duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none"
-        :class="
-          isScrolled
-            ? 'max-w-5xl rounded-full border border-black/5 bg-[#efe9e1]/80 shadow-lg shadow-black/5 dark:border-white/10 dark:bg-dark-900/60'
-            : 'max-w-[100%] rounded-none border border-transparent border-b-black/5 bg-[#faf7f2]/80 shadow-none dark:border-b-white/10 dark:bg-dark-950/60'
-        "
+        data-testid="public-header-shell"
+        class="mx-auto w-full origin-top transform-gpu backdrop-blur duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none"
+        :class="[headerShellTransitionClass, headerShellClass]"
       >
         <nav
           class="mx-auto flex max-w-6xl items-center gap-3 px-4 transition-[height] duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none sm:px-6"
@@ -266,6 +263,24 @@ const isMobileMenuOpen = ref(false)
 const closeMobileMenu = () => {
   isMobileMenuOpen.value = false
 }
+
+const headerShellTransitionClass = computed(() =>
+  isMobileMenuOpen.value
+    ? 'transition-[max-width,transform,box-shadow,border-color]'
+    : 'transition-[max-width,transform,border-radius,background-color,box-shadow,border-color]'
+)
+
+const headerShellClass = computed(() => {
+  if (isMobileMenuOpen.value) {
+    return isScrolled.value
+      ? 'max-w-5xl rounded-[28px] border border-black/5 bg-[#faf7f2] shadow-xl shadow-black/10 dark:border-white/10 dark:bg-dark-950'
+      : 'max-w-[100%] rounded-b-[28px] border border-transparent border-b-black/5 bg-[#faf7f2] shadow-lg shadow-black/5 dark:border-b-white/10 dark:bg-dark-950'
+  }
+
+  return isScrolled.value
+    ? 'max-w-5xl rounded-full border border-black/5 bg-[#efe9e1]/80 shadow-lg shadow-black/5 dark:border-white/10 dark:bg-dark-900/60'
+    : 'max-w-[100%] rounded-none border border-transparent border-b-black/5 bg-[#faf7f2]/80 shadow-none dark:border-b-white/10 dark:bg-dark-950/60'
+})
 
 watch(isScrolled, (next) => {
   if (next) closeMobileMenu()

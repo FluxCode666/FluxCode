@@ -1,10 +1,9 @@
-import { ref } from 'vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 
 import PublicHeader from '../PublicHeader.vue'
 
-const { authStoreState, appStoreState } = vi.hoisted(() => ({
+const { authStoreState, appStoreState, scrollY } = vi.hoisted(() => ({
   authStoreState: {
     isAuthenticated: false,
     isAdmin: false,
@@ -13,7 +12,8 @@ const { authStoreState, appStoreState } = vi.hoisted(() => ({
   },
   appStoreState: {
     channelMonitorEnabled: true
-  }
+  },
+  scrollY: { value: 0 }
 }))
 
 vi.mock('@/stores', () => ({
@@ -32,7 +32,7 @@ vi.mock('vue-i18n', () => ({
     t: (key: string) => {
       const map: Record<string, string> = {
         'home.nav.pricing': '购买入口',
-        'home.nav.modelPricing': '模型定价',
+        'home.nav.modelPricing': '模型广场',
         'home.nav.integrationDocs': '接入文档',
         'home.nav.docs': '使用文档',
         'home.nav.channelStatus': '渠道状态',
@@ -49,7 +49,7 @@ vi.mock('vue-i18n', () => ({
 
 vi.mock('@vueuse/core', () => ({
   useWindowScroll: () => ({
-    y: ref(0)
+    y: scrollY
   })
 }))
 
@@ -57,6 +57,7 @@ describe('PublicHeader', () => {
   beforeEach(() => {
     authStoreState.checkAuth.mockClear()
     appStoreState.channelMonitorEnabled = true
+    scrollY.value = 0
     localStorage.clear()
     vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({ matches: false }))
   })
@@ -128,5 +129,38 @@ describe('PublicHeader', () => {
     expect(wrapper.find('a[data-to="/channel-status"]').exists()).toBe(false)
     expect(wrapper.findAll('a[data-to="/integration-docs"]').length).toBe(2)
     expect(wrapper.findAll('a[data-to="/model-pricing"]').length).toBe(2)
+  })
+
+  it('uses a panel shell for the mobile menu when opened after scrolling', async () => {
+    scrollY.value = 24
+
+    const wrapper = mount(PublicHeader, {
+      props: {
+        siteName: 'FluxCode',
+        siteLogo: ''
+      },
+      global: {
+        stubs: {
+          LocaleSwitcher: true,
+          RouterLink: {
+            props: ['to'],
+            template: '<a :data-to="typeof to === \'string\' ? to : to.path"><slot /></a>'
+          }
+        }
+      }
+    })
+
+    await wrapper.vm.$nextTick()
+
+    const shell = wrapper.get('[data-testid="public-header-shell"]')
+    expect(shell.attributes('class')).toContain('rounded-full')
+    expect(shell.attributes('class')).toContain('border-radius')
+
+    await wrapper.get('button[title="菜单"]').trigger('click')
+    await wrapper.vm.$nextTick()
+
+    expect(shell.attributes('class')).toContain('rounded-[28px]')
+    expect(shell.attributes('class')).not.toContain('rounded-full')
+    expect(shell.attributes('class')).not.toContain('border-radius')
   })
 })

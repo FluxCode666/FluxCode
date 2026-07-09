@@ -26,14 +26,23 @@ export interface PricingFormEntry {
 }
 
 export const MODEL_CAPABILITY_OPTIONS: { value: ModelCapability; label: string }[] = [
-  { value: 'chat', label: '对话' },
-  { value: 'image', label: '图片' },
-  { value: 'video', label: '视频' }
+  { value: 'streaming', label: '流式输出' },
+  { value: 'system_prompt', label: '系统提示词' },
+  { value: 'function_calling', label: '函数调用' },
+  { value: 'tools', label: '工具' },
+  { value: 'json_mode', label: 'JSON 模式' },
+  { value: 'structured_output', label: '结构化输出' },
+  { value: 'prompt_cache', label: '提示词缓存' },
+  { value: 'vision', label: '视觉理解' },
+  { value: 'image_generation', label: '图片生成' },
+  { value: 'video_generation', label: '视频生成' },
+  { value: 'audio_input', label: '音频输入' },
+  { value: 'audio_output', label: '音频输出' }
 ]
 
 export function normalizeCapabilities(input: unknown): ModelCapability[] {
   if (!Array.isArray(input)) return []
-  const allowed: ModelCapability[] = ['chat', 'image', 'video']
+  const allowed = MODEL_CAPABILITY_OPTIONS.map((option) => option.value)
   const out: ModelCapability[] = []
   for (const item of input) {
     if (allowed.includes(item as ModelCapability) && !out.includes(item as ModelCapability)) {

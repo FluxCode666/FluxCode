@@ -289,9 +289,7 @@ const billingModeLabel = computed(() => {
 })
 
 function capabilityLabel(value: ModelCapability): string {
-  if (value === 'chat') return t('admin.channels.form.capabilityChat', '对话')
-  if (value === 'image') return t('admin.channels.form.capabilityImage', '图片')
-  return t('admin.channels.form.capabilityVideo', '视频')
+  return capabilityOptions.find((option) => option.value === value)?.label || value
 }
 
 function toggleCapability(value: ModelCapability, checked: boolean) {

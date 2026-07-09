@@ -19,15 +19,33 @@ const (
 type ModelCapability string
 
 const (
-	ModelCapabilityChat  ModelCapability = "chat"
-	ModelCapabilityImage ModelCapability = "image"
-	ModelCapabilityVideo ModelCapability = "video"
+	ModelCapabilityStreaming        ModelCapability = "streaming"
+	ModelCapabilitySystemPrompt     ModelCapability = "system_prompt"
+	ModelCapabilityFunctionCalling  ModelCapability = "function_calling"
+	ModelCapabilityTools            ModelCapability = "tools"
+	ModelCapabilityJSONMode         ModelCapability = "json_mode"
+	ModelCapabilityStructuredOutput ModelCapability = "structured_output"
+	ModelCapabilityPromptCache      ModelCapability = "prompt_cache"
+	ModelCapabilityVision           ModelCapability = "vision"
+	ModelCapabilityImageGeneration  ModelCapability = "image_generation"
+	ModelCapabilityVideoGeneration  ModelCapability = "video_generation"
+	ModelCapabilityAudioInput       ModelCapability = "audio_input"
+	ModelCapabilityAudioOutput      ModelCapability = "audio_output"
 )
 
 var allowedModelCapabilities = map[string]struct{}{
-	string(ModelCapabilityChat):  {},
-	string(ModelCapabilityImage): {},
-	string(ModelCapabilityVideo): {},
+	string(ModelCapabilityStreaming):        {},
+	string(ModelCapabilitySystemPrompt):     {},
+	string(ModelCapabilityFunctionCalling):  {},
+	string(ModelCapabilityTools):            {},
+	string(ModelCapabilityJSONMode):         {},
+	string(ModelCapabilityStructuredOutput): {},
+	string(ModelCapabilityPromptCache):      {},
+	string(ModelCapabilityVision):           {},
+	string(ModelCapabilityImageGeneration):  {},
+	string(ModelCapabilityVideoGeneration):  {},
+	string(ModelCapabilityAudioInput):       {},
+	string(ModelCapabilityAudioOutput):      {},
 }
 
 func NormalizeModelCapabilities(input []string) []string {
@@ -108,7 +126,7 @@ type ChannelModelPricing struct {
 	ChannelID        int64
 	Platform         string            // 所属平台（anthropic/openai/gemini/...）
 	Models           []string          // 绑定的模型列表
-	Capabilities     []string          // 展示用能力标签：chat/image/video
+	Capabilities     []string          // 展示用能力标签
 	BillingMode      BillingMode       // 计费模式
 	InputPrice       *float64          // 每 token 输入价格（USD）— 向后兼容 flat 定价
 	OutputPrice      *float64          // 每 token 输出价格（USD）

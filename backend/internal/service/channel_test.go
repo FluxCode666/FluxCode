@@ -210,21 +210,42 @@ func TestChannelModelPricingClone(t *testing.T) {
 }
 
 func TestNormalizeModelCapabilities(t *testing.T) {
-	got := NormalizeModelCapabilities([]string{"chat", "", "image", "bad", "chat", " video "})
-	require.Equal(t, []string{"chat", "image", "video"}, got)
+	got := NormalizeModelCapabilities([]string{
+		"streaming",
+		"",
+		"tools",
+		"bad",
+		"streaming",
+		" JSON_MODE ",
+		"vision",
+		"image_generation",
+		"video_generation",
+		"audio_input",
+		"audio_output",
+	})
+	require.Equal(t, []string{
+		"streaming",
+		"tools",
+		"json_mode",
+		"vision",
+		"image_generation",
+		"video_generation",
+		"audio_input",
+		"audio_output",
+	}, got)
 }
 
 func TestChannelModelPricingCloneCopiesCapabilities(t *testing.T) {
 	original := ChannelModelPricing{
 		Models:       []string{"claude-sonnet-4"},
-		Capabilities: []string{"chat", "image"},
+		Capabilities: []string{"streaming", "tools"},
 	}
 
 	cloned := original.Clone()
-	cloned.Capabilities[0] = "video"
+	cloned.Capabilities[0] = "prompt_cache"
 
-	require.Equal(t, []string{"chat", "image"}, original.Capabilities)
-	require.Equal(t, []string{"video", "image"}, cloned.Capabilities)
+	require.Equal(t, []string{"streaming", "tools"}, original.Capabilities)
+	require.Equal(t, []string{"prompt_cache", "tools"}, cloned.Capabilities)
 }
 
 // --- BillingMode.IsValid ---

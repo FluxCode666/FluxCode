@@ -60,7 +60,7 @@ vi.mock('vue-i18n', () => ({
           'nav.mySubscriptions': '我的订阅',
           'nav.redeem': '兑换',
           'nav.profile': '个人资料',
-          'nav.modelPricing': '模型定价',
+          'nav.modelPricing': '模型广场',
           'nav.darkMode': '深色模式',
           'nav.collapse': '收起'
         } as Record<string, string>
@@ -97,7 +97,7 @@ describe('AppSidebar model pricing', () => {
       }
     })
 
-    expect(wrapper.text()).toContain('模型定价')
+    expect(wrapper.text()).toContain('模型广场')
     expect(wrapper.html()).toContain('href="/model-pricing"')
   })
 
@@ -117,7 +117,7 @@ describe('AppSidebar model pricing', () => {
       }
     })
 
-    expect(wrapper.text()).toContain('模型定价')
+    expect(wrapper.text()).toContain('模型广场')
     expect(wrapper.html()).toContain('href="/model-pricing"')
   })
 })

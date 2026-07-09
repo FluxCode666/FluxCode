@@ -79,6 +79,7 @@ type ModelPricingModelSummary struct {
 	Capabilities        []string           `json:"capabilities"`
 	SupportedGroupCount int                `json:"supported_group_count"`
 	OfficialPrice       ModelPricingAmount `json:"official_price"`
+	LowestGroupPrice    ModelPricingAmount `json:"lowest_group_price"`
 }
 
 type ModelPricingGroupPrice struct {
@@ -136,6 +137,7 @@ func (s *ModelPricingPageService) ListModels(ctx context.Context, query ModelPri
 			Capabilities:        sortedStrings(item.Capabilities),
 			SupportedGroupCount: len(item.Groups),
 			OfficialPrice:       modelPricingToAmount(item.Official),
+			LowestGroupPrice:    lowestGroupPrice(item.Groups),
 		})
 	}
 	sort.Slice(models, func(i, j int) bool {
@@ -200,7 +202,7 @@ func (s *ModelPricingPageService) buildCatalog(ctx context.Context) (map[string]
 	}
 	groupsByID := make(map[int64]Group, len(groups))
 	for _, group := range groups {
-		if group.Status == StatusActive {
+		if isModelPricingVisibleGroup(group) {
 			groupsByID[group.ID] = group
 		}
 	}
@@ -289,6 +291,10 @@ func (s *ModelPricingPageService) listAllActiveChannels(ctx context.Context) ([]
 }
 
 func isWildcardModelPattern(model string) bool { return strings.Contains(model, "*") }
+
+func isModelPricingVisibleGroup(group Group) bool {
+	return group.Status == StatusActive && !group.IsFallbackGroup
+}
 
 func (i *modelCatalogItem) addPlatform(platform string) {
 	platform = strings.TrimSpace(platform)
@@ -404,6 +410,49 @@ func applyGroupMultiplier(amount ModelPricingAmount, multiplier float64) ModelPr
 		amount.Intervals[i].PerRequestPrice *= multiplier
 	}
 	return amount
+}
+
+func lowestGroupPrice(groups []modelCatalogGroup) ModelPricingAmount {
+	var lowest ModelPricingAmount
+	found := false
+	for _, group := range groups {
+		final := applyGroupMultiplier(group.Resolved, group.RateMultiplier)
+		if !found || modelPricingAmountLess(final, lowest) {
+			lowest = final
+			found = true
+		}
+	}
+	return lowest
+}
+
+func modelPricingAmountLess(a, b ModelPricingAmount) bool {
+	aRank := modelPricingAmountRank(a)
+	bRank := modelPricingAmountRank(b)
+	for i := range aRank {
+		if aRank[i] == bRank[i] {
+			continue
+		}
+		return aRank[i] < bRank[i]
+	}
+	return false
+}
+
+func modelPricingAmountRank(amount ModelPricingAmount) []float64 {
+	return []float64{
+		positivePriceRank(amount.InputPrice),
+		positivePriceRank(amount.OutputPrice),
+		positivePriceRank(amount.CacheWritePrice),
+		positivePriceRank(amount.CacheReadPrice),
+		positivePriceRank(amount.PerRequestPrice),
+		positivePriceRank(amount.ImageOutputPrice),
+	}
+}
+
+func positivePriceRank(value float64) float64 {
+	if value > 0 {
+		return value
+	}
+	return 1 << 62
 }
 
 func amountMultipliers(final, official ModelPricingAmount) ModelPricingMultipliers {

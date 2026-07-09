@@ -1,6 +1,18 @@
 import { apiClient } from './client'
 
-export type ModelCapability = 'chat' | 'image' | 'video'
+export type ModelCapability =
+  | 'streaming'
+  | 'system_prompt'
+  | 'function_calling'
+  | 'tools'
+  | 'json_mode'
+  | 'structured_output'
+  | 'prompt_cache'
+  | 'vision'
+  | 'image_generation'
+  | 'video_generation'
+  | 'audio_input'
+  | 'audio_output'
 
 export interface ModelPricingInterval {
   min_tokens: number
@@ -40,6 +52,7 @@ export interface ModelPricingSummary {
   capabilities: ModelCapability[]
   supported_group_count: number
   official_price: ModelPricingAmount
+  lowest_group_price: ModelPricingAmount
 }
 
 export interface ModelPricingGroupPrice {
