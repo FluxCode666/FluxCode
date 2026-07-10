@@ -556,6 +556,85 @@ func TestResponsesToChatCompletions_CachedTokens(t *testing.T) {
 	assert.Equal(t, 80, chat.Usage.PromptTokensDetails.CachedTokens)
 }
 
+func TestResponsesToChatCompletions_CacheWriteUsage(t *testing.T) {
+	resp := &ResponsesResponse{
+		Status: "completed",
+		Usage: &ResponsesUsage{
+			InputTokens:  100,
+			OutputTokens: 10,
+			InputTokensDetails: &ResponsesInputTokensDetails{
+				CachedTokens:     80,
+				CacheWriteTokens: 12,
+			},
+		},
+	}
+
+	chat := ResponsesToChatCompletions(resp, "gpt-5.6")
+	require.NotNil(t, chat.Usage)
+	assert.Equal(t, 12, chat.Usage.CacheCreationInputTokens)
+	assert.Equal(t, 12, chat.Usage.CacheWriteInputTokens)
+	require.NotNil(t, chat.Usage.PromptTokensDetails)
+	assert.Equal(t, 12, chat.Usage.PromptTokensDetails.CacheCreationTokens)
+	assert.Equal(t, 12, chat.Usage.PromptTokensDetails.CacheWriteTokens)
+}
+
+func TestResponsesUsage_CacheWriteTokensWinsOverZeroTopLevelCreation(t *testing.T) {
+	var usage ResponsesUsage
+	require.NoError(t, json.Unmarshal([]byte(`{
+		"input_tokens": 10,
+		"output_tokens": 1,
+		"cache_creation_input_tokens": 0,
+		"cache_write_tokens": 11
+	}`), &usage))
+
+	assert.Equal(t, 11, usage.CacheCreationInputTokenCount())
+}
+
+func TestResponsesUsage_UnmarshalChatStyleUsagePreservesCacheWrite(t *testing.T) {
+	var usage ResponsesUsage
+	require.NoError(t, json.Unmarshal([]byte(`{
+		"prompt_tokens": 43769,
+		"completion_tokens": 16,
+		"total_tokens": 43785,
+		"prompt_tokens_details": {
+			"cached_tokens": 43392,
+			"cache_write_tokens": 200
+		}
+	}`), &usage))
+
+	assert.Equal(t, 43769, usage.InputTokens)
+	assert.Equal(t, 16, usage.OutputTokens)
+	assert.Equal(t, 43785, usage.TotalTokens)
+	require.NotNil(t, usage.InputTokensDetails)
+	assert.Equal(t, 43392, usage.InputTokensDetails.CachedTokens)
+	assert.Equal(t, 200, usage.CacheCreationInputTokenCount())
+}
+
+func TestResponsesEventToChatChunks_CacheCreationUsage(t *testing.T) {
+	state := NewResponsesEventToChatState()
+	state.IncludeUsage = true
+
+	chunks := ResponsesEventToChatChunks(&ResponsesStreamEvent{
+		Type: "response.completed",
+		Response: &ResponsesResponse{
+			Status: "completed",
+			Usage: &ResponsesUsage{
+				InputTokens:              20,
+				OutputTokens:             5,
+				CacheCreationInputTokens: 4,
+			},
+		},
+	}, state)
+
+	require.Len(t, chunks, 2)
+	require.NotNil(t, chunks[1].Usage)
+	assert.Equal(t, 4, chunks[1].Usage.CacheCreationInputTokens)
+	assert.Equal(t, 4, chunks[1].Usage.CacheWriteInputTokens)
+	require.NotNil(t, chunks[1].Usage.PromptTokensDetails)
+	assert.Equal(t, 4, chunks[1].Usage.PromptTokensDetails.CacheCreationTokens)
+	assert.Equal(t, 4, chunks[1].Usage.PromptTokensDetails.CacheWriteTokens)
+}
+
 func TestResponsesToChatCompletions_WebSearch(t *testing.T) {
 	resp := &ResponsesResponse{
 		ID:     "resp_ws",

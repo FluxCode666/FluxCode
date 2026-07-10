@@ -676,7 +676,8 @@ func parseUsageAndAccumulate(
 	inputTokens, inputOK := parseUsageIntField(inputResult, true)
 	outputTokens, outputOK := parseUsageIntField(outputResult, true)
 	cachedTokens, cachedOK := parseUsageIntField(cachedResult, false)
-	if !inputOK || !outputOK || !cachedOK {
+	cacheWriteTokens, cacheWriteOK := parseCacheCreationUsageTokens(usageResult)
+	if !inputOK || !outputOK || !cachedOK || !cacheWriteOK {
 		recordUsageParseFailure()
 		if onParseFailure != nil {
 			onParseFailure(eventType, usageRaw)
@@ -684,16 +685,66 @@ func parseUsageAndAccumulate(
 		// 解析失败时不做部分字段累加，避免计费 usage 出现“半有效”状态。
 		return Usage{}
 	}
+	inputTokens = clampUsageToken(inputTokens)
+	outputTokens = clampUsageToken(outputTokens)
+	cachedTokens = clampUsageToken(cachedTokens)
+	cacheWriteTokens = clampUsageToken(cacheWriteTokens)
 	parsedUsage := Usage{
-		InputTokens:          inputTokens,
-		OutputTokens:         outputTokens,
-		CacheReadInputTokens: cachedTokens,
+		InputTokens:              inputTokens,
+		OutputTokens:             outputTokens,
+		CacheCreationInputTokens: cacheWriteTokens,
+		CacheReadInputTokens:     cachedTokens,
 	}
 
 	state.usage.InputTokens += parsedUsage.InputTokens
 	state.usage.OutputTokens += parsedUsage.OutputTokens
+	state.usage.CacheCreationInputTokens += parsedUsage.CacheCreationInputTokens
 	state.usage.CacheReadInputTokens += parsedUsage.CacheReadInputTokens
 	return parsedUsage
+}
+
+func parseCacheCreationUsageTokens(usageResult gjson.Result) (int, bool) {
+	for _, field := range []string{
+		"input_tokens_details.cache_write_tokens",
+		"prompt_tokens_details.cache_write_tokens",
+		"input_tokens_details.cache_creation_tokens",
+		"prompt_tokens_details.cache_creation_tokens",
+	} {
+		value := usageResult.Get(field)
+		if value.Exists() {
+			tokens, ok := parseUsageIntField(value, false)
+			if !ok {
+				return 0, false
+			}
+			return clampUsageToken(tokens), true
+		}
+	}
+
+	for _, field := range []string{
+		"cache_write_tokens",
+		"cache_creation_input_tokens",
+		"cache_write_input_tokens",
+		"cache_creation_tokens",
+	} {
+		value := usageResult.Get(field)
+		if value.Exists() {
+			tokens, ok := parseUsageIntField(value, false)
+			if !ok {
+				return 0, false
+			}
+			if tokens > 0 {
+				return tokens, true
+			}
+		}
+	}
+	return 0, true
+}
+
+func clampUsageToken(value int) int {
+	if value < 0 {
+		return 0
+	}
+	return value
 }
 
 func parseUsageIntField(value gjson.Result, required bool) (int, bool) {

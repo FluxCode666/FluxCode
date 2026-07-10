@@ -39,6 +39,13 @@ func TestNormalizeOpenAICompatRequestedModel(t *testing.T) {
 	}
 }
 
+func TestSplitOpenAICompatReasoningModel_GPT56Max(t *testing.T) {
+	normalized, effort, ok := splitOpenAICompatReasoningModel("gpt-5.6-max")
+	require.True(t, ok)
+	require.Equal(t, "gpt-5.6-sol", normalized)
+	require.Equal(t, "max", effort)
+}
+
 func TestApplyOpenAICompatModelNormalization(t *testing.T) {
 	t.Parallel()
 

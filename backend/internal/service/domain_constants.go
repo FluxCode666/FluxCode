@@ -410,10 +410,12 @@ const (
 	SettingKeyReferralSalesInviteeOngoingRewardDurationDays = "referral_sales_invitee_ongoing_reward_duration_days" // 销售推广：被邀请人持续奖励有效期天数（0=永久）
 
 	// Codex CLI User-Agent 配置
-	// SettingKeyCodexCLIUserAgent 发往 OpenAI 上游的 User-Agent 头（默认 "codex_cli_rs/1.0.0"）
+	// SettingKeyCodexCLIUserAgent 发往 OpenAI 上游的 User-Agent 头（默认 "codex_cli_rs/0.144.1"）
 	SettingKeyCodexCLIUserAgent = "codex_cli_user_agent"
-	// SettingKeyCodexCLIVersion 发往 OpenAI compact 端点的 Version 头（默认 "1.0.0"）
+	// SettingKeyCodexCLIVersion 发往 OpenAI compact 端点的 Version 头（默认 "0.144.1"）
 	SettingKeyCodexCLIVersion = "codex_cli_version"
+	// SettingKeyCodexPassthroughUAVersion 开启后官方 Codex 客户端请求保留入站 UA/Version
+	SettingKeyCodexPassthroughUAVersion = "codex_official_client_passthrough_ua_version"
 )
 
 // AdminAPIKeyPrefix is the prefix for admin API keys (distinct from user "sk-" keys).

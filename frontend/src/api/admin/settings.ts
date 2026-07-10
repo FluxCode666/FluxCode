@@ -175,6 +175,7 @@ export interface SystemSettings {
   // Codex CLI User-Agent
   codex_cli_user_agent: string
   codex_cli_version: string
+  codex_official_client_passthrough_ua_version: boolean
 
   web_search_emulation_enabled?: boolean
 
@@ -336,6 +337,7 @@ export interface UpdateSettingsRequest {
   // Codex CLI User-Agent
   codex_cli_user_agent?: string
   codex_cli_version?: string
+  codex_official_client_passthrough_ua_version?: boolean
 
   // Payment configuration
   payment_enabled?: boolean

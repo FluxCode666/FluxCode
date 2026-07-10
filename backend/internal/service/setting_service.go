@@ -103,9 +103,10 @@ const gatewayForwardingDBTimeout = 5 * time.Second
 
 // cachedCodexCLIConfig 缓存 Codex CLI UA 配置（进程内缓存，7 天 TTL，由 UpdateSettings 主动刷新）
 type cachedCodexCLIConfig struct {
-	userAgent string
-	version   string
-	expiresAt int64 // unix nano
+	userAgent            string
+	version              string
+	passthroughUAVersion bool
+	expiresAt            int64 // unix nano
 }
 
 var codexCLICfgCache atomic.Value // *cachedCodexCLIConfig
@@ -987,6 +988,7 @@ func (s *SettingService) UpdateSettings(ctx context.Context, settings *SystemSet
 	// Codex CLI User-Agent 配置
 	updates[SettingKeyCodexCLIUserAgent] = settings.CodexCLIUserAgent
 	updates[SettingKeyCodexCLIVersion] = settings.CodexCLIVersion
+	updates[SettingKeyCodexPassthroughUAVersion] = strconv.FormatBool(settings.CodexPassthroughUAVersion)
 
 	err = s.settingRepo.SetMultiple(ctx, updates)
 	if err == nil {
@@ -1011,9 +1013,10 @@ func (s *SettingService) UpdateSettings(ctx context.Context, settings *SystemSet
 		})
 		codexCLICfgSF.Forget("codex_cli_cfg")
 		codexCLICfgCache.Store(&cachedCodexCLIConfig{
-			userAgent: settings.CodexCLIUserAgent,
-			version:   settings.CodexCLIVersion,
-			expiresAt: time.Now().Add(codexCLICfgCacheTTL).UnixNano(),
+			userAgent:            settings.CodexCLIUserAgent,
+			version:              settings.CodexCLIVersion,
+			passthroughUAVersion: settings.CodexPassthroughUAVersion,
+			expiresAt:            time.Now().Add(codexCLICfgCacheTTL).UnixNano(),
 		})
 		refreshSystemPromptSettingsCache(settings)
 		for _, callback := range s.onUpdateCallbacks {
@@ -1235,20 +1238,21 @@ func (s *SettingService) GetGatewayForwardingSettings(ctx context.Context) (fing
 
 // GetCodexCLIConfig returns cached Codex CLI UA configuration.
 // Uses in-process atomic.Value cache with 7-day TTL (refreshed by UpdateSettings).
-// Returns (userAgent, version).
-func (s *SettingService) GetCodexCLIConfig(ctx context.Context) (userAgent, version string) {
+// Returns (userAgent, version, passthroughUAVersion).
+func (s *SettingService) GetCodexCLIConfig(ctx context.Context) (userAgent, version string, passthroughUAVersion bool) {
 	if cached, ok := codexCLICfgCache.Load().(*cachedCodexCLIConfig); ok && cached != nil {
 		if time.Now().UnixNano() < cached.expiresAt {
-			return cached.userAgent, cached.version
+			return cached.userAgent, cached.version, cached.passthroughUAVersion
 		}
 	}
 	type cliResult struct {
-		ua, ver string
+		ua, ver     string
+		passthrough bool
 	}
 	val, _, _ := codexCLICfgSF.Do("codex_cli_cfg", func() (any, error) {
 		if cached, ok := codexCLICfgCache.Load().(*cachedCodexCLIConfig); ok && cached != nil {
 			if time.Now().UnixNano() < cached.expiresAt {
-				return cliResult{cached.userAgent, cached.version}, nil
+				return cliResult{cached.userAgent, cached.version, cached.passthroughUAVersion}, nil
 			}
 		}
 		dbCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
@@ -1256,27 +1260,34 @@ func (s *SettingService) GetCodexCLIConfig(ctx context.Context) (userAgent, vers
 		values, err := s.settingRepo.GetMultiple(dbCtx, []string{
 			SettingKeyCodexCLIUserAgent,
 			SettingKeyCodexCLIVersion,
+			SettingKeyCodexPassthroughUAVersion,
 		})
 		if err != nil {
 			slog.Warn("failed to get codex CLI config", "error", err)
 			codexCLICfgCache.Store(&cachedCodexCLIConfig{
-				expiresAt: time.Now().Add(5 * time.Second).UnixNano(),
+				passthroughUAVersion: true,
+				expiresAt:            time.Now().Add(5 * time.Second).UnixNano(),
 			})
-			return cliResult{}, nil
+			return cliResult{passthrough: true}, nil
 		}
 		ua := strings.TrimSpace(values[SettingKeyCodexCLIUserAgent])
 		ver := strings.TrimSpace(values[SettingKeyCodexCLIVersion])
+		passthrough := true
+		if raw := strings.TrimSpace(values[SettingKeyCodexPassthroughUAVersion]); raw != "" {
+			passthrough = raw == "true"
+		}
 		codexCLICfgCache.Store(&cachedCodexCLIConfig{
-			userAgent: ua,
-			version:   ver,
-			expiresAt: time.Now().Add(codexCLICfgCacheTTL).UnixNano(),
+			userAgent:            ua,
+			version:              ver,
+			passthroughUAVersion: passthrough,
+			expiresAt:            time.Now().Add(codexCLICfgCacheTTL).UnixNano(),
 		})
-		return cliResult{ua, ver}, nil
+		return cliResult{ua, ver, passthrough}, nil
 	})
 	if r, ok := val.(cliResult); ok {
-		return r.ua, r.ver
+		return r.ua, r.ver, r.passthrough
 	}
-	return "", ""
+	return "", "", false
 }
 
 func (s *SettingService) IsCodexImageGenerationBridgeEnabled(ctx context.Context) bool {
@@ -1973,6 +1984,10 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	// Codex CLI User-Agent 配置
 	result.CodexCLIUserAgent = settings[SettingKeyCodexCLIUserAgent]
 	result.CodexCLIVersion = settings[SettingKeyCodexCLIVersion]
+	result.CodexPassthroughUAVersion = true
+	if raw := strings.TrimSpace(settings[SettingKeyCodexPassthroughUAVersion]); raw != "" {
+		result.CodexPassthroughUAVersion = raw == "true"
+	}
 
 	// Web search emulation: quick enabled check from the JSON config
 	if raw := settings[SettingKeyWebSearchEmulationConfig]; raw != "" {

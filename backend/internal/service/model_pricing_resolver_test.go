@@ -42,6 +42,27 @@ func TestResolve_NoGroupID(t *testing.T) {
 	require.Equal(t, "litellm", resolved.Source)
 }
 
+func TestModelPricingResolver_GPT56FlatCacheWriteZeroIsExplicit(t *testing.T) {
+	zero := 0.0
+	resolved := &ResolvedPricing{BasePricing: &ModelPricing{InputPricePerToken: 5e-6, CacheCreationPricePerTokenPriority: 12.5e-6}}
+	r := &ModelPricingResolver{}
+
+	r.applyTokenOverrides(&ChannelModelPricing{CacheWritePrice: &zero}, resolved)
+
+	require.True(t, resolved.BasePricing.CacheCreationPriceExplicit)
+	require.Equal(t, 0.0, resolved.BasePricing.CacheCreationPricePerToken)
+	require.Equal(t, 0.0, resolved.BasePricing.CacheCreationPricePerTokenPriority)
+}
+
+func TestIntervalToModelPricing_CacheWriteZeroIsExplicit(t *testing.T) {
+	zero := 0.0
+	pricing := intervalToModelPricing(&PricingInterval{CacheWritePrice: &zero}, false)
+
+	require.True(t, pricing.CacheCreationPriceExplicit)
+	require.Equal(t, 0.0, pricing.CacheCreationPricePerToken)
+	require.Equal(t, 0.0, pricing.CacheCreationPricePerTokenPriority)
+}
+
 func TestResolve_UnknownModel(t *testing.T) {
 	bs := newTestBillingServiceForResolver()
 	r := NewModelPricingResolver(&ChannelService{}, bs)

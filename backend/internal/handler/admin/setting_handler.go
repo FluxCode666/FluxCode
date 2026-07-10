@@ -213,6 +213,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		CodexImageGenerationBridgeEnabled:    settings.CodexImageGenerationBridgeEnabled,
 		CodexCLIUserAgent:                    settings.CodexCLIUserAgent,
 		CodexCLIVersion:                      settings.CodexCLIVersion,
+		CodexPassthroughUAVersion:            settings.CodexPassthroughUAVersion,
 		WebSearchEmulationEnabled:            settings.WebSearchEmulationEnabled,
 		BalanceLowNotifyEnabled:              settings.BalanceLowNotifyEnabled,
 		BalanceLowNotifyThreshold:            settings.BalanceLowNotifyThreshold,
@@ -393,8 +394,9 @@ type UpdateSettingsRequest struct {
 	CodexImageGenerationBridgeEnabled *bool `json:"codex_image_generation_bridge_enabled"`
 
 	// Codex CLI User-Agent
-	CodexCLIUserAgent *string `json:"codex_cli_user_agent"`
-	CodexCLIVersion   *string `json:"codex_cli_version"`
+	CodexCLIUserAgent         *string `json:"codex_cli_user_agent"`
+	CodexCLIVersion           *string `json:"codex_cli_version"`
+	CodexPassthroughUAVersion *bool   `json:"codex_official_client_passthrough_ua_version"`
 
 	// Balance low notification
 	BalanceLowNotifyEnabled     *bool                   `json:"balance_low_notify_enabled"`
@@ -1188,6 +1190,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.CodexCLIVersion
 		}(),
+		CodexPassthroughUAVersion: func() bool {
+			if req.CodexPassthroughUAVersion != nil {
+				return *req.CodexPassthroughUAVersion
+			}
+			return previousSettings.CodexPassthroughUAVersion
+		}(),
 		BalanceLowNotifyEnabled: func() bool {
 			if req.BalanceLowNotifyEnabled != nil {
 				return *req.BalanceLowNotifyEnabled
@@ -1405,6 +1413,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		CodexImageGenerationBridgeEnabled:    updatedSettings.CodexImageGenerationBridgeEnabled,
 		CodexCLIUserAgent:                    updatedSettings.CodexCLIUserAgent,
 		CodexCLIVersion:                      updatedSettings.CodexCLIVersion,
+		CodexPassthroughUAVersion:            updatedSettings.CodexPassthroughUAVersion,
 		BalanceLowNotifyEnabled:              updatedSettings.BalanceLowNotifyEnabled,
 		BalanceLowNotifyThreshold:            updatedSettings.BalanceLowNotifyThreshold,
 		BalanceLowNotifyRechargeURL:          updatedSettings.BalanceLowNotifyRechargeURL,

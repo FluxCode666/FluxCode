@@ -1,104 +1,62 @@
-# Task 2 Report: Runner Timer Jitter Scheduling
+# Task 2: PricingService GPT-5.6 Official Prices 报告
 
-## 实现了什么
+## 实现内容
 
-- 在 `backend/internal/service/channel_monitor_runner.go` 中为 `scheduledMonitor` 增加了 `jitter time.Duration`。
-- 新增 `(*scheduledMonitor).nextDelay() time.Duration`，按 brief 要求基于 `interval` 和 `jitter` 计算随机 delay，并在低于 `monitorMinIntervalSeconds` 时进行 clamp。
-- 调整 `ChannelMonitorRunner.Start()`：即使 `channel_monitor_enabled=false`，startup 仍会加载并注册 enabled monitors；实际是否执行检查仍由 `fire()` 内的 `canRun()` gate 控制。
-- 在 `Schedule()` 中读取 `ChannelMonitor.JitterSeconds`，转换为 `time.Duration`，并对负值做保护性归零。
-- 将 `runScheduled()` 从固定 `ticker` 改为每次触发后重新计算 delay 的 `timer` 调度。
-- 在 `backend/internal/service/channel_monitor_runner_test.go` 中新增/更新测试，覆盖：
-  - 默认关闭时 startup 仍会 preload/schedule，但不会实际 `RunCheck`
-  - `nextDelay()` 在无 jitter、有 jitter、以及需要最小值 clamp 时的行为
-  - 默认关闭 startup 的既有测试语义已更新为新要求
+- 为 `LiteLLMModelPricing` 与 `LiteLLMRawEntry` 增加 `CacheCreationInputTokenCostPriority`，并在 `parsePricingData` 中保留该字段。
+- 新增 GPT-5.6 Sol、Terra、Luna 的官方静态回退价格，包含 priority、cache write/read、服务层级、提示缓存和固定长上下文参数。
+- `buildModelLookupCandidates` 先插入 `normalizeGPT56ModelAlias` 的结果，因此裸 `gpt-5.6` 在动态资源存在时优先命中 `gpt-5.6-sol`。
+- `matchOpenAIModel` 仅为已知 GPT-5.6 别名使用对应官方静态价格；未知 `gpt-5.6-*` 直接返回 `nil`，不会落入 Sol、Terra、Luna、GPT-5.4 或默认测试模型。
+- 更新 bundled JSON 中 Sol、Terra、Luna 的官方字段。三者长上下文参数均为阈值 `272000`、输入倍率 `2`、输出倍率 `1.5`。
 
-## 测试命令和结果
+## RED 证据
 
-- RED:
-  - 命令：`cd backend && go test ./internal/service -run 'TestChannelMonitorRunnerStartDefaultDisabledSchedulesButSkipsChecks|TestScheduledMonitorNextDelay' -count=1`
-  - 结果：`FAIL`
-- GREEN:
-  - 命令：`cd backend && go test ./internal/service -run 'TestChannelMonitorRunner|TestScheduledMonitorNextDelay' -count=1`
-  - 结果：`PASS`
-
-## TDD Evidence
-
-### RED
-
-- 命令：
+先更新 `backend/internal/service/pricing_service_test.go`，再执行：
 
 ```bash
-cd backend && go test ./internal/service -run 'TestChannelMonitorRunnerStartDefaultDisabledSchedulesButSkipsChecks|TestScheduledMonitorNextDelay' -count=1
+cd backend && go test -tags unit ./internal/service -run 'TestPricingService_GPT56|TestParsePricingData_ReadsPriorityCacheWrite' -count=1
 ```
 
-- 关键失败输出：
+结果为失败（退出码 1）：`LiteLLMModelPricing` 不存在 `CacheCreationInputTokenCostPriority`。失败原因是任务所需生产接口尚未实现。
+
+## GREEN 证据
+
+实现后，以相同命令重新执行，结果通过：
 
 ```text
-internal/service/channel_monitor_runner_test.go:43:51: runner.tasks[10].jitter undefined (type *scheduledMonitor has no field or method jitter)
-internal/service/channel_monitor_runner_test.go:49:3: unknown field jitter in struct literal of type scheduledMonitor
-internal/service/channel_monitor_runner_test.go:52:40: task.nextDelay undefined (type *scheduledMonitor has no field or method nextDelay)
+ok github.com/Wei-Shaw/sub2api/internal/service 0.053s
 ```
 
-- 为什么预期失败：
-  - 这是新增行为对应的首轮测试，旧实现还没有 `jitter` 字段，也没有 `nextDelay()`，并且 startup disabled 语义还未迁移到“会 schedule 但不 fire checks”。
+附加验证：
 
-### GREEN
+- `jq empty backend/resources/model-pricing/model_prices_and_context_window.json` 通过。
+- 三条 `jq -e` 精确字段断言通过，覆盖 Sol、Terra、Luna 的 13 个指定字段。
+- `git diff --check` 通过。
 
-- 命令：
+## 文件变更
 
-```bash
-cd backend && go test ./internal/service -run 'TestChannelMonitorRunner|TestScheduledMonitorNextDelay' -count=1
-```
+- `backend/internal/service/pricing_service.go`
+- `backend/internal/service/pricing_service_test.go`
+- `backend/resources/model-pricing/model_prices_and_context_window.json`
 
-- 关键通过输出：
+## 自审结论
 
-```text
-ok  	github.com/Wei-Shaw/sub2api/internal/service	0.059s
-```
+实现限制在任务要求的 PricingService、测试与定价资源范围内；没有修改默认测试模型，没有合并 `upstream/main`，也没有引入无关的网关重构或大文件拆分。裸 `gpt-5.6` 的动态 Sol 优先级和未知 GPT-5.6 型号拒绝回退均已在代码路径中落实。
 
-## 修改文件
+## 疑虑
 
-- `/Volumes/T7/project/new/FluxCode/backend/internal/service/channel_monitor_runner.go`
-- `/Volumes/T7/project/new/FluxCode/backend/internal/service/channel_monitor_runner_test.go`
+完整命令 `cd backend && go test -tags unit ./internal/service -count=1` 仍失败于与本任务无关的既有测试：两个 AdminService 测试的预期不一致，以及 SettingService 后台预热协程调用未预期的 stub `GetMultiple`。任务 brief 指定的 GPT-5.6 测试通过。
 
-## 自审发现
+## Review 修复（2026-07-10）
 
-- 改动范围保持在 runner 与对应测试文件，没有触碰其他 service、handler、repo、frontend 或默认配置。
-- `fire()` 的 `canRun()` gate 保持不变，因此本地默认 `channel_monitor_enabled=false` 时仍不会实际执行 `RunCheck`。
-- `nextDelay()` 的下限 clamp 使用现有 `monitorMinIntervalSeconds`，与 `interval_seconds - jitter_seconds >= 15` 的语义一致。
-- 定时器在首次 `fire()` 之后才创建，并在每轮触发后重新 `Reset(task.nextDelay())`，符合“每次调度重新计算 jitter delay”的需求。
-- 测试里为 startup disabled 场景增加了 `runCalls` 断言，确认 monitor 被注册但检查未执行。
+### 根因与修复
 
-## 疑问或担忧
+- `LiteLLMRawEntry` 未声明三个 `long_context_*` 字段，导致 JSON 中的 GPT-5.6 长上下文参数在 `parsePricingData` 后归零。已增加指针字段并复制到 `LiteLLMModelPricing`。
+- `matchOpenAIModel` 先枚举通用 variants，未知 `gpt-5.6-foo` 会降级为 `gpt-5.6` 并命中动态裸键。现在 GPT-5.6 在 variants 前单独分流：已知别名返回官方静态回退，未知型号直接返回 `nil`。
+- 已统一 bundled JSON 的 `*_above_272k_tokens`：Sol 保持 `1e-5/4.5e-5/1e-6`，Terra 为 `5e-6/22.5e-6/0.5e-6`，Luna 为 `2e-6/9e-6/0.2e-6`（输入/输出/cache read）。
 
-- 当前只运行了 brief 指定的 runner tests，没有额外全量执行 `./internal/service` 全部测试；从任务要求看这已足够，但如果后续该模块还有依赖 startup list-call 次数的测试，建议在集成阶段再跑一遍更大范围测试。
+### 回归覆盖与验证
 
-## Fix after review
-
-- reviewer 的 Important finding 已修复：`TestChannelMonitorRunnerStartsWhenSettingEnabledAfterDefaultDisabledStartup` 现在重新覆盖“startup 时 disabled、后续切换 enabled 后，已注册 task 会在下一轮调度真正触发 `RunCheck`，且不会重新 reload monitors”。
-- 测试改为使用轻量 `channelMonitorRunnerSvcStub` 和可变的 `channelMonitorRuntimeStub`，避免引入真实 `ChannelMonitorService.RunCheck` 依赖。
-- 为避免并发读写不稳定，runtime 与 runner service stub 都增加了 `sync.Mutex` 保护；等待调度触发使用 `require.Eventually`，不再依赖裸 `time.Sleep`。
-
-- 聚焦验证命令：
-
-```bash
-cd backend && go test ./internal/service -run 'TestChannelMonitorRunnerStartsWhenSettingEnabledAfterDefaultDisabledStartup' -count=1
-```
-
-- 关键输出：
-
-```text
-ok  	github.com/Wei-Shaw/sub2api/internal/service	1.060s
-```
-
-- 任务要求验证命令：
-
-```bash
-cd backend && go test ./internal/service -run 'TestChannelMonitorRunner|TestScheduledMonitorNextDelay' -count=1
-```
-
-- 关键输出：
-
-```text
-ok  	github.com/Wei-Shaw/sub2api/internal/service	1.092s
-```
+- RED：在定价数据包含裸 `gpt-5.6` 时，`TestPricingService_GPT56UnknownDoesNotFallback` 失败并错误返回该动态定价；`TestParsePricingData_ReadsPriorityCacheWrite` 失败并显示长上下文阈值为 `0`。
+- GREEN：`TestPricingService_GPT56BareUsesDynamicSolPricing` 断言动态路径保留 `272000/2/1.5`；解析测试也断言三个字段；未知型号测试覆盖裸键存在时仍返回 `nil`。
+- `cd backend && go test -tags unit ./internal/service -run 'TestPricingService_GPT56|TestParsePricingData_ReadsPriorityCacheWrite' -count=1` 通过。
+- `jq empty backend/resources/model-pricing/model_prices_and_context_window.json` 通过；Sol、Terra、Luna 的九项 `above_272k_tokens` 精确断言通过。
