@@ -2053,7 +2053,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	passthroughEnabled := account.IsOpenAIPassthroughEnabled()
 	if passthroughEnabled {
 		// 透传分支只需要轻量提取字段，避免热路径全量 Unmarshal。
-		reasoningEffort := extractOpenAIReasoningEffortFromBody(body, reqModel)
+		reasoningEffort := extractOpenAIReasoningEffortFromBody(body, reqModel, originalModel)
 		return s.forwardOpenAIPassthrough(ctx, c, account, body, reqModel, reasoningEffort, reqStream, startTime)
 	}
 
@@ -2266,6 +2266,8 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		}
 	}
 
+	requestReasoningEffort := extractOpenAIReasoningEffort(reqBody, upstreamModel, billingModel, originalModel)
+
 	if account.Type == AccountTypeOAuth {
 		codexResult := applyCodexOAuthTransform(reqBody, isCodexCLI, isOpenAIResponsesCompactPath(c))
 		if codexResult.Modified {
@@ -2277,6 +2279,16 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		}
 		if codexResult.PromptCacheKey != "" {
 			promptCacheKey = codexResult.PromptCacheKey
+		}
+		if isCompactRequest && isGPT56KnownModel(upstreamModel) {
+			if reasoning, ok := reqBody["reasoning"].(map[string]any); ok {
+				if effort, ok := reasoning["effort"].(string); ok &&
+					normalizeOpenAIReasoningEffortForModel(effort, upstreamModel) == "max" {
+					reasoning["effort"] = "xhigh"
+					bodyModified = true
+					disablePatch()
+				}
+			}
 		}
 	}
 
@@ -2729,7 +2741,6 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			usage = &OpenAIUsage{}
 		}
 
-		reasoningEffort := extractOpenAIReasoningEffort(reqBody, originalModel)
 		serviceTier := extractOpenAIServiceTier(reqBody)
 
 		return &OpenAIForwardResult{
@@ -2738,7 +2749,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			Model:           originalModel,
 			UpstreamModel:   upstreamModel,
 			ServiceTier:     serviceTier,
-			ReasoningEffort: reasoningEffort,
+			ReasoningEffort: requestReasoningEffort,
 			Stream:          reqStream,
 			OpenAIWSMode:    false,
 			Duration:        time.Since(startTime),
@@ -5284,7 +5295,7 @@ func (s *OpenAIGatewayService) UpdateCodexUsageSnapshotFromHeaders(ctx context.C
 	}
 }
 
-func getOpenAIReasoningEffortFromReqBody(reqBody map[string]any) (value string, present bool) {
+func getOpenAIReasoningEffortFromReqBody(reqBody map[string]any, modelCandidates ...string) (value string, present bool) {
 	if reqBody == nil {
 		return "", false
 	}
@@ -5292,13 +5303,13 @@ func getOpenAIReasoningEffortFromReqBody(reqBody map[string]any) (value string, 
 	// Primary: reasoning.effort
 	if reasoning, ok := reqBody["reasoning"].(map[string]any); ok {
 		if effort, ok := reasoning["effort"].(string); ok {
-			return normalizeOpenAIReasoningEffort(effort), true
+			return normalizeOpenAIReasoningEffortForModel(effort, modelCandidates...), true
 		}
 	}
 
 	// Fallback: some clients may use a flat field.
 	if effort, ok := reqBody["reasoning_effort"].(string); ok {
-		return normalizeOpenAIReasoningEffort(effort), true
+		return normalizeOpenAIReasoningEffortForModel(effort, modelCandidates...), true
 	}
 
 	return "", false
@@ -5327,7 +5338,16 @@ func deriveOpenAIReasoningEffortFromModel(model string) string {
 		return ""
 	}
 
-	return normalizeOpenAIReasoningEffort(parts[len(parts)-1])
+	return normalizeOpenAIReasoningEffortForModel(parts[len(parts)-1], model)
+}
+
+func deriveOpenAIReasoningEffortFromModelCandidates(modelCandidates ...string) string {
+	for _, model := range modelCandidates {
+		if value := deriveOpenAIReasoningEffortFromModel(model); value != "" {
+			return normalizeOpenAIReasoningEffortForModel(value, modelCandidates...)
+		}
+	}
+	return ""
 }
 
 func extractOpenAIRequestMetaFromBody(body []byte) (model string, stream bool, promptCacheKey string) {
@@ -5409,20 +5429,20 @@ func detectOpenAIPassthroughInstructionsRejectReason(reqModel string, body []byt
 	return ""
 }
 
-func extractOpenAIReasoningEffortFromBody(body []byte, requestedModel string) *string {
+func extractOpenAIReasoningEffortFromBody(body []byte, requestedModels ...string) *string {
 	reasoningEffort := strings.TrimSpace(gjson.GetBytes(body, "reasoning.effort").String())
 	if reasoningEffort == "" {
 		reasoningEffort = strings.TrimSpace(gjson.GetBytes(body, "reasoning_effort").String())
 	}
 	if reasoningEffort != "" {
-		normalized := normalizeOpenAIReasoningEffort(reasoningEffort)
+		normalized := normalizeOpenAIReasoningEffortForModel(reasoningEffort, requestedModels...)
 		if normalized == "" {
 			return nil
 		}
 		return &normalized
 	}
 
-	value := deriveOpenAIReasoningEffortFromModel(requestedModel)
+	value := deriveOpenAIReasoningEffortFromModelCandidates(requestedModels...)
 	if value == "" {
 		return nil
 	}
@@ -5599,15 +5619,15 @@ func getOpenAIRequestBodyMap(c *gin.Context, body []byte) (map[string]any, error
 	return reqBody, nil
 }
 
-func extractOpenAIReasoningEffort(reqBody map[string]any, requestedModel string) *string {
-	if value, present := getOpenAIReasoningEffortFromReqBody(reqBody); present {
+func extractOpenAIReasoningEffort(reqBody map[string]any, requestedModels ...string) *string {
+	if value, present := getOpenAIReasoningEffortFromReqBody(reqBody, requestedModels...); present {
 		if value == "" {
 			return nil
 		}
 		return &value
 	}
 
-	value := deriveOpenAIReasoningEffortFromModel(requestedModel)
+	value := deriveOpenAIReasoningEffortFromModelCandidates(requestedModels...)
 	if value == "" {
 		return nil
 	}
@@ -5615,6 +5635,10 @@ func extractOpenAIReasoningEffort(reqBody map[string]any, requestedModel string)
 }
 
 func normalizeOpenAIReasoningEffort(raw string) string {
+	return normalizeOpenAIReasoningEffortForModel(raw)
+}
+
+func normalizeOpenAIReasoningEffortForModel(raw string, modelCandidates ...string) string {
 	value := strings.ToLower(strings.TrimSpace(raw))
 	if value == "" {
 		return ""
@@ -5630,6 +5654,13 @@ func normalizeOpenAIReasoningEffort(raw string) string {
 		return value
 	case "xhigh", "extrahigh":
 		return "xhigh"
+	case "max":
+		for _, model := range modelCandidates {
+			if isGPT56KnownModel(model) {
+				return "max"
+			}
+		}
+		return ""
 	default:
 		// Only store known effort levels for now to keep UI consistent.
 		return ""

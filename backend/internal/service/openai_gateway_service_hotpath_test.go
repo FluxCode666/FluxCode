@@ -106,6 +106,22 @@ func TestExtractOpenAIReasoningEffortFromBody(t *testing.T) {
 	}
 }
 
+func TestExtractOpenAIReasoningEffortFromBody_GPT56Max(t *testing.T) {
+	got := extractOpenAIReasoningEffortFromBody([]byte(`{"reasoning":{"effort":"max"}}`), "gpt-5.6")
+	require.NotNil(t, got)
+	require.Equal(t, "max", *got)
+}
+
+func TestExtractOpenAIReasoningEffortFromBody_MaxRejectedForNonGPT56(t *testing.T) {
+	require.Nil(t, extractOpenAIReasoningEffortFromBody([]byte(`{"reasoning":{"effort":"max"}}`), "gpt-5.4"))
+}
+
+func TestExtractOpenAIReasoningEffortFromBody_UsesModelCandidates(t *testing.T) {
+	got := extractOpenAIReasoningEffortFromBody([]byte(`{"input":"hi"}`), "gpt-5.6-sol", "gpt-5.6-max")
+	require.NotNil(t, got)
+	require.Equal(t, "max", *got)
+}
+
 func TestGetOpenAIRequestBodyMap_UsesContextCache(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	rec := httptest.NewRecorder()
