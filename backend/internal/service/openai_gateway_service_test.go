@@ -118,6 +118,21 @@ type cancelReadCloser struct{}
 func (c cancelReadCloser) Read(p []byte) (int, error) { return 0, context.Canceled }
 func (c cancelReadCloser) Close() error               { return nil }
 
+func TestResolveCodexDefaultsUseUpstreamVersion(t *testing.T) {
+	codexCLICfgCache.Store((*cachedCodexCLIConfig)(nil))
+	require.Equal(t, "codex_cli_rs/0.144.1", resolveCodexCLIUserAgent())
+	require.Equal(t, "0.144.1", resolveCodexCLIVersion())
+	require.Equal(t, "0.144.1", openAICodexProbeVersion)
+}
+
+func TestResolveCodexDefaultsPreserveConfiguredValues(t *testing.T) {
+	codexCLICfgCache.Store(&cachedCodexCLIConfig{userAgent: "custom/9.9.9", version: "9.9.9"})
+	t.Cleanup(func() { codexCLICfgCache.Store((*cachedCodexCLIConfig)(nil)) })
+
+	require.Equal(t, "custom/9.9.9", resolveCodexCLIUserAgent())
+	require.Equal(t, "9.9.9", resolveCodexCLIVersion())
+}
+
 type failingGinWriter struct {
 	gin.ResponseWriter
 	failAfter int

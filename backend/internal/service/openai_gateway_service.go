@@ -41,7 +41,7 @@ const (
 	// OpenAI Platform API for API Key accounts (fallback)
 	openaiPlatformAPIURL     = "https://api.openai.com/v1/responses"
 	openaiStickySessionTTL   = time.Hour // 粘性会话TTL
-	codexCLIUserAgentDefault = "codex_cli_rs/1.0.0"
+	codexCLIUserAgentDefault = "codex_cli_rs/0.144.1"
 	// codex_cli_only 拒绝时单个请求头日志长度上限（字符）
 	codexCLIOnlyHeaderValueMaxBytes = 256
 
@@ -58,7 +58,7 @@ const (
 	// codexCLIVersionDefault 仅用于 compact 端点（/v1/responses/compact）的 Version 请求头，
 	// 正常模型请求（/v1/responses）只发 User-Agent，不发 Version 头。
 	// 更新时需与 CodexCLIUserAgent 配置版本保持一致。
-	codexCLIVersionDefault = "1.0.0"
+	codexCLIVersionDefault = "0.144.1"
 	// Codex 限额快照仅用于后台展示/诊断，不需要每个成功请求都立即落库。
 	openAICodexSnapshotPersistMinInterval = 30 * time.Second
 )
