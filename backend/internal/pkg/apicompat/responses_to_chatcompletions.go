@@ -82,17 +82,7 @@ func ResponsesToChatCompletions(resp *ResponsesResponse, model string) *ChatComp
 	}}
 
 	if resp.Usage != nil {
-		usage := &ChatUsage{
-			PromptTokens:     resp.Usage.InputTokens,
-			CompletionTokens: resp.Usage.OutputTokens,
-			TotalTokens:      resp.Usage.InputTokens + resp.Usage.OutputTokens,
-		}
-		if resp.Usage.InputTokensDetails != nil && resp.Usage.InputTokensDetails.CachedTokens > 0 {
-			usage.PromptTokensDetails = &ChatTokenDetails{
-				CachedTokens: resp.Usage.InputTokensDetails.CachedTokens,
-			}
-		}
-		out.Usage = usage
+		out.Usage = responsesUsageToChatUsage(resp.Usage)
 	}
 
 	return out
@@ -293,18 +283,7 @@ func resToChatHandleCompleted(evt *ResponsesStreamEvent, state *ResponsesEventTo
 
 	if evt.Response != nil {
 		if evt.Response.Usage != nil {
-			u := evt.Response.Usage
-			usage := &ChatUsage{
-				PromptTokens:     u.InputTokens,
-				CompletionTokens: u.OutputTokens,
-				TotalTokens:      u.InputTokens + u.OutputTokens,
-			}
-			if u.InputTokensDetails != nil && u.InputTokensDetails.CachedTokens > 0 {
-				usage.PromptTokensDetails = &ChatTokenDetails{
-					CachedTokens: u.InputTokensDetails.CachedTokens,
-				}
-			}
-			state.Usage = usage
+			state.Usage = responsesUsageToChatUsage(evt.Response.Usage)
 		}
 
 		switch evt.Response.Status {
@@ -336,6 +315,34 @@ func resToChatHandleCompleted(evt *ResponsesStreamEvent, state *ResponsesEventTo
 	}
 
 	return chunks
+}
+
+func responsesUsageToChatUsage(u *ResponsesUsage) *ChatUsage {
+	if u == nil {
+		return nil
+	}
+	cacheCreationTokens := u.CacheCreationInputTokenCount()
+	usage := &ChatUsage{
+		PromptTokens:             u.InputTokens,
+		CompletionTokens:         u.OutputTokens,
+		TotalTokens:              u.InputTokens + u.OutputTokens,
+		CacheCreationInputTokens: cacheCreationTokens,
+		CacheWriteInputTokens:    cacheCreationTokens,
+	}
+	cachedTokens := 0
+	if u.InputTokensDetails != nil {
+		cachedTokens = u.InputTokensDetails.CachedTokens
+	} else if u.PromptTokensDetails != nil {
+		cachedTokens = u.PromptTokensDetails.CachedTokens
+	}
+	if cachedTokens > 0 || cacheCreationTokens > 0 {
+		usage.PromptTokensDetails = &ChatTokenDetails{
+			CachedTokens:        cachedTokens,
+			CacheCreationTokens: cacheCreationTokens,
+			CacheWriteTokens:    cacheCreationTokens,
+		}
+	}
+	return usage
 }
 
 func makeChatDeltaChunk(state *ResponsesEventToChatState, delta ChatDelta) ChatCompletionsChunk {

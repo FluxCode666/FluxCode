@@ -2280,10 +2280,10 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		if codexResult.PromptCacheKey != "" {
 			promptCacheKey = codexResult.PromptCacheKey
 		}
-		if isCompactRequest && isGPT56KnownModel(upstreamModel) {
+		if isCompactRequest {
 			if reasoning, ok := reqBody["reasoning"].(map[string]any); ok {
 				if effort, ok := reasoning["effort"].(string); ok &&
-					normalizeOpenAIReasoningEffortForModel(effort, upstreamModel) == "max" {
+					shouldDowngradeOpenAIOAuthCompactReasoningEffort(effort, upstreamModel) {
 					reasoning["effort"] = "xhigh"
 					bodyModified = true
 					disablePatch()
@@ -4310,26 +4310,15 @@ func openAIUsageFromResponsesUsage(u *apicompat.ResponsesUsage) OpenAIUsage {
 	if u == nil {
 		return OpenAIUsage{}
 	}
-	usage := OpenAIUsage{InputTokens: u.InputTokens, OutputTokens: u.OutputTokens}
-	usage.CacheCreationInputTokens = max(
-		max(
-			clampOpenAIUsageToken(int64(u.CacheWriteInputTokens)),
-			clampOpenAIUsageToken(int64(u.CacheCreationInputTokens)),
-		),
-		max(
-			clampOpenAIUsageToken(int64(u.CacheWriteTokens)),
-			clampOpenAIUsageToken(int64(u.CacheCreationTokens)),
-		),
-	)
+	usage := OpenAIUsage{
+		InputTokens:              clampOpenAIUsageToken(int64(u.InputTokens)),
+		OutputTokens:             clampOpenAIUsageToken(int64(u.OutputTokens)),
+		CacheCreationInputTokens: u.CacheCreationInputTokenCount(),
+	}
 	if u.InputTokensDetails != nil {
-		if u.InputTokensDetails.CachedTokens > 0 {
-			usage.CacheReadInputTokens = u.InputTokensDetails.CachedTokens
-		}
-		if u.InputTokensDetails.CacheWriteTokens > 0 {
-			usage.CacheCreationInputTokens = u.InputTokensDetails.CacheWriteTokens
-		} else if u.InputTokensDetails.CacheCreationTokens > 0 {
-			usage.CacheCreationInputTokens = u.InputTokensDetails.CacheCreationTokens
-		}
+		usage.CacheReadInputTokens = clampOpenAIUsageToken(int64(u.InputTokensDetails.CachedTokens))
+	} else if u.PromptTokensDetails != nil {
+		usage.CacheReadInputTokens = clampOpenAIUsageToken(int64(u.PromptTokensDetails.CachedTokens))
 	}
 	return usage
 }
@@ -5372,6 +5361,16 @@ func normalizeOpenAIPassthroughOAuthBody(body []byte, compact bool) ([]byte, boo
 	changed := false
 
 	if compact {
+		model := gjson.GetBytes(normalized, "model").String()
+		effort := gjson.GetBytes(normalized, "reasoning.effort").String()
+		if shouldDowngradeOpenAIOAuthCompactReasoningEffort(effort, model) {
+			next, err := sjson.SetBytes(normalized, "reasoning.effort", "xhigh")
+			if err != nil {
+				return body, false, fmt.Errorf("normalize passthrough compact reasoning effort: %w", err)
+			}
+			normalized = next
+			changed = true
+		}
 		if store := gjson.GetBytes(normalized, "store"); store.Exists() {
 			next, err := sjson.DeleteBytes(normalized, "store")
 			if err != nil {
@@ -5408,6 +5407,10 @@ func normalizeOpenAIPassthroughOAuthBody(body []byte, compact bool) ([]byte, boo
 	}
 
 	return normalized, changed, nil
+}
+
+func shouldDowngradeOpenAIOAuthCompactReasoningEffort(effort string, modelCandidates ...string) bool {
+	return normalizeOpenAIReasoningEffortForModel(effort, modelCandidates...) == "max"
 }
 
 func detectOpenAIPassthroughInstructionsRejectReason(reqModel string, body []byte) string {

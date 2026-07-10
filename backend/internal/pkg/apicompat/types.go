@@ -4,7 +4,10 @@
 // formats can be served through a unified gateway.
 package apicompat
 
-import "encoding/json"
+import (
+	"bytes"
+	"encoding/json"
+)
 
 // ---------------------------------------------------------------------------
 // Anthropic Messages API types
@@ -282,7 +285,113 @@ type ResponsesUsage struct {
 
 	// Optional detailed breakdown
 	InputTokensDetails  *ResponsesInputTokensDetails  `json:"input_tokens_details,omitempty"`
+	PromptTokensDetails *ChatTokenDetails             `json:"prompt_tokens_details,omitempty"`
 	OutputTokensDetails *ResponsesOutputTokensDetails `json:"output_tokens_details,omitempty"`
+
+	cacheCreationInputTokensPresent bool
+	cacheCreationInputTokensValue   int
+}
+
+// UnmarshalJSON preserves whether the first-priority cache creation field was
+// present, including explicit zero and negative values.
+func (u *ResponsesUsage) UnmarshalJSON(data []byte) error {
+	type responsesUsageAlias ResponsesUsage
+	var decoded responsesUsageAlias
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	*u = ResponsesUsage(decoded)
+
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	paths := [][]string{
+		{"input_tokens_details", "cache_write_tokens"},
+		{"input_tokens_details", "cache_creation_tokens"},
+		{"prompt_tokens_details", "cache_write_tokens"},
+		{"prompt_tokens_details", "cache_creation_tokens"},
+		{"cache_write_input_tokens"},
+		{"cache_creation_input_tokens"},
+		{"cache_write_tokens"},
+		{"cache_creation_tokens"},
+	}
+	for _, path := range paths {
+		if value, ok := responsesUsageJSONInt(raw, path...); ok {
+			u.cacheCreationInputTokensPresent = true
+			u.cacheCreationInputTokensValue = value
+			break
+		}
+	}
+	return nil
+}
+
+// CacheCreationInputTokenCount returns the first present cache write/creation
+// value using the Responses usage compatibility priority.
+func (u *ResponsesUsage) CacheCreationInputTokenCount() int {
+	if u == nil {
+		return 0
+	}
+	if u.cacheCreationInputTokensPresent {
+		return clampAPICompatUsageToken(u.cacheCreationInputTokensValue)
+	}
+
+	values := make([]int, 0, 8)
+	if u.InputTokensDetails != nil {
+		values = append(values,
+			u.InputTokensDetails.CacheWriteTokens,
+			u.InputTokensDetails.CacheCreationTokens,
+		)
+	}
+	if u.PromptTokensDetails != nil {
+		values = append(values,
+			u.PromptTokensDetails.CacheWriteTokens,
+			u.PromptTokensDetails.CacheCreationTokens,
+		)
+	}
+	values = append(values,
+		u.CacheWriteInputTokens,
+		u.CacheCreationInputTokens,
+		u.CacheWriteTokens,
+		u.CacheCreationTokens,
+	)
+	for _, value := range values {
+		if value != 0 {
+			return clampAPICompatUsageToken(value)
+		}
+	}
+	return 0
+}
+
+func responsesUsageJSONInt(root map[string]json.RawMessage, path ...string) (int, bool) {
+	current := root
+	for i, key := range path {
+		raw, ok := current[key]
+		if !ok {
+			return 0, false
+		}
+		if i == len(path)-1 {
+			if bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
+				return 0, false
+			}
+			var value int
+			if err := json.Unmarshal(raw, &value); err != nil {
+				return 0, false
+			}
+			return value, true
+		}
+		if err := json.Unmarshal(raw, &current); err != nil {
+			return 0, false
+		}
+	}
+	return 0, false
+}
+
+func clampAPICompatUsageToken(value int) int {
+	if value < 0 {
+		return 0
+	}
+	return value
 }
 
 // ResponsesInputTokensDetails breaks down input token usage.

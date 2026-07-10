@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
@@ -247,4 +248,37 @@ func TestParseSSEUsageBytes_CacheWriteFields(t *testing.T) {
 	require.Equal(t, 1, usage.OutputTokens)
 	require.Equal(t, 3, usage.CacheReadInputTokens)
 	require.Equal(t, 4, usage.CacheCreationInputTokens)
+}
+
+func TestOpenAIUsageFromResponsesUsage_PreservesPresencePriorityAndClampsNegative(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+	}{
+		{
+			name: "nested zero wins over positive top level",
+			body: `{"input_tokens":-1,"output_tokens":-2,"input_tokens_details":{"cached_tokens":-3,"cache_write_tokens":0},"cache_write_input_tokens":9}`,
+		},
+		{
+			name: "nested negative wins over positive top level",
+			body: `{"input_tokens":-1,"output_tokens":-2,"input_tokens_details":{"cached_tokens":-3,"cache_creation_tokens":-4},"cache_creation_input_tokens":9}`,
+		},
+		{
+			name: "prompt detail zero wins over positive top level",
+			body: `{"input_tokens":-1,"output_tokens":-2,"prompt_tokens_details":{"cache_write_tokens":0},"cache_write_tokens":9}`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var responsesUsage apicompat.ResponsesUsage
+			require.NoError(t, json.Unmarshal([]byte(tt.body), &responsesUsage))
+
+			usage := openAIUsageFromResponsesUsage(&responsesUsage)
+			require.Zero(t, usage.InputTokens)
+			require.Zero(t, usage.OutputTokens)
+			require.Zero(t, usage.CacheReadInputTokens)
+			require.Zero(t, usage.CacheCreationInputTokens)
+		})
+	}
 }
