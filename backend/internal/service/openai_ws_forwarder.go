@@ -1159,8 +1159,8 @@ func (s *OpenAIGatewayService) buildOpenAIWSHeaders(
 	}
 	headers.Set("OpenAI-Beta", betaValue)
 
-	// 发往 OpenAI 上游统一强制覆写 UA，不信任账号自定义 user_agent。
-	headers.Set("user-agent", resolveCodexCLIUserAgent())
+	// 发往 OpenAI 上游默认使用网关预设 UA；可配置官方 Codex 客户端保留入站值。
+	headers.Set("user-agent", resolveOpenAIUpstreamUserAgent(c, isCodexCLI))
 
 	return headers, sessionResolution
 }

@@ -26,4 +26,23 @@ describe('SettingsView Codex image generation bridge setting', () => {
     expect(zh.admin.settings.codexCLIUA.imageGenerationBridge).toBe('Codex 生图 Bridge')
     expect(en.admin.settings.codexCLIUA.imageGenerationBridge).toBe('Codex image generation bridge')
   })
+
+  it('binds official Codex UA/Version passthrough into API types, form state, and save payload', () => {
+    expect(settingsApiSource).toContain('codex_official_client_passthrough_ua_version: boolean')
+    expect(settingsApiSource).toContain('codex_official_client_passthrough_ua_version?: boolean')
+    expect(viewSource).toContain(
+      'v-model="form.codex_official_client_passthrough_ua_version"'
+    )
+    expect(viewSource).toContain('codex_official_client_passthrough_ua_version: true')
+    expect(viewSource).toContain(
+      'codex_official_client_passthrough_ua_version: form.codex_official_client_passthrough_ua_version'
+    )
+  })
+
+  it('uses the current Codex upstream defaults in UA and Version copy', () => {
+    expect(zh.admin.settings.codexCLIUA.userAgentHint).toContain('codex_cli_rs/0.144.1')
+    expect(zh.admin.settings.codexCLIUA.versionHint).toContain('0.144.1')
+    expect(en.admin.settings.codexCLIUA.userAgentHint).toContain('codex_cli_rs/0.144.1')
+    expect(en.admin.settings.codexCLIUA.versionHint).toContain('0.144.1')
+  })
 })

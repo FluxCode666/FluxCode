@@ -141,6 +141,38 @@ func resolveCodexCLIVersion() string {
 	return codexCLIVersionDefault
 }
 
+func resolveCodexPassthroughUAVersion() bool {
+	if cached, ok := codexCLICfgCache.Load().(*cachedCodexCLIConfig); ok && cached != nil {
+		return cached.passthroughUAVersion
+	}
+	return true
+}
+
+func shouldPassthroughCodexOfficialClientUAVersion(c *gin.Context, isOfficialClient bool) bool {
+	if !isOfficialClient || !resolveCodexPassthroughUAVersion() || c == nil {
+		return false
+	}
+	return openai.IsCodexOfficialClientByHeaders(c.GetHeader("User-Agent"), c.GetHeader("originator"))
+}
+
+func resolveOpenAIUpstreamUserAgent(c *gin.Context, isOfficialClient bool) string {
+	if shouldPassthroughCodexOfficialClientUAVersion(c, isOfficialClient) {
+		if ua := strings.TrimSpace(c.GetHeader("User-Agent")); ua != "" {
+			return ua
+		}
+	}
+	return resolveCodexCLIUserAgent()
+}
+
+func resolveOpenAIUpstreamVersion(c *gin.Context, isOfficialClient bool) string {
+	if shouldPassthroughCodexOfficialClientUAVersion(c, isOfficialClient) {
+		if version := strings.TrimSpace(c.GetHeader("Version")); version != "" {
+			return version
+		}
+	}
+	return resolveCodexCLIVersion()
+}
+
 // NormalizedCodexLimits contains normalized 5h/7d rate limit data
 type NormalizedCodexLimits struct {
 	Used5hPercent   *float64
@@ -3044,6 +3076,7 @@ func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthrough(
 	req.Header.Del("x-api-key")
 	req.Header.Del("x-goog-api-key")
 	req.Header.Set("authorization", "Bearer "+token)
+	isOfficialClient := openai.IsCodexOfficialClientByHeaders(c.GetHeader("User-Agent"), c.GetHeader("originator"))
 
 	// OAuth 透传到 ChatGPT internal API 时补齐必要头。
 	if account.Type == AccountTypeOAuth {
@@ -3058,9 +3091,7 @@ func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthrough(
 		clientConversationID := strings.TrimSpace(req.Header.Get("conversation_id"))
 		if isOpenAIResponsesCompactPath(c) {
 			req.Header.Set("accept", "application/json")
-			if req.Header.Get("version") == "" {
-				req.Header.Set("version", resolveCodexCLIVersion())
-			}
+			req.Header.Set("version", resolveOpenAIUpstreamVersion(c, isOfficialClient))
 			if clientSessionID == "" {
 				clientSessionID = resolveOpenAICompactSessionID(c)
 			}
@@ -3088,8 +3119,8 @@ func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthrough(
 		}
 	}
 
-	// 发往 OpenAI 上游统一强制覆写 UA，不信任账号自定义 user_agent。
-	req.Header.Set("user-agent", resolveCodexCLIUserAgent())
+	// 发往 OpenAI 上游默认使用网关预设 UA；可配置官方 Codex 客户端保留入站值。
+	req.Header.Set("user-agent", resolveOpenAIUpstreamUserAgent(c, isOfficialClient))
 
 	if req.Header.Get("content-type") == "" {
 		req.Header.Set("content-type", "application/json")
@@ -3559,9 +3590,7 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 		apiKeyID := getAPIKeyIDFromContext(c)
 		if isOpenAIResponsesCompactPath(c) {
 			req.Header.Set("accept", "application/json")
-			if req.Header.Get("version") == "" {
-				req.Header.Set("version", resolveCodexCLIVersion())
-			}
+			req.Header.Set("version", resolveOpenAIUpstreamVersion(c, isCodexCLI))
 			compactSession := resolveOpenAICompactSessionID(c)
 			req.Header.Set("session_id", isolateOpenAISessionID(apiKeyID, compactSession))
 		} else {
@@ -3574,8 +3603,8 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 		}
 	}
 
-	// 发往 OpenAI 上游统一强制覆写 UA，不信任账号自定义 user_agent。
-	req.Header.Set("user-agent", resolveCodexCLIUserAgent())
+	// 发往 OpenAI 上游默认使用网关预设 UA；可配置官方 Codex 客户端保留入站值。
+	req.Header.Set("user-agent", resolveOpenAIUpstreamUserAgent(c, isCodexCLI))
 
 	// Ensure required headers exist
 	if req.Header.Get("content-type") == "" {

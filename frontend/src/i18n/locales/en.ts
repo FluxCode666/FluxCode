@@ -5774,12 +5774,15 @@ export default {
         generatedImageCleanupEnabled: 'Enable generated image cleanup',
         generatedImageCleanupEnabledHint:
           'When enabled, archived generated image rows older than the HTTP URL cache TTL are cleared every day at 4 AM.',
+        officialClientPassthroughUAVersion: 'Preserve official Codex UA/Version',
+        officialClientPassthroughUAVersionHint:
+          'Enabled by default. When enabled, requests identified as official Codex clients keep their inbound User-Agent and compact Version; other requests still use the preset values below.',
         userAgent: 'User-Agent',
-        userAgentPlaceholder: 'e.g. codex_cli_rs/1.0.0',
-        userAgentHint: 'User-Agent header sent to OpenAI upstream. Leave empty to use default codex_cli_rs/1.0.0.',
+        userAgentPlaceholder: 'e.g. codex_cli_rs/0.144.1',
+        userAgentHint: 'User-Agent header sent to OpenAI upstream. Leave empty to use default codex_cli_rs/0.144.1.',
         version: 'Version',
-        versionPlaceholder: 'e.g. 1.0.0',
-        versionHint: 'Version header sent to OpenAI compact endpoint. Leave empty to use default 1.0.0. Should match the version in User-Agent.',
+        versionPlaceholder: 'e.g. 0.144.1',
+        versionHint: 'Version header sent to OpenAI compact endpoint. Leave empty to use default 0.144.1. Should match the version in User-Agent.',
       },
       generatedImageStorage: {
         title: 'Generated Image Storage',
