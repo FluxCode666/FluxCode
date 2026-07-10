@@ -590,6 +590,26 @@ func TestResponsesUsage_CacheWriteTokensWinsOverZeroTopLevelCreation(t *testing.
 	assert.Equal(t, 11, usage.CacheCreationInputTokenCount())
 }
 
+func TestResponsesUsage_UnmarshalChatStyleUsagePreservesCacheWrite(t *testing.T) {
+	var usage ResponsesUsage
+	require.NoError(t, json.Unmarshal([]byte(`{
+		"prompt_tokens": 43769,
+		"completion_tokens": 16,
+		"total_tokens": 43785,
+		"prompt_tokens_details": {
+			"cached_tokens": 43392,
+			"cache_write_tokens": 200
+		}
+	}`), &usage))
+
+	assert.Equal(t, 43769, usage.InputTokens)
+	assert.Equal(t, 16, usage.OutputTokens)
+	assert.Equal(t, 43785, usage.TotalTokens)
+	require.NotNil(t, usage.InputTokensDetails)
+	assert.Equal(t, 43392, usage.InputTokensDetails.CachedTokens)
+	assert.Equal(t, 200, usage.CacheCreationInputTokenCount())
+}
+
 func TestResponsesEventToChatChunks_CacheCreationUsage(t *testing.T) {
 	state := NewResponsesEventToChatState()
 	state.IncludeUsage = true
