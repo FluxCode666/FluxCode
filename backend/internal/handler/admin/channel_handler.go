@@ -58,6 +58,7 @@ type updateChannelRequest struct {
 type channelModelPricingRequest struct {
 	Platform         string                   `json:"platform" binding:"omitempty,max=50"`
 	Models           []string                 `json:"models" binding:"required,min=1,max=100"`
+	Capabilities     []string                 `json:"capabilities"`
 	BillingMode      string                   `json:"billing_mode" binding:"omitempty,oneof=token per_request image"`
 	InputPrice       *float64                 `json:"input_price" binding:"omitempty,min=0"`
 	OutputPrice      *float64                 `json:"output_price" binding:"omitempty,min=0"`
@@ -109,6 +110,7 @@ type channelModelPricingResponse struct {
 	ID               int64                     `json:"id"`
 	Platform         string                    `json:"platform"`
 	Models           []string                  `json:"models"`
+	Capabilities     []string                  `json:"capabilities"`
 	BillingMode      string                    `json:"billing_mode"`
 	InputPrice       *float64                  `json:"input_price"`
 	OutputPrice      *float64                  `json:"output_price"`
@@ -203,6 +205,10 @@ func pricingToResponse(p *service.ChannelModelPricing) channelModelPricingRespon
 	if models == nil {
 		models = []string{}
 	}
+	capabilities := service.NormalizeModelCapabilities(p.Capabilities)
+	if capabilities == nil {
+		capabilities = []string{}
+	}
 	billingMode := string(p.BillingMode)
 	if billingMode == "" {
 		billingMode = string(service.BillingModeToken)
@@ -219,6 +225,7 @@ func pricingToResponse(p *service.ChannelModelPricing) channelModelPricingRespon
 		ID:               p.ID,
 		Platform:         platform,
 		Models:           models,
+		Capabilities:     capabilities,
 		BillingMode:      billingMode,
 		InputPrice:       p.InputPrice,
 		OutputPrice:      p.OutputPrice,
@@ -270,6 +277,7 @@ func pricingRequestToService(reqs []channelModelPricingRequest) []service.Channe
 		result = append(result, service.ChannelModelPricing{
 			Platform:         platform,
 			Models:           r.Models,
+			Capabilities:     service.NormalizeModelCapabilities(r.Capabilities),
 			BillingMode:      billingMode,
 			InputPrice:       r.InputPrice,
 			OutputPrice:      r.OutputPrice,

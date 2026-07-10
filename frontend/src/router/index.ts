@@ -37,12 +37,13 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
-    path: '/pricing',
-    name: 'Pricing',
-    component: () => import('@/views/PricingView.vue'),
+    path: '/model-pricing',
+    name: 'ModelPricing',
+    component: () => import('@/views/ModelPricingPage.vue'),
     meta: {
       requiresAuth: false,
-      title: 'Pricing'
+      title: 'Model Pricing',
+      titleKey: 'modelPricing.title'
     }
   },
   {
@@ -541,18 +542,6 @@ const routes: RouteRecordRaw[] = [
       title: 'Promotion Management',
       titleKey: 'admin.promotions.title',
       descriptionKey: 'admin.promotions.description'
-    }
-  },
-  {
-    path: '/admin/pricing-plans',
-    name: 'AdminPricingPlans',
-    component: () => import('@/views/admin/PricingPlansView.vue'),
-    meta: {
-      requiresAuth: true,
-      requiresAdmin: true,
-      title: 'Pricing Plans',
-      titleKey: 'admin.pricingPlans.title',
-      descriptionKey: 'admin.pricingPlans.description'
     }
   },
   {

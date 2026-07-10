@@ -662,6 +662,7 @@ func ProvideSettingService(settingRepo SettingRepository, groupRepo GroupReposit
 
 // ProviderSet is the Wire provider set for all services
 var ProviderSet = wire.NewSet(
+	NewModelPricingPageService,
 	// Core services
 	ProvideAuthService,
 	NewUserService,
@@ -745,7 +746,6 @@ var ProviderSet = wire.NewSet(
 	ProvideScheduledTestService,
 	ProvideScheduledTestRunnerService,
 	NewGroupCapacityService,
-	NewPricingPlanService,
 	NewPoolMonitorService,
 	NewAlertService,
 	wire.Bind(new(PoolMonitorConfigProvider), new(*PoolMonitorService)),

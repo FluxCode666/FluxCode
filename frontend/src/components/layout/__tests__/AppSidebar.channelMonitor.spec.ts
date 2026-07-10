@@ -54,7 +54,6 @@ vi.mock('vue-i18n', () => ({
         'nav.ops': '运行监控',
         'nav.users': '用户管理',
         'nav.groups': '分组管理',
-        'nav.pricingPlans': '定价方案',
         'nav.subscriptions': '订阅管理',
         'nav.accounts': '账号管理',
         'nav.announcements': '公告管理',

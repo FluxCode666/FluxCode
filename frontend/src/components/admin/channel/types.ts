@@ -1,4 +1,4 @@
-import type { BillingMode, PricingInterval } from '@/api/admin/channels'
+import type { BillingMode, PricingInterval, ModelCapability } from '@/api/admin/channels'
 
 export interface IntervalFormEntry {
   min_tokens: number
@@ -14,6 +14,7 @@ export interface IntervalFormEntry {
 
 export interface PricingFormEntry {
   models: string[]
+  capabilities: ModelCapability[]
   billing_mode: BillingMode
   input_price: number | string | null
   output_price: number | string | null
@@ -22,6 +23,33 @@ export interface PricingFormEntry {
   image_output_price: number | string | null
   per_request_price: number | string | null
   intervals: IntervalFormEntry[]
+}
+
+export const MODEL_CAPABILITY_OPTIONS: { value: ModelCapability; label: string }[] = [
+  { value: 'streaming', label: '流式输出' },
+  { value: 'system_prompt', label: '系统提示词' },
+  { value: 'function_calling', label: '函数调用' },
+  { value: 'tools', label: '工具' },
+  { value: 'json_mode', label: 'JSON 模式' },
+  { value: 'structured_output', label: '结构化输出' },
+  { value: 'prompt_cache', label: '提示词缓存' },
+  { value: 'vision', label: '视觉理解' },
+  { value: 'image_generation', label: '图片生成' },
+  { value: 'video_generation', label: '视频生成' },
+  { value: 'audio_input', label: '音频输入' },
+  { value: 'audio_output', label: '音频输出' }
+]
+
+export function normalizeCapabilities(input: unknown): ModelCapability[] {
+  if (!Array.isArray(input)) return []
+  const allowed = MODEL_CAPABILITY_OPTIONS.map((option) => option.value)
+  const out: ModelCapability[] = []
+  for (const item of input) {
+    if (allowed.includes(item as ModelCapability) && !out.includes(item as ModelCapability)) {
+      out.push(item as ModelCapability)
+    }
+  }
+  return out
 }
 
 // 价格转换：后端存 per-token，前端显示 per-MTok ($/1M tokens)

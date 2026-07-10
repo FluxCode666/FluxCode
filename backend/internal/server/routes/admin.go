@@ -92,9 +92,6 @@ func RegisterAdminRoutes(
 		// 定时测试计划
 		registerScheduledTestRoutes(admin, h)
 
-		// 定价方案管理
-		registerPricingPlanRoutes(admin, h)
-
 		// 号池监控
 		registerPoolMonitorRoutes(admin, h)
 
@@ -617,22 +614,6 @@ func registerErrorPassthroughRoutes(admin *gin.RouterGroup, h *handler.Handlers)
 	}
 }
 
-func registerPricingPlanRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
-	if h == nil || h.Admin == nil || h.Admin.PricingPlan == nil {
-		return
-	}
-	pricing := admin.Group("/pricing")
-	{
-		pricing.GET("/plan-groups", h.Admin.PricingPlan.ListGroups)
-		pricing.POST("/plan-groups", h.Admin.PricingPlan.CreateGroup)
-		pricing.PUT("/plan-groups/:id", h.Admin.PricingPlan.UpdateGroup)
-		pricing.DELETE("/plan-groups/:id", h.Admin.PricingPlan.DeleteGroup)
-
-		pricing.POST("/plans", h.Admin.PricingPlan.CreatePlan)
-		pricing.PUT("/plans/:id", h.Admin.PricingPlan.UpdatePlan)
-		pricing.DELETE("/plans/:id", h.Admin.PricingPlan.DeletePlan)
-	}
-}
 
 func registerPoolMonitorRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	if h == nil || h.Admin == nil || h.Admin.PoolMonitor == nil {

@@ -78,4 +78,37 @@ describe('admin route mapping', () => {
     expect(route?.meta.requiresAuth).toBe(false)
     expect(route?.meta.titleKey).toBe('channelStatus.title')
   })
+
+  it('does not register removed legacy admin route', async () => {
+    const { default: router } = await import('../index')
+
+    const removedAdminPath = ['/admin', 'pricing' + '-plans'].join('/')
+    const oldRoute = router.getRoutes().find((route) => route.path === removedAdminPath)
+
+    expect(oldRoute).toBeUndefined()
+  })
+
+  it('registers public model pricing route', async () => {
+    const { default: router } = await import('../index')
+
+    const route = router.getRoutes().find((route) => route.path === '/model-pricing')
+
+    expect(route?.meta.requiresAuth).toBe(false)
+  })
+
+  it('does not register old public pricing route', async () => {
+    const { default: router } = await import('../index')
+
+    const oldRoute = router.getRoutes().find((route) => route.path === '/pricing')
+
+    expect(oldRoute).toBeUndefined()
+  })
+
+  it('keeps purchase and order routes registered', async () => {
+    const { default: router } = await import('../index')
+
+    expect(router.getRoutes().find((route) => route.path === '/purchase')).toBeDefined()
+    expect(router.getRoutes().find((route) => route.path === '/orders')).toBeDefined()
+    expect(router.getRoutes().find((route) => route.path === '/admin/orders/plans')).toBeDefined()
+  })
 })

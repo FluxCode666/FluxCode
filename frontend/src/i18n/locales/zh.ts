@@ -13,6 +13,7 @@ export default {
     nav: {
       features: '功能特性',
       pricing: '购买入口',
+      modelPricing: '模型广场',
       integrationDocs: '接入文档',
       docs: '使用文档',
       channelStatus: '渠道状态',
@@ -199,6 +200,42 @@ export default {
           item3: '当请求 `response_format=url` 时，返回的图片 URL 会跟随当前站点的图片存储与 CDN 配置。'
         }
       }
+    }
+  },
+
+  modelPricing: {
+    title: '模型定价',
+    description: '按模型查看不同分组的调用价格',
+    searchPlaceholder: '搜索模型、平台或能力',
+    allPlatforms: '全部平台',
+    allCapabilities: '全部能力',
+    allGroups: '全部分组',
+    queryError: '查询异常',
+    empty: '未找到匹配模型',
+    selectHint: '选择模型查看分组价格',
+    inputOutput: '输入/输出',
+    group: '分组',
+    rate: '倍率',
+    input: '输入',
+    output: '输出',
+    cacheWrite: '缓存写入',
+    cacheRead: '缓存读取',
+    requestOrImage: '按次/图片',
+    copyModelId: '复制模型 ID',
+    modelIdCopied: '模型 ID 已复制',
+    capabilities: {
+      streaming: '流式输出',
+      system_prompt: '系统提示词',
+      function_calling: '函数调用',
+      tools: '工具',
+      json_mode: 'JSON 模式',
+      structured_output: '结构化输出',
+      prompt_cache: '提示词缓存',
+      vision: '视觉理解',
+      image_generation: '图片生成',
+      video_generation: '视频生成',
+      audio_input: '音频输入',
+      audio_output: '音频输出'
     }
   },
 
@@ -492,9 +529,9 @@ export default {
     redeem: '兑换',
     referral: '推广中心',
     profile: '个人资料',
+    modelPricing: '模型广场',
     users: '用户管理',
     groups: '分组管理',
-    pricingPlans: '定价方案',
     channels: '渠道管理',
     subscriptions: '订阅管理',
     accounts: '账号管理',
@@ -2621,63 +2658,6 @@ export default {
         geminiText: 'Gemini Text',
         geminiImage: 'Gemini Image',
         hint: '至少选择一个模型系列'
-      }
-    },
-
-    pricingPlans: {
-      createGroup: '创建分组',
-      createPlan: '创建方案',
-      editGroup: '编辑分组',
-      editPlan: '编辑方案',
-      deleteGroup: '删除分组',
-      deleteGroupConfirm: '确定要删除定价分组“{name}”吗？该分组下的所有方案都会一并删除。',
-      deletePlan: '删除方案',
-      deletePlanConfirm: '确定要删除方案“{name}”吗？所属分组：{group}。',
-      emptyTitle: '暂无定价分组',
-      emptyDesc: '创建定价分组和方案后，前台购买入口会在这里展示。',
-      failedToLoad: '加载定价方案失败',
-      noPlans: '暂无方案',
-      sortOrder: '排序',
-      columns: {
-        name: '名称',
-        price: '价格',
-        sortOrder: '排序',
-        status: '状态',
-        actions: '操作'
-      },
-      groupForm: {
-        name: '分组名称',
-        description: '分组描述',
-        sortOrder: '排序',
-        status: '状态'
-      },
-      planForm: {
-        group: '所属分组',
-        name: '方案名称',
-        description: '方案描述',
-        iconUrl: '图标 URL',
-        iconUrlHint: '填写图标地址，可留空',
-        badgeText: '徽标文本',
-        badgeTextHint: '例如：推荐 / 热门',
-        priceText: '价格文案',
-        priceTextHint: '例如：￥199 / 月；填写后优先展示',
-        tagline: '副标题',
-        taglineHint: '例如：适合个人开发者',
-        priceAmount: '价格数值',
-        priceCurrency: '货币',
-        pricePeriod: '计费周期',
-        features: '功能亮点',
-        featuresHint: '每行填写一条功能说明',
-        purchaseEntries: '购买入口',
-        purchaseEntriesHint: '可配置多个购买入口，前台会按顺序展示。',
-        addPurchaseEntry: '添加购买入口',
-        dragToSort: '拖拽排序',
-        purchaseEntryLabelPlaceholder: '按钮文案，例如：立即购买',
-        purchaseEntryValuePlaceholder: '链接、兑换码或联系方式',
-        removePurchaseEntry: '移除购买入口',
-        featured: '推荐方案',
-        sortOrder: '排序',
-        status: '状态'
       }
     },
 

@@ -1946,45 +1946,6 @@ export interface TotpLogin2FARequest {
   totp_code: string
 }
 
-// ==================== Pricing Plan Types ====================
-
-export interface PricingPlanContactMethod {
-  type: string
-  value: string
-}
-
-export interface PricingPlan {
-  id: number
-  group_id: number
-  name: string
-  description: string | null
-  icon_url: string | null
-  badge_text: string | null
-  tagline: string | null
-  price_amount: number | null
-  price_currency: string
-  price_period: string
-  price_text: string | null
-  features: string[]
-  contact_methods: PricingPlanContactMethod[]
-  is_featured: boolean
-  sort_order: number
-  status: 'active' | 'inactive'
-  created_at: string
-  updated_at: string
-}
-
-export interface PricingPlanGroup {
-  id: number
-  name: string
-  description: string | null
-  sort_order: number
-  status: 'active' | 'inactive'
-  plans?: PricingPlan[]
-  created_at: string
-  updated_at: string
-}
-
 // ==================== Account Summary Types ====================
 
 export type ProxyAccountCountState =

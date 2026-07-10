@@ -13,6 +13,7 @@ export default {
     nav: {
       features: 'Features',
       pricing: 'Pricing',
+      modelPricing: 'Model Square',
       integrationDocs: 'Integration Docs',
       docs: 'Docs',
       channelStatus: 'Channel Status',
@@ -201,6 +202,42 @@ export default {
           item3: 'When `response_format=url` is requested, the returned image URL follows the current image storage and CDN configuration of the site.'
         }
       }
+    }
+  },
+
+  modelPricing: {
+    title: 'Model Pricing',
+    description: 'Browse model prices across available groups',
+    searchPlaceholder: 'Search model, platform, or capability',
+    allPlatforms: 'All Platforms',
+    allCapabilities: 'All Capabilities',
+    allGroups: 'All Groups',
+    queryError: 'Query failed',
+    empty: 'No matching models found',
+    selectHint: 'Select a model to view group prices',
+    inputOutput: 'Input/Output',
+    group: 'Group',
+    rate: 'Rate',
+    input: 'Input',
+    output: 'Output',
+    cacheWrite: 'Cache Write',
+    cacheRead: 'Cache Read',
+    requestOrImage: 'Request/Image',
+    copyModelId: 'Copy Model ID',
+    modelIdCopied: 'Model ID copied',
+    capabilities: {
+      streaming: 'Streaming',
+      system_prompt: 'System Prompt',
+      function_calling: 'Function Calling',
+      tools: 'Tools',
+      json_mode: 'JSON Mode',
+      structured_output: 'Structured Output',
+      prompt_cache: 'Prompt Cache',
+      vision: 'Vision',
+      image_generation: 'Image Generation',
+      video_generation: 'Video Generation',
+      audio_input: 'Audio Input',
+      audio_output: 'Audio Output'
     }
   },
 
@@ -494,9 +531,9 @@ export default {
     redeem: 'Redeem',
     referral: 'Referral',
     profile: 'Profile',
+    modelPricing: 'Model Square',
     users: 'Users',
     groups: 'Groups',
-    pricingPlans: 'Pricing Plans',
     channels: 'Channels',
     subscriptions: 'Subscriptions',
     accounts: 'Accounts',
@@ -2553,63 +2590,6 @@ export default {
         geminiText: 'Gemini Text',
         geminiImage: 'Gemini Image',
         hint: 'Select at least one model family'
-      }
-    },
-
-    pricingPlans: {
-      createGroup: 'Create Group',
-      createPlan: 'Create Plan',
-      editGroup: 'Edit Group',
-      editPlan: 'Edit Plan',
-      deleteGroup: 'Delete Group',
-      deleteGroupConfirm: 'Delete pricing group "{name}"? All plans in this group will also be removed.',
-      deletePlan: 'Delete Plan',
-      deletePlanConfirm: 'Delete plan "{name}" from group "{group}"?',
-      emptyTitle: 'No pricing groups yet',
-      emptyDesc: 'Create pricing groups and plans to expose purchase options on the public pricing page.',
-      failedToLoad: 'Failed to load pricing plans',
-      noPlans: 'No plans yet',
-      sortOrder: 'Sort Order',
-      columns: {
-        name: 'Name',
-        price: 'Price',
-        sortOrder: 'Sort',
-        status: 'Status',
-        actions: 'Actions'
-      },
-      groupForm: {
-        name: 'Group Name',
-        description: 'Group Description',
-        sortOrder: 'Sort Order',
-        status: 'Status'
-      },
-      planForm: {
-        group: 'Group',
-        name: 'Plan Name',
-        description: 'Plan Description',
-        iconUrl: 'Icon URL',
-        iconUrlHint: 'Optional icon URL',
-        badgeText: 'Badge Text',
-        badgeTextHint: 'e.g. Recommended / Popular',
-        priceText: 'Price Text',
-        priceTextHint: 'e.g. $19 / month. When filled, it overrides the formatted price.',
-        tagline: 'Tagline',
-        taglineHint: 'e.g. Best for individual developers',
-        priceAmount: 'Price Amount',
-        priceCurrency: 'Currency',
-        pricePeriod: 'Billing Period',
-        features: 'Features',
-        featuresHint: 'One feature per line',
-        purchaseEntries: 'Purchase Entries',
-        purchaseEntriesHint: 'Configure one or more purchase entries; they are shown in order on the public page.',
-        addPurchaseEntry: 'Add Purchase Entry',
-        dragToSort: 'Drag to sort',
-        purchaseEntryLabelPlaceholder: 'Button label, e.g. Buy Now',
-        purchaseEntryValuePlaceholder: 'Link, redeem code, or contact info',
-        removePurchaseEntry: 'Remove Entry',
-        featured: 'Featured Plan',
-        sortOrder: 'Sort Order',
-        status: 'Status'
       }
     },
 

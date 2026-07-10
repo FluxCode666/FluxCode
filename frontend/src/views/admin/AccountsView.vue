@@ -102,6 +102,23 @@
               <button
                 type="button"
                 :class="itemClass"
+                @click="closeAndRunMoreAction(close, () => { showImportData = true })"
+              >
+                <Icon name="upload" size="sm" class="text-gray-500 dark:text-gray-400" />
+                <span>{{ t('admin.accounts.dataImport') }}</span>
+              </button>
+              <button
+                type="button"
+                :class="itemClass"
+                :disabled="exportingData"
+                @click="closeAndRunMoreAction(close, openExportDataDialog)"
+              >
+                <Icon name="download" size="sm" class="text-gray-500 dark:text-gray-400" />
+                <span>{{ selIds.length ? t('admin.accounts.dataExportSelected') : t('admin.accounts.dataExport') }}</span>
+              </button>
+              <button
+                type="button"
+                :class="itemClass"
                 :disabled="schedulerRebuilding"
                 @click="closeAndRunMoreAction(close, handleRebuildSchedulerCache)"
               >
@@ -123,14 +140,6 @@
               >
                 <Icon name="lock" size="sm" class="text-gray-500 dark:text-gray-400" />
                 <span>{{ t('admin.tlsFingerprintProfiles.title') }}</span>
-              </button>
-            </template>
-            <template #beforeCreate>
-              <button @click="showImportData = true" class="btn btn-secondary">
-                {{ t('admin.accounts.dataImport') }}
-              </button>
-              <button @click="openExportDataDialog" class="btn btn-secondary">
-                {{ selIds.length ? t('admin.accounts.dataExportSelected') : t('admin.accounts.dataExport') }}
               </button>
             </template>
           </AccountTableActions>
