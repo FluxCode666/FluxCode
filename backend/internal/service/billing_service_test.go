@@ -34,6 +34,64 @@ func TestCalculateCost_BasicComputation(t *testing.T) {
 	require.InDelta(t, expectedInput+expectedOutput, cost.ActualCost, 1e-10)
 }
 
+func TestBillingService_GPT56OfficialFallbackPrices(t *testing.T) {
+	svc := newTestBillingService()
+
+	sol, err := svc.GetModelPricing("gpt-5.6")
+	require.NoError(t, err)
+	require.InDelta(t, 5e-6, sol.InputPricePerToken, 1e-12)
+	require.InDelta(t, 30e-6, sol.OutputPricePerToken, 1e-12)
+	require.InDelta(t, 6.25e-6, sol.CacheCreationPricePerToken, 1e-12)
+	require.InDelta(t, 12.5e-6, sol.CacheCreationPricePerTokenPriority, 1e-12)
+
+	terra, err := svc.GetModelPricing("gpt-5.6-terra-high")
+	require.NoError(t, err)
+	require.InDelta(t, 2.5e-6, terra.InputPricePerToken, 1e-12)
+
+	luna, err := svc.GetModelPricing("gpt-5.6-luna-preview")
+	require.NoError(t, err)
+	require.InDelta(t, 1e-6, luna.InputPricePerToken, 1e-12)
+}
+
+func TestCalculateCostWithServiceTier_GPT56PriorityUsesCacheWritePriority(t *testing.T) {
+	svc := newTestBillingService()
+	tokens := UsageTokens{InputTokens: 100, OutputTokens: 50, CacheCreationTokens: 40, CacheReadTokens: 20}
+
+	cost, err := svc.CalculateCostWithServiceTier("gpt-5.6", tokens, 1.0, "priority")
+	require.NoError(t, err)
+
+	require.InDelta(t, float64(100)*10e-6, cost.InputCost, 1e-12)
+	require.InDelta(t, float64(50)*60e-6, cost.OutputCost, 1e-12)
+	require.InDelta(t, float64(40)*12.5e-6, cost.CacheCreationCost, 1e-12)
+	require.InDelta(t, float64(20)*1e-6, cost.CacheReadCost, 1e-12)
+}
+
+func TestBillingService_GPT56DynamicMissingCacheWriteGetsPolicyPrice(t *testing.T) {
+	svc := NewBillingService(&config.Config{}, &PricingService{
+		pricingData: map[string]*LiteLLMModelPricing{
+			"gpt-5.6-sol": {
+				InputCostPerToken:       5e-6,
+				OutputCostPerToken:      30e-6,
+				CacheReadInputTokenCost: 0.5e-6,
+			},
+		},
+	})
+
+	pricing, err := svc.GetModelPricing("gpt-5.6")
+	require.NoError(t, err)
+	require.InDelta(t, 6.25e-6, pricing.CacheCreationPricePerToken, 1e-12)
+}
+
+func TestBillingService_GPT56LongContextIncludesCacheWrite(t *testing.T) {
+	svc := newTestBillingService()
+	tokens := UsageTokens{InputTokens: 1000, CacheCreationTokens: 272001, OutputTokens: 10}
+
+	cost, err := svc.CalculateCost("gpt-5.6", tokens, 1.0)
+	require.NoError(t, err)
+	require.InDelta(t, float64(1000)*5e-6*2, cost.InputCost, 1e-12)
+	require.InDelta(t, float64(10)*30e-6*1.5, cost.OutputCost, 1e-12)
+}
+
 func TestCalculateCost_WithCacheTokens(t *testing.T) {
 	svc := newTestBillingService()
 

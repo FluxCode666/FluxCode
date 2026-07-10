@@ -139,6 +139,7 @@ func (r *ModelPricingResolver) applyTokenOverrides(chPricing *ChannelModelPricin
 		resolved.BasePricing.CacheCreationPricePerToken = *chPricing.CacheWritePrice
 		resolved.BasePricing.CacheCreation5mPrice = *chPricing.CacheWritePrice
 		resolved.BasePricing.CacheCreation1hPrice = *chPricing.CacheWritePrice
+		resolved.BasePricing.CacheCreationPriceExplicit = true
 	}
 	if chPricing.CacheReadPrice != nil {
 		resolved.BasePricing.CacheReadPricePerToken = *chPricing.CacheReadPrice
@@ -203,6 +204,7 @@ func intervalToModelPricing(iv *PricingInterval, supportsCacheBreakdown bool) *M
 		pricing.CacheCreationPricePerToken = *iv.CacheWritePrice
 		pricing.CacheCreation5mPrice = *iv.CacheWritePrice
 		pricing.CacheCreation1hPrice = *iv.CacheWritePrice
+		pricing.CacheCreationPriceExplicit = true
 	}
 	if iv.CacheReadPrice != nil {
 		pricing.CacheReadPricePerToken = *iv.CacheReadPrice
