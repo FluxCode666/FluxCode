@@ -4230,29 +4230,97 @@ func (s *OpenAIGatewayService) parseSSEUsageBytes(data []byte, usage *OpenAIUsag
 		return
 	}
 
-	usage.InputTokens = int(gjson.GetBytes(data, "response.usage.input_tokens").Int())
-	usage.OutputTokens = int(gjson.GetBytes(data, "response.usage.output_tokens").Int())
-	usage.CacheReadInputTokens = int(gjson.GetBytes(data, "response.usage.input_tokens_details.cached_tokens").Int())
-	usage.ImageOutputTokens = int(gjson.GetBytes(data, "response.usage.output_tokens_details.image_tokens").Int())
+	if parsed, ok := extractOpenAIUsageFromGJSON(gjson.ParseBytes(data), "response.usage"); ok {
+		*usage = parsed
+	}
+}
+
+func clampOpenAIUsageToken(v int64) int {
+	if v < 0 {
+		return 0
+	}
+	return int(v)
+}
+
+func firstOpenAIUsageInt(root gjson.Result, paths ...string) int {
+	for _, path := range paths {
+		value := root.Get(path)
+		if value.Exists() && value.Type == gjson.Number {
+			return clampOpenAIUsageToken(value.Int())
+		}
+	}
+	return 0
+}
+
+func extractOpenAIUsageFromGJSON(root gjson.Result, usagePath string) (OpenAIUsage, bool) {
+	if !root.Exists() {
+		return OpenAIUsage{}, false
+	}
+	prefix := strings.Trim(usagePath, ".")
+	path := func(p string) string {
+		if prefix == "" {
+			return p
+		}
+		return prefix + "." + p
+	}
+	if prefix != "" && !root.Get(prefix).Exists() {
+		return OpenAIUsage{}, false
+	}
+	return OpenAIUsage{
+		InputTokens:  firstOpenAIUsageInt(root, path("input_tokens"), path("prompt_tokens")),
+		OutputTokens: firstOpenAIUsageInt(root, path("output_tokens"), path("completion_tokens")),
+		CacheCreationInputTokens: firstOpenAIUsageInt(root,
+			path("input_tokens_details.cache_write_tokens"),
+			path("input_tokens_details.cache_creation_tokens"),
+			path("prompt_tokens_details.cache_write_tokens"),
+			path("prompt_tokens_details.cache_creation_tokens"),
+			path("cache_write_input_tokens"),
+			path("cache_creation_input_tokens"),
+			path("cache_write_tokens"),
+			path("cache_creation_tokens"),
+		),
+		CacheReadInputTokens: firstOpenAIUsageInt(root,
+			path("input_tokens_details.cached_tokens"),
+			path("prompt_tokens_details.cached_tokens"),
+			path("cache_read_input_tokens"),
+		),
+		ImageOutputTokens: firstOpenAIUsageInt(root, path("output_tokens_details.image_tokens")),
+	}, true
 }
 
 func extractOpenAIUsageFromJSONBytes(body []byte) (OpenAIUsage, bool) {
 	if len(body) == 0 || !gjson.ValidBytes(body) {
 		return OpenAIUsage{}, false
 	}
-	values := gjson.GetManyBytes(
-		body,
-		"usage.input_tokens",
-		"usage.output_tokens",
-		"usage.input_tokens_details.cached_tokens",
-		"usage.output_tokens_details.image_tokens",
+	return extractOpenAIUsageFromGJSON(gjson.ParseBytes(body), "usage")
+}
+
+func openAIUsageFromResponsesUsage(u *apicompat.ResponsesUsage) OpenAIUsage {
+	if u == nil {
+		return OpenAIUsage{}
+	}
+	usage := OpenAIUsage{InputTokens: u.InputTokens, OutputTokens: u.OutputTokens}
+	usage.CacheCreationInputTokens = max(
+		max(
+			clampOpenAIUsageToken(int64(u.CacheWriteInputTokens)),
+			clampOpenAIUsageToken(int64(u.CacheCreationInputTokens)),
+		),
+		max(
+			clampOpenAIUsageToken(int64(u.CacheWriteTokens)),
+			clampOpenAIUsageToken(int64(u.CacheCreationTokens)),
+		),
 	)
-	return OpenAIUsage{
-		InputTokens:          int(values[0].Int()),
-		OutputTokens:         int(values[1].Int()),
-		CacheReadInputTokens: int(values[2].Int()),
-		ImageOutputTokens:    int(values[3].Int()),
-	}, true
+	if u.InputTokensDetails != nil {
+		if u.InputTokensDetails.CachedTokens > 0 {
+			usage.CacheReadInputTokens = u.InputTokensDetails.CachedTokens
+		}
+		if u.InputTokensDetails.CacheWriteTokens > 0 {
+			usage.CacheCreationInputTokens = u.InputTokensDetails.CacheWriteTokens
+		} else if u.InputTokensDetails.CacheCreationTokens > 0 {
+			usage.CacheCreationInputTokens = u.InputTokensDetails.CacheCreationTokens
+		}
+	}
+	return usage
 }
 
 func invalidCompletedResponsesOutputMessage(body []byte) (string, bool) {

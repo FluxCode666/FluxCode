@@ -272,9 +272,13 @@ type ResponsesSummary struct {
 
 // ResponsesUsage holds token counts in Responses API format.
 type ResponsesUsage struct {
-	InputTokens  int `json:"input_tokens"`
-	OutputTokens int `json:"output_tokens"`
-	TotalTokens  int `json:"total_tokens"`
+	InputTokens              int `json:"input_tokens"`
+	OutputTokens             int `json:"output_tokens"`
+	TotalTokens              int `json:"total_tokens"`
+	CacheCreationInputTokens int `json:"cache_creation_input_tokens,omitempty"`
+	CacheWriteInputTokens    int `json:"cache_write_input_tokens,omitempty"`
+	CacheCreationTokens      int `json:"cache_creation_tokens,omitempty"`
+	CacheWriteTokens         int `json:"cache_write_tokens,omitempty"`
 
 	// Optional detailed breakdown
 	InputTokensDetails  *ResponsesInputTokensDetails  `json:"input_tokens_details,omitempty"`
@@ -283,7 +287,9 @@ type ResponsesUsage struct {
 
 // ResponsesInputTokensDetails breaks down input token usage.
 type ResponsesInputTokensDetails struct {
-	CachedTokens int `json:"cached_tokens,omitempty"`
+	CachedTokens        int `json:"cached_tokens,omitempty"`
+	CacheCreationTokens int `json:"cache_creation_tokens,omitempty"`
+	CacheWriteTokens    int `json:"cache_write_tokens,omitempty"`
 }
 
 // ResponsesOutputTokensDetails breaks down output token usage.
@@ -437,15 +443,19 @@ type ChatChoice struct {
 
 // ChatUsage holds token counts in Chat Completions format.
 type ChatUsage struct {
-	PromptTokens        int               `json:"prompt_tokens"`
-	CompletionTokens    int               `json:"completion_tokens"`
-	TotalTokens         int               `json:"total_tokens"`
-	PromptTokensDetails *ChatTokenDetails `json:"prompt_tokens_details,omitempty"`
+	PromptTokens             int               `json:"prompt_tokens"`
+	CompletionTokens         int               `json:"completion_tokens"`
+	TotalTokens              int               `json:"total_tokens"`
+	CacheCreationInputTokens int               `json:"cache_creation_input_tokens,omitempty"`
+	CacheWriteInputTokens    int               `json:"cache_write_input_tokens,omitempty"`
+	PromptTokensDetails      *ChatTokenDetails `json:"prompt_tokens_details,omitempty"`
 }
 
 // ChatTokenDetails provides a breakdown of token usage.
 type ChatTokenDetails struct {
-	CachedTokens int `json:"cached_tokens,omitempty"`
+	CachedTokens        int `json:"cached_tokens,omitempty"`
+	CacheCreationTokens int `json:"cache_creation_tokens,omitempty"`
+	CacheWriteTokens    int `json:"cache_write_tokens,omitempty"`
 }
 
 // ChatCompletionsChunk is a single streaming chunk from POST /v1/chat/completions.
