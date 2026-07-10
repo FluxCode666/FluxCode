@@ -321,6 +321,27 @@ func TestParseUsageAndEnrichCoverage(t *testing.T) {
 	enrichResult(nil, state, 0)
 }
 
+func TestParseUsageAndAccumulate_NegativeTokensClampToZero(t *testing.T) {
+	t.Parallel()
+
+	state := &relayState{}
+	parsed := parseUsageAndAccumulate(
+		state,
+		[]byte(`{"type":"response.completed","response":{"usage":{"input_tokens":-1,"output_tokens":-2,"input_tokens_details":{"cached_tokens":-3,"cache_write_tokens":-4}}}}`),
+		"response.completed",
+		nil,
+	)
+
+	require.Zero(t, parsed.InputTokens)
+	require.Zero(t, parsed.OutputTokens)
+	require.Zero(t, parsed.CacheReadInputTokens)
+	require.Zero(t, parsed.CacheCreationInputTokens)
+	require.Zero(t, state.usage.InputTokens)
+	require.Zero(t, state.usage.OutputTokens)
+	require.Zero(t, state.usage.CacheReadInputTokens)
+	require.Zero(t, state.usage.CacheCreationInputTokens)
+}
+
 func TestEmitTurnCompleteCoverage(t *testing.T) {
 	t.Parallel()
 

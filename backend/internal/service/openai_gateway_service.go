@@ -2281,13 +2281,9 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			promptCacheKey = codexResult.PromptCacheKey
 		}
 		if isCompactRequest {
-			if reasoning, ok := reqBody["reasoning"].(map[string]any); ok {
-				if effort, ok := reasoning["effort"].(string); ok &&
-					shouldDowngradeOpenAIOAuthCompactReasoningEffort(effort, upstreamModel) {
-					reasoning["effort"] = "xhigh"
-					bodyModified = true
-					disablePatch()
-				}
+			if normalizeOpenAIOAuthCompactReasoningEffortInReqBody(reqBody, upstreamModel) {
+				bodyModified = true
+				disablePatch()
 			}
 		}
 	}
@@ -5362,13 +5358,21 @@ func normalizeOpenAIPassthroughOAuthBody(body []byte, compact bool) ([]byte, boo
 
 	if compact {
 		model := gjson.GetBytes(normalized, "model").String()
-		effort := gjson.GetBytes(normalized, "reasoning.effort").String()
-		if shouldDowngradeOpenAIOAuthCompactReasoningEffort(effort, model) {
-			next, err := sjson.SetBytes(normalized, "reasoning.effort", "xhigh")
+		nestedEffort := openAIReasoningEffortStringFromGJSON(gjson.GetBytes(normalized, "reasoning.effort"))
+		flatEffort := openAIReasoningEffortStringFromGJSON(gjson.GetBytes(normalized, "reasoning_effort"))
+		if outboundEffort, ok := normalizeOpenAIOAuthCompactReasoningEffort(nestedEffort, flatEffort, model); ok {
+			next, err := sjson.SetBytes(normalized, "reasoning.effort", outboundEffort)
 			if err != nil {
 				return body, false, fmt.Errorf("normalize passthrough compact reasoning effort: %w", err)
 			}
 			normalized = next
+			if gjson.GetBytes(normalized, "reasoning_effort").Exists() {
+				next, err = sjson.DeleteBytes(normalized, "reasoning_effort")
+				if err != nil {
+					return body, false, fmt.Errorf("normalize passthrough compact flat reasoning effort: %w", err)
+				}
+				normalized = next
+			}
 			changed = true
 		}
 		if store := gjson.GetBytes(normalized, "store"); store.Exists() {
@@ -5409,8 +5413,53 @@ func normalizeOpenAIPassthroughOAuthBody(body []byte, compact bool) ([]byte, boo
 	return normalized, changed, nil
 }
 
-func shouldDowngradeOpenAIOAuthCompactReasoningEffort(effort string, modelCandidates ...string) bool {
-	return normalizeOpenAIReasoningEffortForModel(effort, modelCandidates...) == "max"
+func normalizeOpenAIOAuthCompactReasoningEffortInReqBody(reqBody map[string]any, modelCandidates ...string) bool {
+	if reqBody == nil {
+		return false
+	}
+
+	var nestedEffort *string
+	if reasoning, ok := reqBody["reasoning"].(map[string]any); ok {
+		if effort, ok := reasoning["effort"].(string); ok {
+			nestedEffort = &effort
+		}
+	}
+	var flatEffort *string
+	if effort, ok := reqBody["reasoning_effort"].(string); ok {
+		flatEffort = &effort
+	}
+
+	outboundEffort, ok := normalizeOpenAIOAuthCompactReasoningEffort(nestedEffort, flatEffort, modelCandidates...)
+	if !ok {
+		return false
+	}
+	reasoning, ok := reqBody["reasoning"].(map[string]any)
+	if !ok {
+		reasoning = make(map[string]any)
+		reqBody["reasoning"] = reasoning
+	}
+	reasoning["effort"] = outboundEffort
+	delete(reqBody, "reasoning_effort")
+	return true
+}
+
+func normalizeOpenAIOAuthCompactReasoningEffort(nestedEffort, flatEffort *string, modelCandidates ...string) (string, bool) {
+	effort := nestedEffort
+	if effort == nil {
+		effort = flatEffort
+	}
+	if effort == nil || normalizeOpenAIReasoningEffortForModel(*effort, modelCandidates...) != "max" {
+		return "", false
+	}
+	return "xhigh", true
+}
+
+func openAIReasoningEffortStringFromGJSON(value gjson.Result) *string {
+	if !value.Exists() || value.Type != gjson.String {
+		return nil
+	}
+	effort := value.String()
+	return &effort
 }
 
 func detectOpenAIPassthroughInstructionsRejectReason(reqModel string, body []byte) string {

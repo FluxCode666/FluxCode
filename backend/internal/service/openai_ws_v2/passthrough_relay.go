@@ -693,9 +693,10 @@ func parseUsageAndAccumulate(
 		// 解析失败时不做部分字段累加，避免计费 usage 出现“半有效”状态。
 		return Usage{}
 	}
-	if cacheWriteTokens < 0 {
-		cacheWriteTokens = 0
-	}
+	inputTokens = clampUsageToken(inputTokens)
+	outputTokens = clampUsageToken(outputTokens)
+	cachedTokens = clampUsageToken(cachedTokens)
+	cacheWriteTokens = clampUsageToken(cacheWriteTokens)
 	parsedUsage := Usage{
 		InputTokens:              inputTokens,
 		OutputTokens:             outputTokens,
@@ -708,6 +709,13 @@ func parseUsageAndAccumulate(
 	state.usage.CacheCreationInputTokens += parsedUsage.CacheCreationInputTokens
 	state.usage.CacheReadInputTokens += parsedUsage.CacheReadInputTokens
 	return parsedUsage
+}
+
+func clampUsageToken(value int) int {
+	if value < 0 {
+		return 0
+	}
+	return value
 }
 
 func firstExistingGJSON(values ...gjson.Result) gjson.Result {
