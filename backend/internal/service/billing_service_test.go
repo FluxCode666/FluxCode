@@ -92,6 +92,35 @@ func TestBillingService_GPT56LongContextIncludesCacheWrite(t *testing.T) {
 	require.InDelta(t, float64(10)*30e-6*1.5, cost.OutputCost, 1e-12)
 }
 
+func TestBillingService_GPT56UnknownAliasesDoNotFallback(t *testing.T) {
+	svc := NewBillingService(&config.Config{}, nil)
+
+	for _, model := range []string{"openai/gpt-5.6-foo", "  gpt-5.6-foo  "} {
+		t.Run(model, func(t *testing.T) {
+			pricing, err := svc.GetModelPricing(model)
+			require.Nil(t, pricing)
+			require.ErrorContains(t, err, "pricing not found")
+		})
+	}
+}
+
+func TestGetModelPricingWithChannel_CacheWritePriceZeroPreservedForPriority(t *testing.T) {
+	svc := newTestBillingService()
+	zero := 0.0
+
+	pricing, err := svc.GetModelPricingWithChannel("gpt-5.6", &ChannelModelPricing{CacheWritePrice: &zero})
+	require.NoError(t, err)
+
+	cost := svc.computeTokenBreakdown(
+		pricing,
+		UsageTokens{CacheCreationTokens: 40},
+		1.0,
+		"priority",
+		true,
+	)
+	require.Zero(t, cost.CacheCreationCost)
+}
+
 func TestCalculateCost_WithCacheTokens(t *testing.T) {
 	svc := newTestBillingService()
 

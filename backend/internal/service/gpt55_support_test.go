@@ -92,14 +92,16 @@ func TestGPT56Support_NormalizeCodexModel(t *testing.T) {
 	}
 }
 
-func TestGPT56Support_BillingFallbackMatchesGPT54(t *testing.T) {
+func TestGPT56Support_BillingFallbackUsesOfficialPrices(t *testing.T) {
 	svc := NewBillingService(&config.Config{}, nil)
 
 	pricing, err := svc.GetModelPricing("gpt-5.6-sol")
 	require.NoError(t, err)
 	require.NotNil(t, pricing)
-	require.InDelta(t, 2.5e-6, pricing.InputPricePerToken, 1e-12)
-	require.InDelta(t, 15e-6, pricing.OutputPricePerToken, 1e-12)
+	require.InDelta(t, 5e-6, pricing.InputPricePerToken, 1e-12)
+	require.InDelta(t, 30e-6, pricing.OutputPricePerToken, 1e-12)
+	require.InDelta(t, 6.25e-6, pricing.CacheCreationPricePerToken, 1e-12)
+	require.InDelta(t, 12.5e-6, pricing.CacheCreationPricePerTokenPriority, 1e-12)
 	require.Equal(t, 272000, pricing.LongContextInputThreshold)
 }
 
@@ -112,7 +114,8 @@ func TestGPT56Support_PricingServiceStaticFallback(t *testing.T) {
 
 	got := svc.GetModelPricing("gpt-5.6-sol")
 	require.NotNil(t, got)
-	require.InDelta(t, 2.5e-6, got.InputCostPerToken, 1e-12)
-	require.InDelta(t, 1.5e-5, got.OutputCostPerToken, 1e-12)
+	require.InDelta(t, 5e-6, got.InputCostPerToken, 1e-12)
+	require.InDelta(t, 30e-6, got.OutputCostPerToken, 1e-12)
+	require.InDelta(t, 6.25e-6, got.CacheCreationInputTokenCost, 1e-12)
 	require.Equal(t, 272000, got.LongContextInputTokenThreshold)
 }

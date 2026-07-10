@@ -326,6 +326,7 @@ func (s *BillingService) initFallbackPricing() {
 // getFallbackPricing 根据模型系列获取回退价格
 func (s *BillingService) getFallbackPricing(model string) *ModelPricing {
 	modelLower := strings.ToLower(model)
+	modelID := normalizeGPT56ModelID(model)
 
 	// 按模型系列匹配
 	if strings.Contains(modelLower, "opus") {
@@ -361,7 +362,7 @@ func (s *BillingService) getFallbackPricing(model string) *ModelPricing {
 	}
 
 	// OpenAI 仅匹配已知 GPT-5/Codex 族，避免未知 OpenAI 型号误计价。
-	if strings.HasPrefix(modelLower, "gpt-5.6") && !isGPT56KnownModel(modelLower) {
+	if (modelID == "gpt-5.6" || strings.HasPrefix(modelID, "gpt-5.6-")) && !isGPT56KnownModel(modelID) {
 		return nil
 	}
 	if strings.Contains(modelLower, "gpt-5") || strings.Contains(modelLower, "codex") {
@@ -574,7 +575,7 @@ func (s *BillingService) computeTokenBreakdown(
 		if pricing.CacheReadPricePerTokenPriority > 0 {
 			cacheReadPrice = pricing.CacheReadPricePerTokenPriority
 		}
-		if pricing.CacheCreationPricePerTokenPriority > 0 {
+		if pricing.CacheCreationPricePerTokenPriority > 0 && !pricing.CacheCreationPriceExplicit {
 			cloned := *pricing
 			cloned.CacheCreationPricePerToken = pricing.CacheCreationPricePerTokenPriority
 			cloned.CacheCreation5mPrice = pricing.CacheCreationPricePerTokenPriority
