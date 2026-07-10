@@ -463,6 +463,7 @@ func (s *BillingService) GetModelPricingWithChannel(model string, channelPricing
 	}
 	if channelPricing.CacheWritePrice != nil {
 		pricing.CacheCreationPricePerToken = *channelPricing.CacheWritePrice
+		pricing.CacheCreationPricePerTokenPriority = *channelPricing.CacheWritePrice
 		pricing.CacheCreation5mPrice = *channelPricing.CacheWritePrice
 		pricing.CacheCreation1hPrice = *channelPricing.CacheWritePrice
 		pricing.CacheCreationPriceExplicit = true
@@ -562,7 +563,8 @@ func (s *BillingService) computeTokenBreakdown(
 	inputPrice := pricing.InputPricePerToken
 	outputPrice := pricing.OutputPricePerToken
 	cacheReadPrice := pricing.CacheReadPricePerToken
-	cachePricing := pricing
+	cacheCreationPrice := pricing.CacheCreationPricePerToken
+	cacheCreationMultiplier := 1.0
 	tierMultiplier := 1.0
 
 	if usePriorityServiceTierPricing(serviceTier, pricing) {
@@ -575,12 +577,8 @@ func (s *BillingService) computeTokenBreakdown(
 		if pricing.CacheReadPricePerTokenPriority > 0 {
 			cacheReadPrice = pricing.CacheReadPricePerTokenPriority
 		}
-		if pricing.CacheCreationPricePerTokenPriority > 0 && !pricing.CacheCreationPriceExplicit {
-			cloned := *pricing
-			cloned.CacheCreationPricePerToken = pricing.CacheCreationPricePerTokenPriority
-			cloned.CacheCreation5mPrice = pricing.CacheCreationPricePerTokenPriority
-			cloned.CacheCreation1hPrice = pricing.CacheCreationPricePerTokenPriority
-			cachePricing = &cloned
+		if pricing.CacheCreationPricePerTokenPriority > 0 {
+			cacheCreationPrice = pricing.CacheCreationPricePerTokenPriority
 		}
 	} else {
 		tierMultiplier = serviceTierCostMultiplier(serviceTier)
@@ -589,6 +587,8 @@ func (s *BillingService) computeTokenBreakdown(
 	if applyLongCtx && s.shouldApplySessionLongContextPricing(tokens, pricing) {
 		inputPrice *= pricing.LongContextInputMultiplier
 		outputPrice *= pricing.LongContextOutputMultiplier
+		cacheReadPrice *= pricing.LongContextInputMultiplier
+		cacheCreationMultiplier = pricing.LongContextInputMultiplier
 	}
 
 	bd := &CostBreakdown{}
@@ -611,7 +611,7 @@ func (s *BillingService) computeTokenBreakdown(
 	}
 
 	// 缓存创建费用
-	bd.CacheCreationCost = s.computeCacheCreationCost(cachePricing, tokens)
+	bd.CacheCreationCost = s.computeCacheCreationCost(pricing, tokens, cacheCreationPrice, cacheCreationMultiplier)
 
 	bd.CacheReadCost = float64(tokens.CacheReadTokens) * cacheReadPrice
 
@@ -631,16 +631,16 @@ func (s *BillingService) computeTokenBreakdown(
 }
 
 // computeCacheCreationCost 计算缓存创建费用（支持 5m/1h 分类或标准计费）。
-func (s *BillingService) computeCacheCreationCost(pricing *ModelPricing, tokens UsageTokens) float64 {
+func (s *BillingService) computeCacheCreationCost(pricing *ModelPricing, tokens UsageTokens, price, multiplier float64) float64 {
 	if pricing.SupportsCacheBreakdown && (pricing.CacheCreation5mPrice > 0 || pricing.CacheCreation1hPrice > 0) {
 		if tokens.CacheCreation5mTokens == 0 && tokens.CacheCreation1hTokens == 0 && tokens.CacheCreationTokens > 0 {
 			// API 未返回 ephemeral 明细，回退到全部按 5m 单价计费
-			return float64(tokens.CacheCreationTokens) * pricing.CacheCreation5mPrice
+			return float64(tokens.CacheCreationTokens) * pricing.CacheCreation5mPrice * multiplier
 		}
-		return float64(tokens.CacheCreation5mTokens)*pricing.CacheCreation5mPrice +
-			float64(tokens.CacheCreation1hTokens)*pricing.CacheCreation1hPrice
+		return float64(tokens.CacheCreation5mTokens)*pricing.CacheCreation5mPrice*multiplier +
+			float64(tokens.CacheCreation1hTokens)*pricing.CacheCreation1hPrice*multiplier
 	}
-	return float64(tokens.CacheCreationTokens) * pricing.CacheCreationPricePerToken
+	return float64(tokens.CacheCreationTokens) * price * multiplier
 }
 
 // calculatePerRequestCost 按次/图片计费

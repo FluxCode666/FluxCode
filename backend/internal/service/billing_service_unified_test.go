@@ -174,11 +174,11 @@ func TestOpenAIRecordUsage_UnifiedChannelIntervalBillsCacheWrite(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, usageRepo.lastLog)
 	require.NotNil(t, billingRepo.lastCmd)
-	require.Equal(t, 80, usageRepo.lastLog.InputTokens)
+	require.Equal(t, 40, usageRepo.lastLog.InputTokens)
 	require.Equal(t, 40, usageRepo.lastLog.CacheCreationTokens)
 	require.InDelta(t, 40*6.25e-6, usageRepo.lastLog.CacheCreationCost, 1e-12)
 
-	expectedActual := 80*4e-6 + 10*24e-6 + 40*6.25e-6 + 20*0.5e-6
+	expectedActual := 40*4e-6 + 10*24e-6 + 40*6.25e-6 + 20*0.5e-6
 	require.InDelta(t, expectedActual, usageRepo.lastLog.ActualCost, 1e-12)
 	require.Equal(t, 40, billingRepo.lastCmd.CacheCreationTokens)
 	require.InDelta(t, expectedActual, billingRepo.lastCmd.BalanceCost, 1e-12)

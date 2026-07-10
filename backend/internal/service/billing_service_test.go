@@ -961,6 +961,7 @@ func TestGetModelPricingWithChannel_OverrideAllFields(t *testing.T) {
 	require.InDelta(t, 20e-6, pricing.OutputPricePerToken, 1e-12)
 	require.InDelta(t, 20e-6, pricing.OutputPricePerTokenPriority, 1e-12)
 	require.InDelta(t, 5e-6, pricing.CacheCreationPricePerToken, 1e-12)
+	require.InDelta(t, 5e-6, pricing.CacheCreationPricePerTokenPriority, 1e-12)
 	require.InDelta(t, 5e-6, pricing.CacheCreation5mPrice, 1e-12)
 	require.InDelta(t, 5e-6, pricing.CacheCreation1hPrice, 1e-12)
 	require.InDelta(t, 1e-6, pricing.CacheReadPricePerToken, 1e-12)
@@ -977,8 +978,9 @@ func TestGetModelPricingWithChannel_CacheWritePriceAffects5mAnd1h(t *testing.T) 
 	pricing, err := svc.GetModelPricingWithChannel("claude-sonnet-4", chPricing)
 	require.NoError(t, err)
 
-	// CacheWritePrice should set all three: CacheCreationPricePerToken, 5m, and 1h
+	// CacheWritePrice should set base, priority, 5m, and 1h cache creation prices.
 	require.InDelta(t, 7e-6, pricing.CacheCreationPricePerToken, 1e-12)
+	require.InDelta(t, 7e-6, pricing.CacheCreationPricePerTokenPriority, 1e-12)
 	require.InDelta(t, 7e-6, pricing.CacheCreation5mPrice, 1e-12)
 	require.InDelta(t, 7e-6, pricing.CacheCreation1hPrice, 1e-12)
 }
