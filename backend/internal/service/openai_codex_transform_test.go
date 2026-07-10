@@ -342,6 +342,29 @@ func TestNormalizeCodexModel_Gpt53(t *testing.T) {
 	}
 }
 
+func TestNormalizeCodexModel_GPT56Aliases(t *testing.T) {
+	tests := []struct {
+		name  string
+		model string
+		want  string
+	}{
+		{name: "bare", model: "gpt-5.6", want: "gpt-5.6-sol"},
+		{name: "bare max", model: "gpt-5.6-max", want: "gpt-5.6-sol"},
+		{name: "bare xhigh", model: "gpt-5.6-xhigh", want: "gpt-5.6-sol"},
+		{name: "provider sol", model: "openai/gpt-5.6-sol", want: "gpt-5.6-sol"},
+		{name: "space terra high", model: "GPT 5.6 Terra High", want: "gpt-5.6-terra"},
+		{name: "underscore luna", model: "gpt_5.6_luna_max", want: "gpt-5.6-luna"},
+		{name: "sol suffix", model: "gpt-5.6-sol-preview", want: "gpt-5.6-sol"},
+		{name: "unknown bare suffix stays generic fallback", model: "gpt-5.6-foo", want: "gpt-5.1"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, normalizeCodexModel(tt.model))
+		})
+	}
+}
+
 func TestIsCodexSparkModel(t *testing.T) {
 	cases := []struct {
 		name  string

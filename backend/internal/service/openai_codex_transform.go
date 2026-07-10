@@ -236,6 +236,10 @@ func normalizeCodexModel(model string) string {
 		modelID = parts[len(parts)-1]
 	}
 
+	if mapped, ok := normalizeGPT56ModelAlias(modelID); ok {
+		return mapped
+	}
+
 	if mapped := getNormalizedCodexModel(modelID); mapped != "" {
 		return mapped
 	}
