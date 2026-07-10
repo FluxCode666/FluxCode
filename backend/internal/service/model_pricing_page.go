@@ -121,6 +121,8 @@ type modelCatalogItem struct {
 type modelCatalogGroup struct {
 	GroupID        int64
 	GroupName      string
+	Platform       string
+	Capabilities   map[string]struct{}
 	RateMultiplier float64
 	BillingMode    BillingMode
 	Resolved       ModelPricingAmount
@@ -136,6 +138,7 @@ func (s *ModelPricingPageService) ListModels(ctx context.Context, query ModelPri
 		if !matchesModelPricingQuery(item, query) {
 			continue
 		}
+		filteredGroups := item.groupsMatchingFilters(query)
 		models = append(models, ModelPricingModelSummary{
 			ID:                  item.ID,
 			DisplayName:         displayModelName(item.ID),
@@ -144,7 +147,7 @@ func (s *ModelPricingPageService) ListModels(ctx context.Context, query ModelPri
 			Capabilities:        sortedStrings(item.Capabilities),
 			SupportedGroupCount: len(item.Groups),
 			OfficialPrice:       modelPricingToAmount(item.Official),
-			LowestGroupPrice:    lowestGroupPrice(item.Groups),
+			LowestGroupPrice:    lowestGroupPrice(filteredGroups),
 		})
 	}
 	sort.Slice(models, func(i, j int) bool {
@@ -267,7 +270,8 @@ func (s *ModelPricingPageService) buildCatalog(ctx context.Context) (map[string]
 					catalog[model] = item
 				}
 				item.addPlatform(pricing.Platform)
-				for _, capability := range NormalizeModelCapabilities(pricing.Capabilities) {
+				capabilities := capabilitiesSet(pricing.Capabilities)
+				for capability := range capabilities {
 					item.Capabilities[capability] = struct{}{}
 				}
 				for _, groupID := range channel.GroupIDs {
@@ -279,6 +283,8 @@ func (s *ModelPricingPageService) buildCatalog(ctx context.Context) (map[string]
 					item.Groups = appendOrReplaceGroup(item.Groups, modelCatalogGroup{
 						GroupID:        group.ID,
 						GroupName:      group.Name,
+						Platform:       pricing.Platform,
+						Capabilities:   capabilities,
 						RateMultiplier: normalizeRateMultiplier(group.RateMultiplier),
 						BillingMode:    normalizeBillingMode(pricing.BillingMode),
 						Resolved:       resolved,
@@ -549,6 +555,8 @@ func attachWildcardSupportedGroups(item *modelCatalogItem, channels []Channel, g
 				if appendGroupIfMissing(&item.Groups, modelCatalogGroup{
 					GroupID:        group.ID,
 					GroupName:      group.Name,
+					Platform:       pricing.Platform,
+					Capabilities:   capabilitiesSet(pricing.Capabilities),
 					RateMultiplier: normalizeRateMultiplier(group.RateMultiplier),
 					BillingMode:    normalizeBillingMode(pricing.BillingMode),
 					Resolved:       resolved,
@@ -586,17 +594,8 @@ func appendGroupIfMissing(groups *[]modelCatalogGroup, next modelCatalogGroup) b
 }
 
 func matchesModelPricingQuery(item *modelCatalogItem, query ModelPricingQuery) bool {
-	if query.Platform != "" && !item.hasPlatform(query.Platform) {
+	if len(item.groupsMatchingFilters(query)) == 0 {
 		return false
-	}
-	if query.GroupID > 0 && !item.hasGroup(query.GroupID) {
-		return false
-	}
-	capability := strings.ToLower(strings.TrimSpace(query.Capability))
-	if capability != "" {
-		if _, ok := item.Capabilities[capability]; !ok {
-			return false
-		}
 	}
 	q := strings.ToLower(strings.TrimSpace(query.Q))
 	if q == "" {
@@ -618,23 +617,38 @@ func matchesModelPricingQuery(item *modelCatalogItem, query ModelPricingQuery) b
 	return false
 }
 
-func (i *modelCatalogItem) hasGroup(groupID int64) bool {
+func (i *modelCatalogItem) groupsMatchingFilters(query ModelPricingQuery) []modelCatalogGroup {
+	groups := make([]modelCatalogGroup, 0, len(i.Groups))
 	for _, group := range i.Groups {
-		if group.GroupID == groupID {
-			return true
+		if group.matchesFilters(query) {
+			groups = append(groups, group)
 		}
 	}
-	return false
+	return groups
 }
 
-func (i *modelCatalogItem) hasPlatform(platform string) bool {
-	platform = strings.TrimSpace(platform)
-	for candidate := range i.Platforms {
-		if strings.EqualFold(candidate, platform) {
-			return true
-		}
+func (g modelCatalogGroup) matchesFilters(query ModelPricingQuery) bool {
+	if query.GroupID > 0 && g.GroupID != query.GroupID {
+		return false
 	}
-	return false
+	platform := strings.TrimSpace(query.Platform)
+	if platform != "" && !strings.EqualFold(g.Platform, platform) {
+		return false
+	}
+	capability := strings.ToLower(strings.TrimSpace(query.Capability))
+	if capability != "" {
+		_, ok := g.Capabilities[capability]
+		return ok
+	}
+	return true
+}
+
+func capabilitiesSet(capabilities []string) map[string]struct{} {
+	set := map[string]struct{}{}
+	for _, capability := range NormalizeModelCapabilities(capabilities) {
+		set[capability] = struct{}{}
+	}
+	return set
 }
 
 func sortedStrings(set map[string]struct{}) []string {

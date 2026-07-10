@@ -332,6 +332,89 @@ func TestModelPricingPageServiceListModelsFiltersByGroupID(t *testing.T) {
 	require.Equal(t, "gpt-4.1", models[0].ID)
 }
 
+func TestModelPricingPageServiceListModelsUsesFilteredPriceScope(t *testing.T) {
+	streamingInput := floatPtr(0.000001)
+	toolsInput := floatPtr(0.000010)
+	visionInput := floatPtr(0.000005)
+	svc := NewModelPricingPageServiceForTest(
+		&modelPricingChannelListerStub{channels: []Channel{
+			{
+				ID:       10,
+				Status:   StatusActive,
+				GroupIDs: []int64{1},
+				ModelPricing: []ChannelModelPricing{{
+					Platform:     "anthropic",
+					Models:       []string{"claude-sonnet-4"},
+					Capabilities: []string{"streaming"},
+					BillingMode:  BillingModeToken,
+					InputPrice:   streamingInput,
+				}},
+			},
+			{
+				ID:       11,
+				Status:   StatusActive,
+				GroupIDs: []int64{2},
+				ModelPricing: []ChannelModelPricing{{
+					Platform:     "openrouter",
+					Models:       []string{"claude-sonnet-4"},
+					Capabilities: []string{"tools"},
+					BillingMode:  BillingModeToken,
+					InputPrice:   toolsInput,
+				}},
+			},
+			{
+				ID:       12,
+				Status:   StatusActive,
+				GroupIDs: []int64{3},
+				ModelPricing: []ChannelModelPricing{{
+					Platform:     "anthropic",
+					Models:       []string{"claude-sonnet-4"},
+					Capabilities: []string{"vision"},
+					BillingMode:  BillingModeToken,
+					InputPrice:   visionInput,
+				}},
+			},
+		}},
+		&modelPricingGroupListerStub{groups: []Group{
+			{ID: 1, Name: "Anthropic 流式组", Platform: "anthropic", Status: StatusActive, SubscriptionType: SubscriptionTypeStandard},
+			{ID: 2, Name: "OpenRouter 工具组", Platform: "openrouter", Status: StatusActive, SubscriptionType: SubscriptionTypeStandard},
+			{ID: 3, Name: "Anthropic 视觉组", Platform: "anthropic", Status: StatusActive, SubscriptionType: SubscriptionTypeStandard},
+		}},
+		&modelPricingBillingStub{prices: map[string]*ModelPricing{
+			"claude-sonnet-4": {InputPricePerToken: 0.000003},
+		}},
+	)
+
+	models, err := svc.ListModels(context.Background(), ModelPricingQuery{})
+	require.NoError(t, err)
+	require.Len(t, models, 1)
+	require.Equal(t, 0.000001, models[0].LowestGroupPrice.InputPrice)
+
+	models, err = svc.ListModels(context.Background(), ModelPricingQuery{GroupID: 2})
+	require.NoError(t, err)
+	require.Len(t, models, 1)
+	require.Equal(t, 0.000010, models[0].LowestGroupPrice.InputPrice)
+
+	models, err = svc.ListModels(context.Background(), ModelPricingQuery{Platform: "openrouter"})
+	require.NoError(t, err)
+	require.Len(t, models, 1)
+	require.Equal(t, 0.000010, models[0].LowestGroupPrice.InputPrice)
+
+	models, err = svc.ListModels(context.Background(), ModelPricingQuery{Capability: "tools"})
+	require.NoError(t, err)
+	require.Len(t, models, 1)
+	require.Equal(t, 0.000010, models[0].LowestGroupPrice.InputPrice)
+
+	models, err = svc.ListModels(context.Background(), ModelPricingQuery{Platform: "anthropic", Capability: "vision"})
+	require.NoError(t, err)
+	require.Len(t, models, 1)
+	require.Equal(t, 0.000005, models[0].LowestGroupPrice.InputPrice)
+
+	models, err = svc.ListModels(context.Background(), ModelPricingQuery{Platform: "openrouter", Capability: "streaming"})
+	require.NoError(t, err)
+	require.Empty(t, models)
+}
+
 func TestModelPricingPageServiceListModelsAggregatesAcrossChannelPages(t *testing.T) {
 	channels := &modelPricingChannelListerStub{pages: map[int][]Channel{
 		1: {{
