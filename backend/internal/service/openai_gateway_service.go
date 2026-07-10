@@ -4259,6 +4259,18 @@ func firstOpenAIUsageInt(root gjson.Result, paths ...string) int {
 	return 0
 }
 
+func firstPositiveOpenAIUsageInt(root gjson.Result, paths ...string) int {
+	for _, path := range paths {
+		value := root.Get(path)
+		if value.Exists() && value.Type == gjson.Number {
+			if tokens := value.Int(); tokens > 0 {
+				return int(tokens)
+			}
+		}
+	}
+	return 0
+}
+
 func extractOpenAIUsageFromGJSON(root gjson.Result, usagePath string) (OpenAIUsage, bool) {
 	if !root.Exists() {
 		return OpenAIUsage{}, false
@@ -4274,18 +4286,9 @@ func extractOpenAIUsageFromGJSON(root gjson.Result, usagePath string) (OpenAIUsa
 		return OpenAIUsage{}, false
 	}
 	return OpenAIUsage{
-		InputTokens:  firstOpenAIUsageInt(root, path("input_tokens"), path("prompt_tokens")),
-		OutputTokens: firstOpenAIUsageInt(root, path("output_tokens"), path("completion_tokens")),
-		CacheCreationInputTokens: firstOpenAIUsageInt(root,
-			path("input_tokens_details.cache_write_tokens"),
-			path("input_tokens_details.cache_creation_tokens"),
-			path("prompt_tokens_details.cache_write_tokens"),
-			path("prompt_tokens_details.cache_creation_tokens"),
-			path("cache_write_input_tokens"),
-			path("cache_creation_input_tokens"),
-			path("cache_write_tokens"),
-			path("cache_creation_tokens"),
-		),
+		InputTokens:              firstOpenAIUsageInt(root, path("input_tokens"), path("prompt_tokens")),
+		OutputTokens:             firstOpenAIUsageInt(root, path("output_tokens"), path("completion_tokens")),
+		CacheCreationInputTokens: openAICacheCreationTokensFromUsage(root, path),
 		CacheReadInputTokens: firstOpenAIUsageInt(root,
 			path("input_tokens_details.cached_tokens"),
 			path("prompt_tokens_details.cached_tokens"),
@@ -4293,6 +4296,27 @@ func extractOpenAIUsageFromGJSON(root gjson.Result, usagePath string) (OpenAIUsa
 		),
 		ImageOutputTokens: firstOpenAIUsageInt(root, path("output_tokens_details.image_tokens")),
 	}, true
+}
+
+func openAICacheCreationTokensFromUsage(root gjson.Result, path func(string) string) int {
+	for _, field := range []string{
+		"input_tokens_details.cache_write_tokens",
+		"prompt_tokens_details.cache_write_tokens",
+		"input_tokens_details.cache_creation_tokens",
+		"prompt_tokens_details.cache_creation_tokens",
+	} {
+		value := root.Get(path(field))
+		if value.Exists() && value.Type == gjson.Number {
+			return clampOpenAIUsageToken(value.Int())
+		}
+	}
+
+	return firstPositiveOpenAIUsageInt(root,
+		path("cache_write_tokens"),
+		path("cache_creation_input_tokens"),
+		path("cache_write_input_tokens"),
+		path("cache_creation_tokens"),
+	)
 }
 
 func extractOpenAIUsageFromJSONBytes(body []byte) (OpenAIUsage, bool) {

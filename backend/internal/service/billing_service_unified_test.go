@@ -60,6 +60,130 @@ func TestCalculateCostUnified_TokenMode(t *testing.T) {
 	require.Equal(t, string(BillingModeToken), cost.BillingMode)
 }
 
+func TestCalculateCostUnified_ChannelIntervalInheritsBaseCacheWritePrice(t *testing.T) {
+	cs := newTestChannelServiceWithCache(t, &channelCache{
+		pricingByGroupModel: map[channelModelKey]*ChannelModelPricing{
+			{groupID: 1, model: "gpt-5.6-sol"}: {
+				BillingMode: BillingModeToken,
+				Intervals: []PricingInterval{
+					{
+						MinTokens:   0,
+						MaxTokens:   testPtrInt(128000),
+						InputPrice:  testPtrFloat64(4e-6),
+						OutputPrice: testPtrFloat64(24e-6),
+					},
+				},
+			},
+		},
+		channelByGroupID: map[int64]*Channel{
+			1: {ID: 1, Status: StatusActive},
+		},
+		groupPlatform:           map[int64]string{1: ""},
+		wildcardByGroupPlatform: map[channelGroupPlatformKey][]*wildcardPricingEntry{},
+		mappingByGroupModel:     map[channelModelKey]string{},
+		wildcardMappingByGP:     map[channelGroupPlatformKey][]*wildcardMappingEntry{},
+		byID:                    map[int64]*Channel{},
+	})
+	bs := NewBillingService(&config.Config{}, nil)
+	resolver := NewModelPricingResolver(cs, bs)
+	groupID := int64(1)
+
+	cost, err := bs.CalculateCostUnified(CostInput{
+		Ctx:     context.Background(),
+		Model:   "gpt-5.6-sol",
+		GroupID: &groupID,
+		Tokens: UsageTokens{
+			InputTokens:         100,
+			OutputTokens:        10,
+			CacheCreationTokens: 40,
+			CacheReadTokens:     20,
+		},
+		RateMultiplier: 1,
+		Resolver:       resolver,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, cost)
+	require.InDelta(t, 40*6.25e-6, cost.CacheCreationCost, 1e-12)
+
+	expectedTotal := 100*4e-6 + 10*24e-6 + 40*6.25e-6 + 20*0.5e-6
+	require.InDelta(t, expectedTotal, cost.TotalCost, 1e-12)
+	require.InDelta(t, expectedTotal, cost.ActualCost, 1e-12)
+}
+
+func TestOpenAIRecordUsage_UnifiedChannelIntervalBillsCacheWrite(t *testing.T) {
+	cs := newTestChannelServiceWithCache(t, &channelCache{
+		pricingByGroupModel: map[channelModelKey]*ChannelModelPricing{
+			{groupID: 1, model: "gpt-5.6-sol"}: {
+				BillingMode: BillingModeToken,
+				Intervals: []PricingInterval{
+					{
+						MinTokens:   0,
+						MaxTokens:   testPtrInt(128000),
+						InputPrice:  testPtrFloat64(4e-6),
+						OutputPrice: testPtrFloat64(24e-6),
+					},
+				},
+			},
+		},
+		channelByGroupID: map[int64]*Channel{
+			1: {ID: 1, Status: StatusActive},
+		},
+		groupPlatform:           map[int64]string{1: ""},
+		wildcardByGroupPlatform: map[channelGroupPlatformKey][]*wildcardPricingEntry{},
+		mappingByGroupModel:     map[channelModelKey]string{},
+		wildcardMappingByGP:     map[channelGroupPlatformKey][]*wildcardMappingEntry{},
+		byID:                    map[int64]*Channel{},
+	})
+	bs := NewBillingService(&config.Config{}, nil)
+	resolver := NewModelPricingResolver(cs, bs)
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	billingRepo := &openAIRecordUsageBillingRepoStub{result: &UsageBillingApplyResult{Applied: true}}
+	svc := newOpenAIRecordUsageServiceWithBillingRepoForTest(
+		usageRepo,
+		billingRepo,
+		&openAIRecordUsageUserRepoStub{},
+		&openAIRecordUsageSubRepoStub{},
+		nil,
+	)
+	svc.billingService = bs
+	svc.resolver = resolver
+
+	groupID := int64(1)
+	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID: "resp_gpt56_cache_write_interval",
+			Model:     "gpt-5.6-sol",
+			Usage: OpenAIUsage{
+				InputTokens:              100,
+				OutputTokens:             10,
+				CacheCreationInputTokens: 40,
+				CacheReadInputTokens:     20,
+			},
+		},
+		APIKey: &APIKey{
+			ID:      101,
+			GroupID: &groupID,
+			Group: &Group{
+				ID:             groupID,
+				RateMultiplier: 1,
+			},
+		},
+		User:    &User{ID: 201},
+		Account: &Account{ID: 301},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, usageRepo.lastLog)
+	require.NotNil(t, billingRepo.lastCmd)
+	require.Equal(t, 80, usageRepo.lastLog.InputTokens)
+	require.Equal(t, 40, usageRepo.lastLog.CacheCreationTokens)
+	require.InDelta(t, 40*6.25e-6, usageRepo.lastLog.CacheCreationCost, 1e-12)
+
+	expectedActual := 80*4e-6 + 10*24e-6 + 40*6.25e-6 + 20*0.5e-6
+	require.InDelta(t, expectedActual, usageRepo.lastLog.ActualCost, 1e-12)
+	require.Equal(t, 40, billingRepo.lastCmd.CacheCreationTokens)
+	require.InDelta(t, expectedActual, billingRepo.lastCmd.BalanceCost, 1e-12)
+}
+
 func TestCalculateCostUnified_PerRequestMode(t *testing.T) {
 	// Set up a ChannelService with a per-request pricing channel
 	cs := newTestChannelServiceWithCache(t, &channelCache{

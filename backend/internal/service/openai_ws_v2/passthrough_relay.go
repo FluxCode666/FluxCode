@@ -672,19 +672,11 @@ func parseUsageAndAccumulate(
 	inputResult := gjson.GetBytes(message, "response.usage.input_tokens")
 	outputResult := gjson.GetBytes(message, "response.usage.output_tokens")
 	cachedResult := gjson.GetBytes(message, "response.usage.input_tokens_details.cached_tokens")
-	cacheWriteResult := firstExistingGJSON(
-		gjson.GetBytes(message, "response.usage.input_tokens_details.cache_write_tokens"),
-		gjson.GetBytes(message, "response.usage.input_tokens_details.cache_creation_tokens"),
-		gjson.GetBytes(message, "response.usage.cache_write_input_tokens"),
-		gjson.GetBytes(message, "response.usage.cache_creation_input_tokens"),
-		gjson.GetBytes(message, "response.usage.cache_write_tokens"),
-		gjson.GetBytes(message, "response.usage.cache_creation_tokens"),
-	)
 
 	inputTokens, inputOK := parseUsageIntField(inputResult, true)
 	outputTokens, outputOK := parseUsageIntField(outputResult, true)
 	cachedTokens, cachedOK := parseUsageIntField(cachedResult, false)
-	cacheWriteTokens, cacheWriteOK := parseUsageIntField(cacheWriteResult, false)
+	cacheWriteTokens, cacheWriteOK := parseCacheCreationUsageTokens(usageResult)
 	if !inputOK || !outputOK || !cachedOK || !cacheWriteOK {
 		recordUsageParseFailure()
 		if onParseFailure != nil {
@@ -711,20 +703,48 @@ func parseUsageAndAccumulate(
 	return parsedUsage
 }
 
+func parseCacheCreationUsageTokens(usageResult gjson.Result) (int, bool) {
+	for _, field := range []string{
+		"input_tokens_details.cache_write_tokens",
+		"prompt_tokens_details.cache_write_tokens",
+		"input_tokens_details.cache_creation_tokens",
+		"prompt_tokens_details.cache_creation_tokens",
+	} {
+		value := usageResult.Get(field)
+		if value.Exists() {
+			tokens, ok := parseUsageIntField(value, false)
+			if !ok {
+				return 0, false
+			}
+			return clampUsageToken(tokens), true
+		}
+	}
+
+	for _, field := range []string{
+		"cache_write_tokens",
+		"cache_creation_input_tokens",
+		"cache_write_input_tokens",
+		"cache_creation_tokens",
+	} {
+		value := usageResult.Get(field)
+		if value.Exists() {
+			tokens, ok := parseUsageIntField(value, false)
+			if !ok {
+				return 0, false
+			}
+			if tokens > 0 {
+				return tokens, true
+			}
+		}
+	}
+	return 0, true
+}
+
 func clampUsageToken(value int) int {
 	if value < 0 {
 		return 0
 	}
 	return value
-}
-
-func firstExistingGJSON(values ...gjson.Result) gjson.Result {
-	for _, value := range values {
-		if value.Exists() {
-			return value
-		}
-	}
-	return gjson.Result{}
 }
 
 func parseUsageIntField(value gjson.Result, required bool) (int, bool) {

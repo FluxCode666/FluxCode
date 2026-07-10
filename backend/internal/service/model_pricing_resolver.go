@@ -72,7 +72,7 @@ func (r *ModelPricingResolver) Resolve(ctx context.Context, input PricingInput) 
 	}
 
 	// 2. 如果有 GroupID，尝试渠道覆盖
-	if input.GroupID != nil {
+	if input.GroupID != nil && r.channelService != nil {
 		r.applyChannelOverrides(ctx, *input.GroupID, input.Model, resolved)
 	}
 
@@ -119,13 +119,12 @@ func (r *ModelPricingResolver) applyTokenOverrides(chPricing *ChannelModelPricin
 	// 如果有有效的区间定价，使用区间
 	if len(validIntervals) > 0 {
 		resolved.Intervals = validIntervals
+		resolved.BasePricing = cloneModelPricingOrNew(resolved.BasePricing)
 		return
 	}
 
 	// 否则用 flat 字段覆盖 BasePricing
-	if resolved.BasePricing == nil {
-		resolved.BasePricing = &ModelPricing{}
-	}
+	resolved.BasePricing = cloneModelPricingOrNew(resolved.BasePricing)
 
 	if chPricing.InputPrice != nil {
 		resolved.BasePricing.InputPricePerToken = *chPricing.InputPrice
@@ -184,13 +183,22 @@ func (r *ModelPricingResolver) GetIntervalPricing(resolved *ResolvedPricing, tot
 		return resolved.BasePricing
 	}
 
-	return intervalToModelPricing(iv, resolved.SupportsCacheBreakdown)
+	return intervalToModelPricingWithBase(iv, resolved.SupportsCacheBreakdown, resolved.BasePricing)
 }
 
 // intervalToModelPricing 将区间定价转换为 ModelPricing
 func intervalToModelPricing(iv *PricingInterval, supportsCacheBreakdown bool) *ModelPricing {
+	return intervalToModelPricingWithBase(iv, supportsCacheBreakdown, nil)
+}
+
+func intervalToModelPricingWithBase(iv *PricingInterval, supportsCacheBreakdown bool, base *ModelPricing) *ModelPricing {
 	pricing := &ModelPricing{
 		SupportsCacheBreakdown: supportsCacheBreakdown,
+	}
+	if base != nil {
+		cloned := *base
+		pricing = &cloned
+		pricing.SupportsCacheBreakdown = supportsCacheBreakdown
 	}
 	if iv.InputPrice != nil {
 		pricing.InputPricePerToken = *iv.InputPrice
@@ -211,6 +219,14 @@ func intervalToModelPricing(iv *PricingInterval, supportsCacheBreakdown bool) *M
 		pricing.CacheReadPricePerTokenPriority = *iv.CacheReadPrice
 	}
 	return pricing
+}
+
+func cloneModelPricingOrNew(pricing *ModelPricing) *ModelPricing {
+	if pricing == nil {
+		return &ModelPricing{}
+	}
+	cloned := *pricing
+	return &cloned
 }
 
 // GetRequestTierPrice 根据层级标签获取按次价格

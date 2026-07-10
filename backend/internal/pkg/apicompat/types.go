@@ -306,18 +306,28 @@ func (u *ResponsesUsage) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return err
 	}
-	paths := [][]string{
+	nestedPaths := [][]string{
 		{"input_tokens_details", "cache_write_tokens"},
-		{"input_tokens_details", "cache_creation_tokens"},
 		{"prompt_tokens_details", "cache_write_tokens"},
+		{"input_tokens_details", "cache_creation_tokens"},
 		{"prompt_tokens_details", "cache_creation_tokens"},
-		{"cache_write_input_tokens"},
-		{"cache_creation_input_tokens"},
+	}
+	for _, path := range nestedPaths {
+		if value, ok := responsesUsageJSONInt(raw, path...); ok {
+			u.cacheCreationInputTokensPresent = true
+			u.cacheCreationInputTokensValue = value
+			return nil
+		}
+	}
+
+	topLevelPaths := [][]string{
 		{"cache_write_tokens"},
+		{"cache_creation_input_tokens"},
+		{"cache_write_input_tokens"},
 		{"cache_creation_tokens"},
 	}
-	for _, path := range paths {
-		if value, ok := responsesUsageJSONInt(raw, path...); ok {
+	for _, path := range topLevelPaths {
+		if value, ok := responsesUsageJSONInt(raw, path...); ok && value > 0 {
 			u.cacheCreationInputTokensPresent = true
 			u.cacheCreationInputTokensValue = value
 			break
@@ -350,9 +360,9 @@ func (u *ResponsesUsage) CacheCreationInputTokenCount() int {
 		)
 	}
 	values = append(values,
-		u.CacheWriteInputTokens,
-		u.CacheCreationInputTokens,
 		u.CacheWriteTokens,
+		u.CacheCreationInputTokens,
+		u.CacheWriteInputTokens,
 		u.CacheCreationTokens,
 	)
 	for _, value := range values {

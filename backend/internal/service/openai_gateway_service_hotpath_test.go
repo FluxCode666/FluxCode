@@ -226,6 +226,7 @@ func TestExtractOpenAIUsageFromJSONBytes_CacheWriteFields(t *testing.T) {
 		{name: "nested cache creation", body: []byte(`{"usage":{"input_tokens":10,"output_tokens":1,"input_tokens_details":{"cache_creation_tokens":8}}}`), want: 8},
 		{name: "top level cache write input", body: []byte(`{"usage":{"input_tokens":10,"output_tokens":1,"cache_write_input_tokens":9}}`), want: 9},
 		{name: "top level cache creation input", body: []byte(`{"usage":{"input_tokens":10,"output_tokens":1,"cache_creation_input_tokens":6}}`), want: 6},
+		{name: "top level cache write wins over zero legacy creation input", body: []byte(`{"usage":{"input_tokens":10,"output_tokens":1,"cache_creation_input_tokens":0,"cache_write_tokens":11}}`), want: 11},
 		{name: "negative clamps to zero", body: []byte(`{"usage":{"input_tokens":10,"output_tokens":1,"input_tokens_details":{"cache_write_tokens":-4}}}`), want: 0},
 	}
 
