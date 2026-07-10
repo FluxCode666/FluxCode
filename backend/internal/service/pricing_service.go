@@ -143,6 +143,9 @@ type LiteLLMRawEntry struct {
 	CacheCreationInputTokenCostAbove1hr *float64 `json:"cache_creation_input_token_cost_above_1hr"`
 	CacheReadInputTokenCost             *float64 `json:"cache_read_input_token_cost"`
 	CacheReadInputTokenCostPriority     *float64 `json:"cache_read_input_token_cost_priority"`
+	LongContextInputTokenThreshold      *int     `json:"long_context_input_token_threshold"`
+	LongContextInputCostMultiplier      *float64 `json:"long_context_input_cost_multiplier"`
+	LongContextOutputCostMultiplier     *float64 `json:"long_context_output_cost_multiplier"`
 	SupportsServiceTier                 bool     `json:"supports_service_tier"`
 	LiteLLMProvider                     string   `json:"litellm_provider"`
 	Mode                                string   `json:"mode"`
@@ -462,6 +465,15 @@ func (s *PricingService) parsePricingData(body []byte) (map[string]*LiteLLMModel
 		}
 		if entry.CacheReadInputTokenCostPriority != nil {
 			pricing.CacheReadInputTokenCostPriority = *entry.CacheReadInputTokenCostPriority
+		}
+		if entry.LongContextInputTokenThreshold != nil {
+			pricing.LongContextInputTokenThreshold = *entry.LongContextInputTokenThreshold
+		}
+		if entry.LongContextInputCostMultiplier != nil {
+			pricing.LongContextInputCostMultiplier = *entry.LongContextInputCostMultiplier
+		}
+		if entry.LongContextOutputCostMultiplier != nil {
+			pricing.LongContextOutputCostMultiplier = *entry.LongContextOutputCostMultiplier
 		}
 		if entry.OutputCostPerImage != nil {
 			pricing.OutputCostPerImage = *entry.OutputCostPerImage
@@ -826,6 +838,20 @@ func (s *PricingService) matchByModelFamily(model string) *LiteLLMModelPricing {
 // 6. gpt-5.4* -> 业务静态兜底价
 // 7. 最终回退到 DefaultTestModel (gpt-5.1-codex)
 func (s *PricingService) matchOpenAIModel(model string) *LiteLLMModelPricing {
+	if strings.HasPrefix(model, "gpt-5.6") {
+		if normalized, ok := normalizeGPT56ModelAlias(model); ok {
+			switch normalized {
+			case "gpt-5.6-sol":
+				return openAIGPT56SolFallbackPricing
+			case "gpt-5.6-terra":
+				return openAIGPT56TerraFallbackPricing
+			case "gpt-5.6-luna":
+				return openAIGPT56LunaFallbackPricing
+			}
+		}
+		return nil
+	}
+
 	if strings.HasPrefix(model, "gpt-5.3-codex-spark") {
 		if pricing, ok := s.pricingData["gpt-5.1-codex"]; ok {
 			logger.LegacyPrintf("service.pricing", "[Pricing][SparkBilling] %s -> %s billing", model, "gpt-5.1-codex")
@@ -852,20 +878,6 @@ func (s *PricingService) matchOpenAIModel(model string) *LiteLLMModelPricing {
 				Info(fmt.Sprintf("[Pricing] OpenAI fallback matched %s -> %s", model, "gpt-5.2-codex"))
 			return pricing
 		}
-	}
-
-	if normalized, ok := normalizeGPT56ModelAlias(model); ok {
-		switch normalized {
-		case "gpt-5.6-sol":
-			return openAIGPT56SolFallbackPricing
-		case "gpt-5.6-terra":
-			return openAIGPT56TerraFallbackPricing
-		case "gpt-5.6-luna":
-			return openAIGPT56LunaFallbackPricing
-		}
-	}
-	if strings.HasPrefix(model, "gpt-5.6-") {
-		return nil
 	}
 
 	if strings.HasPrefix(model, "gpt-5.5") {

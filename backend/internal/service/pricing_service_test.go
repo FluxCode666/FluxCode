@@ -149,20 +149,31 @@ func TestPricingService_GPT56OfficialStaticFallbacks(t *testing.T) {
 }
 
 func TestPricingService_GPT56UnknownDoesNotFallback(t *testing.T) {
-	svc := &PricingService{pricingData: map[string]*LiteLLMModelPricing{}}
+	svc := &PricingService{pricingData: map[string]*LiteLLMModelPricing{
+		"gpt-5.6": {InputCostPerToken: 5e-6},
+	}}
 
 	require.Nil(t, svc.GetModelPricing("gpt-5.6-foo"))
 }
 
 func TestPricingService_GPT56BareUsesDynamicSolPricing(t *testing.T) {
 	svc := &PricingService{pricingData: map[string]*LiteLLMModelPricing{
-		"gpt-5.6-sol": {InputCostPerToken: 4e-6, OutputCostPerToken: 24e-6},
+		"gpt-5.6-sol": {
+			InputCostPerToken:               4e-6,
+			OutputCostPerToken:              24e-6,
+			LongContextInputTokenThreshold:  272000,
+			LongContextInputCostMultiplier:  2,
+			LongContextOutputCostMultiplier: 1.5,
+		},
 	}}
 
 	got := svc.GetModelPricing("gpt-5.6")
 	require.NotNil(t, got)
 	require.InDelta(t, 4e-6, got.InputCostPerToken, 1e-12)
 	require.InDelta(t, 24e-6, got.OutputCostPerToken, 1e-12)
+	require.Equal(t, 272000, got.LongContextInputTokenThreshold)
+	require.InDelta(t, 2.0, got.LongContextInputCostMultiplier, 1e-12)
+	require.InDelta(t, 1.5, got.LongContextOutputCostMultiplier, 1e-12)
 }
 
 func TestParsePricingData_ReadsPriorityCacheWrite(t *testing.T) {
@@ -175,6 +186,9 @@ func TestParsePricingData_ReadsPriorityCacheWrite(t *testing.T) {
 			"cache_creation_input_token_cost_priority": 0.0000125,
 			"cache_read_input_token_cost": 0.0000005,
 			"cache_read_input_token_cost_priority": 0.000001,
+			"long_context_input_token_threshold": 272000,
+			"long_context_input_cost_multiplier": 2,
+			"long_context_output_cost_multiplier": 1.5,
 			"supports_service_tier": true,
 			"supports_prompt_caching": true
 		}
@@ -183,6 +197,9 @@ func TestParsePricingData_ReadsPriorityCacheWrite(t *testing.T) {
 	prices, err := svc.parsePricingData(data)
 	require.NoError(t, err)
 	require.InDelta(t, 12.5e-6, prices["gpt-5.6-sol"].CacheCreationInputTokenCostPriority, 1e-12)
+	require.Equal(t, 272000, prices["gpt-5.6-sol"].LongContextInputTokenThreshold)
+	require.InDelta(t, 2.0, prices["gpt-5.6-sol"].LongContextInputCostMultiplier, 1e-12)
+	require.InDelta(t, 1.5, prices["gpt-5.6-sol"].LongContextOutputCostMultiplier, 1e-12)
 }
 
 func TestGetModelPricing_Gpt54MiniUsesDedicatedStaticFallbackWhenRemoteMissing(t *testing.T) {
