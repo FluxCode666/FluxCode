@@ -617,6 +617,43 @@ func TestResponsesToAnthropic_Failed(t *testing.T) {
 	assert.Equal(t, "text", anth.Content[0].Type)
 }
 
+func TestResponsesToAnthropic_CacheWriteUsage(t *testing.T) {
+	resp := &ResponsesResponse{
+		Status: "completed",
+		Usage: &ResponsesUsage{
+			InputTokens:  30,
+			OutputTokens: 6,
+			InputTokensDetails: &ResponsesInputTokensDetails{
+				CachedTokens:     9,
+				CacheWriteTokens: 7,
+			},
+		},
+	}
+
+	message := ResponsesToAnthropic(resp, "claude-opus-4-6")
+	assert.Equal(t, 7, message.Usage.CacheCreationInputTokens)
+	assert.Equal(t, 9, message.Usage.CacheReadInputTokens)
+}
+
+func TestResponsesEventToAnthropicEvents_TopLevelCacheCreationUsage(t *testing.T) {
+	state := NewResponsesEventToAnthropicState()
+	events := ResponsesEventToAnthropicEvents(&ResponsesStreamEvent{
+		Type: "response.completed",
+		Response: &ResponsesResponse{
+			Status: "completed",
+			Usage: &ResponsesUsage{
+				InputTokens:              40,
+				OutputTokens:             8,
+				CacheCreationInputTokens: 5,
+			},
+		},
+	}, state)
+
+	require.Len(t, events, 2)
+	require.NotNil(t, events[0].Usage)
+	assert.Equal(t, 5, events[0].Usage.CacheCreationInputTokens)
+}
+
 // ---------------------------------------------------------------------------
 // thinking → reasoning conversion tests
 // ---------------------------------------------------------------------------

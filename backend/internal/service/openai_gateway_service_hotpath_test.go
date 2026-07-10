@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
@@ -106,6 +107,22 @@ func TestExtractOpenAIReasoningEffortFromBody(t *testing.T) {
 	}
 }
 
+func TestExtractOpenAIReasoningEffortFromBody_GPT56Max(t *testing.T) {
+	got := extractOpenAIReasoningEffortFromBody([]byte(`{"reasoning":{"effort":"max"}}`), "gpt-5.6")
+	require.NotNil(t, got)
+	require.Equal(t, "max", *got)
+}
+
+func TestExtractOpenAIReasoningEffortFromBody_MaxRejectedForNonGPT56(t *testing.T) {
+	require.Nil(t, extractOpenAIReasoningEffortFromBody([]byte(`{"reasoning":{"effort":"max"}}`), "gpt-5.4"))
+}
+
+func TestExtractOpenAIReasoningEffortFromBody_UsesModelCandidates(t *testing.T) {
+	got := extractOpenAIReasoningEffortFromBody([]byte(`{"input":"hi"}`), "gpt-5.6-sol", "gpt-5.6-max")
+	require.NotNil(t, got)
+	require.Equal(t, "max", *got)
+}
+
 func TestGetOpenAIRequestBodyMap_UsesContextCache(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	rec := httptest.NewRecorder()
@@ -197,4 +214,72 @@ func TestSanitizeEmptyBase64InputImagesInOpenAIBody(t *testing.T) {
 			]}
 		]
 	}`, string(body))
+}
+
+func TestExtractOpenAIUsageFromJSONBytes_CacheWriteFields(t *testing.T) {
+	tests := []struct {
+		name string
+		body []byte
+		want int
+	}{
+		{name: "nested cache write", body: []byte(`{"usage":{"input_tokens":10,"output_tokens":1,"input_tokens_details":{"cache_write_tokens":7}}}`), want: 7},
+		{name: "nested cache creation", body: []byte(`{"usage":{"input_tokens":10,"output_tokens":1,"input_tokens_details":{"cache_creation_tokens":8}}}`), want: 8},
+		{name: "top level cache write input", body: []byte(`{"usage":{"input_tokens":10,"output_tokens":1,"cache_write_input_tokens":9}}`), want: 9},
+		{name: "top level cache creation input", body: []byte(`{"usage":{"input_tokens":10,"output_tokens":1,"cache_creation_input_tokens":6}}`), want: 6},
+		{name: "top level cache write wins over zero legacy creation input", body: []byte(`{"usage":{"input_tokens":10,"output_tokens":1,"cache_creation_input_tokens":0,"cache_write_tokens":11}}`), want: 11},
+		{name: "negative clamps to zero", body: []byte(`{"usage":{"input_tokens":10,"output_tokens":1,"input_tokens_details":{"cache_write_tokens":-4}}}`), want: 0},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, ok := extractOpenAIUsageFromJSONBytes(tt.body)
+			require.True(t, ok)
+			require.Equal(t, tt.want, got.CacheCreationInputTokens)
+		})
+	}
+}
+
+func TestParseSSEUsageBytes_CacheWriteFields(t *testing.T) {
+	svc := &OpenAIGatewayService{}
+	usage := &OpenAIUsage{}
+
+	svc.parseSSEUsageBytes([]byte(`{"type":"response.completed","response":{"usage":{"input_tokens":10,"output_tokens":1,"input_tokens_details":{"cached_tokens":3,"cache_write_tokens":4}}}}`), usage)
+
+	require.Equal(t, 10, usage.InputTokens)
+	require.Equal(t, 1, usage.OutputTokens)
+	require.Equal(t, 3, usage.CacheReadInputTokens)
+	require.Equal(t, 4, usage.CacheCreationInputTokens)
+}
+
+func TestOpenAIUsageFromResponsesUsage_PreservesPresencePriorityAndClampsNegative(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+	}{
+		{
+			name: "nested zero wins over positive top level",
+			body: `{"input_tokens":-1,"output_tokens":-2,"input_tokens_details":{"cached_tokens":-3,"cache_write_tokens":0},"cache_write_input_tokens":9}`,
+		},
+		{
+			name: "nested negative wins over positive top level",
+			body: `{"input_tokens":-1,"output_tokens":-2,"input_tokens_details":{"cached_tokens":-3,"cache_creation_tokens":-4},"cache_creation_input_tokens":9}`,
+		},
+		{
+			name: "prompt detail zero wins over positive top level",
+			body: `{"input_tokens":-1,"output_tokens":-2,"prompt_tokens_details":{"cache_write_tokens":0},"cache_write_tokens":9}`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var responsesUsage apicompat.ResponsesUsage
+			require.NoError(t, json.Unmarshal([]byte(tt.body), &responsesUsage))
+
+			usage := openAIUsageFromResponsesUsage(&responsesUsage)
+			require.Zero(t, usage.InputTokens)
+			require.Zero(t, usage.OutputTokens)
+			require.Zero(t, usage.CacheReadInputTokens)
+			require.Zero(t, usage.CacheCreationInputTokens)
+		})
+	}
 }

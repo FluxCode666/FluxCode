@@ -396,15 +396,9 @@ func parseOpenAIWSResponseUsageFromCompletedEvent(message []byte, usage *OpenAIU
 	if usage == nil || len(message) == 0 {
 		return
 	}
-	values := gjson.GetManyBytes(
-		message,
-		"response.usage.input_tokens",
-		"response.usage.output_tokens",
-		"response.usage.input_tokens_details.cached_tokens",
-	)
-	usage.InputTokens = int(values[0].Int())
-	usage.OutputTokens = int(values[1].Int())
-	usage.CacheReadInputTokens = int(values[2].Int())
+	if parsed, ok := extractOpenAIUsageFromGJSON(gjson.ParseBytes(message), "response.usage"); ok {
+		*usage = parsed
+	}
 }
 
 func parseOpenAIWSErrorEventFields(message []byte) (code string, errType string, errMessage string) {
@@ -1165,8 +1159,8 @@ func (s *OpenAIGatewayService) buildOpenAIWSHeaders(
 	}
 	headers.Set("OpenAI-Beta", betaValue)
 
-	// 发往 OpenAI 上游统一强制覆写 UA，不信任账号自定义 user_agent。
-	headers.Set("user-agent", resolveCodexCLIUserAgent())
+	// 发往 OpenAI 上游默认使用网关预设 UA；可配置官方 Codex 客户端保留入站值。
+	headers.Set("user-agent", resolveOpenAIUpstreamUserAgent(c, isCodexCLI))
 
 	return headers, sessionResolution
 }
@@ -2377,7 +2371,7 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 		Model:           originalModel,
 		UpstreamModel:   mappedModel,
 		ServiceTier:     extractOpenAIServiceTier(reqBody),
-		ReasoningEffort: extractOpenAIReasoningEffort(reqBody, originalModel),
+		ReasoningEffort: extractOpenAIReasoningEffort(reqBody, mappedModel, originalModel),
 		Stream:          reqStream,
 		OpenAIWSMode:    true,
 		ResponseHeaders: lease.HandshakeHeaders(),
@@ -3030,7 +3024,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 					Model:           originalModel,
 					UpstreamModel:   mappedModel,
 					ServiceTier:     extractOpenAIServiceTierFromBody(payload),
-					ReasoningEffort: extractOpenAIReasoningEffortFromBody(payload, originalModel),
+					ReasoningEffort: extractOpenAIReasoningEffortFromBody(payload, mappedModel, originalModel),
 					Stream:          reqStream,
 					OpenAIWSMode:    true,
 					ResponseHeaders: lease.HandshakeHeaders(),
@@ -3876,15 +3870,9 @@ func populateOpenAIUsageFromResponseJSON(body []byte, usage *OpenAIUsage) {
 	if usage == nil || len(body) == 0 {
 		return
 	}
-	values := gjson.GetManyBytes(
-		body,
-		"usage.input_tokens",
-		"usage.output_tokens",
-		"usage.input_tokens_details.cached_tokens",
-	)
-	usage.InputTokens = int(values[0].Int())
-	usage.OutputTokens = int(values[1].Int())
-	usage.CacheReadInputTokens = int(values[2].Int())
+	if parsed, ok := extractOpenAIUsageFromJSONBytes(body); ok {
+		*usage = parsed
+	}
 }
 
 func getOpenAIGroupIDFromContext(c *gin.Context) int64 {

@@ -33,7 +33,8 @@ func TestUpdateSettings_ReturnsCodexCLIConfig(t *testing.T) {
 
 	body := bytes.NewBufferString(`{
 		"codex_cli_user_agent": "codex_cli_rs/9.8.7",
-		"codex_cli_version": "9.8.7"
+		"codex_cli_version": "9.8.7",
+		"codex_official_client_passthrough_ua_version": true
 	}`)
 	req := httptest.NewRequest(http.MethodPut, "/settings", body)
 	req.Header.Set("Content-Type", "application/json")
@@ -49,6 +50,8 @@ func TestUpdateSettings_ReturnsCodexCLIConfig(t *testing.T) {
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &envelope))
 	require.Equal(t, "codex_cli_rs/9.8.7", envelope.Data["codex_cli_user_agent"])
 	require.Equal(t, "9.8.7", envelope.Data["codex_cli_version"])
+	require.Equal(t, true, envelope.Data["codex_official_client_passthrough_ua_version"])
+	require.Equal(t, "true", repo.values[service.SettingKeyCodexPassthroughUAVersion])
 }
 
 func TestSettingsCodexImageGenerationBridgeRoundTrip(t *testing.T) {

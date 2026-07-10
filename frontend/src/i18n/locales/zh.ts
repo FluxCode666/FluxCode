@@ -5903,12 +5903,15 @@ export default {
         generatedImageCleanupEnabled: '启用生图图库自动清理',
         generatedImageCleanupEnabledHint:
           '开启后每天凌晨 4 点按 HTTP 链接缓存 TTL 清理过期的生图图库表数据，仅删除存图记录。',
+        officialClientPassthroughUAVersion: '官方 Codex 客户端保留 UA/Version',
+        officialClientPassthroughUAVersionHint:
+          '默认开启。开启后，识别为官方 Codex 客户端的请求会保留其入站 User-Agent 与 compact Version；其他请求仍使用下方预设值。',
         userAgent: 'User-Agent',
-        userAgentPlaceholder: '例如 codex_cli_rs/1.0.0',
-        userAgentHint: '发往 OpenAI 上游的 User-Agent 请求头。留空则使用默认值 codex_cli_rs/1.0.0。',
+        userAgentPlaceholder: '例如 codex_cli_rs/0.144.1',
+        userAgentHint: '发往 OpenAI 上游的 User-Agent 请求头。留空则使用默认值 codex_cli_rs/0.144.1。',
         version: 'Version',
-        versionPlaceholder: '例如 1.0.0',
-        versionHint: '发往 OpenAI compact 端点的 Version 请求头。留空则使用默认值 1.0.0。需与 User-Agent 中的版本保持一致。',
+        versionPlaceholder: '例如 0.144.1',
+        versionHint: '发往 OpenAI compact 端点的 Version 请求头。留空则使用默认值 0.144.1。需与 User-Agent 中的版本保持一致。',
       },
       generatedImageStorage: {
         title: '生图存储',

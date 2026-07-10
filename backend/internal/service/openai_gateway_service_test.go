@@ -118,6 +118,130 @@ type cancelReadCloser struct{}
 func (c cancelReadCloser) Read(p []byte) (int, error) { return 0, context.Canceled }
 func (c cancelReadCloser) Close() error               { return nil }
 
+func TestResolveCodexDefaultsUseUpstreamVersion(t *testing.T) {
+	codexCLICfgCache.Store((*cachedCodexCLIConfig)(nil))
+	require.Equal(t, "codex_cli_rs/0.144.1", resolveCodexCLIUserAgent())
+	require.Equal(t, "0.144.1", resolveCodexCLIVersion())
+	require.True(t, resolveCodexPassthroughUAVersion())
+	require.Equal(t, "0.144.1", openAICodexProbeVersion)
+}
+
+func TestResolveCodexDefaultsPreserveConfiguredValues(t *testing.T) {
+	codexCLICfgCache.Store(&cachedCodexCLIConfig{userAgent: "custom/9.9.9", version: "9.9.9"})
+	t.Cleanup(func() { codexCLICfgCache.Store((*cachedCodexCLIConfig)(nil)) })
+
+	require.Equal(t, "custom/9.9.9", resolveCodexCLIUserAgent())
+	require.Equal(t, "9.9.9", resolveCodexCLIVersion())
+}
+
+func TestOpenAIBuildUpstreamRequestPreservesOfficialCodexClientUAVersionWhenEnabled(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	codexCLICfgCache.Store(&cachedCodexCLIConfig{
+		userAgent:            "codex_cli_rs/9.9.9",
+		version:              "9.9.9",
+		passthroughUAVersion: true,
+	})
+	t.Cleanup(func() { codexCLICfgCache.Store((*cachedCodexCLIConfig)(nil)) })
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses/compact", bytes.NewReader([]byte(`{"model":"gpt-5"}`)))
+	c.Request.Header.Set("User-Agent", "codex_vscode/2.3.4")
+	c.Request.Header.Set("Version", "2.3.4")
+
+	svc := &OpenAIGatewayService{}
+	account := &Account{
+		Type:        AccountTypeOAuth,
+		Credentials: map[string]any{"chatgpt_account_id": "chatgpt-acc"},
+	}
+
+	isCodexCLI := openai.IsCodexOfficialClientByHeaders(c.GetHeader("User-Agent"), c.GetHeader("originator"))
+	req, err := svc.buildUpstreamRequest(c.Request.Context(), c, account, []byte(`{"model":"gpt-5"}`), "token", false, "", isCodexCLI)
+	require.NoError(t, err)
+	require.Equal(t, "codex_vscode/2.3.4", req.Header.Get("User-Agent"))
+	require.Equal(t, "2.3.4", req.Header.Get("Version"))
+}
+
+func TestOpenAIBuildUpstreamRequestForcesConfiguredUAVersionWhenOfficialClientPassthroughDisabled(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	codexCLICfgCache.Store(&cachedCodexCLIConfig{
+		userAgent:            "codex_cli_rs/9.9.9",
+		version:              "9.9.9",
+		passthroughUAVersion: false,
+	})
+	t.Cleanup(func() { codexCLICfgCache.Store((*cachedCodexCLIConfig)(nil)) })
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses/compact", bytes.NewReader([]byte(`{"model":"gpt-5"}`)))
+	c.Request.Header.Set("User-Agent", "codex_vscode/2.3.4")
+	c.Request.Header.Set("Version", "2.3.4")
+
+	svc := &OpenAIGatewayService{}
+	account := &Account{
+		Type:        AccountTypeOAuth,
+		Credentials: map[string]any{"chatgpt_account_id": "chatgpt-acc"},
+	}
+
+	isCodexCLI := openai.IsCodexOfficialClientByHeaders(c.GetHeader("User-Agent"), c.GetHeader("originator"))
+	req, err := svc.buildUpstreamRequest(c.Request.Context(), c, account, []byte(`{"model":"gpt-5"}`), "token", false, "", isCodexCLI)
+	require.NoError(t, err)
+	require.Equal(t, "codex_cli_rs/9.9.9", req.Header.Get("User-Agent"))
+	require.Equal(t, "9.9.9", req.Header.Get("Version"))
+}
+
+func TestOpenAIBuildUpstreamRequestOpenAIPassthroughPreservesOfficialCodexClientUAVersionWhenEnabled(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	codexCLICfgCache.Store(&cachedCodexCLIConfig{
+		userAgent:            "codex_cli_rs/9.9.9",
+		version:              "9.9.9",
+		passthroughUAVersion: true,
+	})
+	t.Cleanup(func() { codexCLICfgCache.Store((*cachedCodexCLIConfig)(nil)) })
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses/compact", bytes.NewReader([]byte(`{"model":"gpt-5"}`)))
+	c.Request.Header.Set("User-Agent", "codex_chatgpt_desktop/3.4.5")
+	c.Request.Header.Set("Version", "3.4.5")
+
+	svc := &OpenAIGatewayService{}
+	account := &Account{
+		Type:        AccountTypeOAuth,
+		Credentials: map[string]any{"chatgpt_account_id": "chatgpt-acc"},
+	}
+
+	req, err := svc.buildUpstreamRequestOpenAIPassthrough(c.Request.Context(), c, account, []byte(`{"model":"gpt-5"}`), "token")
+	require.NoError(t, err)
+	require.Equal(t, "codex_chatgpt_desktop/3.4.5", req.Header.Get("User-Agent"))
+	require.Equal(t, "3.4.5", req.Header.Get("Version"))
+}
+
+func TestOpenAIWSHeadersPreserveOfficialCodexClientUAWhenEnabled(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	codexCLICfgCache.Store(&cachedCodexCLIConfig{
+		userAgent:            "codex_cli_rs/9.9.9",
+		passthroughUAVersion: true,
+	})
+	t.Cleanup(func() { codexCLICfgCache.Store((*cachedCodexCLIConfig)(nil)) })
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader([]byte(`{"model":"gpt-5"}`)))
+	c.Request.Header.Set("User-Agent", "codex_app/4.5.6")
+
+	svc := &OpenAIGatewayService{}
+	account := &Account{
+		Type:        AccountTypeOAuth,
+		Credentials: map[string]any{"chatgpt_account_id": "chatgpt-acc"},
+	}
+	decision := OpenAIWSProtocolDecision{Transport: OpenAIUpstreamTransportResponsesWebsocket}
+	isCodexCLI := openai.IsCodexOfficialClientByHeaders(c.GetHeader("User-Agent"), c.GetHeader("originator"))
+
+	headers, _ := svc.buildOpenAIWSHeaders(c, account, "token", decision, isCodexCLI, "", "", "")
+	require.Equal(t, "codex_app/4.5.6", headers.Get("User-Agent"))
+}
+
 type failingGinWriter struct {
 	gin.ResponseWriter
 	failAfter int

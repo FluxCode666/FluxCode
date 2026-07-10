@@ -1903,6 +1903,17 @@
               </div>
               <Toggle v-model="form.generated_image_cleanup_enabled" />
             </div>
+            <div class="flex items-center justify-between border-t border-gray-100 pt-4 dark:border-dark-700">
+              <div>
+                <label class="font-medium text-gray-900 dark:text-white">
+                  {{ t('admin.settings.codexCLIUA.officialClientPassthroughUAVersion') }}
+                </label>
+                <p class="text-sm text-gray-500 dark:text-gray-400">
+                  {{ t('admin.settings.codexCLIUA.officialClientPassthroughUAVersionHint') }}
+                </p>
+              </div>
+              <Toggle v-model="form.codex_official_client_passthrough_ua_version" />
+            </div>
             <div>
               <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
                 {{ t('admin.settings.codexCLIUA.userAgent') }}
@@ -4007,6 +4018,7 @@ const form = reactive<SettingsForm>({
   generated_image_cleanup_enabled: false,
   codex_cli_user_agent: '',
   codex_cli_version: '',
+  codex_official_client_passthrough_ua_version: true,
   // Balance & quota notification
   balance_low_notify_enabled: false,
   balance_low_notify_threshold: 0,
@@ -4664,6 +4676,7 @@ async function saveSettings() {
       generated_image_cleanup_enabled: form.generated_image_cleanup_enabled,
       codex_cli_user_agent: form.codex_cli_user_agent,
       codex_cli_version: form.codex_cli_version,
+      codex_official_client_passthrough_ua_version: form.codex_official_client_passthrough_ua_version,
       // Payment configuration
       payment_enabled: form.payment_enabled,
       payment_min_amount: Number(form.payment_min_amount) || 0,

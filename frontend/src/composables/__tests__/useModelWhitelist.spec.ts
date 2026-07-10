@@ -20,6 +20,15 @@ describe('useModelWhitelist', () => {
     expect(models).toContain('gpt-5.4-2026-03-05')
   })
 
+  it('includes bare GPT-5.6 and variants', () => {
+    const models = getModelsByPlatform('openai')
+
+    expect(models).toContain('gpt-5.6')
+    expect(models).toContain('gpt-5.6-sol')
+    expect(models).toContain('gpt-5.6-terra')
+    expect(models).toContain('gpt-5.6-luna')
+  })
+
   it('antigravity 模型列表包含图片模型兼容项', () => {
     const models = getModelsByPlatform('antigravity')
 
@@ -77,9 +86,10 @@ describe('useModelWhitelist', () => {
   })
 
   it('whitelist keeps GPT-5.6 exact mappings', () => {
-    const mapping = buildModelMappingObject('whitelist', ['gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna'], [])
+    const mapping = buildModelMappingObject('whitelist', ['gpt-5.6', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna'], [])
 
     expect(mapping).toEqual({
+      'gpt-5.6': 'gpt-5.6',
       'gpt-5.6-sol': 'gpt-5.6-sol',
       'gpt-5.6-terra': 'gpt-5.6-terra',
       'gpt-5.6-luna': 'gpt-5.6-luna'

@@ -1,109 +1,114 @@
-# Task 3 Report: Frontend Admin Form Wiring
+# Task 3 报告：BillingService Cache Write And Explicit Overrides
 
-## 实现了什么
+## 状态
 
-- 在 `frontend/src/api/admin/channelMonitor.ts` 为 `ChannelMonitor` 和 `CreateParams` 接入 `jitter_seconds` 字段。
-- 在 `frontend/src/components/admin/monitor/MonitorFormDialog.vue` 为 admin 监控创建/编辑表单新增 `jitter_seconds` 输入框，并为 `interval_seconds` / `jitter_seconds` 增加 `data-testid`。
-- 在表单状态中加入 `form.jitter_seconds`，默认新建值为 `0`，编辑时从现有 monitor 加载。
-- 新增 `maxJitterSeconds` 计算值和 interval watcher，保持 `jitter_seconds >= 0` 且 `interval_seconds - jitter_seconds >= 15` 的前端约束。
-- 在 `buildPayload()` 中提交 `jitter_seconds` 到 create/update payload。
-- 在 `frontend/src/i18n/locales/zh.ts` 与 `frontend/src/i18n/locales/en.ts` 增加 `admin.channelMonitor.form.jitterSeconds` 与 `admin.channelMonitor.form.jitterSecondsHint`。
-- 新增 `frontend/src/components/admin/monitor/__tests__/MonitorFormDialog.jitter.spec.ts`，覆盖默认值、编辑回填、提交 payload、interval 降低后的 jitter clamp。
+已完成并提交。
 
-## 测试命令和结果
+- 提交：`23d65b448 feat: bill gpt-5.6 cache write tokens`
+- 提交文件仅包含任务允许的四个 BillingService/Resolver 源码与测试文件。
 
-### RED
+## 实现内容
 
-命令：
+1. `ModelPricing` 新增 `CacheCreationPricePerTokenPriority` 与 `CacheCreationPriceExplicit`。
+2. BillingService 从 `LiteLLMModelPricing` 映射 priority cache write 价格，并将其用于 `priority` service tier 的缓存创建计费。
+3. GPT-5.6 Sol、Terra、Luna 的 BillingService fallback 改为 Task 2 定义的官方价格；均包含 priority cache write 与固定长上下文参数 `272000 / 2 / 1.5`。
+4. GPT-5.6 动态价格缺失 cache write 时，按输入价格的 `1.25` 倍补齐普通及 priority cache write；渠道或区间显式 `CacheWritePrice`（包括 `0`）不会被此策略覆盖。
+5. 长上下文判断改为计入输入、cache write 和 cache read token。
+6. 对未知 `gpt-5.6-*` 型号，BillingService 不再继续落入通用 GPT/Codex fallback。
+7. 渠道平铺价格与区间价格在设置 `CacheWritePrice` 时均标记显式覆盖。
 
-```bash
-cd frontend && npm run test -- --run src/components/admin/monitor/__tests__/MonitorFormDialog.jitter.spec.ts
-```
+## RED 证据
 
-结果：失败，符合预期。
-
-关键失败输出：
-
-```text
-FAIL  src/components/admin/monitor/__tests__/MonitorFormDialog.jitter.spec.ts
-Error: Unable to get [data-testid="monitor-jitter-input"] within: <div ...>
-Tests  4 failed (4)
-```
-
-为什么预期失败：
-
-- brief 要求先写表单 jitter 测试。
-- 运行 RED 时，`MonitorFormDialog.vue` 里还没有 `monitor-jitter-input` 和对应表单字段，所以测试正确地因为缺少 jitter 输入控件而失败。
-
-### GREEN
-
-命令：
+先加入 brief 要求的失败测试，再执行：
 
 ```bash
-cd frontend && npm run test -- --run src/components/admin/monitor/__tests__/MonitorFormDialog.jitter.spec.ts src/views/admin/__tests__/ChannelMonitorView.spec.ts
+cd backend && go test -tags unit ./internal/service -run 'TestBillingService_GPT56|TestCalculateCostWithServiceTier_GPT56|TestModelPricingResolver_GPT56|TestIntervalToModelPricing_CacheWriteZero' -count=1
 ```
 
-结果：通过。
+结果：失败。编译器报告 `ModelPricing` 缺少 `CacheCreationPricePerTokenPriority` 和 `CacheCreationPriceExplicit`，证明新增测试覆盖的是尚未实现的接口契约。
 
-关键通过输出：
+## GREEN 证据
 
-```text
-✓ src/components/admin/monitor/__tests__/MonitorFormDialog.jitter.spec.ts (4 tests)
-✓ src/views/admin/__tests__/ChannelMonitorView.spec.ts (1 test)
-Test Files  2 passed (2)
-Tests  5 passed (5)
-```
-
-## TDD Evidence
-
-- RED 命令：`cd frontend && npm run test -- --run src/components/admin/monitor/__tests__/MonitorFormDialog.jitter.spec.ts`
-- RED 关键失败：`Unable to get [data-testid="monitor-jitter-input"]`
-- RED 失败原因：实现前表单没有 jitter 控件/状态/payload 接线
-- GREEN 命令：`cd frontend && npm run test -- --run src/components/admin/monitor/__tests__/MonitorFormDialog.jitter.spec.ts src/views/admin/__tests__/ChannelMonitorView.spec.ts`
-- GREEN 关键通过：`Test Files  2 passed (2)`，`Tests  5 passed (5)`
-
-## 修改文件
-
-- `frontend/src/api/admin/channelMonitor.ts`
-- `frontend/src/components/admin/monitor/MonitorFormDialog.vue`
-- `frontend/src/components/admin/monitor/__tests__/MonitorFormDialog.jitter.spec.ts`
-- `frontend/src/i18n/locales/zh.ts`
-- `frontend/src/i18n/locales/en.ts`
-
-## 自审发现
-
-- 已确认只修改了任务允许的前端文件与本报告文件。
-- 未修改用户端渠道状态页。
-- 前端 clamp 逻辑通过 watcher 保持 `interval_seconds - jitter_seconds >= 15`，与 brief 语义一致。
-- payload 通过 `buildPayload()` 统一输出 `jitter_seconds`，不会影响现有 template、headers、body override 逻辑。
-- `ChannelMonitorView.spec.ts` 复跑通过，说明 admin 页面基础壳子未被本次接线破坏。
-
-## 疑问或担忧
-
-- 测试输出包含 `Browserslist: browsers data (caniuse-lite) is 7 months old` 警告；这不是本任务引入的问题，也不影响本次结果。
-
-## Fix after review
-
-- reviewer 指出 `jitter_seconds` 只在 `interval_seconds` 变化时被压到上限，直接输入非法值后提交仍可能带出 `-1` 或超上限值；这个问题已在 `MonitorFormDialog.vue` 修复。
-- 本次新增统一的 `normalizeJitterSeconds()`，同时用于：
-  - `form.jitter_seconds` watcher：用户直接输入非法值时立即归一化
-  - `form.interval_seconds` watcher：保留 interval 变小时 UI 及时收缩的行为
-  - `buildPayload()`：提交前再次兜底，保证 payload 一定满足约束
-- 新增测试覆盖真实提交场景：
-  - 直接输入超上限 `jitter_seconds` 后提交，payload 被 clamp 到 `maxJitterSeconds`
-  - 直接输入负数 `jitter_seconds` 后提交，payload 被 clamp 到 `0`
-
-命令：
+实现并格式化后执行 brief 指定验证：
 
 ```bash
-cd frontend && npm run test -- --run src/components/admin/monitor/__tests__/MonitorFormDialog.jitter.spec.ts src/views/admin/__tests__/ChannelMonitorView.spec.ts
+cd backend && go test -tags unit ./internal/service -run 'TestBillingService_GPT56|TestCalculateCostWithServiceTier_GPT56|TestModelPricingResolver_GPT56|TestIntervalToModelPricing_CacheWriteZero|TestGetModelPricingWithChannel_CacheWritePrice' -count=1
 ```
 
-关键输出：
+结果：通过，`ok github.com/Wei-Shaw/sub2api/internal/service 0.071s`。
 
-```text
-✓ src/components/admin/monitor/__tests__/MonitorFormDialog.jitter.spec.ts (6 tests)
-✓ src/views/admin/__tests__/ChannelMonitorView.spec.ts (1 test)
-Test Files  2 passed (2)
-Tests  7 passed (7)
+另已执行 `git diff --check` 与暂存区 `git diff --cached --check`，均无格式或空白错误。
+
+## 文件变更
+
+- `backend/internal/service/billing_service.go`
+- `backend/internal/service/model_pricing_resolver.go`
+- `backend/internal/service/billing_service_test.go`
+- `backend/internal/service/model_pricing_resolver_test.go`
+
+## 自审结论
+
+实现遵守任务边界，未合并 upstream/main，未改默认测试模型，未修改 `docs/superpowers/plans` 或 `.superpowers/sdd/progress.md`。显式零值 cache write 由布尔标记保护，priority cache write 仅在该费率存在时替换缓存创建费率，普通 tier 与 flex tier 继续沿用既有倍率逻辑。
+
+## 疑虑
+
+无功能疑虑。按 brief 执行了目标服务测试；未执行整个 `./internal/service` 全量测试。工作区中原有的 `.superpowers/sdd/task-2-report.md` 改动及 `docs/superpowers/plans/2026-07-10-gpt56-upstream-followups.md` 未跟踪文件未被修改或提交。
+
+---
+
+## Review 修复：GPT-5.6 Billing Safeguards
+
+### 修复内容
+
+1. `BillingService.getFallbackPricing` 现在通过 `normalizeGPT56ModelID` 识别 GPT-5.6 型号后再执行未知型号守卫。因此 `openai/gpt-5.6-foo` 与前后带空白的 `gpt-5.6-foo` 都会返回 `pricing not found`，不再进入 `normalizeCodexModel` 的 `gpt-5.1` fallback。
+2. priority 计费仅在 cache write 并非渠道/区间显式覆盖时采用 `CacheCreationPricePerTokenPriority`。显式 `CacheWritePrice`（包括 `0`）会保留原值，避免旧 priority 字段覆盖。
+3. 将 `gpt55_support_test.go` 中 GPT-5.6 BillingService 与 PricingService 静态 fallback 断言更新为 GPT-5.6 官方 Sol 价格，并将 BillingService 测试更名为 `TestGPT56Support_BillingFallbackUsesOfficialPrices`。
+
+### RED 证据
+
+新增回归测试后执行：
+
+```bash
+cd backend && go test -tags unit ./internal/service -run 'TestBillingService_GPT56|TestCalculateCostWithServiceTier_GPT56|TestModelPricingResolver_GPT56|TestIntervalToModelPricing_CacheWriteZero|TestGetModelPricingWithChannel_CacheWritePrice|TestGPT56Support' -count=1
 ```
+
+结果：失败。未知 provider/空白别名均返回 GPT-5.1 fallback；priority 下显式 `CacheWritePrice=0` 产生 `0.0005` cache creation cost。
+
+### GREEN 证据
+
+实现后重新执行同一命令：通过，`ok github.com/Wei-Shaw/sub2api/internal/service 0.072s`。
+
+Reviewer 最小复现命令按新测试名更新并通过：
+
+```bash
+cd backend && go test -tags unit ./internal/service -run '^TestGPT56Support_BillingFallbackUsesOfficialPrices$' -count=1
+```
+
+结果：通过，`ok github.com/Wei-Shaw/sub2api/internal/service 0.031s`。
+
+还执行了 `go test -tags unit ./internal/service -count=1`。该全量包测试未通过，原因与本次文件无关：`TestAdminService_BulkUpdateAccounts_MixedChannelPreCheckBlocksOnExistingConflict` 的错误文本断言失败、`TestAdminService_CreateUser_Success` 缺少 group repository，以及 SettingService 预热调用测试 stub 的 `GetMultiple` 时 panic。目标回归集通过。
+
+---
+
+## 第二轮 Review 收口：GPT-5.6 测试价格预期
+
+### 修复内容
+
+1. `TestGetModelPricing_OpenAIGPT56Fallbacks` 分别断言 Sol、Terra、Luna 的官方 input、output、cache write 和 cache read 价格。
+2. `TestCalculateCost_OpenAIGPT56LongContextAppliesWholeSessionMultipliers` 改用 Sol 官方 input `5e-6`、output `30e-6`，并继续验证长上下文 input `*2`、output `*1.5`。
+
+### RED 证据
+
+```bash
+cd backend && go test -tags unit ./internal/service -run 'TestGetModelPricing_OpenAIGPT56Fallbacks|TestCalculateCost_OpenAIGPT56LongContextAppliesWholeSessionMultipliers|TestBillingService_GPT56|TestCalculateCostWithServiceTier_GPT56|TestGPT56Support' -count=1
+```
+
+结果：失败，原测试对 Sol/Luna 使用 GPT-5.4 价格，并对 GPT-5.6 长上下文使用旧 input/output 价格。
+
+### GREEN 证据
+
+同一命令在更新测试预期后通过。
+
+## 本轮疑虑
+
+无功能疑虑。报告文件按要求保留为工作区修改，未加入提交。

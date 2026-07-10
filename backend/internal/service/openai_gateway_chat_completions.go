@@ -339,13 +339,7 @@ func (s *OpenAIGatewayService) handleChatBufferedStreamingResponse(
 			event.Response != nil {
 			finalResponse = event.Response
 			if event.Response.Usage != nil {
-				usage = OpenAIUsage{
-					InputTokens:  event.Response.Usage.InputTokens,
-					OutputTokens: event.Response.Usage.OutputTokens,
-				}
-				if event.Response.Usage.InputTokensDetails != nil {
-					usage.CacheReadInputTokens = event.Response.Usage.InputTokensDetails.CachedTokens
-				}
+				usage = openAIUsageFromResponsesUsage(event.Response.Usage)
 			}
 		}
 	}
@@ -455,13 +449,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 		// Extract usage from completion events
 		if (event.Type == "response.completed" || event.Type == "response.incomplete" || event.Type == "response.failed") &&
 			event.Response != nil && event.Response.Usage != nil {
-			usage = OpenAIUsage{
-				InputTokens:  event.Response.Usage.InputTokens,
-				OutputTokens: event.Response.Usage.OutputTokens,
-			}
-			if event.Response.Usage.InputTokensDetails != nil {
-				usage.CacheReadInputTokens = event.Response.Usage.InputTokensDetails.CachedTokens
-			}
+			usage = openAIUsageFromResponsesUsage(event.Response.Usage)
 		}
 
 		chunks := apicompat.ResponsesEventToChatChunks(&event, state)

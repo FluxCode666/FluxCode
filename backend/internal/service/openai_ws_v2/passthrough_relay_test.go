@@ -199,6 +199,35 @@ func TestRelay_BasicRelayAndUsage(t *testing.T) {
 	require.JSONEq(t, `{"type":"response.completed","response":{"id":"resp_123","usage":{"input_tokens":7,"output_tokens":3,"input_tokens_details":{"cached_tokens":2}}}}`, string(clientWrites[0].payload))
 }
 
+func TestRelay_UsageIncludesCacheWriteTokens(t *testing.T) {
+	t.Parallel()
+
+	clientConn := newPassthroughTestFrameConn(nil, false)
+	upstreamConn := newPassthroughTestFrameConn([]passthroughTestFrame{
+		{
+			msgType: coderws.MessageText,
+			payload: []byte(`{"type":"response.completed","response":{"id":"resp_cache_write","usage":{"input_tokens":7,"output_tokens":3,"input_tokens_details":{"cached_tokens":2,"cache_write_tokens":5}}}}`),
+		},
+	}, true)
+
+	firstPayload := []byte(`{"type":"response.create","model":"gpt-5.6","input":[{"type":"input_text","text":"hello"}]}`)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	result, relayExit := Relay(ctx, clientConn, upstreamConn, firstPayload, RelayOptions{})
+	require.Nil(t, relayExit)
+	require.Equal(t, "gpt-5.6", result.RequestModel)
+	require.Equal(t, "resp_cache_write", result.RequestID)
+	require.Equal(t, 7, result.Usage.InputTokens)
+	require.Equal(t, 3, result.Usage.OutputTokens)
+	require.Equal(t, 2, result.Usage.CacheReadInputTokens)
+	require.Equal(t, 5, result.Usage.CacheCreationInputTokens)
+
+	clientWrites := clientConn.Writes()
+	require.Len(t, clientWrites, 1)
+	require.JSONEq(t, `{"type":"response.completed","response":{"id":"resp_cache_write","usage":{"input_tokens":7,"output_tokens":3,"input_tokens_details":{"cached_tokens":2,"cache_write_tokens":5}}}}`, string(clientWrites[0].payload))
+}
+
 func TestRelay_FunctionCallOutputBytesPreserved(t *testing.T) {
 	t.Parallel()
 

@@ -4,7 +4,10 @@
 // formats can be served through a unified gateway.
 package apicompat
 
-import "encoding/json"
+import (
+	"bytes"
+	"encoding/json"
+)
 
 // ---------------------------------------------------------------------------
 // Anthropic Messages API types
@@ -272,18 +275,165 @@ type ResponsesSummary struct {
 
 // ResponsesUsage holds token counts in Responses API format.
 type ResponsesUsage struct {
-	InputTokens  int `json:"input_tokens"`
-	OutputTokens int `json:"output_tokens"`
-	TotalTokens  int `json:"total_tokens"`
+	InputTokens              int `json:"input_tokens"`
+	OutputTokens             int `json:"output_tokens"`
+	TotalTokens              int `json:"total_tokens"`
+	CacheCreationInputTokens int `json:"cache_creation_input_tokens,omitempty"`
+	CacheWriteInputTokens    int `json:"cache_write_input_tokens,omitempty"`
+	CacheCreationTokens      int `json:"cache_creation_tokens,omitempty"`
+	CacheWriteTokens         int `json:"cache_write_tokens,omitempty"`
 
 	// Optional detailed breakdown
 	InputTokensDetails  *ResponsesInputTokensDetails  `json:"input_tokens_details,omitempty"`
+	PromptTokensDetails *ChatTokenDetails             `json:"prompt_tokens_details,omitempty"`
 	OutputTokensDetails *ResponsesOutputTokensDetails `json:"output_tokens_details,omitempty"`
+
+	cacheCreationInputTokensPresent bool
+	cacheCreationInputTokensValue   int
+}
+
+// UnmarshalJSON preserves whether the first-priority cache creation field was
+// present, including explicit zero and negative values.
+func (u *ResponsesUsage) UnmarshalJSON(data []byte) error {
+	type responsesUsageAlias ResponsesUsage
+	var decoded responsesUsageAlias
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	*u = ResponsesUsage(decoded)
+
+	var aux struct {
+		PromptTokens            int                           `json:"prompt_tokens"`
+		CompletionTokens        int                           `json:"completion_tokens"`
+		PromptTokensDetails     *ResponsesInputTokensDetails  `json:"prompt_tokens_details,omitempty"`
+		CompletionTokensDetails *ResponsesOutputTokensDetails `json:"completion_tokens_details,omitempty"`
+	}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	if u.InputTokens == 0 && aux.PromptTokens != 0 {
+		u.InputTokens = aux.PromptTokens
+	}
+	if u.OutputTokens == 0 && aux.CompletionTokens != 0 {
+		u.OutputTokens = aux.CompletionTokens
+	}
+	if u.InputTokensDetails == nil && aux.PromptTokensDetails != nil {
+		u.InputTokensDetails = aux.PromptTokensDetails
+	}
+	if u.OutputTokensDetails == nil && aux.CompletionTokensDetails != nil {
+		u.OutputTokensDetails = aux.CompletionTokensDetails
+	}
+	if u.TotalTokens == 0 && (u.InputTokens != 0 || u.OutputTokens != 0) {
+		u.TotalTokens = u.InputTokens + u.OutputTokens
+	}
+
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	nestedPaths := [][]string{
+		{"input_tokens_details", "cache_write_tokens"},
+		{"prompt_tokens_details", "cache_write_tokens"},
+		{"input_tokens_details", "cache_creation_tokens"},
+		{"prompt_tokens_details", "cache_creation_tokens"},
+	}
+	for _, path := range nestedPaths {
+		if value, ok := responsesUsageJSONInt(raw, path...); ok {
+			u.cacheCreationInputTokensPresent = true
+			u.cacheCreationInputTokensValue = value
+			return nil
+		}
+	}
+
+	topLevelPaths := [][]string{
+		{"cache_write_tokens"},
+		{"cache_creation_input_tokens"},
+		{"cache_write_input_tokens"},
+		{"cache_creation_tokens"},
+	}
+	for _, path := range topLevelPaths {
+		if value, ok := responsesUsageJSONInt(raw, path...); ok && value > 0 {
+			u.cacheCreationInputTokensPresent = true
+			u.cacheCreationInputTokensValue = value
+			break
+		}
+	}
+	return nil
+}
+
+// CacheCreationInputTokenCount returns the first present cache write/creation
+// value using the Responses usage compatibility priority.
+func (u *ResponsesUsage) CacheCreationInputTokenCount() int {
+	if u == nil {
+		return 0
+	}
+	if u.cacheCreationInputTokensPresent {
+		return clampAPICompatUsageToken(u.cacheCreationInputTokensValue)
+	}
+
+	values := make([]int, 0, 8)
+	if u.InputTokensDetails != nil {
+		values = append(values,
+			u.InputTokensDetails.CacheWriteTokens,
+			u.InputTokensDetails.CacheCreationTokens,
+		)
+	}
+	if u.PromptTokensDetails != nil {
+		values = append(values,
+			u.PromptTokensDetails.CacheWriteTokens,
+			u.PromptTokensDetails.CacheCreationTokens,
+		)
+	}
+	values = append(values,
+		u.CacheWriteTokens,
+		u.CacheCreationInputTokens,
+		u.CacheWriteInputTokens,
+		u.CacheCreationTokens,
+	)
+	for _, value := range values {
+		if value != 0 {
+			return clampAPICompatUsageToken(value)
+		}
+	}
+	return 0
+}
+
+func responsesUsageJSONInt(root map[string]json.RawMessage, path ...string) (int, bool) {
+	current := root
+	for i, key := range path {
+		raw, ok := current[key]
+		if !ok {
+			return 0, false
+		}
+		if i == len(path)-1 {
+			if bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
+				return 0, false
+			}
+			var value int
+			if err := json.Unmarshal(raw, &value); err != nil {
+				return 0, false
+			}
+			return value, true
+		}
+		if err := json.Unmarshal(raw, &current); err != nil {
+			return 0, false
+		}
+	}
+	return 0, false
+}
+
+func clampAPICompatUsageToken(value int) int {
+	if value < 0 {
+		return 0
+	}
+	return value
 }
 
 // ResponsesInputTokensDetails breaks down input token usage.
 type ResponsesInputTokensDetails struct {
-	CachedTokens int `json:"cached_tokens,omitempty"`
+	CachedTokens        int `json:"cached_tokens,omitempty"`
+	CacheCreationTokens int `json:"cache_creation_tokens,omitempty"`
+	CacheWriteTokens    int `json:"cache_write_tokens,omitempty"`
 }
 
 // ResponsesOutputTokensDetails breaks down output token usage.
@@ -437,15 +587,19 @@ type ChatChoice struct {
 
 // ChatUsage holds token counts in Chat Completions format.
 type ChatUsage struct {
-	PromptTokens        int               `json:"prompt_tokens"`
-	CompletionTokens    int               `json:"completion_tokens"`
-	TotalTokens         int               `json:"total_tokens"`
-	PromptTokensDetails *ChatTokenDetails `json:"prompt_tokens_details,omitempty"`
+	PromptTokens             int               `json:"prompt_tokens"`
+	CompletionTokens         int               `json:"completion_tokens"`
+	TotalTokens              int               `json:"total_tokens"`
+	CacheCreationInputTokens int               `json:"cache_creation_input_tokens,omitempty"`
+	CacheWriteInputTokens    int               `json:"cache_write_input_tokens,omitempty"`
+	PromptTokensDetails      *ChatTokenDetails `json:"prompt_tokens_details,omitempty"`
 }
 
 // ChatTokenDetails provides a breakdown of token usage.
 type ChatTokenDetails struct {
-	CachedTokens int `json:"cached_tokens,omitempty"`
+	CachedTokens        int `json:"cached_tokens,omitempty"`
+	CacheCreationTokens int `json:"cache_creation_tokens,omitempty"`
+	CacheWriteTokens    int `json:"cache_write_tokens,omitempty"`
 }
 
 // ChatCompletionsChunk is a single streaming chunk from POST /v1/chat/completions.

@@ -296,13 +296,60 @@ func TestParseUsageAndEnrichCoverage(t *testing.T) {
 	require.Equal(t, 1, state.usage.OutputTokens)
 	require.Equal(t, 1, state.usage.CacheReadInputTokens)
 
+	parseUsageAndAccumulate(state, []byte(`{"type":"response.completed","response":{"usage":{"input_tokens":3,"output_tokens":2,"input_tokens_details":{"cached_tokens":1,"cache_write_tokens":4}}}}`), "response.completed", nil)
+	require.Equal(t, 5, state.usage.InputTokens)
+	require.Equal(t, 3, state.usage.OutputTokens)
+	require.Equal(t, 2, state.usage.CacheReadInputTokens)
+	require.Equal(t, 4, state.usage.CacheCreationInputTokens)
+
+	topLevelCacheWriteState := &relayState{}
+	topLevelParsed := parseUsageAndAccumulate(
+		topLevelCacheWriteState,
+		[]byte(`{"type":"response.completed","response":{"usage":{"input_tokens":3,"output_tokens":2,"cache_creation_input_tokens":0,"cache_write_tokens":9}}}`),
+		"response.completed",
+		nil,
+	)
+	require.Equal(t, 9, topLevelParsed.CacheCreationInputTokens)
+	require.Equal(t, 9, topLevelCacheWriteState.usage.CacheCreationInputTokens)
+
+	negativeCacheWriteState := &relayState{}
+	parsed := parseUsageAndAccumulate(
+		negativeCacheWriteState,
+		[]byte(`{"type":"response.completed","response":{"usage":{"input_tokens":3,"output_tokens":2,"input_tokens_details":{"cache_write_tokens":-4},"cache_write_input_tokens":9}}}`),
+		"response.completed",
+		nil,
+	)
+	require.Zero(t, parsed.CacheCreationInputTokens)
+	require.Zero(t, negativeCacheWriteState.usage.CacheCreationInputTokens)
+
 	result := &RelayResult{}
 	enrichResult(result, state, 5*time.Millisecond)
 	require.Equal(t, state.usage.InputTokens, result.Usage.InputTokens)
 	require.Equal(t, 5*time.Millisecond, result.Duration)
 	parseUsageAndAccumulate(state, []byte(`{"type":"response.in_progress","response":{"usage":{"input_tokens":9}}}`), "response.in_progress", nil)
-	require.Equal(t, 2, state.usage.InputTokens)
+	require.Equal(t, 5, state.usage.InputTokens)
 	enrichResult(nil, state, 0)
+}
+
+func TestParseUsageAndAccumulate_NegativeTokensClampToZero(t *testing.T) {
+	t.Parallel()
+
+	state := &relayState{}
+	parsed := parseUsageAndAccumulate(
+		state,
+		[]byte(`{"type":"response.completed","response":{"usage":{"input_tokens":-1,"output_tokens":-2,"input_tokens_details":{"cached_tokens":-3,"cache_write_tokens":-4}}}}`),
+		"response.completed",
+		nil,
+	)
+
+	require.Zero(t, parsed.InputTokens)
+	require.Zero(t, parsed.OutputTokens)
+	require.Zero(t, parsed.CacheReadInputTokens)
+	require.Zero(t, parsed.CacheCreationInputTokens)
+	require.Zero(t, state.usage.InputTokens)
+	require.Zero(t, state.usage.OutputTokens)
+	require.Zero(t, state.usage.CacheReadInputTokens)
+	require.Zero(t, state.usage.CacheCreationInputTokens)
 }
 
 func TestEmitTurnCompleteCoverage(t *testing.T) {

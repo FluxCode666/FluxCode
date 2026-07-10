@@ -85,8 +85,9 @@ func ResponsesToAnthropic(resp *ResponsesResponse, model string) *AnthropicRespo
 
 	if resp.Usage != nil {
 		out.Usage = AnthropicUsage{
-			InputTokens:  resp.Usage.InputTokens,
-			OutputTokens: resp.Usage.OutputTokens,
+			InputTokens:              resp.Usage.InputTokens,
+			OutputTokens:             resp.Usage.OutputTokens,
+			CacheCreationInputTokens: resp.Usage.CacheCreationInputTokenCount(),
 		}
 		if resp.Usage.InputTokensDetails != nil {
 			out.Usage.CacheReadInputTokens = resp.Usage.InputTokensDetails.CachedTokens
@@ -130,9 +131,10 @@ type ResponsesEventToAnthropicState struct {
 	// OutputIndexToBlockIdx maps Responses output_index → Anthropic content block index.
 	OutputIndexToBlockIdx map[int]int
 
-	InputTokens          int
-	OutputTokens         int
-	CacheReadInputTokens int
+	InputTokens              int
+	OutputTokens             int
+	CacheReadInputTokens     int
+	CacheCreationInputTokens int
 
 	ResponseID string
 	Model      string
@@ -196,9 +198,10 @@ func FinalizeResponsesAnthropicStream(state *ResponsesEventToAnthropicState) []A
 				StopReason: "end_turn",
 			},
 			Usage: &AnthropicUsage{
-				InputTokens:          state.InputTokens,
-				OutputTokens:         state.OutputTokens,
-				CacheReadInputTokens: state.CacheReadInputTokens,
+				InputTokens:              state.InputTokens,
+				OutputTokens:             state.OutputTokens,
+				CacheCreationInputTokens: state.CacheCreationInputTokens,
+				CacheReadInputTokens:     state.CacheReadInputTokens,
 			},
 		},
 		AnthropicStreamEvent{Type: "message_stop"},
@@ -468,6 +471,7 @@ func resToAnthHandleCompleted(evt *ResponsesStreamEvent, state *ResponsesEventTo
 		if evt.Response.Usage != nil {
 			state.InputTokens = evt.Response.Usage.InputTokens
 			state.OutputTokens = evt.Response.Usage.OutputTokens
+			state.CacheCreationInputTokens = evt.Response.Usage.CacheCreationInputTokenCount()
 			if evt.Response.Usage.InputTokensDetails != nil {
 				state.CacheReadInputTokens = evt.Response.Usage.InputTokensDetails.CachedTokens
 			}
@@ -491,9 +495,10 @@ func resToAnthHandleCompleted(evt *ResponsesStreamEvent, state *ResponsesEventTo
 				StopReason: stopReason,
 			},
 			Usage: &AnthropicUsage{
-				InputTokens:          state.InputTokens,
-				OutputTokens:         state.OutputTokens,
-				CacheReadInputTokens: state.CacheReadInputTokens,
+				InputTokens:              state.InputTokens,
+				OutputTokens:             state.OutputTokens,
+				CacheCreationInputTokens: state.CacheCreationInputTokens,
+				CacheReadInputTokens:     state.CacheReadInputTokens,
 			},
 		},
 		AnthropicStreamEvent{Type: "message_stop"},
