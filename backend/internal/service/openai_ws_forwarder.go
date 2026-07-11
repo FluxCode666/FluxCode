@@ -2197,6 +2197,14 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 		}
 		if openAIWSEventShouldParseUsage(eventType) {
 			parseOpenAIWSResponseUsageFromCompletedEvent(message, usage)
+			logOpenAIUsageDebug(ctx, openAIUsageDebugInput{
+				Location:      "ws_completed_event",
+				RequestID:     openAIUsageDebugRequestIDFromJSONBytes(message, responseID),
+				Model:         originalModel,
+				UpstreamModel: openAIUsageDebugModelFromJSONBytes(message, mappedModel),
+				Usage:         *usage,
+				Raw:           string(message),
+			})
 		}
 
 		if eventType == "error" {
@@ -2325,6 +2333,14 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 		}
 		finalResponse = s.correctToolCallsInResponseBody(finalResponse)
 		populateOpenAIUsageFromResponseJSON(finalResponse, usage)
+		logOpenAIUsageDebug(ctx, openAIUsageDebugInput{
+			Location:      "ws_final_response",
+			RequestID:     openAIUsageDebugRequestIDFromJSONBytes(finalResponse, responseID),
+			Model:         originalModel,
+			UpstreamModel: openAIUsageDebugModelFromJSONBytes(finalResponse, mappedModel),
+			Usage:         *usage,
+			Raw:           string(finalResponse),
+		})
 		if responseID == "" {
 			responseID = strings.TrimSpace(gjson.GetBytes(finalResponse, "id").String())
 		}
@@ -2958,6 +2974,14 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			}
 			if openAIWSEventShouldParseUsage(eventType) {
 				parseOpenAIWSResponseUsageFromCompletedEvent(upstreamMessage, &usage)
+				logOpenAIUsageDebug(ctx, openAIUsageDebugInput{
+					Location:      "ingress_ws_completed_event",
+					RequestID:     openAIUsageDebugRequestIDFromJSONBytes(upstreamMessage, responseID),
+					Model:         originalModel,
+					UpstreamModel: openAIUsageDebugModelFromJSONBytes(upstreamMessage, mappedModel),
+					Usage:         usage,
+					Raw:           string(upstreamMessage),
+				})
 			}
 
 			if !clientDisconnected {

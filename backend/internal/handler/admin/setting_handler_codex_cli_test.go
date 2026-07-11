@@ -34,7 +34,8 @@ func TestUpdateSettings_ReturnsCodexCLIConfig(t *testing.T) {
 	body := bytes.NewBufferString(`{
 		"codex_cli_user_agent": "codex_cli_rs/9.8.7",
 		"codex_cli_version": "9.8.7",
-		"codex_official_client_passthrough_ua_version": true
+		"codex_official_client_passthrough_ua_version": true,
+		"openai_usage_debug_log_enabled": true
 	}`)
 	req := httptest.NewRequest(http.MethodPut, "/settings", body)
 	req.Header.Set("Content-Type", "application/json")
@@ -51,7 +52,9 @@ func TestUpdateSettings_ReturnsCodexCLIConfig(t *testing.T) {
 	require.Equal(t, "codex_cli_rs/9.8.7", envelope.Data["codex_cli_user_agent"])
 	require.Equal(t, "9.8.7", envelope.Data["codex_cli_version"])
 	require.Equal(t, true, envelope.Data["codex_official_client_passthrough_ua_version"])
+	require.Equal(t, true, envelope.Data["openai_usage_debug_log_enabled"])
 	require.Equal(t, "true", repo.values[service.SettingKeyCodexPassthroughUAVersion])
+	require.Equal(t, "true", repo.values[service.SettingKeyOpenAIUsageDebugLogEnabled])
 }
 
 func TestSettingsCodexImageGenerationBridgeRoundTrip(t *testing.T) {

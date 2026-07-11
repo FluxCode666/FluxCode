@@ -5777,6 +5777,9 @@ export default {
         officialClientPassthroughUAVersion: 'Preserve official Codex UA/Version',
         officialClientPassthroughUAVersionHint:
           'Enabled by default. When enabled, requests identified as official Codex clients keep their inbound User-Agent and compact Version; other requests still use the preset values below.',
+        openAIUsageDebugLog: 'OpenAI usage debug logging',
+        openAIUsageDebugLogHint:
+          'When enabled, logs upstream raw usage/terminal events and final billing buckets for cache-write cost investigation. Turn it off after verification.',
         userAgent: 'User-Agent',
         userAgentPlaceholder: 'e.g. codex_cli_rs/0.144.1',
         userAgentHint: 'User-Agent header sent to OpenAI upstream. Leave empty to use default codex_cli_rs/0.144.1.',

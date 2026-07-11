@@ -39,6 +39,18 @@ describe('SettingsView Codex image generation bridge setting', () => {
     )
   })
 
+  it('binds OpenAI usage debug logging into API types, form state, and save payload', () => {
+    expect(settingsApiSource).toContain('openai_usage_debug_log_enabled: boolean')
+    expect(settingsApiSource).toContain('openai_usage_debug_log_enabled?: boolean')
+    expect(viewSource).toContain('v-model="form.openai_usage_debug_log_enabled"')
+    expect(viewSource).toContain('openai_usage_debug_log_enabled: false')
+    expect(viewSource).toContain(
+      'openai_usage_debug_log_enabled: form.openai_usage_debug_log_enabled'
+    )
+    expect(zh.admin.settings.codexCLIUA.openAIUsageDebugLog).toBe('OpenAI Usage 调试日志')
+    expect(en.admin.settings.codexCLIUA.openAIUsageDebugLog).toBe('OpenAI usage debug logging')
+  })
+
   it('uses the current Codex upstream defaults in UA and Version copy', () => {
     expect(zh.admin.settings.codexCLIUA.userAgentHint).toContain('codex_cli_rs/0.144.1')
     expect(zh.admin.settings.codexCLIUA.versionHint).toContain('0.144.1')

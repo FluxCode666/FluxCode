@@ -176,6 +176,7 @@ export interface SystemSettings {
   codex_cli_user_agent: string
   codex_cli_version: string
   codex_official_client_passthrough_ua_version: boolean
+  openai_usage_debug_log_enabled: boolean
 
   web_search_emulation_enabled?: boolean
 
@@ -338,6 +339,7 @@ export interface UpdateSettingsRequest {
   codex_cli_user_agent?: string
   codex_cli_version?: string
   codex_official_client_passthrough_ua_version?: boolean
+  openai_usage_debug_log_enabled?: boolean
 
   // Payment configuration
   payment_enabled?: boolean

@@ -214,6 +214,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		CodexCLIUserAgent:                    settings.CodexCLIUserAgent,
 		CodexCLIVersion:                      settings.CodexCLIVersion,
 		CodexPassthroughUAVersion:            settings.CodexPassthroughUAVersion,
+		OpenAIUsageDebugLogEnabled:           settings.OpenAIUsageDebugLogEnabled,
 		WebSearchEmulationEnabled:            settings.WebSearchEmulationEnabled,
 		BalanceLowNotifyEnabled:              settings.BalanceLowNotifyEnabled,
 		BalanceLowNotifyThreshold:            settings.BalanceLowNotifyThreshold,
@@ -394,9 +395,10 @@ type UpdateSettingsRequest struct {
 	CodexImageGenerationBridgeEnabled *bool `json:"codex_image_generation_bridge_enabled"`
 
 	// Codex CLI User-Agent
-	CodexCLIUserAgent         *string `json:"codex_cli_user_agent"`
-	CodexCLIVersion           *string `json:"codex_cli_version"`
-	CodexPassthroughUAVersion *bool   `json:"codex_official_client_passthrough_ua_version"`
+	CodexCLIUserAgent          *string `json:"codex_cli_user_agent"`
+	CodexCLIVersion            *string `json:"codex_cli_version"`
+	CodexPassthroughUAVersion  *bool   `json:"codex_official_client_passthrough_ua_version"`
+	OpenAIUsageDebugLogEnabled *bool   `json:"openai_usage_debug_log_enabled"`
 
 	// Balance low notification
 	BalanceLowNotifyEnabled     *bool                   `json:"balance_low_notify_enabled"`
@@ -1196,6 +1198,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.CodexPassthroughUAVersion
 		}(),
+		OpenAIUsageDebugLogEnabled: func() bool {
+			if req.OpenAIUsageDebugLogEnabled != nil {
+				return *req.OpenAIUsageDebugLogEnabled
+			}
+			return previousSettings.OpenAIUsageDebugLogEnabled
+		}(),
 		BalanceLowNotifyEnabled: func() bool {
 			if req.BalanceLowNotifyEnabled != nil {
 				return *req.BalanceLowNotifyEnabled
@@ -1414,6 +1422,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		CodexCLIUserAgent:                    updatedSettings.CodexCLIUserAgent,
 		CodexCLIVersion:                      updatedSettings.CodexCLIVersion,
 		CodexPassthroughUAVersion:            updatedSettings.CodexPassthroughUAVersion,
+		OpenAIUsageDebugLogEnabled:           updatedSettings.OpenAIUsageDebugLogEnabled,
 		BalanceLowNotifyEnabled:              updatedSettings.BalanceLowNotifyEnabled,
 		BalanceLowNotifyThreshold:            updatedSettings.BalanceLowNotifyThreshold,
 		BalanceLowNotifyRechargeURL:          updatedSettings.BalanceLowNotifyRechargeURL,

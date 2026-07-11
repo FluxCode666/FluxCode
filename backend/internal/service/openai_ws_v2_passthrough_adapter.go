@@ -183,6 +183,24 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 					Duration:        turn.Duration,
 					FirstTokenMs:    turn.FirstTokenMs,
 				}
+				firstTokenMsValue := -1
+				if turn.FirstTokenMs != nil {
+					firstTokenMsValue = *turn.FirstTokenMs
+				}
+				logOpenAIUsageDebug(ctx, openAIUsageDebugInput{
+					Location:      "ws_v2_passthrough_turn",
+					RequestID:     turnResult.RequestID,
+					Model:         turnResult.Model,
+					UpstreamModel: turnResult.UpstreamModel,
+					Usage:         turnResult.Usage,
+					Raw: fmt.Sprintf(
+						"turn=%d terminal_event=%s duration_ms=%d first_token_ms=%d",
+						turnNo,
+						strings.TrimSpace(turn.TerminalEventType),
+						turn.Duration.Milliseconds(),
+						firstTokenMsValue,
+					),
+				})
 				logOpenAIWSV2Passthrough(
 					"relay_turn_completed account_id=%d turn=%d request_id=%s terminal_event=%s duration_ms=%d first_token_ms=%d input_tokens=%d output_tokens=%d cache_read_tokens=%d",
 					account.ID,
