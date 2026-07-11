@@ -123,6 +123,7 @@ func TestResolveCodexDefaultsUseUpstreamVersion(t *testing.T) {
 	require.Equal(t, "codex_cli_rs/0.144.1", resolveCodexCLIUserAgent())
 	require.Equal(t, "0.144.1", resolveCodexCLIVersion())
 	require.True(t, resolveCodexPassthroughUAVersion())
+	require.False(t, resolveOpenAIUsageDebugLogEnabled())
 	require.Equal(t, "0.144.1", openAICodexProbeVersion)
 }
 
@@ -240,6 +241,40 @@ func TestOpenAIWSHeadersPreserveOfficialCodexClientUAWhenEnabled(t *testing.T) {
 
 	headers, _ := svc.buildOpenAIWSHeaders(c, account, "token", decision, isCodexCLI, "", "", "")
 	require.Equal(t, "codex_app/4.5.6", headers.Get("User-Agent"))
+}
+
+func TestBuildOpenAIUsageDebugLineIncludesRawUsageAndCosts(t *testing.T) {
+	line := buildOpenAIUsageDebugLine(openAIUsageDebugInput{
+		Location:      "sse_terminal_event",
+		RequestID:     "resp_debug",
+		Model:         "gpt-5.6-sol",
+		BillingModel:  "gpt-5.6-sol",
+		UpstreamModel: "gpt-5.6-sol",
+		Usage: OpenAIUsage{
+			InputTokens:              43864,
+			OutputTokens:             11,
+			CacheCreationInputTokens: 7,
+			CacheReadInputTokens:     43392,
+			ImageOutputTokens:        0,
+		},
+		ActualInputTokens: 465,
+		Cost: &CostBreakdown{
+			InputCost:         0.002325,
+			OutputCost:        0.000330,
+			CacheCreationCost: 0.000014,
+			CacheReadCost:     0.021696,
+			TotalCost:         0.024365,
+			ActualCost:        0.0121825,
+		},
+		Raw: `{"type":"response.completed","response":{"id":"resp_debug","usage":{"input_tokens":43864,"input_tokens_details":{"cache_write_tokens":7}}}}`,
+	})
+
+	require.Contains(t, line, "location=sse_terminal_event")
+	require.Contains(t, line, "request_id=resp_debug")
+	require.Contains(t, line, "usage_cache_write=7")
+	require.Contains(t, line, "token_buckets=input:465 output:11 cache_write:7 cache_read:43392 image_output:0")
+	require.Contains(t, line, "cache_write_cost=0.000014000000")
+	require.Contains(t, line, `raw="{\"type\":\"response.completed\"`)
 }
 
 type failingGinWriter struct {

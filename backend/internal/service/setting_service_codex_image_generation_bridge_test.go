@@ -38,3 +38,28 @@ func TestSettingService_CodexImageGenerationBridgeSetting(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "true", repo.values[SettingKeyCodexImageGenerationBridgeEnabled])
 }
+
+func TestSettingService_OpenAIUsageDebugLogSettingRefreshesCache(t *testing.T) {
+	codexCLICfgCache.Store((*cachedCodexCLIConfig)(nil))
+	t.Cleanup(func() { codexCLICfgCache.Store((*cachedCodexCLIConfig)(nil)) })
+
+	repo := &openAIImagesSettingRepoStub{values: map[string]string{}}
+	svc := NewSettingService(repo, &config.Config{})
+
+	defaults := svc.parseSettings(map[string]string{})
+	require.False(t, defaults.OpenAIUsageDebugLogEnabled)
+	require.False(t, resolveOpenAIUsageDebugLogEnabled())
+
+	enabled := svc.parseSettings(map[string]string{
+		SettingKeyOpenAIUsageDebugLogEnabled: "true",
+	})
+	require.True(t, enabled.OpenAIUsageDebugLogEnabled)
+
+	err := svc.UpdateSettings(context.Background(), &SystemSettings{
+		OpenAIUsageDebugLogEnabled: true,
+		CodexPassthroughUAVersion:  true,
+	})
+	require.NoError(t, err)
+	require.Equal(t, "true", repo.values[SettingKeyOpenAIUsageDebugLogEnabled])
+	require.True(t, resolveOpenAIUsageDebugLogEnabled())
+}

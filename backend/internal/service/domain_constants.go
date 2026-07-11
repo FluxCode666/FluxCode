@@ -416,6 +416,8 @@ const (
 	SettingKeyCodexCLIVersion = "codex_cli_version"
 	// SettingKeyCodexPassthroughUAVersion 开启后官方 Codex 客户端请求保留入站 UA/Version
 	SettingKeyCodexPassthroughUAVersion = "codex_official_client_passthrough_ua_version"
+	// SettingKeyOpenAIUsageDebugLogEnabled 开启后打印 OpenAI 上游 usage 原始响应和计费拆分调试日志（默认 false）
+	SettingKeyOpenAIUsageDebugLogEnabled = "openai_usage_debug_log_enabled"
 )
 
 // AdminAPIKeyPrefix is the prefix for admin API keys (distinct from user "sk-" keys).

@@ -152,9 +152,10 @@ type SystemSettings struct {
 	CodexImageGenerationBridgeEnabled bool // 是否为 Codex /v1/responses 自动注入 image_generation bridge（默认 false）
 
 	// Codex CLI User-Agent 配置
-	CodexCLIUserAgent         string // 发往 OpenAI 上游的 User-Agent 头（默认 "codex_cli_rs/0.144.1"）
-	CodexCLIVersion           string // 发往 OpenAI compact 端点的 Version 头（默认 "0.144.1"）
-	CodexPassthroughUAVersion bool   // 官方 Codex 客户端是否保留入站 UA/Version（默认 true）
+	CodexCLIUserAgent          string // 发往 OpenAI 上游的 User-Agent 头（默认 "codex_cli_rs/0.144.1"）
+	CodexCLIVersion            string // 发往 OpenAI compact 端点的 Version 头（默认 "0.144.1"）
+	CodexPassthroughUAVersion  bool   // 官方 Codex 客户端是否保留入站 UA/Version（默认 true）
+	OpenAIUsageDebugLogEnabled bool   // 是否打印 OpenAI usage 原始响应与计费拆分调试日志（默认 false）
 
 	// Web Search Emulation
 	WebSearchEmulationEnabled bool // 是否启用 web search 模拟

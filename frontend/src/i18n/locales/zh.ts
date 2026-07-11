@@ -5886,6 +5886,9 @@ export default {
         officialClientPassthroughUAVersion: '官方 Codex 客户端保留 UA/Version',
         officialClientPassthroughUAVersionHint:
           '默认开启。开启后，识别为官方 Codex 客户端的请求会保留其入站 User-Agent 与 compact Version；其他请求仍使用下方预设值。',
+        openAIUsageDebugLog: 'OpenAI Usage 调试日志',
+        openAIUsageDebugLogHint:
+          '开启后打印上游原始 usage/终止事件与最终计费拆分，便于线上排查缓存写入费用；验证完成后请关闭。',
         userAgent: 'User-Agent',
         userAgentPlaceholder: '例如 codex_cli_rs/0.144.1',
         userAgentHint: '发往 OpenAI 上游的 User-Agent 请求头。留空则使用默认值 codex_cli_rs/0.144.1。',

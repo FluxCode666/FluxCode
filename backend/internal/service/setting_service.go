@@ -106,6 +106,7 @@ type cachedCodexCLIConfig struct {
 	userAgent            string
 	version              string
 	passthroughUAVersion bool
+	usageDebugLogEnabled bool
 	expiresAt            int64 // unix nano
 }
 
@@ -989,6 +990,7 @@ func (s *SettingService) UpdateSettings(ctx context.Context, settings *SystemSet
 	updates[SettingKeyCodexCLIUserAgent] = settings.CodexCLIUserAgent
 	updates[SettingKeyCodexCLIVersion] = settings.CodexCLIVersion
 	updates[SettingKeyCodexPassthroughUAVersion] = strconv.FormatBool(settings.CodexPassthroughUAVersion)
+	updates[SettingKeyOpenAIUsageDebugLogEnabled] = strconv.FormatBool(settings.OpenAIUsageDebugLogEnabled)
 
 	err = s.settingRepo.SetMultiple(ctx, updates)
 	if err == nil {
@@ -1016,6 +1018,7 @@ func (s *SettingService) UpdateSettings(ctx context.Context, settings *SystemSet
 			userAgent:            settings.CodexCLIUserAgent,
 			version:              settings.CodexCLIVersion,
 			passthroughUAVersion: settings.CodexPassthroughUAVersion,
+			usageDebugLogEnabled: settings.OpenAIUsageDebugLogEnabled,
 			expiresAt:            time.Now().Add(codexCLICfgCacheTTL).UnixNano(),
 		})
 		refreshSystemPromptSettingsCache(settings)
@@ -1248,11 +1251,12 @@ func (s *SettingService) GetCodexCLIConfig(ctx context.Context) (userAgent, vers
 	type cliResult struct {
 		ua, ver     string
 		passthrough bool
+		debug       bool
 	}
 	val, _, _ := codexCLICfgSF.Do("codex_cli_cfg", func() (any, error) {
 		if cached, ok := codexCLICfgCache.Load().(*cachedCodexCLIConfig); ok && cached != nil {
 			if time.Now().UnixNano() < cached.expiresAt {
-				return cliResult{cached.userAgent, cached.version, cached.passthroughUAVersion}, nil
+				return cliResult{cached.userAgent, cached.version, cached.passthroughUAVersion, cached.usageDebugLogEnabled}, nil
 			}
 		}
 		dbCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
@@ -1261,6 +1265,7 @@ func (s *SettingService) GetCodexCLIConfig(ctx context.Context) (userAgent, vers
 			SettingKeyCodexCLIUserAgent,
 			SettingKeyCodexCLIVersion,
 			SettingKeyCodexPassthroughUAVersion,
+			SettingKeyOpenAIUsageDebugLogEnabled,
 		})
 		if err != nil {
 			slog.Warn("failed to get codex CLI config", "error", err)
@@ -1276,13 +1281,18 @@ func (s *SettingService) GetCodexCLIConfig(ctx context.Context) (userAgent, vers
 		if raw := strings.TrimSpace(values[SettingKeyCodexPassthroughUAVersion]); raw != "" {
 			passthrough = raw == "true"
 		}
+		usageDebug := false
+		if raw := strings.TrimSpace(values[SettingKeyOpenAIUsageDebugLogEnabled]); raw != "" {
+			usageDebug = raw == "true"
+		}
 		codexCLICfgCache.Store(&cachedCodexCLIConfig{
 			userAgent:            ua,
 			version:              ver,
 			passthroughUAVersion: passthrough,
+			usageDebugLogEnabled: usageDebug,
 			expiresAt:            time.Now().Add(codexCLICfgCacheTTL).UnixNano(),
 		})
-		return cliResult{ua, ver, passthrough}, nil
+		return cliResult{ua, ver, passthrough, usageDebug}, nil
 	})
 	if r, ok := val.(cliResult); ok {
 		return r.ua, r.ver, r.passthrough
@@ -1987,6 +1997,9 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	result.CodexPassthroughUAVersion = true
 	if raw := strings.TrimSpace(settings[SettingKeyCodexPassthroughUAVersion]); raw != "" {
 		result.CodexPassthroughUAVersion = raw == "true"
+	}
+	if raw := strings.TrimSpace(settings[SettingKeyOpenAIUsageDebugLogEnabled]); raw != "" {
+		result.OpenAIUsageDebugLogEnabled = raw == "true"
 	}
 
 	// Web search emulation: quick enabled check from the JSON config

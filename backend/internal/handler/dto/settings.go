@@ -166,9 +166,10 @@ type SystemSettings struct {
 	CodexImageGenerationBridgeEnabled bool `json:"codex_image_generation_bridge_enabled"`
 
 	// Codex CLI User-Agent
-	CodexCLIUserAgent         string `json:"codex_cli_user_agent"`
-	CodexCLIVersion           string `json:"codex_cli_version"`
-	CodexPassthroughUAVersion bool   `json:"codex_official_client_passthrough_ua_version"`
+	CodexCLIUserAgent          string `json:"codex_cli_user_agent"`
+	CodexCLIVersion            string `json:"codex_cli_version"`
+	CodexPassthroughUAVersion  bool   `json:"codex_official_client_passthrough_ua_version"`
+	OpenAIUsageDebugLogEnabled bool   `json:"openai_usage_debug_log_enabled"`
 
 	// Web Search Emulation
 	WebSearchEmulationEnabled bool `json:"web_search_emulation_enabled"`

@@ -61,6 +61,8 @@ const (
 	codexCLIVersionDefault = "0.144.1"
 	// Codex 限额快照仅用于后台展示/诊断，不需要每个成功请求都立即落库。
 	openAICodexSnapshotPersistMinInterval = 30 * time.Second
+	// OpenAI usage 调试日志可能携带上游原始响应，限制单条 raw 长度避免线上日志膨胀。
+	openAIUsageDebugRawMaxBytes = 8192
 )
 
 // OpenAI allowed headers whitelist (for non-passthrough).
@@ -146,6 +148,119 @@ func resolveCodexPassthroughUAVersion() bool {
 		return cached.passthroughUAVersion
 	}
 	return true
+}
+
+func resolveOpenAIUsageDebugLogEnabled() bool {
+	if cached, ok := codexCLICfgCache.Load().(*cachedCodexCLIConfig); ok && cached != nil {
+		return cached.usageDebugLogEnabled
+	}
+	return false
+}
+
+type openAIUsageDebugInput struct {
+	Location          string
+	RequestID         string
+	Model             string
+	BillingModel      string
+	UpstreamModel     string
+	Usage             OpenAIUsage
+	ActualInputTokens int
+	Cost              *CostBreakdown
+	Raw               string
+}
+
+func buildOpenAIUsageDebugLine(input openAIUsageDebugInput) string {
+	var b strings.Builder
+	appendKV := func(key, value string) {
+		if b.Len() > 0 {
+			b.WriteByte(' ')
+		}
+		b.WriteString(key)
+		b.WriteByte('=')
+		b.WriteString(value)
+	}
+
+	appendKV("location", strings.TrimSpace(input.Location))
+	appendKV("request_id", strings.TrimSpace(input.RequestID))
+	appendKV("model", strings.TrimSpace(input.Model))
+	appendKV("billing_model", strings.TrimSpace(input.BillingModel))
+	appendKV("upstream_model", strings.TrimSpace(input.UpstreamModel))
+	appendKV("usage_input", strconv.Itoa(input.Usage.InputTokens))
+	appendKV("usage_output", strconv.Itoa(input.Usage.OutputTokens))
+	appendKV("usage_cache_write", strconv.Itoa(input.Usage.CacheCreationInputTokens))
+	appendKV("usage_cache_read", strconv.Itoa(input.Usage.CacheReadInputTokens))
+	appendKV("usage_image_output", strconv.Itoa(input.Usage.ImageOutputTokens))
+	appendKV("token_buckets", fmt.Sprintf(
+		"input:%d output:%d cache_write:%d cache_read:%d image_output:%d",
+		input.ActualInputTokens,
+		input.Usage.OutputTokens,
+		input.Usage.CacheCreationInputTokens,
+		input.Usage.CacheReadInputTokens,
+		input.Usage.ImageOutputTokens,
+	))
+	if input.Cost != nil {
+		appendKV("input_cost", fmt.Sprintf("%.12f", input.Cost.InputCost))
+		appendKV("output_cost", fmt.Sprintf("%.12f", input.Cost.OutputCost))
+		appendKV("cache_write_cost", fmt.Sprintf("%.12f", input.Cost.CacheCreationCost))
+		appendKV("cache_read_cost", fmt.Sprintf("%.12f", input.Cost.CacheReadCost))
+		appendKV("image_output_cost", fmt.Sprintf("%.12f", input.Cost.ImageOutputCost))
+		appendKV("total_cost", fmt.Sprintf("%.12f", input.Cost.TotalCost))
+		appendKV("actual_cost", fmt.Sprintf("%.12f", input.Cost.ActualCost))
+	}
+	if input.Raw != "" {
+		appendKV("raw", strconv.Quote(truncateOpenAIUsageDebugRaw(input.Raw)))
+	}
+	return b.String()
+}
+
+func truncateOpenAIUsageDebugRaw(raw string) string {
+	if len(raw) <= openAIUsageDebugRawMaxBytes {
+		return raw
+	}
+	return raw[:openAIUsageDebugRawMaxBytes] + "...[truncated]"
+}
+
+func logOpenAIUsageDebug(ctx context.Context, input openAIUsageDebugInput) {
+	if !resolveOpenAIUsageDebugLogEnabled() {
+		return
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	logger.LegacyPrintfContext(ctx, "service.openai_gateway", "[OpenAIUsageDebug] %s", buildOpenAIUsageDebugLine(input))
+}
+
+func openAIUsageDebugContextFromGin(c *gin.Context) context.Context {
+	if c != nil && c.Request != nil {
+		return c.Request.Context()
+	}
+	return context.Background()
+}
+
+func openAIUsageDebugRequestIDFromJSONBytes(body []byte, fallback string) string {
+	if len(body) == 0 || !gjson.ValidBytes(body) {
+		return strings.TrimSpace(fallback)
+	}
+	values := gjson.GetManyBytes(body, "response.id", "id")
+	for _, value := range values {
+		if id := strings.TrimSpace(value.String()); id != "" {
+			return id
+		}
+	}
+	return strings.TrimSpace(fallback)
+}
+
+func openAIUsageDebugModelFromJSONBytes(body []byte, fallback string) string {
+	if len(body) == 0 || !gjson.ValidBytes(body) {
+		return strings.TrimSpace(fallback)
+	}
+	values := gjson.GetManyBytes(body, "response.model", "model")
+	for _, value := range values {
+		if model := strings.TrimSpace(value.String()); model != "" {
+			return model
+		}
+	}
+	return strings.TrimSpace(fallback)
 }
 
 func shouldPassthroughCodexOfficialClientUAVersion(c *gin.Context, isOfficialClient bool) bool {
@@ -3329,7 +3444,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 			if trimmedData == "[DONE]" {
 				sawDone = true
 			}
-			if openAIStreamEventIsTerminal(trimmedData) {
+			if trimmedData != "[DONE]" && openAIStreamEventIsTerminal(trimmedData) {
 				sawTerminalEvent = true
 			}
 			if firstTokenMs == nil && trimmedData != "" && trimmedData != "[DONE]" {
@@ -3337,6 +3452,16 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 				firstTokenMs = &ms
 			}
 			s.parseSSEUsageBytes(dataBytes, usage)
+			if openAIStreamEventIsTerminal(trimmedData) {
+				logOpenAIUsageDebug(ctx, openAIUsageDebugInput{
+					Location:      "sse_passthrough_terminal_event",
+					RequestID:     openAIUsageDebugRequestIDFromJSONBytes(dataBytes, upstreamRequestID),
+					Model:         openAIUsageDebugModelFromJSONBytes(dataBytes, ""),
+					UpstreamModel: openAIUsageDebugModelFromJSONBytes(dataBytes, ""),
+					Usage:         *usage,
+					Raw:           data,
+				})
+			}
 		}
 
 		if !clientDisconnected {
@@ -3416,6 +3541,14 @@ func (s *OpenAIGatewayService) handleNonStreamingResponsePassthrough(
 		// 兜底：尝试从 SSE 文本中解析 usage
 		usage = s.parseSSEUsageFromBody(string(body))
 	}
+	logOpenAIUsageDebug(ctx, openAIUsageDebugInput{
+		Location:      "non_stream_passthrough_response",
+		RequestID:     openAIUsageDebugRequestIDFromJSONBytes(body, resp.Header.Get("x-request-id")),
+		Model:         openAIUsageDebugModelFromJSONBytes(body, ""),
+		UpstreamModel: openAIUsageDebugModelFromJSONBytes(body, ""),
+		Usage:         *usage,
+		Raw:           string(body),
+	})
 
 	writeOpenAIPassthroughResponseHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 
@@ -3433,12 +3566,14 @@ func (s *OpenAIGatewayService) handleNonStreamingResponsePassthrough(
 func (s *OpenAIGatewayService) handlePassthroughSSEToJSON(resp *http.Response, c *gin.Context, body []byte) (*OpenAIUsage, error) {
 	bodyText := string(body)
 	finalResponse, ok := extractCodexFinalResponse(bodyText)
+	usageDebugRaw := string(body)
 
 	usage := &OpenAIUsage{}
 	if ok {
 		if parsedUsage, parsed := extractOpenAIUsageFromJSONBytes(finalResponse); parsed {
 			*usage = parsedUsage
 		}
+		usageDebugRaw = string(finalResponse)
 		// When the terminal event has an empty output array, reconstruct
 		// output from accumulated delta events so the client gets full content.
 		if len(gjson.GetBytes(finalResponse, "output").Array()) == 0 {
@@ -3461,7 +3596,18 @@ func (s *OpenAIGatewayService) handlePassthroughSSEToJSON(resp *http.Response, c
 			return nil, s.writeOpenAINonStreamingProtocolError(resp, c, msg)
 		}
 		usage = s.parseSSEUsageFromBody(bodyText)
+		if _, terminalPayload, terminalOK := extractOpenAISSETerminalEvent(bodyText); terminalOK {
+			usageDebugRaw = string(terminalPayload)
+		}
 	}
+	logOpenAIUsageDebug(openAIUsageDebugContextFromGin(c), openAIUsageDebugInput{
+		Location:      "passthrough_sse_to_json",
+		RequestID:     openAIUsageDebugRequestIDFromJSONBytes([]byte(usageDebugRaw), resp.Header.Get("x-request-id")),
+		Model:         openAIUsageDebugModelFromJSONBytes([]byte(usageDebugRaw), ""),
+		UpstreamModel: openAIUsageDebugModelFromJSONBytes([]byte(usageDebugRaw), ""),
+		Usage:         *usage,
+		Raw:           usageDebugRaw,
+	})
 
 	writeOpenAIPassthroughResponseHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 
@@ -4032,6 +4178,8 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 
 		// Extract data from SSE line (supports both "data: " and "data:" formats)
 		if data, ok := extractOpenAISSEDataLine(line); ok {
+			rawData := data
+			rawDataBytes := []byte(rawData)
 
 			// Replace model in response if needed.
 			// Fast path: most events do not contain model field values.
@@ -4078,6 +4226,16 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 				firstTokenMs = &ms
 			}
 			s.parseSSEUsageBytes(dataBytes, usage)
+			if strings.TrimSpace(rawData) != "[DONE]" && openAIStreamEventIsTerminal(rawData) {
+				logOpenAIUsageDebug(ctx, openAIUsageDebugInput{
+					Location:      "sse_terminal_event",
+					RequestID:     openAIUsageDebugRequestIDFromJSONBytes(rawDataBytes, ""),
+					Model:         openAIUsageDebugModelFromJSONBytes(rawDataBytes, originalModel),
+					UpstreamModel: openAIUsageDebugModelFromJSONBytes(rawDataBytes, mappedModel),
+					Usage:         *usage,
+					Raw:           rawData,
+				})
+			}
 			return
 		}
 
@@ -4428,6 +4586,14 @@ func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, r
 		return nil, fmt.Errorf("parse response: invalid json response")
 	}
 	usage := &usageValue
+	logOpenAIUsageDebug(ctx, openAIUsageDebugInput{
+		Location:      "non_stream_response",
+		RequestID:     openAIUsageDebugRequestIDFromJSONBytes(body, resp.Header.Get("x-request-id")),
+		Model:         originalModel,
+		UpstreamModel: openAIUsageDebugModelFromJSONBytes(body, mappedModel),
+		Usage:         *usage,
+		Raw:           string(body),
+	})
 
 	// Replace model in response if needed
 	if originalModel != mappedModel {
@@ -4456,12 +4622,14 @@ func isEventStreamResponse(header http.Header) bool {
 func (s *OpenAIGatewayService) handleSSEToJSON(resp *http.Response, c *gin.Context, body []byte, originalModel, mappedModel string) (*OpenAIUsage, error) {
 	bodyText := string(body)
 	finalResponse, ok := extractCodexFinalResponse(bodyText)
+	usageDebugRaw := string(body)
 
 	usage := &OpenAIUsage{}
 	if ok {
 		if parsedUsage, parsed := extractOpenAIUsageFromJSONBytes(finalResponse); parsed {
 			*usage = parsedUsage
 		}
+		usageDebugRaw = string(finalResponse)
 		// When the terminal event has an empty output array, reconstruct
 		// output from accumulated delta events so the client gets full content.
 		// gjson Array() returns empty slice for null, missing, or empty arrays.
@@ -4488,11 +4656,22 @@ func (s *OpenAIGatewayService) handleSSEToJSON(resp *http.Response, c *gin.Conte
 			return nil, s.writeOpenAINonStreamingProtocolError(resp, c, msg)
 		}
 		usage = s.parseSSEUsageFromBody(bodyText)
+		if _, terminalPayload, terminalOK := extractOpenAISSETerminalEvent(bodyText); terminalOK {
+			usageDebugRaw = string(terminalPayload)
+		}
 		if originalModel != mappedModel {
 			bodyText = s.replaceModelInSSEBody(bodyText, mappedModel, originalModel)
 		}
 		body = []byte(bodyText)
 	}
+	logOpenAIUsageDebug(openAIUsageDebugContextFromGin(c), openAIUsageDebugInput{
+		Location:      "sse_to_json",
+		RequestID:     openAIUsageDebugRequestIDFromJSONBytes([]byte(usageDebugRaw), resp.Header.Get("x-request-id")),
+		Model:         originalModel,
+		UpstreamModel: openAIUsageDebugModelFromJSONBytes([]byte(usageDebugRaw), mappedModel),
+		Usage:         *usage,
+		Raw:           usageDebugRaw,
+	})
 
 	responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 
@@ -5102,6 +5281,26 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	if subscription != nil {
 		usageLog.SubscriptionID = &subscription.ID
 	}
+	logOpenAIUsageDebug(ctx, openAIUsageDebugInput{
+		Location:          "record_usage_log",
+		RequestID:         requestID,
+		Model:             result.Model,
+		BillingModel:      billingModel,
+		UpstreamModel:     result.UpstreamModel,
+		Usage:             result.Usage,
+		ActualInputTokens: actualInputTokens,
+		Cost:              cost,
+		Raw: fmt.Sprintf(
+			"usage_log_total_tokens=%d stream=%v ws=%v service_tier=%s inbound_endpoint=%s upstream_endpoint=%s requested_model=%s",
+			usageLog.TotalTokens(),
+			result.Stream,
+			result.OpenAIWSMode,
+			serviceTier,
+			strings.TrimSpace(input.InboundEndpoint),
+			strings.TrimSpace(input.UpstreamEndpoint),
+			requestedModel,
+		),
+	})
 
 	// 计算账号统计定价费用（使用最终上游模型匹配自定义规则）
 	if apiKey.GroupID != nil {
