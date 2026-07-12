@@ -268,6 +268,117 @@ describe('ModelPricingPage', () => {
     )
   })
 
+  it('shows per-request price instead of input and output for usage-billed models', async () => {
+    listModels.mockResolvedValueOnce([
+      {
+        id: 'gpt-image-1',
+        display_name: 'gpt-image-1',
+        platform: 'openai',
+        platforms: ['openai'],
+        capabilities: ['image_generation'],
+        supported_group_count: 1,
+        billing_mode: 'image',
+        official_price: {
+          input_price: 0.000001,
+          output_price: 0.000002,
+          cache_write_price: 0,
+          cache_read_price: 0,
+          image_output_price: 0,
+          per_request_price: 0,
+          intervals: []
+        },
+        lowest_group_price: {
+          input_price: 0.000001,
+          output_price: 0.000002,
+          cache_write_price: 0,
+          cache_read_price: 0,
+          image_output_price: 0,
+          per_request_price: 0.08,
+          intervals: []
+        }
+      }
+    ])
+    getModel.mockResolvedValueOnce({
+      id: 'gpt-image-1',
+      display_name: 'gpt-image-1',
+      platform: 'openai',
+      platforms: ['openai'],
+      capabilities: ['image_generation'],
+      supported_group_count: 1,
+      billing_mode: 'image',
+      official_price: {
+        input_price: 0.000001,
+        output_price: 0.000002,
+        cache_write_price: 0,
+        cache_read_price: 0,
+        image_output_price: 0,
+        per_request_price: 0,
+        intervals: []
+      },
+      lowest_group_price: {
+        input_price: 0.000001,
+        output_price: 0.000002,
+        cache_write_price: 0,
+        cache_read_price: 0,
+        image_output_price: 0,
+        per_request_price: 0.08,
+        intervals: []
+      },
+      groups: [
+        {
+          group_id: 1,
+          group_name: '图片组',
+          rate_multiplier: 1,
+          billing_mode: 'image',
+          price: {
+            input_price: 0.000001,
+            output_price: 0.000002,
+            cache_write_price: 0,
+            cache_read_price: 0,
+            image_output_price: 0,
+            per_request_price: 0.08,
+            intervals: []
+          },
+          multipliers: {
+            input_price: 1,
+            output_price: 1,
+            cache_write_price: 0,
+            cache_read_price: 0,
+            image_output_price: 0,
+            per_request_price: 0
+          }
+        }
+      ]
+    })
+
+    const wrapper = mount(ModelPricingPage, {
+      global: {
+        stubs: {
+          PublicHeader: true,
+          BaseDialog: BaseDialogStub
+        }
+      }
+    })
+
+    await flushPromises()
+
+    const modelCard = wrapper.get('[data-testid="model-card-gpt-image-1"]')
+    expect(modelCard.text()).toContain('按次/图片')
+    expect(modelCard.text()).toContain('$0.080000')
+    expect(modelCard.text()).not.toContain('输入')
+    expect(modelCard.text()).not.toContain('输出')
+
+    await modelCard.trigger('click')
+    await flushPromises()
+
+    const detailModal = wrapper.get('[data-testid="model-pricing-detail-modal"]')
+    expect(detailModal.text()).toContain('图片组')
+    expect(detailModal.text()).toContain('按次/图片')
+    expect(detailModal.text()).toContain('$0.080000')
+    expect(detailModal.text()).not.toContain('输入')
+    expect(detailModal.text()).not.toContain('输出')
+  })
+
   it('shows query error and retries', async () => {
     listModels.mockRejectedValueOnce(new Error('network'))
 

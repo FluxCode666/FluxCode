@@ -503,6 +503,8 @@ func TestModelPricingPageServiceAggregatesSharedModelAcrossPlatforms(t *testing.
 	require.NoError(t, err)
 	require.Len(t, models, 1)
 	require.Equal(t, "anthropic, openrouter", models[0].Platform)
+	require.Equal(t, string(BillingModePerRequest), models[0].BillingMode)
+	require.Equal(t, 0.03, models[0].LowestGroupPrice.PerRequestPrice)
 	require.ElementsMatch(t, []string{"streaming", "tools"}, models[0].Capabilities)
 
 	detail, err := svc.GetModel(context.Background(), "claude-sonnet-4")

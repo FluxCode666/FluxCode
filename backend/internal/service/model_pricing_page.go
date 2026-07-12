@@ -85,6 +85,7 @@ type ModelPricingModelSummary struct {
 	Platforms           []string           `json:"platforms"`
 	Capabilities        []string           `json:"capabilities"`
 	SupportedGroupCount int                `json:"supported_group_count"`
+	BillingMode         string             `json:"billing_mode"`
 	OfficialPrice       ModelPricingAmount `json:"official_price"`
 	LowestGroupPrice    ModelPricingAmount `json:"lowest_group_price"`
 }
@@ -139,6 +140,7 @@ func (s *ModelPricingPageService) ListModels(ctx context.Context, query ModelPri
 			continue
 		}
 		filteredGroups := item.groupsMatchingFilters(query)
+		displayPrice := lowestGroupDisplayPrice(filteredGroups)
 		models = append(models, ModelPricingModelSummary{
 			ID:                  item.ID,
 			DisplayName:         displayModelName(item.ID),
@@ -146,8 +148,9 @@ func (s *ModelPricingPageService) ListModels(ctx context.Context, query ModelPri
 			Platforms:           item.SortedPlatforms(),
 			Capabilities:        sortedStrings(item.Capabilities),
 			SupportedGroupCount: len(item.Groups),
+			BillingMode:         string(displayPrice.BillingMode),
 			OfficialPrice:       modelPricingToAmount(item.Official),
-			LowestGroupPrice:    lowestGroupPrice(filteredGroups),
+			LowestGroupPrice:    displayPrice.Amount,
 		})
 	}
 	sort.Slice(models, func(i, j int) bool {
@@ -457,17 +460,28 @@ func applyGroupMultiplier(amount ModelPricingAmount, multiplier float64) ModelPr
 	return amount
 }
 
+type modelPricingDisplayPrice struct {
+	Amount      ModelPricingAmount
+	BillingMode BillingMode
+}
+
 func lowestGroupPrice(groups []modelCatalogGroup) ModelPricingAmount {
+	return lowestGroupDisplayPrice(groups).Amount
+}
+
+func lowestGroupDisplayPrice(groups []modelCatalogGroup) modelPricingDisplayPrice {
 	var lowest ModelPricingAmount
+	mode := BillingModeToken
 	found := false
 	for _, group := range groups {
 		final := applyGroupMultiplier(group.Resolved, group.RateMultiplier)
 		if !found || modelPricingAmountLess(final, lowest) {
 			lowest = final
+			mode = group.BillingMode
 			found = true
 		}
 	}
-	return lowest
+	return modelPricingDisplayPrice{Amount: lowest, BillingMode: mode}
 }
 
 func modelPricingAmountLess(a, b ModelPricingAmount) bool {

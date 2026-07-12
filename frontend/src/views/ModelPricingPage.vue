@@ -112,18 +112,26 @@
             </div>
 
             <div class="relative mt-auto grid grid-cols-2 gap-3 pt-6 text-xs">
-              <div class="rounded-xl bg-black/[0.03] p-3 dark:bg-white/[0.06]">
-                <div class="text-gray-500 dark:text-dark-400">{{ t('modelPricing.input', '输入') }}</div>
+              <div v-if="isSummaryUsageBilling(model)" class="col-span-2 rounded-xl bg-black/[0.03] p-3 dark:bg-white/[0.06]">
+                <div class="text-gray-500 dark:text-dark-400">{{ t('modelPricing.requestOrImage', '按次/图片') }}</div>
                 <div class="mt-1 font-semibold text-gray-950 dark:text-white">
-                  {{ formatTokenPrice(summaryDisplayPrice(model).input_price) }}
+                  {{ formatPrice(summaryUsagePrice(model)) }}
                 </div>
               </div>
-              <div class="rounded-xl bg-black/[0.03] p-3 dark:bg-white/[0.06]">
-                <div class="text-gray-500 dark:text-dark-400">{{ t('modelPricing.output', '输出') }}</div>
-                <div class="mt-1 font-semibold text-gray-950 dark:text-white">
-                  {{ formatTokenPrice(summaryDisplayPrice(model).output_price) }}
+              <template v-else>
+                <div class="rounded-xl bg-black/[0.03] p-3 dark:bg-white/[0.06]">
+                  <div class="text-gray-500 dark:text-dark-400">{{ t('modelPricing.input', '输入') }}</div>
+                  <div class="mt-1 font-semibold text-gray-950 dark:text-white">
+                    {{ formatTokenPrice(summaryDisplayPrice(model).input_price) }}
+                  </div>
                 </div>
-              </div>
+                <div class="rounded-xl bg-black/[0.03] p-3 dark:bg-white/[0.06]">
+                  <div class="text-gray-500 dark:text-dark-400">{{ t('modelPricing.output', '输出') }}</div>
+                  <div class="mt-1 font-semibold text-gray-950 dark:text-white">
+                    {{ formatTokenPrice(summaryDisplayPrice(model).output_price) }}
+                  </div>
+                </div>
+              </template>
             </div>
           </article>
         </div>
@@ -187,7 +195,7 @@
                 </span>
               </div>
             </div>
-            <div class="grid grid-cols-2 gap-2 text-xs">
+            <div v-if="hasDetailTokenPricing" class="grid grid-cols-2 gap-2 text-xs">
               <div class="rounded-xl bg-black/[0.03] px-3 py-2 dark:bg-white/[0.06]">
                 <div class="text-gray-500 dark:text-dark-400">{{ t('modelPricing.input', '输入') }}</div>
                 <div class="mt-1 font-semibold text-gray-950 dark:text-white">
@@ -209,11 +217,11 @@
                 <tr class="border-b border-black/5 text-left text-xs text-gray-500 dark:border-white/10 dark:text-dark-400">
                   <th class="py-2 pr-4">{{ t('modelPricing.group', '分组') }}</th>
                   <th class="py-2 pr-4">{{ t('modelPricing.rate', '倍率') }}</th>
-                  <th class="py-2 pr-4">{{ t('modelPricing.input', '输入') }}</th>
-                  <th class="py-2 pr-4">{{ t('modelPricing.output', '输出') }}</th>
-                  <th class="py-2 pr-4">{{ t('modelPricing.cacheWrite', '缓存写入') }}</th>
-                  <th class="py-2 pr-4">{{ t('modelPricing.cacheRead', '缓存读取') }}</th>
-                  <th class="py-2 pr-4">{{ t('modelPricing.requestOrImage', '按次/图片') }}</th>
+                  <th v-if="hasDetailTokenPricing" class="py-2 pr-4">{{ t('modelPricing.input', '输入') }}</th>
+                  <th v-if="hasDetailTokenPricing" class="py-2 pr-4">{{ t('modelPricing.output', '输出') }}</th>
+                  <th v-if="hasDetailTokenPricing" class="py-2 pr-4">{{ t('modelPricing.cacheWrite', '缓存写入') }}</th>
+                  <th v-if="hasDetailTokenPricing" class="py-2 pr-4">{{ t('modelPricing.cacheRead', '缓存读取') }}</th>
+                  <th v-if="hasDetailUsagePricing" class="py-2 pr-4">{{ t('modelPricing.requestOrImage', '按次/图片') }}</th>
                 </tr>
               </thead>
               <tbody>
@@ -224,18 +232,16 @@
                 >
                   <td class="py-3 pr-4 font-medium text-gray-950 dark:text-white">{{ group.group_name }}</td>
                   <td class="py-3 pr-4">{{ group.rate_multiplier.toFixed(2) }}x</td>
-                  <td class="py-3 pr-4">{{ formatPrice(group.price.input_price) }}</td>
-                  <td class="py-3 pr-4">{{ formatPrice(group.price.output_price) }}</td>
-                  <td class="py-3 pr-4">
+                  <td v-if="hasDetailTokenPricing" class="py-3 pr-4">{{ formatPrice(tokenGroupPrice(group, 'input_price')) }}</td>
+                  <td v-if="hasDetailTokenPricing" class="py-3 pr-4">{{ formatPrice(tokenGroupPrice(group, 'output_price')) }}</td>
+                  <td v-if="hasDetailTokenPricing" class="py-3 pr-4">
                     {{ formatPrice(group.price.cache_write_price) }}
                   </td>
-                  <td class="py-3 pr-4">
+                  <td v-if="hasDetailTokenPricing" class="py-3 pr-4">
                     {{ formatPrice(group.price.cache_read_price) }}
                   </td>
-                  <td class="py-3 pr-4">
-                    {{
-                      formatPrice(group.price.per_request_price || group.price.image_output_price)
-                    }}
+                  <td v-if="hasDetailUsagePricing" class="py-3 pr-4">
+                    {{ formatPrice(usageGroupPrice(group)) }}
                   </td>
                 </tr>
               </tbody>
@@ -255,7 +261,7 @@ import BaseDialog from '@/components/common/BaseDialog.vue'
 import Select from '@/components/common/Select.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { useClipboard } from '@/composables/useClipboard'
-import { modelPricingAPI, type ModelCapability, type ModelPricingDetail, type ModelPricingGroupOption, type ModelPricingSummary } from '@/api/modelPricing'
+import { modelPricingAPI, type ModelCapability, type ModelPricingAmount, type ModelPricingBillingMode, type ModelPricingDetail, type ModelPricingGroupOption, type ModelPricingGroupPrice, type ModelPricingSummary } from '@/api/modelPricing'
 import { useAppStore } from '@/stores'
 
 const { t } = useI18n()
@@ -318,6 +324,8 @@ const groupOptions = computed(() => [
 ])
 
 const detailTitle = computed(() => detail.value?.display_name || selectedModelId.value || t('modelPricing.title', '模型定价'))
+const hasDetailTokenPricing = computed(() => detail.value?.groups.some((group) => !isUsageBillingMode(group.billing_mode)) ?? false)
+const hasDetailUsagePricing = computed(() => detail.value?.groups.some((group) => isUsageBillingMode(group.billing_mode)) ?? false)
 
 watch(searchInput, (value) => {
   if (searchTimer) {
@@ -495,6 +503,43 @@ function formatTokenPrice(value: number): string {
 
 function summaryDisplayPrice(model: ModelPricingSummary) {
   return model.lowest_group_price || model.official_price
+}
+
+function isSummaryUsageBilling(model: ModelPricingSummary): boolean {
+  return isUsageBillingMode(summaryBillingMode(model))
+}
+
+function summaryBillingMode(model: ModelPricingSummary): ModelPricingBillingMode {
+  if (model.billing_mode) {
+    return model.billing_mode
+  }
+  return usageAmountPrice(summaryDisplayPrice(model)) > 0 ? 'per_request' : 'token'
+}
+
+function isUsageBillingMode(mode: ModelPricingBillingMode | string | undefined): boolean {
+  return mode === 'per_request' || mode === 'image'
+}
+
+function summaryUsagePrice(model: ModelPricingSummary): number {
+  return usageAmountPrice(summaryDisplayPrice(model))
+}
+
+function usageGroupPrice(group: ModelPricingGroupPrice): number {
+  if (!isUsageBillingMode(group.billing_mode)) {
+    return 0
+  }
+  return usageAmountPrice(group.price)
+}
+
+function tokenGroupPrice(group: ModelPricingGroupPrice, key: 'input_price' | 'output_price'): number {
+  if (isUsageBillingMode(group.billing_mode)) {
+    return 0
+  }
+  return group.price[key]
+}
+
+function usageAmountPrice(amount: ModelPricingAmount): number {
+  return amount.per_request_price || amount.image_output_price
 }
 
 function formatPrice(price: number): string {

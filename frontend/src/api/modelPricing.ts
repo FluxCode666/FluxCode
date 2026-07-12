@@ -14,6 +14,8 @@ export type ModelCapability =
   | 'audio_input'
   | 'audio_output'
 
+export type ModelPricingBillingMode = 'token' | 'per_request' | 'image'
+
 export interface ModelPricingInterval {
   min_tokens: number
   max_tokens: number | null
@@ -51,6 +53,7 @@ export interface ModelPricingSummary {
   platforms: string[]
   capabilities: ModelCapability[]
   supported_group_count: number
+  billing_mode?: ModelPricingBillingMode
   official_price: ModelPricingAmount
   lowest_group_price: ModelPricingAmount
 }
@@ -65,7 +68,7 @@ export interface ModelPricingGroupPrice {
   group_id: number
   group_name: string
   rate_multiplier: number
-  billing_mode: 'token' | 'per_request' | 'image'
+  billing_mode: ModelPricingBillingMode
   price: ModelPricingAmount
   multipliers: ModelPricingMultipliers
 }
