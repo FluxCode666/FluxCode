@@ -1329,6 +1329,45 @@ func TestOpenAIStreamingClientDisconnectDrainsUpstreamUsage(t *testing.T) {
 	}
 }
 
+func TestOpenAIStreamingFlushesTerminalEventBeforeTailReadError(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	logSink, cleanup := captureStructuredLog(t)
+	defer cleanup()
+
+	svc := &OpenAIGatewayService{cfg: &config.Config{
+		Gateway: config.GatewayConfig{
+			StreamDataIntervalTimeout: 1,
+			MaxLineSize:               defaultMaxLineSize,
+		},
+	}}
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/", nil)
+
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"X-Request-Id": []string{"rid-tail-error"}},
+		Body: &streamReadCloser{
+			payload: []byte(strings.Join([]string{
+				`data: {"type":"response.in_progress","response":{}}`,
+				`data: {"type":"response.completed","response":{"usage":{"input_tokens":3,"output_tokens":5}}}`,
+			}, "\n\n") + "\n\n"),
+			err: errors.New("stream error: stream ID 245; INTERNAL_ERROR; received from peer"),
+		},
+	}
+
+	result, err := svc.handleStreamingResponse(c.Request.Context(), resp, c, &Account{ID: 1}, time.Now(), "model", "model")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Contains(t, rec.Body.String(), `"type":"response.completed"`)
+	require.Equal(t, "data: {\"type\":\"response.in_progress\",\"response\":{}}\n\ndata: {\"type\":\"response.completed\",\"response\":{\"usage\":{\"input_tokens\":3,\"output_tokens\":5}}}\n\n", rec.Body.String())
+	require.True(t, logSink.ContainsMessageAtLevel("Upstream scan ended after terminal event", "warn"))
+	require.True(t, logSink.ContainsFieldValue("account_id", "1"))
+	require.True(t, logSink.ContainsFieldValue("upstream_request_id", "rid-tail-error"))
+	require.True(t, logSink.ContainsFieldValue("terminal_event_type", "response.completed"))
+}
+
 func TestOpenAIStreamingMissingTerminalEventReturnsIncompleteError(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	cfg := &config.Config{

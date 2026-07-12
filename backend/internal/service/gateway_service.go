@@ -112,19 +112,23 @@ func GatewayModelsListCacheStats() (cacheHit, cacheMiss, store int64) {
 }
 
 func openAIStreamEventIsTerminal(data string) bool {
-	trimmed := strings.TrimSpace(data)
-	if trimmed == "" {
-		return false
-	}
-	if trimmed == "[DONE]" {
-		return true
-	}
-	switch gjson.Get(trimmed, "type").String() {
-	case "response.completed", "response.done", "response.failed":
+	switch openAIStreamTerminalEventType(data) {
+	case "[DONE]", "response.completed", "response.done", "response.failed":
 		return true
 	default:
 		return false
 	}
+}
+
+func openAIStreamTerminalEventType(data string) string {
+	trimmed := strings.TrimSpace(data)
+	if trimmed == "" {
+		return ""
+	}
+	if trimmed == "[DONE]" {
+		return "[DONE]"
+	}
+	return gjson.Get(trimmed, "type").String()
 }
 
 func anthropicStreamEventIsTerminal(eventName, data string) bool {

@@ -4113,6 +4113,7 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 	errorEventSent := false
 	clientDisconnected := false // 客户端断开后继续 drain 上游以收集 usage
 	sawTerminalEvent := false
+	terminalEventType := ""
 	sendErrorEvent := func(reason string) {
 		if errorEventSent || clientDisconnected {
 			return
@@ -4153,8 +4154,15 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 			return nil, nil, false
 		}
 		if sawTerminalEvent {
-			logger.LegacyPrintf("service.openai_gateway", "Upstream scan ended after terminal event: %v", scanErr)
-			return resultWithUsage(), nil, true
+			logger.FromContext(ctx).Warn("Upstream scan ended after terminal event",
+				zap.String("component", "service.openai_gateway"),
+				zap.Int64("account_id", account.ID),
+				zap.String("upstream_request_id", strings.TrimSpace(resp.Header.Get("x-request-id"))),
+				zap.String("terminal_event_type", terminalEventType),
+				zap.Error(scanErr),
+			)
+			result, err := finalizeStream()
+			return result, err, true
 		}
 		// 客户端断开/取消请求时，上游读取往往会返回 context canceled。
 		// /v1/responses 的 SSE 事件必须符合 OpenAI 协议；这里不注入自定义 error event，避免下游 SDK 解析失败。
@@ -4190,6 +4198,7 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 			dataBytes := []byte(data)
 			if openAIStreamEventIsTerminal(data) {
 				sawTerminalEvent = true
+				terminalEventType = openAIStreamTerminalEventType(data)
 			}
 
 			// Correct Codex tool calls if needed (apply_patch -> edit, etc.)
