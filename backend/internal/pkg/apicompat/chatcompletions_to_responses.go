@@ -1,6 +1,7 @@
 package apicompat
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -21,20 +22,31 @@ func ChatCompletionsToResponses(req *ChatCompletionsRequest) (*ResponsesRequest,
 		return nil, err
 	}
 
-	inputJSON, err := json.Marshal(input)
+	inputJSON, err := marshalJSONWithoutHTMLEscape(input)
 	if err != nil {
 		return nil, err
 	}
 
 	out := &ResponsesRequest{
-		Model:        req.Model,
-		Instructions: req.Instructions,
-		Input:        inputJSON,
-		Temperature:  req.Temperature,
-		TopP:         req.TopP,
-		Stream:       true, // upstream always streams
-		Include:      []string{"reasoning.encrypted_content"},
-		ServiceTier:  req.ServiceTier,
+		Model:             req.Model,
+		Instructions:      req.Instructions,
+		Input:             inputJSON,
+		Stream:            true, // upstream always streams
+		Include:           []string{"reasoning.encrypted_content"},
+		ServiceTier:       req.ServiceTier,
+		ParallelToolCalls: req.ParallelToolCalls,
+	}
+	if !IsReasoningChatModel(req.Model) {
+		out.Temperature = req.Temperature
+		out.TopP = req.TopP
+	}
+
+	format, err := chatResponseFormatToResponsesTextFormat(req.ResponseFormat)
+	if err != nil {
+		return nil, err
+	}
+	if len(format) > 0 {
+		out.Text = &ResponsesText{Format: format}
 	}
 
 	storeFalse := false
@@ -82,6 +94,60 @@ func ChatCompletionsToResponses(req *ChatCompletionsRequest) (*ResponsesRequest,
 	}
 
 	return out, nil
+}
+
+func IsReasoningChatModel(model string) bool {
+	model = strings.ToLower(strings.TrimSpace(model))
+	if idx := strings.LastIndex(model, "/"); idx >= 0 {
+		model = model[idx+1:]
+	}
+	if strings.HasPrefix(model, "gpt5") {
+		model = "gpt-5" + strings.TrimPrefix(model, "gpt5")
+	}
+	return strings.HasPrefix(model, "gpt-5")
+}
+
+func chatResponseFormatToResponsesTextFormat(raw json.RawMessage) (json.RawMessage, error) {
+	raw = bytes.TrimSpace(raw)
+	if len(raw) == 0 || bytes.Equal(raw, []byte("null")) {
+		return nil, nil
+	}
+
+	var obj map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &obj); err != nil {
+		return nil, fmt.Errorf("parse response_format: %w", err)
+	}
+	var typ string
+	if err := json.Unmarshal(obj["type"], &typ); err != nil {
+		return nil, fmt.Errorf("parse response_format.type: %w", err)
+	}
+	if typ != "json_schema" {
+		return append(json.RawMessage(nil), raw...), nil
+	}
+
+	var schema map[string]json.RawMessage
+	if err := json.Unmarshal(obj["json_schema"], &schema); err != nil {
+		return nil, fmt.Errorf("parse response_format.json_schema: %w", err)
+	}
+	if schema == nil {
+		return nil, fmt.Errorf("parse response_format.json_schema: expected object")
+	}
+	schema["type"] = json.RawMessage(`"json_schema"`)
+	out, err := json.Marshal(schema)
+	if err != nil {
+		return nil, fmt.Errorf("marshal response_format.text.format: %w", err)
+	}
+	return out, nil
+}
+
+func marshalJSONWithoutHTMLEscape(v any) (json.RawMessage, error) {
+	var buffer bytes.Buffer
+	encoder := json.NewEncoder(&buffer)
+	encoder.SetEscapeHTML(false)
+	if err := encoder.Encode(v); err != nil {
+		return nil, err
+	}
+	return bytes.TrimSpace(buffer.Bytes()), nil
 }
 
 // convertChatMessagesToResponsesInput converts the Chat Completions messages
@@ -151,20 +217,22 @@ func chatUserToResponses(m ChatMessage) ([]ResponsesInputItem, error) {
 func chatAssistantToResponses(m ChatMessage) ([]ResponsesInputItem, error) {
 	var items []ResponsesInputItem
 
-	// Emit assistant message with output_text if content is non-empty.
-	if len(m.Content) > 0 {
-		s, err := parseAssistantContent(m.Content)
+	// Preserve assistant reasoning as tagged historical input, followed by the
+	// assistant's visible content in the same output_text item.
+	s, err := parseAssistantContent(m.Content)
+	if err != nil {
+		return nil, err
+	}
+	if m.ReasoningContent != "" {
+		s = "<thinking>" + m.ReasoningContent + "</thinking>" + s
+	}
+	if s != "" {
+		parts := []ResponsesContentPart{{Type: "output_text", Text: s}}
+		partsJSON, err := marshalJSONWithoutHTMLEscape(parts)
 		if err != nil {
 			return nil, err
 		}
-		if s != "" {
-			parts := []ResponsesContentPart{{Type: "output_text", Text: s}}
-			partsJSON, err := json.Marshal(parts)
-			if err != nil {
-				return nil, err
-			}
-			items = append(items, ResponsesInputItem{Role: "assistant", Content: partsJSON})
-		}
+		items = append(items, ResponsesInputItem{Role: "assistant", Content: partsJSON})
 	}
 
 	// Emit one function_call item per tool_call.
@@ -325,7 +393,11 @@ func marshalChatInputContent(content chatMessageContent) (json.RawMessage, error
 	if content.Text != nil {
 		return json.Marshal(*content.Text)
 	}
-	return json.Marshal(convertChatContentPartsToResponses(content.Parts))
+	parts := convertChatContentPartsToResponses(content.Parts)
+	if len(parts) == 0 {
+		return json.Marshal("")
+	}
+	return json.Marshal(parts)
 }
 
 func convertChatContentPartsToResponses(parts []ChatContentPart) []ResponsesContentPart {
@@ -381,6 +453,14 @@ func stringPtr(s string) *string {
 	return &s
 }
 
+func defaultStrictFalse(src *bool) *bool {
+	if src != nil {
+		return src
+	}
+	v := false
+	return &v
+}
+
 // convertChatToolsToResponses maps Chat Completions tool definitions and legacy
 // function definitions to Responses API tool definitions.
 func convertChatToolsToResponses(tools []ChatTool, functions []ChatFunction) []ResponsesTool {
@@ -395,7 +475,7 @@ func convertChatToolsToResponses(tools []ChatTool, functions []ChatFunction) []R
 			Name:        t.Function.Name,
 			Description: t.Function.Description,
 			Parameters:  t.Function.Parameters,
-			Strict:      t.Function.Strict,
+			Strict:      defaultStrictFalse(t.Function.Strict),
 		}
 		out = append(out, rt)
 	}
@@ -407,7 +487,7 @@ func convertChatToolsToResponses(tools []ChatTool, functions []ChatFunction) []R
 			Name:        f.Name,
 			Description: f.Description,
 			Parameters:  f.Parameters,
-			Strict:      f.Strict,
+			Strict:      defaultStrictFalse(f.Strict),
 		}
 		out = append(out, rt)
 	}
@@ -420,7 +500,7 @@ func convertChatToolsToResponses(tools []ChatTool, functions []ChatFunction) []R
 //
 //	"auto" → "auto"
 //	"none" → "none"
-//	{"name":"X"} → {"type":"function","function":{"name":"X"}}
+//	{"name":"X"} → {"type":"function","name":"X"}
 func convertChatFunctionCallToToolChoice(raw json.RawMessage) (json.RawMessage, error) {
 	// Try string first ("auto", "none", etc.) — pass through as-is.
 	var s string
@@ -435,8 +515,5 @@ func convertChatFunctionCallToToolChoice(raw json.RawMessage) (json.RawMessage, 
 	if err := json.Unmarshal(raw, &obj); err != nil {
 		return nil, err
 	}
-	return json.Marshal(map[string]any{
-		"type":     "function",
-		"function": map[string]string{"name": obj.Name},
-	})
+	return json.Marshal(map[string]any{"type": "function", "name": obj.Name})
 }

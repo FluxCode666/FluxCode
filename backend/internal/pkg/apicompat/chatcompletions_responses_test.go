@@ -32,6 +32,60 @@ func TestChatCompletionsToResponses_BasicText(t *testing.T) {
 	assert.Equal(t, "user", items[0].Role)
 }
 
+func TestChatCompletionsToResponses_GPT56StripsSampling(t *testing.T) {
+	v := 0.7
+	resp, err := ChatCompletionsToResponses(&ChatCompletionsRequest{
+		Model: "gpt5.6", Messages: []ChatMessage{{Role: "user", Content: json.RawMessage(`"hi"`)}},
+		Temperature: &v, TopP: &v,
+	})
+	require.NoError(t, err)
+	require.Nil(t, resp.Temperature)
+	require.Nil(t, resp.TopP)
+}
+
+func TestChatCompletionsToResponses_NonReasoningModelPreservesSampling(t *testing.T) {
+	v := 0.7
+	resp, err := ChatCompletionsToResponses(&ChatCompletionsRequest{
+		Model: "gpt-4o", Messages: []ChatMessage{{Role: "user", Content: json.RawMessage(`"hi"`)}},
+		Temperature: &v, TopP: &v,
+	})
+	require.NoError(t, err)
+	require.Same(t, &v, resp.Temperature)
+	require.Same(t, &v, resp.TopP)
+}
+
+func TestChatCompletionsToResponses_ResponseFormatAndParallelTools(t *testing.T) {
+	parallel := false
+	resp, err := ChatCompletionsToResponses(&ChatCompletionsRequest{
+		Model: "gpt-5.6", Messages: []ChatMessage{{Role: "user", Content: json.RawMessage(`"hi"`)}},
+		ResponseFormat:    json.RawMessage(`{"type":"json_schema","json_schema":{"name":"answer","schema":{"type":"object"},"strict":true}}`),
+		ParallelToolCalls: &parallel,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, resp.Text)
+	require.JSONEq(t, `{"type":"json_schema","name":"answer","schema":{"type":"object"},"strict":true}`, string(resp.Text.Format))
+	require.NotNil(t, resp.ParallelToolCalls)
+	require.False(t, *resp.ParallelToolCalls)
+}
+
+func TestChatCompletionsToResponses_EmptyContentNeverNull(t *testing.T) {
+	for _, content := range []json.RawMessage{json.RawMessage(`null`), json.RawMessage(`[]`), json.RawMessage(`[{"type":"text","text":""}]`)} {
+		resp, err := ChatCompletionsToResponses(&ChatCompletionsRequest{Model: "gpt-5.6", Messages: []ChatMessage{{Role: "user", Content: content}}})
+		require.NoError(t, err)
+		require.NotContains(t, string(resp.Input), `"content":null`)
+	}
+}
+
+func TestChatCompletionsToResponses_InvalidResponseFormatReturnsError(t *testing.T) {
+	_, err := ChatCompletionsToResponses(&ChatCompletionsRequest{
+		Model:          "gpt-5.6",
+		Messages:       []ChatMessage{{Role: "user", Content: json.RawMessage(`"hi"`)}},
+		ResponseFormat: json.RawMessage(`{"type":"json_schema","json_schema":`),
+	})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "response_format")
+}
+
 func TestChatCompletionsToResponses_SystemMessage(t *testing.T) {
 	req := &ChatCompletionsRequest{
 		Model: "gpt-4o",
@@ -281,6 +335,19 @@ func TestChatCompletionsToResponses_LegacyFunctions(t *testing.T) {
 	var tc map[string]any
 	require.NoError(t, json.Unmarshal(resp.ToolChoice, &tc))
 	assert.Equal(t, "function", tc["type"])
+	assert.Equal(t, "get_weather", tc["name"])
+}
+
+func TestChatCompletionsToResponses_ToolStrictDefaultsFalse(t *testing.T) {
+	resp, err := ChatCompletionsToResponses(&ChatCompletionsRequest{
+		Model:    "gpt-5.6",
+		Messages: []ChatMessage{{Role: "user", Content: json.RawMessage(`"hi"`)}},
+		Tools:    []ChatTool{{Type: "function", Function: &ChatFunction{Name: "lookup", Parameters: json.RawMessage(`{"type":"object"}`)}}},
+	})
+	require.NoError(t, err)
+	require.Len(t, resp.Tools, 1)
+	require.NotNil(t, resp.Tools[0].Strict)
+	require.False(t, *resp.Tools[0].Strict)
 }
 
 func TestChatCompletionsToResponses_ServiceTier(t *testing.T) {
@@ -375,6 +442,16 @@ func TestChatCompletionsToResponses_AssistantThinkingTagPreserved(t *testing.T) 
 	assert.Equal(t, "output_text", parts[0].Type)
 	assert.Contains(t, parts[0].Text, "<thinking>internal plan</thinking>")
 	assert.Contains(t, parts[0].Text, "final answer")
+}
+
+func TestChatCompletionsToResponses_AssistantReasoningContentPreserved(t *testing.T) {
+	resp, err := ChatCompletionsToResponses(&ChatCompletionsRequest{
+		Model:    "gpt-5.6",
+		Messages: []ChatMessage{{Role: "assistant", Content: json.RawMessage(`"answer"`), ReasoningContent: "internal plan"}},
+	})
+	require.NoError(t, err)
+	require.Contains(t, string(resp.Input), "<thinking>internal plan</thinking>")
+	require.Contains(t, string(resp.Input), "answer")
 }
 
 // ---------------------------------------------------------------------------
