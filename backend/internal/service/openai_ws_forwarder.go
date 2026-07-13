@@ -366,7 +366,7 @@ func openAIWSEventMayContainToolCalls(eventType string) bool {
 }
 
 func openAIWSEventShouldParseUsage(eventType string) bool {
-	return eventType == "response.completed" || strings.TrimSpace(eventType) == "response.completed"
+	return isOpenAIResponsesTerminalEvent(eventType)
 }
 
 func parseOpenAIWSEventEnvelope(message []byte) (eventType string, responseID string, response gjson.Result) {
@@ -393,10 +393,10 @@ func openAIWSMessageLikelyContainsToolCalls(message []byte) bool {
 }
 
 func parseOpenAIWSResponseUsageFromCompletedEvent(message []byte, usage *OpenAIUsage) {
-	if usage == nil || len(message) == 0 {
+	if usage == nil {
 		return
 	}
-	if parsed, ok := extractOpenAIUsageFromGJSON(gjson.ParseBytes(message), "response.usage"); ok {
+	if parsed, ok := extractOpenAIUsageFromJSONBytes(message); ok {
 		*usage = parsed
 	}
 }
@@ -2512,6 +2512,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		return rebuilt, nil
 	}
 
+	ingressSessionOriginalModel := ""
 	parseClientPayload := func(raw []byte) (openAIWSClientPayload, error) {
 		trimmed := bytes.TrimSpace(raw)
 		if len(trimmed) == 0 {
@@ -2548,6 +2549,10 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		}
 
 		originalModel := strings.TrimSpace(values[1].String())
+		modelMissing := originalModel == ""
+		if modelMissing {
+			originalModel = ingressSessionOriginalModel
+		}
 		if originalModel == "" {
 			return openAIWSClientPayload{}, NewOpenAIWSClientCloseError(
 				coderws.StatusPolicyViolation,
@@ -2573,13 +2578,18 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			normalized = next
 		}
 		upstreamModel := normalizeOpenAIModelForUpstream(account, account.GetMappedModel(originalModel))
-		if upstreamModel != originalModel {
+		if modelMissing || upstreamModel != originalModel {
 			next, setErr := applyPayloadMutation(normalized, "model", upstreamModel)
 			if setErr != nil {
 				return openAIWSClientPayload{}, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "invalid websocket request payload", setErr)
 			}
 			normalized = next
 		}
+		normalized, _, err := normalizeResponsesBodyServiceTier(normalized)
+		if err != nil {
+			return openAIWSClientPayload{}, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "invalid service_tier", err)
+		}
+		ingressSessionOriginalModel = originalModel
 
 		return openAIWSClientPayload{
 			payloadRaw:         normalized,
