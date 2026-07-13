@@ -14,11 +14,82 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/cespare/xxhash/v2"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 )
+
+func TestNormalizeResponsesRequestServiceTier_OfficialValues(t *testing.T) {
+	for input, want := range map[string]string{
+		" fast ": "priority", "priority": "priority", "flex": "flex",
+		"auto": "auto", "default": "default", "scale": "scale", "turbo": "",
+	} {
+		req := &apicompat.ResponsesRequest{ServiceTier: input}
+		normalizeResponsesRequestServiceTier(req)
+		require.Equal(t, want, req.ServiceTier)
+	}
+}
+
+func TestNormalizeResponsesBodyServiceTier_OfficialValues(t *testing.T) {
+	for input, want := range map[string]string{"fast": "priority", "auto": "auto", "default": "default", "scale": "scale", "turbo": ""} {
+		body, tier, err := normalizeResponsesBodyServiceTier([]byte(`{"model":"gpt-5.6-sol","service_tier":"` + input + `"}`))
+		require.NoError(t, err)
+		require.Equal(t, want, tier)
+		if want == "" {
+			require.False(t, gjson.GetBytes(body, "service_tier").Exists())
+		} else {
+			require.Equal(t, want, gjson.GetBytes(body, "service_tier").String())
+		}
+	}
+}
+
+func TestCalculateCostWithServiceTier_StandardAliasesUseStandardPrice(t *testing.T) {
+	svc := newTestBillingService()
+	tokens := UsageTokens{InputTokens: 100, OutputTokens: 10}
+	standard, err := svc.CalculateCostWithServiceTier("gpt-5.6-sol", tokens, 1, "")
+	require.NoError(t, err)
+	for _, tier := range []string{"auto", "default", "scale"} {
+		got, err := svc.CalculateCostWithServiceTier("gpt-5.6-sol", tokens, 1, tier)
+		require.NoError(t, err)
+		require.InDelta(t, standard.ActualCost, got.ActualCost, 1e-12)
+	}
+}
+
+func TestOpenAIGatewayService_OAuthPassthrough_StreamingNormalizesBodyServiceTier(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	c.Request.Header.Set("User-Agent", "codex_cli_rs/0.1.0")
+
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusBadRequest,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(`{"error":{"message":"stop"}}`)),
+	}}
+	svc := &OpenAIGatewayService{
+		cfg:          &config.Config{Gateway: config.GatewayConfig{ForceCodexCLI: false}},
+		httpUpstream: upstream,
+	}
+	account := &Account{
+		ID:          123,
+		Name:        "acc",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Concurrency: 1,
+		Credentials: map[string]any{"access_token": "oauth-token", "chatgpt_account_id": "chatgpt-acc"},
+		Extra:       map[string]any{"openai_passthrough": true},
+		Status:      StatusActive,
+		Schedulable: true,
+	}
+
+	_, err := svc.Forward(context.Background(), c, account, []byte(`{"model":"gpt-5.2","stream":true,"service_tier":"fast","input":[{"type":"text","text":"hi"}]}`))
+	require.Error(t, err)
+	require.Equal(t, "priority", gjson.GetBytes(upstream.lastBody, "service_tier").String())
+}
 
 // 编译期接口断言
 var _ AccountRepository = (*stubOpenAIAccountRepo)(nil)

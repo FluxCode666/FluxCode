@@ -2477,30 +2477,20 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 				markPatchDelete("max_completion_tokens")
 			}
 		}
+	}
 
-		// Remove unsupported fields (not supported by upstream OpenAI API)
-		unsupportedFields := []string{"prompt_cache_retention", "safety_identifier"}
-		for _, unsupportedField := range unsupportedFields {
-			if _, has := reqBody[unsupportedField]; has {
-				delete(reqBody, unsupportedField)
-				bodyModified = true
-				markPatchDelete(unsupportedField)
-			}
-		}
-
-		// Normalize service_tier: only "priority" and "flex" are valid upstream values.
-		// Unrecognized values (e.g. "auto", "default") are removed to prevent upstream 400.
-		if rawTier, hasTier := reqBody["service_tier"].(string); hasTier {
-			normalized := normalizeOpenAIServiceTier(rawTier)
-			if normalized == nil {
-				delete(reqBody, "service_tier")
-				bodyModified = true
-				markPatchDelete("service_tier")
-			} else if *normalized != rawTier {
-				reqBody["service_tier"] = *normalized
-				bodyModified = true
-				markPatchSet("service_tier", *normalized)
-			}
+	// Normalize service_tier for every native Responses request, including
+	// Codex CLI traffic, so upstream and usage records observe the same value.
+	if rawTier, hasTier := reqBody["service_tier"].(string); hasTier {
+		normalized := normalizeOpenAIServiceTier(rawTier)
+		if normalized == nil {
+			delete(reqBody, "service_tier")
+			bodyModified = true
+			markPatchDelete("service_tier")
+		} else if *normalized != rawTier {
+			reqBody["service_tier"] = *normalized
+			bodyModified = true
+			markPatchSet("service_tier", *normalized)
 		}
 	}
 
@@ -2937,6 +2927,11 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	body, _, injectErr = applyResolvedSystemPromptToJSON(ctx, c, body, PlatformOpenAI, PlatformOpenAI, s.settingService)
 	if injectErr != nil {
 		return nil, fmt.Errorf("apply system prompt: %w", injectErr)
+	}
+	var tierErr error
+	body, _, tierErr = normalizeResponsesBodyServiceTier(body)
+	if tierErr != nil {
+		return nil, fmt.Errorf("normalize passthrough service tier: %w", tierErr)
 	}
 	if account != nil && account.Type == AccountTypeOAuth {
 		if rejectReason := detectOpenAIPassthroughInstructionsRejectReason(reqModel, body); rejectReason != "" {
@@ -5839,11 +5834,36 @@ func normalizeOpenAIServiceTier(raw string) *string {
 		value = "priority"
 	}
 	switch value {
-	case "priority", "flex":
+	case "priority", "flex", "auto", "default", "scale":
 		return &value
 	default:
 		return nil
 	}
+}
+
+func normalizeResponsesRequestServiceTier(req *apicompat.ResponsesRequest) {
+	if req == nil {
+		return
+	}
+	if normalized := normalizeOpenAIServiceTier(req.ServiceTier); normalized != nil {
+		req.ServiceTier = *normalized
+	} else {
+		req.ServiceTier = ""
+	}
+}
+
+func normalizeResponsesBodyServiceTier(body []byte) ([]byte, string, error) {
+	raw := gjson.GetBytes(body, "service_tier").String()
+	if raw == "" {
+		return body, "", nil
+	}
+	normalized := normalizeOpenAIServiceTier(raw)
+	if normalized == nil {
+		updated, err := sjson.DeleteBytes(body, "service_tier")
+		return updated, "", err
+	}
+	updated, err := sjson.SetBytes(body, "service_tier", *normalized)
+	return updated, *normalized, err
 }
 
 func sanitizeEmptyBase64InputImagesInOpenAIBody(body []byte) ([]byte, bool, error) {

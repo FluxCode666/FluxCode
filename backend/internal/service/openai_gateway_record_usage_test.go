@@ -901,9 +901,13 @@ func TestNormalizeOpenAIServiceTier(t *testing.T) {
 		require.Equal(t, "priority", *got)
 	})
 
-	t.Run("default ignored", func(t *testing.T) {
-		require.Nil(t, normalizeOpenAIServiceTier("default"))
-	})
+	for _, tier := range []string{"priority", "flex", "auto", "default", "scale"} {
+		t.Run(tier+" preserved", func(t *testing.T) {
+			got := normalizeOpenAIServiceTier(tier)
+			require.NotNil(t, got)
+			require.Equal(t, tier, *got)
+		})
+	}
 
 	t.Run("invalid ignored", func(t *testing.T) {
 		require.Nil(t, normalizeOpenAIServiceTier("turbo"))
@@ -920,7 +924,10 @@ func TestExtractOpenAIServiceTier(t *testing.T) {
 func TestExtractOpenAIServiceTierFromBody(t *testing.T) {
 	require.Equal(t, "priority", *extractOpenAIServiceTierFromBody([]byte(`{"service_tier":"fast"}`)))
 	require.Equal(t, "flex", *extractOpenAIServiceTierFromBody([]byte(`{"service_tier":"flex"}`)))
-	require.Nil(t, extractOpenAIServiceTierFromBody([]byte(`{"service_tier":"default"}`)))
+	for _, tier := range []string{"auto", "default", "scale"} {
+		require.Equal(t, tier, *extractOpenAIServiceTierFromBody([]byte(`{"service_tier":"` + tier + `"}`)))
+	}
+	require.Nil(t, extractOpenAIServiceTierFromBody([]byte(`{"service_tier":"turbo"}`)))
 	require.Nil(t, extractOpenAIServiceTierFromBody(nil))
 }
 

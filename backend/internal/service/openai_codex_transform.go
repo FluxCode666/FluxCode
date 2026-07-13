@@ -74,13 +74,60 @@ var codexModelMap = map[string]string{
 	"gpt-5-nano":                 "gpt-5.1",
 }
 
+var openAICodexOAuthUnsupportedFields = []string{
+	"max_output_tokens", "max_completion_tokens", "temperature", "top_p",
+	"frequency_penalty", "presence_penalty", "user", "metadata",
+	"prompt_cache_retention", "safety_identifier", "stream_options",
+}
+
 type codexTransformResult struct {
 	Modified        bool
 	NormalizedModel string
 	PromptCacheKey  string
 }
 
+type codexOAuthTransformOptions struct {
+	IsCodexCLI              bool
+	IsCompact               bool
+	SkipDefaultInstructions bool
+}
+
 func applyCodexOAuthTransform(reqBody map[string]any, isCodexCLI bool, isCompact bool) codexTransformResult {
+	return applyCodexOAuthTransformWithOptions(reqBody, codexOAuthTransformOptions{IsCodexCLI: isCodexCLI, IsCompact: isCompact})
+}
+
+func ensureCodexReasoningInclude(reqBody map[string]any) bool {
+	reasoning, ok := reqBody["reasoning"].(map[string]any)
+	if !ok || len(reasoning) == 0 {
+		return false
+	}
+	const encrypted = "reasoning.encrypted_content"
+	switch include := reqBody["include"].(type) {
+	case nil:
+		reqBody["include"] = []any{encrypted}
+		return true
+	case []string:
+		for _, value := range include {
+			if value == encrypted {
+				return false
+			}
+		}
+		reqBody["include"] = append(include, encrypted)
+		return true
+	case []any:
+		for _, value := range include {
+			if value == encrypted {
+				return false
+			}
+		}
+		reqBody["include"] = append(include, encrypted)
+		return true
+	default:
+		return false
+	}
+}
+
+func applyCodexOAuthTransformWithOptions(reqBody map[string]any, opts codexOAuthTransformOptions) codexTransformResult {
 	result := codexTransformResult{}
 	// 工具续链需求会影响存储策略与 input 过滤逻辑。
 	needsToolContinuation := NeedsToolContinuation(reqBody)
@@ -98,7 +145,7 @@ func applyCodexOAuthTransform(reqBody map[string]any, isCodexCLI bool, isCompact
 		result.NormalizedModel = normalizedModel
 	}
 
-	if isCompact {
+	if opts.IsCompact {
 		if _, ok := reqBody["store"]; ok {
 			delete(reqBody, "store")
 			result.Modified = true
@@ -119,24 +166,12 @@ func applyCodexOAuthTransform(reqBody map[string]any, isCodexCLI bool, isCompact
 			result.Modified = true
 		}
 	}
+	if !opts.IsCompact && ensureCodexReasoningInclude(reqBody) {
+		result.Modified = true
+	}
 
 	// Strip parameters unsupported by codex models via the Responses API.
-	for _, key := range []string{
-		"max_output_tokens",
-		"max_completion_tokens",
-		"temperature",
-		"top_p",
-		"frequency_penalty",
-		"presence_penalty",
-		// prompt_cache_retention is a newer Responses API parameter (cache TTL).
-		// The ChatGPT internal Codex endpoint rejects it with
-		// "Unsupported parameter: prompt_cache_retention". Defense-in-depth
-		// for any OAuth path that reaches this transform — the Cursor
-		// Responses-shape short-circuit in ForwardAsChatCompletions strips
-		// it earlier too, but we keep this line so other OAuth callers are
-		// equally protected.
-		"prompt_cache_retention",
-	} {
+	for _, key := range openAICodexOAuthUnsupportedFields {
 		if _, ok := reqBody[key]; ok {
 			delete(reqBody, key)
 			result.Modified = true
@@ -168,9 +203,7 @@ func applyCodexOAuthTransform(reqBody map[string]any, isCodexCLI bool, isCompact
 			if name, ok := fcObj["name"].(string); ok && strings.TrimSpace(name) != "" {
 				reqBody["tool_choice"] = map[string]any{
 					"type": "function",
-					"function": map[string]any{
-						"name": name,
-					},
+					"name": name,
 				}
 			}
 		}
@@ -179,6 +212,9 @@ func applyCodexOAuthTransform(reqBody map[string]any, isCodexCLI bool, isCompact
 	}
 
 	if normalizeCodexTools(reqBody) {
+		result.Modified = true
+	}
+	if normalizeCodexToolChoice(reqBody) {
 		result.Modified = true
 	}
 
@@ -192,7 +228,7 @@ func applyCodexOAuthTransform(reqBody map[string]any, isCodexCLI bool, isCompact
 	}
 
 	// instructions 处理逻辑：根据是否是 Codex CLI 分别调用不同方法
-	if applyInstructions(reqBody, isCodexCLI) {
+	if !opts.SkipDefaultInstructions && applyInstructions(reqBody, opts.IsCodexCLI) {
 		result.Modified = true
 	}
 	if isCodexSparkModel(normalizedModel) && applyCodexSparkImageUnsupportedInstructions(reqBody) {
@@ -436,6 +472,14 @@ func isInstructionsEmpty(reqBody map[string]any) bool {
 	return strings.TrimSpace(str) == ""
 }
 
+func ensureCodexOAuthInstructionsField(reqBody map[string]any) {
+	if value, ok := reqBody["instructions"]; !ok || value == nil {
+		reqBody["instructions"] = ""
+	} else if _, ok := value.(string); !ok {
+		reqBody["instructions"] = ""
+	}
+}
+
 // filterCodexInput 按需过滤 item_reference 与 id。
 // preserveReferences 为 true 时保持引用与 id，以满足续链请求对上下文的依赖。
 func filterCodexInput(input []any, preserveReferences bool) []any {
@@ -617,6 +661,26 @@ func normalizeCodexTools(reqBody map[string]any) bool {
 	}
 
 	return modified
+}
+
+func normalizeCodexToolChoice(reqBody map[string]any) bool {
+	choice, ok := reqBody["tool_choice"].(map[string]any)
+	if !ok || strings.TrimSpace(firstNonEmptyString(choice["type"])) != "function" {
+		return false
+	}
+	name := strings.TrimSpace(firstNonEmptyString(choice["name"]))
+	if name == "" {
+		if nested, ok := choice["function"].(map[string]any); ok {
+			name = strings.TrimSpace(firstNonEmptyString(nested["name"]))
+		}
+	}
+	if name == "" {
+		reqBody["tool_choice"] = "auto"
+		return true
+	}
+	choice["name"] = name
+	delete(choice, "function")
+	return true
 }
 
 const (
