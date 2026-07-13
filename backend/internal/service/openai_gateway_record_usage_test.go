@@ -1009,28 +1009,33 @@ func TestOpenAIGatewayServiceRecordUsage_BillsMappedRequestsUsingRequestedModel(
 	require.Equal(t, expectedCost.ActualCost, userRepo.lastAmount)
 }
 
-func TestOpenAIGatewayServiceRecordUsage_ChannelMappedDoesNotOverrideBillingModelWhenUnmapped(t *testing.T) {
+func TestOpenAIGatewayServiceRecordUsage_ChannelMappedSourcePrioritizesMappedModelWhenEqualOriginal(t *testing.T) {
 	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
 	userRepo := &openAIRecordUsageUserRepoStub{}
 	subRepo := &openAIRecordUsageSubRepoStub{}
 	svc := newOpenAIRecordUsageServiceForTest(usageRepo, userRepo, subRepo, nil)
 	usage := OpenAIUsage{InputTokens: 20, OutputTokens: 10}
 
-	// When channel did NOT map the model (ChannelMappedModel == OriginalModel),
-	// billing should use result.BillingModel (the actual model used after group
-	// DefaultMappedModel resolution), not the unmapped original model.
-	expectedCost, err := svc.billingService.CalculateCost("gpt-5.1", UsageTokens{
+	// An explicit channel_mapped source makes ChannelMappedModel the effective
+	// billing model even when it equals OriginalModel.
+	expectedCost, err := svc.billingService.CalculateCost("gpt-5.6-luna", UsageTokens{
 		InputTokens:  20,
 		OutputTokens: 10,
 	}, 1.1)
 	require.NoError(t, err)
+	resultBillingCost, err := svc.billingService.CalculateCost("gpt-5.6-sol", UsageTokens{
+		InputTokens:  20,
+		OutputTokens: 10,
+	}, 1.1)
+	require.NoError(t, err)
+	require.NotEqual(t, expectedCost.ActualCost, resultBillingCost.ActualCost)
 
 	err = svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
 		Result: &OpenAIForwardResult{
 			RequestID:     "resp_channel_unmapped_billing",
-			Model:         "glm",
-			BillingModel:  "gpt-5.1",
-			UpstreamModel: "gpt-5.1",
+			Model:         "gpt-5.6-luna",
+			BillingModel:  "gpt-5.6-sol",
+			UpstreamModel: "gpt-5.6-sol",
 			Usage:         usage,
 			Duration:      time.Second,
 		},
@@ -1039,8 +1044,8 @@ func TestOpenAIGatewayServiceRecordUsage_ChannelMappedDoesNotOverrideBillingMode
 		Account: &Account{ID: 30},
 		ChannelUsageFields: ChannelUsageFields{
 			ChannelID:          1,
-			OriginalModel:      "glm",
-			ChannelMappedModel: "glm", // channel did NOT map
+			OriginalModel:      "gpt-5.6-luna",
+			ChannelMappedModel: "gpt-5.6-luna",
 			BillingModelSource: BillingModelSourceChannelMapped,
 		},
 	})
