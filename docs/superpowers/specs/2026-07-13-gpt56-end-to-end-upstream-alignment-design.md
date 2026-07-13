@@ -138,6 +138,7 @@ gpt-5.6-luna-preview
 ```text
 gpt-5.6-extra-high
 gpt-5.6-foo
+gpt-5.6-terra-foo
 openai/gpt-5.6-unknown
 ```
 
@@ -529,6 +530,8 @@ backend/internal/service/openai_codex_transform.go
 backend/internal/service/openai_gateway_chat_completions.go
 backend/internal/service/openai_gateway_service.go
 backend/internal/service/openai_ws_forwarder.go
+backend/internal/service/openai_ws_v2_passthrough_adapter.go
+backend/internal/service/openai_ws_v2/passthrough_relay.go
 backend/internal/pkg/apicompat/types.go
 backend/internal/pkg/apicompat/chatcompletions_to_responses.go
 backend/internal/pkg/apicompat/responses_to_chatcompletions.go
@@ -543,8 +546,10 @@ backend/internal/service/openai_model_mapping_test.go
 backend/internal/service/openai_codex_transform_test.go
 backend/internal/service/openai_gateway_chat_completions_test.go
 backend/internal/service/openai_gateway_service_test.go
-backend/internal/service/openai_ws_forwarder_test.go
+backend/internal/service/openai_ws_forwarder_success_test.go
 backend/internal/service/openai_ws_forwarder_ingress_session_test.go
+backend/internal/service/openai_ws_v2/passthrough_relay_test.go
+backend/internal/service/openai_ws_v2/passthrough_relay_internal_test.go
 backend/internal/pkg/apicompat/chatcompletions_responses_test.go
 ```
 
@@ -656,6 +661,7 @@ backend/internal/pkg/apicompat/chatcompletions_responses_test.go
 
 - 第一轮 GPT-5.6 模型映射和后续 frame 省略 model。
 - `fast → priority` 和最终计费 tier。
+- 主 ingress 和 `ws_v2` passthrough relay 的每轮 `response.create` 使用同一规范化规则。
 - completed、done、failed、incomplete、cancelled usage。
 - 顶层和嵌套 usage。
 - cache write 显式零值。
