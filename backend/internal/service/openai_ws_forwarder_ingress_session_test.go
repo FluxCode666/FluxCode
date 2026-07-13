@@ -483,6 +483,135 @@ func TestOpenAIWSPassthroughRequestNormalizer_AlignsTurnsFIFO(t *testing.T) {
 	require.False(t, ok)
 }
 
+type openAIWSBlockingPassthroughConn struct {
+	closed chan struct{}
+	once   sync.Once
+}
+
+func newOpenAIWSBlockingPassthroughConn() *openAIWSBlockingPassthroughConn {
+	return &openAIWSBlockingPassthroughConn{closed: make(chan struct{})}
+}
+
+func (c *openAIWSBlockingPassthroughConn) WriteJSON(context.Context, any) error {
+	return nil
+}
+
+func (c *openAIWSBlockingPassthroughConn) ReadMessage(ctx context.Context) ([]byte, error) {
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-c.closed:
+		return nil, io.EOF
+	}
+}
+
+func (c *openAIWSBlockingPassthroughConn) ReadFrame(ctx context.Context) (coderws.MessageType, []byte, error) {
+	payload, err := c.ReadMessage(ctx)
+	return coderws.MessageText, payload, err
+}
+
+func (c *openAIWSBlockingPassthroughConn) WriteFrame(ctx context.Context, _ coderws.MessageType, payload []byte) error {
+	return c.WriteJSON(ctx, payload)
+}
+
+func (c *openAIWSBlockingPassthroughConn) Ping(context.Context) error {
+	return nil
+}
+
+func (c *openAIWSBlockingPassthroughConn) Close() error {
+	c.once.Do(func() { close(c.closed) })
+	return nil
+}
+
+func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_PassthroughNormalizerErrorIsPolicyViolation(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	cfg := &config.Config{}
+	cfg.Security.URLAllowlist.Enabled = false
+	cfg.Security.URLAllowlist.AllowInsecureHTTP = true
+	cfg.Gateway.OpenAIWS.Enabled = true
+	cfg.Gateway.OpenAIWS.OAuthEnabled = true
+	cfg.Gateway.OpenAIWS.APIKeyEnabled = true
+	cfg.Gateway.OpenAIWS.ResponsesWebsocketsV2 = true
+	cfg.Gateway.OpenAIWS.ModeRouterV2Enabled = true
+	cfg.Gateway.OpenAIWS.IngressModeDefault = OpenAIWSIngressModeCtxPool
+	cfg.Gateway.OpenAIWS.DialTimeoutSeconds = 3
+	cfg.Gateway.OpenAIWS.ReadTimeoutSeconds = 3
+	cfg.Gateway.OpenAIWS.WriteTimeoutSeconds = 3
+
+	upstreamConn := newOpenAIWSBlockingPassthroughConn()
+	dialer := &openAIWSQueueDialer{conns: []openAIWSClientConn{upstreamConn}}
+	svc := &OpenAIGatewayService{
+		cfg:                       cfg,
+		httpUpstream:              &httpUpstreamRecorder{},
+		cache:                     &stubGatewayCache{},
+		openaiWSResolver:          NewOpenAIWSProtocolResolver(cfg),
+		toolCorrector:             NewCodexToolCorrector(),
+		openaiWSPassthroughDialer: dialer,
+	}
+	account := &Account{
+		ID:          453,
+		Name:        "openai-ingress-passthrough-invalid-frame",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Credentials: map[string]any{"api_key": "sk-test"},
+		Extra: map[string]any{
+			"openai_apikey_responses_websockets_v2_mode": OpenAIWSIngressModePassthrough,
+		},
+	}
+
+	serverErrCh := make(chan error, 1)
+	wsServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := coderws.Accept(w, r, nil)
+		if err != nil {
+			serverErrCh <- err
+			return
+		}
+		defer func() { _ = conn.CloseNow() }()
+
+		rec := httptest.NewRecorder()
+		ginCtx, _ := gin.CreateTestContext(rec)
+		ginCtx.Request = r.Clone(r.Context())
+		readCtx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+		_, firstMessage, readErr := conn.Read(readCtx)
+		cancel()
+		if readErr != nil {
+			serverErrCh <- readErr
+			return
+		}
+		serverErrCh <- svc.ProxyResponsesWebSocketFromClient(r.Context(), ginCtx, conn, account, "sk-test", firstMessage, nil)
+	}))
+	defer wsServer.Close()
+
+	dialCtx, cancelDial := context.WithTimeout(context.Background(), 3*time.Second)
+	clientConn, _, err := coderws.Dial(dialCtx, "ws"+strings.TrimPrefix(wsServer.URL, "http"), nil)
+	cancelDial()
+	require.NoError(t, err)
+	defer func() { _ = clientConn.CloseNow() }()
+
+	writeCtx, cancelWrite := context.WithTimeout(context.Background(), 3*time.Second)
+	require.NoError(t, clientConn.Write(writeCtx, coderws.MessageText, []byte(`{"type":"response.create","model":"gpt-5.6"}`)))
+	require.NoError(t, clientConn.Write(writeCtx, coderws.MessageText, []byte(`{`)))
+	cancelWrite()
+
+	select {
+	case serverErr := <-serverErrCh:
+		require.Error(t, serverErr)
+		var turnErr *openAIWSIngressTurnError
+		require.ErrorAs(t, serverErr, &turnErr)
+		require.Equal(t, "normalize_client_frame", turnErr.stage)
+		var closeErr *OpenAIWSClientCloseError
+		require.ErrorAs(t, serverErr, &closeErr)
+		require.Equal(t, coderws.StatusPolicyViolation, closeErr.StatusCode())
+		require.Equal(t, "invalid websocket request payload", closeErr.Reason())
+	case <-time.After(5 * time.Second):
+		t.Fatal("等待 passthrough normalizer 错误超时")
+	}
+}
+
 func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_ModeOffReturnsPolicyViolation(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

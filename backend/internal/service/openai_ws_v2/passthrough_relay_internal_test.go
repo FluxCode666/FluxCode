@@ -446,14 +446,18 @@ func TestEmitTurnCompleteCoverage(t *testing.T) {
 	})
 	require.Equal(t, 0, called)
 
-	// 缺少 response_id 时不应触发。
+	// terminal 缺少 response_id 时仍应逐轮触发。
+	var gotWithoutID RelayTurnResult
 	emitTurnComplete(func(turn RelayTurnResult) {
 		called++
+		gotWithoutID = turn
 	}, &relayState{requestModel: "gpt-5"}, observedUpstreamEvent{
 		terminal:  true,
 		eventType: "response.completed",
 	})
-	require.Equal(t, 0, called)
+	require.Equal(t, 1, called)
+	require.Empty(t, gotWithoutID.RequestID)
+	require.Equal(t, "gpt-5", gotWithoutID.RequestModel)
 
 	// terminal 且 response_id 存在，应该触发；state=nil 时 model 为空串。
 	var got RelayTurnResult
@@ -466,7 +470,7 @@ func TestEmitTurnCompleteCoverage(t *testing.T) {
 		responseID: "resp_emit",
 		usage:      Usage{InputTokens: 2, OutputTokens: 3},
 	})
-	require.Equal(t, 1, called)
+	require.Equal(t, 2, called)
 	require.Equal(t, "resp_emit", got.RequestID)
 	require.Equal(t, "response.completed", got.TerminalEventType)
 	require.Equal(t, 2, got.Usage.InputTokens)

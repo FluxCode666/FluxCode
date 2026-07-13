@@ -378,6 +378,13 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 	)
 
 	relayErr := relayExit.Err
+	if relayExit.Stage == "normalize_client_frame" {
+		relayErr = NewOpenAIWSClientCloseError(
+			coderws.StatusPolicyViolation,
+			"invalid websocket request payload",
+			relayErr,
+		)
+	}
 	if relayExit.Stage == "idle_timeout" {
 		relayErr = NewOpenAIWSClientCloseError(
 			coderws.StatusPolicyViolation,

@@ -619,9 +619,6 @@ func emitTurnComplete(
 		return
 	}
 	responseID := strings.TrimSpace(observed.responseID)
-	if responseID == "" {
-		return
-	}
 	requestModel := ""
 	if state != nil {
 		requestModel = state.requestModel
