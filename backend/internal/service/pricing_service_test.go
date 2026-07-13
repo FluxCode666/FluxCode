@@ -12,27 +12,24 @@ import (
 
 func TestDefaultPricingGPT56TierMetadataMatchesUpstream(t *testing.T) {
 	type tierMetadata struct {
-		Input                       float64  `json:"input_cost_per_token"`
-		InputBatch                  float64  `json:"input_cost_per_token_batches"`
-		InputFlex                   float64  `json:"input_cost_per_token_flex"`
-		InputPriority               float64  `json:"input_cost_per_token_priority"`
-		InputAbove272K              *float64 `json:"input_cost_per_token_above_272k_tokens"`
-		Output                      float64  `json:"output_cost_per_token"`
-		OutputBatch                 float64  `json:"output_cost_per_token_batches"`
-		OutputFlex                  float64  `json:"output_cost_per_token_flex"`
-		OutputPriority              float64  `json:"output_cost_per_token_priority"`
-		OutputAbove272K             *float64 `json:"output_cost_per_token_above_272k_tokens"`
-		CacheWrite                  float64  `json:"cache_creation_input_token_cost"`
-		CacheWriteBatch             float64  `json:"cache_creation_input_token_cost_batches"`
-		CacheWriteFlex              float64  `json:"cache_creation_input_token_cost_flex"`
-		CacheWritePriority          float64  `json:"cache_creation_input_token_cost_priority"`
-		CacheRead                   float64  `json:"cache_read_input_token_cost"`
-		CacheReadFlex               float64  `json:"cache_read_input_token_cost_flex"`
-		CacheReadPriority           float64  `json:"cache_read_input_token_cost_priority"`
-		CacheReadAbove272K          *float64 `json:"cache_read_input_token_cost_above_272k_tokens"`
-		LongContextThreshold        int      `json:"long_context_input_token_threshold"`
-		LongContextInputMultiplier  float64  `json:"long_context_input_cost_multiplier"`
-		LongContextOutputMultiplier float64  `json:"long_context_output_cost_multiplier"`
+		Input                       float64 `json:"input_cost_per_token"`
+		InputBatch                  float64 `json:"input_cost_per_token_batches"`
+		InputFlex                   float64 `json:"input_cost_per_token_flex"`
+		InputPriority               float64 `json:"input_cost_per_token_priority"`
+		Output                      float64 `json:"output_cost_per_token"`
+		OutputBatch                 float64 `json:"output_cost_per_token_batches"`
+		OutputFlex                  float64 `json:"output_cost_per_token_flex"`
+		OutputPriority              float64 `json:"output_cost_per_token_priority"`
+		CacheWrite                  float64 `json:"cache_creation_input_token_cost"`
+		CacheWriteBatch             float64 `json:"cache_creation_input_token_cost_batches"`
+		CacheWriteFlex              float64 `json:"cache_creation_input_token_cost_flex"`
+		CacheWritePriority          float64 `json:"cache_creation_input_token_cost_priority"`
+		CacheRead                   float64 `json:"cache_read_input_token_cost"`
+		CacheReadFlex               float64 `json:"cache_read_input_token_cost_flex"`
+		CacheReadPriority           float64 `json:"cache_read_input_token_cost_priority"`
+		LongContextThreshold        int     `json:"long_context_input_token_threshold"`
+		LongContextInputMultiplier  float64 `json:"long_context_input_cost_multiplier"`
+		LongContextOutputMultiplier float64 `json:"long_context_output_cost_multiplier"`
 	}
 
 	data, err := os.ReadFile(filepath.Join("..", "..", "resources", "model-pricing", "model_prices_and_context_window.json"))
@@ -40,6 +37,8 @@ func TestDefaultPricingGPT56TierMetadataMatchesUpstream(t *testing.T) {
 
 	var pricing map[string]tierMetadata
 	require.NoError(t, json.Unmarshal(data, &pricing))
+	var rawPricing map[string]map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal(data, &rawPricing))
 
 	tests := []struct {
 		model                                                                string
@@ -75,6 +74,8 @@ func TestDefaultPricingGPT56TierMetadataMatchesUpstream(t *testing.T) {
 		t.Run(tt.model, func(t *testing.T) {
 			got, ok := pricing[tt.model]
 			require.True(t, ok, "missing pricing object %s", tt.model)
+			raw, ok := rawPricing[tt.model]
+			require.True(t, ok, "missing raw pricing object %s", tt.model)
 
 			require.InDelta(t, tt.input, got.Input, 1e-12)
 			require.InDelta(t, tt.output, got.Output, 1e-12)
@@ -95,9 +96,9 @@ func TestDefaultPricingGPT56TierMetadataMatchesUpstream(t *testing.T) {
 			require.Equal(t, 272000, got.LongContextThreshold)
 			require.InDelta(t, 2.0, got.LongContextInputMultiplier, 1e-12)
 			require.InDelta(t, 1.5, got.LongContextOutputMultiplier, 1e-12)
-			require.Nil(t, got.InputAbove272K)
-			require.Nil(t, got.OutputAbove272K)
-			require.Nil(t, got.CacheReadAbove272K)
+			require.NotContains(t, raw, "input_cost_per_token_above_272k_tokens")
+			require.NotContains(t, raw, "output_cost_per_token_above_272k_tokens")
+			require.NotContains(t, raw, "cache_read_input_token_cost_above_272k_tokens")
 		})
 	}
 }
