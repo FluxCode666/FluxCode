@@ -44,6 +44,20 @@ func TestNormalizeResponsesBodyServiceTier_OfficialValues(t *testing.T) {
 			require.Equal(t, want, gjson.GetBytes(body, "service_tier").String())
 		}
 	}
+
+	for name, rawValue := range map[string]string{
+		"empty string": `""`,
+		"null":         `null`,
+		"number":       `123`,
+		"object":       `{"mode":"priority"}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			body, tier, err := normalizeResponsesBodyServiceTier([]byte(`{"model":"gpt-5.6-sol","service_tier":` + rawValue + `}`))
+			require.NoError(t, err)
+			require.Empty(t, tier)
+			require.False(t, gjson.GetBytes(body, "service_tier").Exists())
+		})
+	}
 }
 
 func TestCalculateCostWithServiceTier_StandardAliasesUseStandardPrice(t *testing.T) {
@@ -89,6 +103,35 @@ func TestOpenAIGatewayService_OAuthPassthrough_StreamingNormalizesBodyServiceTie
 	_, err := svc.Forward(context.Background(), c, account, []byte(`{"model":"gpt-5.2","stream":true,"service_tier":"fast","input":[{"type":"text","text":"hi"}]}`))
 	require.Error(t, err)
 	require.Equal(t, "priority", gjson.GetBytes(upstream.lastBody, "service_tier").String())
+}
+
+func TestOpenAIGatewayService_NativeResponsesDeletesNonStringServiceTier(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusBadRequest,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(`{"error":{"message":"stop"}}`)),
+	}}
+	svc := &OpenAIGatewayService{cfg: &config.Config{}, httpUpstream: upstream}
+	account := &Account{
+		ID:          124,
+		Name:        "api-key-account",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Concurrency: 1,
+		Credentials: map[string]any{"api_key": "sk-test"},
+		Status:      StatusActive,
+		Schedulable: true,
+	}
+
+	_, err := svc.Forward(context.Background(), c, account, []byte(`{"model":"custom-model","stream":false,"service_tier":123,"input":"hello"}`))
+
+	require.Error(t, err)
+	require.False(t, gjson.GetBytes(upstream.lastBody, "service_tier").Exists())
 }
 
 // 编译期接口断言

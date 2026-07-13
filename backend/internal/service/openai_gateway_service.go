@@ -2481,13 +2481,14 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 
 	// Normalize service_tier for every native Responses request, including
 	// Codex CLI traffic, so upstream and usage records observe the same value.
-	if rawTier, hasTier := reqBody["service_tier"].(string); hasTier {
-		normalized := normalizeOpenAIServiceTier(rawTier)
-		if normalized == nil {
+	if rawTier, hasTier := reqBody["service_tier"]; hasTier {
+		rawTierString, isString := rawTier.(string)
+		normalized := normalizeOpenAIServiceTier(rawTierString)
+		if !isString || normalized == nil {
 			delete(reqBody, "service_tier")
 			bodyModified = true
 			markPatchDelete("service_tier")
-		} else if *normalized != rawTier {
+		} else if *normalized != rawTierString {
 			reqBody["service_tier"] = *normalized
 			bodyModified = true
 			markPatchSet("service_tier", *normalized)
@@ -5853,10 +5854,15 @@ func normalizeResponsesRequestServiceTier(req *apicompat.ResponsesRequest) {
 }
 
 func normalizeResponsesBodyServiceTier(body []byte) ([]byte, string, error) {
-	raw := gjson.GetBytes(body, "service_tier").String()
-	if raw == "" {
+	tier := gjson.GetBytes(body, "service_tier")
+	if !tier.Exists() {
 		return body, "", nil
 	}
+	if tier.Type != gjson.String {
+		updated, err := sjson.DeleteBytes(body, "service_tier")
+		return updated, "", err
+	}
+	raw := tier.String()
 	normalized := normalizeOpenAIServiceTier(raw)
 	if normalized == nil {
 		updated, err := sjson.DeleteBytes(body, "service_tier")
