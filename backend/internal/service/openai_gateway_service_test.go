@@ -70,7 +70,7 @@ func TestNormalizeResponsesBodyServiceTier_OfficialValues(t *testing.T) {
 }
 
 func TestCalculateCostWithServiceTier_StandardAliasesUseStandardPrice(t *testing.T) {
-	svc := newTestBillingService()
+	svc := NewBillingService(&config.Config{}, nil)
 	tokens := UsageTokens{InputTokens: 100, OutputTokens: 10}
 	standard, err := svc.CalculateCostWithServiceTier("gpt-5.6-sol", tokens, 1, "")
 	require.NoError(t, err)
