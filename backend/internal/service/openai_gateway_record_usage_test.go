@@ -772,6 +772,35 @@ func TestOpenAIGatewayServiceRecordUsage_GPT56SeparatesCacheWriteForBillingAndSt
 	require.InDelta(t, usageRepo.lastLog.TotalCost*1.1, usageRepo.lastLog.ActualCost, 1e-12)
 }
 
+func TestOpenAIGatewayServiceRecordUsage_GPT56SpellingUsesCanonicalPrice(t *testing.T) {
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	svc := newOpenAIRecordUsageServiceForTest(usageRepo, &openAIRecordUsageUserRepoStub{}, &openAIRecordUsageSubRepoStub{}, nil)
+	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{RequestID: "resp_gpt56_alias", Model: "gpt5.6", Usage: OpenAIUsage{InputTokens: 100, OutputTokens: 10}, Duration: time.Second},
+		APIKey: &APIKey{ID: 10}, User: &User{ID: 20}, Account: &Account{ID: 30},
+		ChannelUsageFields: ChannelUsageFields{OriginalModel: "gpt5.6"},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, usageRepo.lastLog)
+	require.Greater(t, usageRepo.lastLog.ActualCost, 0.0)
+}
+
+func TestOpenAIGatewayServiceRecordUsage_MissingPricingLogsCandidates(t *testing.T) {
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	svc := newOpenAIRecordUsageServiceForTest(usageRepo, &openAIRecordUsageUserRepoStub{}, &openAIRecordUsageSubRepoStub{}, nil)
+	sink, cleanup := captureStructuredLog(t)
+	defer cleanup()
+	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{RequestID: "resp_missing_price", Model: "gpt-5.6-unknown", Usage: OpenAIUsage{InputTokens: 1}},
+		APIKey: &APIKey{ID: 10}, User: &User{ID: 20}, Account: &Account{ID: 30},
+		ChannelUsageFields: ChannelUsageFields{OriginalModel: "gpt-5.6-unknown", ChannelMappedModel: "gpt-5.6-unknown"},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, usageRepo.lastLog)
+	require.Zero(t, usageRepo.lastLog.ActualCost)
+	require.True(t, sink.ContainsMessage("openai_usage.pricing_missing_record_zero_cost"))
+}
+
 func TestOpenAIGatewayServiceRecordUsage_Gpt54LongContextBillsWholeSession(t *testing.T) {
 	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
 	userRepo := &openAIRecordUsageUserRepoStub{}

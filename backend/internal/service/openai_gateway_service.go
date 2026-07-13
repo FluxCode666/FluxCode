@@ -5116,6 +5116,40 @@ type OpenAIRecordUsageInput struct {
 	ChannelUsageFields
 }
 
+func (s *OpenAIGatewayService) calculateOpenAIUsageTokenCostCandidates(ctx context.Context, apiKey *APIKey, candidates []string, tokens UsageTokens, multiplier float64, serviceTier string) (*CostBreakdown, error) {
+	var lastErr error
+	for _, model := range candidates {
+		var cost *CostBreakdown
+		var err error
+		if s.resolver != nil && apiKey.Group != nil {
+			gid := apiKey.Group.ID
+			cost, err = s.billingService.CalculateCostUnified(CostInput{
+				Ctx:            ctx,
+				Model:          model,
+				GroupID:        &gid,
+				Tokens:         tokens,
+				RequestCount:   1,
+				RateMultiplier: multiplier,
+				ServiceTier:    serviceTier,
+				Resolver:       s.resolver,
+			})
+		} else {
+			cost, err = s.billingService.CalculateCostWithServiceTier(model, tokens, multiplier, serviceTier)
+		}
+		if err == nil && cost != nil {
+			return cost, nil
+		}
+		if err == nil {
+			err = fmt.Errorf("empty cost breakdown for model: %s", model)
+		}
+		lastErr = err
+	}
+	if lastErr == nil {
+		lastErr = errors.New("no non-empty OpenAI billing model candidates")
+	}
+	return nil, fmt.Errorf("calculate OpenAI usage cost for %s: %w", strings.Join(candidates, ","), lastErr)
+}
+
 // RecordUsage records usage and deducts balance
 func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRecordUsageInput) error {
 	result := input.Result
@@ -5168,6 +5202,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 
 	var cost *CostBreakdown
 	var err error
+	// 图片计费仍保留原有单模型选择路径。
 	billingModel := forwardResultBillingModel(result.Model, result.UpstreamModel)
 	if result.BillingModel != "" {
 		billingModel = strings.TrimSpace(result.BillingModel)
@@ -5178,28 +5213,43 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	if input.BillingModelSource == BillingModelSourceRequested && input.OriginalModel != "" {
 		billingModel = input.OriginalModel
 	}
+	clientModel := strings.TrimSpace(input.OriginalModel)
+	if clientModel == "" {
+		clientModel = strings.TrimSpace(result.Model)
+	}
+	billingModels := usageBillingModelCandidates(
+		billingModel,
+		input.ChannelMappedModel,
+		clientModel,
+		result.UpstreamModel,
+	)
 	serviceTier := ""
 	if result.ServiceTier != nil {
 		serviceTier = strings.TrimSpace(*result.ServiceTier)
 	}
 	if result.ImageCount > 0 {
 		cost = s.calculateOpenAIImageCost(ctx, billingModel, apiKey, result, multiplier)
-	} else if s.resolver != nil && apiKey.Group != nil {
-		gid := apiKey.Group.ID
-		cost, err = s.billingService.CalculateCostUnified(CostInput{
-			Ctx:            ctx,
-			Model:          billingModel,
-			GroupID:        &gid,
-			Tokens:         tokens,
-			RequestCount:   1,
-			RateMultiplier: multiplier,
-			ServiceTier:    serviceTier,
-			Resolver:       s.resolver,
-		})
 	} else {
-		cost, err = s.billingService.CalculateCostWithServiceTier(billingModel, tokens, multiplier, serviceTier)
+		cost, err = s.calculateOpenAIUsageTokenCostCandidates(ctx, apiKey, billingModels, tokens, multiplier, serviceTier)
 	}
 	if err != nil {
+		canonicalModel := ""
+		for _, candidate := range billingModels {
+			if normalized, ok := normalizeGPT56ModelAlias(candidate); ok {
+				canonicalModel = normalized
+				break
+			}
+		}
+		logger.L().With(
+			zap.Strings("billing_models", billingModels),
+			zap.String("requested_model", input.OriginalModel),
+			zap.String("mapped_model", input.ChannelMappedModel),
+			zap.String("upstream_model", result.UpstreamModel),
+			zap.String("canonical_model", canonicalModel),
+			zap.Int64("channel_id", input.ChannelID),
+			zap.Int64("api_key_id", apiKey.ID),
+			zap.Int64("account_id", account.ID),
+		).Warn("openai_usage.pricing_missing_record_zero_cost", zap.Error(err))
 		cost = &CostBreakdown{ActualCost: 0}
 	}
 
