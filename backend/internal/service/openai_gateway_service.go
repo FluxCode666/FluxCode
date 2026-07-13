@@ -4421,16 +4421,22 @@ func (s *OpenAIGatewayService) parseSSEUsageBytes(data []byte, usage *OpenAIUsag
 		return
 	}
 	// 选择性解析：仅在数据中包含终止事件标识时才进入字段提取。
-	if len(data) < 72 {
-		return
-	}
 	eventType := gjson.GetBytes(data, "type").String()
-	if eventType != "response.completed" && eventType != "response.done" {
+	if !isOpenAIResponsesTerminalEvent(eventType) {
 		return
 	}
 
-	if parsed, ok := extractOpenAIUsageFromGJSON(gjson.ParseBytes(data), "response.usage"); ok {
+	if parsed, ok := extractOpenAIUsageFromJSONBytes(data); ok {
 		*usage = parsed
+	}
+}
+
+func isOpenAIResponsesTerminalEvent(eventType string) bool {
+	switch strings.TrimSpace(eventType) {
+	case "response.completed", "response.done", "response.failed", "response.incomplete", "response.cancelled", "response.canceled":
+		return true
+	default:
+		return false
 	}
 }
 
@@ -4515,7 +4521,11 @@ func extractOpenAIUsageFromJSONBytes(body []byte) (OpenAIUsage, bool) {
 	if len(body) == 0 || !gjson.ValidBytes(body) {
 		return OpenAIUsage{}, false
 	}
-	return extractOpenAIUsageFromGJSON(gjson.ParseBytes(body), "usage")
+	root := gjson.ParseBytes(body)
+	if usage, ok := extractOpenAIUsageFromGJSON(root, "usage"); ok {
+		return usage, true
+	}
+	return extractOpenAIUsageFromGJSON(root, "response.usage")
 }
 
 func openAIUsageFromResponsesUsage(u *apicompat.ResponsesUsage) OpenAIUsage {
@@ -4700,8 +4710,7 @@ func extractOpenAISSETerminalEvent(body string) (string, []byte, bool) {
 			continue
 		}
 		eventType := strings.TrimSpace(gjson.Get(data, "type").String())
-		switch eventType {
-		case "response.completed", "response.done", "response.failed":
+		if isOpenAIResponsesTerminalEvent(eventType) {
 			return eventType, []byte(data), true
 		}
 	}

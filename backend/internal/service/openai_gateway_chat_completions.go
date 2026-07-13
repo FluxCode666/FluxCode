@@ -374,13 +374,13 @@ func (s *OpenAIGatewayService) handleChatBufferedStreamingResponse(
 		// Accumulate delta content for fallback when terminal output is empty.
 		acc.ProcessEvent(&event)
 
-		if (event.Type == "response.completed" || event.Type == "response.done" ||
-			event.Type == "response.incomplete" || event.Type == "response.failed") &&
-			event.Response != nil {
-			finalResponse = event.Response
-			if event.Response.Usage != nil {
-				usage = openAIUsageFromResponsesUsage(event.Response.Usage)
+		if isOpenAIResponsesTerminalEvent(event.Type) {
+			if parsed, ok := extractOpenAIUsageFromJSONBytes([]byte(payload)); ok {
+				usage = parsed
 			}
+		}
+		if isOpenAIResponsesTerminalEvent(event.Type) && event.Response != nil {
+			finalResponse = event.Response
 		}
 	}
 
@@ -486,10 +486,12 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 			return false
 		}
 
-		// Extract usage from completion events
-		if (event.Type == "response.completed" || event.Type == "response.incomplete" || event.Type == "response.failed") &&
-			event.Response != nil && event.Response.Usage != nil {
-			usage = openAIUsageFromResponsesUsage(event.Response.Usage)
+		// Extract usage from terminal events. Top-level usage takes precedence
+		// over response.usage in the shared helper.
+		if isOpenAIResponsesTerminalEvent(event.Type) {
+			if parsed, ok := extractOpenAIUsageFromJSONBytes([]byte(payload)); ok {
+				usage = parsed
+			}
 		}
 
 		chunks := apicompat.ResponsesEventToChatChunks(&event, state)

@@ -457,6 +457,12 @@ type ResponsesOutputTokensDetails struct {
 type ResponsesStreamEvent struct {
 	Type string `json:"type"`
 
+	// response.completed / response.done / response.failed / response.incomplete
+	// Some Responses providers emit usage at the event root rather than under
+	// the nested response object. Keep the pointer so an explicit zero-valued
+	// usage remains distinguishable from an absent usage field.
+	Usage *ResponsesUsage `json:"usage,omitempty"`
+
 	// response.created / response.completed / response.failed / response.incomplete
 	Response *ResponsesResponse `json:"response,omitempty"`
 
@@ -602,6 +608,7 @@ type ChatUsage struct {
 	CacheCreationInputTokens int               `json:"cache_creation_input_tokens,omitempty"`
 	CacheWriteInputTokens    int               `json:"cache_write_input_tokens,omitempty"`
 	PromptTokensDetails      *ChatTokenDetails `json:"prompt_tokens_details,omitempty"`
+	CompletionTokensDetails  *ChatTokenDetails `json:"completion_tokens_details,omitempty"`
 }
 
 // ChatTokenDetails provides a breakdown of token usage.
@@ -609,6 +616,7 @@ type ChatTokenDetails struct {
 	CachedTokens        int `json:"cached_tokens,omitempty"`
 	CacheCreationTokens int `json:"cache_creation_tokens,omitempty"`
 	CacheWriteTokens    int `json:"cache_write_tokens,omitempty"`
+	ReasoningTokens     int `json:"reasoning_tokens,omitempty"`
 }
 
 // ChatCompletionsChunk is a single streaming chunk from POST /v1/chat/completions.

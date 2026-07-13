@@ -22,6 +22,15 @@ import (
 	"github.com/tidwall/gjson"
 )
 
+func TestExtractOpenAIUsageFromJSONBytes_TopLevelAndNested(t *testing.T) {
+	top, ok := extractOpenAIUsageFromJSONBytes([]byte(`{"type":"response.done","usage":{"input_tokens":20,"output_tokens":10,"input_tokens_details":{"cache_write_tokens":4}}}`))
+	require.True(t, ok)
+	nested, ok := extractOpenAIUsageFromJSONBytes([]byte(`{"type":"response.completed","response":{"usage":{"input_tokens":20,"output_tokens":10,"input_tokens_details":{"cache_write_tokens":4}}}}`))
+	require.True(t, ok)
+	require.Equal(t, top, nested)
+	require.Equal(t, 4, top.CacheCreationInputTokens)
+}
+
 func TestNormalizeResponsesRequestServiceTier_OfficialValues(t *testing.T) {
 	for input, want := range map[string]string{
 		" fast ": "priority", "priority": "priority", "flex": "flex",

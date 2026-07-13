@@ -874,6 +874,61 @@ func TestResponsesEventToChatChunks_Completed(t *testing.T) {
 	assert.Equal(t, 30, chunks[1].Usage.PromptTokensDetails.CachedTokens)
 }
 
+func TestResponsesEventToChatChunks_ResponseDoneTopLevelUsage(t *testing.T) {
+	state := NewResponsesEventToChatState()
+	state.Model = "gpt-5.6-sol"
+	state.IncludeUsage = true
+	chunks := ResponsesEventToChatChunks(&ResponsesStreamEvent{
+		Type:     "response.done",
+		Response: &ResponsesResponse{Status: "completed"},
+		Usage: &ResponsesUsage{
+			InputTokens: 20, OutputTokens: 10,
+			OutputTokensDetails: &ResponsesOutputTokensDetails{ReasoningTokens: 8},
+		},
+	}, state)
+	require.Len(t, chunks, 2)
+	require.NotNil(t, chunks[1].Usage.CompletionTokensDetails)
+	require.Equal(t, 8, chunks[1].Usage.CompletionTokensDetails.ReasoningTokens)
+	require.Nil(t, FinalizeResponsesChatStream(state))
+}
+
+func TestResponsesEventToChatChunks_TopLevelUsageWinsOverNestedUsage(t *testing.T) {
+	state := NewResponsesEventToChatState()
+	state.Model = "gpt-5.6-sol"
+	state.IncludeUsage = true
+	chunks := ResponsesEventToChatChunks(&ResponsesStreamEvent{
+		Type: "response.done",
+		Response: &ResponsesResponse{
+			Status: "completed",
+			Usage:  &ResponsesUsage{InputTokens: 99, OutputTokens: 88},
+		},
+		Usage: &ResponsesUsage{InputTokens: 20, OutputTokens: 10},
+	}, state)
+	require.Len(t, chunks, 2)
+	require.Equal(t, 20, chunks[1].Usage.PromptTokens)
+	require.Equal(t, 10, chunks[1].Usage.CompletionTokens)
+}
+
+func TestResponsesEventToChatChunks_ReasoningTextAndCustomToolDeltas(t *testing.T) {
+	state := NewResponsesEventToChatState()
+	state.Model = "gpt-5.6-sol"
+	reasoning := ResponsesEventToChatChunks(&ResponsesStreamEvent{
+		Type: "response.reasoning_text.delta", Delta: "plan",
+	}, state)
+	require.Len(t, reasoning, 1)
+	require.Equal(t, "plan", *reasoning[0].Choices[0].Delta.ReasoningContent)
+
+	_ = ResponsesEventToChatChunks(&ResponsesStreamEvent{
+		Type: "response.output_item.added", OutputIndex: 2,
+		Item: &ResponsesOutput{Type: "function_call", CallID: "call_1", Name: "lookup"},
+	}, state)
+	tool := ResponsesEventToChatChunks(&ResponsesStreamEvent{
+		Type: "response.custom_tool_call_input.delta", OutputIndex: 2, Delta: `{"q":"x"}`,
+	}, state)
+	require.Len(t, tool, 1)
+	require.Equal(t, `{"q":"x"}`, tool[0].Choices[0].Delta.ToolCalls[0].Function.Arguments)
+}
+
 func TestResponsesEventToChatChunks_CompletedWithToolCalls(t *testing.T) {
 	state := NewResponsesEventToChatState()
 	state.Model = "gpt-4o"
