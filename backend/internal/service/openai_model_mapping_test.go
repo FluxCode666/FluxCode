@@ -43,6 +43,34 @@ func TestUsageBillingModelCandidates_AppendsCanonicalGPT56(t *testing.T) {
 	)
 }
 
+func TestNormalizeCodexModel_GPT56StrictSuffixes(t *testing.T) {
+	for _, tt := range []struct {
+		model     string
+		canonical string
+	}{
+		{model: "gpt-5.6-sol-extra-high", canonical: "gpt-5.6-sol"},
+		{model: "gpt-5.6-sol-foo", canonical: "gpt-5.6-sol"},
+		{model: "gpt-5.6-terra-foo", canonical: "gpt-5.6-terra"},
+	} {
+		t.Run("reject_"+tt.model, func(t *testing.T) {
+			require.NotEqual(t, tt.canonical, normalizeCodexModel(tt.model))
+		})
+	}
+
+	for _, tt := range []struct {
+		model string
+		want  string
+	}{
+		{model: "gpt-5.6-sol-high", want: "gpt-5.6-sol"},
+		{model: "gpt-5.6-terra-high", want: "gpt-5.6-terra"},
+		{model: "gpt-5.6-luna-preview", want: "gpt-5.6-luna"},
+	} {
+		t.Run("keep_"+tt.model, func(t *testing.T) {
+			require.Equal(t, tt.want, normalizeCodexModel(tt.model))
+		})
+	}
+}
+
 func TestResolveOpenAIForwardModel(t *testing.T) {
 	tests := []struct {
 		name               string
