@@ -468,6 +468,11 @@ func TestOpenAIWSPassthroughRequestNormalizer_AlignsTurnsFIFO(t *testing.T) {
 	require.Equal(t, "gpt-5.6-sol", gjson.GetBytes(second, "model").String())
 	require.Equal(t, "flex", gjson.GetBytes(second, "service_tier").String())
 
+	binaryJSON, err := normalizer.Normalize(coderws.MessageBinary, []byte(`{"type":"response.create","service_tier":"fast"}`))
+	require.NoError(t, err)
+	require.Equal(t, "gpt-5.6-sol", gjson.GetBytes(binaryJSON, "model").String())
+	require.Equal(t, "priority", gjson.GetBytes(binaryJSON, "service_tier").String())
+
 	binary := []byte{0x00, 0x01, 0x02}
 	normalizedBinary, err := normalizer.Normalize(coderws.MessageBinary, binary)
 	require.NoError(t, err)
@@ -479,6 +484,9 @@ func TestOpenAIWSPassthroughRequestNormalizer_AlignsTurnsFIFO(t *testing.T) {
 	secondMeta, ok := normalizer.TakeTurnMetadata()
 	require.True(t, ok)
 	require.Equal(t, passthroughTurnMetadata{OriginalModel: "gpt-5.6", ServiceTier: "flex"}, secondMeta)
+	thirdMeta, ok := normalizer.TakeTurnMetadata()
+	require.True(t, ok)
+	require.Equal(t, passthroughTurnMetadata{OriginalModel: "gpt-5.6", ServiceTier: "priority"}, thirdMeta)
 	_, ok = normalizer.TakeTurnMetadata()
 	require.False(t, ok)
 }

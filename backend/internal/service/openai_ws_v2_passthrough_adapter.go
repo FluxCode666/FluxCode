@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -32,17 +33,25 @@ type openAIWSPassthroughRequestNormalizer struct {
 }
 
 func (n *openAIWSPassthroughRequestNormalizer) Normalize(msgType coderws.MessageType, payload []byte) ([]byte, error) {
-	if msgType == coderws.MessageBinary {
+	if msgType != coderws.MessageText && msgType != coderws.MessageBinary {
 		return payload, nil
 	}
-	if msgType != coderws.MessageText {
-		return payload, nil
+	if !gjson.ValidBytes(payload) {
+		// Binary frames are allowed to carry opaque non-JSON data. Text frames
+		// remain protocol messages and must fail closed on malformed JSON.
+		if msgType == coderws.MessageBinary {
+			return payload, nil
+		}
+		return nil, fmt.Errorf("invalid websocket request payload")
+	}
+	if msgType == coderws.MessageBinary {
+		trimmed := bytes.TrimSpace(payload)
+		if len(trimmed) == 0 || trimmed[0] != '{' {
+			return payload, nil
+		}
 	}
 	n.mu.Lock()
 	defer n.mu.Unlock()
-	if !gjson.ValidBytes(payload) {
-		return nil, fmt.Errorf("invalid websocket request payload")
-	}
 	eventType := gjson.GetBytes(payload, "type").String()
 	if eventType != "" && eventType != "response.create" {
 		return payload, nil

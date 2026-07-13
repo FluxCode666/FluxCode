@@ -920,7 +920,7 @@ func TestResponsesEventToChatChunks_ReasoningTextAndCustomToolDeltas(t *testing.
 
 	_ = ResponsesEventToChatChunks(&ResponsesStreamEvent{
 		Type: "response.output_item.added", OutputIndex: 2,
-		Item: &ResponsesOutput{Type: "function_call", CallID: "call_1", Name: "lookup"},
+		Item: &ResponsesOutput{Type: "custom_tool_call", CallID: "call_1", Name: "lookup"},
 	}, state)
 	tool := ResponsesEventToChatChunks(&ResponsesStreamEvent{
 		Type: "response.custom_tool_call_input.delta", OutputIndex: 2, Delta: `{"q":"x"}`,
@@ -1185,6 +1185,39 @@ func TestBufferedResponseAccumulator_ToolCalls(t *testing.T) {
 	assert.Equal(t, "call_abc", output[0].CallID)
 	assert.Equal(t, "get_weather", output[0].Name)
 	assert.Equal(t, `{"city":"NYC"}`, output[0].Arguments)
+}
+
+func TestBufferedResponseAccumulator_CustomToolCall(t *testing.T) {
+	acc := NewBufferedResponseAccumulator()
+
+	acc.ProcessEvent(&ResponsesStreamEvent{
+		Type:        "response.output_item.added",
+		OutputIndex: 3,
+		Item: &ResponsesOutput{
+			Type:   "custom_tool_call",
+			CallID: "call_custom",
+			Name:   "apply_patch",
+		},
+	})
+	acc.ProcessEvent(&ResponsesStreamEvent{
+		Type:        "response.custom_tool_call_input.delta",
+		OutputIndex: 3,
+		Delta:       `{"patch":`,
+	})
+	acc.ProcessEvent(&ResponsesStreamEvent{
+		Type:        "response.custom_tool_call_input.delta",
+		OutputIndex: 3,
+		Delta:       `"file.txt"}`,
+	})
+
+	output := acc.BuildOutput()
+	require.Len(t, output, 1)
+	// The buffered bridge normalizes custom tools into the Chat-compatible
+	// function_call output shape after preserving their input deltas.
+	assert.Equal(t, "function_call", output[0].Type)
+	assert.Equal(t, "call_custom", output[0].CallID)
+	assert.Equal(t, "apply_patch", output[0].Name)
+	assert.Equal(t, `{"patch":"file.txt"}`, output[0].Arguments)
 }
 
 func TestBufferedResponseAccumulator_Reasoning(t *testing.T) {
