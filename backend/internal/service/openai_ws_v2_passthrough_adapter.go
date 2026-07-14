@@ -1,12 +1,14 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"sync/atomic"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
@@ -15,7 +17,88 @@ import (
 	coderws "github.com/coder/websocket"
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
 )
+
+type passthroughTurnMetadata struct {
+	OriginalModel string
+	ServiceTier   string
+}
+
+type openAIWSPassthroughRequestNormalizer struct {
+	mu                sync.Mutex
+	account           *Account
+	lastOriginalModel string
+	pending           []passthroughTurnMetadata
+}
+
+func (n *openAIWSPassthroughRequestNormalizer) Normalize(msgType coderws.MessageType, payload []byte) ([]byte, error) {
+	if msgType != coderws.MessageText && msgType != coderws.MessageBinary {
+		return payload, nil
+	}
+	if !gjson.ValidBytes(payload) {
+		// Binary frames are allowed to carry opaque non-JSON data. Text frames
+		// remain protocol messages and must fail closed on malformed JSON.
+		if msgType == coderws.MessageBinary {
+			return payload, nil
+		}
+		return nil, fmt.Errorf("invalid websocket request payload")
+	}
+	if msgType == coderws.MessageBinary {
+		trimmed := bytes.TrimSpace(payload)
+		if len(trimmed) == 0 || trimmed[0] != '{' {
+			return payload, nil
+		}
+	}
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	eventType := gjson.GetBytes(payload, "type").String()
+	if eventType != "" && eventType != "response.create" {
+		return payload, nil
+	}
+	if eventType == "" {
+		var err error
+		payload, err = sjson.SetBytes(payload, "type", "response.create")
+		if err != nil {
+			return nil, err
+		}
+	}
+	originalModel := strings.TrimSpace(gjson.GetBytes(payload, "model").String())
+	modelMissing := originalModel == ""
+	if modelMissing {
+		originalModel = n.lastOriginalModel
+	}
+	if originalModel == "" {
+		return nil, fmt.Errorf("model is required in response.create payload")
+	}
+	var err error
+	upstreamModel := normalizeOpenAIModelForUpstream(n.account, n.account.GetMappedModel(originalModel))
+	if modelMissing || upstreamModel != originalModel {
+		payload, err = sjson.SetBytes(payload, "model", upstreamModel)
+		if err != nil {
+			return nil, err
+		}
+	}
+	var tier string
+	payload, tier, err = normalizeResponsesBodyServiceTier(payload)
+	if err != nil {
+		return nil, err
+	}
+	n.lastOriginalModel = originalModel
+	n.pending = append(n.pending, passthroughTurnMetadata{OriginalModel: originalModel, ServiceTier: tier})
+	return payload, nil
+}
+
+func (n *openAIWSPassthroughRequestNormalizer) TakeTurnMetadata() (passthroughTurnMetadata, bool) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	if len(n.pending) == 0 {
+		return passthroughTurnMetadata{}, false
+	}
+	meta := n.pending[0]
+	n.pending = n.pending[1:]
+	return meta, true
+}
 
 type openAIWSClientFrameConn struct {
 	conn *coderws.Conn
@@ -77,7 +160,6 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 		return errors.New("token is empty")
 	}
 	requestModel := strings.TrimSpace(gjson.GetBytes(firstClientMessage, "model").String())
-	requestServiceTier := extractOpenAIServiceTierFromBody(firstClientMessage)
 	requestPreviousResponseID := strings.TrimSpace(gjson.GetBytes(firstClientMessage, "previous_response_id").String())
 	logOpenAIWSV2Passthrough(
 		"relay_start account_id=%d model=%s previous_response_id=%s first_message_type=%s first_message_bytes=%d",
@@ -149,15 +231,17 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 	}
 
 	completedTurns := atomic.Int32{}
+	normalizer := &openAIWSPassthroughRequestNormalizer{account: account}
 	relayResult, relayExit := openaiwsv2.RunEntry(openaiwsv2.EntryInput{
 		Ctx:                ctx,
 		ClientConn:         &openAIWSClientFrameConn{conn: clientConn},
 		UpstreamConn:       upstreamFrameConn,
 		FirstClientMessage: firstClientMessage,
 		Options: openaiwsv2.RelayOptions{
-			WriteTimeout:     s.openAIWSWriteTimeout(),
-			IdleTimeout:      s.openAIWSPassthroughIdleTimeout(),
-			FirstMessageType: coderws.MessageText,
+			WriteTimeout:         s.openAIWSWriteTimeout(),
+			IdleTimeout:          s.openAIWSPassthroughIdleTimeout(),
+			FirstMessageType:     coderws.MessageText,
+			NormalizeClientFrame: normalizer.Normalize,
 			OnUsageParseFailure: func(eventType string, usageRaw string) {
 				logOpenAIWSV2Passthrough(
 					"usage_parse_failed event_type=%s usage_raw=%s",
@@ -166,6 +250,15 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 				)
 			},
 			OnTurnComplete: func(turn openaiwsv2.RelayTurnResult) {
+				meta, ok := normalizer.TakeTurnMetadata()
+				if ok {
+					turn.RequestModel = meta.OriginalModel
+				}
+				var serviceTier *string
+				if ok && meta.ServiceTier != "" {
+					tier := meta.ServiceTier
+					serviceTier = &tier
+				}
 				turnNo := int(completedTurns.Add(1))
 				turnResult := &OpenAIForwardResult{
 					RequestID: turn.RequestID,
@@ -176,7 +269,7 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 						CacheReadInputTokens:     turn.Usage.CacheReadInputTokens,
 					},
 					Model:           turn.RequestModel,
-					ServiceTier:     requestServiceTier,
+					ServiceTier:     serviceTier,
 					Stream:          true,
 					OpenAIWSMode:    true,
 					ResponseHeaders: cloneHeader(handshakeHeaders),
@@ -232,6 +325,18 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 			},
 		},
 	})
+	turnCount := int(completedTurns.Load())
+	resultModel := relayResult.RequestModel
+	var resultServiceTier *string
+	if turnCount == 0 {
+		if meta, ok := normalizer.TakeTurnMetadata(); ok {
+			resultModel = meta.OriginalModel
+			if meta.ServiceTier != "" {
+				tier := meta.ServiceTier
+				resultServiceTier = &tier
+			}
+		}
+	}
 
 	result := &OpenAIForwardResult{
 		RequestID: relayResult.RequestID,
@@ -241,8 +346,8 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 			CacheCreationInputTokens: relayResult.Usage.CacheCreationInputTokens,
 			CacheReadInputTokens:     relayResult.Usage.CacheReadInputTokens,
 		},
-		Model:           relayResult.RequestModel,
-		ServiceTier:     requestServiceTier,
+		Model:           resultModel,
+		ServiceTier:     resultServiceTier,
 		Stream:          true,
 		OpenAIWSMode:    true,
 		ResponseHeaders: cloneHeader(handshakeHeaders),
@@ -250,7 +355,6 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 		FirstTokenMs:    relayResult.FirstTokenMs,
 	}
 
-	turnCount := int(completedTurns.Load())
 	if relayExit == nil {
 		logOpenAIWSV2Passthrough(
 			"relay_completed account_id=%d request_id=%s terminal_event=%s duration_ms=%d c2u_frames=%d u2c_frames=%d dropped_frames=%d turns=%d",
@@ -283,6 +387,13 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 	)
 
 	relayErr := relayExit.Err
+	if relayExit.Stage == "normalize_client_frame" {
+		relayErr = NewOpenAIWSClientCloseError(
+			coderws.StatusPolicyViolation,
+			"invalid websocket request payload",
+			relayErr,
+		)
+	}
 	if relayExit.Stage == "idle_timeout" {
 		relayErr = NewOpenAIWSClientCloseError(
 			coderws.StatusPolicyViolation,

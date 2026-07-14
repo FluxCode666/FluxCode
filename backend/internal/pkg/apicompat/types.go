@@ -154,19 +154,26 @@ type AnthropicDelta struct {
 
 // ResponsesRequest is the request body for POST /v1/responses.
 type ResponsesRequest struct {
-	Model           string              `json:"model"`
-	Instructions    string              `json:"instructions,omitempty"`
-	Input           json.RawMessage     `json:"input"` // string or []ResponsesInputItem
-	MaxOutputTokens *int                `json:"max_output_tokens,omitempty"`
-	Temperature     *float64            `json:"temperature,omitempty"`
-	TopP            *float64            `json:"top_p,omitempty"`
-	Stream          bool                `json:"stream,omitempty"`
-	Tools           []ResponsesTool     `json:"tools,omitempty"`
-	Include         []string            `json:"include,omitempty"`
-	Store           *bool               `json:"store,omitempty"`
-	Reasoning       *ResponsesReasoning `json:"reasoning,omitempty"`
-	ToolChoice      json.RawMessage     `json:"tool_choice,omitempty"`
-	ServiceTier     string              `json:"service_tier,omitempty"`
+	Model             string              `json:"model"`
+	Instructions      string              `json:"instructions,omitempty"`
+	Input             json.RawMessage     `json:"input"` // string or []ResponsesInputItem
+	MaxOutputTokens   *int                `json:"max_output_tokens,omitempty"`
+	Temperature       *float64            `json:"temperature,omitempty"`
+	TopP              *float64            `json:"top_p,omitempty"`
+	Stream            bool                `json:"stream,omitempty"`
+	Tools             []ResponsesTool     `json:"tools,omitempty"`
+	Include           []string            `json:"include,omitempty"`
+	Store             *bool               `json:"store,omitempty"`
+	Reasoning         *ResponsesReasoning `json:"reasoning,omitempty"`
+	ToolChoice        json.RawMessage     `json:"tool_choice,omitempty"`
+	ServiceTier       string              `json:"service_tier,omitempty"`
+	ParallelToolCalls *bool               `json:"parallel_tool_calls,omitempty"`
+	Text              *ResponsesText      `json:"text,omitempty"`
+}
+
+type ResponsesText struct {
+	Format    json.RawMessage `json:"format,omitempty"`
+	Verbosity string          `json:"verbosity,omitempty"`
 }
 
 // ResponsesReasoning configures reasoning effort in the Responses API.
@@ -450,6 +457,12 @@ type ResponsesOutputTokensDetails struct {
 type ResponsesStreamEvent struct {
 	Type string `json:"type"`
 
+	// response.completed / response.done / response.failed / response.incomplete
+	// Some Responses providers emit usage at the event root rather than under
+	// the nested response object. Keep the pointer so an explicit zero-valued
+	// usage remains distinguishable from an absent usage field.
+	Usage *ResponsesUsage `json:"usage,omitempty"`
+
 	// response.created / response.completed / response.failed / response.incomplete
 	Response *ResponsesResponse `json:"response,omitempty"`
 
@@ -500,6 +513,8 @@ type ChatCompletionsRequest struct {
 	ReasoningEffort     string             `json:"reasoning_effort,omitempty"` // "low" | "medium" | "high" | "xhigh"
 	ServiceTier         string             `json:"service_tier,omitempty"`
 	Stop                json.RawMessage    `json:"stop,omitempty"` // string or []string
+	ParallelToolCalls   *bool              `json:"parallel_tool_calls,omitempty"`
+	ResponseFormat      json.RawMessage    `json:"response_format,omitempty"`
 
 	// Legacy function calling (deprecated but still supported)
 	Functions    []ChatFunction  `json:"functions,omitempty"`
@@ -593,6 +608,7 @@ type ChatUsage struct {
 	CacheCreationInputTokens int               `json:"cache_creation_input_tokens,omitempty"`
 	CacheWriteInputTokens    int               `json:"cache_write_input_tokens,omitempty"`
 	PromptTokensDetails      *ChatTokenDetails `json:"prompt_tokens_details,omitempty"`
+	CompletionTokensDetails  *ChatTokenDetails `json:"completion_tokens_details,omitempty"`
 }
 
 // ChatTokenDetails provides a breakdown of token usage.
@@ -600,6 +616,7 @@ type ChatTokenDetails struct {
 	CachedTokens        int `json:"cached_tokens,omitempty"`
 	CacheCreationTokens int `json:"cache_creation_tokens,omitempty"`
 	CacheWriteTokens    int `json:"cache_write_tokens,omitempty"`
+	ReasoningTokens     int `json:"reasoning_tokens,omitempty"`
 }
 
 // ChatCompletionsChunk is a single streaming chunk from POST /v1/chat/completions.

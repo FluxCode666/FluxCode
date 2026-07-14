@@ -2477,30 +2477,21 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 				markPatchDelete("max_completion_tokens")
 			}
 		}
+	}
 
-		// Remove unsupported fields (not supported by upstream OpenAI API)
-		unsupportedFields := []string{"prompt_cache_retention", "safety_identifier"}
-		for _, unsupportedField := range unsupportedFields {
-			if _, has := reqBody[unsupportedField]; has {
-				delete(reqBody, unsupportedField)
-				bodyModified = true
-				markPatchDelete(unsupportedField)
-			}
-		}
-
-		// Normalize service_tier: only "priority" and "flex" are valid upstream values.
-		// Unrecognized values (e.g. "auto", "default") are removed to prevent upstream 400.
-		if rawTier, hasTier := reqBody["service_tier"].(string); hasTier {
-			normalized := normalizeOpenAIServiceTier(rawTier)
-			if normalized == nil {
-				delete(reqBody, "service_tier")
-				bodyModified = true
-				markPatchDelete("service_tier")
-			} else if *normalized != rawTier {
-				reqBody["service_tier"] = *normalized
-				bodyModified = true
-				markPatchSet("service_tier", *normalized)
-			}
+	// Normalize service_tier for every native Responses request, including
+	// Codex CLI traffic, so upstream and usage records observe the same value.
+	if rawTier, hasTier := reqBody["service_tier"]; hasTier {
+		rawTierString, isString := rawTier.(string)
+		normalized := normalizeOpenAIServiceTier(rawTierString)
+		if !isString || normalized == nil {
+			delete(reqBody, "service_tier")
+			bodyModified = true
+			markPatchDelete("service_tier")
+		} else if *normalized != rawTierString {
+			reqBody["service_tier"] = *normalized
+			bodyModified = true
+			markPatchSet("service_tier", *normalized)
 		}
 	}
 
@@ -2937,6 +2928,11 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	body, _, injectErr = applyResolvedSystemPromptToJSON(ctx, c, body, PlatformOpenAI, PlatformOpenAI, s.settingService)
 	if injectErr != nil {
 		return nil, fmt.Errorf("apply system prompt: %w", injectErr)
+	}
+	var tierErr error
+	body, _, tierErr = normalizeResponsesBodyServiceTier(body)
+	if tierErr != nil {
+		return nil, fmt.Errorf("normalize passthrough service tier: %w", tierErr)
 	}
 	if account != nil && account.Type == AccountTypeOAuth {
 		if rejectReason := detectOpenAIPassthroughInstructionsRejectReason(reqModel, body); rejectReason != "" {
@@ -4425,16 +4421,22 @@ func (s *OpenAIGatewayService) parseSSEUsageBytes(data []byte, usage *OpenAIUsag
 		return
 	}
 	// 选择性解析：仅在数据中包含终止事件标识时才进入字段提取。
-	if len(data) < 72 {
-		return
-	}
 	eventType := gjson.GetBytes(data, "type").String()
-	if eventType != "response.completed" && eventType != "response.done" {
+	if !isOpenAIResponsesTerminalEvent(eventType) {
 		return
 	}
 
-	if parsed, ok := extractOpenAIUsageFromGJSON(gjson.ParseBytes(data), "response.usage"); ok {
+	if parsed, ok := extractOpenAIUsageFromJSONBytes(data); ok {
 		*usage = parsed
+	}
+}
+
+func isOpenAIResponsesTerminalEvent(eventType string) bool {
+	switch strings.TrimSpace(eventType) {
+	case "response.completed", "response.done", "response.failed", "response.incomplete", "response.cancelled", "response.canceled":
+		return true
+	default:
+		return false
 	}
 }
 
@@ -4519,7 +4521,11 @@ func extractOpenAIUsageFromJSONBytes(body []byte) (OpenAIUsage, bool) {
 	if len(body) == 0 || !gjson.ValidBytes(body) {
 		return OpenAIUsage{}, false
 	}
-	return extractOpenAIUsageFromGJSON(gjson.ParseBytes(body), "usage")
+	root := gjson.ParseBytes(body)
+	if usage, ok := extractOpenAIUsageFromGJSON(root, "usage"); ok {
+		return usage, true
+	}
+	return extractOpenAIUsageFromGJSON(root, "response.usage")
 }
 
 func openAIUsageFromResponsesUsage(u *apicompat.ResponsesUsage) OpenAIUsage {
@@ -4704,8 +4710,7 @@ func extractOpenAISSETerminalEvent(body string) (string, []byte, bool) {
 			continue
 		}
 		eventType := strings.TrimSpace(gjson.Get(data, "type").String())
-		switch eventType {
-		case "response.completed", "response.done", "response.failed":
+		if isOpenAIResponsesTerminalEvent(eventType) {
 			return eventType, []byte(data), true
 		}
 	}
@@ -5116,6 +5121,40 @@ type OpenAIRecordUsageInput struct {
 	ChannelUsageFields
 }
 
+func (s *OpenAIGatewayService) calculateOpenAIUsageTokenCostCandidates(ctx context.Context, apiKey *APIKey, candidates []string, tokens UsageTokens, multiplier float64, serviceTier string) (*CostBreakdown, error) {
+	var lastErr error
+	for _, model := range candidates {
+		var cost *CostBreakdown
+		var err error
+		if s.resolver != nil && apiKey.Group != nil {
+			gid := apiKey.Group.ID
+			cost, err = s.billingService.CalculateCostUnified(CostInput{
+				Ctx:            ctx,
+				Model:          model,
+				GroupID:        &gid,
+				Tokens:         tokens,
+				RequestCount:   1,
+				RateMultiplier: multiplier,
+				ServiceTier:    serviceTier,
+				Resolver:       s.resolver,
+			})
+		} else {
+			cost, err = s.billingService.CalculateCostWithServiceTier(model, tokens, multiplier, serviceTier)
+		}
+		if err == nil && cost != nil {
+			return cost, nil
+		}
+		if err == nil {
+			err = fmt.Errorf("empty cost breakdown for model: %s", model)
+		}
+		lastErr = err
+	}
+	if lastErr == nil {
+		lastErr = errors.New("no non-empty OpenAI billing model candidates")
+	}
+	return nil, fmt.Errorf("calculate OpenAI usage cost for %s: %w", strings.Join(candidates, ","), lastErr)
+}
+
 // RecordUsage records usage and deducts balance
 func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRecordUsageInput) error {
 	result := input.Result
@@ -5168,38 +5207,54 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 
 	var cost *CostBreakdown
 	var err error
+	// 图片计费仍保留原有单模型选择路径。
 	billingModel := forwardResultBillingModel(result.Model, result.UpstreamModel)
 	if result.BillingModel != "" {
 		billingModel = strings.TrimSpace(result.BillingModel)
 	}
-	if input.BillingModelSource == BillingModelSourceChannelMapped && input.ChannelMappedModel != "" && input.ChannelMappedModel != input.OriginalModel {
+	if input.BillingModelSource == BillingModelSourceChannelMapped && input.ChannelMappedModel != "" {
 		billingModel = input.ChannelMappedModel
 	}
 	if input.BillingModelSource == BillingModelSourceRequested && input.OriginalModel != "" {
 		billingModel = input.OriginalModel
 	}
+	clientModel := strings.TrimSpace(input.OriginalModel)
+	if clientModel == "" {
+		clientModel = strings.TrimSpace(result.Model)
+	}
+	billingModels := usageBillingModelCandidates(
+		billingModel,
+		input.ChannelMappedModel,
+		clientModel,
+		result.UpstreamModel,
+	)
 	serviceTier := ""
 	if result.ServiceTier != nil {
 		serviceTier = strings.TrimSpace(*result.ServiceTier)
 	}
 	if result.ImageCount > 0 {
 		cost = s.calculateOpenAIImageCost(ctx, billingModel, apiKey, result, multiplier)
-	} else if s.resolver != nil && apiKey.Group != nil {
-		gid := apiKey.Group.ID
-		cost, err = s.billingService.CalculateCostUnified(CostInput{
-			Ctx:            ctx,
-			Model:          billingModel,
-			GroupID:        &gid,
-			Tokens:         tokens,
-			RequestCount:   1,
-			RateMultiplier: multiplier,
-			ServiceTier:    serviceTier,
-			Resolver:       s.resolver,
-		})
 	} else {
-		cost, err = s.billingService.CalculateCostWithServiceTier(billingModel, tokens, multiplier, serviceTier)
+		cost, err = s.calculateOpenAIUsageTokenCostCandidates(ctx, apiKey, billingModels, tokens, multiplier, serviceTier)
 	}
 	if err != nil {
+		canonicalModel := ""
+		for _, candidate := range billingModels {
+			if normalized, ok := normalizeGPT56ModelAlias(candidate); ok {
+				canonicalModel = normalized
+				break
+			}
+		}
+		logger.L().With(
+			zap.Strings("billing_models", billingModels),
+			zap.String("requested_model", input.OriginalModel),
+			zap.String("mapped_model", input.ChannelMappedModel),
+			zap.String("upstream_model", result.UpstreamModel),
+			zap.String("canonical_model", canonicalModel),
+			zap.Int64("channel_id", input.ChannelID),
+			zap.Int64("api_key_id", apiKey.ID),
+			zap.Int64("account_id", account.ID),
+		).Warn("openai_usage.pricing_missing_record_zero_cost", zap.Error(err))
 		cost = &CostBreakdown{ActualCost: 0}
 	}
 
@@ -5789,11 +5844,41 @@ func normalizeOpenAIServiceTier(raw string) *string {
 		value = "priority"
 	}
 	switch value {
-	case "priority", "flex":
+	case "priority", "flex", "auto", "default", "scale":
 		return &value
 	default:
 		return nil
 	}
+}
+
+func normalizeResponsesRequestServiceTier(req *apicompat.ResponsesRequest) {
+	if req == nil {
+		return
+	}
+	if normalized := normalizeOpenAIServiceTier(req.ServiceTier); normalized != nil {
+		req.ServiceTier = *normalized
+	} else {
+		req.ServiceTier = ""
+	}
+}
+
+func normalizeResponsesBodyServiceTier(body []byte) ([]byte, string, error) {
+	tier := gjson.GetBytes(body, "service_tier")
+	if !tier.Exists() {
+		return body, "", nil
+	}
+	if tier.Type != gjson.String {
+		updated, err := sjson.DeleteBytes(body, "service_tier")
+		return updated, "", err
+	}
+	raw := tier.String()
+	normalized := normalizeOpenAIServiceTier(raw)
+	if normalized == nil {
+		updated, err := sjson.DeleteBytes(body, "service_tier")
+		return updated, "", err
+	}
+	updated, err := sjson.SetBytes(body, "service_tier", *normalized)
+	return updated, *normalized, err
 }
 
 func sanitizeEmptyBase64InputImagesInOpenAIBody(body []byte) ([]byte, bool, error) {

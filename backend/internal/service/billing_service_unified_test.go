@@ -110,6 +110,36 @@ func TestCalculateCostUnified_ChannelIntervalInheritsBaseCacheWritePrice(t *test
 	require.InDelta(t, expectedTotal, cost.ActualCost, 1e-12)
 }
 
+func TestCalculateCostUnified_IntervalSelectionIncludesCacheWrite(t *testing.T) {
+	cs := newTestChannelServiceWithCache(t, &channelCache{
+		pricingByGroupModel: map[channelModelKey]*ChannelModelPricing{
+			{groupID: 1, model: "gpt-5.6-sol"}: {
+				BillingMode: BillingModeToken,
+				Intervals: []PricingInterval{
+					{MinTokens: 0, MaxTokens: testPtrInt(100), InputPrice: testPtrFloat64(1e-6), OutputPrice: testPtrFloat64(1e-6)},
+					{MinTokens: 101, MaxTokens: testPtrInt(1000), InputPrice: testPtrFloat64(2e-6), OutputPrice: testPtrFloat64(1e-6)},
+				},
+			},
+		},
+		channelByGroupID:        map[int64]*Channel{1: {ID: 1, Status: StatusActive}},
+		groupPlatform:           map[int64]string{1: ""},
+		wildcardByGroupPlatform: map[channelGroupPlatformKey][]*wildcardPricingEntry{},
+		mappingByGroupModel:     map[channelModelKey]string{},
+		wildcardMappingByGP:     map[channelGroupPlatformKey][]*wildcardMappingEntry{},
+		byID:                    map[int64]*Channel{},
+	})
+	bs := NewBillingService(&config.Config{}, nil)
+	resolver := NewModelPricingResolver(cs, bs)
+	groupID := int64(1)
+	cost, err := bs.CalculateCostUnified(CostInput{
+		Ctx: context.Background(), Model: "gpt-5.6-sol", GroupID: &groupID,
+		Tokens:         UsageTokens{InputTokens: 90, CacheCreationTokens: 20},
+		RateMultiplier: 1, Resolver: resolver,
+	})
+	require.NoError(t, err)
+	require.InDelta(t, 90*2e-6, cost.InputCost, 1e-12)
+}
+
 func TestOpenAIRecordUsage_UnifiedChannelIntervalBillsCacheWrite(t *testing.T) {
 	cs := newTestChannelServiceWithCache(t, &channelCache{
 		pricingByGroupModel: map[channelModelKey]*ChannelModelPricing{

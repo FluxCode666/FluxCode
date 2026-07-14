@@ -482,6 +482,43 @@ func TestRelay_OnTurnComplete_PerTerminalEvent(t *testing.T) {
 	require.Equal(t, 5, result.Usage.OutputTokens)
 }
 
+func TestRelay_OnTurnComplete_PerTerminalEventWithoutResponseID(t *testing.T) {
+	t.Parallel()
+
+	clientConn := newPassthroughTestFrameConn(nil, false)
+	upstreamConn := newPassthroughTestFrameConn([]passthroughTestFrame{
+		{
+			msgType: coderws.MessageText,
+			payload: []byte(`{"type":"response.done","usage":{"input_tokens":2,"output_tokens":1}}`),
+		},
+		{
+			msgType: coderws.MessageText,
+			payload: []byte(`{"type":"response.failed","usage":{"input_tokens":3,"output_tokens":4}}`),
+		},
+	}, true)
+
+	firstPayload := []byte(`{"type":"response.create","model":"gpt-5.6","input":[]}`)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	turns := make([]RelayTurnResult, 0, 2)
+	result, relayExit := Relay(ctx, clientConn, upstreamConn, firstPayload, RelayOptions{
+		OnTurnComplete: func(turn RelayTurnResult) {
+			turns = append(turns, turn)
+		},
+	})
+	require.Nil(t, relayExit)
+	require.Len(t, turns, 2)
+	require.Empty(t, turns[0].RequestID)
+	require.Equal(t, "response.done", turns[0].TerminalEventType)
+	require.Equal(t, Usage{InputTokens: 2, OutputTokens: 1}, turns[0].Usage)
+	require.Empty(t, turns[1].RequestID)
+	require.Equal(t, "response.failed", turns[1].TerminalEventType)
+	require.Equal(t, Usage{InputTokens: 3, OutputTokens: 4}, turns[1].Usage)
+	require.Equal(t, 5, result.Usage.InputTokens)
+	require.Equal(t, 5, result.Usage.OutputTokens)
+}
+
 func TestRelay_OnTurnComplete_ProvidesTurnMetrics(t *testing.T) {
 	t.Parallel()
 

@@ -46,6 +46,7 @@ func TestRunClientToUpstream_ErrorPaths(t *testing.T) {
 			context.Background(),
 			newPassthroughTestFrameConn(nil, true),
 			func(_ coderws.MessageType, _ []byte) error { return nil },
+			nil,
 			func() {},
 			nil,
 			nil,
@@ -66,6 +67,7 @@ func TestRunClientToUpstream_ErrorPaths(t *testing.T) {
 				{msgType: coderws.MessageText, payload: []byte(`{"x":1}`)},
 			}, true),
 			func(_ coderws.MessageType, _ []byte) error { return errors.New("boom") },
+			nil,
 			func() {},
 			nil,
 			nil,
@@ -88,6 +90,7 @@ func TestRunClientToUpstream_ErrorPaths(t *testing.T) {
 				{msgType: coderws.MessageText, payload: []byte(`{"x":1}`)},
 			}, true),
 			func(_ coderws.MessageType, _ []byte) error { return nil },
+			nil,
 			func() {},
 			forwarded,
 			func(event RelayTraceEvent) {
@@ -99,6 +102,63 @@ func TestRunClientToUpstream_ErrorPaths(t *testing.T) {
 		require.Equal(t, "read_client", sig.stage)
 		require.Equal(t, int64(1), forwarded.Load())
 		require.NotEmpty(t, traces)
+	})
+
+	t.Run("normalizes frame before write", func(t *testing.T) {
+		t.Parallel()
+
+		exitCh := make(chan relayExitSignal, 1)
+		var written []byte
+		runClientToUpstream(
+			context.Background(),
+			newPassthroughTestFrameConn([]passthroughTestFrame{
+				{msgType: coderws.MessageText, payload: []byte(`{"model":"gpt-5.6"}`)},
+			}, true),
+			func(_ coderws.MessageType, payload []byte) error {
+				written = append([]byte(nil), payload...)
+				return nil
+			},
+			func(msgType coderws.MessageType, payload []byte) ([]byte, error) {
+				require.Equal(t, coderws.MessageText, msgType)
+				require.JSONEq(t, `{"model":"gpt-5.6"}`, string(payload))
+				return []byte(`{"model":"gpt-5.6-sol","service_tier":"priority"}`), nil
+			},
+			func() {},
+			nil,
+			nil,
+			exitCh,
+		)
+		sig := <-exitCh
+		require.Equal(t, "read_client", sig.stage)
+		require.JSONEq(t, `{"model":"gpt-5.6-sol","service_tier":"priority"}`, string(written))
+	})
+
+	t.Run("normalizer failure stops forwarding", func(t *testing.T) {
+		t.Parallel()
+
+		exitCh := make(chan relayExitSignal, 1)
+		writeCalled := false
+		runClientToUpstream(
+			context.Background(),
+			newPassthroughTestFrameConn([]passthroughTestFrame{
+				{msgType: coderws.MessageText, payload: []byte(`{"model":"gpt-5.6"}`)},
+			}, true),
+			func(_ coderws.MessageType, _ []byte) error {
+				writeCalled = true
+				return nil
+			},
+			func(coderws.MessageType, []byte) ([]byte, error) {
+				return nil, errors.New("invalid frame")
+			},
+			func() {},
+			nil,
+			nil,
+			exitCh,
+		)
+		sig := <-exitCh
+		require.Equal(t, "normalize_client_frame", sig.stage)
+		require.ErrorContains(t, sig.err, "invalid frame")
+		require.False(t, writeCalled)
 	})
 }
 
@@ -352,6 +412,25 @@ func TestParseUsageAndAccumulate_NegativeTokensClampToZero(t *testing.T) {
 	require.Zero(t, state.usage.CacheCreationInputTokens)
 }
 
+func TestParseUsageAndAccumulate_TopLevelUsageAndCancelledTerminal(t *testing.T) {
+	state := &relayState{}
+	parsed := parseUsageAndAccumulate(state,
+		[]byte(`{"type":"response.cancelled","usage":{"input_tokens":20,"output_tokens":10,"input_tokens_details":{"cache_write_tokens":4}}}`),
+		"response.cancelled", nil)
+	require.Equal(t, Usage{InputTokens: 20, OutputTokens: 10, CacheCreationInputTokens: 4}, parsed)
+	require.True(t, isTerminalEvent("response.cancelled"))
+	require.True(t, shouldParseUsage("response.cancelled"))
+}
+
+func TestParseUsageAndAccumulate_TopLevelUsageWinsOverNestedUsage(t *testing.T) {
+	state := &relayState{}
+	parsed := parseUsageAndAccumulate(state,
+		[]byte(`{"type":"response.done","usage":{"input_tokens":20,"output_tokens":10},"response":{"usage":{"input_tokens":99,"output_tokens":88}}}`),
+		"response.done", nil)
+	require.Equal(t, 20, parsed.InputTokens)
+	require.Equal(t, 10, parsed.OutputTokens)
+}
+
 func TestEmitTurnCompleteCoverage(t *testing.T) {
 	t.Parallel()
 
@@ -367,14 +446,18 @@ func TestEmitTurnCompleteCoverage(t *testing.T) {
 	})
 	require.Equal(t, 0, called)
 
-	// 缺少 response_id 时不应触发。
+	// terminal 缺少 response_id 时仍应逐轮触发。
+	var gotWithoutID RelayTurnResult
 	emitTurnComplete(func(turn RelayTurnResult) {
 		called++
+		gotWithoutID = turn
 	}, &relayState{requestModel: "gpt-5"}, observedUpstreamEvent{
 		terminal:  true,
 		eventType: "response.completed",
 	})
-	require.Equal(t, 0, called)
+	require.Equal(t, 1, called)
+	require.Empty(t, gotWithoutID.RequestID)
+	require.Equal(t, "gpt-5", gotWithoutID.RequestModel)
 
 	// terminal 且 response_id 存在，应该触发；state=nil 时 model 为空串。
 	var got RelayTurnResult
@@ -387,7 +470,7 @@ func TestEmitTurnCompleteCoverage(t *testing.T) {
 		responseID: "resp_emit",
 		usage:      Usage{InputTokens: 2, OutputTokens: 3},
 	})
-	require.Equal(t, 1, called)
+	require.Equal(t, 2, called)
 	require.Equal(t, "resp_emit", got.RequestID)
 	require.Equal(t, "response.completed", got.TerminalEventType)
 	require.Equal(t, 2, got.Usage.InputTokens)

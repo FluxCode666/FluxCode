@@ -2,11 +2,106 @@ package service
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/stretchr/testify/require"
 )
+
+func TestDefaultPricingGPT56TierMetadataMatchesUpstream(t *testing.T) {
+	type tierMetadata struct {
+		Input                       float64 `json:"input_cost_per_token"`
+		InputBatch                  float64 `json:"input_cost_per_token_batches"`
+		InputFlex                   float64 `json:"input_cost_per_token_flex"`
+		InputPriority               float64 `json:"input_cost_per_token_priority"`
+		Output                      float64 `json:"output_cost_per_token"`
+		OutputBatch                 float64 `json:"output_cost_per_token_batches"`
+		OutputFlex                  float64 `json:"output_cost_per_token_flex"`
+		OutputPriority              float64 `json:"output_cost_per_token_priority"`
+		CacheWrite                  float64 `json:"cache_creation_input_token_cost"`
+		CacheWriteBatch             float64 `json:"cache_creation_input_token_cost_batches"`
+		CacheWriteFlex              float64 `json:"cache_creation_input_token_cost_flex"`
+		CacheWritePriority          float64 `json:"cache_creation_input_token_cost_priority"`
+		CacheRead                   float64 `json:"cache_read_input_token_cost"`
+		CacheReadFlex               float64 `json:"cache_read_input_token_cost_flex"`
+		CacheReadPriority           float64 `json:"cache_read_input_token_cost_priority"`
+		LongContextThreshold        int     `json:"long_context_input_token_threshold"`
+		LongContextInputMultiplier  float64 `json:"long_context_input_cost_multiplier"`
+		LongContextOutputMultiplier float64 `json:"long_context_output_cost_multiplier"`
+	}
+
+	data, err := os.ReadFile(filepath.Join("..", "..", "resources", "model-pricing", "model_prices_and_context_window.json"))
+	require.NoError(t, err)
+
+	var pricing map[string]tierMetadata
+	require.NoError(t, json.Unmarshal(data, &pricing))
+	var rawPricing map[string]map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal(data, &rawPricing))
+
+	tests := []struct {
+		model                                                                string
+		input, output, cacheWrite, cacheRead                                 float64
+		inputBatch, outputBatch, cacheWriteBatch                             float64
+		inputFlex, outputFlex, cacheWriteFlex, cacheReadFlex                 float64
+		inputPriority, outputPriority, cacheWritePriority, cacheReadPriority float64
+	}{
+		{
+			model: "gpt-5.6-sol",
+			input: 5e-6, output: 30e-6, cacheWrite: 6.25e-6, cacheRead: 0.5e-6,
+			inputBatch: 2.5e-6, outputBatch: 15e-6, cacheWriteBatch: 3.125e-6,
+			inputFlex: 2.5e-6, outputFlex: 15e-6, cacheWriteFlex: 3.125e-6, cacheReadFlex: 0.25e-6,
+			inputPriority: 10e-6, outputPriority: 60e-6, cacheWritePriority: 12.5e-6, cacheReadPriority: 1e-6,
+		},
+		{
+			model: "gpt-5.6-terra",
+			input: 2.5e-6, output: 15e-6, cacheWrite: 3.125e-6, cacheRead: 0.25e-6,
+			inputBatch: 1.25e-6, outputBatch: 7.5e-6, cacheWriteBatch: 1.5625e-6,
+			inputFlex: 1.25e-6, outputFlex: 7.5e-6, cacheWriteFlex: 1.5625e-6, cacheReadFlex: 0.125e-6,
+			inputPriority: 5e-6, outputPriority: 30e-6, cacheWritePriority: 6.25e-6, cacheReadPriority: 0.5e-6,
+		},
+		{
+			model: "gpt-5.6-luna",
+			input: 1e-6, output: 6e-6, cacheWrite: 1.25e-6, cacheRead: 0.1e-6,
+			inputBatch: 0.5e-6, outputBatch: 3e-6, cacheWriteBatch: 0.625e-6,
+			inputFlex: 0.5e-6, outputFlex: 3e-6, cacheWriteFlex: 0.625e-6, cacheReadFlex: 0.05e-6,
+			inputPriority: 2e-6, outputPriority: 12e-6, cacheWritePriority: 2.5e-6, cacheReadPriority: 0.2e-6,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.model, func(t *testing.T) {
+			got, ok := pricing[tt.model]
+			require.True(t, ok, "missing pricing object %s", tt.model)
+			raw, ok := rawPricing[tt.model]
+			require.True(t, ok, "missing raw pricing object %s", tt.model)
+
+			require.InDelta(t, tt.input, got.Input, 1e-12)
+			require.InDelta(t, tt.output, got.Output, 1e-12)
+			require.InDelta(t, tt.cacheWrite, got.CacheWrite, 1e-12)
+			require.InDelta(t, tt.cacheRead, got.CacheRead, 1e-12)
+			require.InDelta(t, tt.inputBatch, got.InputBatch, 1e-12)
+			require.InDelta(t, tt.outputBatch, got.OutputBatch, 1e-12)
+			require.InDelta(t, tt.cacheWriteBatch, got.CacheWriteBatch, 1e-12)
+			require.InDelta(t, tt.inputFlex, got.InputFlex, 1e-12)
+			require.InDelta(t, tt.outputFlex, got.OutputFlex, 1e-12)
+			require.InDelta(t, tt.cacheWriteFlex, got.CacheWriteFlex, 1e-12)
+			require.InDelta(t, tt.cacheReadFlex, got.CacheReadFlex, 1e-12)
+			require.InDelta(t, tt.inputPriority, got.InputPriority, 1e-12)
+			require.InDelta(t, tt.outputPriority, got.OutputPriority, 1e-12)
+			require.InDelta(t, tt.cacheWritePriority, got.CacheWritePriority, 1e-12)
+			require.InDelta(t, tt.cacheReadPriority, got.CacheReadPriority, 1e-12)
+
+			require.Equal(t, 272000, got.LongContextThreshold)
+			require.InDelta(t, 2.0, got.LongContextInputMultiplier, 1e-12)
+			require.InDelta(t, 1.5, got.LongContextOutputMultiplier, 1e-12)
+			require.NotContains(t, raw, "input_cost_per_token_above_272k_tokens")
+			require.NotContains(t, raw, "output_cost_per_token_above_272k_tokens")
+			require.NotContains(t, raw, "cache_read_input_token_cost_above_272k_tokens")
+		})
+	}
+}
 
 func TestParsePricingData_ParsesPriorityAndServiceTierFields(t *testing.T) {
 	svc := &PricingService{}

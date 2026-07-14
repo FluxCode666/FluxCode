@@ -32,6 +32,60 @@ func TestChatCompletionsToResponses_BasicText(t *testing.T) {
 	assert.Equal(t, "user", items[0].Role)
 }
 
+func TestChatCompletionsToResponses_GPT56StripsSampling(t *testing.T) {
+	v := 0.7
+	resp, err := ChatCompletionsToResponses(&ChatCompletionsRequest{
+		Model: "gpt5.6", Messages: []ChatMessage{{Role: "user", Content: json.RawMessage(`"hi"`)}},
+		Temperature: &v, TopP: &v,
+	})
+	require.NoError(t, err)
+	require.Nil(t, resp.Temperature)
+	require.Nil(t, resp.TopP)
+}
+
+func TestChatCompletionsToResponses_NonReasoningModelPreservesSampling(t *testing.T) {
+	v := 0.7
+	resp, err := ChatCompletionsToResponses(&ChatCompletionsRequest{
+		Model: "gpt-4o", Messages: []ChatMessage{{Role: "user", Content: json.RawMessage(`"hi"`)}},
+		Temperature: &v, TopP: &v,
+	})
+	require.NoError(t, err)
+	require.Same(t, &v, resp.Temperature)
+	require.Same(t, &v, resp.TopP)
+}
+
+func TestChatCompletionsToResponses_ResponseFormatAndParallelTools(t *testing.T) {
+	parallel := false
+	resp, err := ChatCompletionsToResponses(&ChatCompletionsRequest{
+		Model: "gpt-5.6", Messages: []ChatMessage{{Role: "user", Content: json.RawMessage(`"hi"`)}},
+		ResponseFormat:    json.RawMessage(`{"type":"json_schema","json_schema":{"name":"answer","schema":{"type":"object"},"strict":true}}`),
+		ParallelToolCalls: &parallel,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, resp.Text)
+	require.JSONEq(t, `{"type":"json_schema","name":"answer","schema":{"type":"object"},"strict":true}`, string(resp.Text.Format))
+	require.NotNil(t, resp.ParallelToolCalls)
+	require.False(t, *resp.ParallelToolCalls)
+}
+
+func TestChatCompletionsToResponses_EmptyContentNeverNull(t *testing.T) {
+	for _, content := range []json.RawMessage{json.RawMessage(`null`), json.RawMessage(`[]`), json.RawMessage(`[{"type":"text","text":""}]`)} {
+		resp, err := ChatCompletionsToResponses(&ChatCompletionsRequest{Model: "gpt-5.6", Messages: []ChatMessage{{Role: "user", Content: content}}})
+		require.NoError(t, err)
+		require.NotContains(t, string(resp.Input), `"content":null`)
+	}
+}
+
+func TestChatCompletionsToResponses_InvalidResponseFormatReturnsError(t *testing.T) {
+	_, err := ChatCompletionsToResponses(&ChatCompletionsRequest{
+		Model:          "gpt-5.6",
+		Messages:       []ChatMessage{{Role: "user", Content: json.RawMessage(`"hi"`)}},
+		ResponseFormat: json.RawMessage(`{"type":"json_schema","json_schema":`),
+	})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "response_format")
+}
+
 func TestChatCompletionsToResponses_SystemMessage(t *testing.T) {
 	req := &ChatCompletionsRequest{
 		Model: "gpt-4o",
@@ -281,6 +335,19 @@ func TestChatCompletionsToResponses_LegacyFunctions(t *testing.T) {
 	var tc map[string]any
 	require.NoError(t, json.Unmarshal(resp.ToolChoice, &tc))
 	assert.Equal(t, "function", tc["type"])
+	assert.Equal(t, "get_weather", tc["name"])
+}
+
+func TestChatCompletionsToResponses_ToolStrictDefaultsFalse(t *testing.T) {
+	resp, err := ChatCompletionsToResponses(&ChatCompletionsRequest{
+		Model:    "gpt-5.6",
+		Messages: []ChatMessage{{Role: "user", Content: json.RawMessage(`"hi"`)}},
+		Tools:    []ChatTool{{Type: "function", Function: &ChatFunction{Name: "lookup", Parameters: json.RawMessage(`{"type":"object"}`)}}},
+	})
+	require.NoError(t, err)
+	require.Len(t, resp.Tools, 1)
+	require.NotNil(t, resp.Tools[0].Strict)
+	require.False(t, *resp.Tools[0].Strict)
 }
 
 func TestChatCompletionsToResponses_ServiceTier(t *testing.T) {
@@ -375,6 +442,16 @@ func TestChatCompletionsToResponses_AssistantThinkingTagPreserved(t *testing.T) 
 	assert.Equal(t, "output_text", parts[0].Type)
 	assert.Contains(t, parts[0].Text, "<thinking>internal plan</thinking>")
 	assert.Contains(t, parts[0].Text, "final answer")
+}
+
+func TestChatCompletionsToResponses_AssistantReasoningContentPreserved(t *testing.T) {
+	resp, err := ChatCompletionsToResponses(&ChatCompletionsRequest{
+		Model:    "gpt-5.6",
+		Messages: []ChatMessage{{Role: "assistant", Content: json.RawMessage(`"answer"`), ReasoningContent: "internal plan"}},
+	})
+	require.NoError(t, err)
+	require.Contains(t, string(resp.Input), "<thinking>internal plan</thinking>")
+	require.Contains(t, string(resp.Input), "answer")
 }
 
 // ---------------------------------------------------------------------------
@@ -797,6 +874,61 @@ func TestResponsesEventToChatChunks_Completed(t *testing.T) {
 	assert.Equal(t, 30, chunks[1].Usage.PromptTokensDetails.CachedTokens)
 }
 
+func TestResponsesEventToChatChunks_ResponseDoneTopLevelUsage(t *testing.T) {
+	state := NewResponsesEventToChatState()
+	state.Model = "gpt-5.6-sol"
+	state.IncludeUsage = true
+	chunks := ResponsesEventToChatChunks(&ResponsesStreamEvent{
+		Type:     "response.done",
+		Response: &ResponsesResponse{Status: "completed"},
+		Usage: &ResponsesUsage{
+			InputTokens: 20, OutputTokens: 10,
+			OutputTokensDetails: &ResponsesOutputTokensDetails{ReasoningTokens: 8},
+		},
+	}, state)
+	require.Len(t, chunks, 2)
+	require.NotNil(t, chunks[1].Usage.CompletionTokensDetails)
+	require.Equal(t, 8, chunks[1].Usage.CompletionTokensDetails.ReasoningTokens)
+	require.Nil(t, FinalizeResponsesChatStream(state))
+}
+
+func TestResponsesEventToChatChunks_TopLevelUsageWinsOverNestedUsage(t *testing.T) {
+	state := NewResponsesEventToChatState()
+	state.Model = "gpt-5.6-sol"
+	state.IncludeUsage = true
+	chunks := ResponsesEventToChatChunks(&ResponsesStreamEvent{
+		Type: "response.done",
+		Response: &ResponsesResponse{
+			Status: "completed",
+			Usage:  &ResponsesUsage{InputTokens: 99, OutputTokens: 88},
+		},
+		Usage: &ResponsesUsage{InputTokens: 20, OutputTokens: 10},
+	}, state)
+	require.Len(t, chunks, 2)
+	require.Equal(t, 20, chunks[1].Usage.PromptTokens)
+	require.Equal(t, 10, chunks[1].Usage.CompletionTokens)
+}
+
+func TestResponsesEventToChatChunks_ReasoningTextAndCustomToolDeltas(t *testing.T) {
+	state := NewResponsesEventToChatState()
+	state.Model = "gpt-5.6-sol"
+	reasoning := ResponsesEventToChatChunks(&ResponsesStreamEvent{
+		Type: "response.reasoning_text.delta", Delta: "plan",
+	}, state)
+	require.Len(t, reasoning, 1)
+	require.Equal(t, "plan", *reasoning[0].Choices[0].Delta.ReasoningContent)
+
+	_ = ResponsesEventToChatChunks(&ResponsesStreamEvent{
+		Type: "response.output_item.added", OutputIndex: 2,
+		Item: &ResponsesOutput{Type: "custom_tool_call", CallID: "call_1", Name: "lookup"},
+	}, state)
+	tool := ResponsesEventToChatChunks(&ResponsesStreamEvent{
+		Type: "response.custom_tool_call_input.delta", OutputIndex: 2, Delta: `{"q":"x"}`,
+	}, state)
+	require.Len(t, tool, 1)
+	require.Equal(t, `{"q":"x"}`, tool[0].Choices[0].Delta.ToolCalls[0].Function.Arguments)
+}
+
 func TestResponsesEventToChatChunks_CompletedWithToolCalls(t *testing.T) {
 	state := NewResponsesEventToChatState()
 	state.Model = "gpt-4o"
@@ -1053,6 +1185,39 @@ func TestBufferedResponseAccumulator_ToolCalls(t *testing.T) {
 	assert.Equal(t, "call_abc", output[0].CallID)
 	assert.Equal(t, "get_weather", output[0].Name)
 	assert.Equal(t, `{"city":"NYC"}`, output[0].Arguments)
+}
+
+func TestBufferedResponseAccumulator_CustomToolCall(t *testing.T) {
+	acc := NewBufferedResponseAccumulator()
+
+	acc.ProcessEvent(&ResponsesStreamEvent{
+		Type:        "response.output_item.added",
+		OutputIndex: 3,
+		Item: &ResponsesOutput{
+			Type:   "custom_tool_call",
+			CallID: "call_custom",
+			Name:   "apply_patch",
+		},
+	})
+	acc.ProcessEvent(&ResponsesStreamEvent{
+		Type:        "response.custom_tool_call_input.delta",
+		OutputIndex: 3,
+		Delta:       `{"patch":`,
+	})
+	acc.ProcessEvent(&ResponsesStreamEvent{
+		Type:        "response.custom_tool_call_input.delta",
+		OutputIndex: 3,
+		Delta:       `"file.txt"}`,
+	})
+
+	output := acc.BuildOutput()
+	require.Len(t, output, 1)
+	// The buffered bridge normalizes custom tools into the Chat-compatible
+	// function_call output shape after preserving their input deltas.
+	assert.Equal(t, "function_call", output[0].Type)
+	assert.Equal(t, "call_custom", output[0].CallID)
+	assert.Equal(t, "apply_patch", output[0].Name)
+	assert.Equal(t, `{"patch":"file.txt"}`, output[0].Arguments)
 }
 
 func TestBufferedResponseAccumulator_Reasoning(t *testing.T) {

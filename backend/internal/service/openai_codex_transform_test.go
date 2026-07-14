@@ -768,3 +768,62 @@ func TestIsInstructionsEmpty(t *testing.T) {
 		})
 	}
 }
+
+func TestApplyCodexOAuthTransform_ReasoningAddsEncryptedInclude(t *testing.T) {
+	body := map[string]any{"model": "gpt-5.6-sol", "reasoning": map[string]any{"effort": "max"}}
+	applyCodexOAuthTransform(body, false, false)
+	require.Equal(t, []any{"reasoning.encrypted_content"}, body["include"])
+}
+
+func TestApplyCodexOAuthTransform_CompactDoesNotAddEncryptedInclude(t *testing.T) {
+	body := map[string]any{"model": "gpt-5.6-sol", "reasoning": map[string]any{"effort": "max"}}
+	applyCodexOAuthTransform(body, false, true)
+	_, exists := body["include"]
+	require.False(t, exists)
+}
+
+func TestApplyCodexOAuthTransform_ReasoningIncludeAppendsDeduplicatesAndPreservesInvalidType(t *testing.T) {
+	appendBody := map[string]any{"reasoning": map[string]any{"effort": "max"}, "include": []any{"file_search_call.results"}}
+	applyCodexOAuthTransform(appendBody, false, false)
+	require.Equal(t, []any{"file_search_call.results", "reasoning.encrypted_content"}, appendBody["include"])
+
+	dedupBody := map[string]any{"reasoning": map[string]any{"effort": "max"}, "include": []any{"reasoning.encrypted_content"}}
+	applyCodexOAuthTransform(dedupBody, false, false)
+	require.Equal(t, []any{"reasoning.encrypted_content"}, dedupBody["include"])
+
+	invalidBody := map[string]any{"reasoning": map[string]any{"effort": "max"}, "include": "invalid"}
+	applyCodexOAuthTransform(invalidBody, false, false)
+	require.Equal(t, "invalid", invalidBody["include"])
+}
+
+func TestApplyCodexOAuthTransform_StripsInternalUnsupportedFields(t *testing.T) {
+	body := map[string]any{"model": "gpt-5.6-sol", "user": "u", "metadata": map[string]any{"a": 1}, "safety_identifier": "s", "stream_options": map[string]any{}}
+	applyCodexOAuthTransform(body, false, false)
+	for _, key := range []string{"user", "metadata", "safety_identifier", "stream_options"} {
+		_, exists := body[key]
+		require.False(t, exists)
+	}
+}
+
+func TestApplyCodexOAuthTransform_LegacyFunctionCallUsesFlatToolChoiceName(t *testing.T) {
+	body := map[string]any{
+		"function_call": map[string]any{"name": "lookup"},
+	}
+
+	applyCodexOAuthTransform(body, false, false)
+
+	require.Equal(t, map[string]any{"type": "function", "name": "lookup"}, body["tool_choice"])
+}
+
+func TestApplyCodexOAuthTransform_FlattensNestedToolChoiceName(t *testing.T) {
+	body := map[string]any{
+		"tool_choice": map[string]any{
+			"type":     "function",
+			"function": map[string]any{"name": "lookup"},
+		},
+	}
+
+	applyCodexOAuthTransform(body, false, false)
+
+	require.Equal(t, map[string]any{"type": "function", "name": "lookup"}, body["tool_choice"])
+}

@@ -14,11 +14,134 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/cespare/xxhash/v2"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 )
+
+func TestExtractOpenAIUsageFromJSONBytes_TopLevelAndNested(t *testing.T) {
+	top, ok := extractOpenAIUsageFromJSONBytes([]byte(`{"type":"response.done","usage":{"input_tokens":20,"output_tokens":10,"input_tokens_details":{"cache_write_tokens":4}}}`))
+	require.True(t, ok)
+	nested, ok := extractOpenAIUsageFromJSONBytes([]byte(`{"type":"response.completed","response":{"usage":{"input_tokens":20,"output_tokens":10,"input_tokens_details":{"cache_write_tokens":4}}}}`))
+	require.True(t, ok)
+	require.Equal(t, top, nested)
+	require.Equal(t, 4, top.CacheCreationInputTokens)
+}
+
+func TestNormalizeResponsesRequestServiceTier_OfficialValues(t *testing.T) {
+	for input, want := range map[string]string{
+		" fast ": "priority", "priority": "priority", "flex": "flex",
+		"auto": "auto", "default": "default", "scale": "scale", "turbo": "",
+	} {
+		req := &apicompat.ResponsesRequest{ServiceTier: input}
+		normalizeResponsesRequestServiceTier(req)
+		require.Equal(t, want, req.ServiceTier)
+	}
+}
+
+func TestNormalizeResponsesBodyServiceTier_OfficialValues(t *testing.T) {
+	for input, want := range map[string]string{"fast": "priority", "auto": "auto", "default": "default", "scale": "scale", "turbo": ""} {
+		body, tier, err := normalizeResponsesBodyServiceTier([]byte(`{"model":"gpt-5.6-sol","service_tier":"` + input + `"}`))
+		require.NoError(t, err)
+		require.Equal(t, want, tier)
+		if want == "" {
+			require.False(t, gjson.GetBytes(body, "service_tier").Exists())
+		} else {
+			require.Equal(t, want, gjson.GetBytes(body, "service_tier").String())
+		}
+	}
+
+	for name, rawValue := range map[string]string{
+		"empty string": `""`,
+		"null":         `null`,
+		"number":       `123`,
+		"object":       `{"mode":"priority"}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			body, tier, err := normalizeResponsesBodyServiceTier([]byte(`{"model":"gpt-5.6-sol","service_tier":` + rawValue + `}`))
+			require.NoError(t, err)
+			require.Empty(t, tier)
+			require.False(t, gjson.GetBytes(body, "service_tier").Exists())
+		})
+	}
+}
+
+func TestCalculateCostWithServiceTier_StandardAliasesUseStandardPrice(t *testing.T) {
+	svc := NewBillingService(&config.Config{}, nil)
+	tokens := UsageTokens{InputTokens: 100, OutputTokens: 10}
+	standard, err := svc.CalculateCostWithServiceTier("gpt-5.6-sol", tokens, 1, "")
+	require.NoError(t, err)
+	for _, tier := range []string{"auto", "default", "scale"} {
+		got, err := svc.CalculateCostWithServiceTier("gpt-5.6-sol", tokens, 1, tier)
+		require.NoError(t, err)
+		require.InDelta(t, standard.ActualCost, got.ActualCost, 1e-12)
+	}
+}
+
+func TestOpenAIGatewayService_OAuthPassthrough_StreamingNormalizesBodyServiceTier(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	c.Request.Header.Set("User-Agent", "codex_cli_rs/0.1.0")
+
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusBadRequest,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(`{"error":{"message":"stop"}}`)),
+	}}
+	svc := &OpenAIGatewayService{
+		cfg:          &config.Config{Gateway: config.GatewayConfig{ForceCodexCLI: false}},
+		httpUpstream: upstream,
+	}
+	account := &Account{
+		ID:          123,
+		Name:        "acc",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Concurrency: 1,
+		Credentials: map[string]any{"access_token": "oauth-token", "chatgpt_account_id": "chatgpt-acc"},
+		Extra:       map[string]any{"openai_passthrough": true},
+		Status:      StatusActive,
+		Schedulable: true,
+	}
+
+	_, err := svc.Forward(context.Background(), c, account, []byte(`{"model":"gpt-5.2","stream":true,"service_tier":"fast","input":[{"type":"text","text":"hi"}]}`))
+	require.Error(t, err)
+	require.Equal(t, "priority", gjson.GetBytes(upstream.lastBody, "service_tier").String())
+}
+
+func TestOpenAIGatewayService_NativeResponsesDeletesNonStringServiceTier(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusBadRequest,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(`{"error":{"message":"stop"}}`)),
+	}}
+	svc := &OpenAIGatewayService{cfg: &config.Config{}, httpUpstream: upstream}
+	account := &Account{
+		ID:          124,
+		Name:        "api-key-account",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Concurrency: 1,
+		Credentials: map[string]any{"api_key": "sk-test"},
+		Status:      StatusActive,
+		Schedulable: true,
+	}
+
+	_, err := svc.Forward(context.Background(), c, account, []byte(`{"model":"custom-model","stream":false,"service_tier":123,"input":"hello"}`))
+
+	require.Error(t, err)
+	require.False(t, gjson.GetBytes(upstream.lastBody, "service_tier").Exists())
+}
 
 // 编译期接口断言
 var _ AccountRepository = (*stubOpenAIAccountRepo)(nil)

@@ -64,7 +64,8 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_KeepLeaseAcrossT
 		Schedulable: true,
 		Concurrency: 1,
 		Credentials: map[string]any{
-			"api_key": "sk-test",
+			"api_key":       "sk-test",
+			"model_mapping": map[string]any{"gpt-5.6": "gpt-5.6-sol"},
 		},
 		Extra: map[string]any{
 			"responses_websockets_v2_enabled": true,
@@ -137,12 +138,12 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_KeepLeaseAcrossT
 		return message
 	}
 
-	writeMessage(`{"type":"response.create","model":"gpt-5.1","stream":false}`)
+	writeMessage(`{"type":"response.create","model":"gpt-5.6","stream":false,"service_tier":"fast"}`)
 	firstTurnEvent := readMessage()
 	require.Equal(t, "response.completed", gjson.GetBytes(firstTurnEvent, "type").String())
 	require.Equal(t, "resp_ingress_turn_1", gjson.GetBytes(firstTurnEvent, "response.id").String())
 
-	writeMessage(`{"type":"response.create","model":"gpt-5.1","stream":false,"previous_response_id":"resp_ingress_turn_1"}`)
+	writeMessage(`{"type":"response.create","stream":false,"previous_response_id":"resp_ingress_turn_1"}`)
 	secondTurnEvent := readMessage()
 	require.Equal(t, "response.completed", gjson.GetBytes(secondTurnEvent, "type").String())
 	require.Equal(t, "resp_ingress_turn_2", gjson.GetBytes(secondTurnEvent, "response.id").String())
@@ -162,6 +163,9 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_KeepLeaseAcrossT
 	require.Equal(t, int64(1), metrics.AcquireTotal, "同一 ingress 会话多 turn 应只获取一次上游 lease")
 	require.Equal(t, 1, captureDialer.DialCount(), "同一 ingress 会话应保持同一上游连接")
 	require.Len(t, captureConn.writes, 2, "应向同一上游连接发送两轮 response.create")
+	require.Equal(t, "gpt-5.6-sol", captureConn.writes[0]["model"])
+	require.Equal(t, "priority", captureConn.writes[0]["service_tier"])
+	require.Equal(t, "gpt-5.6-sol", captureConn.writes[1]["model"])
 }
 
 func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_DedicatedModeDoesNotReuseConnAcrossSessions(t *testing.T) {
@@ -316,7 +320,7 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_PassthroughModeR
 
 	upstreamConn := &openAIWSCaptureConn{
 		events: [][]byte{
-			[]byte(`{"type":"response.completed","response":{"id":"resp_passthrough_turn_1","model":"gpt-5.1","usage":{"input_tokens":2,"output_tokens":3}}}`),
+			[]byte(`{"type":"response.done","usage":{"input_tokens":20,"output_tokens":10,"input_tokens_details":{"cache_write_tokens":4}}}`),
 		},
 	}
 	captureDialer := &openAIWSCaptureDialer{conn: upstreamConn}
@@ -407,8 +411,7 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_PassthroughModeR
 	_, event, readErr := clientConn.Read(readCtx)
 	cancelRead()
 	require.NoError(t, readErr)
-	require.Equal(t, "response.completed", gjson.GetBytes(event, "type").String())
-	require.Equal(t, "resp_passthrough_turn_1", gjson.GetBytes(event, "response.id").String())
+	require.Equal(t, "response.done", gjson.GetBytes(event, "type").String())
 	_ = clientConn.Close(coderws.StatusNormalClosure, "done")
 
 	select {
@@ -425,10 +428,10 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_PassthroughModeR
 
 	select {
 	case result := <-resultCh:
-		require.Equal(t, "resp_passthrough_turn_1", result.RequestID)
 		require.True(t, result.OpenAIWSMode)
-		require.Equal(t, 2, result.Usage.InputTokens)
-		require.Equal(t, 3, result.Usage.OutputTokens)
+		require.Equal(t, 20, result.Usage.InputTokens)
+		require.Equal(t, 10, result.Usage.OutputTokens)
+		require.Equal(t, 4, result.Usage.CacheCreationInputTokens)
 		require.NotNil(t, result.ServiceTier)
 		require.Equal(t, "priority", *result.ServiceTier)
 	case <-time.After(2 * time.Second):
@@ -437,6 +440,184 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_PassthroughModeR
 
 	require.Equal(t, 1, captureDialer.DialCount(), "passthrough 模式应直接建立上游 websocket")
 	require.Len(t, upstreamConn.writes, 1, "passthrough 模式应透传首条 response.create")
+	require.Equal(t, "priority", upstreamConn.writes[0]["service_tier"])
+}
+
+func TestOpenAIWSEventShouldParseUsage_AllTerminalEvents(t *testing.T) {
+	for _, eventType := range []string{
+		"response.completed", "response.done", "response.failed", "response.incomplete", "response.cancelled", "response.canceled",
+	} {
+		require.True(t, openAIWSEventShouldParseUsage(eventType), eventType)
+	}
+}
+
+func TestOpenAIWSPassthroughRequestNormalizer_AlignsTurnsFIFO(t *testing.T) {
+	account := &Account{Credentials: map[string]any{
+		"model_mapping": map[string]any{"gpt-5.6": "gpt-5.6-sol"},
+	}}
+	normalizer := &openAIWSPassthroughRequestNormalizer{account: account}
+
+	first, err := normalizer.Normalize(coderws.MessageText, []byte(`{"model":"gpt-5.6","service_tier":"fast"}`))
+	require.NoError(t, err)
+	require.Equal(t, "response.create", gjson.GetBytes(first, "type").String())
+	require.Equal(t, "gpt-5.6-sol", gjson.GetBytes(first, "model").String())
+	require.Equal(t, "priority", gjson.GetBytes(first, "service_tier").String())
+
+	second, err := normalizer.Normalize(coderws.MessageText, []byte(`{"type":"response.create","service_tier":"flex"}`))
+	require.NoError(t, err)
+	require.Equal(t, "gpt-5.6-sol", gjson.GetBytes(second, "model").String())
+	require.Equal(t, "flex", gjson.GetBytes(second, "service_tier").String())
+
+	binaryJSON, err := normalizer.Normalize(coderws.MessageBinary, []byte(`{"type":"response.create","service_tier":"fast"}`))
+	require.NoError(t, err)
+	require.Equal(t, "gpt-5.6-sol", gjson.GetBytes(binaryJSON, "model").String())
+	require.Equal(t, "priority", gjson.GetBytes(binaryJSON, "service_tier").String())
+
+	binary := []byte{0x00, 0x01, 0x02}
+	normalizedBinary, err := normalizer.Normalize(coderws.MessageBinary, binary)
+	require.NoError(t, err)
+	require.Equal(t, binary, normalizedBinary)
+
+	firstMeta, ok := normalizer.TakeTurnMetadata()
+	require.True(t, ok)
+	require.Equal(t, passthroughTurnMetadata{OriginalModel: "gpt-5.6", ServiceTier: "priority"}, firstMeta)
+	secondMeta, ok := normalizer.TakeTurnMetadata()
+	require.True(t, ok)
+	require.Equal(t, passthroughTurnMetadata{OriginalModel: "gpt-5.6", ServiceTier: "flex"}, secondMeta)
+	thirdMeta, ok := normalizer.TakeTurnMetadata()
+	require.True(t, ok)
+	require.Equal(t, passthroughTurnMetadata{OriginalModel: "gpt-5.6", ServiceTier: "priority"}, thirdMeta)
+	_, ok = normalizer.TakeTurnMetadata()
+	require.False(t, ok)
+}
+
+type openAIWSBlockingPassthroughConn struct {
+	closed chan struct{}
+	once   sync.Once
+}
+
+func newOpenAIWSBlockingPassthroughConn() *openAIWSBlockingPassthroughConn {
+	return &openAIWSBlockingPassthroughConn{closed: make(chan struct{})}
+}
+
+func (c *openAIWSBlockingPassthroughConn) WriteJSON(context.Context, any) error {
+	return nil
+}
+
+func (c *openAIWSBlockingPassthroughConn) ReadMessage(ctx context.Context) ([]byte, error) {
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-c.closed:
+		return nil, io.EOF
+	}
+}
+
+func (c *openAIWSBlockingPassthroughConn) ReadFrame(ctx context.Context) (coderws.MessageType, []byte, error) {
+	payload, err := c.ReadMessage(ctx)
+	return coderws.MessageText, payload, err
+}
+
+func (c *openAIWSBlockingPassthroughConn) WriteFrame(ctx context.Context, _ coderws.MessageType, payload []byte) error {
+	return c.WriteJSON(ctx, payload)
+}
+
+func (c *openAIWSBlockingPassthroughConn) Ping(context.Context) error {
+	return nil
+}
+
+func (c *openAIWSBlockingPassthroughConn) Close() error {
+	c.once.Do(func() { close(c.closed) })
+	return nil
+}
+
+func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_PassthroughNormalizerErrorIsPolicyViolation(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	cfg := &config.Config{}
+	cfg.Security.URLAllowlist.Enabled = false
+	cfg.Security.URLAllowlist.AllowInsecureHTTP = true
+	cfg.Gateway.OpenAIWS.Enabled = true
+	cfg.Gateway.OpenAIWS.OAuthEnabled = true
+	cfg.Gateway.OpenAIWS.APIKeyEnabled = true
+	cfg.Gateway.OpenAIWS.ResponsesWebsocketsV2 = true
+	cfg.Gateway.OpenAIWS.ModeRouterV2Enabled = true
+	cfg.Gateway.OpenAIWS.IngressModeDefault = OpenAIWSIngressModeCtxPool
+	cfg.Gateway.OpenAIWS.DialTimeoutSeconds = 3
+	cfg.Gateway.OpenAIWS.ReadTimeoutSeconds = 3
+	cfg.Gateway.OpenAIWS.WriteTimeoutSeconds = 3
+
+	upstreamConn := newOpenAIWSBlockingPassthroughConn()
+	dialer := &openAIWSQueueDialer{conns: []openAIWSClientConn{upstreamConn}}
+	svc := &OpenAIGatewayService{
+		cfg:                       cfg,
+		httpUpstream:              &httpUpstreamRecorder{},
+		cache:                     &stubGatewayCache{},
+		openaiWSResolver:          NewOpenAIWSProtocolResolver(cfg),
+		toolCorrector:             NewCodexToolCorrector(),
+		openaiWSPassthroughDialer: dialer,
+	}
+	account := &Account{
+		ID:          453,
+		Name:        "openai-ingress-passthrough-invalid-frame",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Credentials: map[string]any{"api_key": "sk-test"},
+		Extra: map[string]any{
+			"openai_apikey_responses_websockets_v2_mode": OpenAIWSIngressModePassthrough,
+		},
+	}
+
+	serverErrCh := make(chan error, 1)
+	wsServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := coderws.Accept(w, r, nil)
+		if err != nil {
+			serverErrCh <- err
+			return
+		}
+		defer func() { _ = conn.CloseNow() }()
+
+		rec := httptest.NewRecorder()
+		ginCtx, _ := gin.CreateTestContext(rec)
+		ginCtx.Request = r.Clone(r.Context())
+		readCtx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+		_, firstMessage, readErr := conn.Read(readCtx)
+		cancel()
+		if readErr != nil {
+			serverErrCh <- readErr
+			return
+		}
+		serverErrCh <- svc.ProxyResponsesWebSocketFromClient(r.Context(), ginCtx, conn, account, "sk-test", firstMessage, nil)
+	}))
+	defer wsServer.Close()
+
+	dialCtx, cancelDial := context.WithTimeout(context.Background(), 3*time.Second)
+	clientConn, _, err := coderws.Dial(dialCtx, "ws"+strings.TrimPrefix(wsServer.URL, "http"), nil)
+	cancelDial()
+	require.NoError(t, err)
+	defer func() { _ = clientConn.CloseNow() }()
+
+	writeCtx, cancelWrite := context.WithTimeout(context.Background(), 3*time.Second)
+	require.NoError(t, clientConn.Write(writeCtx, coderws.MessageText, []byte(`{"type":"response.create","model":"gpt-5.6"}`)))
+	require.NoError(t, clientConn.Write(writeCtx, coderws.MessageText, []byte(`{`)))
+	cancelWrite()
+
+	select {
+	case serverErr := <-serverErrCh:
+		require.Error(t, serverErr)
+		var turnErr *openAIWSIngressTurnError
+		require.ErrorAs(t, serverErr, &turnErr)
+		require.Equal(t, "normalize_client_frame", turnErr.stage)
+		var closeErr *OpenAIWSClientCloseError
+		require.ErrorAs(t, serverErr, &closeErr)
+		require.Equal(t, coderws.StatusPolicyViolation, closeErr.StatusCode())
+		require.Equal(t, "invalid websocket request payload", closeErr.Reason())
+	case <-time.After(5 * time.Second):
+		t.Fatal("等待 passthrough normalizer 错误超时")
+	}
 }
 
 func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_ModeOffReturnsPolicyViolation(t *testing.T) {

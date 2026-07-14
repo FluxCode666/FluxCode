@@ -63,6 +63,7 @@ type RelayOptions struct {
 	OnTurnComplete       func(turn RelayTurnResult)
 	OnTrace              func(event RelayTraceEvent)
 	Now                  func() time.Time
+	NormalizeClientFrame func(msgType coderws.MessageType, payload []byte) ([]byte, error)
 }
 
 type RelayTraceEvent struct {
@@ -136,6 +137,15 @@ func Relay(
 	if firstMessageType != coderws.MessageBinary {
 		firstMessageType = coderws.MessageText
 	}
+	normalizeFrame := options.NormalizeClientFrame
+	if normalizeFrame != nil {
+		var err error
+		firstClientMessage, err = normalizeFrame(firstMessageType, firstClientMessage)
+		if err != nil {
+			return result, &RelayExit{Stage: "normalize_client_frame", Err: err}
+		}
+		result.RequestModel = strings.TrimSpace(gjson.GetBytes(firstClientMessage, "model").String())
+	}
 	startAt := nowFn()
 	state := &relayState{requestModel: result.RequestModel}
 	onTrace := options.OnTrace
@@ -191,7 +201,7 @@ func Relay(
 
 	exitCh := make(chan relayExitSignal, 3)
 	dropDownstreamWrites := atomic.Bool{}
-	go runClientToUpstream(relayCtx, clientConn, writeUpstream, markActivity, clientToUpstreamFrames, onTrace, exitCh)
+	go runClientToUpstream(relayCtx, clientConn, writeUpstream, normalizeFrame, markActivity, clientToUpstreamFrames, onTrace, exitCh)
 	go runUpstreamToClient(
 		relayCtx,
 		upstreamConn,
@@ -322,6 +332,7 @@ func runClientToUpstream(
 	ctx context.Context,
 	clientConn FrameConn,
 	writeUpstream func(msgType coderws.MessageType, payload []byte) error,
+	normalizeFrame func(msgType coderws.MessageType, payload []byte) ([]byte, error),
 	markActivity func(),
 	forwardedFrames *atomic.Int64,
 	onTrace func(event RelayTraceEvent),
@@ -340,6 +351,20 @@ func runClientToUpstream(
 			return
 		}
 		markActivity()
+		if normalizeFrame != nil {
+			payload, err = normalizeFrame(msgType, payload)
+			if err != nil {
+				emitRelayTrace(onTrace, RelayTraceEvent{
+					Stage:        "normalize_client_frame_failed",
+					Direction:    "client_to_upstream",
+					MessageType:  relayMessageTypeString(msgType),
+					PayloadBytes: len(payload),
+					Error:        err.Error(),
+				})
+				exitCh <- relayExitSignal{stage: "normalize_client_frame", err: err}
+				return
+			}
+		}
 		if err := writeUpstream(msgType, payload); err != nil {
 			emitRelayTrace(onTrace, RelayTraceEvent{
 				Stage:        "write_upstream_failed",
@@ -502,7 +527,7 @@ func relayMessageTypeString(msgType coderws.MessageType) string {
 
 func relayDirectionFromStage(stage string) string {
 	switch stage {
-	case "read_client", "write_upstream":
+	case "read_client", "write_upstream", "normalize_client_frame":
 		return "client_to_upstream"
 	case "read_upstream", "write_client", "drain_terminal":
 		return "upstream_to_client"
@@ -594,9 +619,6 @@ func emitTurnComplete(
 		return
 	}
 	responseID := strings.TrimSpace(observed.responseID)
-	if responseID == "" {
-		return
-	}
 	requestModel := ""
 	if state != nil {
 		requestModel = state.requestModel
@@ -656,7 +678,10 @@ func parseUsageAndAccumulate(
 	if state == nil || len(message) == 0 || !shouldParseUsage(eventType) {
 		return Usage{}
 	}
-	usageResult := gjson.GetBytes(message, "response.usage")
+	usageResult := gjson.GetBytes(message, "usage")
+	if !usageResult.Exists() {
+		usageResult = gjson.GetBytes(message, "response.usage")
+	}
 	if !usageResult.Exists() {
 		return Usage{}
 	}
@@ -669,9 +694,9 @@ func parseUsageAndAccumulate(
 		return Usage{}
 	}
 
-	inputResult := gjson.GetBytes(message, "response.usage.input_tokens")
-	outputResult := gjson.GetBytes(message, "response.usage.output_tokens")
-	cachedResult := gjson.GetBytes(message, "response.usage.input_tokens_details.cached_tokens")
+	inputResult := usageResult.Get("input_tokens")
+	outputResult := usageResult.Get("output_tokens")
+	cachedResult := usageResult.Get("input_tokens_details.cached_tokens")
 
 	inputTokens, inputOK := parseUsageIntField(inputResult, true)
 	outputTokens, outputOK := parseUsageIntField(outputResult, true)
@@ -804,12 +829,7 @@ func isTerminalEvent(eventType string) bool {
 }
 
 func shouldParseUsage(eventType string) bool {
-	switch eventType {
-	case "response.completed", "response.done", "response.failed":
-		return true
-	default:
-		return false
-	}
+	return isTerminalEvent(eventType)
 }
 
 func isTokenEvent(eventType string) bool {
