@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"strings"
 	"time"
 
@@ -47,7 +48,11 @@ const (
 // allocating large intermediate strings during retries/failovers.
 const opsUpstreamRequestBodyEarlyCap = 10 * 1024
 
-const opsUpstreamDebugLogBodyMaxBytes = 10 * 1024
+const (
+	opsUpstreamDebugLogBodyMaxBytes   = 10 * 1024
+	opsUpstreamDebugLogPromptMaxBytes = opsUpstreamDebugLogBodyMaxBytes
+	debugLogPromptTruncationMarker    = "...[truncated]"
+)
 
 // truncateStringBytes truncates s to at most maxBytes bytes without splitting
 // a multi-byte UTF-8 character.
@@ -158,6 +163,7 @@ func appendOpsUpstreamError(c *gin.Context, ev OpsUpstreamErrorEvent) {
 	if ev.Message != "" {
 		ev.Message = sanitizeUpstreamErrorMessage(ev.Message)
 	}
+	debugRequestBody := ev.UpstreamRequestBody
 
 	// If the caller didn't explicitly pass upstream request body but the gateway
 	// stored it on the context, attach it so ops can retry this specific attempt.
@@ -168,8 +174,10 @@ func appendOpsUpstreamError(c *gin.Context, ev OpsUpstreamErrorEvent) {
 		if v, ok := c.Get(OpsUpstreamRequestBodyKey); ok {
 			switch raw := v.(type) {
 			case string:
-				ev.UpstreamRequestBody = truncateStringBytes(strings.TrimSpace(raw), opsUpstreamRequestBodyEarlyCap)
+				debugRequestBody = strings.TrimSpace(raw)
+				ev.UpstreamRequestBody = truncateStringBytes(debugRequestBody, opsUpstreamRequestBodyEarlyCap)
 			case []byte:
+				debugRequestBody = strings.TrimSpace(string(raw))
 				if len(raw) > opsUpstreamRequestBodyEarlyCap {
 					// Truncate at a UTF-8 safe boundary to avoid splitting multi-byte characters.
 					n := opsUpstreamRequestBodyEarlyCap
@@ -194,11 +202,11 @@ func appendOpsUpstreamError(c *gin.Context, ev OpsUpstreamErrorEvent) {
 	existing = append(existing, &evCopy)
 	c.Set(OpsUpstreamErrorsKey, existing)
 
-	logOpsUpstreamErrorEvent(c, &evCopy)
+	logOpsUpstreamErrorEvent(c, &evCopy, debugRequestBody)
 	checkSkipMonitoringForUpstreamEvent(c, &evCopy)
 }
 
-func logOpsUpstreamErrorEvent(c *gin.Context, ev *OpsUpstreamErrorEvent) {
+func logOpsUpstreamErrorEvent(c *gin.Context, ev *OpsUpstreamErrorEvent, debugRequestBody string) {
 	if c == nil || ev == nil {
 		return
 	}
@@ -219,8 +227,8 @@ func logOpsUpstreamErrorEvent(c *gin.Context, ev *OpsUpstreamErrorEvent) {
 		zap.String("upstream_error_message", strings.TrimSpace(ev.Message)),
 	}
 
-	if body := strings.TrimSpace(ev.UpstreamRequestBody); body != "" {
-		sanitizedBody, truncated, _ := sanitizeAndTrimRequestBody([]byte(body), opsUpstreamDebugLogBodyMaxBytes)
+	if body := strings.TrimSpace(debugRequestBody); body != "" {
+		sanitizedBody, truncated := sanitizeRequestBodyForDebugLog(body, opsUpstreamDebugLogPromptMaxBytes)
 		if sanitizedBody == "" {
 			sanitizedBody = "<non-json request body redacted>"
 		}
@@ -241,6 +249,183 @@ func logOpsUpstreamErrorEvent(c *gin.Context, ev *OpsUpstreamErrorEvent) {
 	}
 
 	logger.FromContext(ctx).With(fields...).Warn("upstream model request failed")
+}
+
+// sanitizeRequestBodyForDebugLog 保留完整 JSON 结构和非提示词字段，只截断用户/系统提示词。
+// 凭据等敏感字段仍沿用 Ops 日志的递归脱敏规则。
+func sanitizeRequestBodyForDebugLog(raw string, maxPromptBytes int) (string, bool) {
+	if len(raw) == 0 {
+		return "", false
+	}
+
+	decoder := json.NewDecoder(strings.NewReader(raw))
+	decoder.UseNumber()
+	var decoded any
+	if err := decoder.Decode(&decoded); err != nil {
+		return "", false
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); err != io.EOF {
+		return "", false
+	}
+
+	decoded = redactSensitiveJSON(decoded)
+	decoded, truncated := truncateDebugRequestPrompts(decoded, maxPromptBytes)
+	encoded, err := json.Marshal(decoded)
+	if err != nil {
+		return "", truncated
+	}
+	return string(encoded), truncated
+}
+
+func truncateDebugRequestPrompts(value any, maxPromptBytes int) (any, bool) {
+	root, ok := value.(map[string]any)
+	if !ok {
+		return value, false
+	}
+
+	out := shallowCopyMap(root)
+	truncated := false
+	for key, fieldValue := range root {
+		var next any
+		var changed bool
+		switch normalizeDebugPromptKey(key) {
+		case "system", "systemprompt", "systeminstruction", "instructions", "prompt", "userprompt":
+			next, changed = truncateDebugPromptValue(fieldValue, maxPromptBytes)
+		case "messages":
+			next, changed = truncateDebugPromptMessages(fieldValue, maxPromptBytes, false)
+		case "contents", "input":
+			next, changed = truncateDebugPromptMessages(fieldValue, maxPromptBytes, true)
+		case "request":
+			next, changed = truncateDebugRequestPrompts(fieldValue, maxPromptBytes)
+		default:
+			continue
+		}
+		out[key] = next
+		truncated = truncated || changed
+	}
+	return out, truncated
+}
+
+func truncateDebugPromptMessages(value any, maxPromptBytes int, missingRoleIsUser bool) (any, bool) {
+	switch typed := value.(type) {
+	case string:
+		return truncateDebugPromptString(typed, maxPromptBytes)
+	case []any:
+		out := make([]any, len(typed))
+		truncated := false
+		for i, item := range typed {
+			next, changed := truncateDebugPromptMessage(item, maxPromptBytes, missingRoleIsUser)
+			out[i] = next
+			truncated = truncated || changed
+		}
+		return out, truncated
+	case map[string]any:
+		return truncateDebugPromptMessage(typed, maxPromptBytes, missingRoleIsUser)
+	default:
+		return value, false
+	}
+}
+
+func truncateDebugPromptMessage(value any, maxPromptBytes int, missingRoleIsUser bool) (any, bool) {
+	message, ok := value.(map[string]any)
+	if !ok {
+		return value, false
+	}
+
+	role, _ := message["role"].(string)
+	role = strings.ToLower(strings.TrimSpace(role))
+	messageType, _ := message["type"].(string)
+	messageType = normalizeDebugPromptKey(messageType)
+
+	isPrompt := role == "user" || role == "system" || role == "developer"
+	if role == "" && missingRoleIsUser {
+		if isDebugNonPromptContentType(messageType) {
+			isPrompt = false
+		} else {
+			_, hasContent := message["content"]
+			_, hasParts := message["parts"]
+			_, hasText := message["text"]
+			isPrompt = hasContent || hasParts || hasText
+		}
+	}
+	if !isPrompt {
+		return value, false
+	}
+
+	out := shallowCopyMap(message)
+	truncated := false
+	for key, fieldValue := range message {
+		switch normalizeDebugPromptKey(key) {
+		case "content", "parts", "text", "prompt":
+			next, changed := truncateDebugPromptValue(fieldValue, maxPromptBytes)
+			out[key] = next
+			truncated = truncated || changed
+		}
+	}
+	return out, truncated
+}
+
+func truncateDebugPromptValue(value any, maxPromptBytes int) (any, bool) {
+	switch typed := value.(type) {
+	case string:
+		return truncateDebugPromptString(typed, maxPromptBytes)
+	case []any:
+		out := make([]any, len(typed))
+		truncated := false
+		for i, item := range typed {
+			next, changed := truncateDebugPromptValue(item, maxPromptBytes)
+			out[i] = next
+			truncated = truncated || changed
+		}
+		return out, truncated
+	case map[string]any:
+		contentType, _ := typed["type"].(string)
+		contentType = normalizeDebugPromptKey(contentType)
+		if isDebugNonPromptContentType(contentType) {
+			return value, false
+		}
+
+		out := shallowCopyMap(typed)
+		truncated := false
+		for key, fieldValue := range typed {
+			switch normalizeDebugPromptKey(key) {
+			case "content", "parts", "text", "prompt":
+				next, changed := truncateDebugPromptValue(fieldValue, maxPromptBytes)
+				out[key] = next
+				truncated = truncated || changed
+			}
+		}
+		return out, truncated
+	default:
+		return value, false
+	}
+}
+
+func isDebugNonPromptContentType(contentType string) bool {
+	switch contentType {
+	case "functioncall", "functioncalloutput", "functionresponse", "toolcall", "tooluseresult",
+		"inputimage", "image", "document":
+		return true
+	}
+	return strings.HasSuffix(contentType, "toolresult")
+}
+
+func truncateDebugPromptString(value string, maxBytes int) (string, bool) {
+	if maxBytes <= 0 || len(value) <= maxBytes {
+		return value, false
+	}
+	prefixBytes := maxBytes - len(debugLogPromptTruncationMarker)
+	if prefixBytes < 0 {
+		prefixBytes = 0
+	}
+	return truncateStringBytes(value, prefixBytes) + debugLogPromptTruncationMarker, true
+}
+
+func normalizeDebugPromptKey(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	value = strings.ReplaceAll(value, "_", "")
+	return strings.ReplaceAll(value, "-", "")
 }
 
 // checkSkipMonitoringForUpstreamEvent checks whether the upstream error event

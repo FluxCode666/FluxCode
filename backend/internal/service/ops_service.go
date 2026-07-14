@@ -511,18 +511,31 @@ func isSensitiveKey(key string) bool {
 	switch k {
 	case "max_tokens",
 		"max_output_tokens",
+		"maxoutputtokens",
 		"max_input_tokens",
+		"maxinputtokens",
 		"max_completion_tokens",
+		"maxcompletiontokens",
 		"max_tokens_to_sample",
+		"maxtokenstosample",
 		"budget_tokens",
+		"budgettokens",
 		"prompt_tokens",
+		"prompttokens",
 		"completion_tokens",
+		"completiontokens",
 		"input_tokens",
+		"inputtokens",
 		"output_tokens",
+		"outputtokens",
 		"total_tokens",
+		"totaltokens",
 		"token_count",
+		"tokencount",
 		"cache_creation_input_tokens",
-		"cache_read_input_tokens":
+		"cachecreationinputtokens",
+		"cache_read_input_tokens",
+		"cachereadinputtokens":
 		return false
 	}
 

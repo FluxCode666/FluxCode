@@ -11,16 +11,27 @@ func TestIsSensitiveKey_TokenBudgetKeysNotRedacted(t *testing.T) {
 	for _, key := range []string{
 		"max_tokens",
 		"max_output_tokens",
+		"maxOutputTokens",
 		"max_input_tokens",
+		"maxInputTokens",
 		"max_completion_tokens",
+		"maxCompletionTokens",
 		"max_tokens_to_sample",
+		"maxTokensToSample",
 		"budget_tokens",
+		"budgetTokens",
 		"prompt_tokens",
+		"promptTokens",
 		"completion_tokens",
+		"completionTokens",
 		"input_tokens",
+		"inputTokens",
 		"output_tokens",
+		"outputTokens",
 		"total_tokens",
+		"totalTokens",
 		"token_count",
+		"tokenCount",
 	} {
 		if isSensitiveKey(key) {
 			t.Fatalf("expected key %q to NOT be treated as sensitive", key)
