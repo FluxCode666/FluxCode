@@ -17,6 +17,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/redis/go-redis/v9"
+	"github.com/redis/go-redis/v9/maintnotifications"
 )
 
 const (
@@ -844,6 +845,12 @@ func terminalChannel(taskID int64) string {
 func newMediaTerminalSubscriptionClient(parent *redis.Client, lifecycleCtx context.Context) *redis.Client {
 	options := *parent.Options()
 	options.ContextTimeoutEnabled = true
+	options.PoolSize = 1
+	options.MinIdleConns = 0
+	options.MaxIdleConns = 1
+	options.MaxActiveConns = 1
+	options.MaxConcurrentDials = 1
+	options.MaintNotificationsConfig = &maintnotifications.Config{Mode: maintnotifications.ModeDisabled}
 	baseDialer := options.Dialer
 	if baseDialer == nil {
 		baseDialer = redis.NewDialer(&options)

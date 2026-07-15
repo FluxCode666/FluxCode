@@ -313,3 +313,74 @@ ok github.com/Wei-Shaw/sub2api/internal/repository
 ```
 
 本轮只修改 Task 13 Redis 实现、普通 fake TCP 测试与同一报告；没有修改 Worker、DB、route、文本链、integration harness 或 Wire。Docker 可用环境仍需执行真实 Redis integration。
+
+## 第三轮独立复审修复追加记录
+
+第三轮复审在 `876cb21a4` 上发现订阅专用 client 仍复制父 client 的普通连接池容量。生产配置常见 `MinIdleConns=10`；父配置为 16 时，每个同步等待订阅会额外预热约 16 条普通 idle 连接，再创建 1 条 Pub/Sub 连接，导致并发订阅放大 Redis 连接数。
+
+### 第三轮 RED
+
+先扩展 fake RESP server，记录累计 accepted 与当前 active TCP connections。测试父 client 使用：
+
+```text
+PoolSize=32
+MinIdleConns=16
+MaxIdleConns=16
+MaxActiveConns=32
+MaxConcurrentDials=16
+```
+
+父池稳定后的 baseline 为 16。创建并确认一个 `SubscribeTerminal`，等待专用 client 预热完成后，RED 为：
+
+```text
+expected active connections: 17
+actual active connections:   33
+```
+
+即单订阅实际新增 17 条连接，而不是仅新增 1 条 Pub/Sub 连接。测试同时要求取消/退订后回到父 baseline，关闭父 client 后 active connections 归零，并断言父 client 的 PoolSize/MinIdleConns 未被修改。
+
+### 第三轮修复
+
+`newMediaTerminalSubscriptionClient` 仍复制父 Options，以保留 Addr、TLS、Dialer、credentials、DB、协议和连接初始化语义，但只在副本上覆盖：
+
+```text
+PoolSize=1
+MinIdleConns=0
+MaxIdleConns=1
+MaxActiveConns=1
+MaxConcurrentDials=1
+ContextTimeoutEnabled=true
+MaintNotificationsConfig.Mode=disabled
+```
+
+单终态订阅不再创建普通 idle 连接，也不启动与单订阅生命周期无关的 maintnotifications 后台能力。第二轮生命周期 Dialer、未跟踪 HELLO 连接取消和专用 client/pool owner 保持不变；共享父 client Options 未写入。
+
+### 第三轮验证
+
+普通 fake TCP 测试最终为 20 个顶层用例。以下命令通过：
+
+```bash
+go test ./internal/repository -run 'TestMediaTaskStreamTerminalSubscriptionUsesOnlyOneDedicatedConnection' -count=200
+go test ./internal/repository -run 'TestMediaTaskStream' -count=50
+go test ./internal/repository -run 'TestMediaTaskStreamSubscribeTerminal' -count=100
+go test ./internal/repository -run 'TestMediaTaskStreamReceive(PreservesParentDeadline|HasHardTimeoutOnStalledRedis|CancelInterruptsStalledRedis)' -count=100
+go test -race ./internal/repository -run 'TestMediaTaskStream' -count=1
+go test ./internal/service ./internal/repository -run TestMedia -count=1
+go vet ./internal/service ./internal/repository
+go vet -tags=integration ./internal/repository
+go test -c -tags=integration -o /tmp/fluxcode-media-repository-fix3.test ./internal/repository
+go test ./internal/setup ./cmd/server -run '^$' -count=1
+gofmt -w internal/repository/media_task_stream.go internal/repository/media_task_stream_test.go
+git diff --check
+```
+
+连接数定向 `-count=200`、完整 fake TCP `-count=50`、Pub/Sub/timeout 关键集合、完整目标 race 均为 `ok`。每轮单订阅只新增 1 条连接，取消后专用连接归零；父配置保持 `PoolSize=32`、`MinIdleConns=16`。
+
+真实 integration 仍由既有 TestMain 如实跳过：
+
+```text
+docker is not available; skipping integration tests (start Docker to enable)
+ok github.com/Wei-Shaw/sub2api/internal/repository
+```
+
+integration 测试二进制和 vet 均通过；未宣称真实 Redis integration PASS。本轮只修改 Task 13 Redis 实现、普通 fake TCP 测试与同一报告。

@@ -180,6 +180,52 @@ func TestMediaTaskStreamSubscribeTerminalDisconnectClosesOutput(t *testing.T) {
 	requireStatusChannelClosedWithin(t, statuses, 300*time.Millisecond)
 }
 
+func TestMediaTaskStreamTerminalSubscriptionUsesOnlyOneDedicatedConnection(t *testing.T) {
+	client, server := newFakeRedisClientWithOptions(t, func(command []string) fakeRedisAction {
+		switch commandName(command) {
+		case "hello":
+			return fakeRedisAction{response: respError("unknown command 'HELLO'")}
+		case "subscribe":
+			return fakeRedisAction{response: respSubscription("subscribe", command[1], 1)}
+		default:
+			return fakeRedisAction{response: respError("unexpected command")}
+		}
+	}, func(options *redis.Options) {
+		options.PoolSize = 32
+		options.MinIdleConns = 16
+		options.MaxIdleConns = 16
+		options.MaxActiveConns = 32
+		options.MaxConcurrentDials = 16
+	})
+	require.Eventually(t, func() bool {
+		return server.connectionCount() == 16
+	}, 2*time.Second, 10*time.Millisecond)
+	time.Sleep(10 * time.Millisecond)
+	baselineConnections := server.connectionCount()
+	baselineAccepted := server.acceptedCount()
+
+	stream := NewMediaTaskStream(client, "bounded-subscription-pool", time.Minute)
+	ctx, cancel := context.WithCancel(context.Background())
+	statuses, unsubscribe, err := stream.SubscribeTerminal(ctx, 9)
+	require.NoError(t, err)
+	time.Sleep(20 * time.Millisecond)
+	require.Equal(t, baselineConnections+1, server.connectionCount())
+	require.Equal(t, int64(1), server.acceptedCount()-baselineAccepted)
+	require.Equal(t, 32, client.Options().PoolSize)
+	require.Equal(t, 16, client.Options().MinIdleConns)
+
+	cancel()
+	unsubscribe()
+	requireStatusChannelClosedWithin(t, statuses, 300*time.Millisecond)
+	require.Eventually(t, func() bool {
+		return server.connectionCount() == baselineConnections
+	}, time.Second, 10*time.Millisecond)
+	require.NoError(t, client.Close())
+	require.Eventually(t, func() bool {
+		return server.connectionCount() == 0
+	}, time.Second, 10*time.Millisecond)
+}
+
 func TestMediaTaskStreamReceiveHasHardTimeoutOnStalledRedis(t *testing.T) {
 	client, _ := newFakeRedisClient(t, func(command []string) fakeRedisAction {
 		if commandName(command) == "xautoclaim" {
@@ -474,10 +520,19 @@ type fakeRESPServer struct {
 	stopOnce sync.Once
 	mu       sync.Mutex
 	conns    map[net.Conn]struct{}
+	accepted atomic.Int64
 	wg       sync.WaitGroup
 }
 
 func newFakeRedisClient(t *testing.T, handler func([]string) fakeRedisAction) (*redis.Client, *fakeRESPServer) {
+	return newFakeRedisClientWithOptions(t, handler, nil)
+}
+
+func newFakeRedisClientWithOptions(
+	t *testing.T,
+	handler func([]string) fakeRedisAction,
+	configure func(*redis.Options),
+) (*redis.Client, *fakeRESPServer) {
 	t.Helper()
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
@@ -490,7 +545,7 @@ func newFakeRedisClient(t *testing.T, handler func([]string) fakeRedisAction) (*
 	}
 	server.wg.Add(1)
 	go server.serve()
-	client := redis.NewClient(&redis.Options{
+	options := &redis.Options{
 		Addr:                  listener.Addr().String(),
 		Protocol:              2,
 		DisableIdentity:       true,
@@ -500,7 +555,11 @@ func newFakeRedisClient(t *testing.T, handler func([]string) fakeRedisAction) (*
 		WriteTimeout:          time.Second,
 		ContextTimeoutEnabled: false,
 		PoolSize:              1,
-	})
+	}
+	if configure != nil {
+		configure(options)
+	}
+	client := redis.NewClient(options)
 	t.Cleanup(server.Close)
 	t.Cleanup(func() { _ = client.Close() })
 	return client, server
@@ -521,6 +580,7 @@ func (s *fakeRESPServer) serve() {
 		s.mu.Lock()
 		s.conns[conn] = struct{}{}
 		s.mu.Unlock()
+		s.accepted.Add(1)
 		s.wg.Add(1)
 		go s.serveConn(conn)
 	}
@@ -585,6 +645,16 @@ func (s *fakeRESPServer) Close() {
 		s.mu.Unlock()
 		s.wg.Wait()
 	})
+}
+
+func (s *fakeRESPServer) connectionCount() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.conns)
+}
+
+func (s *fakeRESPServer) acceptedCount() int64 {
+	return s.accepted.Load()
 }
 
 func readRESPCommand(reader *bufio.Reader) ([]string, error) {
