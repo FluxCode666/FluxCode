@@ -88,27 +88,41 @@ func (s *accountCandidateSelector) Select(ctx context.Context, req AccountCandid
 	}
 
 	ordered := s.orderCandidates(ctx, candidates)
+	var firstBusy *Account
+	var acquireErrors []error
 	for _, candidate := range ordered {
 		result, err := s.acquire(ctx, candidate)
 		if err != nil {
 			if ctxErr := ctx.Err(); ctxErr != nil {
 				return nil, ctxErr
 			}
+			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+				return nil, err
+			}
+			acquireErrors = append(acquireErrors, err)
 			continue
 		}
 		if !result.Acquired {
+			if firstBusy == nil {
+				firstBusy = candidate
+			}
 			continue
 		}
 		s.setSticky(ctx, req.GroupID, req.SessionHash, candidate.ID)
 		return result, nil
 	}
 
-	best := ordered[0]
+	if firstBusy == nil {
+		if len(acquireErrors) > 0 {
+			return nil, errors.Join(acquireErrors...)
+		}
+		return nil, ErrNoAvailableAccounts
+	}
 	return &AccountSelectionResult{
-		Account: best,
+		Account: firstBusy,
 		WaitPlan: &AccountWaitPlan{
-			AccountID:      best.ID,
-			MaxConcurrency: best.Concurrency,
+			AccountID:      firstBusy.ID,
+			MaxConcurrency: firstBusy.Concurrency,
 			Timeout:        s.config.FallbackWaitTimeout,
 			MaxWaiting:     s.config.FallbackMaxWaiting,
 		},
@@ -119,7 +133,7 @@ func candidateAccounts(input []*Account, excluded map[int64]struct{}) []*Account
 	result := make([]*Account, 0, len(input))
 	seen := make(map[int64]struct{}, len(input))
 	for _, candidate := range input {
-		if candidate == nil || candidate.ID <= 0 {
+		if candidate == nil || candidate.ID <= 0 || !candidate.IsSchedulable() {
 			continue
 		}
 		if _, skip := excluded[candidate.ID]; skip {
@@ -174,7 +188,7 @@ func (s *accountCandidateSelector) trySticky(ctx context.Context, req AccountCan
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return nil, true, ctxErr
 		}
-		return nil, false, nil
+		return nil, true, err
 	}
 	if result.Acquired {
 		s.setSticky(ctx, req.GroupID, req.SessionHash, account.ID)
@@ -211,6 +225,9 @@ func (s *accountCandidateSelector) orderCandidates(ctx context.Context, candidat
 			ID:             candidate.ID,
 			MaxConcurrency: candidate.EffectiveLoadFactor(),
 		})
+	}
+	if cap := s.config.LoadBatchQueryCap; cap > 0 && len(loadRequest) > cap {
+		loadRequest = loadRequest[:cap]
 	}
 	loads, err := s.concurrency.GetAccountsLoadBatch(ctx, loadRequest)
 	if err != nil {
@@ -261,6 +278,9 @@ func (s *accountCandidateSelector) acquire(ctx context.Context, account *Account
 	}
 	result, err := s.concurrency.AcquireAccountSlot(ctx, account.ID, account.Concurrency)
 	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return nil, err
+		}
 		return nil, fmt.Errorf("acquire account %d concurrency slot: %w", account.ID, err)
 	}
 	if result == nil || !result.Acquired {
@@ -289,27 +309,42 @@ func (s *accountCandidateSelector) Wait(ctx context.Context, plan *AccountWaitPl
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if s == nil || s.concurrency == nil || plan == nil || plan.AccountID <= 0 || plan.Timeout <= 0 {
+	if s == nil || s.concurrency == nil || plan == nil || plan.AccountID <= 0 || plan.MaxConcurrency <= 0 || plan.MaxWaiting <= 0 || plan.Timeout <= 0 {
 		return nil, ErrAccountConcurrencySaturated
 	}
+	planCtx, cancel := context.WithTimeout(ctx, plan.Timeout)
+	defer cancel()
 
-	allowed, err := s.concurrency.IncrementAccountWaitCount(ctx, plan.AccountID, plan.MaxWaiting)
+	allowed, err := s.concurrency.IncrementAccountWaitCount(planCtx, plan.AccountID, plan.MaxWaiting)
 	if err != nil {
-		if ctxErr := ctx.Err(); ctxErr != nil {
-			return nil, ctxErr
+		if waitErr := accountWaitContextError(ctx, planCtx); waitErr != nil {
+			return nil, waitErr
+		}
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return nil, err
 		}
 		return nil, fmt.Errorf("increment account %d wait count: %w", plan.AccountID, err)
 	}
 	if !allowed {
 		return nil, ErrAccountConcurrencySaturated
 	}
-	defer s.concurrency.DecrementAccountWaitCount(ctx, plan.AccountID)
+	defer func() {
+		cleanupCtx, cleanupCancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		defer cleanupCancel()
+		s.concurrency.DecrementAccountWaitCount(cleanupCtx, plan.AccountID)
+	}()
+	if waitErr := accountWaitContextError(ctx, planCtx); waitErr != nil {
+		return nil, waitErr
+	}
 
 	tryAcquire := func() (func(), bool, error) {
-		result, acquireErr := s.concurrency.AcquireAccountSlot(ctx, plan.AccountID, plan.MaxConcurrency)
+		result, acquireErr := s.concurrency.AcquireAccountSlot(planCtx, plan.AccountID, plan.MaxConcurrency)
 		if acquireErr != nil {
-			if ctxErr := ctx.Err(); ctxErr != nil {
-				return nil, false, ctxErr
+			if waitErr := accountWaitContextError(ctx, planCtx); waitErr != nil {
+				return nil, false, waitErr
+			}
+			if errors.Is(acquireErr, context.Canceled) || errors.Is(acquireErr, context.DeadlineExceeded) {
+				return nil, false, acquireErr
 			}
 			return nil, false, fmt.Errorf("acquire waiting account %d concurrency slot: %w", plan.AccountID, acquireErr)
 		}
@@ -323,16 +358,12 @@ func (s *accountCandidateSelector) Wait(ctx context.Context, plan *AccountWaitPl
 		return release, acquireErr
 	}
 
-	timeout := time.NewTimer(plan.Timeout)
-	defer timeout.Stop()
 	ticker := time.NewTicker(accountCandidateWaitPollInterval)
 	defer ticker.Stop()
 	for {
 		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case <-timeout.C:
-			return nil, ErrAccountConcurrencySaturated
+		case <-planCtx.Done():
+			return nil, accountWaitContextError(ctx, planCtx)
 		case <-ticker.C:
 			release, acquired, acquireErr := tryAcquire()
 			if acquireErr != nil {
@@ -343,4 +374,17 @@ func (s *accountCandidateSelector) Wait(ctx context.Context, plan *AccountWaitPl
 			}
 		}
 	}
+}
+
+func accountWaitContextError(parentCtx, planCtx context.Context) error {
+	if err := parentCtx.Err(); err != nil {
+		return err
+	}
+	if err := planCtx.Err(); err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			return ErrAccountConcurrencySaturated
+		}
+		return err
+	}
+	return nil
 }

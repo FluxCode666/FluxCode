@@ -56,7 +56,7 @@ undefined: NewAccountCandidateSelector
 ok github.com/Wei-Shaw/sub2api/internal/service
 ```
 
-Task 12 新测试共有 15 个顶层测试、22 个通过事件（包含子测试）；`-count=10` 连续运行通过。
+Task 12 新测试共有 25 个顶层测试、69 个通过事件（包含子测试）；`-count=10` 连续运行通过。
 
 ## 实现结果
 
@@ -66,8 +66,8 @@ Task 12 新测试共有 15 个顶层测试、22 个通过事件（包含子测�
 - 候选集内 sticky 优先；候选外或被排除的 sticky 主动清除；选中账号用现有 `stickySessionTTL` 写回。
 - 常规路径按 Priority、LoadRate、WaitingCount、LRU 排序；批量负载读取失败时复用 `sortAccountsByPriorityAndLastUsed` 降级。
 - 所有成功返回前调用现有原子 `AcquireAccountSlot`；release 使用 `atomic.Bool` 幂等保护，不在锁内执行外部回调。
-- 所有槽位占满时返回排序后的最佳 `AccountWaitPlan`。
-- `Wait` 先占等待计数，退出时必定递减；使用有 owner 的 timer/ticker，无 goroutine；区分调用方 context 取消和内部 plan timeout，后者稳定返回 `ErrAccountConcurrencySaturated`。
+- 只有原子 Acquire 明确返回 busy 时才允许生成 `AccountWaitPlan`，并选择排序中第一个明确 busy 的候选；全为基础设施错误时用 `errors.Join` 保留全部错误链。
+- `Wait` 的 plan context 从函数入口覆盖等待计数和首次/后续 Acquire；成功递增后所有出口使用不受原 context 取消影响的 cleanup context 恰好递减一次。实现只有可收口 ticker，无 goroutine；调用方 context 取消原样返回，内部 plan timeout 稳定返回 `ErrAccountConcurrencySaturated`。
 
 ### MediaScheduler
 
@@ -75,7 +75,7 @@ Task 12 新测试共有 15 个顶层测试、22 个通过事件（包含子测�
 - 方法集规则为：`unsupported = Generate`，`required = Submit + Poll`，`optional = Generate + Submit + Poll`。
 - 快照冻结 `ResolvedMediaAccountModel`；任务创建后实时账号 mapping/media config 改变不影响快照。
 - `Select` 只在快照 ID 中实时重读账号，并再次拒绝排除、禁用、冷却、临时不可调度、平台改变、Registry 缺失或方法集不符的账号。
-- 重复/非法快照、重复实时账号、nil selector 结果、候选外结果及不一致的 acquired/wait 结果都安全返回可匹配 `ErrNoAvailableAccounts`，不会 panic；若恶意 selector 已占槽则先释放。
+- 重复/非法快照、重复实时账号、nil selector 结果、候选外结果及不一致的 acquired/wait 结果都安全返回可匹配 `ErrNoAvailableAccounts`，不会 panic；`(result, error)`、缺账号、候选外及畸形等待结果携带的槽位均恰好释放一次。
 - 多平台同模型候选统一交给 `AccountCandidateSelector`，返回的 Account、ResolvedModel、Acquired、ReleaseFunc、WaitPlan 保持同一账号语义。
 - `WaitForSlot` 仅包装 selector `Wait`；`MarkUsed` 调用 `UpdateLastUsed`；`GetFixedAccount` 直接调用 `GetByID`，不因禁用/冷却改选，错误均用 `%w` 保链。
 
@@ -90,6 +90,11 @@ Task 12 新测试共有 15 个顶层测试、22 个通过事件（包含子测�
 - 并发 acquire race、release 幂等、最佳 WaitPlan。
 - wait 成功/超时/取消/队列满、Increment/Decrement 清理。
 - MarkUsed、GetFixedAccount 与 repo 错误链。
+- sticky/普通路径的基础设施 Acquire 错误、全错误聚合、错误+busy、错误+success。
+- selector 直接过滤 disabled/banned/error、不可调度、过期、过载、限流和临时冷却账号。
+- plan timeout 覆盖阻塞 Increment、首次 Acquire、ticker Acquire；caller cancel 优先且 cleanup context 未取消。
+- Scheduler 拒绝 selector result+error、错误 concurrency、零 timeout/max waiting、零 canonical concurrency；`WaitForSlot` 独立重复校验。
+- `LoadBatchQueryCap`、nil concurrency service、零并发立即获取以及 sticky cache 读/写/删失败 fail-open。
 
 ## 验证
 
@@ -122,3 +127,35 @@ git diff --check
 - 并发：生产代码不创建 goroutine；timer/ticker 均 `Stop`；共享 release 状态使用 typed atomic；race 通过。
 - 输入所有权：排序使用切片副本，排除 map 传给 selector 前复制，快照转值 map，无调用方 map/slice 写入。
 - 范围：仅四个计划文件和本唯一报告，无文本链、路由、DB、Wire、Task 13+ 改动。
+
+## 独立复审修复追加记录
+
+独立复审在 `c6fac7f87` 上指出 4 个 Important 与 2 个 Minor。修复严格先补测试并取得 RED：
+
+```bash
+cd backend
+go test ./internal/service -run 'Test(MediaScheduler|AccountCandidateSelector)' -count=1
+```
+
+RED 证据包括：sticky Acquire 错误被回退为其它账号、全 Acquire 错误被伪装成 WaitPlan、不可调度候选被选中、LoadBatch 请求长度未受 cap 限制、阻塞 Increment/Acquire 只能被外层 400ms 安全 deadline 打断、取消后的 context 被传给 decrement、零并发 Wait 被当作无限制成功、selector result+error 未释放，以及 Scheduler/WaitForSlot 接受畸形 WaitPlan。
+
+最小修复后，以下追加验证均通过：
+
+```bash
+go test ./internal/service -run 'Test(MediaScheduler|AccountCandidateSelector)' -count=10
+go test ./internal/service -run 'Test(Media|AccountCandidateSelector|.*SelectAccountWithLoadAwareness|ConcurrencyService)' -count=1
+go test ./internal/service -run 'Test.*SelectAccountWithLoadAwareness' -count=1
+go test -race ./internal/service -run 'Test(MediaScheduler|AccountCandidateSelector|.*SelectAccountWithLoadAwareness)' -count=1
+go vet ./internal/service
+gofmt -w internal/service/account_candidate_selector.go internal/service/account_candidate_selector_test.go internal/service/media_scheduler.go internal/service/media_scheduler_test.go
+git diff --check
+```
+
+修复后的关键不变量：
+
+- sticky Acquire 非 context 错误立即保链返回；常规候选允许错误后继续，但只有明确 busy 才能排队。
+- `candidateAccounts` 本身执行 `IsSchedulable`，不依赖 MediaScheduler 的前置过滤。
+- selector 的异常 result 无论同时带 error、缺 Account、越界还是 WaitPlan 畸形，均不会泄漏已取得的槽位。
+- `WaitForSlot` 不信任调用方构造的 selection，不会把非正或不匹配的并发上限传给并发服务。
+- plan timeout 从 Wait 入口开始计时；成功进入等待队列后任意退出路径恰好 cleanup 一次。
+- LoadBatch 使用现有 `LoadBatchQueryCap` 保护大候选池；sticky cache 失败保持当前 fail-open 语义。

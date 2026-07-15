@@ -180,29 +180,25 @@ func (s *MediaScheduler) Select(ctx context.Context, req MediaScheduleRequest) (
 		ExcludedAccountIDs: cloneAccountIDSet(req.ExcludedAccountIDs),
 	})
 	if err != nil {
+		releaseAccountSelectionResult(selected)
 		return nil, err
 	}
 	if selected == nil || selected.Account == nil {
+		releaseAccountSelectionResult(selected)
 		return nil, fmt.Errorf("%w: account candidate selector returned no account", ErrNoAvailableAccounts)
 	}
 	canonical, exists := allowed[selected.Account.ID]
 	if !exists {
-		if selected.ReleaseFunc != nil {
-			selected.ReleaseFunc()
-		}
+		releaseAccountSelectionResult(selected)
 		return nil, fmt.Errorf("%w: selector returned account %d outside candidate snapshot", ErrNoAvailableAccounts, selected.Account.ID)
 	}
 	if selected.Acquired {
 		if selected.WaitPlan != nil || selected.ReleaseFunc == nil {
-			if selected.ReleaseFunc != nil {
-				selected.ReleaseFunc()
-			}
+			releaseAccountSelectionResult(selected)
 			return nil, fmt.Errorf("%w: inconsistent acquired media account selection", ErrNoAvailableAccounts)
 		}
-	} else if selected.ReleaseFunc != nil || selected.WaitPlan == nil || selected.WaitPlan.AccountID != canonical.ID {
-		if selected.ReleaseFunc != nil {
-			selected.ReleaseFunc()
-		}
+	} else if !validMediaAccountWaitPlan(canonical, selected.WaitPlan) || selected.ReleaseFunc != nil {
+		releaseAccountSelectionResult(selected)
 		return nil, fmt.Errorf("%w: inconsistent waiting media account selection", ErrNoAvailableAccounts)
 	}
 
@@ -213,6 +209,23 @@ func (s *MediaScheduler) Select(ctx context.Context, req MediaScheduleRequest) (
 		ReleaseFunc:   wrapOptionalIdempotentRelease(selected.ReleaseFunc),
 		WaitPlan:      cloneAccountWaitPlan(selected.WaitPlan),
 	}, nil
+}
+
+func releaseAccountSelectionResult(selection *AccountSelectionResult) {
+	if selection != nil && selection.ReleaseFunc != nil {
+		selection.ReleaseFunc()
+	}
+}
+
+func validMediaAccountWaitPlan(account *Account, plan *AccountWaitPlan) bool {
+	return account != nil &&
+		account.ID > 0 &&
+		account.Concurrency > 0 &&
+		plan != nil &&
+		plan.AccountID == account.ID &&
+		plan.MaxConcurrency == account.Concurrency &&
+		plan.Timeout > 0 &&
+		plan.MaxWaiting > 0
 }
 
 func validateMediaCandidateSnapshot(input []MediaAccountCandidateSnapshot) (map[int64]MediaAccountCandidateSnapshot, error) {
@@ -264,10 +277,20 @@ func wrapOptionalIdempotentRelease(release func()) func() {
 }
 
 func (s *MediaScheduler) WaitForSlot(ctx context.Context, selection *MediaAccountSelection) (func(), error) {
-	if s == nil || s.selector == nil || selection == nil {
+	if s == nil || s.selector == nil || !validMediaWaitSelection(selection) {
+		if selection != nil && selection.ReleaseFunc != nil {
+			selection.ReleaseFunc()
+		}
 		return nil, ErrAccountConcurrencySaturated
 	}
 	return s.selector.Wait(ctx, cloneAccountWaitPlan(selection.WaitPlan))
+}
+
+func validMediaWaitSelection(selection *MediaAccountSelection) bool {
+	return selection != nil &&
+		!selection.Acquired &&
+		selection.ReleaseFunc == nil &&
+		validMediaAccountWaitPlan(selection.Account, selection.WaitPlan)
 }
 
 func (s *MediaScheduler) MarkUsed(ctx context.Context, accountID int64) error {
