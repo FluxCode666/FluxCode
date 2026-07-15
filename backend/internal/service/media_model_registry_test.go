@@ -107,6 +107,55 @@ func TestMediaModelRegistryRefreshPreservesSnapshotOnFailure(t *testing.T) {
 	require.ErrorIs(t, err, ErrMediaModelNotFound)
 }
 
+func TestMediaModelRegistryRefreshStrictlyDecodesConstraints(t *testing.T) {
+	tests := []struct {
+		name        string
+		constraints json.RawMessage
+		wantError   bool
+	}{
+		{name: "unknown field typo", constraints: json.RawMessage(`{"max_image_counts":2}`), wantError: true},
+		{name: "second top-level value", constraints: json.RawMessage(`{} {}`), wantError: true},
+		{name: "trailing non-whitespace garbage", constraints: json.RawMessage(`{} trailing`), wantError: true},
+		{name: "missing constraints", constraints: nil},
+		{name: "empty object", constraints: json.RawMessage(`{}`)},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			definition := validImageModelDefinition()
+			definition.Constraints = tt.constraints
+			registry := NewMediaModelRegistry(&mediaModelRepoStub{items: []MediaModelDefinition{definition}})
+
+			err := registry.Refresh(context.Background())
+			if tt.wantError {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+		})
+	}
+}
+
+func TestMediaModelRegistryRefreshUnknownConstraintPreservesSnapshot(t *testing.T) {
+	repo := &mediaModelRepoStub{items: []MediaModelDefinition{validImageModelDefinition()}}
+	registry := NewMediaModelRegistry(repo)
+	require.NoError(t, registry.Refresh(context.Background()))
+
+	invalid := validImageModelDefinition()
+	invalid.ModelID = "invalid-image"
+	invalid.Constraints = json.RawMessage(`{"max_refererence_images":"do-not-leak-this-value"}`)
+	repo.items = []MediaModelDefinition{invalid}
+	err := registry.Refresh(context.Background())
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "decode media model constraints")
+	require.NotContains(t, err.Error(), "do-not-leak-this-value")
+
+	_, err = registry.Resolve("fake-image", MediaOperationTextToImage)
+	require.NoError(t, err)
+	_, err = registry.Resolve("invalid-image", MediaOperationTextToImage)
+	require.ErrorIs(t, err, ErrMediaModelNotFound)
+}
+
 func TestMediaModelRegistryRefreshRejectsInvalidDefinitions(t *testing.T) {
 	tests := []struct {
 		name       string

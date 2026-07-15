@@ -1,10 +1,12 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -188,8 +190,17 @@ func decodeMediaModelConstraints(raw json.RawMessage) (MediaModelConstraints, er
 	if len(raw) == 0 {
 		return constraints, nil
 	}
-	if err := json.Unmarshal(raw, &constraints); err != nil {
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&constraints); err != nil {
 		return MediaModelConstraints{}, fmt.Errorf("decode media model constraints: %w", err)
+	}
+	var trailing json.RawMessage
+	if err := decoder.Decode(&trailing); err != io.EOF {
+		if err == nil {
+			return MediaModelConstraints{}, errors.New("decode media model constraints: multiple top-level JSON values")
+		}
+		return MediaModelConstraints{}, fmt.Errorf("decode media model constraints trailing data: %w", err)
 	}
 	return constraints, nil
 }
