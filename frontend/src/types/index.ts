@@ -714,7 +714,19 @@ export interface MediaAccountModelOverride {
   native_async_mode?: NativeAsyncMode
 }
 
+export interface MediaAccountConfigWire {
+  adapter: string
+  native_async_mode?: NativeAsyncMode
+  model_overrides?: Record<string, MediaAccountModelOverride>
+}
+
 export interface MediaAccountConfig {
+  adapter: string
+  native_async_mode: NativeAsyncMode
+  model_overrides: Record<string, MediaAccountModelOverride>
+}
+
+export interface MediaAccountConfigPayload {
   adapter: string
   native_async_mode: NativeAsyncMode
   model_overrides: Record<string, MediaAccountModelOverride>
@@ -847,7 +859,7 @@ export interface Account {
   credentials?: Record<string, unknown>
   // Extra fields including Codex usage and model-level rate limits (Antigravity smart retry)
   extra?: (CodexUsageSnapshot & {
-    media_config?: MediaAccountConfig
+    media_config?: MediaAccountConfigWire
     model_rate_limits?: Record<string, { rate_limited_at: string; rate_limit_reset_at: string }>
     antigravity_credits_overages?: Record<string, { activated_at: string; active_until: string }>
   } & Record<string, unknown>)

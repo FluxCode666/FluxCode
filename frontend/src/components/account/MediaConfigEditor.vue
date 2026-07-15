@@ -20,6 +20,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   'update:modelValue': [value: MediaAccountConfig]
+  'update:valid': [value: boolean]
 }>()
 
 const { t } = useI18n()
@@ -30,7 +31,8 @@ const local = ref<MediaAccountConfig>({
 const rows = ref<OverrideRow[]>([])
 const duplicateModel = ref('')
 let nextRowId = 0
-let pendingPublishedSignature = ''
+let currentValid = true
+let lastEmittedObject: MediaAccountConfig | null = null
 
 function createRow(model = '', override: MediaAccountModelOverride = {}): OverrideRow {
   nextRowId += 1
@@ -42,8 +44,34 @@ function createRow(model = '', override: MediaAccountModelOverride = {}): Overri
   }
 }
 
-function signature(value: MediaAccountConfig): string {
-  return JSON.stringify(value)
+function setValidity(value: boolean) {
+  if (currentValid === value) {
+    return
+  }
+  currentValid = value
+  emit('update:valid', value)
+}
+
+function findDuplicateModel(): string {
+  const seen = new Set<string>()
+  for (const row of rows.value) {
+    const model = row.model.trim()
+    if (!model) {
+      continue
+    }
+    if (seen.has(model)) {
+      return model
+    }
+    seen.add(model)
+  }
+  return ''
+}
+
+function refreshValidity(): boolean {
+  duplicateModel.value = findDuplicateModel()
+  const valid = !duplicateModel.value
+  setValidity(valid)
+  return valid
 }
 
 function hydrate(value: MediaAccountConfig) {
@@ -54,37 +82,34 @@ function hydrate(value: MediaAccountConfig) {
   rows.value = Object.entries(value.model_overrides || {}).map(([model, override]) =>
     createRow(model, override)
   )
-  duplicateModel.value = ''
+  refreshValidity()
 }
 
 watch(
   () => props.modelValue,
   (value) => {
-    if (pendingPublishedSignature && signature(value) === pendingPublishedSignature) {
-      pendingPublishedSignature = ''
+    if (value === lastEmittedObject) {
+      lastEmittedObject = null
       return
     }
-    pendingPublishedSignature = ''
+    lastEmittedObject = null
     hydrate(value)
   },
   { immediate: true, deep: true }
 )
 
 function buildModelOverrides(): Record<string, MediaAccountModelOverride> | null {
+  if (!refreshValidity()) {
+    return null
+  }
+
   const result: Record<string, MediaAccountModelOverride> = {}
-  const seen = new Set<string>()
 
   for (const row of rows.value) {
     const model = row.model.trim()
     if (!model) {
       continue
     }
-    if (seen.has(model)) {
-      duplicateModel.value = model
-      return null
-    }
-    seen.add(model)
-
     const override: MediaAccountModelOverride = {}
     const upstreamModel = row.upstream_model.trim()
     if (upstreamModel) {
@@ -96,11 +121,14 @@ function buildModelOverrides(): Record<string, MediaAccountModelOverride> | null
     result[model] = override
   }
 
-  duplicateModel.value = ''
   return result
 }
 
 function publish(patch: Partial<MediaAccountConfig> = {}) {
+  local.value = {
+    ...local.value,
+    ...patch
+  }
   const modelOverrides = buildModelOverrides()
   if (!modelOverrides) {
     return
@@ -108,15 +136,15 @@ function publish(patch: Partial<MediaAccountConfig> = {}) {
 
   const next: MediaAccountConfig = {
     ...local.value,
-    ...patch,
     model_overrides: modelOverrides
   }
-  local.value = next
-  pendingPublishedSignature = signature(next)
-  emit('update:modelValue', {
+  const emittedValue: MediaAccountConfig = {
     ...next,
     model_overrides: { ...next.model_overrides }
-  })
+  }
+  local.value = emittedValue
+  lastEmittedObject = emittedValue
+  emit('update:modelValue', emittedValue)
 }
 
 function updateAdapter(event: Event) {

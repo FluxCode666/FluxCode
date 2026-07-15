@@ -2342,7 +2342,7 @@
         </div>
       </div>
 
-      <MediaConfigEditor v-model="mediaConfig" />
+      <MediaConfigEditor v-model="mediaConfig" @update:valid="mediaConfigValid = $event" />
 
       <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
         <label class="input-label">{{ t('admin.accounts.expiresAt') }}</label>
@@ -3019,7 +3019,8 @@ import type {
   AccountType,
   CheckMixedChannelResponse,
   CreateAccountRequest,
-  MediaAccountConfig
+  MediaAccountConfig,
+  MediaAccountConfigPayload
 } from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
@@ -3207,6 +3208,7 @@ const createDefaultMediaConfig = (): MediaAccountConfig => ({
   model_overrides: {}
 })
 const mediaConfig = ref<MediaAccountConfig>(createDefaultMediaConfig())
+const mediaConfigValid = ref(true)
 const antigravityAccountType = ref<'oauth' | 'upstream'>('oauth') // For antigravity: oauth or upstream
 const upstreamBaseUrl = ref('') // For upstream type: base URL
 const upstreamApiKey = ref('') // For upstream type: API key
@@ -3243,15 +3245,24 @@ function withMediaConfig(extra: Record<string, unknown> | undefined): Record<str
   const next = { ...(extra || {}) }
   const adapter = mediaConfig.value.adapter.trim()
   if (adapter) {
-    next.media_config = {
+    const payload: MediaAccountConfigPayload = {
       adapter,
       native_async_mode: mediaConfig.value.native_async_mode,
       model_overrides: mediaConfig.value.model_overrides
     }
+    next.media_config = payload
   } else {
     delete next.media_config
   }
   return next
+}
+
+function ensureMediaConfigValid(): boolean {
+  if (mediaConfigValid.value) {
+    return true
+  }
+  appStore.showError(t('admin.accounts.mediaConfig.fixDuplicateModels'))
+  return false
 }
 
 const showMixedChannelWarning = ref(false)
@@ -3852,6 +3863,17 @@ const withAntigravityConfirmFlag = (payload: CreateAccountRequest): CreateAccoun
   return cloned
 }
 
+const createAccountWithMediaConfig = async (payload: CreateAccountRequest): Promise<boolean> => {
+  if (!ensureMediaConfigValid()) {
+    return false
+  }
+  await adminAPI.accounts.create(withAntigravityConfirmFlag({
+    ...payload,
+    extra: withMediaConfig(payload.extra)
+  }))
+  return true
+}
+
 const ensureAntigravityMixedChannelConfirmed = async (onConfirm: () => Promise<void>): Promise<boolean> => {
   if (!needsMixedChannelCheck(form.platform)) {
     return true
@@ -3885,10 +3907,10 @@ const ensureAntigravityMixedChannelConfirmed = async (onConfirm: () => Promise<v
 const submitCreateAccount = async (payload: CreateAccountRequest) => {
   submitting.value = true
   try {
-    await adminAPI.accounts.create(withAntigravityConfirmFlag({
-      ...payload,
-      extra: withMediaConfig(payload.extra)
-    }))
+    const created = await createAccountWithMediaConfig(payload)
+    if (!created) {
+      return
+    }
     appStore.showSuccess(t('admin.accounts.accountCreated'))
     emit('created')
     handleClose()
@@ -3983,6 +4005,7 @@ const resetForm = () => {
   customBaseUrl.value = ''
   allowOverages.value = false
   mediaConfig.value = createDefaultMediaConfig()
+  mediaConfigValid.value = true
   antigravityAccountType.value = 'oauth'
   upstreamBaseUrl.value = ''
   upstreamApiKey.value = ''
@@ -4124,6 +4147,9 @@ const normalizePoolModeRetryCount = (value: number) => {
 }
 
 const handleSubmit = async () => {
+  if (!ensureMediaConfigValid()) {
+    return
+  }
   // For OAuth-based type, handle OAuth flow (goes to step 2)
   if (isOAuthFlow.value) {
     if (!form.name.trim()) {
@@ -4445,13 +4471,13 @@ const handleOpenAIExchange = async (authCode: string) => {
     }
 
     if (shouldCreateOpenAI) {
-      await adminAPI.accounts.create({
+      const created = await createAccountWithMediaConfig({
         name: form.name,
         notes: form.notes,
         platform: 'openai',
         type: 'oauth',
         credentials,
-        extra: withMediaConfig(extra),
+        extra,
         proxy_id: form.proxy_id,
         concurrency: form.concurrency,
         load_factor: form.load_factor ?? undefined,
@@ -4461,6 +4487,9 @@ const handleOpenAIExchange = async (authCode: string) => {
         expires_at: form.expires_at,
         auto_pause_on_expired: autoPauseOnExpired.value
       })
+      if (!created) {
+        return
+      }
       appStore.showSuccess(t('admin.accounts.accountCreated'))
     }
 
@@ -4536,13 +4565,13 @@ const handleOpenAIBatchRT = async (refreshTokenInput: string, clientId?: string)
         const accountName = refreshTokens.length > 1 ? `${baseName} #${i + 1}` : baseName
 
         if (shouldCreateOpenAI) {
-          await adminAPI.accounts.create({
+          const created = await createAccountWithMediaConfig({
             name: accountName,
             notes: form.notes,
             platform: 'openai',
             type: 'oauth',
             credentials,
-            extra: withMediaConfig(extra),
+            extra,
             proxy_id: form.proxy_id,
             concurrency: form.concurrency,
             load_factor: form.load_factor ?? undefined,
@@ -4552,6 +4581,9 @@ const handleOpenAIBatchRT = async (refreshTokenInput: string, clientId?: string)
             expires_at: form.expires_at,
             auto_pause_on_expired: autoPauseOnExpired.value
           })
+          if (!created) {
+            return
+          }
         }
 
         successCount++
@@ -4633,14 +4665,13 @@ const handleAntigravityValidateRT = async (refreshTokenInput: string) => {
         // Generate account name with index for batch
         const accountName = refreshTokens.length > 1 ? `${form.name} #${i + 1}` : form.name
 
-        // Note: Antigravity doesn't have buildExtraInfo, so we pass empty extra or rely on credentials
-        const createPayload = withAntigravityConfirmFlag({
+        const createPayload: CreateAccountRequest = {
           name: accountName,
           notes: form.notes,
           platform: 'antigravity',
           type: 'oauth',
           credentials,
-          extra: withMediaConfig({}),
+          extra: buildAntigravityExtra(),
           proxy_id: form.proxy_id,
           concurrency: form.concurrency,
           load_factor: form.load_factor ?? undefined,
@@ -4649,8 +4680,11 @@ const handleAntigravityValidateRT = async (refreshTokenInput: string) => {
           group_ids: form.group_ids,
           expires_at: form.expires_at,
           auto_pause_on_expired: autoPauseOnExpired.value
-        })
-        await adminAPI.accounts.create(createPayload)
+        }
+        const created = await createAccountWithMediaConfig(createPayload)
+        if (!created) {
+          return
+        }
         successCount++
       } catch (error: any) {
         failedCount++
@@ -4975,13 +5009,13 @@ const handleCookieAuth = async (sessionKey: string) => {
           credentials.temp_unschedulable_rules = tempUnschedPayload
         }
 
-        await adminAPI.accounts.create({
+        const created = await createAccountWithMediaConfig({
           name: accountName,
           notes: form.notes,
           platform: form.platform,
           type: addMethod.value, // Use addMethod as type: 'oauth' or 'setup-token'
           credentials,
-          extra: withMediaConfig(extra),
+          extra,
           proxy_id: form.proxy_id,
           concurrency: form.concurrency,
           load_factor: form.load_factor ?? undefined,
@@ -4991,6 +5025,9 @@ const handleCookieAuth = async (sessionKey: string) => {
           expires_at: form.expires_at,
           auto_pause_on_expired: autoPauseOnExpired.value
         })
+        if (!created) {
+          return
+        }
 
         successCount++
       } catch (error: any) {

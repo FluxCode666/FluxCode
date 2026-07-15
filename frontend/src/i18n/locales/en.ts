@@ -2987,6 +2987,7 @@ export default {
         remove: 'Remove',
         removeOverride: 'Remove model override',
         duplicateModel: 'Model "{model}" is duplicated after trimming. Rename it before saving.',
+        fixDuplicateModels: 'Fix duplicate media model override names before saving.',
         modes: {
           unsupported: 'Native async unsupported',
           optional: 'Native async optional',

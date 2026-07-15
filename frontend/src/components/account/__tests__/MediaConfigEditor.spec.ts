@@ -19,6 +19,7 @@ function mountHarness(value: MediaAccountConfig = initialConfig()) {
     components: { MediaConfigEditor },
     setup() {
       const config = ref<MediaAccountConfig>(value)
+      const valid = ref(true)
       const reset = () => {
         config.value = {
           adapter: 'xai',
@@ -28,11 +29,33 @@ function mountHarness(value: MediaAccountConfig = initialConfig()) {
           }
         }
       }
-      return { config, reset }
+      return { config, valid, reset }
     },
     template: `
-      <MediaConfigEditor v-model="config" />
+      <MediaConfigEditor v-model="config" @update:valid="valid = $event" />
+      <output data-test="valid">{{ String(valid) }}</output>
       <button data-test="reset" type="button" @click="reset">reset</button>
+    `
+  }))
+}
+
+function mountCloningHarness() {
+  return mount(defineComponent({
+    components: { MediaConfigEditor },
+    setup() {
+      const config = ref<MediaAccountConfig>(initialConfig())
+      const cloneNextUpdate = ref(false)
+      const handleUpdate = (value: MediaAccountConfig) => {
+        config.value = cloneNextUpdate.value
+          ? { ...value, model_overrides: { ...value.model_overrides } }
+          : value
+        cloneNextUpdate.value = false
+      }
+      return { config, cloneNextUpdate, handleUpdate }
+    },
+    template: `
+      <MediaConfigEditor :model-value="config" @update:model-value="handleUpdate" />
+      <button data-test="clone-next" type="button" @click="cloneNextUpdate = true">clone</button>
     `
   }))
 }
@@ -97,6 +120,62 @@ describe('MediaConfigEditor', () => {
     expect(wrapper.getComponent(MediaConfigEditor).props('modelValue').model_overrides).toEqual({
       alpha: { upstream_model: 'alpha-upstream' }
     })
+  })
+
+  it('重复 key 期间保留标量草稿，恢复唯一后一次发布最新值', async () => {
+    const wrapper = mountHarness({
+      adapter: 'gemini',
+      native_async_mode: 'optional',
+      model_overrides: {
+        alpha: {},
+        beta: {}
+      }
+    })
+
+    await wrapper.get('[data-test="media-override-model-1"]').setValue(' alpha ')
+    await wrapper.get('[data-test="media-adapter"]').setValue('xai-draft')
+    await wrapper.get('[data-test="media-default-async-mode"]').setValue('required')
+    await wrapper.get('[data-test="media-override-model-1"]').setValue('gamma')
+
+    expect(wrapper.getComponent(MediaConfigEditor).props('modelValue')).toEqual({
+      adapter: 'xai-draft',
+      native_async_mode: 'required',
+      model_overrides: {
+        alpha: {},
+        gamma: {}
+      }
+    })
+  })
+
+  it('发布重复 key validity=false，恢复唯一或外部重置后 validity=true', async () => {
+    const wrapper = mountHarness({
+      adapter: 'gemini',
+      native_async_mode: 'optional',
+      model_overrides: {
+        alpha: {},
+        beta: {}
+      }
+    })
+
+    await wrapper.get('[data-test="media-override-model-1"]').setValue('alpha')
+    expect(wrapper.get('[data-test="valid"]').text()).toBe('false')
+
+    await wrapper.get('[data-test="media-override-model-1"]').setValue('gamma')
+    expect(wrapper.get('[data-test="valid"]').text()).toBe('true')
+
+    await wrapper.get('[data-test="media-override-model-1"]').setValue('alpha')
+    await wrapper.get('[data-test="reset"]').trigger('click')
+    expect(wrapper.get('[data-test="valid"]').text()).toBe('true')
+  })
+
+  it('仅按对象引用识别自身回流，同值外部新对象仍会清除空草稿行', async () => {
+    const wrapper = mountCloningHarness()
+
+    await wrapper.get('[data-test="media-add-model-override"]').trigger('click')
+    await wrapper.get('[data-test="clone-next"]').trigger('click')
+    await wrapper.get('[data-test="media-default-async-mode"]').setValue('required')
+
+    expect(wrapper.find('[data-test="media-override-model-0"]').exists()).toBe(false)
   })
 
   it('外部重置时重新水合标量和覆盖行', async () => {

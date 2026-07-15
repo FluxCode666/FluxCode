@@ -1067,7 +1067,7 @@
         </div>
       </div>
 
-      <MediaConfigEditor v-model="mediaConfig" />
+      <MediaConfigEditor v-model="mediaConfig" @update:valid="mediaConfigValid = $event" />
 
       <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
         <label class="input-label">{{ t('admin.accounts.expiresAt') }}</label>
@@ -1931,6 +1931,8 @@ import type {
   AdminGroup,
   CheckMixedChannelResponse,
   MediaAccountConfig,
+  MediaAccountConfigPayload,
+  MediaAccountConfigWire,
   MediaAccountModelOverride,
   NativeAsyncMode
 } from '@/types'
@@ -2039,6 +2041,7 @@ const createDefaultMediaConfig = (): MediaAccountConfig => ({
   model_overrides: {}
 })
 const mediaConfig = ref<MediaAccountConfig>(createDefaultMediaConfig())
+const mediaConfigValid = ref(true)
 const antigravityModelRestrictionMode = ref<'whitelist' | 'mapping'>('whitelist')
 const antigravityWhitelistModels = ref<string[]>([])
 const antigravityModelMappings = ref<ModelMapping[]>([])
@@ -2090,7 +2093,7 @@ function isNativeAsyncMode(value: unknown): value is NativeAsyncMode {
   return value === 'unsupported' || value === 'optional' || value === 'required'
 }
 
-function resolveMediaConfig(value: unknown): MediaAccountConfig {
+function normalizeMediaConfigWire(value: MediaAccountConfigWire | null | undefined): MediaAccountConfig {
   if (!isRecord(value)) {
     return createDefaultMediaConfig()
   }
@@ -2126,15 +2129,24 @@ function withMediaConfig(extra: Record<string, unknown> | undefined): Record<str
   const next = { ...(extra || {}) }
   const adapter = mediaConfig.value.adapter.trim()
   if (adapter) {
-    next.media_config = {
+    const payload: MediaAccountConfigPayload = {
       adapter,
       native_async_mode: mediaConfig.value.native_async_mode,
       model_overrides: mediaConfig.value.model_overrides
     }
+    next.media_config = payload
   } else {
     delete next.media_config
   }
   return next
+}
+
+function ensureMediaConfigValid(): boolean {
+  if (mediaConfigValid.value) {
+    return true
+  }
+  appStore.showError(t('admin.accounts.mediaConfig.fixDuplicateModels'))
+  return false
 }
 
 // OpenAI 自动透传开关（OAuth/API Key）
@@ -2350,10 +2362,12 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   // Load mixed scheduling setting (only for antigravity accounts)
   mixedScheduling.value = false
   allowOverages.value = false
+  const mediaConfigWire = newAccount.extra?.media_config
   const extra = newAccount.extra as Record<string, unknown> | undefined
   mixedScheduling.value = extra?.mixed_scheduling === true
   allowOverages.value = extra?.allow_overages === true
-  mediaConfig.value = resolveMediaConfig(extra?.media_config)
+  mediaConfigValid.value = true
+  mediaConfig.value = normalizeMediaConfigWire(mediaConfigWire)
 
   // Load OpenAI passthrough toggle (OpenAI OAuth/API Key)
   openaiPassthroughEnabled.value = false
@@ -3017,6 +3031,9 @@ const handleClose = () => {
 }
 
 const submitUpdateAccount = async (accountID: number, updatePayload: Record<string, unknown>) => {
+  if (!ensureMediaConfigValid()) {
+    return
+  }
   submitting.value = true
   try {
     const updatedAccount = await adminAPI.accounts.update(accountID, withAntigravityConfirmFlag(updatePayload))
@@ -3042,6 +3059,9 @@ const submitUpdateAccount = async (accountID: number, updatePayload: Record<stri
 
 const handleSubmit = async () => {
   if (!props.account) return
+  if (!ensureMediaConfigValid()) {
+    return
+  }
   const accountID = props.account.id
 
   if (form.status !== 'active' && form.status !== 'inactive' && form.status !== 'error') {

@@ -3053,6 +3053,7 @@ export default {
         remove: '删除',
         removeOverride: '删除模型覆盖',
         duplicateModel: '模型名“{model}”去除首尾空格后重复，请修改后再保存。',
+        fixDuplicateModels: '请先修复重复的媒体模型覆盖名称。',
         modes: {
           unsupported: '不支持原生异步',
           optional: '可选使用原生异步',
