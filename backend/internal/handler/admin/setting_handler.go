@@ -173,6 +173,12 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		QiniuUploadTimeoutSeconds:            settings.QiniuUploadTimeoutSeconds,
 		QiniuTokenTTLSeconds:                 settings.QiniuTokenTTLSeconds,
 		GeneratedImageCleanupEnabled:         settings.GeneratedImageCleanupEnabled,
+		MediaSyncWaitTimeoutSeconds:          settings.MediaSyncWaitTimeoutSeconds,
+		MediaSyncTimeoutFallbackAsyncEnabled: settings.MediaSyncTimeoutFallbackAsyncEnabled,
+		MediaSyncTimeoutBillingPolicy:        settings.MediaSyncTimeoutBillingPolicy,
+		MediaSyncTimeoutPenaltyRatio:         settings.MediaSyncTimeoutPenaltyRatio,
+		MediaVideoStorageMode:                settings.MediaVideoStorageMode,
+		MediaVideoProxyFallbackEnabled:       settings.MediaVideoProxyFallbackEnabled,
 		DefaultConcurrency:                   settings.DefaultConcurrency,
 		DefaultBalance:                       settings.DefaultBalance,
 		DefaultSubscriptions:                 defaultSubscriptions,
@@ -308,33 +314,39 @@ type UpdateSettingsRequest struct {
 	OIDCConnectUserInfoUsernamePath string `json:"oidc_connect_userinfo_username_path"`
 
 	// OEM设置
-	SiteName                          string                `json:"site_name"`
-	SiteLogo                          string                `json:"site_logo"`
-	SiteSubtitle                      string                `json:"site_subtitle"`
-	APIBaseURL                        string                `json:"api_base_url"`
-	ContactInfo                       string                `json:"contact_info"`
-	DocURL                            string                `json:"doc_url"`
-	HomeContent                       string                `json:"home_content"`
-	HideCcsImportButton               bool                  `json:"hide_ccs_import_button"`
-	PurchaseSubscriptionEnabled       *bool                 `json:"purchase_subscription_enabled"`
-	PurchaseSubscriptionURL           *string               `json:"purchase_subscription_url"`
-	TableDefaultPageSize              int                   `json:"table_default_page_size"`
-	TablePageSizeOptions              []int                 `json:"table_page_size_options"`
-	CustomMenuItems                   *[]dto.CustomMenuItem `json:"custom_menu_items"`
-	CustomEndpoints                   *[]dto.CustomEndpoint `json:"custom_endpoints"`
-	OpenAIUseKeyModelID               *string               `json:"openai_use_key_model_id"`
-	OpenAIImageURLCacheTTLHours       *int                  `json:"openai_image_url_cache_ttl_hours"`
-	GeneratedImageStorageSource       *string               `json:"generated_image_storage_source"`
-	GeneratedImageStorageConfigSource *string               `json:"generated_image_storage_config_source"`
-	QiniuAccessKey                    *string               `json:"qiniu_access_key"`
-	QiniuSecretKey                    string                `json:"qiniu_secret_key"`
-	QiniuBucket                       *string               `json:"qiniu_bucket"`
-	QiniuCDNDomain                    *string               `json:"qiniu_cdn_domain"`
-	QiniuPrefix                       *string               `json:"qiniu_prefix"`
-	QiniuUseHTTPS                     *bool                 `json:"qiniu_use_https"`
-	QiniuUploadTimeoutSeconds         *int                  `json:"qiniu_upload_timeout_seconds"`
-	QiniuTokenTTLSeconds              *int                  `json:"qiniu_token_ttl_seconds"`
-	GeneratedImageCleanupEnabled      *bool                 `json:"generated_image_cleanup_enabled"`
+	SiteName                             string                `json:"site_name"`
+	SiteLogo                             string                `json:"site_logo"`
+	SiteSubtitle                         string                `json:"site_subtitle"`
+	APIBaseURL                           string                `json:"api_base_url"`
+	ContactInfo                          string                `json:"contact_info"`
+	DocURL                               string                `json:"doc_url"`
+	HomeContent                          string                `json:"home_content"`
+	HideCcsImportButton                  bool                  `json:"hide_ccs_import_button"`
+	PurchaseSubscriptionEnabled          *bool                 `json:"purchase_subscription_enabled"`
+	PurchaseSubscriptionURL              *string               `json:"purchase_subscription_url"`
+	TableDefaultPageSize                 int                   `json:"table_default_page_size"`
+	TablePageSizeOptions                 []int                 `json:"table_page_size_options"`
+	CustomMenuItems                      *[]dto.CustomMenuItem `json:"custom_menu_items"`
+	CustomEndpoints                      *[]dto.CustomEndpoint `json:"custom_endpoints"`
+	OpenAIUseKeyModelID                  *string               `json:"openai_use_key_model_id"`
+	OpenAIImageURLCacheTTLHours          *int                  `json:"openai_image_url_cache_ttl_hours"`
+	GeneratedImageStorageSource          *string               `json:"generated_image_storage_source"`
+	GeneratedImageStorageConfigSource    *string               `json:"generated_image_storage_config_source"`
+	QiniuAccessKey                       *string               `json:"qiniu_access_key"`
+	QiniuSecretKey                       string                `json:"qiniu_secret_key"`
+	QiniuBucket                          *string               `json:"qiniu_bucket"`
+	QiniuCDNDomain                       *string               `json:"qiniu_cdn_domain"`
+	QiniuPrefix                          *string               `json:"qiniu_prefix"`
+	QiniuUseHTTPS                        *bool                 `json:"qiniu_use_https"`
+	QiniuUploadTimeoutSeconds            *int                  `json:"qiniu_upload_timeout_seconds"`
+	QiniuTokenTTLSeconds                 *int                  `json:"qiniu_token_ttl_seconds"`
+	GeneratedImageCleanupEnabled         *bool                 `json:"generated_image_cleanup_enabled"`
+	MediaSyncWaitTimeoutSeconds          *int                  `json:"media_sync_wait_timeout_seconds"`
+	MediaSyncTimeoutFallbackAsyncEnabled *bool                 `json:"media_sync_timeout_fallback_async_enabled"`
+	MediaSyncTimeoutBillingPolicy        *string               `json:"media_sync_timeout_billing_policy"`
+	MediaSyncTimeoutPenaltyRatio         *float64              `json:"media_sync_timeout_penalty_ratio"`
+	MediaVideoStorageMode                *string               `json:"media_video_storage_mode"`
+	MediaVideoProxyFallbackEnabled       *bool                 `json:"media_video_proxy_fallback_enabled"`
 
 	// 默认配置
 	DefaultConcurrency   int                              `json:"default_concurrency"`
@@ -1092,6 +1104,42 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.GeneratedImageCleanupEnabled
 		}(),
+		MediaSyncWaitTimeoutSeconds: func() int {
+			if req.MediaSyncWaitTimeoutSeconds != nil {
+				return *req.MediaSyncWaitTimeoutSeconds
+			}
+			return previousSettings.MediaSyncWaitTimeoutSeconds
+		}(),
+		MediaSyncTimeoutFallbackAsyncEnabled: func() bool {
+			if req.MediaSyncTimeoutFallbackAsyncEnabled != nil {
+				return *req.MediaSyncTimeoutFallbackAsyncEnabled
+			}
+			return previousSettings.MediaSyncTimeoutFallbackAsyncEnabled
+		}(),
+		MediaSyncTimeoutBillingPolicy: func() string {
+			if req.MediaSyncTimeoutBillingPolicy != nil {
+				return *req.MediaSyncTimeoutBillingPolicy
+			}
+			return previousSettings.MediaSyncTimeoutBillingPolicy
+		}(),
+		MediaSyncTimeoutPenaltyRatio: func() float64 {
+			if req.MediaSyncTimeoutPenaltyRatio != nil {
+				return *req.MediaSyncTimeoutPenaltyRatio
+			}
+			return previousSettings.MediaSyncTimeoutPenaltyRatio
+		}(),
+		MediaVideoStorageMode: func() string {
+			if req.MediaVideoStorageMode != nil {
+				return *req.MediaVideoStorageMode
+			}
+			return previousSettings.MediaVideoStorageMode
+		}(),
+		MediaVideoProxyFallbackEnabled: func() bool {
+			if req.MediaVideoProxyFallbackEnabled != nil {
+				return *req.MediaVideoProxyFallbackEnabled
+			}
+			return previousSettings.MediaVideoProxyFallbackEnabled
+		}(),
 		DefaultConcurrency:           req.DefaultConcurrency,
 		DefaultBalance:               req.DefaultBalance,
 		DefaultSubscriptions:         defaultSubscriptions,
@@ -1381,6 +1429,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		QiniuUploadTimeoutSeconds:            updatedSettings.QiniuUploadTimeoutSeconds,
 		QiniuTokenTTLSeconds:                 updatedSettings.QiniuTokenTTLSeconds,
 		GeneratedImageCleanupEnabled:         updatedSettings.GeneratedImageCleanupEnabled,
+		MediaSyncWaitTimeoutSeconds:          updatedSettings.MediaSyncWaitTimeoutSeconds,
+		MediaSyncTimeoutFallbackAsyncEnabled: updatedSettings.MediaSyncTimeoutFallbackAsyncEnabled,
+		MediaSyncTimeoutBillingPolicy:        updatedSettings.MediaSyncTimeoutBillingPolicy,
+		MediaSyncTimeoutPenaltyRatio:         updatedSettings.MediaSyncTimeoutPenaltyRatio,
+		MediaVideoStorageMode:                updatedSettings.MediaVideoStorageMode,
+		MediaVideoProxyFallbackEnabled:       updatedSettings.MediaVideoProxyFallbackEnabled,
 		DefaultConcurrency:                   updatedSettings.DefaultConcurrency,
 		DefaultBalance:                       updatedSettings.DefaultBalance,
 		DefaultSubscriptions:                 updatedDefaultSubscriptions,
@@ -1712,6 +1766,24 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	}
 	if before.QiniuTokenTTLSeconds != after.QiniuTokenTTLSeconds {
 		changed = append(changed, "qiniu_token_ttl_seconds")
+	}
+	if before.MediaSyncWaitTimeoutSeconds != after.MediaSyncWaitTimeoutSeconds {
+		changed = append(changed, "media_sync_wait_timeout_seconds")
+	}
+	if before.MediaSyncTimeoutFallbackAsyncEnabled != after.MediaSyncTimeoutFallbackAsyncEnabled {
+		changed = append(changed, "media_sync_timeout_fallback_async_enabled")
+	}
+	if before.MediaSyncTimeoutBillingPolicy != after.MediaSyncTimeoutBillingPolicy {
+		changed = append(changed, "media_sync_timeout_billing_policy")
+	}
+	if before.MediaSyncTimeoutPenaltyRatio != after.MediaSyncTimeoutPenaltyRatio {
+		changed = append(changed, "media_sync_timeout_penalty_ratio")
+	}
+	if before.MediaVideoStorageMode != after.MediaVideoStorageMode {
+		changed = append(changed, "media_video_storage_mode")
+	}
+	if before.MediaVideoProxyFallbackEnabled != after.MediaVideoProxyFallbackEnabled {
+		changed = append(changed, "media_video_proxy_fallback_enabled")
 	}
 	if before.EnableIdentityPatch != after.EnableIdentityPatch {
 		changed = append(changed, "enable_identity_patch")

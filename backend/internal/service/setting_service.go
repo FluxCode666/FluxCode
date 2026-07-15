@@ -738,6 +738,9 @@ func parseCustomMenuItemURLs(raw string) []string {
 
 // UpdateSettings 更新系统设置
 func (s *SettingService) UpdateSettings(ctx context.Context, settings *SystemSettings) error {
+	if err := normalizeAndValidateMediaSettings(settings); err != nil {
+		return err
+	}
 	if err := s.validateDefaultSubscriptionGroups(ctx, settings.DefaultSubscriptions); err != nil {
 		return err
 	}
@@ -898,6 +901,12 @@ func (s *SettingService) UpdateSettings(ctx context.Context, settings *SystemSet
 	updates[SettingKeyQiniuUploadTimeoutSeconds] = strconv.Itoa(qiniuUploadTimeoutSeconds)
 	updates[SettingKeyQiniuTokenTTLSeconds] = strconv.Itoa(qiniuTokenTTLSeconds)
 	updates[SettingKeyGeneratedImageCleanupEnabled] = strconv.FormatBool(settings.GeneratedImageCleanupEnabled)
+	updates[SettingKeyMediaSyncWaitTimeoutSeconds] = strconv.Itoa(settings.MediaSyncWaitTimeoutSeconds)
+	updates[SettingKeyMediaSyncTimeoutFallbackAsyncEnabled] = strconv.FormatBool(settings.MediaSyncTimeoutFallbackAsyncEnabled)
+	updates[SettingKeyMediaSyncTimeoutBillingPolicy] = settings.MediaSyncTimeoutBillingPolicy
+	updates[SettingKeyMediaSyncTimeoutPenaltyRatio] = strconv.FormatFloat(settings.MediaSyncTimeoutPenaltyRatio, 'f', -1, 64)
+	updates[SettingKeyMediaVideoStorageMode] = settings.MediaVideoStorageMode
+	updates[SettingKeyMediaVideoProxyFallbackEnabled] = strconv.FormatBool(settings.MediaVideoProxyFallbackEnabled)
 
 	// 默认配置
 	updates[SettingKeyDefaultConcurrency] = strconv.Itoa(settings.DefaultConcurrency)
@@ -1564,17 +1573,25 @@ func (s *SettingService) GetDefaultSubscriptions(ctx context.Context) []DefaultS
 
 // InitializeDefaultSettings 初始化默认设置
 func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
-	// 检查是否已有设置
+	mediaDefaults := map[string]string{
+		SettingKeyMediaSyncWaitTimeoutSeconds:          strconv.Itoa(DefaultMediaSyncWaitTimeoutSeconds),
+		SettingKeyMediaSyncTimeoutFallbackAsyncEnabled: strconv.FormatBool(DefaultMediaSyncTimeoutFallbackAsyncEnabled),
+		SettingKeyMediaSyncTimeoutBillingPolicy:        MediaTimeoutBillingPolicyPenalty,
+		SettingKeyMediaSyncTimeoutPenaltyRatio:         strconv.FormatFloat(DefaultMediaSyncTimeoutPenaltyRatio, 'f', -1, 64),
+		SettingKeyMediaVideoStorageMode:                MediaVideoStorageModeHybrid,
+		SettingKeyMediaVideoProxyFallbackEnabled:       strconv.FormatBool(DefaultMediaVideoProxyFallbackEnabled),
+	}
+
+	// 已初始化的部署仅补齐本次新增设置，避免改变其它历史缺失设置的行为。
 	_, err := s.settingRepo.GetValue(ctx, SettingKeyRegistrationEnabled)
 	if err == nil {
-		// 已有设置，不需要初始化
-		return nil
+		return s.initializeMissingSettings(ctx, mediaDefaults)
 	}
 	if !errors.Is(err, ErrSettingNotFound) {
 		return fmt.Errorf("check existing settings: %w", err)
 	}
 
-	// 初始化默认设置
+	// 首次初始化写入完整默认集合；任何已存在的键仍会保留。
 	defaults := map[string]string{
 		SettingKeyRegistrationEnabled:                  "true",
 		SettingKeyEmailVerifyEnabled:                   "false",
@@ -1649,8 +1666,31 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyDashboardFireworksEnabled:   "true",
 		SettingKeyDashboardFireworksThreshold: strconv.FormatFloat(DefaultDashboardFireworksThreshold, 'f', -1, 64),
 	}
+	for key, value := range mediaDefaults {
+		defaults[key] = value
+	}
+	return s.initializeMissingSettings(ctx, defaults)
+}
 
-	return s.settingRepo.SetMultiple(ctx, defaults)
+func (s *SettingService) initializeMissingSettings(ctx context.Context, defaults map[string]string) error {
+	keys := make([]string, 0, len(defaults))
+	for key := range defaults {
+		keys = append(keys, key)
+	}
+	existing, err := s.settingRepo.GetMultiple(ctx, keys)
+	if err != nil {
+		return fmt.Errorf("load existing settings: %w", err)
+	}
+	missing := make(map[string]string)
+	for key, value := range defaults {
+		if _, ok := existing[key]; !ok {
+			missing[key] = value
+		}
+	}
+	if len(missing) == 0 {
+		return nil
+	}
+	return s.settingRepo.SetMultiple(ctx, missing)
 }
 
 // parseSettings 解析设置到结构体
@@ -1671,46 +1711,52 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 			parseIntSetting(settings[SettingKeyChannelMonitorDefaultIntervalSeconds], ChannelMonitorFallbackIntervalSecond),
 			ChannelMonitorFallbackIntervalSecond,
 		),
-		EmailProvider:                     NormalizeEmailProvider(settings[SettingKeyEmailProvider]),
-		SMTPHost:                          settings[SettingKeySMTPHost],
-		SMTPUsername:                      settings[SettingKeySMTPUsername],
-		SMTPFrom:                          settings[SettingKeySMTPFrom],
-		SMTPFromName:                      settings[SettingKeySMTPFromName],
-		SMTPUseTLS:                        settings[SettingKeySMTPUseTLS] == "true",
-		SMTPPasswordConfigured:            settings[SettingKeySMTPPassword] != "",
-		ResendFrom:                        settings[SettingKeyResendFrom],
-		ResendFromName:                    settings[SettingKeyResendFromName],
-		ResendAPIKeyConfigured:            settings[SettingKeyResendAPIKey] != "",
-		TurnstileEnabled:                  settings[SettingKeyTurnstileEnabled] == "true",
-		TurnstileSiteKey:                  settings[SettingKeyTurnstileSiteKey],
-		TurnstileSecretKeyConfigured:      settings[SettingKeyTurnstileSecretKey] != "",
-		SiteName:                          s.getStringOrDefault(settings, SettingKeySiteName, "FluxCode"),
-		SiteLogo:                          settings[SettingKeySiteLogo],
-		SiteSubtitle:                      s.getStringOrDefault(settings, SettingKeySiteSubtitle, "Subscription to API Conversion Platform"),
-		APIBaseURL:                        settings[SettingKeyAPIBaseURL],
-		ContactInfo:                       settings[SettingKeyContactInfo],
-		DocURL:                            settings[SettingKeyDocURL],
-		HomeContent:                       settings[SettingKeyHomeContent],
-		HideCcsImportButton:               settings[SettingKeyHideCcsImportButton] == "true",
-		PurchaseSubscriptionEnabled:       settings[SettingKeyPurchaseSubscriptionEnabled] == "true",
-		PurchaseSubscriptionURL:           strings.TrimSpace(settings[SettingKeyPurchaseSubscriptionURL]),
-		CustomMenuItems:                   settings[SettingKeyCustomMenuItems],
-		CustomEndpoints:                   settings[SettingKeyCustomEndpoints],
-		OpenAIUseKeyModelID:               s.getStringOrDefault(settings, SettingKeyOpenAIUseKeyModelID, "gpt-5.5"),
-		OpenAIImageURLCacheTTLHours:       normalizeOpenAIImageURLCacheTTLHours(parseIntSetting(settings[SettingKeyOpenAIImageURLCacheTTLHours], DefaultOpenAIImageURLCacheTTLHours)),
-		GeneratedImageStorageSource:       generatedImageStorageSettings.Source,
-		GeneratedImageStorageConfigSource: generatedImageStorageSettings.ConfigSource,
-		QiniuAccessKey:                    generatedImageStorageSettings.QiniuAccessKey,
-		QiniuSecretKey:                    generatedImageStorageSettings.QiniuSecretKey,
-		QiniuSecretKeyConfigured:          generatedImageStorageSettings.QiniuSecretKey != "",
-		QiniuBucket:                       generatedImageStorageSettings.QiniuBucket,
-		QiniuCDNDomain:                    generatedImageStorageSettings.QiniuCDNDomain,
-		QiniuPrefix:                       generatedImageStorageSettings.QiniuPrefix,
-		QiniuUseHTTPS:                     generatedImageStorageSettings.QiniuUseHTTPS,
-		QiniuUploadTimeoutSeconds:         generatedImageStorageSettings.QiniuUploadTimeoutSeconds,
-		QiniuTokenTTLSeconds:              generatedImageStorageSettings.QiniuTokenTTLSeconds,
-		GeneratedImageCleanupEnabled:      settings[SettingKeyGeneratedImageCleanupEnabled] == "true",
-		BackendModeEnabled:                settings[SettingKeyBackendModeEnabled] == "true",
+		EmailProvider:                        NormalizeEmailProvider(settings[SettingKeyEmailProvider]),
+		SMTPHost:                             settings[SettingKeySMTPHost],
+		SMTPUsername:                         settings[SettingKeySMTPUsername],
+		SMTPFrom:                             settings[SettingKeySMTPFrom],
+		SMTPFromName:                         settings[SettingKeySMTPFromName],
+		SMTPUseTLS:                           settings[SettingKeySMTPUseTLS] == "true",
+		SMTPPasswordConfigured:               settings[SettingKeySMTPPassword] != "",
+		ResendFrom:                           settings[SettingKeyResendFrom],
+		ResendFromName:                       settings[SettingKeyResendFromName],
+		ResendAPIKeyConfigured:               settings[SettingKeyResendAPIKey] != "",
+		TurnstileEnabled:                     settings[SettingKeyTurnstileEnabled] == "true",
+		TurnstileSiteKey:                     settings[SettingKeyTurnstileSiteKey],
+		TurnstileSecretKeyConfigured:         settings[SettingKeyTurnstileSecretKey] != "",
+		SiteName:                             s.getStringOrDefault(settings, SettingKeySiteName, "FluxCode"),
+		SiteLogo:                             settings[SettingKeySiteLogo],
+		SiteSubtitle:                         s.getStringOrDefault(settings, SettingKeySiteSubtitle, "Subscription to API Conversion Platform"),
+		APIBaseURL:                           settings[SettingKeyAPIBaseURL],
+		ContactInfo:                          settings[SettingKeyContactInfo],
+		DocURL:                               settings[SettingKeyDocURL],
+		HomeContent:                          settings[SettingKeyHomeContent],
+		HideCcsImportButton:                  settings[SettingKeyHideCcsImportButton] == "true",
+		PurchaseSubscriptionEnabled:          settings[SettingKeyPurchaseSubscriptionEnabled] == "true",
+		PurchaseSubscriptionURL:              strings.TrimSpace(settings[SettingKeyPurchaseSubscriptionURL]),
+		CustomMenuItems:                      settings[SettingKeyCustomMenuItems],
+		CustomEndpoints:                      settings[SettingKeyCustomEndpoints],
+		OpenAIUseKeyModelID:                  s.getStringOrDefault(settings, SettingKeyOpenAIUseKeyModelID, "gpt-5.5"),
+		OpenAIImageURLCacheTTLHours:          normalizeOpenAIImageURLCacheTTLHours(parseIntSetting(settings[SettingKeyOpenAIImageURLCacheTTLHours], DefaultOpenAIImageURLCacheTTLHours)),
+		GeneratedImageStorageSource:          generatedImageStorageSettings.Source,
+		GeneratedImageStorageConfigSource:    generatedImageStorageSettings.ConfigSource,
+		QiniuAccessKey:                       generatedImageStorageSettings.QiniuAccessKey,
+		QiniuSecretKey:                       generatedImageStorageSettings.QiniuSecretKey,
+		QiniuSecretKeyConfigured:             generatedImageStorageSettings.QiniuSecretKey != "",
+		QiniuBucket:                          generatedImageStorageSettings.QiniuBucket,
+		QiniuCDNDomain:                       generatedImageStorageSettings.QiniuCDNDomain,
+		QiniuPrefix:                          generatedImageStorageSettings.QiniuPrefix,
+		QiniuUseHTTPS:                        generatedImageStorageSettings.QiniuUseHTTPS,
+		QiniuUploadTimeoutSeconds:            generatedImageStorageSettings.QiniuUploadTimeoutSeconds,
+		QiniuTokenTTLSeconds:                 generatedImageStorageSettings.QiniuTokenTTLSeconds,
+		GeneratedImageCleanupEnabled:         settings[SettingKeyGeneratedImageCleanupEnabled] == "true",
+		MediaSyncWaitTimeoutSeconds:          parseMediaSyncWaitTimeoutSeconds(settings[SettingKeyMediaSyncWaitTimeoutSeconds]),
+		MediaSyncTimeoutFallbackAsyncEnabled: parseMediaBoolSetting(settings[SettingKeyMediaSyncTimeoutFallbackAsyncEnabled], DefaultMediaSyncTimeoutFallbackAsyncEnabled),
+		MediaSyncTimeoutBillingPolicy:        parseMediaTimeoutBillingPolicy(settings[SettingKeyMediaSyncTimeoutBillingPolicy]),
+		MediaSyncTimeoutPenaltyRatio:         parseMediaSyncTimeoutPenaltyRatio(settings[SettingKeyMediaSyncTimeoutPenaltyRatio]),
+		MediaVideoStorageMode:                parseMediaVideoStorageMode(settings[SettingKeyMediaVideoStorageMode]),
+		MediaVideoProxyFallbackEnabled:       parseMediaBoolSetting(settings[SettingKeyMediaVideoProxyFallbackEnabled], DefaultMediaVideoProxyFallbackEnabled),
+		BackendModeEnabled:                   settings[SettingKeyBackendModeEnabled] == "true",
 	}
 	result.TableDefaultPageSize, result.TablePageSizeOptions = parseTablePreferences(
 		settings[SettingKeyTableDefaultPageSize],
@@ -2113,6 +2159,74 @@ func (s *SettingService) getStringOrDefault(settings map[string]string, key, def
 		return value
 	}
 	return defaultValue
+}
+
+func normalizeAndValidateMediaSettings(settings *SystemSettings) error {
+	if settings.MediaSyncWaitTimeoutSeconds < 0 {
+		return infraerrors.BadRequest("INVALID_MEDIA_SYNC_WAIT_TIMEOUT", "media sync wait timeout seconds must be greater than or equal to 0")
+	}
+	settings.MediaSyncTimeoutBillingPolicy = strings.TrimSpace(settings.MediaSyncTimeoutBillingPolicy)
+	if settings.MediaSyncTimeoutBillingPolicy == "" {
+		settings.MediaSyncTimeoutBillingPolicy = MediaTimeoutBillingPolicyPenalty
+	}
+	if settings.MediaSyncTimeoutBillingPolicy != MediaTimeoutBillingPolicyRefund &&
+		settings.MediaSyncTimeoutBillingPolicy != MediaTimeoutBillingPolicyPenalty {
+		return infraerrors.BadRequest("INVALID_MEDIA_SYNC_TIMEOUT_BILLING_POLICY", "media sync timeout billing policy must be refund or penalty")
+	}
+	if math.IsNaN(settings.MediaSyncTimeoutPenaltyRatio) || math.IsInf(settings.MediaSyncTimeoutPenaltyRatio, 0) ||
+		settings.MediaSyncTimeoutPenaltyRatio < 0 || settings.MediaSyncTimeoutPenaltyRatio > 1 {
+		return infraerrors.BadRequest("INVALID_MEDIA_SYNC_TIMEOUT_PENALTY_RATIO", "media sync timeout penalty ratio must be between 0 and 1")
+	}
+	settings.MediaVideoStorageMode = strings.TrimSpace(settings.MediaVideoStorageMode)
+	if settings.MediaVideoStorageMode == "" {
+		settings.MediaVideoStorageMode = MediaVideoStorageModeHybrid
+	}
+	if settings.MediaVideoStorageMode != MediaVideoStorageModeHybrid {
+		return infraerrors.BadRequest("INVALID_MEDIA_VIDEO_STORAGE_MODE", "media video storage mode must be hybrid")
+	}
+	return nil
+}
+
+func parseMediaSyncWaitTimeoutSeconds(raw string) int {
+	value, err := strconv.Atoi(strings.TrimSpace(raw))
+	if err != nil || value < 0 {
+		return DefaultMediaSyncWaitTimeoutSeconds
+	}
+	return value
+}
+
+func parseMediaBoolSetting(raw string, fallback bool) bool {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "true":
+		return true
+	case "false":
+		return false
+	default:
+		return fallback
+	}
+}
+
+func parseMediaTimeoutBillingPolicy(raw string) string {
+	value := strings.TrimSpace(raw)
+	if value == MediaTimeoutBillingPolicyRefund || value == MediaTimeoutBillingPolicyPenalty {
+		return value
+	}
+	return MediaTimeoutBillingPolicyPenalty
+}
+
+func parseMediaSyncTimeoutPenaltyRatio(raw string) float64 {
+	value, err := strconv.ParseFloat(strings.TrimSpace(raw), 64)
+	if err != nil || math.IsNaN(value) || math.IsInf(value, 0) || value < 0 || value > 1 {
+		return DefaultMediaSyncTimeoutPenaltyRatio
+	}
+	return value
+}
+
+func parseMediaVideoStorageMode(raw string) string {
+	if strings.TrimSpace(raw) == MediaVideoStorageModeHybrid {
+		return MediaVideoStorageModeHybrid
+	}
+	return MediaVideoStorageModeHybrid
 }
 
 // IsTurnstileEnabled 检查是否启用 Turnstile 验证

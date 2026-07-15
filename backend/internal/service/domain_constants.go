@@ -202,6 +202,14 @@ const (
 	SettingKeyOpenAIImageURLCacheTTLHours  = "openai_image_url_cache_ttl_hours"
 	SettingKeyGeneratedImageCleanupEnabled = "generated_image_cleanup_enabled"
 
+	// 媒体运行时设置
+	SettingKeyMediaSyncWaitTimeoutSeconds          = "media_sync_wait_timeout_seconds"
+	SettingKeyMediaSyncTimeoutFallbackAsyncEnabled = "media_sync_timeout_fallback_async_enabled"
+	SettingKeyMediaSyncTimeoutBillingPolicy        = "media_sync_timeout_billing_policy"
+	SettingKeyMediaSyncTimeoutPenaltyRatio         = "media_sync_timeout_penalty_ratio"
+	SettingKeyMediaVideoStorageMode                = "media_video_storage_mode"
+	SettingKeyMediaVideoProxyFallbackEnabled       = "media_video_proxy_fallback_enabled"
+
 	// 生图存储设置
 	SettingKeyGeneratedImageStorageSource       = "generated_image_storage_source"        // db/qiniu, actual storage source
 	SettingKeyGeneratedImageStorageConfigSource = "generated_image_storage_config_source" // db/qiniu, settings panel source
@@ -418,6 +426,17 @@ const (
 	SettingKeyCodexPassthroughUAVersion = "codex_official_client_passthrough_ua_version"
 	// SettingKeyOpenAIUsageDebugLogEnabled 开启后打印 OpenAI 上游 usage 原始响应和计费拆分调试日志（默认 false）
 	SettingKeyOpenAIUsageDebugLogEnabled = "openai_usage_debug_log_enabled"
+)
+
+const (
+	MediaTimeoutBillingPolicyRefund  = "refund"
+	MediaTimeoutBillingPolicyPenalty = "penalty"
+	MediaVideoStorageModeHybrid      = "hybrid"
+
+	DefaultMediaSyncWaitTimeoutSeconds          = 240
+	DefaultMediaSyncTimeoutFallbackAsyncEnabled = false
+	DefaultMediaSyncTimeoutPenaltyRatio         = 0.8
+	DefaultMediaVideoProxyFallbackEnabled       = true
 )
 
 // AdminAPIKeyPrefix is the prefix for admin API keys (distinct from user "sk-" keys).

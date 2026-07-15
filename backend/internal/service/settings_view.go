@@ -92,6 +92,14 @@ type SystemSettings struct {
 	QiniuTokenTTLSeconds              int
 	GeneratedImageCleanupEnabled      bool
 
+	// 媒体运行时设置
+	MediaSyncWaitTimeoutSeconds          int
+	MediaSyncTimeoutFallbackAsyncEnabled bool
+	MediaSyncTimeoutBillingPolicy        string
+	MediaSyncTimeoutPenaltyRatio         float64
+	MediaVideoStorageMode                string
+	MediaVideoProxyFallbackEnabled       bool
+
 	DefaultConcurrency   int
 	DefaultBalance       float64
 	DefaultSubscriptions []DefaultSubscriptionSetting
