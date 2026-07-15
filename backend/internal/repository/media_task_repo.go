@@ -16,6 +16,63 @@ type mediaTaskRepository struct {
 	client *dbent.Client
 }
 
+var (
+	updateQueuedFields = mediaTaskUpdateFieldSet(
+		"channel_id",
+		"account_id",
+		"upstream_model",
+		"adapter",
+		"native_async_mode",
+		"stage",
+		"progress",
+		"candidate_snapshot",
+		"billing_snapshot",
+		"settlement_plan",
+		"billing_status",
+		"precharged_amount",
+		"submitted_at",
+	)
+	updateClaimedFields = mediaTaskUpdateFieldSet(
+		"channel_id",
+		"account_id",
+		"upstream_model",
+		"adapter",
+		"upstream_task_id",
+		"poll_metadata",
+		"stage",
+		"progress",
+		"submitted_at",
+		"started_at",
+		"retry_count",
+		"error_code",
+		"error_message",
+	)
+	transitionFields = mediaTaskUpdateFieldSet(
+		"stage",
+		"progress",
+		"retry_count",
+		"error_code",
+		"error_message",
+		"finished_at",
+	)
+	transitionClaimedFields = mediaTaskUpdateFieldSet(
+		"stage",
+		"progress",
+		"retry_count",
+		"error_code",
+		"error_message",
+		"finished_at",
+	)
+	updateBillingFields = mediaTaskUpdateFieldSet(
+		"billing_snapshot",
+		"settlement_plan",
+		"billing_status",
+		"precharged_amount",
+		"final_amount",
+		"refunded_amount",
+	)
+)
+
 func NewMediaTaskRepository(client *dbent.Client) service.MediaTaskRepository {
 	return &mediaTaskRepository{client: client}
 }
@@ -138,13 +195,16 @@ func (r *mediaTaskRepository) GetByIdempotencyKey(ctx context.Context, userID, a
 }
 
 func (r *mediaTaskRepository) UpdateQueued(ctx context.Context, id, version int64, updates map[string]any) (bool, error) {
+	if err := validateMediaTaskUpdateFields("UpdateQueued", updates, updateQueuedFields); err != nil {
+		return false, err
+	}
 	update := r.client.MediaTask.Update().
 		Where(
 			mediatask.IDEQ(id),
 			mediatask.StatusEQ(string(service.MediaTaskStatusQueued)),
 			mediatask.VersionEQ(version),
 		)
-	if err := applyMediaTaskUpdates(update, updates, "status", "version", "worker_id"); err != nil {
+	if err := applyMediaTaskUpdates(update, updates); err != nil {
 		return false, err
 	}
 	updated, err := update.AddVersion(1).Save(ctx)
@@ -185,6 +245,9 @@ func (r *mediaTaskRepository) RenewLease(ctx context.Context, id int64, workerID
 }
 
 func (r *mediaTaskRepository) UpdateClaimed(ctx context.Context, id int64, workerID string, updates map[string]any) (bool, error) {
+	if err := validateMediaTaskUpdateFields("UpdateClaimed", updates, updateClaimedFields); err != nil {
+		return false, err
+	}
 	update := r.client.MediaTask.Update().
 		Where(
 			mediatask.IDEQ(id),
@@ -193,7 +256,7 @@ func (r *mediaTaskRepository) UpdateClaimed(ctx context.Context, id int64, worke
 			mediatask.LeaseUntilNotNil(),
 			mediatask.LeaseUntilGT(time.Now().UTC()),
 		)
-	if err := applyMediaTaskUpdates(update, updates, "status", "version", "worker_id"); err != nil {
+	if err := applyMediaTaskUpdates(update, updates); err != nil {
 		return false, err
 	}
 	updated, err := update.AddVersion(1).Save(ctx)
@@ -201,12 +264,51 @@ func (r *mediaTaskRepository) UpdateClaimed(ctx context.Context, id int64, worke
 }
 
 func (r *mediaTaskRepository) Transition(ctx context.Context, id int64, from, to service.MediaTaskStatus, updates map[string]any) (bool, error) {
+	if !from.CanTransitionTo(to) {
+		return false, nil
+	}
+	if err := validateMediaTaskUpdateFields("Transition", updates, transitionFields); err != nil {
+		return false, err
+	}
 	update := r.client.MediaTask.Update().
 		Where(mediatask.IDEQ(id), mediatask.StatusEQ(string(from)))
-	if err := applyMediaTaskUpdates(update, updates, "status", "version"); err != nil {
+	if err := applyMediaTaskUpdates(update, updates); err != nil {
 		return false, err
 	}
 	updated, err := update.SetStatus(string(to)).Save(ctx)
+	return updated == 1, err
+}
+
+func (r *mediaTaskRepository) TransitionClaimed(
+	ctx context.Context,
+	id int64,
+	workerID string,
+	expectedVersion int64,
+	from, to service.MediaTaskStatus,
+	updates map[string]any,
+) (bool, error) {
+	if !from.CanTransitionTo(to) {
+		return false, nil
+	}
+	if err := validateMediaTaskUpdateFields("TransitionClaimed", updates, transitionClaimedFields); err != nil {
+		return false, err
+	}
+	update := r.client.MediaTask.Update().
+		Where(
+			mediatask.IDEQ(id),
+			mediatask.StatusEQ(string(from)),
+			mediatask.WorkerIDEQ(workerID),
+			mediatask.VersionEQ(expectedVersion),
+			mediatask.LeaseUntilNotNil(),
+			mediatask.LeaseUntilGT(time.Now().UTC()),
+		)
+	if err := applyMediaTaskUpdates(update, updates); err != nil {
+		return false, err
+	}
+	updated, err := update.
+		SetStatus(string(to)).
+		AddVersion(1).
+		Save(ctx)
 	return updated == 1, err
 }
 
@@ -260,9 +362,12 @@ func (r *mediaTaskRepository) ListSettlementPending(ctx context.Context, limit i
 }
 
 func (r *mediaTaskRepository) UpdateBilling(ctx context.Context, id int64, fromStatus string, updates map[string]any) (bool, error) {
+	if err := validateMediaTaskUpdateFields("UpdateBilling", updates, updateBillingFields); err != nil {
+		return false, err
+	}
 	update := r.client.MediaTask.Update().
 		Where(mediatask.IDEQ(id), mediatask.BillingStatusEQ(fromStatus))
-	if err := applyMediaTaskUpdates(update, updates, "status", "stage", "version", "worker_id", "lease_until"); err != nil {
+	if err := applyMediaTaskUpdates(update, updates); err != nil {
 		return false, err
 	}
 	updated, err := update.Save(ctx)
@@ -432,15 +537,8 @@ func mediaArtifactFromEnt(artifact *dbent.MediaArtifact) *service.MediaArtifact 
 	}
 }
 
-func applyMediaTaskUpdates(update *dbent.MediaTaskUpdate, updates map[string]any, protected ...string) error {
-	blocked := make(map[string]struct{}, len(protected))
-	for _, field := range protected {
-		blocked[field] = struct{}{}
-	}
+func applyMediaTaskUpdates(update *dbent.MediaTaskUpdate, updates map[string]any) error {
 	for field, value := range updates {
-		if _, ok := blocked[field]; ok {
-			return fmt.Errorf("media task field %q cannot be updated by this operation", field)
-		}
 		switch field {
 		case "channel_id":
 			v, err := int64PointerValue(value)
@@ -462,24 +560,6 @@ func applyMediaTaskUpdates(update *dbent.MediaTaskUpdate, updates map[string]any
 			} else {
 				update.SetAccountID(*v)
 			}
-		case "media_type":
-			v, err := stringUpdateValue(value)
-			if err != nil {
-				return updateTypeError(field, err)
-			}
-			update.SetMediaType(v)
-		case "operation":
-			v, err := stringUpdateValue(value)
-			if err != nil {
-				return updateTypeError(field, err)
-			}
-			update.SetOperation(v)
-		case "requested_model":
-			v, err := stringUpdateValue(value)
-			if err != nil {
-				return updateTypeError(field, err)
-			}
-			update.SetRequestedModel(v)
 		case "upstream_model":
 			v, err := stringUpdateValue(value)
 			if err != nil {
@@ -493,31 +573,13 @@ func applyMediaTaskUpdates(update *dbent.MediaTaskUpdate, updates map[string]any
 			}
 			update.SetAdapter(v)
 		case "native_async_mode":
-			v, err := stringUpdateValue(value)
+			v, err := nativeAsyncModeUpdateValue(value)
 			if err != nil {
 				return updateTypeError(field, err)
 			}
 			update.SetNativeAsyncMode(v)
-		case "client_async":
-			v, ok := value.(bool)
-			if !ok {
-				return updateTypeError(field, fmt.Errorf("got %T, want bool", value))
-			}
-			update.SetClientAsync(v)
-		case "sync_fallback":
-			v, ok := value.(bool)
-			if !ok {
-				return updateTypeError(field, fmt.Errorf("got %T, want bool", value))
-			}
-			update.SetSyncFallback(v)
-		case "status":
-			v, err := stringUpdateValue(value)
-			if err != nil {
-				return updateTypeError(field, err)
-			}
-			update.SetStatus(v)
 		case "stage":
-			v, err := stringUpdateValue(value)
+			v, err := mediaTaskStageUpdateValue(value)
 			if err != nil {
 				return updateTypeError(field, err)
 			}
@@ -528,30 +590,12 @@ func applyMediaTaskUpdates(update *dbent.MediaTaskUpdate, updates map[string]any
 				return updateTypeError(field, err)
 			}
 			update.SetProgress(v)
-		case "request_spec":
-			v, err := rawMessageValue(value)
-			if err != nil {
-				return updateTypeError(field, err)
-			}
-			update.SetRequestSpec(v)
 		case "candidate_snapshot":
 			v, err := rawMessageValue(value)
 			if err != nil {
 				return updateTypeError(field, err)
 			}
 			update.SetCandidateSnapshot(v)
-		case "request_fingerprint":
-			v, err := stringUpdateValue(value)
-			if err != nil {
-				return updateTypeError(field, err)
-			}
-			update.SetRequestFingerprint(v)
-		case "idempotency_key":
-			v, err := stringUpdateValue(value)
-			if err != nil {
-				return updateTypeError(field, err)
-			}
-			update.SetIdempotencyKey(v)
 		case "upstream_task_id":
 			v, err := stringPointerValue(value)
 			if err != nil {
@@ -634,28 +678,6 @@ func applyMediaTaskUpdates(update *dbent.MediaTaskUpdate, updates map[string]any
 				return updateTypeError(field, err)
 			}
 			update.SetErrorMessage(v)
-		case "worker_id":
-			v, err := stringUpdateValue(value)
-			if err != nil {
-				return updateTypeError(field, err)
-			}
-			update.SetWorkerID(v)
-		case "lease_until":
-			v, err := timePointerValue(value)
-			if err != nil {
-				return updateTypeError(field, err)
-			}
-			if v == nil {
-				update.ClearLeaseUntil()
-			} else {
-				update.SetLeaseUntil(*v)
-			}
-		case "version":
-			v, err := int64UpdateValue(value)
-			if err != nil {
-				return updateTypeError(field, err)
-			}
-			update.SetVersion(v)
 		case "submitted_at":
 			if err := setOptionalTime(update.SetSubmittedAt, update.ClearSubmittedAt, value); err != nil {
 				return updateTypeError(field, err)
@@ -668,10 +690,6 @@ func applyMediaTaskUpdates(update *dbent.MediaTaskUpdate, updates map[string]any
 			if err := setOptionalTime(update.SetFinishedAt, update.ClearFinishedAt, value); err != nil {
 				return updateTypeError(field, err)
 			}
-		case "sync_fallback_at":
-			if err := setOptionalTime(update.SetSyncFallbackAt, update.ClearSyncFallbackAt, value); err != nil {
-				return updateTypeError(field, err)
-			}
 		default:
 			return fmt.Errorf("unsupported media task update field %q", field)
 		}
@@ -679,22 +697,61 @@ func applyMediaTaskUpdates(update *dbent.MediaTaskUpdate, updates map[string]any
 	return nil
 }
 
+func mediaTaskUpdateFieldSet(fields ...string) map[string]struct{} {
+	set := make(map[string]struct{}, len(fields))
+	for _, field := range fields {
+		set[field] = struct{}{}
+	}
+	return set
+}
+
+func validateMediaTaskUpdateFields(operation string, updates map[string]any, allowed map[string]struct{}) error {
+	for field := range updates {
+		if _, ok := allowed[field]; !ok {
+			return fmt.Errorf("media task %s field %q is not allowed", operation, field)
+		}
+	}
+	return nil
+}
+
 func stringUpdateValue(value any) (string, error) {
-	switch v := value.(type) {
-	case string:
+	if v, ok := value.(string); ok {
 		return v, nil
-	case service.MediaType:
-		return string(v), nil
-	case service.MediaOperation:
-		return string(v), nil
-	case service.NativeAsyncMode:
-		return string(v), nil
-	case service.MediaTaskStatus:
-		return string(v), nil
-	case service.MediaTaskStage:
+	}
+	return "", fmt.Errorf("got %T, want string", value)
+}
+
+func nativeAsyncModeUpdateValue(value any) (string, error) {
+	v, ok := value.(service.NativeAsyncMode)
+	if !ok {
+		return "", fmt.Errorf("got %T, want service.NativeAsyncMode", value)
+	}
+	switch v {
+	case service.NativeAsyncUnsupported, service.NativeAsyncOptional, service.NativeAsyncRequired:
 		return string(v), nil
 	default:
-		return "", fmt.Errorf("got %T, want string", value)
+		return "", fmt.Errorf("unknown service.NativeAsyncMode %q", v)
+	}
+}
+
+func mediaTaskStageUpdateValue(value any) (string, error) {
+	v, ok := value.(service.MediaTaskStage)
+	if !ok {
+		return "", fmt.Errorf("got %T, want service.MediaTaskStage", value)
+	}
+	switch v {
+	case service.MediaTaskStageQueued,
+		service.MediaTaskStageScheduling,
+		service.MediaTaskStageSubmitting,
+		service.MediaTaskStageGenerating,
+		service.MediaTaskStagePolling,
+		service.MediaTaskStageStoring,
+		service.MediaTaskStageSettling,
+		service.MediaTaskStageCompleted,
+		service.MediaTaskStageFailed:
+		return string(v), nil
+	default:
+		return "", fmt.Errorf("unknown service.MediaTaskStage %q", v)
 	}
 }
 

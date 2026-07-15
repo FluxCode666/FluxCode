@@ -83,7 +83,12 @@ type MediaTaskRepository interface {
 	Claim(ctx context.Context, id int64, workerID string, leaseUntil time.Time, version int64) (bool, error)
 	RenewLease(ctx context.Context, id int64, workerID string, leaseUntil time.Time) (bool, error)
 	UpdateClaimed(ctx context.Context, id int64, workerID string, updates map[string]any) (bool, error)
+	// Transition is reserved for orchestrator/system state changes. It enforces the
+	// domain state machine and status CAS, but intentionally does not assert Worker ownership.
 	Transition(ctx context.Context, id int64, from, to MediaTaskStatus, updates map[string]any) (bool, error)
+	// TransitionClaimed is the Worker completion/failure path. It additionally
+	// requires the current Worker, expected version, and a live lease in one CAS update.
+	TransitionClaimed(ctx context.Context, id int64, workerID string, expectedVersion int64, from, to MediaTaskStatus, updates map[string]any) (bool, error)
 	MarkSyncFallback(ctx context.Context, id int64, at time.Time) (bool, error)
 	ListRecoverable(ctx context.Context, now time.Time, limit int) ([]MediaTask, error)
 	ListSettlementPending(ctx context.Context, limit int) ([]MediaTask, error)

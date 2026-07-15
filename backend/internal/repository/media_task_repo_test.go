@@ -144,10 +144,11 @@ func TestMediaTaskRepositoryUpdateQueuedUsesStatusAndVersionCAS(t *testing.T) {
 	require.NoError(t, err)
 
 	updated, err := repo.UpdateQueued(ctx, task.ID, task.Version, map[string]any{
-		"adapter":    "adapter-a",
-		"stage":      service.MediaTaskStageScheduling,
-		"progress":   9,
-		"channel_id": int64(81),
+		"adapter":           "adapter-a",
+		"native_async_mode": service.NativeAsyncOptional,
+		"stage":             service.MediaTaskStageScheduling,
+		"progress":          9,
+		"channel_id":        int64(81),
 	})
 	require.NoError(t, err)
 	require.True(t, updated)
@@ -156,6 +157,7 @@ func TestMediaTaskRepositoryUpdateQueuedUsesStatusAndVersionCAS(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, int64(2), stored.Version)
 	require.Equal(t, "adapter-a", stored.Adapter)
+	require.Equal(t, service.NativeAsyncOptional, stored.NativeAsyncMode)
 	require.Equal(t, service.MediaTaskStageScheduling, stored.Stage)
 	require.Equal(t, 9, stored.Progress)
 	require.Equal(t, int64(81), *stored.ChannelID)
@@ -173,7 +175,7 @@ func TestMediaTaskRepositoryUpdateQueuedUsesStatusAndVersionCAS(t *testing.T) {
 }
 
 func TestMediaTaskRepositoryClaimSupportsLeaseRecoveryAndRejectsActiveOrStaleClaims(t *testing.T) {
-	repo, _ := newMediaTaskRepositoryTestHarness(t)
+	repo, client := newMediaTaskRepositoryTestHarness(t)
 	ctx := context.Background()
 	leaseLessInput := newRepositoryMediaTask("task_claim_without_lease")
 	leaseLessInput.Status = service.MediaTaskStatusInProgress
@@ -204,11 +206,10 @@ func TestMediaTaskRepositoryClaimSupportsLeaseRecoveryAndRejectsActiveOrStaleCla
 	require.False(t, notExpired)
 
 	forcedExpired := time.Now().Add(-time.Minute)
-	_, err = repo.UpdateClaimed(ctx, task.ID, "worker-a", map[string]any{"lease_until": forcedExpired})
-	require.NoError(t, err)
+	forceMediaTaskLease(t, ctx, client, task.ID, forcedExpired)
 	expired, err := repo.GetByID(ctx, task.ID)
 	require.NoError(t, err)
-	require.Equal(t, int64(3), expired.Version)
+	require.Equal(t, int64(2), expired.Version)
 
 	recovered, err := repo.Claim(ctx, task.ID, "worker-b", time.Now().Add(time.Minute), expired.Version)
 	require.NoError(t, err)
@@ -216,7 +217,7 @@ func TestMediaTaskRepositoryClaimSupportsLeaseRecoveryAndRejectsActiveOrStaleCla
 	afterRecovery, err := repo.GetByID(ctx, task.ID)
 	require.NoError(t, err)
 	require.Equal(t, "worker-b", afterRecovery.WorkerID)
-	require.Equal(t, int64(4), afterRecovery.Version)
+	require.Equal(t, int64(3), afterRecovery.Version)
 
 	completed, err := repo.Transition(ctx, task.ID, service.MediaTaskStatusInProgress, service.MediaTaskStatusCompleted, nil)
 	require.NoError(t, err)
@@ -227,7 +228,7 @@ func TestMediaTaskRepositoryClaimSupportsLeaseRecoveryAndRejectsActiveOrStaleCla
 }
 
 func TestMediaTaskRepositoryRenewLeaseRequiresCurrentLiveClaim(t *testing.T) {
-	repo, _ := newMediaTaskRepositoryTestHarness(t)
+	repo, client := newMediaTaskRepositoryTestHarness(t)
 	ctx := context.Background()
 	task, err := repo.Create(ctx, newRepositoryMediaTask("task_renew_lease"))
 	require.NoError(t, err)
@@ -244,9 +245,7 @@ func TestMediaTaskRepositoryRenewLeaseRequiresCurrentLiveClaim(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, wrongWorker)
 
-	updated, err := repo.UpdateClaimed(ctx, task.ID, "worker-a", map[string]any{"lease_until": time.Now().Add(-time.Minute)})
-	require.NoError(t, err)
-	require.True(t, updated)
+	forceMediaTaskLease(t, ctx, client, task.ID, time.Now().Add(-time.Minute))
 	expired, err := repo.RenewLease(ctx, task.ID, "worker-a", time.Now().Add(time.Minute))
 	require.NoError(t, err)
 	require.False(t, expired)
@@ -265,7 +264,7 @@ func TestMediaTaskRepositoryRenewLeaseRequiresCurrentLiveClaim(t *testing.T) {
 }
 
 func TestMediaTaskRepositoryUpdateClaimedRequiresWorkerAndUnexpiredLease(t *testing.T) {
-	repo, _ := newMediaTaskRepositoryTestHarness(t)
+	repo, client := newMediaTaskRepositoryTestHarness(t)
 	ctx := context.Background()
 	task, err := repo.Create(ctx, newRepositoryMediaTask("task_update_claimed"))
 	require.NoError(t, err)
@@ -290,8 +289,9 @@ func TestMediaTaskRepositoryUpdateClaimedRequiresWorkerAndUnexpiredLease(t *test
 
 	expiredLease := time.Now().Add(-time.Minute)
 	changed, err := repo.UpdateClaimed(ctx, task.ID, "worker-a", map[string]any{"lease_until": expiredLease})
-	require.NoError(t, err)
-	require.True(t, changed)
+	require.ErrorContains(t, err, "not allowed")
+	require.False(t, changed)
+	forceMediaTaskLease(t, ctx, client, task.ID, expiredLease)
 	expired, err := repo.UpdateClaimed(ctx, task.ID, "worker-a", map[string]any{"progress": 49})
 	require.NoError(t, err)
 	require.False(t, expired)
@@ -326,7 +326,7 @@ func TestMediaTaskRepositoryMarkSyncFallbackOnlyOnceAndNeverOnTerminalTask(t *te
 }
 
 func TestMediaTaskRepositoryListsRecoverableAndSettlementPending(t *testing.T) {
-	repo, _ := newMediaTaskRepositoryTestHarness(t)
+	repo, client := newMediaTaskRepositoryTestHarness(t)
 	ctx := context.Background()
 	now := time.Now().UTC()
 
@@ -335,9 +335,7 @@ func TestMediaTaskRepositoryListsRecoverableAndSettlementPending(t *testing.T) {
 	expired, err := repo.Create(ctx, newRepositoryMediaTask("task_recover_expired"))
 	require.NoError(t, err)
 	requireClaimed(t, ctx, repo, expired, "worker-expired", now.Add(time.Minute))
-	changed, err := repo.UpdateClaimed(ctx, expired.ID, "worker-expired", map[string]any{"lease_until": now.Add(-time.Minute)})
-	require.NoError(t, err)
-	require.True(t, changed)
+	forceMediaTaskLease(t, ctx, client, expired.ID, now.Add(-time.Minute))
 	active, err := repo.Create(ctx, newRepositoryMediaTask("task_recover_active"))
 	require.NoError(t, err)
 	requireClaimed(t, ctx, repo, active, "worker-active", now.Add(time.Minute))
@@ -407,6 +405,218 @@ func TestMediaTaskRepositoryUpdateBillingUsesBillingStatusCASWithoutChangingTask
 	require.Equal(t, 0.75, stored.RefundedAmount)
 }
 
+func TestMediaTaskRepositoryTransitionEnforcesDomainStateMachine(t *testing.T) {
+	tests := []struct {
+		name    string
+		current service.MediaTaskStatus
+		from    service.MediaTaskStatus
+		to      service.MediaTaskStatus
+	}{
+		{name: "rejects queued self transition", current: service.MediaTaskStatusQueued, from: service.MediaTaskStatusQueued, to: service.MediaTaskStatusQueued},
+		{name: "does not reopen completed task", current: service.MediaTaskStatusCompleted, from: service.MediaTaskStatusCompleted, to: service.MediaTaskStatusInProgress},
+		{name: "does not reopen failed task", current: service.MediaTaskStatusFailed, from: service.MediaTaskStatusFailed, to: service.MediaTaskStatusQueued},
+		{name: "rejects unknown target status", current: service.MediaTaskStatusQueued, from: service.MediaTaskStatusQueued, to: service.MediaTaskStatus("unknown")},
+		{name: "rejects unknown current status", current: service.MediaTaskStatus("unknown"), from: service.MediaTaskStatus("unknown"), to: service.MediaTaskStatusQueued},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			repo, _ := newMediaTaskRepositoryTestHarness(t)
+			ctx := context.Background()
+			input := newRepositoryMediaTask("task_transition_" + strings.ReplaceAll(tt.name, " ", "_"))
+			input.Status = tt.current
+			task, err := repo.Create(ctx, input)
+			require.NoError(t, err)
+
+			transitioned, err := repo.Transition(ctx, task.ID, tt.from, tt.to, nil)
+			require.NoError(t, err)
+			require.False(t, transitioned)
+			stored, err := repo.GetByID(ctx, task.ID)
+			require.NoError(t, err)
+			require.Equal(t, tt.current, stored.Status)
+		})
+	}
+}
+
+func TestMediaTaskRepositoryOperationFieldWhitelistsRejectCrossDomainUpdates(t *testing.T) {
+	t.Run("UpdateQueued rejects sync fallback and does not partially update", func(t *testing.T) {
+		repo, _ := newMediaTaskRepositoryTestHarness(t)
+		ctx := context.Background()
+		task, err := repo.Create(ctx, newRepositoryMediaTask("task_whitelist_queued"))
+		require.NoError(t, err)
+
+		updated, err := repo.UpdateQueued(ctx, task.ID, task.Version, map[string]any{
+			"progress":      12,
+			"sync_fallback": true,
+		})
+		require.ErrorContains(t, err, "not allowed")
+		require.False(t, updated)
+		stored, err := repo.GetByID(ctx, task.ID)
+		require.NoError(t, err)
+		require.Equal(t, 0, stored.Progress)
+		require.False(t, stored.SyncFallback)
+		require.Equal(t, task.Version, stored.Version)
+	})
+
+	t.Run("UpdateClaimed rejects billing fields and does not partially update", func(t *testing.T) {
+		repo, _ := newMediaTaskRepositoryTestHarness(t)
+		ctx := context.Background()
+		task, err := repo.Create(ctx, newRepositoryMediaTask("task_whitelist_claimed"))
+		require.NoError(t, err)
+		requireClaimed(t, ctx, repo, task, "worker-a", time.Now().Add(time.Minute))
+
+		updated, err := repo.UpdateClaimed(ctx, task.ID, "worker-a", map[string]any{
+			"progress":       12,
+			"billing_status": "settled",
+		})
+		require.ErrorContains(t, err, "not allowed")
+		require.False(t, updated)
+		stored, err := repo.GetByID(ctx, task.ID)
+		require.NoError(t, err)
+		require.Equal(t, 0, stored.Progress)
+		require.Equal(t, "pending", stored.BillingStatus)
+		require.Equal(t, int64(2), stored.Version)
+	})
+
+	t.Run("Transition rejects billing fields and leaves status unchanged", func(t *testing.T) {
+		repo, _ := newMediaTaskRepositoryTestHarness(t)
+		ctx := context.Background()
+		task, err := repo.Create(ctx, newRepositoryMediaTask("task_whitelist_transition"))
+		require.NoError(t, err)
+
+		transitioned, err := repo.Transition(ctx, task.ID, service.MediaTaskStatusQueued, service.MediaTaskStatusFailed, map[string]any{
+			"error_code":     "rejected",
+			"billing_status": "settled",
+		})
+		require.ErrorContains(t, err, "not allowed")
+		require.False(t, transitioned)
+		stored, err := repo.GetByID(ctx, task.ID)
+		require.NoError(t, err)
+		require.Equal(t, service.MediaTaskStatusQueued, stored.Status)
+		require.Empty(t, stored.ErrorCode)
+		require.Equal(t, "pending", stored.BillingStatus)
+	})
+
+	t.Run("UpdateBilling rejects execution fields and does not partially update", func(t *testing.T) {
+		repo, _ := newMediaTaskRepositoryTestHarness(t)
+		ctx := context.Background()
+		input := newRepositoryMediaTask("task_whitelist_billing")
+		input.BillingStatus = "precharged"
+		task, err := repo.Create(ctx, input)
+		require.NoError(t, err)
+
+		updated, err := repo.UpdateBilling(ctx, task.ID, "precharged", map[string]any{
+			"final_amount": 2.5,
+			"progress":     99,
+		})
+		require.ErrorContains(t, err, "not allowed")
+		require.False(t, updated)
+		stored, err := repo.GetByID(ctx, task.ID)
+		require.NoError(t, err)
+		require.Equal(t, float64(0), stored.FinalAmount)
+		require.Equal(t, 0, stored.Progress)
+		require.Equal(t, "precharged", stored.BillingStatus)
+	})
+}
+
+func TestMediaTaskRepositoryTransitionClaimedProtectsWorkerVersionLeaseAndState(t *testing.T) {
+	repo, client := newMediaTaskRepositoryTestHarness(t)
+	ctx := context.Background()
+	task, err := repo.Create(ctx, newRepositoryMediaTask("task_transition_claimed"))
+	require.NoError(t, err)
+	requireClaimed(t, ctx, repo, task, "worker-a", time.Now().Add(time.Minute))
+	claimed, err := repo.GetByID(ctx, task.ID)
+	require.NoError(t, err)
+	require.Equal(t, int64(2), claimed.Version)
+
+	wrongWorker, err := repo.TransitionClaimed(ctx, task.ID, "worker-b", claimed.Version, service.MediaTaskStatusInProgress, service.MediaTaskStatusCompleted, nil)
+	require.NoError(t, err)
+	require.False(t, wrongWorker)
+	staleVersion, err := repo.TransitionClaimed(ctx, task.ID, "worker-a", task.Version, service.MediaTaskStatusInProgress, service.MediaTaskStatusCompleted, nil)
+	require.NoError(t, err)
+	require.False(t, staleVersion)
+	illegalSelfTransition, err := repo.TransitionClaimed(ctx, task.ID, "worker-a", claimed.Version, service.MediaTaskStatusInProgress, service.MediaTaskStatusInProgress, nil)
+	require.NoError(t, err)
+	require.False(t, illegalSelfTransition)
+
+	crossDomain, err := repo.TransitionClaimed(ctx, task.ID, "worker-a", claimed.Version, service.MediaTaskStatusInProgress, service.MediaTaskStatusCompleted, map[string]any{
+		"progress":       100,
+		"billing_status": "settled",
+	})
+	require.ErrorContains(t, err, "not allowed")
+	require.False(t, crossDomain)
+	afterRejectedPatch, err := repo.GetByID(ctx, task.ID)
+	require.NoError(t, err)
+	require.Equal(t, service.MediaTaskStatusInProgress, afterRejectedPatch.Status)
+	require.Equal(t, 0, afterRejectedPatch.Progress)
+	require.Equal(t, "pending", afterRejectedPatch.BillingStatus)
+	require.Equal(t, claimed.Version, afterRejectedPatch.Version)
+
+	forceMediaTaskLease(t, ctx, client, task.ID, time.Now().Add(-time.Minute))
+	expiredLease, err := repo.TransitionClaimed(ctx, task.ID, "worker-a", claimed.Version, service.MediaTaskStatusInProgress, service.MediaTaskStatusCompleted, nil)
+	require.NoError(t, err)
+	require.False(t, expiredLease)
+	recovered, err := repo.Claim(ctx, task.ID, "worker-b", time.Now().Add(time.Minute), claimed.Version)
+	require.NoError(t, err)
+	require.True(t, recovered)
+	recoveredTask, err := repo.GetByID(ctx, task.ID)
+	require.NoError(t, err)
+	require.Equal(t, int64(3), recoveredTask.Version)
+
+	oldWorker, err := repo.TransitionClaimed(ctx, task.ID, "worker-a", recoveredTask.Version, service.MediaTaskStatusInProgress, service.MediaTaskStatusCompleted, nil)
+	require.NoError(t, err)
+	require.False(t, oldWorker)
+	finishedAt := time.Now().UTC().Truncate(time.Millisecond)
+	completed, err := repo.TransitionClaimed(ctx, task.ID, "worker-b", recoveredTask.Version, service.MediaTaskStatusInProgress, service.MediaTaskStatusCompleted, map[string]any{
+		"stage":       service.MediaTaskStageCompleted,
+		"progress":    100,
+		"finished_at": finishedAt,
+	})
+	require.NoError(t, err)
+	require.True(t, completed)
+	stored, err := repo.GetByID(ctx, task.ID)
+	require.NoError(t, err)
+	require.Equal(t, service.MediaTaskStatusCompleted, stored.Status)
+	require.Equal(t, service.MediaTaskStageCompleted, stored.Stage)
+	require.Equal(t, 100, stored.Progress)
+	require.WithinDuration(t, finishedAt, *stored.FinishedAt, time.Millisecond)
+	require.Equal(t, int64(4), stored.Version)
+
+	reopened, err := repo.TransitionClaimed(ctx, task.ID, "worker-b", stored.Version, service.MediaTaskStatusCompleted, service.MediaTaskStatusInProgress, nil)
+	require.NoError(t, err)
+	require.False(t, reopened)
+}
+
+func TestMediaTaskRepositoryOperationFieldWhitelistsValidateDomainEnums(t *testing.T) {
+	tests := []struct {
+		name    string
+		updates map[string]any
+	}{
+		{name: "rejects raw stage string", updates: map[string]any{"stage": "scheduling"}},
+		{name: "rejects unknown stage enum", updates: map[string]any{"stage": service.MediaTaskStage("unknown")}},
+		{name: "rejects raw native async string", updates: map[string]any{"native_async_mode": "optional"}},
+		{name: "rejects unknown native async enum", updates: map[string]any{"native_async_mode": service.NativeAsyncMode("unknown")}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			repo, _ := newMediaTaskRepositoryTestHarness(t)
+			ctx := context.Background()
+			task, err := repo.Create(ctx, newRepositoryMediaTask("task_enum_"+strings.ReplaceAll(tt.name, " ", "_")))
+			require.NoError(t, err)
+
+			updated, err := repo.UpdateQueued(ctx, task.ID, task.Version, tt.updates)
+			require.Error(t, err)
+			require.False(t, updated)
+			stored, err := repo.GetByID(ctx, task.ID)
+			require.NoError(t, err)
+			require.Equal(t, task.Stage, stored.Stage)
+			require.Equal(t, task.NativeAsyncMode, stored.NativeAsyncMode)
+			require.Equal(t, task.Version, stored.Version)
+		})
+	}
+}
+
 func TestMediaArtifactRepositoryCreateIsIdempotentByPosition(t *testing.T) {
 	repo, task := newMediaArtifactRepositoryTestHarness(t)
 	input := &service.MediaArtifact{
@@ -462,6 +672,12 @@ func requireClaimed(t *testing.T, ctx context.Context, repo service.MediaTaskRep
 	claimed, err := repo.Claim(ctx, task.ID, workerID, leaseUntil, task.Version)
 	require.NoError(t, err)
 	require.True(t, claimed)
+}
+
+func forceMediaTaskLease(t *testing.T, ctx context.Context, client *dbent.Client, taskID int64, leaseUntil time.Time) {
+	t.Helper()
+	_, err := client.MediaTask.UpdateOneID(taskID).SetLeaseUntil(leaseUntil.UTC()).Save(ctx)
+	require.NoError(t, err)
 }
 
 func mediaTaskIDs(tasks []service.MediaTask) []int64 {
