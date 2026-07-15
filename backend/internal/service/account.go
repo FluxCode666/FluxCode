@@ -73,6 +73,36 @@ type TempUnschedulableRule struct {
 	Description     string   `json:"description"`
 }
 
+func (a *Account) ResolveMediaModel(model string) ResolvedMediaAccountModel {
+	model = strings.TrimSpace(model)
+	fallback := ResolvedMediaAccountModel{
+		UpstreamModel:   model,
+		NativeAsyncMode: NativeAsyncUnsupported,
+	}
+	if a == nil {
+		return fallback
+	}
+
+	config, configured, err := mediaAccountConfigFromExtra(a.Extra)
+	if err != nil || !configured {
+		return fallback
+	}
+	resolved := ResolvedMediaAccountModel{
+		Adapter:         config.Adapter,
+		UpstreamModel:   model,
+		NativeAsyncMode: config.NativeAsyncMode,
+	}
+	if override, exists := config.ModelOverrides[model]; exists {
+		if override.UpstreamModel != "" {
+			resolved.UpstreamModel = override.UpstreamModel
+		}
+		if override.NativeAsyncMode != "" {
+			resolved.NativeAsyncMode = override.NativeAsyncMode
+		}
+	}
+	return resolved
+}
+
 func (a *Account) IsActive() bool {
 	return a.Status == StatusActive
 }
