@@ -74,6 +74,7 @@ func (s *accountCandidateSelector) Select(ctx context.Context, req AccountCandid
 
 	candidates := candidateAccounts(req.Candidates, req.ExcludedAccountIDs)
 	if len(candidates) == 0 {
+		s.clearSticky(ctx, req.GroupID, req.SessionHash)
 		return nil, ErrNoAvailableAccounts
 	}
 
@@ -197,7 +198,16 @@ func (s *accountCandidateSelector) trySticky(ctx context.Context, req AccountCan
 	if s.concurrency == nil {
 		return nil, false, nil
 	}
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return nil, true, ctxErr
+	}
 	waiting, waitErr := s.concurrency.GetAccountWaitingCount(ctx, account.ID)
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return nil, true, ctxErr
+	}
+	if errors.Is(waitErr, context.Canceled) || errors.Is(waitErr, context.DeadlineExceeded) {
+		return nil, true, waitErr
+	}
 	if waitErr == nil && waiting >= s.config.StickySessionMaxWaiting {
 		return nil, false, nil
 	}

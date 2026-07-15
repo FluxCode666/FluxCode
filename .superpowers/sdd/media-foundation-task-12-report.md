@@ -56,7 +56,7 @@ undefined: NewAccountCandidateSelector
 ok github.com/Wei-Shaw/sub2api/internal/service
 ```
 
-Task 12 新测试共有 25 个顶层测试、69 个通过事件（包含子测试）；`-count=10` 连续运行通过。
+Task 12 新测试共有 27 个顶层测试、82 个通过事件（包含子测试）；`-count=10` 连续运行通过。
 
 ## 实现结果
 
@@ -159,3 +159,22 @@ git diff --check
 - `WaitForSlot` 不信任调用方构造的 selection，不会把非正或不匹配的并发上限传给并发服务。
 - plan timeout 从 Wait 入口开始计时；成功进入等待队列后任意退出路径恰好 cleanup 一次。
 - LoadBatch 使用现有 `LoadBatchQueryCap` 保护大候选池；sticky cache 失败保持当前 fail-open 语义。
+
+## 第二轮独立复审修复追加记录
+
+第二轮复审在 `bc6c36159` 上发现两个 sticky 边界。仍然先只补行为测试并取得 RED：
+
+```bash
+cd backend
+go test ./internal/service -run 'TestAccountCandidateSelector(ClearsStickyWhenFilteringLeavesNoCandidates|StickyBusyWaitCountContext)' -count=1
+```
+
+RED 结果显示：唯一 sticky 账号被排除、禁用或临时冷却后，过滤得到空候选会直接返回而没有清理绑定；sticky Acquire 明确 busy 后，阻塞等待数查询返回的 caller cancel/deadline 以及合成 context 错误都会被吞掉并错误生成 WaitPlan。
+
+修复后的行为：
+
+- 过滤后为空时，对非空 session + 非 nil cache 直接执行一次幂等 Delete，不依赖 sticky read；无 session/cache 不调用，Delete 错误继续 fail-open。
+- sticky busy 在等待数查询前后检查 parent context；调用期间取消或 deadline 原样返回且不生成 WaitPlan。
+- parent 尚未置错但 wait-count error 可匹配 `context.Canceled`/`context.DeadlineExceeded` 时保留该错误；仅普通 Redis 错误继续 fail-open。
+
+新增 sticky 用例 `-count=50` 稳定通过，并重新通过 Task 12 `-count=10`、相邻 Media/Concurrency、全部 `SelectAccountWithLoadAwareness`、目标 race、vet、gofmt 与 diff check。

@@ -27,6 +27,9 @@ type accountCandidateConcurrencyStub struct {
 	incrementCalls    int
 	decrementCalls    int
 	accountWaitCounts map[int64]int
+	waitCountErr      error
+	blockWaitCount    bool
+	waitCountCalls    int
 }
 
 func (s *accountCandidateConcurrencyStub) GetAccountsLoadBatch(_ context.Context, accounts []AccountWithConcurrency) (map[int64]*AccountLoadInfo, error) {
@@ -102,10 +105,18 @@ func (s *accountCandidateConcurrencyStub) DecrementAccountWaitCount(_ context.Co
 	s.mu.Unlock()
 }
 
-func (s *accountCandidateConcurrencyStub) GetAccountWaitingCount(_ context.Context, accountID int64) (int, error) {
+func (s *accountCandidateConcurrencyStub) GetAccountWaitingCount(ctx context.Context, accountID int64) (int, error) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.accountWaitCounts[accountID], nil
+	s.waitCountCalls++
+	block := s.blockWaitCount
+	err := s.waitCountErr
+	waiting := s.accountWaitCounts[accountID]
+	s.mu.Unlock()
+	if block {
+		<-ctx.Done()
+		return 0, ctx.Err()
+	}
+	return waiting, err
 }
 
 func (s *accountCandidateConcurrencyStub) snapshot() (acquires []int64, releases map[int64]int, increments, decrements int) {
@@ -278,6 +289,128 @@ func TestAccountCandidateSelectorStickyFullReturnsStickyWaitPlan(t *testing.T) {
 	require.Equal(t, &AccountWaitPlan{
 		AccountID: 2, MaxConcurrency: 4, Timeout: 250 * time.Millisecond, MaxWaiting: 2,
 	}, result.WaitPlan)
+}
+
+func TestAccountCandidateSelectorClearsStickyWhenFilteringLeavesNoCandidates(t *testing.T) {
+	future := time.Now().Add(time.Hour)
+	tests := []struct {
+		name      string
+		candidate *Account
+		excluded  map[int64]struct{}
+		deleteErr error
+	}{
+		{
+			name: "excluded", candidate: task12CandidateAccount(1, 1, 1),
+			excluded: map[int64]struct{}{1: {}},
+		},
+		{
+			name:      "disabled",
+			candidate: &Account{ID: 1, Status: StatusDisabled, Schedulable: true, Concurrency: 1},
+		},
+		{
+			name:      "temporary cooldown",
+			candidate: &Account{ID: 1, Status: StatusActive, Schedulable: true, Concurrency: 1, TempUnschedulableUntil: &future},
+		},
+		{
+			name: "delete error remains fail open", candidate: task12CandidateAccount(1, 1, 1),
+			excluded: map[int64]struct{}{1: {}}, deleteErr: errors.New("cache delete failed"),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cache := &accountCandidateGatewayCacheStub{
+				bindings: map[string]int64{"sticky": 1}, deleteErr: tt.deleteErr,
+			}
+			selector := NewAccountCandidateSelector(&accountCandidateConcurrencyStub{}, cache, task12SchedulingConfig())
+			result, err := selector.Select(context.Background(), AccountCandidateSelectionRequest{
+				SessionHash: "sticky", Candidates: []*Account{tt.candidate}, ExcludedAccountIDs: tt.excluded,
+			})
+			require.Nil(t, result)
+			require.ErrorIs(t, err, ErrNoAvailableAccounts)
+			require.Equal(t, 1, cache.deleteCalls)
+			require.Zero(t, cache.getCalls, "空候选清理不依赖 sticky read")
+		})
+	}
+
+	t.Run("empty session does not delete", func(t *testing.T) {
+		cache := &accountCandidateGatewayCacheStub{bindings: map[string]int64{"sticky": 1}}
+		selector := NewAccountCandidateSelector(&accountCandidateConcurrencyStub{}, cache, task12SchedulingConfig())
+		result, err := selector.Select(context.Background(), AccountCandidateSelectionRequest{
+			Candidates: []*Account{{ID: 1, Status: StatusDisabled, Schedulable: true, Concurrency: 1}},
+		})
+		require.Nil(t, result)
+		require.ErrorIs(t, err, ErrNoAvailableAccounts)
+		require.Zero(t, cache.deleteCalls)
+	})
+
+	t.Run("nil cache is safe", func(t *testing.T) {
+		selector := NewAccountCandidateSelector(&accountCandidateConcurrencyStub{}, nil, task12SchedulingConfig())
+		result, err := selector.Select(context.Background(), AccountCandidateSelectionRequest{
+			SessionHash: "sticky",
+			Candidates:  []*Account{{ID: 1, Status: StatusDisabled, Schedulable: true, Concurrency: 1}},
+		})
+		require.Nil(t, result)
+		require.ErrorIs(t, err, ErrNoAvailableAccounts)
+	})
+}
+
+func TestAccountCandidateSelectorStickyBusyWaitCountContext(t *testing.T) {
+	newSelector := func(concurrency *accountCandidateConcurrencyStub) AccountCandidateSelector {
+		cache := &accountCandidateGatewayCacheStub{bindings: map[string]int64{"sticky": 1}}
+		return NewAccountCandidateSelector(concurrency, cache, task12SchedulingConfig())
+	}
+	request := AccountCandidateSelectionRequest{
+		SessionHash: "sticky", Candidates: []*Account{task12CandidateAccount(1, 1, 2)},
+	}
+
+	t.Run("caller cancel while wait count blocks", func(t *testing.T) {
+		concurrency := &accountCandidateConcurrencyStub{
+			acquireResults: map[int64][]bool{1: {false}}, blockWaitCount: true,
+		}
+		ctx, cancel := context.WithCancel(context.Background())
+		cancelTimer := time.AfterFunc(10*time.Millisecond, cancel)
+		defer cancelTimer.Stop()
+		result, err := newSelector(concurrency).Select(ctx, request)
+		require.Nil(t, result)
+		require.Equal(t, context.Canceled, err)
+		require.Equal(t, 1, concurrency.waitCountCalls)
+	})
+
+	t.Run("caller deadline while wait count blocks", func(t *testing.T) {
+		concurrency := &accountCandidateConcurrencyStub{
+			acquireResults: map[int64][]bool{1: {false}}, blockWaitCount: true,
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+		defer cancel()
+		result, err := newSelector(concurrency).Select(ctx, request)
+		require.Nil(t, result)
+		require.Equal(t, context.DeadlineExceeded, err)
+		require.Equal(t, 1, concurrency.waitCountCalls)
+	})
+
+	for name, contextErr := range map[string]error{
+		"synthetic canceled": context.Canceled,
+		"synthetic deadline": context.DeadlineExceeded,
+	} {
+		t.Run(name, func(t *testing.T) {
+			concurrency := &accountCandidateConcurrencyStub{
+				acquireResults: map[int64][]bool{1: {false}}, waitCountErr: contextErr,
+			}
+			result, err := newSelector(concurrency).Select(context.Background(), request)
+			require.Nil(t, result)
+			require.Equal(t, contextErr, err)
+		})
+	}
+
+	t.Run("ordinary redis error remains fail open", func(t *testing.T) {
+		concurrency := &accountCandidateConcurrencyStub{
+			acquireResults: map[int64][]bool{1: {false}}, waitCountErr: errors.New("redis wait count failed"),
+		}
+		result, err := newSelector(concurrency).Select(context.Background(), request)
+		require.NoError(t, err)
+		require.NotNil(t, result)
+		require.Equal(t, int64(1), result.WaitPlan.AccountID)
+	})
 }
 
 func TestAccountCandidateSelectorLoadFailureFallsBackToPriorityLRU(t *testing.T) {
