@@ -144,6 +144,7 @@ var ProviderSet = wire.NewSet(
 	NewOpenAIImageCache,
 	ProvideSchedulerCache,
 	ProvideSchedulerOutboxQueue,
+	ProvideMediaTaskQueue,
 	NewProxyLatencyCache,
 	NewTotpCache,
 	NewRefreshTokenCache,
