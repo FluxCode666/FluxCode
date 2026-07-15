@@ -168,6 +168,26 @@ describe('MediaConfigEditor', () => {
     expect(wrapper.get('[data-test="valid"]').text()).toBe('true')
   })
 
+  it('标准 v-model 的 reactive Proxy 自身连续回流保留空行和 DOM identity', async () => {
+    const wrapper = mountHarness()
+
+    await wrapper.get('[data-test="media-add-model-override"]').trigger('click')
+    const draftInput = wrapper.get<HTMLInputElement>('[data-test="media-override-model-0"]').element
+    const stableRowId = draftInput.id
+
+    await wrapper.get('[data-test="media-adapter"]').setValue('xai')
+
+    expect(wrapper.get<HTMLInputElement>('[data-test="media-override-model-0"]').element).toBe(draftInput)
+    expect(wrapper.get<HTMLInputElement>('[data-test="media-override-model-0"]').element.id).toBe(stableRowId)
+    expect(wrapper.getComponent(MediaConfigEditor).props('modelValue').adapter).toBe('xai')
+
+    await wrapper.get('[data-test="media-default-async-mode"]').setValue('required')
+
+    expect(wrapper.get<HTMLInputElement>('[data-test="media-override-model-0"]').element).toBe(draftInput)
+    expect(wrapper.get<HTMLInputElement>('[data-test="media-override-model-0"]').element.id).toBe(stableRowId)
+    expect(wrapper.getComponent(MediaConfigEditor).props('modelValue').native_async_mode).toBe('required')
+  })
+
   it('仅按对象引用识别自身回流，同值外部新对象仍会清除空草稿行', async () => {
     const wrapper = mountCloningHarness()
 
