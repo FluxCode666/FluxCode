@@ -118,6 +118,7 @@ func TestMediaModelRegistryRefreshStrictlyDecodesConstraints(t *testing.T) {
 		{name: "trailing non-whitespace garbage", constraints: json.RawMessage(`{} trailing`), wantError: true},
 		{name: "missing constraints", constraints: nil},
 		{name: "empty object", constraints: json.RawMessage(`{}`)},
+		{name: "empty object with trailing whitespace", constraints: json.RawMessage("{}  \n\t ")},
 	}
 
 	for _, tt := range tests {
@@ -132,6 +133,47 @@ func TestMediaModelRegistryRefreshStrictlyDecodesConstraints(t *testing.T) {
 				return
 			}
 			require.NoError(t, err)
+		})
+	}
+}
+
+func TestMediaModelRegistryRefreshRedactsInvalidConstraintValues(t *testing.T) {
+	tests := []struct {
+		name        string
+		constraints json.RawMessage
+		secretValue string
+	}{
+		{
+			name:        "integer overflow",
+			constraints: json.RawMessage(`{"max_image_count":987654321098765432109876543210987654321}`),
+			secretValue: "987654321098765432109876543210987654321",
+		},
+		{
+			name:        "fractional number for integer",
+			constraints: json.RawMessage(`{"max_image_count":731.125}`),
+			secretValue: "731.125",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			repo := &mediaModelRepoStub{items: []MediaModelDefinition{validImageModelDefinition()}}
+			registry := NewMediaModelRegistry(repo)
+			require.NoError(t, registry.Refresh(context.Background()))
+
+			invalid := validImageModelDefinition()
+			invalid.ModelID = "invalid-image"
+			invalid.Constraints = tt.constraints
+			repo.items = []MediaModelDefinition{invalid}
+			err := registry.Refresh(context.Background())
+			require.Error(t, err)
+			require.Contains(t, err.Error(), "max_image_count")
+			require.NotContains(t, err.Error(), tt.secretValue)
+
+			_, err = registry.Resolve("fake-image", MediaOperationTextToImage)
+			require.NoError(t, err)
+			_, err = registry.Resolve("invalid-image", MediaOperationTextToImage)
+			require.ErrorIs(t, err, ErrMediaModelNotFound)
 		})
 	}
 }

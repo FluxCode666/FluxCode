@@ -193,16 +193,48 @@ func decodeMediaModelConstraints(raw json.RawMessage) (MediaModelConstraints, er
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&constraints); err != nil {
-		return MediaModelConstraints{}, fmt.Errorf("decode media model constraints: %w", err)
+		return MediaModelConstraints{}, normalizeMediaModelConstraintsJSONError("", err)
 	}
 	var trailing json.RawMessage
 	if err := decoder.Decode(&trailing); err != io.EOF {
 		if err == nil {
 			return MediaModelConstraints{}, errors.New("decode media model constraints: multiple top-level JSON values")
 		}
-		return MediaModelConstraints{}, fmt.Errorf("decode media model constraints trailing data: %w", err)
+		return MediaModelConstraints{}, normalizeMediaModelConstraintsJSONError("trailing data", err)
 	}
 	return constraints, nil
+}
+
+func normalizeMediaModelConstraintsJSONError(category string, err error) error {
+	prefix := "decode media model constraints"
+	if category != "" {
+		prefix += " " + category
+	}
+
+	var typeError *json.UnmarshalTypeError
+	if errors.As(err, &typeError) {
+		field := typeError.Field
+		if field == "" {
+			field = "<root>"
+		}
+		expectedType := "valid JSON type"
+		if typeError.Type != nil {
+			expectedType = typeError.Type.String()
+		}
+		return fmt.Errorf("%s: type mismatch for field %q (expected %s, offset %d)", prefix, field, expectedType, typeError.Offset)
+	}
+
+	var syntaxError *json.SyntaxError
+	if errors.As(err, &syntaxError) {
+		return fmt.Errorf("%s: invalid JSON syntax at offset %d", prefix, syntaxError.Offset)
+	}
+	if errors.Is(err, io.ErrUnexpectedEOF) {
+		return errors.New(prefix + ": unexpected end of JSON input")
+	}
+	if strings.HasPrefix(err.Error(), "json: unknown field ") {
+		return errors.New(prefix + ": unknown field")
+	}
+	return errors.New(prefix + ": invalid JSON")
 }
 
 func validateMediaModelConstraints(mediaType MediaType, constraints MediaModelConstraints) error {
