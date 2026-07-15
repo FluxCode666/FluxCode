@@ -2512,6 +2512,12 @@ export default {
       optionalDescription: '可选描述',
       platformHint: '选择此分组关联的平台',
       platformNotEditable: '创建后不可更改平台',
+      mediaSettingsTitle: '媒体生成权限',
+      allowImageGeneration: '允许生成图片',
+      allowVideoGeneration: '允许生成视频',
+      mediaCrossPlatformEnabled: '允许跨平台媒体账号',
+      mediaCrossPlatformHint:
+        '仅扩大账号与分组管理中的媒体账号候选范围；文本请求仍严格按分组平台调度。',
       systemPrompt: {
         title: '分组系统提示词',
         description: '对该分组内的 API Key 生效，优先级高于系统平台默认配置，低于 API Key 自定义配置。',

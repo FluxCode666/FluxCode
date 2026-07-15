@@ -944,6 +944,10 @@
           </p>
         </div>
 
+        <div class="border-t border-gray-200 pt-4 dark:border-dark-400">
+          <GroupMediaSettings v-model="createMediaConfig" />
+        </div>
+
         <!-- OpenAI Messages 调度配置（仅 openai 平台） -->
         <div
           v-if="createForm.platform === 'openai'"
@@ -984,22 +988,6 @@
           <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
             {{ t("admin.groups.openaiMessages.allowDispatchHint") }}
           </p>
-
-          <div class="mt-4 flex items-center justify-between border-t border-gray-100 pt-4 dark:border-dark-700">
-            <div>
-              <label class="text-sm text-gray-600 dark:text-gray-400">{{
-                t("admin.groups.openaiMessages.allowImageGeneration")
-              }}</label>
-              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                {{ t("admin.groups.openaiMessages.allowImageGenerationHint") }}
-              </p>
-            </div>
-            <input
-              v-model="createForm.allow_image_generation"
-              type="checkbox"
-              class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-dark-500"
-            />
-          </div>
 
           <div v-if="createForm.allow_messages_dispatch" class="mt-3">
             <div
@@ -2105,6 +2093,10 @@
           </p>
         </div>
 
+        <div class="border-t border-gray-200 pt-4 dark:border-dark-400">
+          <GroupMediaSettings v-model="editMediaConfig" />
+        </div>
+
         <!-- OpenAI Messages 调度配置（仅 openai 平台） -->
         <div
           v-if="editForm.platform === 'openai'"
@@ -2145,22 +2137,6 @@
           <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
             {{ t("admin.groups.openaiMessages.allowDispatchHint") }}
           </p>
-
-          <div class="mt-4 flex items-center justify-between border-t border-gray-100 pt-4 dark:border-dark-700">
-            <div>
-              <label class="text-sm text-gray-600 dark:text-gray-400">{{
-                t("admin.groups.openaiMessages.allowImageGeneration")
-              }}</label>
-              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                {{ t("admin.groups.openaiMessages.allowImageGenerationHint") }}
-              </p>
-            </div>
-            <input
-              v-model="editForm.allow_image_generation"
-              type="checkbox"
-              class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-dark-500"
-            />
-          </div>
 
           <div v-if="editForm.allow_messages_dispatch" class="mt-3">
             <div
@@ -2790,7 +2766,13 @@ import { useI18n } from "vue-i18n";
 import { useAppStore } from "@/stores/app";
 import { useOnboardingStore } from "@/stores/onboarding";
 import { adminAPI } from "@/api/admin";
-import type { AdminGroup, GroupPlatform, SubscriptionType, SystemPromptMode } from "@/types";
+import type {
+  AdminGroup,
+  GroupMediaConfig,
+  GroupPlatform,
+  SubscriptionType,
+  SystemPromptMode,
+} from "@/types";
 import type { Column } from "@/components/common/types";
 import AppLayout from "@/components/layout/AppLayout.vue";
 import TablePageLayout from "@/components/layout/TablePageLayout.vue";
@@ -2803,6 +2785,7 @@ import Select from "@/components/common/Select.vue";
 import SystemPromptConfigFields from "@/components/common/SystemPromptConfigFields.vue";
 import PlatformIcon from "@/components/common/PlatformIcon.vue";
 import Icon from "@/components/icons/Icon.vue";
+import GroupMediaSettings from "@/components/admin/group/GroupMediaSettings.vue";
 import GroupRateMultipliersModal from "@/components/admin/group/GroupRateMultipliersModal.vue";
 import GroupCapacityBadge from "@/components/common/GroupCapacityBadge.vue";
 import { VueDraggable } from "vue-draggable-plus";
@@ -3029,8 +3012,10 @@ const createForm = reactive({
   fallback_group_id: null as number | null,
   is_fallback_group: false,
   fallback_group_id_on_invalid_request: null as number | null,
-  // OpenAI Messages 调度配置（仅 openai 平台使用）
+  // 媒体生成权限
   allow_image_generation: false,
+  allow_video_generation: false,
+  media_cross_platform_enabled: false,
   allow_messages_dispatch: false,
   opus_mapped_model: createMessagesDispatchDefaults.opus_mapped_model,
   sonnet_mapped_model: createMessagesDispatchDefaults.sonnet_mapped_model,
@@ -3313,8 +3298,10 @@ const editForm = reactive({
   fallback_group_id: null as number | null,
   is_fallback_group: false,
   fallback_group_id_on_invalid_request: null as number | null,
-  // OpenAI Messages 调度配置（仅 openai 平台使用）
+  // 媒体生成权限
   allow_image_generation: false,
+  allow_video_generation: false,
+  media_cross_platform_enabled: false,
   allow_messages_dispatch: false,
   default_mapped_model: '',
   opus_mapped_model: editMessagesDispatchDefaults.opus_mapped_model,
@@ -3332,6 +3319,28 @@ const editForm = reactive({
   mcp_xml_inject: true,
   // 从分组复制账号
   copy_accounts_from_group_ids: [] as number[],
+});
+
+const createMediaConfig = computed<GroupMediaConfig>({
+  get: () => ({
+    allow_image_generation: createForm.allow_image_generation,
+    allow_video_generation: createForm.allow_video_generation,
+    media_cross_platform_enabled: createForm.media_cross_platform_enabled,
+  }),
+  set: (value) => {
+    Object.assign(createForm, value);
+  },
+});
+
+const editMediaConfig = computed<GroupMediaConfig>({
+  get: () => ({
+    allow_image_generation: editForm.allow_image_generation,
+    allow_video_generation: editForm.allow_video_generation,
+    media_cross_platform_enabled: editForm.media_cross_platform_enabled,
+  }),
+  set: (value) => {
+    Object.assign(editForm, value);
+  },
 });
 
 // 根据分组类型返回不同的删除确认消息
@@ -3502,6 +3511,8 @@ const closeCreateModal = () => {
   createForm.is_fallback_group = false;
   createForm.fallback_group_id_on_invalid_request = null;
   createForm.allow_image_generation = false;
+  createForm.allow_video_generation = false;
+  createForm.media_cross_platform_enabled = false;
   resetMessagesDispatchFormState(createForm);
   createForm.require_oauth_only = false;
   createForm.require_privacy_set = false;
@@ -3540,6 +3551,9 @@ const handleCreateGroup = async () => {
     // 构建请求数据，包含模型路由配置
     const requestData = {
       ...createForm,
+      allow_image_generation: createForm.allow_image_generation,
+      allow_video_generation: createForm.allow_video_generation,
+      media_cross_platform_enabled: createForm.media_cross_platform_enabled,
       fallback_group_id: createForm.is_fallback_group
         ? null
         : createForm.fallback_group_id,
@@ -3614,6 +3628,9 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.fallback_group_id_on_invalid_request =
     group.fallback_group_id_on_invalid_request;
   editForm.allow_image_generation = group.allow_image_generation ?? false;
+  editForm.allow_video_generation = group.allow_video_generation ?? false;
+  editForm.media_cross_platform_enabled =
+    group.media_cross_platform_enabled ?? false;
   const messagesDispatchFormState = messagesDispatchConfigToFormState(
     group.messages_dispatch_model_config,
   );
@@ -3651,6 +3668,9 @@ const closeEditModal = () => {
   editingGroup.value = null;
   editModelRoutingRules.value = [];
   editForm.copy_accounts_from_group_ids = [];
+  editForm.allow_image_generation = false;
+  editForm.allow_video_generation = false;
+  editForm.media_cross_platform_enabled = false;
   resetMessagesDispatchFormState(editForm);
 };
 
@@ -3666,6 +3686,9 @@ const handleUpdateGroup = async () => {
     // 转换 fallback_group_id: null -> 0 (后端使用 0 表示清除)
     const payload = {
       ...editForm,
+      allow_image_generation: editForm.allow_image_generation,
+      allow_video_generation: editForm.allow_video_generation,
+      media_cross_platform_enabled: editForm.media_cross_platform_enabled,
       daily_limit_usd: normalizeOptionalLimit(
         editForm.daily_limit_usd as number | string | null,
       ),

@@ -74,11 +74,18 @@ const filteredGroups = computed(() => {
   // antigravity 账户启用混合调度后，可选择 anthropic/gemini 分组
   if (groupPlatform.value === 'antigravity' && props.mixedScheduling) {
     return props.groups.filter(
-      (g) => g.platform === 'antigravity' || g.platform === 'anthropic' || g.platform === 'gemini'
+      (g) =>
+        g.platform === 'antigravity' ||
+        g.platform === 'anthropic' ||
+        g.platform === 'gemini' ||
+        g.media_cross_platform_enabled === true
     )
   }
-  // 默认：只能选择同 platform 的分组
-  return props.groups.filter((g) => g.platform === groupPlatform.value)
+  // 账号管理绑定可额外选择媒体跨平台分组；文本 Gateway 的平台边界不在此处改变。
+  return props.groups.filter(
+    (g) =>
+      g.platform === groupPlatform.value || g.media_cross_platform_enabled === true
+  )
 })
 
 const handleChange = (groupId: number, checked: boolean) => {

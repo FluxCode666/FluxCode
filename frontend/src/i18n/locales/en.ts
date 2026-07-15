@@ -2411,6 +2411,12 @@ export default {
       optionalDescription: 'Optional description',
       platformHint: 'Select the platform this group is associated with',
       platformNotEditable: 'Platform cannot be changed after creation',
+      mediaSettingsTitle: 'Media generation permissions',
+      allowImageGeneration: 'Allow image generation',
+      allowVideoGeneration: 'Allow video generation',
+      mediaCrossPlatformEnabled: 'Allow cross-platform media accounts',
+      mediaCrossPlatformHint:
+        'Only expands media account candidates in account-group management; text requests still follow the group platform boundary.',
       systemPrompt: {
         title: 'Group System Prompt',
         description:
