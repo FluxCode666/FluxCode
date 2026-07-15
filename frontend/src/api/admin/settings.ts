@@ -19,10 +19,22 @@ export interface DefaultSubscriptionSetting {
 
 export type GeneratedImageStorageSource = 'db' | 'qiniu' | string
 
+export type MediaTimeoutBillingPolicy = 'refund' | 'penalty'
+export type MediaVideoStorageMode = 'hybrid'
+
+export interface MediaGenerationSettings {
+  media_sync_wait_timeout_seconds: number
+  media_sync_timeout_fallback_async_enabled: boolean
+  media_sync_timeout_billing_policy: MediaTimeoutBillingPolicy
+  media_sync_timeout_penalty_ratio: number
+  media_video_storage_mode: MediaVideoStorageMode
+  media_video_proxy_fallback_enabled: boolean
+}
+
 /**
  * System settings interface
  */
-export interface SystemSettings {
+export interface SystemSettings extends MediaGenerationSettings {
   // Registration settings
   registration_enabled: boolean
   email_verify_enabled: boolean
@@ -334,6 +346,13 @@ export interface UpdateSettingsRequest {
   enable_metadata_passthrough?: boolean
   enable_cch_signing?: boolean
   codex_image_generation_bridge_enabled?: boolean
+
+  media_sync_wait_timeout_seconds?: number
+  media_sync_timeout_fallback_async_enabled?: boolean
+  media_sync_timeout_billing_policy?: MediaTimeoutBillingPolicy
+  media_sync_timeout_penalty_ratio?: number
+  media_video_storage_mode?: MediaVideoStorageMode
+  media_video_proxy_fallback_enabled?: boolean
 
   // Codex CLI User-Agent
   codex_cli_user_agent?: string

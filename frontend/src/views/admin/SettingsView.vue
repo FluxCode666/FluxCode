@@ -1662,6 +1662,11 @@
 
         </div><!-- /Tab: Gateway -->
 
+        <!-- Tab: Media Generation -->
+        <div v-show="activeTab === 'media'" class="space-y-6">
+          <MediaGenerationSettingsCard v-model="mediaGenerationSettings" />
+        </div>
+
         <!-- Tab: System Prompt -->
         <div v-show="activeTab === 'systemPrompt'" class="space-y-6">
         <!-- System Prompt Settings -->
@@ -3644,6 +3649,7 @@ import type {
   UpdateSettingsRequest,
   DefaultSubscriptionSetting,
   GeneratedImageStorageSource,
+  MediaGenerationSettings,
   WebSearchEmulationConfig,
   WebSearchProviderConfig,
   WebSearchTestResult,
@@ -3674,6 +3680,7 @@ import SystemPromptConfigFields from '@/components/common/SystemPromptConfigFiel
 import Toggle from '@/components/common/Toggle.vue'
 import ProxySelector from '@/components/common/ProxySelector.vue'
 import ImageUpload from '@/components/common/ImageUpload.vue'
+import MediaGenerationSettingsCard from '@/components/admin/settings/MediaGenerationSettingsCard.vue'
 import BackupSettings from '@/views/admin/BackupView.vue'
 import { useClipboard } from '@/composables/useClipboard'
 import { extractApiErrorMessage } from '@/utils/apiError'
@@ -3690,13 +3697,14 @@ const { t, locale } = useI18n()
 const appStore = useAppStore()
 const adminSettingsStore = useAdminSettingsStore()
 
-type SettingsTab = 'general' | 'security' | 'users' | 'gateway' | 'systemPrompt' | 'payment' | 'email' | 'backup'
+type SettingsTab = 'general' | 'security' | 'users' | 'gateway' | 'media' | 'systemPrompt' | 'payment' | 'email' | 'backup'
 const activeTab = ref<SettingsTab>('general')
 const settingsTabs = [
   { key: 'general'  as SettingsTab, icon: 'home'   as const },
   { key: 'security' as SettingsTab, icon: 'shield' as const },
   { key: 'users'    as SettingsTab, icon: 'user'   as const },
   { key: 'gateway'  as SettingsTab, icon: 'server' as const },
+  { key: 'media' as SettingsTab, icon: 'sparkles' as const },
   { key: 'systemPrompt' as SettingsTab, icon: 'chat' as const },
   { key: 'payment'  as SettingsTab, icon: 'creditCard' as const },
   { key: 'email'    as SettingsTab, icon: 'mail'   as const },
@@ -4012,6 +4020,13 @@ const form = reactive<SettingsForm>({
   enable_metadata_passthrough: false,
   enable_cch_signing: false,
   codex_image_generation_bridge_enabled: false,
+  // Media generation runtime
+  media_sync_wait_timeout_seconds: 240,
+  media_sync_timeout_fallback_async_enabled: false,
+  media_sync_timeout_billing_policy: 'penalty',
+  media_sync_timeout_penalty_ratio: 0.8,
+  media_video_storage_mode: 'hybrid',
+  media_video_proxy_fallback_enabled: true,
   // Codex CLI User-Agent
   openai_use_key_model_id: 'gpt-5.5',
   openai_image_url_cache_ttl_hours: 72,
@@ -4037,6 +4052,18 @@ const form = reactive<SettingsForm>({
   balance_low_notify_recharge_url: '',
   account_quota_notify_enabled: false,
   account_quota_notify_emails: [] as NotifyEmailEntry[]
+})
+
+const mediaGenerationSettings = computed({
+  get: (): MediaGenerationSettings => ({
+    media_sync_wait_timeout_seconds: form.media_sync_wait_timeout_seconds,
+    media_sync_timeout_fallback_async_enabled: form.media_sync_timeout_fallback_async_enabled,
+    media_sync_timeout_billing_policy: form.media_sync_timeout_billing_policy,
+    media_sync_timeout_penalty_ratio: form.media_sync_timeout_penalty_ratio,
+    media_video_storage_mode: form.media_video_storage_mode,
+    media_video_proxy_fallback_enabled: form.media_video_proxy_fallback_enabled,
+  }),
+  set: (value: MediaGenerationSettings) => Object.assign(form, value),
 })
 
 function setGeneratedImageStorageSource(source: GeneratedImageStorageSource) {
@@ -4673,6 +4700,12 @@ async function saveSettings() {
       enable_metadata_passthrough: form.enable_metadata_passthrough,
       enable_cch_signing: form.enable_cch_signing,
       codex_image_generation_bridge_enabled: form.codex_image_generation_bridge_enabled,
+      media_sync_wait_timeout_seconds: form.media_sync_wait_timeout_seconds,
+      media_sync_timeout_fallback_async_enabled: form.media_sync_timeout_fallback_async_enabled,
+      media_sync_timeout_billing_policy: form.media_sync_timeout_billing_policy,
+      media_sync_timeout_penalty_ratio: form.media_sync_timeout_penalty_ratio,
+      media_video_storage_mode: form.media_video_storage_mode,
+      media_video_proxy_fallback_enabled: form.media_video_proxy_fallback_enabled,
       openai_use_key_model_id: form.openai_use_key_model_id,
       openai_image_url_cache_ttl_hours: Number(form.openai_image_url_cache_ttl_hours) || 72,
       generated_image_storage_source: form.generated_image_storage_source || 'db',
