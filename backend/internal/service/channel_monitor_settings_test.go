@@ -24,6 +24,8 @@ func TestSettingServiceUpdateChannelMonitorFields(t *testing.T) {
 	err := svc.UpdateSettings(context.Background(), &SystemSettings{
 		ChannelMonitorEnabled:                true,
 		ChannelMonitorDefaultIntervalSeconds: 120,
+		MediaSyncTimeoutBillingPolicy:        MediaTimeoutBillingPolicyPenalty,
+		MediaVideoStorageMode:                MediaVideoStorageModeHybrid,
 	})
 
 	require.NoError(t, err)
@@ -39,7 +41,10 @@ func TestSettingServiceUpdateInvokesAllRegisteredCallbacks(t *testing.T) {
 	svc.SetOnUpdateCallback(func() { firstCalls++ })
 	svc.SetOnUpdateCallback(func() { secondCalls++ })
 
-	err := svc.UpdateSettings(context.Background(), &SystemSettings{})
+	err := svc.UpdateSettings(context.Background(), &SystemSettings{
+		MediaSyncTimeoutBillingPolicy: MediaTimeoutBillingPolicyPenalty,
+		MediaVideoStorageMode:         MediaVideoStorageModeHybrid,
+	})
 
 	require.NoError(t, err)
 	require.Equal(t, 1, firstCalls)

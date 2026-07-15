@@ -76,6 +76,8 @@ func TestSettingService_UpdateSettings_DefaultSubscriptions_ValidGroup(t *testin
 	svc.SetDefaultSubscriptionGroupReader(groupReader)
 
 	err := svc.UpdateSettings(context.Background(), &SystemSettings{
+		MediaSyncTimeoutBillingPolicy: MediaTimeoutBillingPolicyPenalty,
+		MediaVideoStorageMode:         MediaVideoStorageModeHybrid,
 		DefaultSubscriptions: []DefaultSubscriptionSetting{
 			{GroupID: 11, ValidityDays: 30},
 		},
@@ -104,6 +106,8 @@ func TestSettingService_UpdateSettings_DefaultSubscriptions_RejectsNonSubscripti
 	svc.SetDefaultSubscriptionGroupReader(groupReader)
 
 	err := svc.UpdateSettings(context.Background(), &SystemSettings{
+		MediaSyncTimeoutBillingPolicy: MediaTimeoutBillingPolicyPenalty,
+		MediaVideoStorageMode:         MediaVideoStorageModeHybrid,
 		DefaultSubscriptions: []DefaultSubscriptionSetting{
 			{GroupID: 12, ValidityDays: 7},
 		},
@@ -124,6 +128,8 @@ func TestSettingService_UpdateSettings_DefaultSubscriptions_RejectsNotFoundGroup
 	svc.SetDefaultSubscriptionGroupReader(groupReader)
 
 	err := svc.UpdateSettings(context.Background(), &SystemSettings{
+		MediaSyncTimeoutBillingPolicy: MediaTimeoutBillingPolicyPenalty,
+		MediaVideoStorageMode:         MediaVideoStorageModeHybrid,
 		DefaultSubscriptions: []DefaultSubscriptionSetting{
 			{GroupID: 13, ValidityDays: 7},
 		},
@@ -145,6 +151,8 @@ func TestSettingService_UpdateSettings_DefaultSubscriptions_RejectsDuplicateGrou
 	svc.SetDefaultSubscriptionGroupReader(groupReader)
 
 	err := svc.UpdateSettings(context.Background(), &SystemSettings{
+		MediaSyncTimeoutBillingPolicy: MediaTimeoutBillingPolicyPenalty,
+		MediaVideoStorageMode:         MediaVideoStorageModeHybrid,
 		DefaultSubscriptions: []DefaultSubscriptionSetting{
 			{GroupID: 11, ValidityDays: 30},
 			{GroupID: 11, ValidityDays: 60},
@@ -161,6 +169,8 @@ func TestSettingService_UpdateSettings_DefaultSubscriptions_RejectsDuplicateGrou
 	svc := NewSettingService(repo, &config.Config{})
 
 	err := svc.UpdateSettings(context.Background(), &SystemSettings{
+		MediaSyncTimeoutBillingPolicy: MediaTimeoutBillingPolicyPenalty,
+		MediaVideoStorageMode:         MediaVideoStorageModeHybrid,
 		DefaultSubscriptions: []DefaultSubscriptionSetting{
 			{GroupID: 11, ValidityDays: 30},
 			{GroupID: 11, ValidityDays: 60},
@@ -178,6 +188,8 @@ func TestSettingService_UpdateSettings_RegistrationEmailSuffixWhitelist_Normaliz
 
 	err := svc.UpdateSettings(context.Background(), &SystemSettings{
 		RegistrationEmailSuffixWhitelist: []string{"example.com", "@EXAMPLE.com", " @foo.bar "},
+		MediaSyncTimeoutBillingPolicy:    MediaTimeoutBillingPolicyPenalty,
+		MediaVideoStorageMode:            MediaVideoStorageModeHybrid,
 	})
 	require.NoError(t, err)
 	require.Equal(t, `["@example.com","@foo.bar"]`, repo.updates[SettingKeyRegistrationEmailSuffixWhitelist])
@@ -189,6 +201,8 @@ func TestSettingService_UpdateSettings_RegistrationEmailSuffixWhitelist_Invalid(
 
 	err := svc.UpdateSettings(context.Background(), &SystemSettings{
 		RegistrationEmailSuffixWhitelist: []string{"@invalid_domain"},
+		MediaSyncTimeoutBillingPolicy:    MediaTimeoutBillingPolicyPenalty,
+		MediaVideoStorageMode:            MediaVideoStorageModeHybrid,
 	})
 	require.Error(t, err)
 	require.Equal(t, "INVALID_REGISTRATION_EMAIL_SUFFIX_WHITELIST", infraerrors.Reason(err))
@@ -208,16 +222,20 @@ func TestSettingService_UpdateSettings_TablePreferences(t *testing.T) {
 	svc := NewSettingService(repo, &config.Config{})
 
 	err := svc.UpdateSettings(context.Background(), &SystemSettings{
-		TableDefaultPageSize: 50,
-		TablePageSizeOptions: []int{20, 50, 100},
+		TableDefaultPageSize:          50,
+		TablePageSizeOptions:          []int{20, 50, 100},
+		MediaSyncTimeoutBillingPolicy: MediaTimeoutBillingPolicyPenalty,
+		MediaVideoStorageMode:         MediaVideoStorageModeHybrid,
 	})
 	require.NoError(t, err)
 	require.Equal(t, "50", repo.updates[SettingKeyTableDefaultPageSize])
 	require.Equal(t, "[20,50,100]", repo.updates[SettingKeyTablePageSizeOptions])
 
 	err = svc.UpdateSettings(context.Background(), &SystemSettings{
-		TableDefaultPageSize: 1000,
-		TablePageSizeOptions: []int{20, 100},
+		TableDefaultPageSize:          1000,
+		TablePageSizeOptions:          []int{20, 100},
+		MediaSyncTimeoutBillingPolicy: MediaTimeoutBillingPolicyPenalty,
+		MediaVideoStorageMode:         MediaVideoStorageModeHybrid,
 	})
 	require.NoError(t, err)
 	require.Equal(t, "1000", repo.updates[SettingKeyTableDefaultPageSize])
@@ -231,6 +249,8 @@ func TestSettingService_UpdateSettings_ChannelMonitorFields(t *testing.T) {
 	err := svc.UpdateSettings(context.Background(), &SystemSettings{
 		ChannelMonitorEnabled:                true,
 		ChannelMonitorDefaultIntervalSeconds: 120,
+		MediaSyncTimeoutBillingPolicy:        MediaTimeoutBillingPolicyPenalty,
+		MediaVideoStorageMode:                MediaVideoStorageModeHybrid,
 	})
 
 	require.NoError(t, err)
@@ -243,8 +263,10 @@ func TestSettingService_UpdateSettings_DashboardFireworksFields(t *testing.T) {
 	svc := NewSettingService(repo, &config.Config{})
 
 	err := svc.UpdateSettings(context.Background(), &SystemSettings{
-		DashboardFireworksEnabled:   false,
-		DashboardFireworksThreshold: 35.75,
+		DashboardFireworksEnabled:     false,
+		DashboardFireworksThreshold:   35.75,
+		MediaSyncTimeoutBillingPolicy: MediaTimeoutBillingPolicyPenalty,
+		MediaVideoStorageMode:         MediaVideoStorageModeHybrid,
 	})
 
 	require.NoError(t, err)
@@ -257,7 +279,9 @@ func TestSettingService_UpdateSettings_OpenAIUseKeyModelID(t *testing.T) {
 	svc := NewSettingService(repo, &config.Config{})
 
 	err := svc.UpdateSettings(context.Background(), &SystemSettings{
-		OpenAIUseKeyModelID: " gpt-5.4-mini ",
+		OpenAIUseKeyModelID:           " gpt-5.4-mini ",
+		MediaSyncTimeoutBillingPolicy: MediaTimeoutBillingPolicyPenalty,
+		MediaVideoStorageMode:         MediaVideoStorageModeHybrid,
 	})
 
 	require.NoError(t, err)

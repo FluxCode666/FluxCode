@@ -191,7 +191,9 @@ func TestUpdateSettings_InvalidatesBackendModeCache(t *testing.T) {
 	svc := NewSettingService(repo, &config.Config{})
 
 	err := svc.UpdateSettings(context.Background(), &SystemSettings{
-		BackendModeEnabled: false,
+		BackendModeEnabled:            false,
+		MediaSyncTimeoutBillingPolicy: MediaTimeoutBillingPolicyPenalty,
+		MediaVideoStorageMode:         MediaVideoStorageModeHybrid,
 	})
 	require.NoError(t, err)
 	require.Equal(t, "false", repo.updates[SettingKeyBackendModeEnabled])

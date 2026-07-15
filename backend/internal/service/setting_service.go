@@ -2166,9 +2166,6 @@ func normalizeAndValidateMediaSettings(settings *SystemSettings) error {
 		return infraerrors.BadRequest("INVALID_MEDIA_SYNC_WAIT_TIMEOUT", "media sync wait timeout seconds must be greater than or equal to 0")
 	}
 	settings.MediaSyncTimeoutBillingPolicy = strings.TrimSpace(settings.MediaSyncTimeoutBillingPolicy)
-	if settings.MediaSyncTimeoutBillingPolicy == "" {
-		settings.MediaSyncTimeoutBillingPolicy = MediaTimeoutBillingPolicyPenalty
-	}
 	if settings.MediaSyncTimeoutBillingPolicy != MediaTimeoutBillingPolicyRefund &&
 		settings.MediaSyncTimeoutBillingPolicy != MediaTimeoutBillingPolicyPenalty {
 		return infraerrors.BadRequest("INVALID_MEDIA_SYNC_TIMEOUT_BILLING_POLICY", "media sync timeout billing policy must be refund or penalty")
@@ -2178,9 +2175,6 @@ func normalizeAndValidateMediaSettings(settings *SystemSettings) error {
 		return infraerrors.BadRequest("INVALID_MEDIA_SYNC_TIMEOUT_PENALTY_RATIO", "media sync timeout penalty ratio must be between 0 and 1")
 	}
 	settings.MediaVideoStorageMode = strings.TrimSpace(settings.MediaVideoStorageMode)
-	if settings.MediaVideoStorageMode == "" {
-		settings.MediaVideoStorageMode = MediaVideoStorageModeHybrid
-	}
 	if settings.MediaVideoStorageMode != MediaVideoStorageModeHybrid {
 		return infraerrors.BadRequest("INVALID_MEDIA_VIDEO_STORAGE_MODE", "media video storage mode must be hybrid")
 	}

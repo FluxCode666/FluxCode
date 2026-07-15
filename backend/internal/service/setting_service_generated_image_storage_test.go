@@ -96,6 +96,8 @@ func TestSettingService_UpdateSettings_GeneratedImageStorageQiniuFields(t *testi
 		QiniuUseHTTPS:                     true,
 		QiniuUploadTimeoutSeconds:         15,
 		QiniuTokenTTLSeconds:              600,
+		MediaSyncTimeoutBillingPolicy:     MediaTimeoutBillingPolicyPenalty,
+		MediaVideoStorageMode:             MediaVideoStorageModeHybrid,
 	})
 
 	require.NoError(t, err)
@@ -120,6 +122,8 @@ func TestSettingService_UpdateSettings_AllowsConfiguringQiniuWhileUsingDB(t *tes
 		GeneratedImageStorageConfigSource: GeneratedImageStorageSourceQiniu,
 		QiniuPrefix:                       "openai/generated",
 		QiniuUseHTTPS:                     true,
+		MediaSyncTimeoutBillingPolicy:     MediaTimeoutBillingPolicyPenalty,
+		MediaVideoStorageMode:             MediaVideoStorageModeHybrid,
 	})
 
 	require.NoError(t, err)
@@ -132,7 +136,9 @@ func TestSettingService_UpdateSettings_RejectsInvalidGeneratedImageStorageSource
 	svc := NewSettingService(repo, &config.Config{})
 
 	err := svc.UpdateSettings(context.Background(), &SystemSettings{
-		GeneratedImageStorageSource: "filesystem",
+		GeneratedImageStorageSource:   "filesystem",
+		MediaSyncTimeoutBillingPolicy: MediaTimeoutBillingPolicyPenalty,
+		MediaVideoStorageMode:         MediaVideoStorageModeHybrid,
 	})
 
 	require.Error(t, err)
@@ -147,6 +153,8 @@ func TestSettingService_UpdateSettings_RejectsInvalidGeneratedImageStorageConfig
 	err := svc.UpdateSettings(context.Background(), &SystemSettings{
 		GeneratedImageStorageSource:       GeneratedImageStorageSourceDB,
 		GeneratedImageStorageConfigSource: "filesystem",
+		MediaSyncTimeoutBillingPolicy:     MediaTimeoutBillingPolicyPenalty,
+		MediaVideoStorageMode:             MediaVideoStorageModeHybrid,
 	})
 
 	require.Error(t, err)

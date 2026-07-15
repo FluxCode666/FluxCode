@@ -34,6 +34,8 @@ func TestSettingService_CodexImageGenerationBridgeSetting(t *testing.T) {
 
 	err := svc.UpdateSettings(context.Background(), &SystemSettings{
 		CodexImageGenerationBridgeEnabled: true,
+		MediaSyncTimeoutBillingPolicy:     MediaTimeoutBillingPolicyPenalty,
+		MediaVideoStorageMode:             MediaVideoStorageModeHybrid,
 	})
 	require.NoError(t, err)
 	require.Equal(t, "true", repo.values[SettingKeyCodexImageGenerationBridgeEnabled])
@@ -56,8 +58,10 @@ func TestSettingService_OpenAIUsageDebugLogSettingRefreshesCache(t *testing.T) {
 	require.True(t, enabled.OpenAIUsageDebugLogEnabled)
 
 	err := svc.UpdateSettings(context.Background(), &SystemSettings{
-		OpenAIUsageDebugLogEnabled: true,
-		CodexPassthroughUAVersion:  true,
+		OpenAIUsageDebugLogEnabled:    true,
+		CodexPassthroughUAVersion:     true,
+		MediaSyncTimeoutBillingPolicy: MediaTimeoutBillingPolicyPenalty,
+		MediaVideoStorageMode:         MediaVideoStorageModeHybrid,
 	})
 	require.NoError(t, err)
 	require.Equal(t, "true", repo.values[SettingKeyOpenAIUsageDebugLogEnabled])

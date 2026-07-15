@@ -156,12 +156,16 @@ func TestSettingServiceRejectsInvalidMediaSettings(t *testing.T) {
 		mutate func(*SystemSettings)
 	}{
 		{name: "negative timeout", mutate: func(s *SystemSettings) { s.MediaSyncWaitTimeoutSeconds = -1 }},
+		{name: "empty policy", mutate: func(s *SystemSettings) { s.MediaSyncTimeoutBillingPolicy = "" }},
+		{name: "blank policy", mutate: func(s *SystemSettings) { s.MediaSyncTimeoutBillingPolicy = " \t\n " }},
 		{name: "unknown policy", mutate: func(s *SystemSettings) { s.MediaSyncTimeoutBillingPolicy = "charge" }},
 		{name: "negative ratio", mutate: func(s *SystemSettings) { s.MediaSyncTimeoutPenaltyRatio = -0.01 }},
 		{name: "ratio above one", mutate: func(s *SystemSettings) { s.MediaSyncTimeoutPenaltyRatio = 1.01 }},
 		{name: "NaN ratio", mutate: func(s *SystemSettings) { s.MediaSyncTimeoutPenaltyRatio = math.NaN() }},
 		{name: "positive infinity ratio", mutate: func(s *SystemSettings) { s.MediaSyncTimeoutPenaltyRatio = math.Inf(1) }},
 		{name: "negative infinity ratio", mutate: func(s *SystemSettings) { s.MediaSyncTimeoutPenaltyRatio = math.Inf(-1) }},
+		{name: "empty storage", mutate: func(s *SystemSettings) { s.MediaVideoStorageMode = "" }},
+		{name: "blank storage", mutate: func(s *SystemSettings) { s.MediaVideoStorageMode = " \t\n " }},
 		{name: "unsupported storage", mutate: func(s *SystemSettings) { s.MediaVideoStorageMode = "object" }},
 	}
 

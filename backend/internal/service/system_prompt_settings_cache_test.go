@@ -120,8 +120,10 @@ func TestSettingService_UpdateSettingsRefreshesSystemPromptCache(t *testing.T) {
 	require.Equal(t, "old prompt", svc.GetSystemPromptSettings(context.Background()).Prompts[PlatformAnthropic].Prompt)
 
 	err := svc.UpdateSettings(context.Background(), &SystemSettings{
-		SystemPromptAnthropic:     "new prompt",
-		SystemPromptModeAnthropic: SystemPromptModeAppend,
+		SystemPromptAnthropic:         "new prompt",
+		SystemPromptModeAnthropic:     SystemPromptModeAppend,
+		MediaSyncTimeoutBillingPolicy: MediaTimeoutBillingPolicyPenalty,
+		MediaVideoStorageMode:         MediaVideoStorageModeHybrid,
 	})
 	require.NoError(t, err)
 
@@ -164,9 +166,11 @@ func TestSettingService_UpdateSettingsRefreshesSystemPromptUserScopeCache(t *tes
 	svc := NewSettingService(repo, &config.Config{})
 
 	err := svc.UpdateSettings(context.Background(), &SystemSettings{
-		SystemPromptUserScopeEnabled: true,
-		SystemPromptUserScopeMode:    SystemPromptUserScopeBlacklist,
-		SystemPromptUserScopeUserIDs: []int64{7, 3, 7},
+		SystemPromptUserScopeEnabled:  true,
+		SystemPromptUserScopeMode:     SystemPromptUserScopeBlacklist,
+		SystemPromptUserScopeUserIDs:  []int64{7, 3, 7},
+		MediaSyncTimeoutBillingPolicy: MediaTimeoutBillingPolicyPenalty,
+		MediaVideoStorageMode:         MediaVideoStorageModeHybrid,
 	})
 	require.NoError(t, err)
 
@@ -186,9 +190,11 @@ func TestSettingService_UpdateSettingsClearsUserScopeIDsWhenAllUsers(t *testing.
 	svc := NewSettingService(repo, &config.Config{})
 
 	err := svc.UpdateSettings(context.Background(), &SystemSettings{
-		SystemPromptUserScopeEnabled: true,
-		SystemPromptUserScopeMode:    SystemPromptUserScopeAll,
-		SystemPromptUserScopeUserIDs: []int64{7, 3},
+		SystemPromptUserScopeEnabled:  true,
+		SystemPromptUserScopeMode:     SystemPromptUserScopeAll,
+		SystemPromptUserScopeUserIDs:  []int64{7, 3},
+		MediaSyncTimeoutBillingPolicy: MediaTimeoutBillingPolicyPenalty,
+		MediaVideoStorageMode:         MediaVideoStorageModeHybrid,
 	})
 	require.NoError(t, err)
 

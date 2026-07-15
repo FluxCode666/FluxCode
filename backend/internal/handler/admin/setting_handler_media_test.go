@@ -2,6 +2,7 @@ package admin
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -69,11 +70,27 @@ func TestSettingHandlerMediaPartialUpdatePreservesOmittedMediaSettings(t *testin
 }
 
 func TestSettingHandlerRejectsInvalidMediaSettings(t *testing.T) {
-	router, _ := newSettingHandlerMediaTestRouter(t, nil)
+	tests := []struct {
+		name string
+		body string
+	}{
+		{name: "ratio above one", body: `{"media_sync_timeout_penalty_ratio":1.2}`},
+		{name: "empty policy", body: `{"media_sync_timeout_billing_policy":""}`},
+		{name: "blank policy", body: `{"media_sync_timeout_billing_policy":" \t\n "}`},
+		{name: "empty storage", body: `{"media_video_storage_mode":""}`},
+		{name: "blank storage", body: `{"media_video_storage_mode":" \t\n "}`},
+	}
 
-	rec := performAdminJSONRequest(router, http.MethodPut, "/settings", `{"media_sync_timeout_penalty_ratio":1.2}`)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			router, repo := newSettingHandlerMediaTestRouter(t, nil)
 
-	require.Equal(t, http.StatusBadRequest, rec.Code)
+			rec := performAdminJSONRequest(router, http.MethodPut, "/settings", tt.body)
+
+			require.Equal(t, http.StatusBadRequest, rec.Code)
+			require.Zero(t, repo.setMultipleCalls)
+		})
+	}
 }
 
 func TestDiffSettingsIncludesMediaChanges(t *testing.T) {
@@ -96,10 +113,20 @@ func TestDiffSettingsIncludesMediaChanges(t *testing.T) {
 	})
 }
 
-func newSettingHandlerMediaTestRouter(t *testing.T, values map[string]string) (*gin.Engine, *testSettingRepo) {
+type mediaHandlerSettingRepo struct {
+	*testSettingRepo
+	setMultipleCalls int
+}
+
+func (r *mediaHandlerSettingRepo) SetMultiple(ctx context.Context, settings map[string]string) error {
+	r.setMultipleCalls++
+	return r.testSettingRepo.SetMultiple(ctx, settings)
+}
+
+func newSettingHandlerMediaTestRouter(t *testing.T, values map[string]string) (*gin.Engine, *mediaHandlerSettingRepo) {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
-	repo := newTestSettingRepo()
+	repo := &mediaHandlerSettingRepo{testSettingRepo: newTestSettingRepo()}
 	for key, value := range values {
 		repo.values[key] = value
 	}
