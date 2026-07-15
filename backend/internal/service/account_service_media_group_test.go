@@ -145,7 +145,7 @@ func TestAdminServiceUpdateGroupPersistsExplicitFalseMediaFlags(t *testing.T) {
 
 func TestAdminServiceCreateGroupCopyKeepsCrossPlatformAPIKeyAndFiltersCompatibleAPIKey(t *testing.T) {
 	repo := &mediaGroupRepoStub{
-		groups:           map[int64]*Group{1: {ID: 1, Platform: PlatformOpenAI}},
+		groups:           map[int64]*Group{1: {ID: 1, Platform: PlatformGemini}},
 		sourceAccountIDs: []int64{1, 2, 3},
 	}
 	accountRepo := &mediaGroupAccountRepoStub{accounts: []*Account{
@@ -164,12 +164,13 @@ func TestAdminServiceCreateGroupCopyKeepsCrossPlatformAPIKeyAndFiltersCompatible
 	})
 
 	require.NoError(t, err)
+	require.NotNil(t, repo.created)
 	require.Equal(t, []int64{1, 3}, repo.boundAccountIDs)
 }
 
-func TestAdminServiceCreatePlainGroupRejectsCopiedCrossPlatformAccount(t *testing.T) {
+func TestAdminServiceCreateGroupCopyFromDifferentPlatformRejectsCrossPlatformAccountForPlainGroup(t *testing.T) {
 	repo := &mediaGroupRepoStub{
-		groups:           map[int64]*Group{1: {ID: 1, Platform: PlatformOpenAI}},
+		groups:           map[int64]*Group{1: {ID: 1, Platform: PlatformGemini}},
 		sourceAccountIDs: []int64{1},
 	}
 	accountRepo := &mediaGroupAccountRepoStub{accounts: []*Account{
@@ -184,6 +185,7 @@ func TestAdminServiceCreatePlainGroupRejectsCopiedCrossPlatformAccount(t *testin
 	})
 
 	require.Error(t, err)
+	require.Contains(t, err.Error(), "账号平台")
 	require.Nil(t, repo.created)
 	require.Empty(t, repo.boundAccountIDs)
 }
@@ -193,19 +195,21 @@ func TestAdminServiceUpdateGroupCopyAppliesCrossPlatformBindingRules(t *testing.
 		name              string
 		mediaEnabled      bool
 		wantErr           bool
+		wantErrorContains string
 		wantBoundIDs      []int64
 		wantDeleteBinding int
 	}{
 		{
-			name:              "media group keeps cross-platform apikey and filters compatible apikey",
+			name:              "different source platform keeps every legal binding and filters compatible apikey",
 			mediaEnabled:      true,
 			wantBoundIDs:      []int64{1, 3},
 			wantDeleteBinding: 1,
 		},
 		{
-			name:         "plain group rejects cross-platform account",
-			mediaEnabled: false,
-			wantErr:      true,
+			name:              "different source platform plain group rejects before side effects",
+			mediaEnabled:      false,
+			wantErr:           true,
+			wantErrorContains: "账号平台",
 		},
 	}
 
@@ -221,7 +225,7 @@ func TestAdminServiceUpdateGroupCopyAppliesCrossPlatformBindingRules(t *testing.
 			}
 			repo := &mediaGroupRepoStub{
 				groups: map[int64]*Group{
-					1: {ID: 1, Platform: PlatformOpenAI},
+					1: {ID: 1, Platform: PlatformGemini},
 					9: destination,
 				},
 				sourceAccountIDs: []int64{1, 2, 3},
@@ -239,8 +243,11 @@ func TestAdminServiceUpdateGroupCopyAppliesCrossPlatformBindingRules(t *testing.
 
 			if tt.wantErr {
 				require.Error(t, err)
+				require.Contains(t, err.Error(), tt.wantErrorContains)
+				require.Nil(t, repo.updated)
 			} else {
 				require.NoError(t, err)
+				require.NotNil(t, repo.updated)
 			}
 			require.Equal(t, tt.wantBoundIDs, repo.boundAccountIDs)
 			require.Equal(t, tt.wantDeleteBinding, repo.deleteBindingCall)

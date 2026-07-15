@@ -1089,12 +1089,8 @@ func (s *adminServiceImpl) prepareCopiedAccountIDs(ctx context.Context, targetGr
 	}
 
 	for _, sourceGroupID := range uniqueSourceGroupIDs {
-		sourceGroup, err := s.groupRepo.GetByIDLite(ctx, sourceGroupID)
-		if err != nil {
+		if _, err := s.groupRepo.GetByIDLite(ctx, sourceGroupID); err != nil {
 			return nil, fmt.Errorf("source group %d not found: %w", sourceGroupID, err)
-		}
-		if sourceGroup.Platform != targetGroup.Platform {
-			return nil, fmt.Errorf("source group %d platform mismatch: expected %s, got %s", sourceGroupID, targetGroup.Platform, sourceGroup.Platform)
 		}
 	}
 
