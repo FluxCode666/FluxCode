@@ -119,6 +119,8 @@ var ProviderSet = wire.NewSet(
 	NewGiftBalanceRepository,
 	NewUserReferralConfigRepository,
 	NewGeneratedImageRepository,
+	NewMediaTaskRepository,
+	NewMediaArtifactRepository,
 	NewQiniuGeneratedImageObjectStore,
 
 	// Cache implementations
