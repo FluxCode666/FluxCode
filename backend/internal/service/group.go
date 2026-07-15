@@ -27,11 +27,13 @@ type Group struct {
 	MonthlyLimitUSD     *float64
 	DefaultValidityDays int
 
-	// 图片生成计费配置（antigravity 和 gemini 平台使用）
-	ImagePrice1K         *float64
-	ImagePrice2K         *float64
-	ImagePrice4K         *float64
-	AllowImageGeneration bool
+	// 媒体生成配置
+	ImagePrice1K              *float64
+	ImagePrice2K              *float64
+	ImagePrice4K              *float64
+	AllowImageGeneration      bool
+	AllowVideoGeneration      bool
+	MediaCrossPlatformEnabled bool
 
 	// Claude Code 客户端限制与通用分组兜底
 	ClaudeCodeOnly  bool

@@ -47,11 +47,12 @@ func validateAccountGroupBinding(group *Group, accountPlatform, accountType stri
 	if group == nil {
 		return fmt.Errorf("get group: %w", ErrGroupNotFound)
 	}
-	if !AccountCanBelongToGroupPlatform(accountPlatform, group.Platform) {
+	platformCompatible := AccountCanBelongToGroupPlatform(accountPlatform, group.Platform)
+	if !platformCompatible && !group.MediaCrossPlatformEnabled {
 		return fmt.Errorf("账号平台 [%s] 只能加入 [%s] 分组，不能加入分组 [%s](%s)",
 			accountPlatform, AccountPlatformGroupPlatform(accountPlatform), group.Name, group.Platform)
 	}
-	if accountType == AccountTypeAPIKey && group.RequireOAuthOnly && requireOAuthOnlyAppliesToGroup(group.Platform) {
+	if platformCompatible && accountType == AccountTypeAPIKey && group.RequireOAuthOnly && requireOAuthOnlyAppliesToGroup(group.Platform) {
 		return fmt.Errorf("分组 [%s] 仅允许 OAuth 账号，apikey 类型账号无法加入", group.Name)
 	}
 	return nil

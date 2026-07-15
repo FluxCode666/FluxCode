@@ -14,7 +14,7 @@ import (
 	"github.com/dgraph-io/ristretto"
 )
 
-const apiKeyAuthSnapshotVersion = 7 // v7: added API key/group system prompt fields and group fallback flag
+const apiKeyAuthSnapshotVersion = 8 // v8: added group video generation and media cross-platform flags
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int
@@ -253,6 +253,8 @@ func (s *APIKeyService) snapshotFromAPIKey(apiKey *APIKey) *APIKeyAuthSnapshot {
 			ImagePrice2K:                    apiKey.Group.ImagePrice2K,
 			ImagePrice4K:                    apiKey.Group.ImagePrice4K,
 			AllowImageGeneration:            apiKey.Group.AllowImageGeneration,
+			AllowVideoGeneration:            apiKey.Group.AllowVideoGeneration,
+			MediaCrossPlatformEnabled:       apiKey.Group.MediaCrossPlatformEnabled,
 			ClaudeCodeOnly:                  apiKey.Group.ClaudeCodeOnly,
 			FallbackGroupID:                 apiKey.Group.FallbackGroupID,
 			IsFallbackGroup:                 apiKey.Group.IsFallbackGroup,
@@ -322,6 +324,8 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 			ImagePrice2K:                    snapshot.Group.ImagePrice2K,
 			ImagePrice4K:                    snapshot.Group.ImagePrice4K,
 			AllowImageGeneration:            snapshot.Group.AllowImageGeneration,
+			AllowVideoGeneration:            snapshot.Group.AllowVideoGeneration,
+			MediaCrossPlatformEnabled:       snapshot.Group.MediaCrossPlatformEnabled,
 			ClaudeCodeOnly:                  snapshot.Group.ClaudeCodeOnly,
 			FallbackGroupID:                 snapshot.Group.FallbackGroupID,
 			IsFallbackGroup:                 snapshot.Group.IsFallbackGroup,

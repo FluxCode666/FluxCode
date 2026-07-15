@@ -165,14 +165,16 @@ type CreateGroupInput struct {
 	DailyLimitUSD    *float64 // 日限额 (USD)
 	WeeklyLimitUSD   *float64 // 周限额 (USD)
 	MonthlyLimitUSD  *float64 // 月限额 (USD)
-	// 图片生成计费配置（仅 antigravity 平台使用）
-	ImagePrice1K         *float64
-	ImagePrice2K         *float64
-	ImagePrice4K         *float64
-	AllowImageGeneration bool
-	ClaudeCodeOnly       bool   // 仅允许 Claude Code 客户端
-	FallbackGroupID      *int64 // 降级分组 ID
-	IsFallbackGroup      bool
+	// 媒体生成配置
+	ImagePrice1K              *float64
+	ImagePrice2K              *float64
+	ImagePrice4K              *float64
+	AllowImageGeneration      bool
+	AllowVideoGeneration      bool
+	MediaCrossPlatformEnabled bool
+	ClaudeCodeOnly            bool   // 仅允许 Claude Code 客户端
+	FallbackGroupID           *int64 // 降级分组 ID
+	IsFallbackGroup           bool
 	// Deprecated: will be removed in next version.
 	// 无效请求兜底分组不再参与运行时逻辑；prompt too long 等兜底统一使用 FallbackGroupID。
 	FallbackGroupIDOnInvalidRequest *int64
@@ -205,14 +207,16 @@ type UpdateGroupInput struct {
 	DailyLimitUSD    *float64 // 日限额 (USD)
 	WeeklyLimitUSD   *float64 // 周限额 (USD)
 	MonthlyLimitUSD  *float64 // 月限额 (USD)
-	// 图片生成计费配置（仅 antigravity 平台使用）
-	ImagePrice1K         *float64
-	ImagePrice2K         *float64
-	ImagePrice4K         *float64
-	AllowImageGeneration *bool
-	ClaudeCodeOnly       *bool  // 仅允许 Claude Code 客户端
-	FallbackGroupID      *int64 // 降级分组 ID
-	IsFallbackGroup      *bool
+	// 媒体生成配置
+	ImagePrice1K              *float64
+	ImagePrice2K              *float64
+	ImagePrice4K              *float64
+	AllowImageGeneration      *bool
+	AllowVideoGeneration      *bool
+	MediaCrossPlatformEnabled *bool
+	ClaudeCodeOnly            *bool  // 仅允许 Claude Code 客户端
+	FallbackGroupID           *int64 // 降级分组 ID
+	IsFallbackGroup           *bool
 	// Deprecated: will be removed in next version.
 	// 无效请求兜底分组不再参与运行时逻辑；prompt too long 等兜底统一使用 FallbackGroupID。
 	FallbackGroupIDOnInvalidRequest *int64
@@ -1006,38 +1010,6 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		mcpXMLInject = *input.MCPXMLInject
 	}
 
-	// 如果指定了复制账号的源分组，先获取账号 ID 列表
-	var accountIDsToCopy []int64
-	if len(input.CopyAccountsFromGroupIDs) > 0 {
-		// 去重源分组 IDs
-		seen := make(map[int64]struct{})
-		uniqueSourceGroupIDs := make([]int64, 0, len(input.CopyAccountsFromGroupIDs))
-		for _, srcGroupID := range input.CopyAccountsFromGroupIDs {
-			if _, exists := seen[srcGroupID]; !exists {
-				seen[srcGroupID] = struct{}{}
-				uniqueSourceGroupIDs = append(uniqueSourceGroupIDs, srcGroupID)
-			}
-		}
-
-		// 校验源分组的平台是否与新分组一致
-		for _, srcGroupID := range uniqueSourceGroupIDs {
-			srcGroup, err := s.groupRepo.GetByIDLite(ctx, srcGroupID)
-			if err != nil {
-				return nil, fmt.Errorf("source group %d not found: %w", srcGroupID, err)
-			}
-			if srcGroup.Platform != platform {
-				return nil, fmt.Errorf("source group %d platform mismatch: expected %s, got %s", srcGroupID, platform, srcGroup.Platform)
-			}
-		}
-
-		// 获取所有源分组的账号（去重）
-		var err error
-		accountIDsToCopy, err = s.groupRepo.GetAccountIDsByGroupIDs(ctx, uniqueSourceGroupIDs)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get accounts from source groups: %w", err)
-		}
-	}
-
 	group := &Group{
 		Name:                            input.Name,
 		Description:                     input.Description,
@@ -1055,6 +1027,8 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		ImagePrice2K:                    imagePrice2K,
 		ImagePrice4K:                    imagePrice4K,
 		AllowImageGeneration:            input.AllowImageGeneration,
+		AllowVideoGeneration:            input.AllowVideoGeneration,
+		MediaCrossPlatformEnabled:       input.MediaCrossPlatformEnabled,
 		ClaudeCodeOnly:                  input.ClaudeCodeOnly,
 		FallbackGroupID:                 input.FallbackGroupID,
 		IsFallbackGroup:                 input.IsFallbackGroup,
@@ -1077,29 +1051,12 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 			return nil, err
 		}
 	}
-	if err := s.groupRepo.Create(ctx, group); err != nil {
+	accountIDsToCopy, err := s.prepareCopiedAccountIDs(ctx, group, input.CopyAccountsFromGroupIDs, 0)
+	if err != nil {
 		return nil, err
 	}
-
-	// require_oauth_only: 过滤掉 apikey 类型账号
-	if group.RequireOAuthOnly && (group.Platform == PlatformOpenAI || group.Platform == PlatformAntigravity || group.Platform == PlatformAnthropic || group.Platform == PlatformGemini) && len(accountIDsToCopy) > 0 {
-		accounts, err := s.accountRepo.GetByIDs(ctx, accountIDsToCopy)
-		if err != nil {
-			return nil, fmt.Errorf("failed to fetch accounts for oauth filter: %w", err)
-		}
-		oauthIDs := make(map[int64]struct{}, len(accounts))
-		for _, acc := range accounts {
-			if acc.Type != AccountTypeAPIKey {
-				oauthIDs[acc.ID] = struct{}{}
-			}
-		}
-		var filtered []int64
-		for _, aid := range accountIDsToCopy {
-			if _, ok := oauthIDs[aid]; ok {
-				filtered = append(filtered, aid)
-			}
-		}
-		accountIDsToCopy = filtered
+	if err := s.groupRepo.Create(ctx, group); err != nil {
+		return nil, err
 	}
 
 	// 如果有需要复制的账号，绑定到新分组
@@ -1111,6 +1068,73 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 	}
 
 	return group, nil
+}
+
+func (s *adminServiceImpl) prepareCopiedAccountIDs(ctx context.Context, targetGroup *Group, sourceGroupIDs []int64, targetGroupID int64) ([]int64, error) {
+	if len(sourceGroupIDs) == 0 {
+		return nil, nil
+	}
+
+	seen := make(map[int64]struct{}, len(sourceGroupIDs))
+	uniqueSourceGroupIDs := make([]int64, 0, len(sourceGroupIDs))
+	for _, sourceGroupID := range sourceGroupIDs {
+		if targetGroupID > 0 && sourceGroupID == targetGroupID {
+			return nil, fmt.Errorf("cannot copy accounts from self")
+		}
+		if _, exists := seen[sourceGroupID]; exists {
+			continue
+		}
+		seen[sourceGroupID] = struct{}{}
+		uniqueSourceGroupIDs = append(uniqueSourceGroupIDs, sourceGroupID)
+	}
+
+	for _, sourceGroupID := range uniqueSourceGroupIDs {
+		sourceGroup, err := s.groupRepo.GetByIDLite(ctx, sourceGroupID)
+		if err != nil {
+			return nil, fmt.Errorf("source group %d not found: %w", sourceGroupID, err)
+		}
+		if sourceGroup.Platform != targetGroup.Platform {
+			return nil, fmt.Errorf("source group %d platform mismatch: expected %s, got %s", sourceGroupID, targetGroup.Platform, sourceGroup.Platform)
+		}
+	}
+
+	accountIDs, err := s.groupRepo.GetAccountIDsByGroupIDs(ctx, uniqueSourceGroupIDs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get accounts from source groups: %w", err)
+	}
+	if len(accountIDs) == 0 {
+		return nil, nil
+	}
+
+	accounts, err := s.accountRepo.GetByIDs(ctx, accountIDs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch accounts for group binding validation: %w", err)
+	}
+	accountsByID := make(map[int64]*Account, len(accounts))
+	for _, account := range accounts {
+		if account != nil {
+			accountsByID[account.ID] = account
+		}
+	}
+
+	allowedAccountIDs := make([]int64, 0, len(accountIDs))
+	for _, accountID := range accountIDs {
+		account := accountsByID[accountID]
+		if account == nil {
+			return nil, fmt.Errorf("account %d not found while copying group bindings", accountID)
+		}
+		if err := validateAccountGroupBinding(targetGroup, account.Platform, account.Type); err != nil {
+			// 保持既有 CopyAccounts 行为：原本平台兼容的 apikey 在 OAuth-only 分组中被过滤，而不是中止复制。
+			if AccountCanBelongToGroupPlatform(account.Platform, targetGroup.Platform) &&
+				account.Type == AccountTypeAPIKey && targetGroup.RequireOAuthOnly && requireOAuthOnlyAppliesToGroup(targetGroup.Platform) {
+				continue
+			}
+			return nil, fmt.Errorf("account %d cannot be copied to group %s: %w", account.ID, targetGroup.Name, err)
+		}
+		allowedAccountIDs = append(allowedAccountIDs, accountID)
+	}
+
+	return allowedAccountIDs, nil
 }
 
 // normalizeLimit 将负数转换为 nil（表示无限制），0 保留（表示限额为零）
@@ -1318,6 +1342,12 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	if input.AllowImageGeneration != nil {
 		group.AllowImageGeneration = *input.AllowImageGeneration
 	}
+	if input.AllowVideoGeneration != nil {
+		group.AllowVideoGeneration = *input.AllowVideoGeneration
+	}
+	if input.MediaCrossPlatformEnabled != nil {
+		group.MediaCrossPlatformEnabled = *input.MediaCrossPlatformEnabled
+	}
 
 	// Claude Code 客户端限制
 	if input.ClaudeCodeOnly != nil {
@@ -1380,68 +1410,20 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	}
 	sanitizeGroupMessagesDispatchFields(group)
 
+	accountIDsToCopy, err := s.prepareCopiedAccountIDs(ctx, group, input.CopyAccountsFromGroupIDs, id)
+	if err != nil {
+		return nil, err
+	}
+
 	if err := s.groupRepo.Update(ctx, group); err != nil {
 		return nil, err
 	}
 
 	// 如果指定了复制账号的源分组，同步绑定（替换当前分组的账号）
 	if len(input.CopyAccountsFromGroupIDs) > 0 {
-		// 去重源分组 IDs
-		seen := make(map[int64]struct{})
-		uniqueSourceGroupIDs := make([]int64, 0, len(input.CopyAccountsFromGroupIDs))
-		for _, srcGroupID := range input.CopyAccountsFromGroupIDs {
-			// 校验：源分组不能是自身
-			if srcGroupID == id {
-				return nil, fmt.Errorf("cannot copy accounts from self")
-			}
-			// 去重
-			if _, exists := seen[srcGroupID]; !exists {
-				seen[srcGroupID] = struct{}{}
-				uniqueSourceGroupIDs = append(uniqueSourceGroupIDs, srcGroupID)
-			}
-		}
-
-		// 校验源分组的平台是否与当前分组一致
-		for _, srcGroupID := range uniqueSourceGroupIDs {
-			srcGroup, err := s.groupRepo.GetByIDLite(ctx, srcGroupID)
-			if err != nil {
-				return nil, fmt.Errorf("source group %d not found: %w", srcGroupID, err)
-			}
-			if srcGroup.Platform != group.Platform {
-				return nil, fmt.Errorf("source group %d platform mismatch: expected %s, got %s", srcGroupID, group.Platform, srcGroup.Platform)
-			}
-		}
-
-		// 获取所有源分组的账号（去重）
-		accountIDsToCopy, err := s.groupRepo.GetAccountIDsByGroupIDs(ctx, uniqueSourceGroupIDs)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get accounts from source groups: %w", err)
-		}
-
 		// 先清空当前分组的所有账号绑定
 		if _, err := s.groupRepo.DeleteAccountGroupsByGroupID(ctx, id); err != nil {
 			return nil, fmt.Errorf("failed to clear existing account bindings: %w", err)
-		}
-
-		// require_oauth_only: 过滤掉 apikey 类型账号
-		if group.RequireOAuthOnly && (group.Platform == PlatformOpenAI || group.Platform == PlatformAntigravity || group.Platform == PlatformAnthropic || group.Platform == PlatformGemini) && len(accountIDsToCopy) > 0 {
-			accounts, err := s.accountRepo.GetByIDs(ctx, accountIDsToCopy)
-			if err != nil {
-				return nil, fmt.Errorf("failed to fetch accounts for oauth filter: %w", err)
-			}
-			oauthIDs := make(map[int64]struct{}, len(accounts))
-			for _, acc := range accounts {
-				if acc.Type != AccountTypeAPIKey {
-					oauthIDs[acc.ID] = struct{}{}
-				}
-			}
-			var filtered []int64
-			for _, aid := range accountIDsToCopy {
-				if _, ok := oauthIDs[aid]; ok {
-					filtered = append(filtered, aid)
-				}
-			}
-			accountIDsToCopy = filtered
 		}
 
 		// 再绑定源分组的账号

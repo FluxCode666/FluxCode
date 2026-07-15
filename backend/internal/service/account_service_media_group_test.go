@@ -1,0 +1,249 @@
+package service
+
+import (
+	"context"
+	"testing"
+
+	"github.com/stretchr/testify/require"
+)
+
+func TestValidateAccountGroupBindingAllowsCrossPlatformOnlyForMediaGroups(t *testing.T) {
+	mediaGroup := &Group{
+		Name:                      "media",
+		Platform:                  PlatformOpenAI,
+		MediaCrossPlatformEnabled: true,
+	}
+	require.NoError(t, validateAccountGroupBinding(mediaGroup, PlatformGemini, AccountTypeAPIKey))
+
+	plainGroup := &Group{Name: "plain", Platform: PlatformOpenAI}
+	require.Error(t, validateAccountGroupBinding(plainGroup, PlatformGemini, AccountTypeAPIKey))
+}
+
+func TestValidateAccountGroupBindingKeepsCompatiblePlatformRules(t *testing.T) {
+	compatibleGroup := &Group{
+		Name:             "compatible",
+		Platform:         PlatformGemini,
+		RequireOAuthOnly: true,
+	}
+
+	// Antigravity 账号原本就兼容 Gemini 分组，因此仍应用 OAuth-only 规则。
+	require.Error(t, validateAccountGroupBinding(compatibleGroup, PlatformAntigravity, AccountTypeAPIKey))
+	require.NoError(t, validateAccountGroupBinding(compatibleGroup, PlatformAntigravity, AccountTypeOAuth))
+}
+
+func TestValidateAccountGroupBindingSkipsOAuthOnlyForApprovedCrossPlatformBinding(t *testing.T) {
+	mediaGroup := &Group{
+		Name:                      "media",
+		Platform:                  PlatformOpenAI,
+		RequireOAuthOnly:          true,
+		MediaCrossPlatformEnabled: true,
+	}
+
+	require.NoError(t, validateAccountGroupBinding(mediaGroup, PlatformGemini, AccountTypeAPIKey))
+}
+
+type mediaGroupRepoStub struct {
+	GroupRepository
+	group             *Group
+	groups            map[int64]*Group
+	sourceAccountIDs  []int64
+	created           *Group
+	updated           *Group
+	boundAccountIDs   []int64
+	deleteBindingCall int
+}
+
+func (s *mediaGroupRepoStub) Create(_ context.Context, group *Group) error {
+	group.ID = 99
+	s.created = group
+	return nil
+}
+
+func (s *mediaGroupRepoStub) GetByID(_ context.Context, id int64) (*Group, error) {
+	if s.groups != nil {
+		return s.groups[id], nil
+	}
+	return s.group, nil
+}
+
+func (s *mediaGroupRepoStub) GetByIDLite(ctx context.Context, id int64) (*Group, error) {
+	return s.GetByID(ctx, id)
+}
+
+func (s *mediaGroupRepoStub) Update(_ context.Context, group *Group) error {
+	s.updated = group
+	return nil
+}
+
+func (s *mediaGroupRepoStub) GetAccountIDsByGroupIDs(_ context.Context, _ []int64) ([]int64, error) {
+	return append([]int64(nil), s.sourceAccountIDs...), nil
+}
+
+func (s *mediaGroupRepoStub) BindAccountsToGroup(_ context.Context, _ int64, accountIDs []int64) error {
+	s.boundAccountIDs = append([]int64(nil), accountIDs...)
+	return nil
+}
+
+func (s *mediaGroupRepoStub) DeleteAccountGroupsByGroupID(_ context.Context, _ int64) (int64, error) {
+	s.deleteBindingCall++
+	return 0, nil
+}
+
+type mediaGroupAccountRepoStub struct {
+	AccountRepository
+	accounts []*Account
+}
+
+func (s *mediaGroupAccountRepoStub) GetByIDs(_ context.Context, _ []int64) ([]*Account, error) {
+	return s.accounts, nil
+}
+
+func TestAdminServiceCreateGroupPersistsMediaFlags(t *testing.T) {
+	repo := &mediaGroupRepoStub{}
+	svc := &adminServiceImpl{groupRepo: repo}
+
+	group, err := svc.CreateGroup(context.Background(), &CreateGroupInput{
+		Name:                      "media",
+		Platform:                  PlatformOpenAI,
+		AllowImageGeneration:      true,
+		AllowVideoGeneration:      true,
+		MediaCrossPlatformEnabled: true,
+	})
+
+	require.NoError(t, err)
+	require.Same(t, group, repo.created)
+	require.True(t, repo.created.AllowImageGeneration)
+	require.True(t, repo.created.AllowVideoGeneration)
+	require.True(t, repo.created.MediaCrossPlatformEnabled)
+}
+
+func TestAdminServiceUpdateGroupPersistsExplicitFalseMediaFlags(t *testing.T) {
+	repo := &mediaGroupRepoStub{group: &Group{
+		ID:                        7,
+		Name:                      "media",
+		Platform:                  PlatformOpenAI,
+		Status:                    StatusActive,
+		AllowImageGeneration:      true,
+		AllowVideoGeneration:      true,
+		MediaCrossPlatformEnabled: true,
+	}}
+	svc := &adminServiceImpl{groupRepo: repo}
+	disabled := false
+
+	group, err := svc.UpdateGroup(context.Background(), 7, &UpdateGroupInput{
+		AllowImageGeneration:      &disabled,
+		AllowVideoGeneration:      &disabled,
+		MediaCrossPlatformEnabled: &disabled,
+	})
+
+	require.NoError(t, err)
+	require.Same(t, group, repo.updated)
+	require.False(t, repo.updated.AllowImageGeneration)
+	require.False(t, repo.updated.AllowVideoGeneration)
+	require.False(t, repo.updated.MediaCrossPlatformEnabled)
+}
+
+func TestAdminServiceCreateGroupCopyKeepsCrossPlatformAPIKeyAndFiltersCompatibleAPIKey(t *testing.T) {
+	repo := &mediaGroupRepoStub{
+		groups:           map[int64]*Group{1: {ID: 1, Platform: PlatformOpenAI}},
+		sourceAccountIDs: []int64{1, 2, 3},
+	}
+	accountRepo := &mediaGroupAccountRepoStub{accounts: []*Account{
+		{ID: 1, Platform: PlatformGemini, Type: AccountTypeAPIKey},
+		{ID: 2, Platform: PlatformOpenAI, Type: AccountTypeAPIKey},
+		{ID: 3, Platform: PlatformOpenAI, Type: AccountTypeOAuth},
+	}}
+	svc := &adminServiceImpl{groupRepo: repo, accountRepo: accountRepo}
+
+	_, err := svc.CreateGroup(context.Background(), &CreateGroupInput{
+		Name:                      "media",
+		Platform:                  PlatformOpenAI,
+		RequireOAuthOnly:          true,
+		MediaCrossPlatformEnabled: true,
+		CopyAccountsFromGroupIDs:  []int64{1},
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, []int64{1, 3}, repo.boundAccountIDs)
+}
+
+func TestAdminServiceCreatePlainGroupRejectsCopiedCrossPlatformAccount(t *testing.T) {
+	repo := &mediaGroupRepoStub{
+		groups:           map[int64]*Group{1: {ID: 1, Platform: PlatformOpenAI}},
+		sourceAccountIDs: []int64{1},
+	}
+	accountRepo := &mediaGroupAccountRepoStub{accounts: []*Account{
+		{ID: 1, Platform: PlatformGemini, Type: AccountTypeAPIKey},
+	}}
+	svc := &adminServiceImpl{groupRepo: repo, accountRepo: accountRepo}
+
+	_, err := svc.CreateGroup(context.Background(), &CreateGroupInput{
+		Name:                     "plain",
+		Platform:                 PlatformOpenAI,
+		CopyAccountsFromGroupIDs: []int64{1},
+	})
+
+	require.Error(t, err)
+	require.Nil(t, repo.created)
+	require.Empty(t, repo.boundAccountIDs)
+}
+
+func TestAdminServiceUpdateGroupCopyAppliesCrossPlatformBindingRules(t *testing.T) {
+	tests := []struct {
+		name              string
+		mediaEnabled      bool
+		wantErr           bool
+		wantBoundIDs      []int64
+		wantDeleteBinding int
+	}{
+		{
+			name:              "media group keeps cross-platform apikey and filters compatible apikey",
+			mediaEnabled:      true,
+			wantBoundIDs:      []int64{1, 3},
+			wantDeleteBinding: 1,
+		},
+		{
+			name:         "plain group rejects cross-platform account",
+			mediaEnabled: false,
+			wantErr:      true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			destination := &Group{
+				ID:                        9,
+				Name:                      "destination",
+				Platform:                  PlatformOpenAI,
+				Status:                    StatusActive,
+				RequireOAuthOnly:          true,
+				MediaCrossPlatformEnabled: tt.mediaEnabled,
+			}
+			repo := &mediaGroupRepoStub{
+				groups: map[int64]*Group{
+					1: {ID: 1, Platform: PlatformOpenAI},
+					9: destination,
+				},
+				sourceAccountIDs: []int64{1, 2, 3},
+			}
+			accountRepo := &mediaGroupAccountRepoStub{accounts: []*Account{
+				{ID: 1, Platform: PlatformGemini, Type: AccountTypeAPIKey},
+				{ID: 2, Platform: PlatformOpenAI, Type: AccountTypeAPIKey},
+				{ID: 3, Platform: PlatformOpenAI, Type: AccountTypeOAuth},
+			}}
+			svc := &adminServiceImpl{groupRepo: repo, accountRepo: accountRepo}
+
+			_, err := svc.UpdateGroup(context.Background(), 9, &UpdateGroupInput{
+				CopyAccountsFromGroupIDs: []int64{1},
+			})
+
+			if tt.wantErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+			require.Equal(t, tt.wantBoundIDs, repo.boundAccountIDs)
+			require.Equal(t, tt.wantDeleteBinding, repo.deleteBindingCall)
+		})
+	}
+}

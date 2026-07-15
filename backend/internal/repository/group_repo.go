@@ -56,6 +56,8 @@ func (r *groupRepository) Create(ctx context.Context, groupIn *service.Group) er
 		SetNillableImagePrice2k(groupIn.ImagePrice2K).
 		SetNillableImagePrice4k(groupIn.ImagePrice4K).
 		SetAllowImageGeneration(groupIn.AllowImageGeneration).
+		SetAllowVideoGeneration(groupIn.AllowVideoGeneration).
+		SetMediaCrossPlatformEnabled(groupIn.MediaCrossPlatformEnabled).
 		SetDefaultValidityDays(groupIn.DefaultValidityDays).
 		SetClaudeCodeOnly(groupIn.ClaudeCodeOnly).
 		SetNillableFallbackGroupID(groupIn.FallbackGroupID).
@@ -129,6 +131,8 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 		SetNillableImagePrice2k(groupIn.ImagePrice2K).
 		SetNillableImagePrice4k(groupIn.ImagePrice4K).
 		SetAllowImageGeneration(groupIn.AllowImageGeneration).
+		SetAllowVideoGeneration(groupIn.AllowVideoGeneration).
+		SetMediaCrossPlatformEnabled(groupIn.MediaCrossPlatformEnabled).
 		SetDefaultValidityDays(groupIn.DefaultValidityDays).
 		SetClaudeCodeOnly(groupIn.ClaudeCodeOnly).
 		SetIsFallbackGroup(groupIn.IsFallbackGroup).
