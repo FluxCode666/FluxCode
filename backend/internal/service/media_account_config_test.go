@@ -1,6 +1,7 @@
 package service
 
 import (
+	"encoding/json"
 	"errors"
 	"testing"
 
@@ -35,6 +36,9 @@ func TestAccountResolveMediaConfigInheritsMissingOverrideFields(t *testing.T) {
 			"model_overrides": map[string]any{
 				"veo-upstream": map[string]any{"upstream_model": "  veo-provider  "},
 				"veo-mode":     map[string]any{"native_async_mode": "required"},
+				"veo-empty": map[string]any{
+					"upstream_model": "  ", "native_async_mode": "  ",
+				},
 			},
 		},
 	}}
@@ -51,6 +55,10 @@ func TestAccountResolveMediaConfigInheritsMissingOverrideFields(t *testing.T) {
 	require.Equal(t, "gemini", missing.Adapter)
 	require.Equal(t, "VEO-MODE", missing.UpstreamModel)
 	require.Equal(t, NativeAsyncOptional, missing.NativeAsyncMode)
+
+	empty := account.ResolveMediaModel(" veo-empty ")
+	require.Equal(t, "veo-empty", empty.UpstreamModel)
+	require.Equal(t, NativeAsyncOptional, empty.NativeAsyncMode)
 }
 
 func TestAccountResolveMediaConfigFallsBackForUnconfiguredOrMalformedExtra(t *testing.T) {
@@ -145,4 +153,83 @@ func TestNormalizeMediaAccountConfigRejectsInvalidIdentityFields(t *testing.T) {
 			require.True(t, errors.Is(err, ErrInvalidMediaAccountConfig), err)
 		})
 	}
+}
+
+func TestNormalizeMediaAccountConfigExtraRejectsExplicitNull(t *testing.T) {
+	typedNil := (*MediaAccountConfig)(nil)
+	decodedNullMode := mustDecodeMediaAccountExtra(t, `{
+		"media_config":{"adapter":"gemini","native_async_mode":null}
+	}`)
+
+	tests := []struct {
+		name  string
+		extra map[string]any
+	}{
+		{name: "top level interface nil", extra: map[string]any{"media_config": nil}},
+		{name: "top level typed nil", extra: map[string]any{"media_config": typedNil}},
+		{name: "top level raw message null", extra: map[string]any{"media_config": json.RawMessage(`null`)}},
+		{name: "adapter null", extra: map[string]any{"media_config": map[string]any{
+			"adapter": nil,
+		}}},
+		{name: "native async mode null", extra: map[string]any{"media_config": map[string]any{
+			"adapter": "gemini", "native_async_mode": nil,
+		}}},
+		{name: "model overrides null", extra: map[string]any{"media_config": map[string]any{
+			"adapter": "gemini", "model_overrides": nil,
+		}}},
+		{name: "override value null", extra: map[string]any{"media_config": map[string]any{
+			"adapter": "gemini", "model_overrides": map[string]any{"veo": nil},
+		}}},
+		{name: "upstream model null", extra: map[string]any{"media_config": map[string]any{
+			"adapter": "gemini", "model_overrides": map[string]any{
+				"veo": map[string]any{"upstream_model": nil},
+			},
+		}}},
+		{name: "override native async mode null", extra: map[string]any{"media_config": map[string]any{
+			"adapter": "gemini", "model_overrides": map[string]any{
+				"veo": map[string]any{"native_async_mode": nil},
+			},
+		}}},
+		{name: "raw message nested null", extra: map[string]any{
+			"media_config": json.RawMessage(`{"adapter":"gemini","model_overrides":{"veo":{"upstream_model":null}}}`),
+		}},
+		{name: "json round trip null", extra: decodedNullMode},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := normalizeMediaAccountConfigInExtra(tt.extra)
+			require.ErrorIs(t, err, ErrInvalidMediaAccountConfig)
+		})
+	}
+}
+
+func TestNormalizeMediaAccountConfigExtraRejectsWrongJSONTypes(t *testing.T) {
+	tests := []struct {
+		name string
+		raw  any
+	}{
+		{name: "model overrides array", raw: map[string]any{"adapter": "gemini", "model_overrides": []any{}}},
+		{name: "override string", raw: map[string]any{"adapter": "gemini", "model_overrides": map[string]any{"veo": "bad"}}},
+		{name: "upstream model number", raw: map[string]any{"adapter": "gemini", "model_overrides": map[string]any{
+			"veo": map[string]any{"upstream_model": 42},
+		}}},
+		{name: "override mode boolean", raw: map[string]any{"adapter": "gemini", "model_overrides": map[string]any{
+			"veo": map[string]any{"native_async_mode": true},
+		}}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := normalizeMediaAccountConfigInExtra(map[string]any{"media_config": tt.raw})
+			require.ErrorIs(t, err, ErrInvalidMediaAccountConfig)
+		})
+	}
+}
+
+func mustDecodeMediaAccountExtra(t *testing.T, raw string) map[string]any {
+	t.Helper()
+	var extra map[string]any
+	require.NoError(t, json.Unmarshal([]byte(raw), &extra))
+	return extra
 }

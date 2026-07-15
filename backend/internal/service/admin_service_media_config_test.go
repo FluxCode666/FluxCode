@@ -93,6 +93,7 @@ func TestAdminServiceCreateAccountRejectsMalformedMediaConfigBeforePersist(t *te
 		{name: "wrong shape", raw: "gemini", isErr: ErrInvalidMediaAccountConfig},
 		{name: "empty config", raw: map[string]any{}, isErr: ErrInvalidMediaAccountConfig},
 		{name: "wrong adapter type", raw: map[string]any{"adapter": 42}, isErr: ErrInvalidMediaAccountConfig},
+		{name: "native mode null", raw: map[string]any{"adapter": "gemini", "native_async_mode": nil}, isErr: ErrInvalidMediaAccountConfig},
 		{name: "unknown mode", raw: map[string]any{"adapter": "gemini", "native_async_mode": "sometimes"}, isErr: ErrInvalidNativeAsyncMode},
 	}
 
@@ -133,16 +134,36 @@ func TestAdminServiceUpdateAccountNormalizesMediaConfigAndKeepsPayloadExtra(t *t
 }
 
 func TestAdminServiceUpdateAccountRejectsInvalidMediaConfigBeforePersist(t *testing.T) {
-	svc, repo := newAdminServiceMediaConfigFixture(t)
-	repo.account = &Account{
-		ID: 8, Platform: PlatformGemini, Type: AccountTypeAPIKey, Status: StatusActive,
-		Extra: map[string]any{"preserved": true},
+	tests := []struct {
+		name  string
+		raw   any
+		isErr error
+	}{
+		{name: "unknown mode", raw: map[string]any{
+			"adapter": "gemini", "native_async_mode": "sometimes",
+		}, isErr: ErrInvalidNativeAsyncMode},
+		{name: "override upstream model null", raw: map[string]any{
+			"adapter": "gemini",
+			"model_overrides": map[string]any{
+				"veo": map[string]any{"upstream_model": nil},
+			},
+		}, isErr: ErrInvalidMediaAccountConfig},
 	}
 
-	_, err := svc.UpdateAccount(context.Background(), 8, &UpdateAccountInput{Extra: map[string]any{
-		"media_config": map[string]any{"adapter": "gemini", "native_async_mode": "sometimes"},
-	}})
-	require.ErrorIs(t, err, ErrInvalidNativeAsyncMode)
-	require.Zero(t, repo.updateCalls)
-	require.Equal(t, map[string]any{"preserved": true}, repo.account.Extra)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc, repo := newAdminServiceMediaConfigFixture(t)
+			repo.account = &Account{
+				ID: 8, Platform: PlatformGemini, Type: AccountTypeAPIKey, Status: StatusActive,
+				Extra: map[string]any{"preserved": true},
+			}
+
+			_, err := svc.UpdateAccount(context.Background(), 8, &UpdateAccountInput{Extra: map[string]any{
+				"media_config": tt.raw,
+			}})
+			require.ErrorIs(t, err, tt.isErr)
+			require.Zero(t, repo.updateCalls)
+			require.Equal(t, map[string]any{"preserved": true}, repo.account.Extra)
+		})
+	}
 }

@@ -32,6 +32,17 @@ type ResolvedMediaAccountModel struct {
 	NativeAsyncMode NativeAsyncMode
 }
 
+type mediaAccountConfigJSON struct {
+	Adapter         json.RawMessage `json:"adapter"`
+	NativeAsyncMode json.RawMessage `json:"native_async_mode"`
+	ModelOverrides  json.RawMessage `json:"model_overrides"`
+}
+
+type mediaAccountModelOverrideJSON struct {
+	UpstreamModel   json.RawMessage `json:"upstream_model"`
+	NativeAsyncMode json.RawMessage `json:"native_async_mode"`
+}
+
 func NormalizeMediaAccountConfig(config MediaAccountConfig) (MediaAccountConfig, error) {
 	config.Adapter = strings.ToLower(strings.TrimSpace(config.Adapter))
 	if config.Adapter == "" {
@@ -97,10 +108,8 @@ func mediaAccountConfigFromExtra(extra map[string]any) (MediaAccountConfig, bool
 	if err != nil {
 		return MediaAccountConfig{}, true, fmt.Errorf("%w: media_config cannot be encoded", ErrInvalidMediaAccountConfig)
 	}
-	var config MediaAccountConfig
-	decoder := json.NewDecoder(bytes.NewReader(encoded))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&config); err != nil {
+	config, err := decodeMediaAccountConfig(encoded)
+	if err != nil {
 		return MediaAccountConfig{}, true, fmt.Errorf("%w: invalid media_config shape", ErrInvalidMediaAccountConfig)
 	}
 	config, err = NormalizeMediaAccountConfig(config)
@@ -108,6 +117,100 @@ func mediaAccountConfigFromExtra(extra map[string]any) (MediaAccountConfig, bool
 		return MediaAccountConfig{}, true, err
 	}
 	return config, true, nil
+}
+
+func decodeMediaAccountConfig(encoded []byte) (MediaAccountConfig, error) {
+	if !isJSONObject(encoded) {
+		return MediaAccountConfig{}, ErrInvalidMediaAccountConfig
+	}
+	var raw mediaAccountConfigJSON
+	if err := decodeMediaAccountJSON(encoded, &raw); err != nil {
+		return MediaAccountConfig{}, err
+	}
+
+	adapter, err := decodeMediaAccountString(raw.Adapter, false)
+	if err != nil {
+		return MediaAccountConfig{}, err
+	}
+	mode, err := decodeMediaAccountString(raw.NativeAsyncMode, true)
+	if err != nil {
+		return MediaAccountConfig{}, err
+	}
+	config := MediaAccountConfig{Adapter: adapter, NativeAsyncMode: NativeAsyncMode(mode)}
+	if len(raw.ModelOverrides) == 0 {
+		return config, nil
+	}
+	if isJSONNull(raw.ModelOverrides) || !isJSONObject(raw.ModelOverrides) {
+		return MediaAccountConfig{}, ErrInvalidMediaAccountConfig
+	}
+
+	var overrides map[string]json.RawMessage
+	if err := json.Unmarshal(raw.ModelOverrides, &overrides); err != nil {
+		return MediaAccountConfig{}, err
+	}
+	config.ModelOverrides = make(map[string]MediaAccountModelOverride, len(overrides))
+	for model, rawOverride := range overrides {
+		override, err := decodeMediaAccountModelOverride(rawOverride)
+		if err != nil {
+			return MediaAccountConfig{}, err
+		}
+		config.ModelOverrides[model] = override
+	}
+	return config, nil
+}
+
+func decodeMediaAccountModelOverride(encoded []byte) (MediaAccountModelOverride, error) {
+	if !isJSONObject(encoded) {
+		return MediaAccountModelOverride{}, ErrInvalidMediaAccountConfig
+	}
+	var raw mediaAccountModelOverrideJSON
+	if err := decodeMediaAccountJSON(encoded, &raw); err != nil {
+		return MediaAccountModelOverride{}, err
+	}
+	upstreamModel, err := decodeMediaAccountString(raw.UpstreamModel, true)
+	if err != nil {
+		return MediaAccountModelOverride{}, err
+	}
+	mode, err := decodeMediaAccountString(raw.NativeAsyncMode, true)
+	if err != nil {
+		return MediaAccountModelOverride{}, err
+	}
+	return MediaAccountModelOverride{
+		UpstreamModel:   upstreamModel,
+		NativeAsyncMode: NativeAsyncMode(mode),
+	}, nil
+}
+
+func decodeMediaAccountString(raw json.RawMessage, optional bool) (string, error) {
+	if len(raw) == 0 {
+		if optional {
+			return "", nil
+		}
+		return "", ErrInvalidMediaAccountConfig
+	}
+	if isJSONNull(raw) {
+		return "", ErrInvalidMediaAccountConfig
+	}
+	var value string
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return "", ErrInvalidMediaAccountConfig
+	}
+	return value, nil
+}
+
+func decodeMediaAccountJSON(encoded []byte, target any) error {
+	decoder := json.NewDecoder(bytes.NewReader(encoded))
+	decoder.DisallowUnknownFields()
+	return decoder.Decode(target)
+}
+
+func isJSONObject(encoded []byte) bool {
+	trimmed := bytes.TrimSpace(encoded)
+	return len(trimmed) > 0 && trimmed[0] == '{'
+}
+
+func isJSONNull(encoded []byte) bool {
+	return bytes.Equal(bytes.TrimSpace(encoded), []byte("null"))
 }
 
 func normalizeMediaAccountConfigInExtra(extra map[string]any) error {
