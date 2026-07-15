@@ -26,6 +26,9 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/giftbalancerecord"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/idempotencyrecord"
+	"github.com/Wei-Shaw/sub2api/ent/mediaartifact"
+	"github.com/Wei-Shaw/sub2api/ent/mediamodeldefinition"
+	"github.com/Wei-Shaw/sub2api/ent/mediatask"
 	"github.com/Wei-Shaw/sub2api/ent/paymentauditlog"
 	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
 	"github.com/Wei-Shaw/sub2api/ent/paymentproviderinstance"
@@ -129,6 +132,9 @@ func checkColumn(t, c string) error {
 			giftbalancerecord.Table:              giftbalancerecord.ValidColumn,
 			group.Table:                          group.ValidColumn,
 			idempotencyrecord.Table:              idempotencyrecord.ValidColumn,
+			mediaartifact.Table:                  mediaartifact.ValidColumn,
+			mediamodeldefinition.Table:           mediamodeldefinition.ValidColumn,
+			mediatask.Table:                      mediatask.ValidColumn,
 			paymentauditlog.Table:                paymentauditlog.ValidColumn,
 			paymentorder.Table:                   paymentorder.ValidColumn,
 			paymentproviderinstance.Table:        paymentproviderinstance.ValidColumn,

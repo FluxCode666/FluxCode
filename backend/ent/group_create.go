@@ -301,6 +301,34 @@ func (_c *GroupCreate) SetNillableAllowImageGeneration(v *bool) *GroupCreate {
 	return _c
 }
 
+// SetAllowVideoGeneration sets the "allow_video_generation" field.
+func (_c *GroupCreate) SetAllowVideoGeneration(v bool) *GroupCreate {
+	_c.mutation.SetAllowVideoGeneration(v)
+	return _c
+}
+
+// SetNillableAllowVideoGeneration sets the "allow_video_generation" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableAllowVideoGeneration(v *bool) *GroupCreate {
+	if v != nil {
+		_c.SetAllowVideoGeneration(*v)
+	}
+	return _c
+}
+
+// SetMediaCrossPlatformEnabled sets the "media_cross_platform_enabled" field.
+func (_c *GroupCreate) SetMediaCrossPlatformEnabled(v bool) *GroupCreate {
+	_c.mutation.SetMediaCrossPlatformEnabled(v)
+	return _c
+}
+
+// SetNillableMediaCrossPlatformEnabled sets the "media_cross_platform_enabled" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableMediaCrossPlatformEnabled(v *bool) *GroupCreate {
+	if v != nil {
+		_c.SetMediaCrossPlatformEnabled(*v)
+	}
+	return _c
+}
+
 // SetClaudeCodeOnly sets the "claude_code_only" field.
 func (_c *GroupCreate) SetClaudeCodeOnly(v bool) *GroupCreate {
 	_c.mutation.SetClaudeCodeOnly(v)
@@ -658,6 +686,14 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultAllowImageGeneration
 		_c.mutation.SetAllowImageGeneration(v)
 	}
+	if _, ok := _c.mutation.AllowVideoGeneration(); !ok {
+		v := group.DefaultAllowVideoGeneration
+		_c.mutation.SetAllowVideoGeneration(v)
+	}
+	if _, ok := _c.mutation.MediaCrossPlatformEnabled(); !ok {
+		v := group.DefaultMediaCrossPlatformEnabled
+		_c.mutation.SetMediaCrossPlatformEnabled(v)
+	}
 	if _, ok := _c.mutation.ClaudeCodeOnly(); !ok {
 		v := group.DefaultClaudeCodeOnly
 		_c.mutation.SetClaudeCodeOnly(v)
@@ -767,6 +803,12 @@ func (_c *GroupCreate) check() error {
 	}
 	if _, ok := _c.mutation.AllowImageGeneration(); !ok {
 		return &ValidationError{Name: "allow_image_generation", err: errors.New(`ent: missing required field "Group.allow_image_generation"`)}
+	}
+	if _, ok := _c.mutation.AllowVideoGeneration(); !ok {
+		return &ValidationError{Name: "allow_video_generation", err: errors.New(`ent: missing required field "Group.allow_video_generation"`)}
+	}
+	if _, ok := _c.mutation.MediaCrossPlatformEnabled(); !ok {
+		return &ValidationError{Name: "media_cross_platform_enabled", err: errors.New(`ent: missing required field "Group.media_cross_platform_enabled"`)}
 	}
 	if _, ok := _c.mutation.ClaudeCodeOnly(); !ok {
 		return &ValidationError{Name: "claude_code_only", err: errors.New(`ent: missing required field "Group.claude_code_only"`)}
@@ -912,6 +954,14 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.AllowImageGeneration(); ok {
 		_spec.SetField(group.FieldAllowImageGeneration, field.TypeBool, value)
 		_node.AllowImageGeneration = value
+	}
+	if value, ok := _c.mutation.AllowVideoGeneration(); ok {
+		_spec.SetField(group.FieldAllowVideoGeneration, field.TypeBool, value)
+		_node.AllowVideoGeneration = value
+	}
+	if value, ok := _c.mutation.MediaCrossPlatformEnabled(); ok {
+		_spec.SetField(group.FieldMediaCrossPlatformEnabled, field.TypeBool, value)
+		_node.MediaCrossPlatformEnabled = value
 	}
 	if value, ok := _c.mutation.ClaudeCodeOnly(); ok {
 		_spec.SetField(group.FieldClaudeCodeOnly, field.TypeBool, value)
@@ -1446,6 +1496,30 @@ func (u *GroupUpsert) SetAllowImageGeneration(v bool) *GroupUpsert {
 // UpdateAllowImageGeneration sets the "allow_image_generation" field to the value that was provided on create.
 func (u *GroupUpsert) UpdateAllowImageGeneration() *GroupUpsert {
 	u.SetExcluded(group.FieldAllowImageGeneration)
+	return u
+}
+
+// SetAllowVideoGeneration sets the "allow_video_generation" field.
+func (u *GroupUpsert) SetAllowVideoGeneration(v bool) *GroupUpsert {
+	u.Set(group.FieldAllowVideoGeneration, v)
+	return u
+}
+
+// UpdateAllowVideoGeneration sets the "allow_video_generation" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateAllowVideoGeneration() *GroupUpsert {
+	u.SetExcluded(group.FieldAllowVideoGeneration)
+	return u
+}
+
+// SetMediaCrossPlatformEnabled sets the "media_cross_platform_enabled" field.
+func (u *GroupUpsert) SetMediaCrossPlatformEnabled(v bool) *GroupUpsert {
+	u.Set(group.FieldMediaCrossPlatformEnabled, v)
+	return u
+}
+
+// UpdateMediaCrossPlatformEnabled sets the "media_cross_platform_enabled" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateMediaCrossPlatformEnabled() *GroupUpsert {
+	u.SetExcluded(group.FieldMediaCrossPlatformEnabled)
 	return u
 }
 
@@ -2073,6 +2147,34 @@ func (u *GroupUpsertOne) SetAllowImageGeneration(v bool) *GroupUpsertOne {
 func (u *GroupUpsertOne) UpdateAllowImageGeneration() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateAllowImageGeneration()
+	})
+}
+
+// SetAllowVideoGeneration sets the "allow_video_generation" field.
+func (u *GroupUpsertOne) SetAllowVideoGeneration(v bool) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetAllowVideoGeneration(v)
+	})
+}
+
+// UpdateAllowVideoGeneration sets the "allow_video_generation" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateAllowVideoGeneration() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateAllowVideoGeneration()
+	})
+}
+
+// SetMediaCrossPlatformEnabled sets the "media_cross_platform_enabled" field.
+func (u *GroupUpsertOne) SetMediaCrossPlatformEnabled(v bool) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetMediaCrossPlatformEnabled(v)
+	})
+}
+
+// UpdateMediaCrossPlatformEnabled sets the "media_cross_platform_enabled" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateMediaCrossPlatformEnabled() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateMediaCrossPlatformEnabled()
 	})
 }
 
@@ -2900,6 +3002,34 @@ func (u *GroupUpsertBulk) SetAllowImageGeneration(v bool) *GroupUpsertBulk {
 func (u *GroupUpsertBulk) UpdateAllowImageGeneration() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateAllowImageGeneration()
+	})
+}
+
+// SetAllowVideoGeneration sets the "allow_video_generation" field.
+func (u *GroupUpsertBulk) SetAllowVideoGeneration(v bool) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetAllowVideoGeneration(v)
+	})
+}
+
+// UpdateAllowVideoGeneration sets the "allow_video_generation" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateAllowVideoGeneration() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateAllowVideoGeneration()
+	})
+}
+
+// SetMediaCrossPlatformEnabled sets the "media_cross_platform_enabled" field.
+func (u *GroupUpsertBulk) SetMediaCrossPlatformEnabled(v bool) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetMediaCrossPlatformEnabled(v)
+	})
+}
+
+// UpdateMediaCrossPlatformEnabled sets the "media_cross_platform_enabled" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateMediaCrossPlatformEnabled() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateMediaCrossPlatformEnabled()
 	})
 }
 

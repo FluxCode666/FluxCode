@@ -29,6 +29,9 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/giftbalancerecord"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/idempotencyrecord"
+	"github.com/Wei-Shaw/sub2api/ent/mediaartifact"
+	"github.com/Wei-Shaw/sub2api/ent/mediamodeldefinition"
+	"github.com/Wei-Shaw/sub2api/ent/mediatask"
 	"github.com/Wei-Shaw/sub2api/ent/paymentauditlog"
 	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
 	"github.com/Wei-Shaw/sub2api/ent/paymentproviderinstance"
@@ -95,6 +98,12 @@ type Client struct {
 	Group *GroupClient
 	// IdempotencyRecord is the client for interacting with the IdempotencyRecord builders.
 	IdempotencyRecord *IdempotencyRecordClient
+	// MediaArtifact is the client for interacting with the MediaArtifact builders.
+	MediaArtifact *MediaArtifactClient
+	// MediaModelDefinition is the client for interacting with the MediaModelDefinition builders.
+	MediaModelDefinition *MediaModelDefinitionClient
+	// MediaTask is the client for interacting with the MediaTask builders.
+	MediaTask *MediaTaskClient
 	// PaymentAuditLog is the client for interacting with the PaymentAuditLog builders.
 	PaymentAuditLog *PaymentAuditLogClient
 	// PaymentOrder is the client for interacting with the PaymentOrder builders.
@@ -178,6 +187,9 @@ func (c *Client) init() {
 	c.GiftBalanceRecord = NewGiftBalanceRecordClient(c.config)
 	c.Group = NewGroupClient(c.config)
 	c.IdempotencyRecord = NewIdempotencyRecordClient(c.config)
+	c.MediaArtifact = NewMediaArtifactClient(c.config)
+	c.MediaModelDefinition = NewMediaModelDefinitionClient(c.config)
+	c.MediaTask = NewMediaTaskClient(c.config)
 	c.PaymentAuditLog = NewPaymentAuditLogClient(c.config)
 	c.PaymentOrder = NewPaymentOrderClient(c.config)
 	c.PaymentProviderInstance = NewPaymentProviderInstanceClient(c.config)
@@ -313,6 +325,9 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		GiftBalanceRecord:              NewGiftBalanceRecordClient(cfg),
 		Group:                          NewGroupClient(cfg),
 		IdempotencyRecord:              NewIdempotencyRecordClient(cfg),
+		MediaArtifact:                  NewMediaArtifactClient(cfg),
+		MediaModelDefinition:           NewMediaModelDefinitionClient(cfg),
+		MediaTask:                      NewMediaTaskClient(cfg),
 		PaymentAuditLog:                NewPaymentAuditLogClient(cfg),
 		PaymentOrder:                   NewPaymentOrderClient(cfg),
 		PaymentProviderInstance:        NewPaymentProviderInstanceClient(cfg),
@@ -375,6 +390,9 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		GiftBalanceRecord:              NewGiftBalanceRecordClient(cfg),
 		Group:                          NewGroupClient(cfg),
 		IdempotencyRecord:              NewIdempotencyRecordClient(cfg),
+		MediaArtifact:                  NewMediaArtifactClient(cfg),
+		MediaModelDefinition:           NewMediaModelDefinitionClient(cfg),
+		MediaTask:                      NewMediaTaskClient(cfg),
 		PaymentAuditLog:                NewPaymentAuditLogClient(cfg),
 		PaymentOrder:                   NewPaymentOrderClient(cfg),
 		PaymentProviderInstance:        NewPaymentProviderInstanceClient(cfg),
@@ -436,10 +454,11 @@ func (c *Client) Use(hooks ...Hook) {
 		c.APIKey, c.Account, c.AccountGroup, c.Announcement, c.AnnouncementRead,
 		c.ChannelMonitor, c.ChannelMonitorDailyRollup, c.ChannelMonitorHistory,
 		c.ChannelMonitorRequestTemplate, c.ErrorPassthroughRule, c.GeneratedImage,
-		c.GiftBalanceRecord, c.Group, c.IdempotencyRecord, c.PaymentAuditLog,
-		c.PaymentOrder, c.PaymentProviderInstance, c.PromoCode, c.PromoCodeUsage,
-		c.Promotion, c.PromotionPlanRule, c.PromotionUsage, c.Proxy, c.RedeemCode,
-		c.Referral, c.SalesCommissionMonthlySnapshot, c.SalesCommissionRecord,
+		c.GiftBalanceRecord, c.Group, c.IdempotencyRecord, c.MediaArtifact,
+		c.MediaModelDefinition, c.MediaTask, c.PaymentAuditLog, c.PaymentOrder,
+		c.PaymentProviderInstance, c.PromoCode, c.PromoCodeUsage, c.Promotion,
+		c.PromotionPlanRule, c.PromotionUsage, c.Proxy, c.RedeemCode, c.Referral,
+		c.SalesCommissionMonthlySnapshot, c.SalesCommissionRecord,
 		c.SalesCommissionSettlement, c.SalesCommissionSettlementItem,
 		c.SalesCommissionTier, c.SecuritySecret, c.Setting, c.SubscriptionGrant,
 		c.SubscriptionPlan, c.TLSFingerprintProfile, c.UsageCleanupTask, c.UsageLog,
@@ -457,10 +476,11 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 		c.APIKey, c.Account, c.AccountGroup, c.Announcement, c.AnnouncementRead,
 		c.ChannelMonitor, c.ChannelMonitorDailyRollup, c.ChannelMonitorHistory,
 		c.ChannelMonitorRequestTemplate, c.ErrorPassthroughRule, c.GeneratedImage,
-		c.GiftBalanceRecord, c.Group, c.IdempotencyRecord, c.PaymentAuditLog,
-		c.PaymentOrder, c.PaymentProviderInstance, c.PromoCode, c.PromoCodeUsage,
-		c.Promotion, c.PromotionPlanRule, c.PromotionUsage, c.Proxy, c.RedeemCode,
-		c.Referral, c.SalesCommissionMonthlySnapshot, c.SalesCommissionRecord,
+		c.GiftBalanceRecord, c.Group, c.IdempotencyRecord, c.MediaArtifact,
+		c.MediaModelDefinition, c.MediaTask, c.PaymentAuditLog, c.PaymentOrder,
+		c.PaymentProviderInstance, c.PromoCode, c.PromoCodeUsage, c.Promotion,
+		c.PromotionPlanRule, c.PromotionUsage, c.Proxy, c.RedeemCode, c.Referral,
+		c.SalesCommissionMonthlySnapshot, c.SalesCommissionRecord,
 		c.SalesCommissionSettlement, c.SalesCommissionSettlementItem,
 		c.SalesCommissionTier, c.SecuritySecret, c.Setting, c.SubscriptionGrant,
 		c.SubscriptionPlan, c.TLSFingerprintProfile, c.UsageCleanupTask, c.UsageLog,
@@ -502,6 +522,12 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.Group.mutate(ctx, m)
 	case *IdempotencyRecordMutation:
 		return c.IdempotencyRecord.mutate(ctx, m)
+	case *MediaArtifactMutation:
+		return c.MediaArtifact.mutate(ctx, m)
+	case *MediaModelDefinitionMutation:
+		return c.MediaModelDefinition.mutate(ctx, m)
+	case *MediaTaskMutation:
+		return c.MediaTask.mutate(ctx, m)
 	case *PaymentAuditLogMutation:
 		return c.PaymentAuditLog.mutate(ctx, m)
 	case *PaymentOrderMutation:
@@ -2797,6 +2823,405 @@ func (c *IdempotencyRecordClient) mutate(ctx context.Context, m *IdempotencyReco
 		return (&IdempotencyRecordDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown IdempotencyRecord mutation op: %q", m.Op())
+	}
+}
+
+// MediaArtifactClient is a client for the MediaArtifact schema.
+type MediaArtifactClient struct {
+	config
+}
+
+// NewMediaArtifactClient returns a client for the MediaArtifact from the given config.
+func NewMediaArtifactClient(c config) *MediaArtifactClient {
+	return &MediaArtifactClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `mediaartifact.Hooks(f(g(h())))`.
+func (c *MediaArtifactClient) Use(hooks ...Hook) {
+	c.hooks.MediaArtifact = append(c.hooks.MediaArtifact, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `mediaartifact.Intercept(f(g(h())))`.
+func (c *MediaArtifactClient) Intercept(interceptors ...Interceptor) {
+	c.inters.MediaArtifact = append(c.inters.MediaArtifact, interceptors...)
+}
+
+// Create returns a builder for creating a MediaArtifact entity.
+func (c *MediaArtifactClient) Create() *MediaArtifactCreate {
+	mutation := newMediaArtifactMutation(c.config, OpCreate)
+	return &MediaArtifactCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of MediaArtifact entities.
+func (c *MediaArtifactClient) CreateBulk(builders ...*MediaArtifactCreate) *MediaArtifactCreateBulk {
+	return &MediaArtifactCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *MediaArtifactClient) MapCreateBulk(slice any, setFunc func(*MediaArtifactCreate, int)) *MediaArtifactCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &MediaArtifactCreateBulk{err: fmt.Errorf("calling to MediaArtifactClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*MediaArtifactCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &MediaArtifactCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for MediaArtifact.
+func (c *MediaArtifactClient) Update() *MediaArtifactUpdate {
+	mutation := newMediaArtifactMutation(c.config, OpUpdate)
+	return &MediaArtifactUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *MediaArtifactClient) UpdateOne(_m *MediaArtifact) *MediaArtifactUpdateOne {
+	mutation := newMediaArtifactMutation(c.config, OpUpdateOne, withMediaArtifact(_m))
+	return &MediaArtifactUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *MediaArtifactClient) UpdateOneID(id int64) *MediaArtifactUpdateOne {
+	mutation := newMediaArtifactMutation(c.config, OpUpdateOne, withMediaArtifactID(id))
+	return &MediaArtifactUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for MediaArtifact.
+func (c *MediaArtifactClient) Delete() *MediaArtifactDelete {
+	mutation := newMediaArtifactMutation(c.config, OpDelete)
+	return &MediaArtifactDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *MediaArtifactClient) DeleteOne(_m *MediaArtifact) *MediaArtifactDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *MediaArtifactClient) DeleteOneID(id int64) *MediaArtifactDeleteOne {
+	builder := c.Delete().Where(mediaartifact.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &MediaArtifactDeleteOne{builder}
+}
+
+// Query returns a query builder for MediaArtifact.
+func (c *MediaArtifactClient) Query() *MediaArtifactQuery {
+	return &MediaArtifactQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeMediaArtifact},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a MediaArtifact entity by its id.
+func (c *MediaArtifactClient) Get(ctx context.Context, id int64) (*MediaArtifact, error) {
+	return c.Query().Where(mediaartifact.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *MediaArtifactClient) GetX(ctx context.Context, id int64) *MediaArtifact {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *MediaArtifactClient) Hooks() []Hook {
+	return c.hooks.MediaArtifact
+}
+
+// Interceptors returns the client interceptors.
+func (c *MediaArtifactClient) Interceptors() []Interceptor {
+	return c.inters.MediaArtifact
+}
+
+func (c *MediaArtifactClient) mutate(ctx context.Context, m *MediaArtifactMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&MediaArtifactCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&MediaArtifactUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&MediaArtifactUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&MediaArtifactDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown MediaArtifact mutation op: %q", m.Op())
+	}
+}
+
+// MediaModelDefinitionClient is a client for the MediaModelDefinition schema.
+type MediaModelDefinitionClient struct {
+	config
+}
+
+// NewMediaModelDefinitionClient returns a client for the MediaModelDefinition from the given config.
+func NewMediaModelDefinitionClient(c config) *MediaModelDefinitionClient {
+	return &MediaModelDefinitionClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `mediamodeldefinition.Hooks(f(g(h())))`.
+func (c *MediaModelDefinitionClient) Use(hooks ...Hook) {
+	c.hooks.MediaModelDefinition = append(c.hooks.MediaModelDefinition, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `mediamodeldefinition.Intercept(f(g(h())))`.
+func (c *MediaModelDefinitionClient) Intercept(interceptors ...Interceptor) {
+	c.inters.MediaModelDefinition = append(c.inters.MediaModelDefinition, interceptors...)
+}
+
+// Create returns a builder for creating a MediaModelDefinition entity.
+func (c *MediaModelDefinitionClient) Create() *MediaModelDefinitionCreate {
+	mutation := newMediaModelDefinitionMutation(c.config, OpCreate)
+	return &MediaModelDefinitionCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of MediaModelDefinition entities.
+func (c *MediaModelDefinitionClient) CreateBulk(builders ...*MediaModelDefinitionCreate) *MediaModelDefinitionCreateBulk {
+	return &MediaModelDefinitionCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *MediaModelDefinitionClient) MapCreateBulk(slice any, setFunc func(*MediaModelDefinitionCreate, int)) *MediaModelDefinitionCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &MediaModelDefinitionCreateBulk{err: fmt.Errorf("calling to MediaModelDefinitionClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*MediaModelDefinitionCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &MediaModelDefinitionCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for MediaModelDefinition.
+func (c *MediaModelDefinitionClient) Update() *MediaModelDefinitionUpdate {
+	mutation := newMediaModelDefinitionMutation(c.config, OpUpdate)
+	return &MediaModelDefinitionUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *MediaModelDefinitionClient) UpdateOne(_m *MediaModelDefinition) *MediaModelDefinitionUpdateOne {
+	mutation := newMediaModelDefinitionMutation(c.config, OpUpdateOne, withMediaModelDefinition(_m))
+	return &MediaModelDefinitionUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *MediaModelDefinitionClient) UpdateOneID(id int64) *MediaModelDefinitionUpdateOne {
+	mutation := newMediaModelDefinitionMutation(c.config, OpUpdateOne, withMediaModelDefinitionID(id))
+	return &MediaModelDefinitionUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for MediaModelDefinition.
+func (c *MediaModelDefinitionClient) Delete() *MediaModelDefinitionDelete {
+	mutation := newMediaModelDefinitionMutation(c.config, OpDelete)
+	return &MediaModelDefinitionDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *MediaModelDefinitionClient) DeleteOne(_m *MediaModelDefinition) *MediaModelDefinitionDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *MediaModelDefinitionClient) DeleteOneID(id int64) *MediaModelDefinitionDeleteOne {
+	builder := c.Delete().Where(mediamodeldefinition.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &MediaModelDefinitionDeleteOne{builder}
+}
+
+// Query returns a query builder for MediaModelDefinition.
+func (c *MediaModelDefinitionClient) Query() *MediaModelDefinitionQuery {
+	return &MediaModelDefinitionQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeMediaModelDefinition},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a MediaModelDefinition entity by its id.
+func (c *MediaModelDefinitionClient) Get(ctx context.Context, id int64) (*MediaModelDefinition, error) {
+	return c.Query().Where(mediamodeldefinition.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *MediaModelDefinitionClient) GetX(ctx context.Context, id int64) *MediaModelDefinition {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *MediaModelDefinitionClient) Hooks() []Hook {
+	return c.hooks.MediaModelDefinition
+}
+
+// Interceptors returns the client interceptors.
+func (c *MediaModelDefinitionClient) Interceptors() []Interceptor {
+	return c.inters.MediaModelDefinition
+}
+
+func (c *MediaModelDefinitionClient) mutate(ctx context.Context, m *MediaModelDefinitionMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&MediaModelDefinitionCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&MediaModelDefinitionUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&MediaModelDefinitionUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&MediaModelDefinitionDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown MediaModelDefinition mutation op: %q", m.Op())
+	}
+}
+
+// MediaTaskClient is a client for the MediaTask schema.
+type MediaTaskClient struct {
+	config
+}
+
+// NewMediaTaskClient returns a client for the MediaTask from the given config.
+func NewMediaTaskClient(c config) *MediaTaskClient {
+	return &MediaTaskClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `mediatask.Hooks(f(g(h())))`.
+func (c *MediaTaskClient) Use(hooks ...Hook) {
+	c.hooks.MediaTask = append(c.hooks.MediaTask, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `mediatask.Intercept(f(g(h())))`.
+func (c *MediaTaskClient) Intercept(interceptors ...Interceptor) {
+	c.inters.MediaTask = append(c.inters.MediaTask, interceptors...)
+}
+
+// Create returns a builder for creating a MediaTask entity.
+func (c *MediaTaskClient) Create() *MediaTaskCreate {
+	mutation := newMediaTaskMutation(c.config, OpCreate)
+	return &MediaTaskCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of MediaTask entities.
+func (c *MediaTaskClient) CreateBulk(builders ...*MediaTaskCreate) *MediaTaskCreateBulk {
+	return &MediaTaskCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *MediaTaskClient) MapCreateBulk(slice any, setFunc func(*MediaTaskCreate, int)) *MediaTaskCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &MediaTaskCreateBulk{err: fmt.Errorf("calling to MediaTaskClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*MediaTaskCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &MediaTaskCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for MediaTask.
+func (c *MediaTaskClient) Update() *MediaTaskUpdate {
+	mutation := newMediaTaskMutation(c.config, OpUpdate)
+	return &MediaTaskUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *MediaTaskClient) UpdateOne(_m *MediaTask) *MediaTaskUpdateOne {
+	mutation := newMediaTaskMutation(c.config, OpUpdateOne, withMediaTask(_m))
+	return &MediaTaskUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *MediaTaskClient) UpdateOneID(id int64) *MediaTaskUpdateOne {
+	mutation := newMediaTaskMutation(c.config, OpUpdateOne, withMediaTaskID(id))
+	return &MediaTaskUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for MediaTask.
+func (c *MediaTaskClient) Delete() *MediaTaskDelete {
+	mutation := newMediaTaskMutation(c.config, OpDelete)
+	return &MediaTaskDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *MediaTaskClient) DeleteOne(_m *MediaTask) *MediaTaskDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *MediaTaskClient) DeleteOneID(id int64) *MediaTaskDeleteOne {
+	builder := c.Delete().Where(mediatask.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &MediaTaskDeleteOne{builder}
+}
+
+// Query returns a query builder for MediaTask.
+func (c *MediaTaskClient) Query() *MediaTaskQuery {
+	return &MediaTaskQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeMediaTask},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a MediaTask entity by its id.
+func (c *MediaTaskClient) Get(ctx context.Context, id int64) (*MediaTask, error) {
+	return c.Query().Where(mediatask.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *MediaTaskClient) GetX(ctx context.Context, id int64) *MediaTask {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *MediaTaskClient) Hooks() []Hook {
+	return c.hooks.MediaTask
+}
+
+// Interceptors returns the client interceptors.
+func (c *MediaTaskClient) Interceptors() []Interceptor {
+	return c.inters.MediaTask
+}
+
+func (c *MediaTaskClient) mutate(ctx context.Context, m *MediaTaskMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&MediaTaskCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&MediaTaskUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&MediaTaskUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&MediaTaskDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown MediaTask mutation op: %q", m.Op())
 	}
 }
 
@@ -7232,7 +7657,8 @@ type (
 		APIKey, Account, AccountGroup, Announcement, AnnouncementRead, ChannelMonitor,
 		ChannelMonitorDailyRollup, ChannelMonitorHistory,
 		ChannelMonitorRequestTemplate, ErrorPassthroughRule, GeneratedImage,
-		GiftBalanceRecord, Group, IdempotencyRecord, PaymentAuditLog, PaymentOrder,
+		GiftBalanceRecord, Group, IdempotencyRecord, MediaArtifact,
+		MediaModelDefinition, MediaTask, PaymentAuditLog, PaymentOrder,
 		PaymentProviderInstance, PromoCode, PromoCodeUsage, Promotion,
 		PromotionPlanRule, PromotionUsage, Proxy, RedeemCode, Referral,
 		SalesCommissionMonthlySnapshot, SalesCommissionRecord,
@@ -7246,7 +7672,8 @@ type (
 		APIKey, Account, AccountGroup, Announcement, AnnouncementRead, ChannelMonitor,
 		ChannelMonitorDailyRollup, ChannelMonitorHistory,
 		ChannelMonitorRequestTemplate, ErrorPassthroughRule, GeneratedImage,
-		GiftBalanceRecord, Group, IdempotencyRecord, PaymentAuditLog, PaymentOrder,
+		GiftBalanceRecord, Group, IdempotencyRecord, MediaArtifact,
+		MediaModelDefinition, MediaTask, PaymentAuditLog, PaymentOrder,
 		PaymentProviderInstance, PromoCode, PromoCodeUsage, Promotion,
 		PromotionPlanRule, PromotionUsage, Proxy, RedeemCode, Referral,
 		SalesCommissionMonthlySnapshot, SalesCommissionRecord,

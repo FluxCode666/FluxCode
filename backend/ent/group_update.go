@@ -398,6 +398,34 @@ func (_u *GroupUpdate) SetNillableAllowImageGeneration(v *bool) *GroupUpdate {
 	return _u
 }
 
+// SetAllowVideoGeneration sets the "allow_video_generation" field.
+func (_u *GroupUpdate) SetAllowVideoGeneration(v bool) *GroupUpdate {
+	_u.mutation.SetAllowVideoGeneration(v)
+	return _u
+}
+
+// SetNillableAllowVideoGeneration sets the "allow_video_generation" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableAllowVideoGeneration(v *bool) *GroupUpdate {
+	if v != nil {
+		_u.SetAllowVideoGeneration(*v)
+	}
+	return _u
+}
+
+// SetMediaCrossPlatformEnabled sets the "media_cross_platform_enabled" field.
+func (_u *GroupUpdate) SetMediaCrossPlatformEnabled(v bool) *GroupUpdate {
+	_u.mutation.SetMediaCrossPlatformEnabled(v)
+	return _u
+}
+
+// SetNillableMediaCrossPlatformEnabled sets the "media_cross_platform_enabled" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableMediaCrossPlatformEnabled(v *bool) *GroupUpdate {
+	if v != nil {
+		_u.SetMediaCrossPlatformEnabled(*v)
+	}
+	return _u
+}
+
 // SetClaudeCodeOnly sets the "claude_code_only" field.
 func (_u *GroupUpdate) SetClaudeCodeOnly(v bool) *GroupUpdate {
 	_u.mutation.SetClaudeCodeOnly(v)
@@ -1037,6 +1065,12 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.AllowImageGeneration(); ok {
 		_spec.SetField(group.FieldAllowImageGeneration, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.AllowVideoGeneration(); ok {
+		_spec.SetField(group.FieldAllowVideoGeneration, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.MediaCrossPlatformEnabled(); ok {
+		_spec.SetField(group.FieldMediaCrossPlatformEnabled, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.ClaudeCodeOnly(); ok {
 		_spec.SetField(group.FieldClaudeCodeOnly, field.TypeBool, value)
@@ -1779,6 +1813,34 @@ func (_u *GroupUpdateOne) SetNillableAllowImageGeneration(v *bool) *GroupUpdateO
 	return _u
 }
 
+// SetAllowVideoGeneration sets the "allow_video_generation" field.
+func (_u *GroupUpdateOne) SetAllowVideoGeneration(v bool) *GroupUpdateOne {
+	_u.mutation.SetAllowVideoGeneration(v)
+	return _u
+}
+
+// SetNillableAllowVideoGeneration sets the "allow_video_generation" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableAllowVideoGeneration(v *bool) *GroupUpdateOne {
+	if v != nil {
+		_u.SetAllowVideoGeneration(*v)
+	}
+	return _u
+}
+
+// SetMediaCrossPlatformEnabled sets the "media_cross_platform_enabled" field.
+func (_u *GroupUpdateOne) SetMediaCrossPlatformEnabled(v bool) *GroupUpdateOne {
+	_u.mutation.SetMediaCrossPlatformEnabled(v)
+	return _u
+}
+
+// SetNillableMediaCrossPlatformEnabled sets the "media_cross_platform_enabled" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableMediaCrossPlatformEnabled(v *bool) *GroupUpdateOne {
+	if v != nil {
+		_u.SetMediaCrossPlatformEnabled(*v)
+	}
+	return _u
+}
+
 // SetClaudeCodeOnly sets the "claude_code_only" field.
 func (_u *GroupUpdateOne) SetClaudeCodeOnly(v bool) *GroupUpdateOne {
 	_u.mutation.SetClaudeCodeOnly(v)
@@ -2448,6 +2510,12 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	}
 	if value, ok := _u.mutation.AllowImageGeneration(); ok {
 		_spec.SetField(group.FieldAllowImageGeneration, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.AllowVideoGeneration(); ok {
+		_spec.SetField(group.FieldAllowVideoGeneration, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.MediaCrossPlatformEnabled(); ok {
+		_spec.SetField(group.FieldMediaCrossPlatformEnabled, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.ClaudeCodeOnly(); ok {
 		_spec.SetField(group.FieldClaudeCodeOnly, field.TypeBool, value)

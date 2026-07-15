@@ -668,6 +668,8 @@ var (
 		{Name: "image_price_2k", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "decimal(20,8)"}},
 		{Name: "image_price_4k", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "decimal(20,8)"}},
 		{Name: "allow_image_generation", Type: field.TypeBool, Default: false},
+		{Name: "allow_video_generation", Type: field.TypeBool, Default: false},
+		{Name: "media_cross_platform_enabled", Type: field.TypeBool, Default: false},
 		{Name: "claude_code_only", Type: field.TypeBool, Default: false},
 		{Name: "fallback_group_id", Type: field.TypeInt64, Nullable: true},
 		{Name: "is_fallback_group", Type: field.TypeBool, Default: false},
@@ -712,7 +714,7 @@ var (
 			{
 				Name:    "group_is_fallback_group",
 				Unique:  false,
-				Columns: []*schema.Column{GroupsColumns[23]},
+				Columns: []*schema.Column{GroupsColumns[25]},
 			},
 			{
 				Name:    "group_deleted_at",
@@ -722,7 +724,7 @@ var (
 			{
 				Name:    "group_sort_order",
 				Unique:  false,
-				Columns: []*schema.Column{GroupsColumns[29]},
+				Columns: []*schema.Column{GroupsColumns[31]},
 			},
 		},
 	}
@@ -761,6 +763,151 @@ var (
 				Name:    "idempotencyrecord_status_locked_until",
 				Unique:  false,
 				Columns: []*schema.Column{IdempotencyRecordsColumns[6], IdempotencyRecordsColumns[10]},
+			},
+		},
+	}
+	// MediaArtifactsColumns holds the columns for the "media_artifacts" table.
+	MediaArtifactsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "task_id", Type: field.TypeInt64},
+		{Name: "direction", Type: field.TypeString, Size: 16},
+		{Name: "position", Type: field.TypeInt, Default: 0},
+		{Name: "media_type", Type: field.TypeString, Size: 16},
+		{Name: "content_type", Type: field.TypeString, Size: 128},
+		{Name: "size_bytes", Type: field.TypeInt64, Default: 0},
+		{Name: "checksum_sha256", Type: field.TypeString, Size: 64, Default: ""},
+		{Name: "width", Type: field.TypeInt, Nullable: true},
+		{Name: "height", Type: field.TypeInt, Nullable: true},
+		{Name: "duration_seconds", Type: field.TypeFloat64, Nullable: true},
+		{Name: "resolution", Type: field.TypeString, Size: 32, Default: ""},
+		{Name: "fps", Type: field.TypeFloat64, Nullable: true},
+		{Name: "storage_status", Type: field.TypeString, Size: 24, Default: "pending"},
+		{Name: "object_key", Type: field.TypeString, Nullable: true},
+		{Name: "public_url", Type: field.TypeString, Nullable: true},
+		{Name: "upstream_reference", Type: field.TypeString, Nullable: true, Size: 2147483647},
+		{Name: "expires_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+	}
+	// MediaArtifactsTable holds the schema information for the "media_artifacts" table.
+	MediaArtifactsTable = &schema.Table{
+		Name:       "media_artifacts",
+		Columns:    MediaArtifactsColumns,
+		PrimaryKey: []*schema.Column{MediaArtifactsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "mediaartifact_task_id_direction_position",
+				Unique:  true,
+				Columns: []*schema.Column{MediaArtifactsColumns[3], MediaArtifactsColumns[4], MediaArtifactsColumns[5]},
+			},
+		},
+	}
+	// MediaModelDefinitionsColumns holds the columns for the "media_model_definitions" table.
+	MediaModelDefinitionsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "model_id", Type: field.TypeString, Unique: true, Size: 128},
+		{Name: "media_type", Type: field.TypeString, Size: 16},
+		{Name: "operations", Type: field.TypeJSON},
+		{Name: "constraints", Type: field.TypeJSON},
+		{Name: "billing_unit", Type: field.TypeString, Size: 32},
+		{Name: "enabled", Type: field.TypeBool, Default: true},
+	}
+	// MediaModelDefinitionsTable holds the schema information for the "media_model_definitions" table.
+	MediaModelDefinitionsTable = &schema.Table{
+		Name:       "media_model_definitions",
+		Columns:    MediaModelDefinitionsColumns,
+		PrimaryKey: []*schema.Column{MediaModelDefinitionsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "mediamodeldefinition_enabled_media_type",
+				Unique:  false,
+				Columns: []*schema.Column{MediaModelDefinitionsColumns[8], MediaModelDefinitionsColumns[4]},
+			},
+		},
+	}
+	// MediaTasksColumns holds the columns for the "media_tasks" table.
+	MediaTasksColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "public_id", Type: field.TypeString, Unique: true, Size: 64},
+		{Name: "user_id", Type: field.TypeInt64},
+		{Name: "api_key_id", Type: field.TypeInt64},
+		{Name: "group_id", Type: field.TypeInt64},
+		{Name: "channel_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "account_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "media_type", Type: field.TypeString, Size: 16},
+		{Name: "operation", Type: field.TypeString, Size: 40},
+		{Name: "requested_model", Type: field.TypeString, Size: 128},
+		{Name: "upstream_model", Type: field.TypeString, Size: 128, Default: ""},
+		{Name: "adapter", Type: field.TypeString, Size: 64, Default: ""},
+		{Name: "native_async_mode", Type: field.TypeString, Size: 16, Default: "unsupported"},
+		{Name: "client_async", Type: field.TypeBool, Default: false},
+		{Name: "sync_fallback", Type: field.TypeBool, Default: false},
+		{Name: "status", Type: field.TypeString, Size: 20, Default: "queued"},
+		{Name: "stage", Type: field.TypeString, Size: 20, Default: "queued"},
+		{Name: "progress", Type: field.TypeInt, Default: 0},
+		{Name: "request_spec", Type: field.TypeJSON},
+		{Name: "candidate_snapshot", Type: field.TypeJSON},
+		{Name: "request_fingerprint", Type: field.TypeString, Size: 64},
+		{Name: "idempotency_key", Type: field.TypeString, Size: 255, Default: ""},
+		{Name: "upstream_task_id", Type: field.TypeString, Nullable: true},
+		{Name: "poll_metadata", Type: field.TypeJSON, Nullable: true},
+		{Name: "billing_snapshot", Type: field.TypeJSON, Nullable: true},
+		{Name: "settlement_plan", Type: field.TypeJSON, Nullable: true},
+		{Name: "billing_status", Type: field.TypeString, Size: 24, Default: "pending"},
+		{Name: "precharged_amount", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "numeric(20,8)"}},
+		{Name: "final_amount", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "numeric(20,8)"}},
+		{Name: "refunded_amount", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "numeric(20,8)"}},
+		{Name: "retry_count", Type: field.TypeInt, Default: 0},
+		{Name: "error_code", Type: field.TypeString, Size: 64, Default: ""},
+		{Name: "error_message", Type: field.TypeString, Default: ""},
+		{Name: "worker_id", Type: field.TypeString, Size: 128, Default: ""},
+		{Name: "lease_until", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "version", Type: field.TypeInt64, Default: 1},
+		{Name: "submitted_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "started_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "finished_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "sync_fallback_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+	}
+	// MediaTasksTable holds the schema information for the "media_tasks" table.
+	MediaTasksTable = &schema.Table{
+		Name:       "media_tasks",
+		Columns:    MediaTasksColumns,
+		PrimaryKey: []*schema.Column{MediaTasksColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "mediatask_user_id_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{MediaTasksColumns[4], MediaTasksColumns[1]},
+				Annotation: &entsql.IndexAnnotation{
+					DescColumns: map[string]bool{
+						MediaTasksColumns[1].Name: true,
+					},
+				},
+			},
+			{
+				Name:    "mediatask_status_lease_until",
+				Unique:  false,
+				Columns: []*schema.Column{MediaTasksColumns[17], MediaTasksColumns[36]},
+			},
+			{
+				Name:    "mediatask_account_id",
+				Unique:  false,
+				Columns: []*schema.Column{MediaTasksColumns[8]},
+				Annotation: &entsql.IndexAnnotation{
+					Where: "account_id IS NOT NULL",
+				},
+			},
+			{
+				Name:    "mediatask_user_id_api_key_id_idempotency_key",
+				Unique:  true,
+				Columns: []*schema.Column{MediaTasksColumns[4], MediaTasksColumns[5], MediaTasksColumns[23]},
+				Annotation: &entsql.IndexAnnotation{
+					Where: "idempotency_key <> ''",
+				},
 			},
 		},
 	}
@@ -2016,6 +2163,9 @@ var (
 		GiftBalanceRecordsTable,
 		GroupsTable,
 		IdempotencyRecordsTable,
+		MediaArtifactsTable,
+		MediaModelDefinitionsTable,
+		MediaTasksTable,
 		PaymentAuditLogsTable,
 		PaymentOrdersTable,
 		PaymentProviderInstancesTable,

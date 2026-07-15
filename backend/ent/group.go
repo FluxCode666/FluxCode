@@ -59,6 +59,10 @@ type Group struct {
 	ImagePrice4k *float64 `json:"image_price_4k,omitempty"`
 	// 是否允许该分组使用图片生成能力
 	AllowImageGeneration bool `json:"allow_image_generation,omitempty"`
+	// AllowVideoGeneration holds the value of the "allow_video_generation" field.
+	AllowVideoGeneration bool `json:"allow_video_generation,omitempty"`
+	// MediaCrossPlatformEnabled holds the value of the "media_cross_platform_enabled" field.
+	MediaCrossPlatformEnabled bool `json:"media_cross_platform_enabled,omitempty"`
 	// 是否仅允许 Claude Code 客户端
 	ClaudeCodeOnly bool `json:"claude_code_only,omitempty"`
 	// 非 Claude Code 请求降级使用的分组 ID
@@ -195,7 +199,7 @@ func (*Group) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case group.FieldModelRouting, group.FieldSupportedModelScopes, group.FieldMessagesDispatchModelConfig:
 			values[i] = new([]byte)
-		case group.FieldIsExclusive, group.FieldAllowImageGeneration, group.FieldClaudeCodeOnly, group.FieldIsFallbackGroup, group.FieldModelRoutingEnabled, group.FieldMcpXMLInject, group.FieldAllowMessagesDispatch, group.FieldRequireOauthOnly, group.FieldRequirePrivacySet:
+		case group.FieldIsExclusive, group.FieldAllowImageGeneration, group.FieldAllowVideoGeneration, group.FieldMediaCrossPlatformEnabled, group.FieldClaudeCodeOnly, group.FieldIsFallbackGroup, group.FieldModelRoutingEnabled, group.FieldMcpXMLInject, group.FieldAllowMessagesDispatch, group.FieldRequireOauthOnly, group.FieldRequirePrivacySet:
 			values[i] = new(sql.NullBool)
 		case group.FieldRateMultiplier, group.FieldDailyLimitUsd, group.FieldWeeklyLimitUsd, group.FieldMonthlyLimitUsd, group.FieldImagePrice1k, group.FieldImagePrice2k, group.FieldImagePrice4k:
 			values[i] = new(sql.NullFloat64)
@@ -353,6 +357,18 @@ func (_m *Group) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field allow_image_generation", values[i])
 			} else if value.Valid {
 				_m.AllowImageGeneration = value.Bool
+			}
+		case group.FieldAllowVideoGeneration:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field allow_video_generation", values[i])
+			} else if value.Valid {
+				_m.AllowVideoGeneration = value.Bool
+			}
+		case group.FieldMediaCrossPlatformEnabled:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field media_cross_platform_enabled", values[i])
+			} else if value.Valid {
+				_m.MediaCrossPlatformEnabled = value.Bool
 			}
 		case group.FieldClaudeCodeOnly:
 			if value, ok := values[i].(*sql.NullBool); !ok {
@@ -597,6 +613,12 @@ func (_m *Group) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("allow_image_generation=")
 	builder.WriteString(fmt.Sprintf("%v", _m.AllowImageGeneration))
+	builder.WriteString(", ")
+	builder.WriteString("allow_video_generation=")
+	builder.WriteString(fmt.Sprintf("%v", _m.AllowVideoGeneration))
+	builder.WriteString(", ")
+	builder.WriteString("media_cross_platform_enabled=")
+	builder.WriteString(fmt.Sprintf("%v", _m.MediaCrossPlatformEnabled))
 	builder.WriteString(", ")
 	builder.WriteString("claude_code_only=")
 	builder.WriteString(fmt.Sprintf("%v", _m.ClaudeCodeOnly))

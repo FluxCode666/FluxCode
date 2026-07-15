@@ -97,6 +97,10 @@ func (Group) Fields() []ent.Field {
 		field.Bool("allow_image_generation").
 			Default(false).
 			Comment("是否允许该分组使用图片生成能力"),
+		field.Bool("allow_video_generation").
+			Default(false),
+		field.Bool("media_cross_platform_enabled").
+			Default(false),
 
 		// Claude Code 客户端限制 (added by migration 029)
 		field.Bool("claude_code_only").

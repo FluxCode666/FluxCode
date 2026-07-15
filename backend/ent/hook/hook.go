@@ -177,6 +177,42 @@ func (f IdempotencyRecordFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.IdempotencyRecordMutation", m)
 }
 
+// The MediaArtifactFunc type is an adapter to allow the use of ordinary
+// function as MediaArtifact mutator.
+type MediaArtifactFunc func(context.Context, *ent.MediaArtifactMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f MediaArtifactFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.MediaArtifactMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.MediaArtifactMutation", m)
+}
+
+// The MediaModelDefinitionFunc type is an adapter to allow the use of ordinary
+// function as MediaModelDefinition mutator.
+type MediaModelDefinitionFunc func(context.Context, *ent.MediaModelDefinitionMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f MediaModelDefinitionFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.MediaModelDefinitionMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.MediaModelDefinitionMutation", m)
+}
+
+// The MediaTaskFunc type is an adapter to allow the use of ordinary
+// function as MediaTask mutator.
+type MediaTaskFunc func(context.Context, *ent.MediaTaskMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f MediaTaskFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.MediaTaskMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.MediaTaskMutation", m)
+}
+
 // The PaymentAuditLogFunc type is an adapter to allow the use of ordinary
 // function as PaymentAuditLog mutator.
 type PaymentAuditLogFunc func(context.Context, *ent.PaymentAuditLogMutation) (ent.Value, error)

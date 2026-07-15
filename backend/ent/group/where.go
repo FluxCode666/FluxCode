@@ -155,6 +155,16 @@ func AllowImageGeneration(v bool) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldAllowImageGeneration, v))
 }
 
+// AllowVideoGeneration applies equality check predicate on the "allow_video_generation" field. It's identical to AllowVideoGenerationEQ.
+func AllowVideoGeneration(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldAllowVideoGeneration, v))
+}
+
+// MediaCrossPlatformEnabled applies equality check predicate on the "media_cross_platform_enabled" field. It's identical to MediaCrossPlatformEnabledEQ.
+func MediaCrossPlatformEnabled(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldMediaCrossPlatformEnabled, v))
+}
+
 // ClaudeCodeOnly applies equality check predicate on the "claude_code_only" field. It's identical to ClaudeCodeOnlyEQ.
 func ClaudeCodeOnly(v bool) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldClaudeCodeOnly, v))
@@ -1203,6 +1213,26 @@ func AllowImageGenerationEQ(v bool) predicate.Group {
 // AllowImageGenerationNEQ applies the NEQ predicate on the "allow_image_generation" field.
 func AllowImageGenerationNEQ(v bool) predicate.Group {
 	return predicate.Group(sql.FieldNEQ(FieldAllowImageGeneration, v))
+}
+
+// AllowVideoGenerationEQ applies the EQ predicate on the "allow_video_generation" field.
+func AllowVideoGenerationEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldAllowVideoGeneration, v))
+}
+
+// AllowVideoGenerationNEQ applies the NEQ predicate on the "allow_video_generation" field.
+func AllowVideoGenerationNEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldAllowVideoGeneration, v))
+}
+
+// MediaCrossPlatformEnabledEQ applies the EQ predicate on the "media_cross_platform_enabled" field.
+func MediaCrossPlatformEnabledEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldMediaCrossPlatformEnabled, v))
+}
+
+// MediaCrossPlatformEnabledNEQ applies the NEQ predicate on the "media_cross_platform_enabled" field.
+func MediaCrossPlatformEnabledNEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldMediaCrossPlatformEnabled, v))
 }
 
 // ClaudeCodeOnlyEQ applies the EQ predicate on the "claude_code_only" field.

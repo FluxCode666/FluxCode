@@ -56,6 +56,10 @@ const (
 	FieldImagePrice4k = "image_price_4k"
 	// FieldAllowImageGeneration holds the string denoting the allow_image_generation field in the database.
 	FieldAllowImageGeneration = "allow_image_generation"
+	// FieldAllowVideoGeneration holds the string denoting the allow_video_generation field in the database.
+	FieldAllowVideoGeneration = "allow_video_generation"
+	// FieldMediaCrossPlatformEnabled holds the string denoting the media_cross_platform_enabled field in the database.
+	FieldMediaCrossPlatformEnabled = "media_cross_platform_enabled"
 	// FieldClaudeCodeOnly holds the string denoting the claude_code_only field in the database.
 	FieldClaudeCodeOnly = "claude_code_only"
 	// FieldFallbackGroupID holds the string denoting the fallback_group_id field in the database.
@@ -179,6 +183,8 @@ var Columns = []string{
 	FieldImagePrice2k,
 	FieldImagePrice4k,
 	FieldAllowImageGeneration,
+	FieldAllowVideoGeneration,
+	FieldMediaCrossPlatformEnabled,
 	FieldClaudeCodeOnly,
 	FieldFallbackGroupID,
 	FieldIsFallbackGroup,
@@ -256,6 +262,10 @@ var (
 	DefaultDefaultValidityDays int
 	// DefaultAllowImageGeneration holds the default value on creation for the "allow_image_generation" field.
 	DefaultAllowImageGeneration bool
+	// DefaultAllowVideoGeneration holds the default value on creation for the "allow_video_generation" field.
+	DefaultAllowVideoGeneration bool
+	// DefaultMediaCrossPlatformEnabled holds the default value on creation for the "media_cross_platform_enabled" field.
+	DefaultMediaCrossPlatformEnabled bool
 	// DefaultClaudeCodeOnly holds the default value on creation for the "claude_code_only" field.
 	DefaultClaudeCodeOnly bool
 	// DefaultIsFallbackGroup holds the default value on creation for the "is_fallback_group" field.
@@ -388,6 +398,16 @@ func ByImagePrice4k(opts ...sql.OrderTermOption) OrderOption {
 // ByAllowImageGeneration orders the results by the allow_image_generation field.
 func ByAllowImageGeneration(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldAllowImageGeneration, opts...).ToFunc()
+}
+
+// ByAllowVideoGeneration orders the results by the allow_video_generation field.
+func ByAllowVideoGeneration(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldAllowVideoGeneration, opts...).ToFunc()
+}
+
+// ByMediaCrossPlatformEnabled orders the results by the media_cross_platform_enabled field.
+func ByMediaCrossPlatformEnabled(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldMediaCrossPlatformEnabled, opts...).ToFunc()
 }
 
 // ByClaudeCodeOnly orders the results by the claude_code_only field.

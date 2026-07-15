@@ -48,6 +48,15 @@ type Group func(*sql.Selector)
 // IdempotencyRecord is the predicate function for idempotencyrecord builders.
 type IdempotencyRecord func(*sql.Selector)
 
+// MediaArtifact is the predicate function for mediaartifact builders.
+type MediaArtifact func(*sql.Selector)
+
+// MediaModelDefinition is the predicate function for mediamodeldefinition builders.
+type MediaModelDefinition func(*sql.Selector)
+
+// MediaTask is the predicate function for mediatask builders.
+type MediaTask func(*sql.Selector)
+
 // PaymentAuditLog is the predicate function for paymentauditlog builders.
 type PaymentAuditLog func(*sql.Selector)
 
