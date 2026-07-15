@@ -77,15 +77,15 @@ func TestMediaTaskStreamAckTracksTheMessagePriority(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, int64(1), asyncPending)
 
+	require.NoError(t, stream.Ack(ctx, asyncMessage))
 	wrongStreamCopy := *syncMessage
 	wrongStreamCopy.Priority = service.MediaQueuePriorityAsync
-	require.NoError(t, stream.Ack(ctx, &wrongStreamCopy))
+	require.ErrorIs(t, stream.Ack(ctx, &wrongStreamCopy), service.ErrMediaQueueMessageNotPending)
 	syncPending, err = stream.PendingCount(ctx, service.MediaQueuePrioritySync)
 	require.NoError(t, err)
 	require.Equal(t, int64(1), syncPending, "an ACK must never be sent to the other priority stream")
 
 	require.NoError(t, stream.Ack(ctx, syncMessage))
-	require.NoError(t, stream.Ack(ctx, asyncMessage))
 	syncPending, err = stream.PendingCount(ctx, service.MediaQueuePrioritySync)
 	require.NoError(t, err)
 	require.Zero(t, syncPending)
@@ -245,7 +245,7 @@ func TestMediaTaskStreamSerializesConcurrentReceive(t *testing.T) {
 	require.Len(t, seen, 2)
 }
 
-func TestMediaTaskStreamDoesNotRedeliverItsOwnInflightMessage(t *testing.T) {
+func TestMediaTaskStreamRedeliversItsOwnUnackedMessageAfterLease(t *testing.T) {
 	ctx := context.Background()
 	stream := newTestMediaTaskStream(t, "worker-inflight", 20*time.Millisecond)
 	require.NoError(t, stream.EnsureGroups(ctx))
@@ -254,15 +254,56 @@ func TestMediaTaskStreamDoesNotRedeliverItsOwnInflightMessage(t *testing.T) {
 	first, err := stream.Receive(ctx, time.Second)
 	require.NoError(t, err)
 	time.Sleep(30 * time.Millisecond)
-	duplicate, err := stream.Receive(ctx, 60*time.Millisecond)
-	require.Nil(t, duplicate)
-	require.ErrorIs(t, err, service.ErrMediaQueueReceiveTimeout)
-	require.NoError(t, stream.Ack(ctx, first))
+	redelivered, err := stream.Receive(ctx, time.Second)
+	require.NoError(t, err)
+	require.Equal(t, first, redelivered)
+	require.NoError(t, stream.Ack(ctx, redelivered))
+}
+
+func TestMediaTaskStreamAdvancesAutoClaimCursorPastFreshPendingWindow(t *testing.T) {
+	ctx := context.Background()
+	resetMediaTaskStreamKeys(t)
+	lease := 500 * time.Millisecond
+	seed := NewMediaTaskStream(integrationRedis, "cursor-seed", lease)
+	require.NoError(t, seed.EnsureGroups(ctx))
+	for id := int64(1); id <= mediaTaskReadBatchSize*10+1; id++ {
+		require.NoError(t, seed.Enqueue(ctx, id, service.MediaQueuePriorityAsync))
+	}
+	streams, err := integrationRedis.XReadGroup(ctx, &redis.XReadGroupArgs{
+		Group:    mediaTaskConsumerGroup,
+		Consumer: "cursor-seed",
+		Streams:  []string{mediaTaskAsyncStreamKey, ">"},
+		Count:    mediaTaskReadBatchSize*10 + 1,
+		Block:    -1,
+	}).Result()
+	require.NoError(t, err)
+	require.Len(t, streams, 1)
+	require.Len(t, streams[0].Messages, int(mediaTaskReadBatchSize*10+1))
+	ids := make([]string, 0, len(streams[0].Messages)-1)
+	for _, message := range streams[0].Messages[:len(streams[0].Messages)-1] {
+		ids = append(ids, message.ID)
+	}
+	time.Sleep(lease + 50*time.Millisecond)
+	_, err = integrationRedis.XClaim(ctx, &redis.XClaimArgs{
+		Stream:   mediaTaskAsyncStreamKey,
+		Group:    mediaTaskConsumerGroup,
+		Consumer: "cursor-fresh",
+		MinIdle:  0,
+		Messages: ids,
+	}).Result()
+	require.NoError(t, err)
+
+	worker := NewMediaTaskStream(integrationRedis, "cursor-worker", lease)
+	message, err := worker.Receive(ctx, 2*time.Second)
+	require.NoError(t, err)
+	require.Equal(t, mediaTaskReadBatchSize*10+1, message.TaskID)
+	require.NoError(t, worker.Ack(ctx, message))
 }
 
 func TestMediaTaskStreamRejectsMalformedPayloadWithoutAcknowledging(t *testing.T) {
 	ctx := context.Background()
-	stream := newTestMediaTaskStream(t, "worker-malformed", time.Minute)
+	lease := 20 * time.Millisecond
+	stream := newTestMediaTaskStream(t, "worker-malformed", lease)
 	require.NoError(t, stream.EnsureGroups(ctx))
 	require.NoError(t, integrationRedis.XAdd(ctx, &redis.XAddArgs{
 		Stream: mediaTaskAsyncStreamKey,
@@ -273,6 +314,13 @@ func TestMediaTaskStreamRejectsMalformedPayloadWithoutAcknowledging(t *testing.T
 	require.Nil(t, message)
 	require.ErrorIs(t, err, service.ErrInvalidMediaQueuePayload)
 	pending, pendingErr := stream.PendingCount(ctx, service.MediaQueuePriorityAsync)
+	require.NoError(t, pendingErr)
+	require.Equal(t, int64(1), pending)
+	time.Sleep(lease + 10*time.Millisecond)
+	message, err = stream.Receive(ctx, time.Second)
+	require.Nil(t, message)
+	require.ErrorIs(t, err, service.ErrInvalidMediaQueuePayload)
+	pending, pendingErr = stream.PendingCount(ctx, service.MediaQueuePriorityAsync)
 	require.NoError(t, pendingErr)
 	require.Equal(t, int64(1), pending)
 }
@@ -347,6 +395,20 @@ func TestMediaTaskStreamRecoversMissingGroup(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, integrationRedis.Del(ctx, mediaTaskAsyncStreamKey).Err())
 	require.NoError(t, stream.Ack(ctx, message), "ACK after NOGROUP is idempotent because the delivery state no longer exists")
+	require.NoError(t, stream.EnsureGroups(ctx))
+}
+
+func TestMediaTaskStreamAckReportsDestroyedGroupDeliveryState(t *testing.T) {
+	ctx := context.Background()
+	stream := newTestMediaTaskStream(t, "worker-ack-destroyed", time.Minute)
+	require.NoError(t, stream.EnsureGroups(ctx))
+	require.NoError(t, stream.Enqueue(ctx, 950, service.MediaQueuePriorityAsync))
+	message, err := stream.Receive(ctx, time.Second)
+	require.NoError(t, err)
+	destroyed, err := integrationRedis.XGroupDestroy(ctx, mediaTaskAsyncStreamKey, mediaTaskConsumerGroup).Result()
+	require.NoError(t, err)
+	require.Equal(t, int64(1), destroyed)
+	require.ErrorIs(t, stream.Ack(ctx, message), service.ErrMediaQueueDeliveryStateLost)
 	require.NoError(t, stream.EnsureGroups(ctx))
 }
 

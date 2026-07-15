@@ -19,6 +19,10 @@ var (
 	ErrMediaQueueReceiveTimeout = errors.New("media queue receive timeout")
 	// ErrInvalidMediaTerminalPayload 表示终态通知的任务 ID 或状态无效。
 	ErrInvalidMediaTerminalPayload = errors.New("invalid media terminal payload")
+	// ErrMediaQueueMessageNotPending 表示 ACK 的消息不在指定优先级 Stream 的 PEL 中。
+	ErrMediaQueueMessageNotPending = errors.New("media queue message is not pending")
+	// ErrMediaQueueDeliveryStateLost 表示 Stream 仍存在但 consumer group/PEL 已丢失。
+	ErrMediaQueueDeliveryStateLost = errors.New("media queue delivery state is lost")
 )
 
 // MediaQueuePriority 区分同步等待请求与显式异步请求的调度优先级。
@@ -46,6 +50,8 @@ type MediaQueueMessage struct {
 // SubscribeTerminal 的消息只是低延迟 wake-up hint，并非事实源。调用方必须先订阅，
 // 再读取数据库；无论收到终态、订阅关闭或上下文取消，都必须重新读取数据库确认状态。
 // Receive 在 block 内没有消息时返回 ErrMediaQueueReceiveTimeout；上下文取消错误保持原样。
+// Ack 对非 pending 消息返回 ErrMediaQueueMessageNotPending；Stream 存在但 group/PEL 丢失时
+// 返回 ErrMediaQueueDeliveryStateLost，调用方不得将这两种结果视作确认成功。
 type MediaTaskQueue interface {
 	EnsureGroups(ctx context.Context) error
 	Enqueue(ctx context.Context, taskID int64, priority MediaQueuePriority) error

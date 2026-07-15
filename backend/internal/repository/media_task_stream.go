@@ -4,8 +4,10 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"log"
+	"net"
 	"os"
 	"strconv"
 	"strings"
@@ -24,7 +26,8 @@ const (
 	mediaTaskStreamMaxLen   = int64(100000)
 	mediaTaskReadBatchSize  = int64(32)
 	mediaTaskSyncBurst      = 8
-	mediaTaskMaxBlock       = 250 * time.Millisecond
+	mediaTaskMaxBlock       = 50 * time.Millisecond
+	mediaTaskRedisIOTimeout = 100 * time.Millisecond
 	defaultMediaTaskLease   = time.Minute
 )
 
@@ -44,7 +47,7 @@ type MediaTaskStream struct {
 	syncBacklog  []redis.XMessage
 	asyncBacklog []redis.XMessage
 	bufferedIDs  map[string]struct{}
-	inflightIDs  map[string]struct{}
+	claimCursor  map[service.MediaQueuePriority]string
 	syncStreak   int
 }
 
@@ -62,7 +65,10 @@ func NewMediaTaskStream(rdb *redis.Client, consumerName string, lease time.Durat
 		lease:        lease,
 		receiveGate:  make(chan struct{}, 1),
 		bufferedIDs:  make(map[string]struct{}),
-		inflightIDs:  make(map[string]struct{}),
+		claimCursor: map[service.MediaQueuePriority]string{
+			service.MediaQueuePrioritySync:  "0-0",
+			service.MediaQueuePriorityAsync: "0-0",
+		},
 	}
 }
 
@@ -112,19 +118,26 @@ func (s *MediaTaskStream) Enqueue(ctx context.Context, taskID int64, priority se
 
 // Receive 恢复超过租约的 pending 消息后再读取新消息。
 // block 小于一毫秒无有效 Redis BLOCK 语义，因此作为无效超时拒绝。
-func (s *MediaTaskStream) Receive(ctx context.Context, block time.Duration) (*service.MediaQueueMessage, error) {
+func (s *MediaTaskStream) Receive(parent context.Context, block time.Duration) (message *service.MediaQueueMessage, err error) {
 	if block < time.Millisecond {
 		return nil, fmt.Errorf("%w: block must be at least one millisecond", service.ErrInvalidMediaQueueTimeout)
 	}
 
-	deadline := time.Now().Add(block)
-	if err := s.acquireReceive(ctx, block); err != nil {
+	receiveCtx, cancel := context.WithTimeout(parent, block)
+	defer cancel()
+	defer func() {
+		if err != nil {
+			err = normalizeMediaReceiveError(parent, receiveCtx, err)
+		}
+	}()
+
+	if err := s.acquireReceive(receiveCtx); err != nil {
 		return nil, err
 	}
 	defer s.releaseReceive()
 
 	for {
-		if err := ctx.Err(); err != nil {
+		if err := receiveCtx.Err(); err != nil {
 			return nil, err
 		}
 
@@ -139,13 +152,13 @@ func (s *MediaTaskStream) Receive(ctx context.Context, block time.Duration) (*se
 		case hasSync && asyncDue:
 			// 已连续返回八条同步任务。先恢复异步 pending，再探测异步新任务；
 			// 只有两者都没有时才继续返回同步 backlog。
-			if err := s.recoverPending(ctx); err != nil {
+			if err := s.recoverPriority(receiveCtx, service.MediaQueuePriorityAsync); err != nil {
 				return nil, err
 			}
 			if _, asyncAvailable, _ := s.backlogState(); asyncAvailable {
 				return s.popBuffered(service.MediaQueuePriorityAsync)
 			}
-			if _, err := s.readNewPriority(ctx, service.MediaQueuePriorityAsync); err != nil {
+			if _, err := s.readNewPriority(receiveCtx, service.MediaQueuePriorityAsync); err != nil {
 				return nil, err
 			}
 			if _, asyncAvailable, _ := s.backlogState(); asyncAvailable {
@@ -155,7 +168,7 @@ func (s *MediaTaskStream) Receive(ctx context.Context, block time.Duration) (*se
 		}
 
 		// backlog 为空时，任何新消息读取前都先领取超过租约的 pending 消息。
-		if err := s.recoverPending(ctx); err != nil {
+		if err := s.recoverPending(receiveCtx); err != nil {
 			return nil, err
 		}
 		if hasSync, hasAsync, _ := s.backlogState(); hasSync || hasAsync {
@@ -163,7 +176,7 @@ func (s *MediaTaskStream) Receive(ctx context.Context, block time.Duration) (*se
 		}
 
 		for _, priority := range s.priorityOrder() {
-			found, err := s.readNewPriority(ctx, priority)
+			found, err := s.readNewPriority(receiveCtx, priority)
 			if err != nil {
 				return nil, err
 			}
@@ -175,26 +188,43 @@ func (s *MediaTaskStream) Receive(ctx context.Context, block time.Duration) (*se
 			continue
 		}
 
+		deadline, _ := receiveCtx.Deadline()
 		remaining := time.Until(deadline)
 		if remaining < time.Millisecond {
-			return nil, service.ErrMediaQueueReceiveTimeout
+			return nil, context.DeadlineExceeded
 		}
 		chunk := min(remaining, mediaTaskMaxBlock)
-		found, err := s.readNewBoth(ctx, chunk)
+		started := time.Now()
+		found, err := s.readNewBoth(receiveCtx, chunk)
 		if err != nil {
 			return nil, err
 		}
 		if found {
 			continue
 		}
+		if wait := chunk - time.Since(started); wait > 0 {
+			timer := time.NewTimer(wait)
+			select {
+			case <-timer.C:
+			case <-receiveCtx.Done():
+				if !timer.Stop() {
+					select {
+					case <-timer.C:
+					default:
+					}
+				}
+				return nil, receiveCtx.Err()
+			}
+		}
 		if time.Until(deadline) < time.Millisecond {
-			return nil, service.ErrMediaQueueReceiveTimeout
+			return nil, context.DeadlineExceeded
 		}
 	}
 }
 
 // Ack 确认一条消息。调用方必须在数据库状态推进成功后显式调用。
-// 若 Stream/group 已被清理，PEL 也已不存在；方法重建 group 并按幂等 ACK 成功处理。
+// Stream 不存在时重建 group 并按幂等成功处理；Stream 仍在但 group/PEL 丢失时
+// 返回 ErrMediaQueueDeliveryStateLost，XACK 返回 0 时返回 ErrMediaQueueMessageNotPending。
 func (s *MediaTaskStream) Ack(ctx context.Context, message *service.MediaQueueMessage) error {
 	if message == nil || !isValidMediaStreamID(message.ID) || message.TaskID <= 0 {
 		return fmt.Errorf("%w: ACK requires message ID and positive task ID", service.ErrInvalidMediaQueueMessage)
@@ -203,20 +233,32 @@ func (s *MediaTaskStream) Ack(ctx context.Context, message *service.MediaQueueMe
 	if err != nil {
 		return err
 	}
-	if err := s.rdb.XAck(ctx, stream, mediaTaskConsumerGroup, message.ID).Err(); err != nil {
+	acked, err := s.rdb.XAck(ctx, stream, mediaTaskConsumerGroup, message.ID).Result()
+	if err != nil {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
 		if !isRedisNoGroup(err) {
 			return fmt.Errorf("ack media task: %w", err)
 		}
+		exists, existsErr := s.rdb.Exists(ctx, stream).Result()
+		if existsErr != nil {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			return fmt.Errorf("inspect media task stream after NOGROUP: %w", existsErr)
+		}
 		if ensureErr := s.EnsureGroups(ctx); ensureErr != nil {
 			return ensureErr
 		}
+		if exists > 0 {
+			return fmt.Errorf("%w: consumer group disappeared before ACK", service.ErrMediaQueueDeliveryStateLost)
+		}
+		return nil
 	}
-	s.stateMu.Lock()
-	delete(s.inflightIDs, mediaDeliveryKey(message.Priority, message.ID))
-	s.stateMu.Unlock()
+	if acked == 0 {
+		return fmt.Errorf("%w: message %s is not pending in %s", service.ErrMediaQueueMessageNotPending, message.ID, message.Priority)
+	}
 	return nil
 }
 
@@ -267,28 +309,48 @@ func (s *MediaTaskStream) SubscribeTerminal(ctx context.Context, taskID int64) (
 	}
 
 	channel := terminalChannel(taskID)
-	pubsub := s.rdb.Subscribe(ctx, channel)
-	confirmation, err := pubsub.Receive(ctx)
-	if err != nil {
+	subscriptionCtx, cancel := context.WithCancel(ctx)
+	pubsub := s.rdb.Subscribe(subscriptionCtx, channel)
+	watcherDone := make(chan struct{})
+	stopAfterFunc := context.AfterFunc(subscriptionCtx, func() {
+		defer close(watcherDone)
 		_ = pubsub.Close()
-		if ctx.Err() != nil {
-			return nil, nil, ctx.Err()
+	})
+	var stopWatcherOnce sync.Once
+	stopCloseWatcher := func() {
+		stopWatcherOnce.Do(func() {
+			if stopAfterFunc() {
+				close(watcherDone)
+			}
+		})
+		<-watcherDone
+	}
+	cleanupConfirmation := func() {
+		cancel()
+		stopCloseWatcher()
+		_ = pubsub.Close()
+	}
+	confirmation, err := pubsub.Receive(subscriptionCtx)
+	if err != nil {
+		cleanupConfirmation()
+		if contextErr := originalContextError(ctx, err); contextErr != nil {
+			return nil, nil, contextErr
 		}
 		return nil, nil, fmt.Errorf("confirm media terminal subscription: %w", err)
 	}
 	subscription, ok := confirmation.(*redis.Subscription)
 	if !ok || subscription.Kind != "subscribe" || subscription.Channel != channel {
-		_ = pubsub.Close()
+		cleanupConfirmation()
 		return nil, nil, fmt.Errorf("%w: Redis did not confirm terminal subscription", service.ErrInvalidMediaTerminalPayload)
 	}
 
-	runCtx, cancel := context.WithCancel(ctx)
 	statuses := make(chan service.MediaTaskStatus, 1)
 	stopped := make(chan struct{})
 	go func() {
 		defer close(stopped)
 		defer close(statuses)
 		defer cancel()
+		defer stopCloseWatcher()
 		defer func() { _ = pubsub.Close() }()
 		defer func() {
 			if recovered := recover(); recovered != nil {
@@ -297,7 +359,7 @@ func (s *MediaTaskStream) SubscribeTerminal(ctx context.Context, taskID int64) (
 		}()
 
 		for {
-			message, receiveErr := pubsub.ReceiveMessage(runCtx)
+			message, receiveErr := pubsub.ReceiveMessage(subscriptionCtx)
 			if receiveErr != nil {
 				return
 			}
@@ -307,7 +369,7 @@ func (s *MediaTaskStream) SubscribeTerminal(ctx context.Context, taskID int64) (
 			}
 			select {
 			case statuses <- status:
-			case <-runCtx.Done():
+			case <-subscriptionCtx.Done():
 			}
 			return
 		}
@@ -324,23 +386,12 @@ func (s *MediaTaskStream) SubscribeTerminal(ctx context.Context, taskID int64) (
 	return statuses, unsubscribe, nil
 }
 
-func (s *MediaTaskStream) acquireReceive(ctx context.Context, timeout time.Duration) error {
-	timer := time.NewTimer(timeout)
-	defer func() {
-		if !timer.Stop() {
-			select {
-			case <-timer.C:
-			default:
-			}
-		}
-	}()
+func (s *MediaTaskStream) acquireReceive(ctx context.Context) error {
 	select {
 	case s.receiveGate <- struct{}{}:
 		return nil
 	case <-ctx.Done():
 		return ctx.Err()
-	case <-timer.C:
-		return service.ErrMediaQueueReceiveTimeout
 	}
 }
 
@@ -373,7 +424,6 @@ func (s *MediaTaskStream) popBuffered(priority service.MediaQueuePriority) (*ser
 		return nil, err
 	}
 	s.stateMu.Lock()
-	s.inflightIDs[mediaDeliveryKey(priority, raw.ID)] = struct{}{}
 	if priority == service.MediaQueuePrioritySync {
 		s.syncStreak++
 	} else {
@@ -393,25 +443,39 @@ func (s *MediaTaskStream) priorityOrder() []service.MediaQueuePriority {
 
 func (s *MediaTaskStream) recoverPending(ctx context.Context) error {
 	for _, priority := range s.priorityOrder() {
-		stream, _ := mediaTaskStreamKey(priority)
-		messages, _, err := s.xAutoClaim(ctx, &redis.XAutoClaimArgs{
-			Stream:   stream,
-			Group:    mediaTaskConsumerGroup,
-			Consumer: s.consumerName,
-			MinIdle:  s.lease,
-			Start:    "0-0",
-			Count:    mediaTaskReadBatchSize,
-		})
-		if err != nil {
+		if err := s.recoverPriority(ctx, priority); err != nil {
 			return err
 		}
-		s.bufferMessages(priority, messages)
 	}
 	return nil
 }
 
-func (s *MediaTaskStream) xAutoClaim(ctx context.Context, args *redis.XAutoClaimArgs) ([]redis.XMessage, string, error) {
-	messages, next, err := s.rdb.XAutoClaim(ctx, args).Result()
+func (s *MediaTaskStream) recoverPriority(ctx context.Context, priority service.MediaQueuePriority) error {
+	stream, _ := mediaTaskStreamKey(priority)
+	start := s.autoClaimCursor(priority)
+	messages, next, err := s.xAutoClaim(ctx, priority, &redis.XAutoClaimArgs{
+		Stream:   stream,
+		Group:    mediaTaskConsumerGroup,
+		Consumer: s.consumerName,
+		MinIdle:  s.lease,
+		Start:    start,
+		Count:    mediaTaskReadBatchSize,
+	})
+	if err != nil {
+		return err
+	}
+	s.setAutoClaimCursor(priority, next)
+	s.bufferMessages(priority, messages)
+	return nil
+}
+
+func (s *MediaTaskStream) xAutoClaim(ctx context.Context, priority service.MediaQueuePriority, args *redis.XAutoClaimArgs) ([]redis.XMessage, string, error) {
+	client, commandCtx, cancel, err := s.receiveRedisCommand(ctx)
+	if err != nil {
+		return nil, "", err
+	}
+	messages, next, err := client.XAutoClaim(commandCtx, args).Result()
+	cancel()
 	if err == nil || err == redis.Nil {
 		return messages, next, nil
 	}
@@ -421,10 +485,18 @@ func (s *MediaTaskStream) xAutoClaim(ctx context.Context, args *redis.XAutoClaim
 	if !isRedisNoGroup(err) {
 		return nil, "", fmt.Errorf("recover pending media tasks: %w", err)
 	}
-	if ensureErr := s.EnsureGroups(ctx); ensureErr != nil {
+	s.setAutoClaimCursor(priority, "0-0")
+	if ensureErr := s.ensureGroupsForReceive(ctx); ensureErr != nil {
 		return nil, "", ensureErr
 	}
-	messages, next, err = s.rdb.XAutoClaim(ctx, args).Result()
+	retryArgs := *args
+	retryArgs.Start = "0-0"
+	client, commandCtx, cancel, err = s.receiveRedisCommand(ctx)
+	if err != nil {
+		return nil, "", err
+	}
+	messages, next, err = client.XAutoClaim(commandCtx, &retryArgs).Result()
+	cancel()
 	if err == nil || err == redis.Nil {
 		return messages, next, nil
 	}
@@ -467,7 +539,12 @@ func (s *MediaTaskStream) readNewBoth(ctx context.Context, block time.Duration) 
 }
 
 func (s *MediaTaskStream) xReadGroup(ctx context.Context, args *redis.XReadGroupArgs) ([]redis.XStream, error) {
-	streams, err := s.rdb.XReadGroup(ctx, args).Result()
+	client, commandCtx, cancel, err := s.receiveRedisCommand(ctx)
+	if err != nil {
+		return nil, err
+	}
+	streams, err := client.XReadGroup(commandCtx, args).Result()
+	cancel()
 	if err == nil || err == redis.Nil {
 		return streams, nil
 	}
@@ -477,10 +554,20 @@ func (s *MediaTaskStream) xReadGroup(ctx context.Context, args *redis.XReadGroup
 	if !isRedisNoGroup(err) {
 		return nil, fmt.Errorf("receive media tasks: %w", err)
 	}
-	if ensureErr := s.EnsureGroups(ctx); ensureErr != nil {
+	for _, stream := range args.Streams[:len(args.Streams)/2] {
+		if priority, ok := mediaTaskPriorityForStream(stream); ok {
+			s.setAutoClaimCursor(priority, "0-0")
+		}
+	}
+	if ensureErr := s.ensureGroupsForReceive(ctx); ensureErr != nil {
 		return nil, ensureErr
 	}
-	streams, err = s.rdb.XReadGroup(ctx, args).Result()
+	client, commandCtx, cancel, err = s.receiveRedisCommand(ctx)
+	if err != nil {
+		return nil, err
+	}
+	streams, err = client.XReadGroup(commandCtx, args).Result()
+	cancel()
 	if err == nil || err == redis.Nil {
 		return streams, nil
 	}
@@ -488,6 +575,47 @@ func (s *MediaTaskStream) xReadGroup(ctx context.Context, args *redis.XReadGroup
 		return nil, ctx.Err()
 	}
 	return nil, fmt.Errorf("receive media tasks after group recreation: %w", err)
+}
+
+func (s *MediaTaskStream) ensureGroupsForReceive(ctx context.Context) error {
+	for _, stream := range []string{mediaTaskSyncStreamKey, mediaTaskAsyncStreamKey} {
+		client, commandCtx, cancel, err := s.receiveRedisCommand(ctx)
+		if err != nil {
+			return err
+		}
+		err = client.XGroupCreateMkStream(commandCtx, stream, mediaTaskConsumerGroup, "0-0").Err()
+		cancel()
+		if err == nil || isRedisBusyGroup(err) {
+			continue
+		}
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		return fmt.Errorf("ensure media task group for %s while receiving: %w", stream, err)
+	}
+	return nil
+}
+
+func (s *MediaTaskStream) receiveRedisCommand(ctx context.Context) (*redis.Client, context.Context, context.CancelFunc, error) {
+	deadline, ok := ctx.Deadline()
+	if !ok {
+		return nil, nil, nil, fmt.Errorf("receive media task command requires deadline")
+	}
+	remaining := time.Until(deadline)
+	if remaining <= 0 {
+		if err := ctx.Err(); err != nil {
+			return nil, nil, nil, err
+		}
+		return nil, nil, nil, context.DeadlineExceeded
+	}
+	timeout := min(remaining, mediaTaskRedisIOTimeout)
+	commandCtx, cancel := context.WithTimeout(ctx, timeout)
+	client := s.rdb.WithTimeout(timeout)
+	// WithTimeout clones Options before sharing the underlying pool, so this does not
+	// mutate the application client while allowing command deadlines to beat the
+	// XREADGROUP BLOCK read-timeout grace used by go-redis.
+	client.Options().ContextTimeoutEnabled = true
+	return client, commandCtx, cancel, nil
 }
 
 func (s *MediaTaskStream) bufferStreams(streams []redis.XStream) bool {
@@ -522,9 +650,6 @@ func (s *MediaTaskStream) bufferMessages(priority service.MediaQueuePriority, me
 		if _, exists := s.bufferedIDs[key]; exists {
 			continue
 		}
-		if _, exists := s.inflightIDs[key]; exists {
-			continue
-		}
 		s.bufferedIDs[key] = struct{}{}
 		filtered = append(filtered, message)
 	}
@@ -533,6 +658,25 @@ func (s *MediaTaskStream) bufferMessages(priority service.MediaQueuePriority, me
 		return
 	}
 	s.asyncBacklog = append(s.asyncBacklog, filtered...)
+}
+
+func (s *MediaTaskStream) autoClaimCursor(priority service.MediaQueuePriority) string {
+	s.stateMu.Lock()
+	defer s.stateMu.Unlock()
+	start := s.claimCursor[priority]
+	if start == "" {
+		return "0-0"
+	}
+	return start
+}
+
+func (s *MediaTaskStream) setAutoClaimCursor(priority service.MediaQueuePriority, next string) {
+	if next == "" {
+		next = "0-0"
+	}
+	s.stateMu.Lock()
+	s.claimCursor[priority] = next
+	s.stateMu.Unlock()
 }
 
 func parseMediaQueueMessage(raw redis.XMessage, priority service.MediaQueuePriority) (*service.MediaQueueMessage, error) {
@@ -570,6 +714,81 @@ func mediaTaskStreamKey(priority service.MediaQueuePriority) (string, error) {
 	default:
 		return "", fmt.Errorf("%w: %q", service.ErrInvalidMediaQueuePriority, priority)
 	}
+}
+
+func mediaTaskPriorityForStream(stream string) (service.MediaQueuePriority, bool) {
+	switch stream {
+	case mediaTaskSyncStreamKey:
+		return service.MediaQueuePrioritySync, true
+	case mediaTaskAsyncStreamKey:
+		return service.MediaQueuePriorityAsync, true
+	default:
+		return "", false
+	}
+}
+
+func normalizeMediaReceiveError(parent, receiveCtx context.Context, err error) error {
+	if parentErr := parent.Err(); parentErr != nil {
+		return parentErr
+	}
+	if receiveCtx.Err() != nil {
+		return service.ErrMediaQueueReceiveTimeout
+	}
+	var networkErr net.Error
+	deadline, hasDeadline := receiveCtx.Deadline()
+	remaining := time.Until(deadline)
+	if hasDeadline && remaining <= mediaTaskMaxBlock && errors.As(err, &networkErr) && networkErr.Timeout() {
+		if remaining > 0 {
+			timer := time.NewTimer(remaining)
+			select {
+			case <-receiveCtx.Done():
+			case <-timer.C:
+			}
+			if !timer.Stop() {
+				select {
+				case <-timer.C:
+				default:
+				}
+			}
+		}
+		if parentErr := parent.Err(); parentErr != nil {
+			return parentErr
+		}
+		return service.ErrMediaQueueReceiveTimeout
+	}
+	return err
+}
+
+func originalContextError(ctx context.Context, err error) error {
+	if contextErr := ctx.Err(); contextErr != nil {
+		return contextErr
+	}
+	var networkErr net.Error
+	deadline, hasDeadline := ctx.Deadline()
+	remaining := time.Until(deadline)
+	if !hasDeadline || remaining > mediaTaskMaxBlock || !errors.As(err, &networkErr) || !networkErr.Timeout() {
+		return nil
+	}
+	if remaining > 0 {
+		timer := time.NewTimer(remaining)
+		select {
+		case <-ctx.Done():
+		case <-timer.C:
+		}
+		if !timer.Stop() {
+			select {
+			case <-timer.C:
+			default:
+			}
+		}
+	}
+	if contextErr := ctx.Err(); contextErr != nil {
+		return contextErr
+	}
+	if time.Until(deadline) <= 0 {
+		return context.DeadlineExceeded
+	}
+	return nil
 }
 
 func terminalChannel(taskID int64) string {
