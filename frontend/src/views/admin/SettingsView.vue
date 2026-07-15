@@ -3664,6 +3664,9 @@ import type {
 import type { ProviderInstance } from '@/types/payment'
 import {
   applyDefinedSettingsToForm,
+  buildMediaGenerationSettingsUpdate,
+  createDefaultMediaGenerationSettings,
+  resolveMediaGenerationSettingsForForm,
   resolveSettingsUpdateForForm,
 } from './settingsFormState'
 import AppLayout from '@/components/layout/AppLayout.vue'
@@ -4021,12 +4024,7 @@ const form = reactive<SettingsForm>({
   enable_cch_signing: false,
   codex_image_generation_bridge_enabled: false,
   // Media generation runtime
-  media_sync_wait_timeout_seconds: 240,
-  media_sync_timeout_fallback_async_enabled: false,
-  media_sync_timeout_billing_policy: 'penalty',
-  media_sync_timeout_penalty_ratio: 0.8,
-  media_video_storage_mode: 'hybrid',
-  media_video_proxy_fallback_enabled: true,
+  ...createDefaultMediaGenerationSettings(),
   // Codex CLI User-Agent
   openai_use_key_model_id: 'gpt-5.5',
   openai_image_url_cache_ttl_hours: 72,
@@ -4453,7 +4451,9 @@ async function loadSettings() {
   try {
     const settings = await adminAPI.settings.getSettings()
     settings.payment_load_balance_strategy = settings.payment_load_balance_strategy || 'round-robin'
+    const resolvedMediaSettings = resolveMediaGenerationSettingsForForm(form, settings)
     applyDefinedSettingsToForm(form, settings)
+    Object.assign(form, resolvedMediaSettings)
     form.backend_mode_enabled = settings.backend_mode_enabled
     form.default_subscriptions = Array.isArray(settings.default_subscriptions)
       ? settings.default_subscriptions
@@ -4700,12 +4700,7 @@ async function saveSettings() {
       enable_metadata_passthrough: form.enable_metadata_passthrough,
       enable_cch_signing: form.enable_cch_signing,
       codex_image_generation_bridge_enabled: form.codex_image_generation_bridge_enabled,
-      media_sync_wait_timeout_seconds: form.media_sync_wait_timeout_seconds,
-      media_sync_timeout_fallback_async_enabled: form.media_sync_timeout_fallback_async_enabled,
-      media_sync_timeout_billing_policy: form.media_sync_timeout_billing_policy,
-      media_sync_timeout_penalty_ratio: form.media_sync_timeout_penalty_ratio,
-      media_video_storage_mode: form.media_video_storage_mode,
-      media_video_proxy_fallback_enabled: form.media_video_proxy_fallback_enabled,
+      ...buildMediaGenerationSettingsUpdate(form),
       openai_use_key_model_id: form.openai_use_key_model_id,
       openai_image_url_cache_ttl_hours: Number(form.openai_image_url_cache_ttl_hours) || 72,
       generated_image_storage_source: form.generated_image_storage_source || 'db',

@@ -1,4 +1,5 @@
 import { mount } from '@vue/test-utils'
+import { defineComponent, ref } from 'vue'
 import { describe, expect, it, vi } from 'vitest'
 import type { MediaGenerationSettings } from '@/api/admin/settings'
 import MediaGenerationSettingsCard from '../MediaGenerationSettingsCard.vue'
@@ -52,7 +53,15 @@ describe('MediaGenerationSettingsCard', () => {
       props: { modelValue: { ...baseSettings } },
     })
 
-    expect(wrapper.get<HTMLInputElement>('[data-test="media-timeout-penalty-ratio"]').element.value).toBe('80')
+    const penaltyInput = wrapper.get<HTMLInputElement>('[data-test="media-timeout-penalty-ratio"]')
+    expect(penaltyInput.element.value).toBe('80')
+    expect(penaltyInput.attributes('aria-describedby')).toBe(
+      'media-timeout-penalty-unit media-timeout-penalty-ratio-hint'
+    )
+    expect(wrapper.get('#media-timeout-penalty-unit').text()).toBe('%')
+    expect(wrapper.get('#media-timeout-penalty-ratio-hint').text()).toContain(
+      'admin.settings.mediaGeneration.penaltyRatioHint'
+    )
     await wrapper.get('[data-test="media-timeout-penalty-ratio"]').setValue('125')
     expect(wrapper.emitted('update:modelValue')?.at(-1)?.[0]).toMatchObject({
       media_sync_timeout_penalty_ratio: 1,
@@ -64,20 +73,25 @@ describe('MediaGenerationSettingsCard', () => {
   })
 
   it('独立更新异步 fallback 与视频代理 fallback', async () => {
-    const wrapper = mount(MediaGenerationSettingsCard, {
-      props: { modelValue: { ...baseSettings } },
+    const ControlledHarness = defineComponent({
+      components: { MediaGenerationSettingsCard },
+      setup() {
+        const settings = ref<MediaGenerationSettings>({ ...baseSettings })
+        return { settings }
+      },
+      template: '<MediaGenerationSettingsCard v-model="settings" />',
     })
+    const wrapper = mount(ControlledHarness)
 
     await wrapper.get('[data-test="media-fallback-async"]').setValue(true)
-    expect(wrapper.emitted('update:modelValue')?.at(-1)?.[0]).toMatchObject({
-      media_sync_wait_timeout_seconds: 240,
-      media_sync_timeout_fallback_async_enabled: true,
-      media_video_proxy_fallback_enabled: true,
-    })
     await wrapper.get('[data-test="media-proxy-fallback"]').setValue(false)
-    expect(wrapper.emitted('update:modelValue')?.at(-1)?.[0]).toMatchObject({
-      media_sync_timeout_fallback_async_enabled: false,
+
+    const expected = {
+      ...baseSettings,
+      media_sync_timeout_fallback_async_enabled: true,
       media_video_proxy_fallback_enabled: false,
-    })
+    }
+    expect(wrapper.vm.settings).toEqual(expected)
+    expect(wrapper.getComponent(MediaGenerationSettingsCard).props('modelValue')).toEqual(expected)
   })
 })

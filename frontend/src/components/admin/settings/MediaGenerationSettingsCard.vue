@@ -137,12 +137,16 @@ function updateBillingPolicy(event: Event) {
             min="0"
             max="100"
             step="1"
+            aria-describedby="media-timeout-penalty-unit media-timeout-penalty-ratio-hint"
             :value="penaltyPercent"
             @input="updatePenalty"
           />
-          <span aria-hidden="true" class="shrink-0 text-sm text-gray-500">%</span>
+          <span id="media-timeout-penalty-unit" class="shrink-0 text-sm text-gray-500">%</span>
         </div>
-        <p class="text-xs text-gray-500 dark:text-gray-400">
+        <p
+          id="media-timeout-penalty-ratio-hint"
+          class="text-xs text-gray-500 dark:text-gray-400"
+        >
           {{ t('admin.settings.mediaGeneration.penaltyRatioHint') }}
         </p>
       </div>
