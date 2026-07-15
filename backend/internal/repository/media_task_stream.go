@@ -35,6 +35,13 @@ var mediaTaskConsumerSequence atomic.Uint64
 
 var _ service.MediaTaskQueue = (*MediaTaskStream)(nil)
 
+type mediaReceiveDeadlineSource uint8
+
+const (
+	mediaReceiveDeadlineInternal mediaReceiveDeadlineSource = iota
+	mediaReceiveDeadlineParent
+)
+
 // MediaTaskStream 使用两个 Redis Streams 保存同步与异步媒体任务。
 // Receive 在同一实例内串行化，确保批量读取的内存 backlog 和 8:1 公平计数一致。
 type MediaTaskStream struct {
@@ -123,11 +130,18 @@ func (s *MediaTaskStream) Receive(parent context.Context, block time.Duration) (
 		return nil, fmt.Errorf("%w: block must be at least one millisecond", service.ErrInvalidMediaQueueTimeout)
 	}
 
-	receiveCtx, cancel := context.WithTimeout(parent, block)
+	internalDeadline := time.Now().Add(block)
+	effectiveDeadline := internalDeadline
+	deadlineSource := mediaReceiveDeadlineInternal
+	if parentDeadline, ok := parent.Deadline(); ok && !parentDeadline.After(internalDeadline) {
+		effectiveDeadline = parentDeadline
+		deadlineSource = mediaReceiveDeadlineParent
+	}
+	receiveCtx, cancel := context.WithDeadline(parent, effectiveDeadline)
 	defer cancel()
 	defer func() {
 		if err != nil {
-			err = normalizeMediaReceiveError(parent, receiveCtx, err)
+			err = normalizeMediaReceiveError(parent, receiveCtx, deadlineSource, effectiveDeadline, err)
 		}
 	}()
 
@@ -310,11 +324,17 @@ func (s *MediaTaskStream) SubscribeTerminal(ctx context.Context, taskID int64) (
 
 	channel := terminalChannel(taskID)
 	subscriptionCtx, cancel := context.WithCancel(ctx)
-	pubsub := s.rdb.Subscribe(subscriptionCtx, channel)
+	subscriptionClient := newMediaTerminalSubscriptionClient(s.rdb, subscriptionCtx)
+	var closeClientOnce sync.Once
+	closeSubscriptionClient := func() {
+		closeClientOnce.Do(func() {
+			_ = subscriptionClient.Close()
+		})
+	}
 	watcherDone := make(chan struct{})
 	stopAfterFunc := context.AfterFunc(subscriptionCtx, func() {
 		defer close(watcherDone)
-		_ = pubsub.Close()
+		closeSubscriptionClient()
 	})
 	var stopWatcherOnce sync.Once
 	stopCloseWatcher := func() {
@@ -325,10 +345,12 @@ func (s *MediaTaskStream) SubscribeTerminal(ctx context.Context, taskID int64) (
 		})
 		<-watcherDone
 	}
+	pubsub := subscriptionClient.Subscribe(subscriptionCtx, channel)
 	cleanupConfirmation := func() {
 		cancel()
-		stopCloseWatcher()
+		closeSubscriptionClient()
 		_ = pubsub.Close()
+		stopCloseWatcher()
 	}
 	confirmation, err := pubsub.Receive(subscriptionCtx)
 	if err != nil {
@@ -351,6 +373,7 @@ func (s *MediaTaskStream) SubscribeTerminal(ctx context.Context, taskID int64) (
 		defer close(statuses)
 		defer cancel()
 		defer stopCloseWatcher()
+		defer closeSubscriptionClient()
 		defer func() { _ = pubsub.Close() }()
 		defer func() {
 			if recovered := recover(); recovered != nil {
@@ -379,6 +402,7 @@ func (s *MediaTaskStream) SubscribeTerminal(ctx context.Context, taskID int64) (
 	unsubscribe := func() {
 		stopOnce.Do(func() {
 			cancel()
+			closeSubscriptionClient()
 			_ = pubsub.Close()
 		})
 		<-stopped
@@ -727,17 +751,31 @@ func mediaTaskPriorityForStream(stream string) (service.MediaQueuePriority, bool
 	}
 }
 
-func normalizeMediaReceiveError(parent, receiveCtx context.Context, err error) error {
-	if parentErr := parent.Err(); parentErr != nil {
-		return parentErr
+func normalizeMediaReceiveError(
+	parent context.Context,
+	receiveCtx context.Context,
+	deadlineSource mediaReceiveDeadlineSource,
+	effectiveDeadline time.Time,
+	err error,
+) error {
+	parentErr := parent.Err()
+	if errors.Is(parentErr, context.Canceled) {
+		return context.Canceled
 	}
-	if receiveCtx.Err() != nil {
+	if deadlineSource == mediaReceiveDeadlineParent {
+		if parentErr != nil {
+			return parentErr
+		}
+		if receiveErr := receiveCtx.Err(); receiveErr != nil {
+			return receiveErr
+		}
+	} else if receiveCtx.Err() != nil {
 		return service.ErrMediaQueueReceiveTimeout
 	}
+
 	var networkErr net.Error
-	deadline, hasDeadline := receiveCtx.Deadline()
-	remaining := time.Until(deadline)
-	if hasDeadline && remaining <= mediaTaskMaxBlock && errors.As(err, &networkErr) && networkErr.Timeout() {
+	remaining := time.Until(effectiveDeadline)
+	if remaining <= mediaTaskMaxBlock && errors.As(err, &networkErr) && networkErr.Timeout() {
 		if remaining > 0 {
 			timer := time.NewTimer(remaining)
 			select {
@@ -752,7 +790,15 @@ func normalizeMediaReceiveError(parent, receiveCtx context.Context, err error) e
 			}
 		}
 		if parentErr := parent.Err(); parentErr != nil {
-			return parentErr
+			if errors.Is(parentErr, context.Canceled) || deadlineSource == mediaReceiveDeadlineParent {
+				return parentErr
+			}
+		}
+		if deadlineSource == mediaReceiveDeadlineParent {
+			if receiveErr := receiveCtx.Err(); receiveErr != nil {
+				return receiveErr
+			}
+			return context.DeadlineExceeded
 		}
 		return service.ErrMediaQueueReceiveTimeout
 	}
@@ -793,6 +839,46 @@ func originalContextError(ctx context.Context, err error) error {
 
 func terminalChannel(taskID int64) string {
 	return "media:task:" + strconv.FormatInt(taskID, 10) + ":terminal"
+}
+
+func newMediaTerminalSubscriptionClient(parent *redis.Client, lifecycleCtx context.Context) *redis.Client {
+	options := *parent.Options()
+	options.ContextTimeoutEnabled = true
+	baseDialer := options.Dialer
+	if baseDialer == nil {
+		baseDialer = redis.NewDialer(&options)
+	}
+	options.Dialer = func(ctx context.Context, network, addr string) (net.Conn, error) {
+		conn, err := baseDialer(ctx, network, addr)
+		if err != nil {
+			return nil, err
+		}
+		wrapped := &mediaSubscriptionConn{Conn: conn}
+		wrapped.stopContextClose = context.AfterFunc(lifecycleCtx, wrapped.closeUnderlying)
+		return wrapped, nil
+	}
+	return redis.NewClient(&options)
+}
+
+type mediaSubscriptionConn struct {
+	net.Conn
+	closeOnce        sync.Once
+	closeErr         error
+	stopContextClose func() bool
+}
+
+func (c *mediaSubscriptionConn) Close() error {
+	if c.stopContextClose != nil {
+		c.stopContextClose()
+	}
+	c.closeUnderlying()
+	return c.closeErr
+}
+
+func (c *mediaSubscriptionConn) closeUnderlying() {
+	c.closeOnce.Do(func() {
+		c.closeErr = c.Conn.Close()
+	})
 }
 
 func mediaDeliveryKey(priority service.MediaQueuePriority, messageID string) string {

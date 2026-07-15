@@ -46,6 +46,61 @@ func TestMediaTaskStreamSubscribeTerminalCancelBeforeConfirmation(t *testing.T) 
 	}
 }
 
+func TestMediaTaskStreamSubscribeTerminalCancelDuringRedisInitialization(t *testing.T) {
+	client, server := newFakeRedisClient(t, func(command []string) fakeRedisAction {
+		if commandName(command) == "hello" {
+			return fakeRedisAction{stall: true}
+		}
+		return fakeRedisAction{response: respError("unexpected command")}
+	})
+	stream := NewMediaTaskStream(client, "cancel-during-hello", time.Minute)
+	ctx, cancel := context.WithCancel(context.Background())
+	result := make(chan error, 1)
+	go func() {
+		_, _, err := stream.SubscribeTerminal(ctx, 7)
+		result <- err
+	}()
+
+	server.waitForCommand(t, "hello")
+	started := time.Now()
+	cancel()
+	select {
+	case err := <-result:
+		require.ErrorIs(t, err, context.Canceled)
+		require.Less(t, time.Since(started), 250*time.Millisecond)
+	case <-time.After(350 * time.Millisecond):
+		_ = client.Close()
+		t.Fatal("SubscribeTerminal did not stop while Redis HELLO was stalled")
+	}
+}
+
+func TestMediaTaskStreamSubscribeTerminalDeadlineDuringRedisInitialization(t *testing.T) {
+	client, server := newFakeRedisClient(t, func(command []string) fakeRedisAction {
+		if commandName(command) == "hello" {
+			return fakeRedisAction{stall: true}
+		}
+		return fakeRedisAction{response: respError("unexpected command")}
+	})
+	stream := NewMediaTaskStream(client, "deadline-during-hello", time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	started := time.Now()
+	result := make(chan error, 1)
+	go func() {
+		_, _, err := stream.SubscribeTerminal(ctx, 8)
+		result <- err
+	}()
+	server.waitForCommand(t, "hello")
+	select {
+	case err := <-result:
+		require.ErrorIs(t, err, context.DeadlineExceeded)
+		require.Less(t, time.Since(started), 250*time.Millisecond)
+	case <-time.After(350 * time.Millisecond):
+		_ = client.Close()
+		t.Fatal("SubscribeTerminal ignored parent deadline while Redis HELLO was stalled")
+	}
+}
+
 func TestMediaTaskStreamSubscribeTerminalCancelAfterConfirmation(t *testing.T) {
 	client, _ := newFakeRedisClient(t, func(command []string) fakeRedisAction {
 		if commandName(command) == "subscribe" {
@@ -73,7 +128,7 @@ func TestMediaTaskStreamSubscribeTerminalDeadlineBeforeConfirmation(t *testing.T
 		return fakeRedisAction{response: respError("unexpected command")}
 	})
 	stream := NewMediaTaskStream(client, "deadline-before-confirm", time.Minute)
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Millisecond)
 	defer cancel()
 	_, _, err := stream.SubscribeTerminal(ctx, 3)
 	require.ErrorIs(t, err, context.DeadlineExceeded)
@@ -488,12 +543,6 @@ func (s *fakeRESPServer) serveConn(conn net.Conn) {
 		select {
 		case s.commands <- command:
 		default:
-		}
-		if commandName(command) == "hello" {
-			if _, err := io.WriteString(conn, respError("unknown command 'HELLO'")); err != nil {
-				return
-			}
-			continue
 		}
 		action := s.handler(command)
 		if action.response != "" {

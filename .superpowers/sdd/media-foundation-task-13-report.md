@@ -204,8 +204,8 @@ go test ./internal/repository -run 'TestMediaTaskStream' -count=1 -v
 
 - `Receive` 从函数入口创建 total context，包含 receive gate 等待；parent cancel/deadline 原样返回，内部 block deadline 稳定映射 `ErrMediaQueueReceiveTimeout`。
 - 所有 Receive 路径的 `XAUTOCLAIM`、`XREADGROUP` 和 NOGROUP 建组均使用 `WithTimeout(remaining)` 的私有 Options clone，并启用 `ContextTimeoutEnabled`；每条命令最多 100ms，positive `BLOCK` 最多 50ms，实际 context deadline 截断 go-redis 的额外 10 秒 read grace。
-- Pub/Sub confirmation 和 reader 共用 subscription context；受控 `context.AfterFunc` 在 cancel/deadline 时主动 `pubsub.Close()`。watcher 自带 done/stop owner，confirmation error、natural terminal、explicit unsubscribe、parent cancel/deadline 和 Redis disconnect 均等待 watcher/reader 收口，输出只由 reader goroutine 关闭一次。
-- 验证过 go-redis v9.17.2 的 `Client.WithTimeout` 不复制 PubSub pool，因此只用于普通 Receive commands；Pub/Sub 保持原 client 并由主动 close watcher 负责打断，不调用会 nil panic 的 timeout clone Subscribe。
+- Pub/Sub 使用订阅专用 Redis client/pool，confirmation 和 reader 共用 subscription context；受控 `context.AfterFunc` 在任何 Subscribe I/O 前安装，cancel/deadline 时关闭专用 client。watcher 自带 done/stop owner，confirmation error、natural terminal、explicit unsubscribe、parent cancel/deadline 和 Redis disconnect 均等待 watcher/reader/client 收口，输出只由 reader goroutine 关闭一次。
+- 验证过 go-redis v9.17.2 的 `Client.WithTimeout` 不复制 PubSub pool，因此只用于普通 Receive commands；Pub/Sub 通过复制原 `Options` 创建独立 client，不写原 Options，也不调用会 nil panic 的 timeout clone Subscribe。
 - 删除 `inflightIDs` 永久抑制和无界集合；buffered ID 只覆盖当前有限 backlog，消息一旦返回即恢复标准 at-least-once，同一或不同 consumer 在 lease 后均可重新领取。长任务防重复由 Task 14 DB lease/幂等负责，本任务没有提前增加续租 API。
 - sync/async 各自保存 XAUTOCLAIM next-start cursor；成功调用推进，`0-0` 完成一轮后重置，NOGROUP 重建时重置受影响 Stream cursor。fake RESP 和真实 integration 契约均覆盖 `COUNT*10` fresh pending 之后的 expired 消息。
 - `XACK=0` 返回 `ErrMediaQueueMessageNotPending`；NOGROUP 时用 `EXISTS` 区分 Stream 消失与 group-only 丢失，后者重建 group 后仍返回 `ErrMediaQueueDeliveryStateLost`，不伪造 ACK 成功。
@@ -252,3 +252,64 @@ ok github.com/Wei-Shaw/sub2api/internal/repository
 ```
 
 `go test -c -tags=integration` 成功，17 个 integration 测试可编译；未宣称真实 Redis integration PASS。Docker 可用的 CI 仍需执行真实 cursor、PEL lease、XGROUP DESTROY、fairness 和 Pub/Sub 行为。
+
+## 第二轮独立复审修复追加记录
+
+第二轮复审在 `fc737ccd8` 上发现 Pub/Sub 初始化窗口和 Receive deadline 来源两个边界。第一轮 `-count=20` 虽然对当时 17 个普通测试通过，但 fake server 总是立即拒绝 `HELLO`，没有覆盖 `Client.Subscribe` 同步执行连接初始化时的阻塞；父 deadline 也只在低密度集合中运行，未稳定暴露 parent/child context 同时到期的微秒级来源竞态。因此该证据不能证明这两个新增边界，第二轮新增专门 RED 和更高重复次数。
+
+### 第二轮 RED
+
+先让 fake RESP server 在接受连接后不回复 `HELLO`，保持生产默认原 client `ContextTimeoutEnabled=false`：
+
+```bash
+go test ./internal/repository -run 'TestMediaTaskStreamSubscribeTerminal(Cancel|Deadline)DuringRedisInitialization' -count=1 -v
+```
+
+cancel 和 parent deadline 两个用例均在 350ms 安全上限内没有返回。原因是旧 watcher 在 `s.rdb.Subscribe(ctx, channel)` 返回后才安装，而 go-redis 在返回前同步执行 dial、HELLO 和 SUBSCRIBE；此时 PubSub 尚未进入可由旧 watcher 关闭的 reader 阶段。
+
+父 deadline 用例改为 5ms 后密集运行：
+
+```bash
+go test ./internal/repository -run 'TestMediaTaskStreamReceivePreservesParentDeadline' -count=200
+```
+
+稳定出现多个 RED：期望 `context.DeadlineExceeded`，实际为 `ErrMediaQueueReceiveTimeout`。旧 normalize 依赖 `parent.Err()` 和 child `Err()` 当时谁先可见，未记录有效 deadline 的来源。
+
+### 第二轮修复
+
+- `SubscribeTerminal` 复制 `*s.rdb.Options()`，只在副本启用 `ContextTimeoutEnabled`，用 `redis.NewClient` 创建订阅专用 pool；不修改共享原 client，也不共享其连接池生命周期。
+- 在任何 `Subscribe`/dial/HELLO I/O 前安装 subscription context watcher；watcher 关闭整个专用 client，而不是等待持有内部 mutex 的 `PubSub.Close`。
+- go-redis 只有 HELLO/init 成功后才把 PubSub connection 加入 pool tracking。为覆盖初始化中的未跟踪连接，专用 Options 的 Dialer 包装每条 `net.Conn`，并在 subscription context cancel/deadline 时直接关闭底层连接；连接正常关闭时停止自己的 context callback，避免 reconnect 累积 watcher。
+- 专用 client close、PubSub close、connection callback 和 context watcher 均有 `sync.Once`/done owner。confirmation 失败、初始化取消、natural terminal、unsubscribe、reader cancel、deadline 和 disconnect 都关闭并等待全部专用资源，不影响原 Redis client。
+- `Receive` 在入口计算 `internalDeadline=now+block`，同时读取 parent deadline；parent deadline 早于或等于 internal 时冻结为 parent source，否则冻结为 internal source。normalize 不再从结束瞬间的 parent/child 可见顺序猜测来源。
+- 手动 parent cancel 始终优先返回 `context.Canceled`；parent deadline source 稳定返回 parent `context.DeadlineExceeded`；只有 internal source 到期才返回 `ErrMediaQueueReceiveTimeout`。普通 Redis 错误仍保留 `%w` 链。
+
+### 第二轮验证
+
+普通 fake TCP 测试最终为 19 个顶层用例。以下高重复命令均通过：
+
+```bash
+go test ./internal/repository -run 'TestMediaTaskStream' -count=50
+go test ./internal/repository -run 'TestMediaTaskStreamReceivePreservesParentDeadline' -count=200
+go test ./internal/repository -run 'TestMediaTaskStreamReceiveHasHardTimeoutOnStalledRedis' -count=200
+go test ./internal/repository -run 'TestMediaTaskStreamReceiveCancelInterruptsStalledRedis' -count=200
+go test -race ./internal/repository -run 'TestMediaTaskStream' -count=1
+go test ./internal/service ./internal/repository -run TestMedia -count=1
+go vet ./internal/service ./internal/repository
+go vet -tags=integration ./internal/repository
+go test -c -tags=integration -o /tmp/fluxcode-media-repository-fix2.test ./internal/repository
+go test ./internal/setup ./cmd/server -run '^$' -count=1
+gofmt -w internal/repository/media_task_stream.go internal/repository/media_task_stream_test.go
+git diff --check
+```
+
+结果：完整 fake TCP 测试 `-count=50`、parent deadline/内部硬超时/手动 cancel 各 `-count=200`、完整目标 race 全部为 `ok`；Media 相邻包、普通/integration vet、integration 编译和 setup/server 构建均通过。
+
+真实 integration 仍由既有 TestMain 如实跳过：
+
+```text
+docker is not available; skipping integration tests (start Docker to enable)
+ok github.com/Wei-Shaw/sub2api/internal/repository
+```
+
+本轮只修改 Task 13 Redis 实现、普通 fake TCP 测试与同一报告；没有修改 Worker、DB、route、文本链、integration harness 或 Wire。Docker 可用环境仍需执行真实 Redis integration。
