@@ -2971,6 +2971,28 @@ export default {
     accounts: {
       title: 'Account Management',
       description: 'Manage AI platform accounts and credentials',
+      mediaConfig: {
+        title: 'Media Adapter and Native Async Capability',
+        description: 'Declare upstream protocol adapter capabilities for media requests and override native async behavior per model.',
+        adapter: 'Media Adapter',
+        adapterPlaceholder: 'For example, gemini, xai, or a custom protocol type',
+        adapterHint: 'The adapter is a free-text protocol type, not a new provider entity. Surrounding whitespace is removed when saved.',
+        nativeAsyncMode: 'Default Native Async Mode',
+        nativeAsyncModeHint: 'Describes upstream native async capability and can be overridden per model. It does not restrict downstream sync or async requests.',
+        model: 'Request Model',
+        upstreamModel: 'Upstream Model',
+        overrideAsyncMode: 'Model Native Async Mode',
+        inherit: 'Inherit account default',
+        addOverride: 'Add Model Override',
+        remove: 'Remove',
+        removeOverride: 'Remove model override',
+        duplicateModel: 'Model "{model}" is duplicated after trimming. Rename it before saving.',
+        modes: {
+          unsupported: 'Native async unsupported',
+          optional: 'Native async optional',
+          required: 'Native async required'
+        }
+      },
       createAccount: 'Create Account',
       autoRefresh: 'Auto Refresh',
       enableAutoRefresh: 'Enable auto refresh',

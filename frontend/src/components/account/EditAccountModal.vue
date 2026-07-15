@@ -1066,6 +1066,9 @@
           <p class="input-hint">{{ t('admin.accounts.billingRateMultiplierHint') }}</p>
         </div>
       </div>
+
+      <MediaConfigEditor v-model="mediaConfig" />
+
       <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
         <label class="input-label">{{ t('admin.accounts.expiresAt') }}</label>
         <input v-model="expiresAtInput" type="datetime-local" class="input" />
@@ -1922,7 +1925,15 @@ import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
 import { adminAPI } from '@/api/admin'
 import { useQuotaNotifyState } from '@/composables/useQuotaNotifyState'
-import type { Account, Proxy, AdminGroup, CheckMixedChannelResponse } from '@/types'
+import type {
+  Account,
+  Proxy,
+  AdminGroup,
+  CheckMixedChannelResponse,
+  MediaAccountConfig,
+  MediaAccountModelOverride,
+  NativeAsyncMode
+} from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import Select from '@/components/common/Select.vue'
@@ -1930,6 +1941,7 @@ import Icon from '@/components/icons/Icon.vue'
 import ProxySelector from '@/components/common/ProxySelector.vue'
 import GroupSelector from '@/components/common/GroupSelector.vue'
 import ModelWhitelistSelector from '@/components/account/ModelWhitelistSelector.vue'
+import MediaConfigEditor from '@/components/account/MediaConfigEditor.vue'
 import QuotaLimitCard from '@/components/account/QuotaLimitCard.vue'
 import { applyInterceptWarmup } from '@/components/account/credentialsBuilder'
 import { formatDateTimeLocalInput, parseDateTimeLocalInput } from '@/utils/format'
@@ -2021,6 +2033,12 @@ const interceptWarmupRequests = ref(false)
 const autoPauseOnExpired = ref(false)
 const mixedScheduling = ref(false) // For antigravity accounts: enable mixed scheduling
 const allowOverages = ref(false) // For antigravity accounts: enable AI Credits overages
+const createDefaultMediaConfig = (): MediaAccountConfig => ({
+  adapter: '',
+  native_async_mode: 'unsupported',
+  model_overrides: {}
+})
+const mediaConfig = ref<MediaAccountConfig>(createDefaultMediaConfig())
 const antigravityModelRestrictionMode = ref<'whitelist' | 'mapping'>('whitelist')
 const antigravityWhitelistModels = ref<string[]>([])
 const antigravityModelMappings = ref<ModelMapping[]>([])
@@ -2063,6 +2081,61 @@ const cacheTTLOverrideEnabled = ref(false)
 const cacheTTLOverrideTarget = ref<string>('5m')
 const customBaseUrlEnabled = ref(false)
 const customBaseUrl = ref('')
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function isNativeAsyncMode(value: unknown): value is NativeAsyncMode {
+  return value === 'unsupported' || value === 'optional' || value === 'required'
+}
+
+function resolveMediaConfig(value: unknown): MediaAccountConfig {
+  if (!isRecord(value)) {
+    return createDefaultMediaConfig()
+  }
+
+  const modelOverrides: Record<string, MediaAccountModelOverride> = {}
+  if (isRecord(value.model_overrides)) {
+    for (const [rawModel, rawOverride] of Object.entries(value.model_overrides)) {
+      const model = rawModel.trim()
+      if (!model || modelOverrides[model] || !isRecord(rawOverride)) {
+        continue
+      }
+      const override: MediaAccountModelOverride = {}
+      if (typeof rawOverride.upstream_model === 'string' && rawOverride.upstream_model.trim()) {
+        override.upstream_model = rawOverride.upstream_model.trim()
+      }
+      if (isNativeAsyncMode(rawOverride.native_async_mode)) {
+        override.native_async_mode = rawOverride.native_async_mode
+      }
+      modelOverrides[model] = override
+    }
+  }
+
+  return {
+    adapter: typeof value.adapter === 'string' ? value.adapter.trim() : '',
+    native_async_mode: isNativeAsyncMode(value.native_async_mode)
+      ? value.native_async_mode
+      : 'unsupported',
+    model_overrides: modelOverrides
+  }
+}
+
+function withMediaConfig(extra: Record<string, unknown> | undefined): Record<string, unknown> {
+  const next = { ...(extra || {}) }
+  const adapter = mediaConfig.value.adapter.trim()
+  if (adapter) {
+    next.media_config = {
+      adapter,
+      native_async_mode: mediaConfig.value.native_async_mode,
+      model_overrides: mediaConfig.value.model_overrides
+    }
+  } else {
+    delete next.media_config
+  }
+  return next
+}
 
 // OpenAI 自动透传开关（OAuth/API Key）
 const openaiPassthroughEnabled = ref(false)
@@ -2280,6 +2353,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   const extra = newAccount.extra as Record<string, unknown> | undefined
   mixedScheduling.value = extra?.mixed_scheduling === true
   allowOverages.value = extra?.allow_overages === true
+  mediaConfig.value = resolveMediaConfig(extra?.media_config)
 
   // Load OpenAI passthrough toggle (OpenAI OAuth/API Key)
   openaiPassthroughEnabled.value = false
@@ -3412,6 +3486,10 @@ const handleSubmit = async () => {
       writeQuotaNotifyToExtra(newExtra, 'update')
       updatePayload.extra = newExtra
     }
+
+    const currentExtra = (updatePayload.extra as Record<string, unknown> | undefined) ||
+      (props.account.extra as Record<string, unknown> | undefined)
+    updatePayload.extra = withMediaConfig(currentExtra)
 
     const canContinue = await ensureAntigravityMixedChannelConfirmed(async () => {
       await submitUpdateAccount(accountID, updatePayload)

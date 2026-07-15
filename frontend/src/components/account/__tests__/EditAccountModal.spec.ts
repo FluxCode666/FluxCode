@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { defineComponent } from 'vue'
+import { defineComponent, nextTick } from 'vue'
 import { mount } from '@vue/test-utils'
 
 const { updateAccountMock, checkMixedChannelRiskMock } = vi.hoisted(() => ({
@@ -52,6 +52,7 @@ vi.mock('vue-i18n', async () => {
 })
 
 import EditAccountModal from '../EditAccountModal.vue'
+import MediaConfigEditor from '../MediaConfigEditor.vue'
 
 const BaseDialogStub = defineComponent({
   name: 'BaseDialog',
@@ -90,7 +91,7 @@ const ModelWhitelistSelectorStub = defineComponent({
 })
 
 const SelectStub = defineComponent({
-  name: 'Select',
+  name: 'SelectStub',
   inheritAttrs: false,
   props: {
     modelValue: {
@@ -169,6 +170,100 @@ function mountModal(account = buildAccount()) {
 }
 
 describe('EditAccountModal', () => {
+  it('hydrates and updates media_config without deleting existing extra keys', async () => {
+    const account = buildAccount()
+    account.extra = {
+      allow_overages: true,
+      media_config: {
+        adapter: 'gemini',
+        native_async_mode: 'optional',
+        model_overrides: {}
+      }
+    }
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+    const wrapper = mountModal(account)
+
+    expect(wrapper.getComponent(MediaConfigEditor).props('modelValue')).toEqual({
+      adapter: 'gemini',
+      native_async_mode: 'optional',
+      model_overrides: {}
+    })
+    wrapper.getComponent(MediaConfigEditor).vm.$emit('update:modelValue', {
+      adapter: 'gemini',
+      native_async_mode: 'unsupported',
+      model_overrides: {}
+    })
+    await nextTick()
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra).toMatchObject({
+      allow_overages: true,
+      media_config: {
+        adapter: 'gemini',
+        native_async_mode: 'unsupported',
+        model_overrides: {}
+      }
+    })
+  })
+
+  it('removes media_config when adapter is cleared while preserving other extra keys', async () => {
+    const account = buildAccount()
+    account.extra = {
+      allow_overages: true,
+      media_config: {
+        adapter: 'gemini',
+        native_async_mode: 'optional',
+        model_overrides: {}
+      }
+    }
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+    const wrapper = mountModal(account)
+
+    wrapper.getComponent(MediaConfigEditor).vm.$emit('update:modelValue', {
+      adapter: '   ',
+      native_async_mode: 'optional',
+      model_overrides: {}
+    })
+    await nextTick()
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra).toMatchObject({ allow_overages: true })
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra).not.toHaveProperty('media_config')
+  })
+
+  it('rehydrates media_config when the same account modal is reopened', async () => {
+    const account = buildAccount()
+    account.extra = {
+      media_config: {
+        adapter: 'gemini',
+        native_async_mode: 'optional',
+        model_overrides: { veo: { upstream_model: 'veo-upstream' } }
+      }
+    }
+    const wrapper = mountModal(account)
+
+    wrapper.getComponent(MediaConfigEditor).vm.$emit('update:modelValue', {
+      adapter: 'xai',
+      native_async_mode: 'required',
+      model_overrides: {}
+    })
+    await nextTick()
+    await wrapper.setProps({ show: false })
+    await wrapper.setProps({ show: true })
+
+    expect(wrapper.getComponent(MediaConfigEditor).props('modelValue')).toEqual({
+      adapter: 'gemini',
+      native_async_mode: 'optional',
+      model_overrides: { veo: { upstream_model: 'veo-upstream' } }
+    })
+  })
+
   it('reopening the same account rehydrates the OpenAI whitelist from props', async () => {
     const account = buildAccount()
     updateAccountMock.mockReset()

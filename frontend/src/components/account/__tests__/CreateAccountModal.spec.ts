@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
-import { defineComponent } from 'vue'
+import { defineComponent, nextTick } from 'vue'
 import { mount } from '@vue/test-utils'
 import CreateAccountModal from '../CreateAccountModal.vue'
+import MediaConfigEditor from '../MediaConfigEditor.vue'
 
 const { createAccountMock, checkMixedChannelRiskMock } = vi.hoisted(() => ({
   createAccountMock: vi.fn(),
@@ -64,7 +65,7 @@ const BaseDialogStub = defineComponent({
 })
 
 const SelectStub = defineComponent({
-  name: 'Select',
+  name: 'SelectStub',
   inheritAttrs: false,
   props: {
     modelValue: {
@@ -130,7 +131,73 @@ function mountModal() {
   })
 }
 
+async function fillMinimalCreateAccountForm(wrapper: ReturnType<typeof mountModal>) {
+  await wrapper.findAll('button').find((button) => button.text().includes('OpenAI'))?.trigger('click')
+  await wrapper.findAll('button').find((button) => button.text().includes('API Key'))?.trigger('click')
+  const textInputs = wrapper.findAll<HTMLInputElement>('form#create-account-form input[type="text"]')
+  await textInputs[0].setValue('Media Key')
+  await wrapper.get<HTMLInputElement>('form#create-account-form input[type="password"]').setValue('sk-test')
+}
+
 describe('CreateAccountModal', () => {
+  it('creates account with media_config while preserving other extra fields', async () => {
+    createAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    createAccountMock.mockResolvedValue({})
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    const wrapper = mountModal()
+
+    wrapper.getComponent(MediaConfigEditor).vm.$emit('update:modelValue', {
+      adapter: '  xai  ',
+      native_async_mode: 'required',
+      model_overrides: { 'grok-imagine': { upstream_model: 'grok-imagine-v1' } }
+    })
+    await nextTick()
+    await fillMinimalCreateAccountForm(wrapper)
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+
+    expect(createAccountMock.mock.calls[0]?.[0]?.extra).toMatchObject({
+      openai_image_response_url_mode: 'http_url',
+      media_config: {
+        adapter: 'xai',
+        native_async_mode: 'required',
+        model_overrides: { 'grok-imagine': { upstream_model: 'grok-imagine-v1' } }
+      }
+    })
+  })
+
+  it('does not create media_config when adapter is empty', async () => {
+    createAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    createAccountMock.mockResolvedValue({})
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    const wrapper = mountModal()
+
+    await fillMinimalCreateAccountForm(wrapper)
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+
+    expect(createAccountMock.mock.calls[0]?.[0]?.extra).not.toHaveProperty('media_config')
+  })
+
+  it('resets media_config when the modal is reopened', async () => {
+    const wrapper = mountModal()
+
+    wrapper.getComponent(MediaConfigEditor).vm.$emit('update:modelValue', {
+      adapter: 'xai',
+      native_async_mode: 'required',
+      model_overrides: {}
+    })
+    await nextTick()
+    await wrapper.setProps({ show: false })
+    await wrapper.setProps({ show: true })
+
+    expect(wrapper.getComponent(MediaConfigEditor).props('modelValue')).toEqual({
+      adapter: '',
+      native_async_mode: 'unsupported',
+      model_overrides: {}
+    })
+  })
+
   it('creates OpenAI API Key accounts with HTTP image response URLs by default', async () => {
     createAccountMock.mockReset()
     checkMixedChannelRiskMock.mockReset()

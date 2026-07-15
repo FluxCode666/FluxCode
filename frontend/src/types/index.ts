@@ -707,6 +707,19 @@ export type AccountType = 'oauth' | 'setup-token' | 'apikey' | 'upstream' | 'bed
 export type OAuthAddMethod = 'oauth' | 'setup-token'
 export type ProxyProtocol = 'http' | 'https' | 'socks5' | 'socks5h'
 
+export type NativeAsyncMode = 'unsupported' | 'optional' | 'required'
+
+export interface MediaAccountModelOverride {
+  upstream_model?: string
+  native_async_mode?: NativeAsyncMode
+}
+
+export interface MediaAccountConfig {
+  adapter: string
+  native_async_mode: NativeAsyncMode
+  model_overrides: Record<string, MediaAccountModelOverride>
+}
+
 // Claude Model type (returned by /v1/models and account models API)
 export interface ClaudeModel {
   id: string
@@ -834,6 +847,7 @@ export interface Account {
   credentials?: Record<string, unknown>
   // Extra fields including Codex usage and model-level rate limits (Antigravity smart retry)
   extra?: (CodexUsageSnapshot & {
+    media_config?: MediaAccountConfig
     model_rate_limits?: Record<string, { rate_limited_at: string; rate_limit_reset_at: string }>
     antigravity_credits_overages?: Record<string, { activated_at: string; active_until: string }>
   } & Record<string, unknown>)

@@ -2341,6 +2341,9 @@
           <p class="input-hint">{{ t('admin.accounts.billingRateMultiplierHint') }}</p>
         </div>
       </div>
+
+      <MediaConfigEditor v-model="mediaConfig" />
+
       <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
         <label class="input-label">{{ t('admin.accounts.expiresAt') }}</label>
         <input v-model="expiresAtInput" type="datetime-local" class="input" />
@@ -3015,7 +3018,8 @@ import type {
   AccountPlatform,
   AccountType,
   CheckMixedChannelResponse,
-  CreateAccountRequest
+  CreateAccountRequest,
+  MediaAccountConfig
 } from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
@@ -3024,6 +3028,7 @@ import Icon from '@/components/icons/Icon.vue'
 import ProxySelector from '@/components/common/ProxySelector.vue'
 import GroupSelector from '@/components/common/GroupSelector.vue'
 import ModelWhitelistSelector from '@/components/account/ModelWhitelistSelector.vue'
+import MediaConfigEditor from '@/components/account/MediaConfigEditor.vue'
 import QuotaLimitCard from '@/components/account/QuotaLimitCard.vue'
 import { applyInterceptWarmup } from '@/components/account/credentialsBuilder'
 import { formatDateTimeLocalInput, parseDateTimeLocalInput } from '@/utils/format'
@@ -3196,6 +3201,12 @@ adminAPI.settings.getWebSearchEmulationConfig().then(cfg => {
 loadQuotaNotifyGlobal()
 const mixedScheduling = ref(false) // For antigravity accounts: enable mixed scheduling
 const allowOverages = ref(false) // For antigravity accounts: enable AI Credits overages
+const createDefaultMediaConfig = (): MediaAccountConfig => ({
+  adapter: '',
+  native_async_mode: 'unsupported',
+  model_overrides: {}
+})
+const mediaConfig = ref<MediaAccountConfig>(createDefaultMediaConfig())
 const antigravityAccountType = ref<'oauth' | 'upstream'>('oauth') // For antigravity: oauth or upstream
 const upstreamBaseUrl = ref('') // For upstream type: base URL
 const upstreamApiKey = ref('') // For upstream type: API key
@@ -3226,6 +3237,21 @@ function buildAntigravityExtra(): Record<string, unknown> | undefined {
   if (mixedScheduling.value) extra.mixed_scheduling = true
   if (allowOverages.value) extra.allow_overages = true
   return Object.keys(extra).length > 0 ? extra : undefined
+}
+
+function withMediaConfig(extra: Record<string, unknown> | undefined): Record<string, unknown> {
+  const next = { ...(extra || {}) }
+  const adapter = mediaConfig.value.adapter.trim()
+  if (adapter) {
+    next.media_config = {
+      adapter,
+      native_async_mode: mediaConfig.value.native_async_mode,
+      model_overrides: mediaConfig.value.model_overrides
+    }
+  } else {
+    delete next.media_config
+  }
+  return next
 }
 
 const showMixedChannelWarning = ref(false)
@@ -3859,7 +3885,10 @@ const ensureAntigravityMixedChannelConfirmed = async (onConfirm: () => Promise<v
 const submitCreateAccount = async (payload: CreateAccountRequest) => {
   submitting.value = true
   try {
-    await adminAPI.accounts.create(withAntigravityConfirmFlag(payload))
+    await adminAPI.accounts.create(withAntigravityConfirmFlag({
+      ...payload,
+      extra: withMediaConfig(payload.extra)
+    }))
     appStore.showSuccess(t('admin.accounts.accountCreated'))
     emit('created')
     handleClose()
@@ -3953,6 +3982,7 @@ const resetForm = () => {
   customBaseUrlEnabled.value = false
   customBaseUrl.value = ''
   allowOverages.value = false
+  mediaConfig.value = createDefaultMediaConfig()
   antigravityAccountType.value = 'oauth'
   upstreamBaseUrl.value = ''
   upstreamApiKey.value = ''
@@ -4421,7 +4451,7 @@ const handleOpenAIExchange = async (authCode: string) => {
         platform: 'openai',
         type: 'oauth',
         credentials,
-        extra,
+        extra: withMediaConfig(extra),
         proxy_id: form.proxy_id,
         concurrency: form.concurrency,
         load_factor: form.load_factor ?? undefined,
@@ -4512,7 +4542,7 @@ const handleOpenAIBatchRT = async (refreshTokenInput: string, clientId?: string)
             platform: 'openai',
             type: 'oauth',
             credentials,
-            extra,
+            extra: withMediaConfig(extra),
             proxy_id: form.proxy_id,
             concurrency: form.concurrency,
             load_factor: form.load_factor ?? undefined,
@@ -4610,7 +4640,7 @@ const handleAntigravityValidateRT = async (refreshTokenInput: string) => {
           platform: 'antigravity',
           type: 'oauth',
           credentials,
-          extra: {},
+          extra: withMediaConfig({}),
           proxy_id: form.proxy_id,
           concurrency: form.concurrency,
           load_factor: form.load_factor ?? undefined,
@@ -4951,7 +4981,7 @@ const handleCookieAuth = async (sessionKey: string) => {
           platform: form.platform,
           type: addMethod.value, // Use addMethod as type: 'oauth' or 'setup-token'
           credentials,
-          extra,
+          extra: withMediaConfig(extra),
           proxy_id: form.proxy_id,
           concurrency: form.concurrency,
           load_factor: form.load_factor ?? undefined,

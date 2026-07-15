@@ -3037,6 +3037,28 @@ export default {
     accounts: {
       title: '账号管理',
       description: '管理 AI 平台账号和 Cookie',
+      mediaConfig: {
+        title: '媒体 Adapter 与原生异步能力',
+        description: '为媒体请求声明上游协议适配能力，并按模型覆盖原生异步配置。',
+        adapter: '媒体 Adapter',
+        adapterPlaceholder: '例如 gemini、xai 或自定义协议类型',
+        adapterHint: 'Adapter 是自由文本的协议类型，不会创建新的供应商实体；保存时会去除首尾空格。',
+        nativeAsyncMode: '默认原生异步模式',
+        nativeAsyncModeHint: '描述上游的原生异步能力，可按模型覆盖；不会限制下游选择同步或异步调用。',
+        model: '请求模型',
+        upstreamModel: '上游模型',
+        overrideAsyncMode: '模型原生异步模式',
+        inherit: '继承账号默认值',
+        addOverride: '添加模型覆盖',
+        remove: '删除',
+        removeOverride: '删除模型覆盖',
+        duplicateModel: '模型名“{model}”去除首尾空格后重复，请修改后再保存。',
+        modes: {
+          unsupported: '不支持原生异步',
+          optional: '可选使用原生异步',
+          required: '必须使用原生异步'
+        }
+      },
       createAccount: '添加账号',
       autoRefresh: '自动刷新',
       enableAutoRefresh: '启用自动刷新',
