@@ -90,7 +90,7 @@ var (
 		local member = ARGV[4]
 
 		local timeResult = redis.call('TIME')
-		local now = tonumber(timeResult[1])
+		local now = tonumber(timeResult[1]) + tonumber(timeResult[2]) / 1000000
 		local expireBefore = now - ttl
 		redis.call('ZREMRANGEBYSCORE', key, '-inf', expireBefore)
 
@@ -120,11 +120,13 @@ var (
 		local key = KEYS[1]
 		local ttl = tonumber(ARGV[1])
 		local member = ARGV[2]
+		local timeResult = redis.call('TIME')
+		local now = tonumber(timeResult[1]) + tonumber(timeResult[2]) / 1000000
+		local expireBefore = now - ttl
+		redis.call('ZREMRANGEBYSCORE', key, '-inf', expireBefore)
 		if redis.call('ZSCORE', key, member) == false then
 			return 0
 		end
-		local timeResult = redis.call('TIME')
-		local now = tonumber(timeResult[1])
 		redis.call('ZADD', key, now, member)
 		redis.call('EXPIRE', key, ttl)
 		return 1

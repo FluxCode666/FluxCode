@@ -245,10 +245,17 @@ func (s *accountCandidateSelector) orderCandidates(ctx context.Context, candidat
 
 	loadRequest := make([]AccountWithConcurrency, 0, len(ordered))
 	for _, candidate := range ordered {
+		if candidate.Concurrency <= 0 {
+			continue
+		}
 		loadRequest = append(loadRequest, AccountWithConcurrency{
 			ID:             candidate.ID,
 			MaxConcurrency: candidate.EffectiveLoadFactor(),
 		})
+	}
+	if len(loadRequest) == 0 {
+		sortAccountsByPriorityAndLastUsed(ordered, false)
+		return ordered
 	}
 	if cap := s.config.LoadBatchQueryCap; cap > 0 && len(loadRequest) > cap {
 		loadRequest = loadRequest[:cap]
@@ -297,14 +304,18 @@ func (s *accountCandidateSelector) acquire(ctx context.Context, account *Account
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if s == nil || s.concurrency == nil {
-		if slotID != "" && account.Concurrency > 0 {
-			return nil, ErrStableAccountSlotUnsupported
-		}
+	if account.Concurrency <= 0 {
 		result := &AccountSelectionResult{Account: account, Acquired: true, ReleaseFunc: func() {}}
 		if slotID != "" {
 			result.RefreshFunc = func(context.Context) (bool, error) { return true, nil }
 		}
+		return result, nil
+	}
+	if s == nil || s.concurrency == nil {
+		if slotID != "" {
+			return nil, ErrStableAccountSlotUnsupported
+		}
+		result := &AccountSelectionResult{Account: account, Acquired: true, ReleaseFunc: func() {}}
 		return result, nil
 	}
 	var (

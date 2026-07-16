@@ -73,6 +73,37 @@ func TestMediaWorkerInitialExecutionAllowsUnlimitedAccountConcurrency(t *testing
 	}
 }
 
+func TestMediaWorkerUnlimitedStableSlotsBypassOptionalStableAcquirer(t *testing.T) {
+	for _, tt := range []struct {
+		name        string
+		concurrency int
+	}{{name: "zero", concurrency: 0}, {name: "negative", concurrency: -1}} {
+		t.Run("initial "+tt.name, func(t *testing.T) {
+			fixture := newMediaWorkerFixture(t, true, NativeAsyncRequired)
+			fixture.account.Concurrency = tt.concurrency
+			fixture.worker.deps.Scheduler.selector = NewAccountCandidateSelector(
+				&panicAccountCandidateConcurrency{}, nil, task12SchedulingConfig(),
+			)
+
+			require.NoError(t, fixture.worker.ProcessOne(context.Background(), fixture.task.ID))
+			require.Equal(t, MediaTaskStatusCompleted, fixture.repo.mustGet(fixture.task.ID).Status)
+		})
+
+		t.Run("fixed recovery "+tt.name, func(t *testing.T) {
+			fixture := newMediaWorkerFixture(t, true, NativeAsyncRequired)
+			fixture.account.Concurrency = tt.concurrency
+			prepareRecoverableExistingUpstream(fixture, "existing-upstream")
+			fixture.worker.deps.Scheduler.selector = NewAccountCandidateSelector(
+				&panicAccountCandidateConcurrency{}, nil, task12SchedulingConfig(),
+			)
+
+			require.NoError(t, fixture.worker.ProcessOne(context.Background(), fixture.task.ID))
+			require.Equal(t, MediaTaskStatusCompleted, fixture.repo.mustGet(fixture.task.ID).Status)
+			require.GreaterOrEqual(t, fixture.adapter.pollCalls.Load(), int64(1))
+		})
+	}
+}
+
 func TestMediaWorkerFiniteStableSlotFailsClosedWithoutConcurrencyService(t *testing.T) {
 	fixture := newMediaWorkerFixture(t, true, NativeAsyncRequired)
 	fixture.worker.deps.Scheduler.selector = NewAccountCandidateSelector(nil, nil, task12SchedulingConfig())
@@ -86,6 +117,173 @@ func TestMediaWorkerFiniteStableSlotFailsClosedWithoutConcurrencyService(t *test
 	require.Zero(t, fixture.billing.settlementCalls())
 	require.Zero(t, fixture.queue.publishCalls.Load())
 	require.Zero(t, fixture.queue.ackCalls.Load())
+}
+
+func TestMediaWorkerSchedulingInfrastructureErrorsRemainRetryable(t *testing.T) {
+	assertRetryable := func(t *testing.T, fixture *mediaWorkerFixture, want error) {
+		t.Helper()
+		err := fixture.worker.processMessage(context.Background(), &MediaQueueMessage{TaskID: fixture.task.ID})
+		require.ErrorIs(t, err, want)
+		require.Equal(t, MediaTaskStatusInProgress, fixture.repo.mustGet(fixture.task.ID).Status)
+		require.Zero(t, fixture.adapter.syncCalls.Load())
+		require.Zero(t, fixture.adapter.submitCalls.Load())
+		require.Zero(t, fixture.adapter.pollCalls.Load())
+		require.Zero(t, fixture.billing.settlementCalls())
+		require.Zero(t, fixture.queue.publishCalls.Load())
+		require.Zero(t, fixture.queue.ackCalls.Load())
+	}
+
+	t.Run("account repository", func(t *testing.T) {
+		fixture := newMediaWorkerFixture(t, true, NativeAsyncRequired)
+		infrastructureErr := errors.New("account database unavailable")
+		fixture.worker.deps.Scheduler.accountRepo.(*workerAccountRepository).listErr = infrastructureErr
+		assertRetryable(t, fixture, infrastructureErr)
+	})
+
+	t.Run("immediate redis acquire", func(t *testing.T) {
+		fixture := newMediaWorkerFixture(t, true, NativeAsyncRequired)
+		infrastructureErr := errors.New("redis acquire unavailable")
+		concurrency := &accountCandidateConcurrencyStub{acquireErr: infrastructureErr}
+		cfg := task12SchedulingConfig()
+		cfg.LoadBatchEnabled = false
+		fixture.worker.deps.Scheduler.selector = NewAccountCandidateSelector(concurrency, nil, cfg)
+		assertRetryable(t, fixture, infrastructureErr)
+	})
+
+	t.Run("redis wait", func(t *testing.T) {
+		fixture := newMediaWorkerFixture(t, true, NativeAsyncRequired)
+		infrastructureErr := errors.New("redis wait unavailable")
+		concurrency := &accountCandidateConcurrencyStub{
+			acquireResults: map[int64][]bool{fixture.account.ID: {false}}, waitErr: infrastructureErr,
+		}
+		cfg := task12SchedulingConfig()
+		cfg.LoadBatchEnabled = false
+		fixture.worker.deps.Scheduler.selector = NewAccountCandidateSelector(concurrency, nil, cfg)
+		assertRetryable(t, fixture, infrastructureErr)
+	})
+
+	t.Run("stable capability missing", func(t *testing.T) {
+		fixture := newMediaWorkerFixture(t, true, NativeAsyncRequired)
+		cfg := task12SchedulingConfig()
+		cfg.LoadBatchEnabled = false
+		fixture.worker.deps.Scheduler.selector = NewAccountCandidateSelector(&atomicAccountCandidateConcurrency{}, nil, cfg)
+		assertRetryable(t, fixture, ErrStableAccountSlotUnsupported)
+	})
+}
+
+func TestMediaWorkerSchedulerExhaustionClassificationPreservesErrorKinds(t *testing.T) {
+	require.True(t, isMediaSchedulerExhaustion(fmt.Errorf("wrapped: %w", ErrNoAvailableAccounts)))
+	require.True(t, isMediaSchedulerExhaustion(fmt.Errorf("wrapped: %w", ErrAccountConcurrencySaturated)))
+	for _, err := range []error{
+		errors.New("database unavailable"),
+		ErrStableAccountSlotUnsupported,
+		context.Canceled,
+		context.DeadlineExceeded,
+	} {
+		require.False(t, isMediaSchedulerExhaustion(fmt.Errorf("wrapped: %w", err)))
+	}
+}
+
+func TestMediaWorkerFixedSchedulingInfrastructureErrorsRemainRetryable(t *testing.T) {
+	assertRetryable := func(t *testing.T, fixture *mediaWorkerFixture, want error) {
+		t.Helper()
+		err := fixture.worker.processMessage(context.Background(), &MediaQueueMessage{TaskID: fixture.task.ID})
+		require.ErrorIs(t, err, want)
+		require.Equal(t, MediaTaskStatusInProgress, fixture.repo.mustGet(fixture.task.ID).Status)
+		require.Zero(t, fixture.adapter.submitCalls.Load())
+		require.Zero(t, fixture.adapter.pollCalls.Load())
+		require.Zero(t, fixture.billing.settlementCalls())
+		require.Zero(t, fixture.queue.publishCalls.Load())
+		require.Zero(t, fixture.queue.ackCalls.Load())
+	}
+
+	t.Run("account repository", func(t *testing.T) {
+		fixture := newMediaWorkerFixture(t, true, NativeAsyncRequired)
+		prepareRecoverableExistingUpstream(fixture, "existing-upstream")
+		infrastructureErr := errors.New("fixed account database unavailable")
+		fixture.worker.deps.Scheduler.accountRepo.(*workerAccountRepository).getErr = infrastructureErr
+		assertRetryable(t, fixture, infrastructureErr)
+	})
+
+	for _, tt := range []struct {
+		name        string
+		concurrency AccountCandidateConcurrency
+		want        error
+	}{
+		{name: "immediate redis acquire", concurrency: &accountCandidateConcurrencyStub{acquireErr: errors.New("fixed redis acquire unavailable")}},
+		{name: "redis wait", concurrency: &accountCandidateConcurrencyStub{acquireResults: map[int64][]bool{7: {false}}, waitErr: errors.New("fixed redis wait unavailable")}},
+		{name: "stable capability missing", concurrency: &atomicAccountCandidateConcurrency{}, want: ErrStableAccountSlotUnsupported},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			fixture := newMediaWorkerFixture(t, true, NativeAsyncRequired)
+			prepareRecoverableExistingUpstream(fixture, "existing-upstream")
+			cfg := task12SchedulingConfig()
+			cfg.LoadBatchEnabled = false
+			fixture.worker.deps.Scheduler.selector = NewAccountCandidateSelector(tt.concurrency, nil, cfg)
+			want := tt.want
+			if want == nil {
+				switch concurrency := tt.concurrency.(type) {
+				case *accountCandidateConcurrencyStub:
+					if concurrency.acquireErr != nil {
+						want = concurrency.acquireErr
+					} else {
+						want = concurrency.waitErr
+					}
+				}
+			}
+			assertRetryable(t, fixture, want)
+		})
+	}
+}
+
+func TestMediaWorkerSchedulingExhaustionStillFailsAndRefunds(t *testing.T) {
+	assertFailed := func(t *testing.T, fixture *mediaWorkerFixture) {
+		t.Helper()
+		require.NoError(t, fixture.worker.processMessage(context.Background(), &MediaQueueMessage{TaskID: fixture.task.ID}))
+		stored := fixture.repo.mustGet(fixture.task.ID)
+		require.Equal(t, MediaTaskStatusFailed, stored.Status)
+		require.Equal(t, "system_scheduler", stored.ErrorCode)
+		require.Equal(t, MediaFailureSettlement{
+			Kind: MediaFailureKindSystem, RefundRatio: 1, ErrorCode: "system_scheduler",
+		}, fixture.billing.lastFailure())
+		require.Zero(t, fixture.adapter.syncCalls.Load())
+		require.Zero(t, fixture.adapter.submitCalls.Load())
+		require.Zero(t, fixture.adapter.pollCalls.Load())
+		require.Equal(t, int64(1), fixture.queue.publishCalls.Load())
+		require.Equal(t, int64(1), fixture.queue.ackCalls.Load())
+	}
+
+	t.Run("initial no accounts", func(t *testing.T) {
+		fixture := newMediaWorkerFixture(t, true, NativeAsyncRequired)
+		fixture.account.Schedulable = false
+		assertFailed(t, fixture)
+	})
+
+	t.Run("initial saturated", func(t *testing.T) {
+		fixture := newMediaWorkerFixture(t, true, NativeAsyncRequired)
+		concurrency := &accountCandidateConcurrencyStub{acquireResults: map[int64][]bool{fixture.account.ID: {false}}}
+		cfg := task12SchedulingConfig()
+		cfg.LoadBatchEnabled = false
+		fixture.worker.deps.Scheduler.selector = NewAccountCandidateSelector(concurrency, nil, cfg)
+		assertFailed(t, fixture)
+	})
+
+	t.Run("fixed no accounts", func(t *testing.T) {
+		fixture := newMediaWorkerFixture(t, true, NativeAsyncRequired)
+		prepareRecoverableExistingUpstream(fixture, "existing-upstream")
+		fixture.account.Schedulable = false
+		assertFailed(t, fixture)
+	})
+
+	t.Run("fixed saturated", func(t *testing.T) {
+		fixture := newMediaWorkerFixture(t, true, NativeAsyncRequired)
+		prepareRecoverableExistingUpstream(fixture, "existing-upstream")
+		concurrency := &accountCandidateConcurrencyStub{acquireResults: map[int64][]bool{fixture.account.ID: {false}}}
+		cfg := task12SchedulingConfig()
+		cfg.LoadBatchEnabled = false
+		fixture.worker.deps.Scheduler.selector = NewAccountCandidateSelector(concurrency, nil, cfg)
+		assertFailed(t, fixture)
+	})
 }
 
 func TestMediaWorkerIgnoresDuplicateTerminalMessage(t *testing.T) {
@@ -774,13 +972,17 @@ func TestMediaWorkerUnknownSubmissionRejectsFixedSelectorAccountDrift(t *testing
 	fixedAdapter, _ := prepareRecoverableSubmittingTask(t, fixture, true)
 	fixture.selector.configureDrift(99)
 
-	err := fixture.worker.ProcessOne(context.Background(), fixture.task.ID)
-	require.ErrorIs(t, err, ErrNoAvailableAccounts)
+	require.NoError(t, fixture.worker.processMessage(context.Background(), &MediaQueueMessage{TaskID: fixture.task.ID}))
 	require.Equal(t, int64(1), fixture.selector.selectCalls.Load())
 	require.Equal(t, int64(1), fixture.selector.releaseCalls.Load())
 	require.Zero(t, fixedAdapter.submitCalls.Load())
-	require.Zero(t, fixture.queue.ackCalls.Load())
-	require.Equal(t, MediaTaskStatusInProgress, fixture.repo.mustGet(fixture.task.ID).Status)
+	require.Equal(t, int64(1), fixture.queue.ackCalls.Load())
+	stored := fixture.repo.mustGet(fixture.task.ID)
+	require.Equal(t, MediaTaskStatusFailed, stored.Status)
+	require.Equal(t, "system_scheduler", stored.ErrorCode)
+	require.Equal(t, MediaFailureSettlement{
+		Kind: MediaFailureKindSystem, RefundRatio: 1, ErrorCode: "system_scheduler",
+	}, fixture.billing.lastFailure())
 }
 
 func TestMediaWorkerUnknownSubmissionReleasesFixedSlotWhenAdapterPanics(t *testing.T) {
@@ -1070,6 +1272,44 @@ func TestMediaWorkerRetriesExplicitRejectionOnDifferentSnapshottedAccount(t *tes
 	require.Equal(t, int64(1), fallback.submitCalls.Load())
 	require.Equal(t, fallbackAccount.ID, *fixture.repo.mustGet(fixture.task.ID).AccountID)
 	require.Equal(t, MediaTaskStatusCompleted, fixture.repo.mustGet(fixture.task.ID).Status)
+}
+
+func TestMediaWorkerRetryCandidateInfrastructureErrorDoesNotSettleLastUpstreamFailure(t *testing.T) {
+	fixture := newMediaWorkerFixture(t, true, NativeAsyncRequired)
+	fixture.adapter.submitErr = &MediaAdapterError{
+		Code: "upstream_busy", Message: "busy", Retryable: true,
+	}
+	fallback := newWorkerAdapter("worker-fallback-infrastructure")
+	fixture.worker.deps.Adapters.Register(fallback.Name(), fallback)
+	fallbackAccount := &Account{ID: 8, Platform: PlatformOpenAI, Status: StatusActive, Schedulable: true, Concurrency: 1}
+	accountRepo := fixture.worker.deps.Scheduler.accountRepo.(*workerAccountRepository)
+	accountRepo.extra = append(accountRepo.extra, fallbackAccount)
+	var candidates []MediaAccountCandidateSnapshot
+	require.NoError(t, json.Unmarshal(fixture.task.CandidateSnapshot, &candidates))
+	candidates = append(candidates, MediaAccountCandidateSnapshot{
+		AccountID: fallbackAccount.ID, Platform: fallbackAccount.Platform,
+		ResolvedModel: ResolvedMediaAccountModel{
+			Adapter: fallback.Name(), UpstreamModel: "upstream-fallback", NativeAsyncMode: NativeAsyncRequired,
+		},
+	})
+	encoded, err := json.Marshal(candidates)
+	require.NoError(t, err)
+	fixture.repo.mu.Lock()
+	fixture.repo.tasks[fixture.task.ID].CandidateSnapshot = encoded
+	fixture.repo.mu.Unlock()
+	infrastructureErr := errors.New("scheduler failed during retry")
+	fixture.selector.selectErrAfter = 2
+	fixture.selector.selectErr = infrastructureErr
+
+	err = fixture.worker.processMessage(context.Background(), &MediaQueueMessage{TaskID: fixture.task.ID})
+	require.ErrorIs(t, err, infrastructureErr)
+	require.Equal(t, int64(1), fixture.adapter.submitCalls.Load())
+	require.Zero(t, fallback.submitCalls.Load())
+	require.Equal(t, int64(1), fixture.selector.releaseCalls.Load())
+	require.Equal(t, MediaTaskStatusInProgress, fixture.repo.mustGet(fixture.task.ID).Status)
+	require.Zero(t, fixture.billing.settlementCalls())
+	require.Zero(t, fixture.queue.publishCalls.Load())
+	require.Zero(t, fixture.queue.ackCalls.Load())
 }
 
 func TestMediaWorkerConsumerAcknowledgesOnlyAfterSafeCompletion(t *testing.T) {
@@ -1981,6 +2221,8 @@ func (q *workerQueue) deliver(message *MediaQueueMessage) {
 type workerAccountRepository struct {
 	account        *Account
 	extra          []*Account
+	listErr        error
+	getErr         error
 	markUsed       atomic.Int64
 	getCalls       atomic.Int64
 	getEntered     chan struct{}
@@ -1988,7 +2230,13 @@ type workerAccountRepository struct {
 	getEnteredOnce sync.Once
 }
 
-func (r *workerAccountRepository) ListSchedulableByGroupID(context.Context, int64) ([]Account, error) {
+func (r *workerAccountRepository) ListSchedulableByGroupID(ctx context.Context, _ int64) ([]Account, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if r.listErr != nil {
+		return nil, r.listErr
+	}
 	accounts := []Account{*r.account}
 	for _, account := range r.extra {
 		accounts = append(accounts, *account)
@@ -2009,6 +2257,9 @@ func (r *workerAccountRepository) GetByID(ctx context.Context, id int64) (*Accou
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
+	}
+	if r.getErr != nil {
+		return nil, r.getErr
 	}
 	if r.account.ID == id {
 		copy := *r.account
@@ -2036,6 +2287,8 @@ type workerSelector struct {
 	waitCalls              atomic.Int64
 	waitMode               atomic.Bool
 	driftID                atomic.Int64
+	selectErrAfter         int64
+	selectErr              error
 	mu                     sync.Mutex
 	lastSession            string
 	lastSlotID             string
@@ -2049,7 +2302,10 @@ type workerSelector struct {
 }
 
 func (s *workerSelector) Select(_ context.Context, req AccountCandidateSelectionRequest) (*AccountSelectionResult, error) {
-	s.selectCalls.Add(1)
+	selectCall := s.selectCalls.Add(1)
+	if s.selectErr != nil && selectCall >= s.selectErrAfter {
+		return nil, s.selectErr
+	}
 	s.mu.Lock()
 	s.lastSession = req.SessionHash
 	s.lastSlotID = req.SlotID

@@ -476,11 +476,19 @@ func (w *MediaWorker) execute(ctx context.Context, task *MediaTask, active *medi
 	stageStarted := time.Now()
 	if task.UpstreamTaskID != "" {
 		w.observeStage(task, trace, MediaTaskStageScheduling, stageStarted)
-		return w.resumePolling(ctx, task, active, trace)
+		result, failure, err := w.resumePolling(ctx, task, active, trace)
+		if isMediaSchedulerExhaustion(err) {
+			return nil, systemMediaFailure("system_scheduler", "no media account is available"), nil
+		}
+		return result, failure, err
 	}
 	if isUnknownSubmissionRecovery(task) {
 		w.observeStage(task, trace, MediaTaskStageScheduling, stageStarted)
-		return w.resumeUnknownSubmission(ctx, task, active, trace)
+		result, failure, err := w.resumeUnknownSubmission(ctx, task, active, trace)
+		if isMediaSchedulerExhaustion(err) {
+			return nil, systemMediaFailure("system_scheduler", "no media account is available"), nil
+		}
+		return result, failure, err
 	}
 	spec, err := decodeWorkerMediaSpec(task.RequestSpec, task.MediaType)
 	if err != nil {
@@ -511,7 +519,7 @@ func (w *MediaWorker) execute(ctx context.Context, task *MediaTask, active *medi
 			if ctx.Err() != nil {
 				return nil, nil, ctx.Err()
 			}
-			if errors.Is(selectErr, ErrStableAccountSlotUnsupported) {
+			if !isMediaSchedulerExhaustion(selectErr) {
 				return nil, nil, selectErr
 			}
 			if lastFailure != nil {
@@ -525,7 +533,7 @@ func (w *MediaWorker) execute(ctx context.Context, task *MediaTask, active *medi
 			if ctx.Err() != nil {
 				return nil, nil, ctx.Err()
 			}
-			if errors.Is(acquireErr, ErrStableAccountSlotUnsupported) {
+			if !isMediaSchedulerExhaustion(acquireErr) {
 				return nil, nil, acquireErr
 			}
 			return nil, systemMediaFailure("system_scheduler", "media account concurrency is unavailable"), nil
@@ -555,6 +563,10 @@ func (w *MediaWorker) execute(ctx context.Context, task *MediaTask, active *medi
 		return nil, lastFailure, nil
 	}
 	return nil, systemMediaFailure("system_scheduler", "no media account is available"), nil
+}
+
+func isMediaSchedulerExhaustion(err error) bool {
+	return errors.Is(err, ErrNoAvailableAccounts) || errors.Is(err, ErrAccountConcurrencySaturated)
 }
 
 func isUnknownSubmissionRecovery(task *MediaTask) bool {

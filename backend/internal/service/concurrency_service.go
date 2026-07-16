@@ -177,7 +177,7 @@ func (s *ConcurrencyService) AcquireAccountSlotWithID(ctx context.Context, accou
 	member := logicalSlotID + stableAccountSlotEpochSeparator + epoch
 	stableCache, ok := s.cache.(stableAccountConcurrencyCache)
 	if !ok {
-		return nil, ErrInvalidConcurrencySlotID
+		return nil, ErrStableAccountSlotUnsupported
 	}
 	acquired, err := stableCache.AcquireStableAccountSlot(ctx, accountID, maxConcurrency, logicalSlotID, epoch)
 	if err != nil {

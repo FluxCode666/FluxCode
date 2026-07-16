@@ -663,7 +663,7 @@ func TestAccountCandidateSelectorNilConcurrencyAndZeroConcurrency(t *testing.T) 
 		})
 	}
 
-	t.Run("zero concurrency is unlimited for immediate acquire", func(t *testing.T) {
+	t.Run("zero concurrency bypasses legacy acquire", func(t *testing.T) {
 		concurrency := &accountCandidateConcurrencyStub{}
 		selector := NewAccountCandidateSelector(concurrency, nil, task12SchedulingConfig())
 		result, err := selector.Select(context.Background(), AccountCandidateSelectionRequest{
@@ -672,8 +672,28 @@ func TestAccountCandidateSelectorNilConcurrencyAndZeroConcurrency(t *testing.T) 
 		require.NoError(t, err)
 		require.True(t, result.Acquired)
 		acquires, _, _, _ := concurrency.snapshot()
-		require.Equal(t, []int64{1}, acquires)
+		require.Empty(t, acquires)
 	})
+
+	for _, tt := range []struct {
+		name        string
+		concurrency int
+	}{{name: "zero", concurrency: 0}, {name: "negative", concurrency: -1}} {
+		t.Run("stable unlimited bypasses optional stable acquisition "+tt.name, func(t *testing.T) {
+			selector := NewAccountCandidateSelector(&panicAccountCandidateConcurrency{}, nil, task12SchedulingConfig())
+			result, err := selector.Select(context.Background(), AccountCandidateSelectionRequest{
+				SlotID: "media-task:1", Candidates: []*Account{task12CandidateAccount(1, 1, tt.concurrency)},
+			})
+			require.NoError(t, err)
+			require.True(t, result.Acquired)
+			require.NotNil(t, result.ReleaseFunc)
+			require.NotNil(t, result.RefreshFunc)
+			owned, refreshErr := result.RefreshFunc(context.Background())
+			require.NoError(t, refreshErr)
+			require.True(t, owned)
+			result.ReleaseFunc()
+		})
+	}
 }
 
 func TestAccountCandidateSelectorAcquireRaceAndReleaseAreAtomicAndIdempotent(t *testing.T) {
@@ -801,6 +821,24 @@ type atomicAccountCandidateConcurrency struct {
 	mu       sync.Mutex
 	active   bool
 	releases int
+}
+
+type panicAccountCandidateConcurrency struct{}
+
+func (*panicAccountCandidateConcurrency) GetAccountsLoadBatch(context.Context, []AccountWithConcurrency) (map[int64]*AccountLoadInfo, error) {
+	panic("unlimited account must not query concurrency load")
+}
+func (*panicAccountCandidateConcurrency) AcquireAccountSlot(context.Context, int64, int) (*AcquireResult, error) {
+	panic("unlimited account must not acquire a concurrency slot")
+}
+func (*panicAccountCandidateConcurrency) IncrementAccountWaitCount(context.Context, int64, int) (bool, error) {
+	panic("unlimited account must not increment wait count")
+}
+func (*panicAccountCandidateConcurrency) DecrementAccountWaitCount(context.Context, int64) {
+	panic("unlimited account must not decrement wait count")
+}
+func (*panicAccountCandidateConcurrency) GetAccountWaitingCount(context.Context, int64) (int, error) {
+	panic("unlimited account must not query wait count")
 }
 
 func (s *atomicAccountCandidateConcurrency) GetAccountsLoadBatch(context.Context, []AccountWithConcurrency) (map[int64]*AccountLoadInfo, error) {

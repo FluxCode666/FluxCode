@@ -246,6 +246,45 @@ func (s *ConcurrencyCacheSuite) TestAccountSlot_StableMediaTaskRefreshKeepsShort
 	other.ReleaseFunc()
 }
 
+func (s *ConcurrencyCacheSuite) TestAccountSlot_StableMediaTaskExpiredEpochCannotBeRevivedWhileKeyStaysAlive() {
+	shortTTLCache := &concurrencyCache{rdb: s.rdb, slotTTLSeconds: 1, waitQueueTTLSeconds: 1}
+	concurrency := service.NewConcurrencyService(shortTTLCache)
+	accountID := int64(781)
+	first, err := concurrency.AcquireAccountSlotWithID(s.ctx, accountID, 2, service.MediaTaskSlotID(42))
+	require.NoError(s.T(), err)
+	require.True(s.T(), first.Acquired)
+	second, err := concurrency.AcquireAccountSlotWithID(s.ctx, accountID, 2, service.MediaTaskSlotID(43))
+	require.NoError(s.T(), err)
+	require.True(s.T(), second.Acquired)
+
+	deadline := time.Now().Add(2100 * time.Millisecond)
+	for time.Now().Before(deadline) {
+		time.Sleep(100 * time.Millisecond)
+		owned, refreshErr := second.RefreshFunc(s.ctx)
+		require.NoError(s.T(), refreshErr)
+		require.True(s.T(), owned)
+	}
+
+	firstOwned, err := first.RefreshFunc(s.ctx)
+	require.NoError(s.T(), err)
+	require.False(s.T(), firstOwned, "an expired epoch must not be revived while another member keeps the shared key alive")
+	secondOwned, err := second.RefreshFunc(s.ctx)
+	require.NoError(s.T(), err)
+	require.True(s.T(), secondOwned)
+	current, err := shortTTLCache.GetAccountConcurrency(s.ctx, accountID)
+	require.NoError(s.T(), err)
+	require.Equal(s.T(), 1, current)
+
+	blocked, err := concurrency.AcquireAccountSlotWithID(s.ctx, accountID, 1, service.MediaTaskSlotID(44))
+	require.NoError(s.T(), err)
+	require.False(s.T(), blocked.Acquired, "the healthy owner must fill max=1")
+	allowed, err := concurrency.AcquireAccountSlotWithID(s.ctx, accountID, 2, service.MediaTaskSlotID(44))
+	require.NoError(s.T(), err)
+	require.True(s.T(), allowed.Acquired, "the expired epoch must not consume max=2 capacity")
+	allowed.ReleaseFunc()
+	second.ReleaseFunc()
+}
+
 func (s *ConcurrencyCacheSuite) TestAccountSlot_ReleaseIdempotent() {
 	accountID := int64(13)
 	reqID := "release-test"

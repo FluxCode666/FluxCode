@@ -124,6 +124,10 @@ type trackingConcurrencyCache struct {
 	cleanupPrefix string
 }
 
+type legacyOnlyConcurrencyCache struct {
+	ConcurrencyCache
+}
+
 func (c *trackingConcurrencyCache) CleanupStaleProcessSlots(_ context.Context, prefix string) error {
 	c.cleanupPrefix = prefix
 	return c.cleanupErr
@@ -249,6 +253,16 @@ func TestAcquireAccountSlotWithIDUsesFencedEpochAndIdempotentRelease(t *testing.
 	require.Len(t, cache.releasedRequestIDs, 2)
 	require.NotEqual(t, cache.releasedRequestIDs[0], cache.releasedRequestIDs[1])
 	require.Equal(t, cache.releasedRequestIDs, cache.refreshedMembers)
+}
+
+func TestAcquireAccountSlotWithIDReportsMissingStableCapability(t *testing.T) {
+	cache := &legacyOnlyConcurrencyCache{ConcurrencyCache: &stubConcurrencyCacheForTest{acquireResult: true}}
+	result, err := NewConcurrencyService(cache).AcquireAccountSlotWithID(
+		context.Background(), 42, 1, MediaTaskSlotID(42),
+	)
+	require.Nil(t, result)
+	require.ErrorIs(t, err, ErrStableAccountSlotUnsupported)
+	require.NotErrorIs(t, err, ErrInvalidConcurrencySlotID)
 }
 
 func TestAcquireAccountSlotWithoutIDKeepsRandomRequestIDs(t *testing.T) {
