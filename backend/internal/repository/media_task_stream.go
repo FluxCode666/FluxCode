@@ -21,15 +21,16 @@ import (
 )
 
 const (
-	mediaTaskSyncStreamKey  = "media:tasks:sync"
-	mediaTaskAsyncStreamKey = "media:tasks:async"
-	mediaTaskConsumerGroup  = "media-workers"
-	mediaTaskStreamMaxLen   = int64(100000)
-	mediaTaskReadBatchSize  = int64(32)
-	mediaTaskSyncBurst      = 8
-	mediaTaskMaxBlock       = 50 * time.Millisecond
-	mediaTaskRedisIOTimeout = 100 * time.Millisecond
-	defaultMediaTaskLease   = time.Minute
+	mediaTaskSyncStreamKey       = "media:tasks:sync"
+	mediaTaskAsyncStreamKey      = "media:tasks:async"
+	mediaTaskConsumerGroup       = "media-workers"
+	mediaTaskStreamMaxLen        = int64(100000)
+	mediaTaskReadBatchSize       = int64(32)
+	mediaTaskSyncBurst           = 8
+	mediaTaskAutoClaimPageBudget = 4
+	mediaTaskMaxBlock            = 50 * time.Millisecond
+	mediaTaskRedisIOTimeout      = 100 * time.Millisecond
+	defaultMediaTaskLease        = time.Minute
 )
 
 var mediaTaskConsumerSequence atomic.Uint64
@@ -41,6 +42,14 @@ type mediaReceiveDeadlineSource uint8
 const (
 	mediaReceiveDeadlineInternal mediaReceiveDeadlineSource = iota
 	mediaReceiveDeadlineParent
+)
+
+type mediaAckState uint8
+
+const (
+	mediaAckStreamMissing mediaAckState = iota
+	mediaAckGroupMissing
+	mediaAckGroupPresent
 )
 
 // MediaTaskStream 使用两个 Redis Streams 保存同步与异步媒体任务。
@@ -248,33 +257,71 @@ func (s *MediaTaskStream) Ack(ctx context.Context, message *service.MediaQueueMe
 	if err != nil {
 		return err
 	}
-	acked, err := s.rdb.XAck(ctx, stream, mediaTaskConsumerGroup, message.ID).Result()
-	if err != nil {
+	acked, ackErr := s.rdb.XAck(ctx, stream, mediaTaskConsumerGroup, message.ID).Result()
+	if ackErr != nil {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		if !isRedisNoGroup(err) {
-			return fmt.Errorf("ack media task: %w", err)
+		if !isRedisNoGroup(ackErr) {
+			return fmt.Errorf("ack media task: %w", ackErr)
 		}
-		exists, existsErr := s.rdb.Exists(ctx, stream).Result()
-		if existsErr != nil {
-			if ctx.Err() != nil {
-				return ctx.Err()
-			}
-			return fmt.Errorf("inspect media task stream after NOGROUP: %w", existsErr)
-		}
-		if ensureErr := s.EnsureGroups(ctx); ensureErr != nil {
-			return ensureErr
-		}
-		if exists > 0 {
-			return fmt.Errorf("%w: consumer group disappeared before ACK", service.ErrMediaQueueDeliveryStateLost)
-		}
+	}
+	if ackErr == nil && acked > 0 {
 		return nil
 	}
-	if acked == 0 {
+	return s.resolveUnsuccessfulAck(ctx, stream, message, isRedisNoGroup(ackErr))
+}
+
+func (s *MediaTaskStream) resolveUnsuccessfulAck(
+	ctx context.Context,
+	stream string,
+	message *service.MediaQueueMessage,
+	observedNoGroup bool,
+) error {
+	state, err := s.inspectAckState(ctx, stream)
+	if err != nil {
+		return err
+	}
+	if state == mediaAckGroupPresent && !observedNoGroup {
 		return fmt.Errorf("%w: message %s is not pending in %s", service.ErrMediaQueueMessageNotPending, message.ID, message.Priority)
 	}
-	return nil
+	if ensureErr := s.EnsureGroups(ctx); ensureErr != nil {
+		return ensureErr
+	}
+	if state == mediaAckStreamMissing {
+		return nil
+	}
+	return fmt.Errorf("%w: consumer group disappeared before ACK", service.ErrMediaQueueDeliveryStateLost)
+}
+
+func (s *MediaTaskStream) inspectAckState(ctx context.Context, stream string) (mediaAckState, error) {
+	exists, err := s.rdb.Exists(ctx, stream).Result()
+	if err != nil {
+		if ctx.Err() != nil {
+			return 0, ctx.Err()
+		}
+		return 0, fmt.Errorf("inspect media task stream after unsuccessful ACK: %w", err)
+	}
+	if exists == 0 {
+		return mediaAckStreamMissing, nil
+	}
+
+	groups, err := s.rdb.XInfoGroups(ctx, stream).Result()
+	if err != nil {
+		if ctx.Err() != nil {
+			return 0, ctx.Err()
+		}
+		if isRedisNoSuchKey(err) {
+			return mediaAckStreamMissing, nil
+		}
+		return 0, fmt.Errorf("inspect media task consumer groups after unsuccessful ACK: %w", err)
+	}
+	for _, group := range groups {
+		if group.Name == mediaTaskConsumerGroup {
+			return mediaAckGroupPresent, nil
+		}
+	}
+	return mediaAckGroupMissing, nil
 }
 
 // PendingCount 返回某优先级已投递但未 ACK 的消息数，供监控和恢复测试使用。
@@ -478,24 +525,35 @@ func (s *MediaTaskStream) recoverPending(ctx context.Context) error {
 func (s *MediaTaskStream) recoverPriority(ctx context.Context, priority service.MediaQueuePriority) error {
 	stream, _ := mediaTaskStreamKey(priority)
 	start := s.autoClaimCursor(priority)
-	messages, next, err := s.xAutoClaim(ctx, priority, &redis.XAutoClaimArgs{
-		Stream:   stream,
-		Group:    mediaTaskConsumerGroup,
-		Consumer: s.consumerName,
-		MinIdle:  s.lease,
-		Start:    start,
-		Count:    mediaTaskReadBatchSize,
-	})
-	if err != nil {
-		return err
+	// XAUTOCLAIM 每页最多扫描 COUNT*10 条 PEL。有限页预算允许跳过连续
+	// fresh 窗口，同时限制单优先级一次恢复占用的 Redis 命令数。
+	for range mediaTaskAutoClaimPageBudget {
+		messages, next, err := s.xAutoClaim(ctx, priority, &redis.XAutoClaimArgs{
+			Stream:   stream,
+			Group:    mediaTaskConsumerGroup,
+			Consumer: s.consumerName,
+			MinIdle:  s.lease,
+			Start:    start,
+			Count:    mediaTaskReadBatchSize,
+		})
+		if err != nil {
+			return err
+		}
+		if next == "" {
+			next = "0-0"
+		}
+		s.setAutoClaimCursor(priority, next)
+		s.bufferMessages(priority, messages)
+		if len(messages) > 0 || next == "0-0" || next == start {
+			return nil
+		}
+		start = next
 	}
-	s.setAutoClaimCursor(priority, next)
-	s.bufferMessages(priority, messages)
 	return nil
 }
 
 func (s *MediaTaskStream) xAutoClaim(ctx context.Context, priority service.MediaQueuePriority, args *redis.XAutoClaimArgs) ([]redis.XMessage, string, error) {
-	client, commandCtx, cancel, err := s.receiveRedisCommand(ctx)
+	client, commandCtx, cancel, err := s.receiveRedisCommand(ctx, mediaTaskRedisIOTimeout)
 	if err != nil {
 		return nil, "", err
 	}
@@ -516,7 +574,7 @@ func (s *MediaTaskStream) xAutoClaim(ctx context.Context, priority service.Media
 	}
 	retryArgs := *args
 	retryArgs.Start = "0-0"
-	client, commandCtx, cancel, err = s.receiveRedisCommand(ctx)
+	client, commandCtx, cancel, err = s.receiveRedisCommand(ctx, mediaTaskRedisIOTimeout)
 	if err != nil {
 		return nil, "", err
 	}
@@ -564,7 +622,13 @@ func (s *MediaTaskStream) readNewBoth(ctx context.Context, block time.Duration) 
 }
 
 func (s *MediaTaskStream) xReadGroup(ctx context.Context, args *redis.XReadGroupArgs) ([]redis.XStream, error) {
-	client, commandCtx, cancel, err := s.receiveRedisCommand(ctx)
+	hardTimeout := mediaTaskRedisIOTimeout
+	if args.Block > 0 {
+		// Redis 的阻塞超时按服务端事件循环唤醒；给合法 BLOCK 时长额外保留
+		// 固定 I/O grace，但最终仍由 Receive 的 effective deadline 封顶。
+		hardTimeout += args.Block
+	}
+	client, commandCtx, cancel, err := s.receiveRedisCommand(ctx, hardTimeout)
 	if err != nil {
 		return nil, err
 	}
@@ -575,6 +639,11 @@ func (s *MediaTaskStream) xReadGroup(ctx context.Context, args *redis.XReadGroup
 	}
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
+	}
+	if args.Block >= 0 && isRedisTimeout(err) {
+		// 仅阻塞读取可把 hard I/O timeout 当作本轮无消息；每次尝试仍至少
+		// 等待 hardTimeout，下一轮继续受 Receive deadline 约束，不会忙循环。
+		return nil, nil
 	}
 	if !isRedisNoGroup(err) {
 		return nil, fmt.Errorf("receive media tasks: %w", err)
@@ -587,7 +656,7 @@ func (s *MediaTaskStream) xReadGroup(ctx context.Context, args *redis.XReadGroup
 	if ensureErr := s.ensureGroupsForReceive(ctx); ensureErr != nil {
 		return nil, ensureErr
 	}
-	client, commandCtx, cancel, err = s.receiveRedisCommand(ctx)
+	client, commandCtx, cancel, err = s.receiveRedisCommand(ctx, hardTimeout)
 	if err != nil {
 		return nil, err
 	}
@@ -599,12 +668,15 @@ func (s *MediaTaskStream) xReadGroup(ctx context.Context, args *redis.XReadGroup
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
 	}
+	if args.Block >= 0 && isRedisTimeout(err) {
+		return nil, nil
+	}
 	return nil, fmt.Errorf("receive media tasks after group recreation: %w", err)
 }
 
 func (s *MediaTaskStream) ensureGroupsForReceive(ctx context.Context) error {
 	for _, stream := range []string{mediaTaskSyncStreamKey, mediaTaskAsyncStreamKey} {
-		client, commandCtx, cancel, err := s.receiveRedisCommand(ctx)
+		client, commandCtx, cancel, err := s.receiveRedisCommand(ctx, mediaTaskRedisIOTimeout)
 		if err != nil {
 			return err
 		}
@@ -621,7 +693,7 @@ func (s *MediaTaskStream) ensureGroupsForReceive(ctx context.Context) error {
 	return nil
 }
 
-func (s *MediaTaskStream) receiveRedisCommand(ctx context.Context) (*redis.Client, context.Context, context.CancelFunc, error) {
+func (s *MediaTaskStream) receiveRedisCommand(ctx context.Context, hardTimeout time.Duration) (*redis.Client, context.Context, context.CancelFunc, error) {
 	deadline, ok := ctx.Deadline()
 	if !ok {
 		return nil, nil, nil, fmt.Errorf("receive media task command requires deadline")
@@ -633,7 +705,7 @@ func (s *MediaTaskStream) receiveRedisCommand(ctx context.Context) (*redis.Clien
 		}
 		return nil, nil, nil, context.DeadlineExceeded
 	}
-	timeout := min(remaining, mediaTaskRedisIOTimeout)
+	timeout := min(remaining, hardTimeout)
 	commandCtx, cancel := context.WithTimeout(ctx, timeout)
 	client := s.rdb.WithTimeout(timeout)
 	// WithTimeout clones Options before sharing the underlying pool, so this does not
@@ -912,6 +984,15 @@ func isRedisBusyGroup(err error) bool {
 
 func isRedisNoGroup(err error) bool {
 	return err != nil && strings.Contains(err.Error(), "NOGROUP")
+}
+
+func isRedisNoSuchKey(err error) bool {
+	return err != nil && strings.Contains(strings.ToLower(err.Error()), "no such key")
+}
+
+func isRedisTimeout(err error) bool {
+	var networkErr net.Error
+	return errors.As(err, &networkErr) && networkErr.Timeout()
 }
 
 func newMediaTaskConsumerName() string {

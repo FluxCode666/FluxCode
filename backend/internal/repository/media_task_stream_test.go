@@ -309,6 +309,23 @@ func TestMediaTaskStreamReceiveWrapsRedisErrors(t *testing.T) {
 	require.NotErrorIs(t, err, service.ErrMediaQueueReceiveTimeout)
 }
 
+func TestMediaTaskStreamReceivePreservesNonBlockingRedisTimeoutAsInfrastructureError(t *testing.T) {
+	client, _ := newFakeRedisClient(t, func(command []string) fakeRedisAction {
+		if commandName(command) == "xautoclaim" {
+			return fakeRedisAction{stall: true}
+		}
+		return fakeRedisAction{response: respError("unexpected command")}
+	})
+	stream := NewMediaTaskStream(client, "non-blocking-timeout", time.Minute)
+	started := time.Now()
+	message, err := stream.Receive(context.Background(), 250*time.Millisecond)
+	require.Nil(t, message)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "i/o timeout")
+	require.NotErrorIs(t, err, service.ErrMediaQueueReceiveTimeout)
+	require.Less(t, time.Since(started), 200*time.Millisecond)
+}
+
 func TestMediaTaskStreamRedeliversOwnUnackedMessageAfterLease(t *testing.T) {
 	var syncClaims atomic.Int64
 	var syncReads atomic.Int64
@@ -393,11 +410,20 @@ func TestMediaTaskStreamAdvancesAutoClaimCursorPastFreshWindow(t *testing.T) {
 			mu.Lock()
 			starts = append(starts, start)
 			mu.Unlock()
-			if start == "0-0" {
-				return fakeRedisAction{response: respXAutoClaim("999-0", nil)}
+			switch start {
+			case "0-0":
+				return fakeRedisAction{response: respXAutoClaim("100-0", nil)}
+			case "100-0":
+				return fakeRedisAction{response: respXAutoClaim("200-0", nil)}
+			case "200-0":
+				return fakeRedisAction{response: respXAutoClaim("300-0", nil)}
+			default:
+				return fakeRedisAction{response: respXAutoClaim("0-0", []fakeStreamMessage{{id: "1000-0", taskID: 1000}})}
 			}
-			return fakeRedisAction{response: respXAutoClaim("0-0", []fakeStreamMessage{{id: "1000-0", taskID: 1000}})}
 		case "xreadgroup":
+			if commandContains(command, "block") {
+				return fakeRedisAction{stall: true}
+			}
 			return fakeRedisAction{response: respNil()}
 		default:
 			return fakeRedisAction{response: respError("unexpected command")}
@@ -408,16 +434,80 @@ func TestMediaTaskStreamAdvancesAutoClaimCursorPastFreshWindow(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, int64(1000), message.TaskID)
 	mu.Lock()
-	require.Equal(t, []string{"0-0", "999-0"}, starts[:2])
+	require.Equal(t, []string{"0-0", "100-0", "200-0", "300-0"}, starts[:4])
 	mu.Unlock()
+}
+
+func TestMediaTaskStreamBoundsAutoClaimCursorProgressPerRecoveryPass(t *testing.T) {
+	const expectedPageBudget = 4
+	var calls atomic.Int64
+	client, _ := newFakeRedisClient(t, func(command []string) fakeRedisAction {
+		if commandName(command) != "xautoclaim" {
+			return fakeRedisAction{response: respError("unexpected command")}
+		}
+		next := fmt.Sprintf("%d-0", calls.Add(1))
+		return fakeRedisAction{response: respXAutoClaim(next, nil)}
+	})
+	stream := NewMediaTaskStream(client, "bounded-cursor", time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	require.NoError(t, stream.recoverPriority(ctx, service.MediaQueuePrioritySync))
+	require.Equal(t, int64(expectedPageBudget), calls.Load())
+}
+
+func TestMediaTaskStreamStopsAutoClaimWhenCursorDoesNotAdvance(t *testing.T) {
+	var calls atomic.Int64
+	client, _ := newFakeRedisClient(t, func(command []string) fakeRedisAction {
+		if commandName(command) != "xautoclaim" {
+			return fakeRedisAction{response: respError("unexpected command")}
+		}
+		calls.Add(1)
+		return fakeRedisAction{response: respXAutoClaim(command[5], nil)}
+	})
+	stream := NewMediaTaskStream(client, "stalled-cursor", time.Minute)
+	stream.setAutoClaimCursor(service.MediaQueuePrioritySync, "10-0")
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	require.NoError(t, stream.recoverPriority(ctx, service.MediaQueuePrioritySync))
+	require.Equal(t, int64(1), calls.Load())
+}
+
+func TestMediaTaskStreamReceiveAllowsRedisBlockCompletionBeforeEffectiveDeadline(t *testing.T) {
+	client, server := newFakeRedisClient(t, func(command []string) fakeRedisAction {
+		switch commandName(command) {
+		case "xautoclaim":
+			return fakeRedisAction{response: respXAutoClaim("0-0", nil)}
+		case "xreadgroup":
+			if commandContains(command, "block") {
+				return fakeRedisAction{delay: 120 * time.Millisecond, response: respNil()}
+			}
+			return fakeRedisAction{response: respNil()}
+		default:
+			return fakeRedisAction{response: respError("unexpected command")}
+		}
+	})
+	stream := NewMediaTaskStream(client, "block-grace", time.Minute)
+	started := time.Now()
+	message, err := stream.Receive(context.Background(), 220*time.Millisecond)
+	require.Nil(t, message)
+	require.ErrorIs(t, err, service.ErrMediaQueueReceiveTimeout)
+	require.NotContains(t, err.Error(), "i/o timeout")
+	require.GreaterOrEqual(t, time.Since(started), 180*time.Millisecond)
+	require.Equal(t, int64(1), server.acceptedCount(), "a valid blocking reply must not lose its Redis connection to a premature I/O deadline")
 }
 
 func TestMediaTaskStreamAckRejectsMessageThatIsNotPending(t *testing.T) {
 	client, _ := newFakeRedisClient(t, func(command []string) fakeRedisAction {
-		if commandName(command) == "xack" {
+		switch commandName(command) {
+		case "xack":
 			return fakeRedisAction{response: respInteger(0)}
+		case "exists":
+			return fakeRedisAction{response: respInteger(1)}
+		case "xinfo":
+			return fakeRedisAction{response: respXInfoGroups(mediaTaskConsumerGroup)}
+		default:
+			return fakeRedisAction{response: respError("unexpected command")}
 		}
-		return fakeRedisAction{response: respError("unexpected command")}
 	})
 	stream := NewMediaTaskStream(client, "ack-zero", time.Minute)
 	err := stream.Ack(context.Background(), &service.MediaQueueMessage{
@@ -428,6 +518,100 @@ func TestMediaTaskStreamAckRejectsMessageThatIsNotPending(t *testing.T) {
 	require.ErrorIs(t, err, service.ErrMediaQueueMessageNotPending)
 }
 
+func TestMediaTaskStreamAckTreatsMissingStreamAfterZeroAckAsIdempotent(t *testing.T) {
+	client, _ := newFakeRedisClient(t, func(command []string) fakeRedisAction {
+		switch commandName(command) {
+		case "xack":
+			return fakeRedisAction{response: respInteger(0)}
+		case "exists":
+			return fakeRedisAction{response: respInteger(0)}
+		case "xgroup":
+			return fakeRedisAction{response: respSimpleString("OK")}
+		default:
+			return fakeRedisAction{response: respError("unexpected command")}
+		}
+	})
+	stream := NewMediaTaskStream(client, "ack-zero-missing-stream", time.Minute)
+	require.NoError(t, stream.Ack(context.Background(), &service.MediaQueueMessage{
+		ID:       "23-0",
+		TaskID:   23,
+		Priority: service.MediaQueuePriorityAsync,
+	}))
+}
+
+func TestMediaTaskStreamAckReportsLostGroupAfterZeroAck(t *testing.T) {
+	client, _ := newFakeRedisClient(t, func(command []string) fakeRedisAction {
+		switch commandName(command) {
+		case "xack":
+			return fakeRedisAction{response: respInteger(0)}
+		case "exists":
+			return fakeRedisAction{response: respInteger(1)}
+		case "xinfo":
+			return fakeRedisAction{response: respXInfoGroups()}
+		case "xgroup":
+			return fakeRedisAction{response: respSimpleString("OK")}
+		default:
+			return fakeRedisAction{response: respError("unexpected command")}
+		}
+	})
+	stream := NewMediaTaskStream(client, "ack-zero-lost-group", time.Minute)
+	err := stream.Ack(context.Background(), &service.MediaQueueMessage{
+		ID:       "24-0",
+		TaskID:   24,
+		Priority: service.MediaQueuePriorityAsync,
+	})
+	require.ErrorIs(t, err, service.ErrMediaQueueDeliveryStateLost)
+}
+
+func TestMediaTaskStreamAckPreservesInspectionErrorAfterZeroAck(t *testing.T) {
+	client, _ := newFakeRedisClient(t, func(command []string) fakeRedisAction {
+		switch commandName(command) {
+		case "xack":
+			return fakeRedisAction{response: respInteger(0)}
+		case "exists":
+			return fakeRedisAction{response: respInteger(1)}
+		case "xinfo":
+			return fakeRedisAction{response: respError("forced ACK inspection failure")}
+		default:
+			return fakeRedisAction{response: respError("unexpected command")}
+		}
+	})
+	stream := NewMediaTaskStream(client, "ack-zero-inspection-error", time.Minute)
+	err := stream.Ack(context.Background(), &service.MediaQueueMessage{
+		ID:       "25-0",
+		TaskID:   25,
+		Priority: service.MediaQueuePrioritySync,
+	})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "forced ACK inspection failure")
+	require.NotErrorIs(t, err, service.ErrMediaQueueMessageNotPending)
+	require.NotErrorIs(t, err, service.ErrMediaQueueDeliveryStateLost)
+}
+
+func TestMediaTaskStreamAckPreservesInspectionContextErrorAfterZeroAck(t *testing.T) {
+	client, _ := newFakeRedisClientWithOptions(t, func(command []string) fakeRedisAction {
+		switch commandName(command) {
+		case "xack":
+			return fakeRedisAction{response: respInteger(0)}
+		case "exists":
+			return fakeRedisAction{stall: true}
+		default:
+			return fakeRedisAction{response: respError("unexpected command")}
+		}
+	}, func(options *redis.Options) {
+		options.ContextTimeoutEnabled = true
+	})
+	stream := NewMediaTaskStream(client, "ack-zero-inspection-context", time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	err := stream.Ack(ctx, &service.MediaQueueMessage{
+		ID:       "26-0",
+		TaskID:   26,
+		Priority: service.MediaQueuePrioritySync,
+	})
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+}
+
 func TestMediaTaskStreamAckReportsLostGroupDeliveryState(t *testing.T) {
 	client, _ := newFakeRedisClient(t, func(command []string) fakeRedisAction {
 		switch commandName(command) {
@@ -435,6 +619,8 @@ func TestMediaTaskStreamAckReportsLostGroupDeliveryState(t *testing.T) {
 			return fakeRedisAction{response: respError("NOGROUP No such key or consumer group")}
 		case "exists":
 			return fakeRedisAction{response: respInteger(1)}
+		case "xinfo":
+			return fakeRedisAction{response: respXInfoGroups()}
 		case "xgroup":
 			return fakeRedisAction{response: respSimpleString("OK")}
 		default:
@@ -508,6 +694,7 @@ func TestMediaTaskStreamAsyncFairnessProbeDoesNotGrowSyncBacklog(t *testing.T) {
 
 type fakeRedisAction struct {
 	response   string
+	delay      time.Duration
 	stall      bool
 	closeAfter bool
 }
@@ -605,6 +792,9 @@ func (s *fakeRESPServer) serveConn(conn net.Conn) {
 		default:
 		}
 		action := s.handler(command)
+		if action.delay > 0 {
+			time.Sleep(action.delay)
+		}
 		if action.response != "" {
 			if _, err := io.WriteString(conn, action.response); err != nil {
 				return
@@ -760,6 +950,29 @@ func respXRead(stream string, messages []fakeStreamMessage) string {
 	response.WriteString(strconv.Itoa(len(messages)))
 	response.WriteString("\r\n")
 	writeRESPStreamMessages(&response, messages)
+	return response.String()
+}
+
+func respXInfoGroups(names ...string) string {
+	var response strings.Builder
+	response.WriteString("*")
+	response.WriteString(strconv.Itoa(len(names)))
+	response.WriteString("\r\n")
+	for _, name := range names {
+		response.WriteString("*12\r\n")
+		response.WriteString(respBulk("name"))
+		response.WriteString(respBulk(name))
+		response.WriteString(respBulk("consumers"))
+		response.WriteString(respInteger(0))
+		response.WriteString(respBulk("pending"))
+		response.WriteString(respInteger(0))
+		response.WriteString(respBulk("last-delivered-id"))
+		response.WriteString(respBulk("0-0"))
+		response.WriteString(respBulk("entries-read"))
+		response.WriteString(respInteger(0))
+		response.WriteString(respBulk("lag"))
+		response.WriteString(respInteger(0))
+	}
 	return response.String()
 }
 
