@@ -22,7 +22,7 @@ func TestMediaOrchestratorAsyncReturnsAfterDurableEnqueue(t *testing.T) {
 	require.Equal(t, MediaBillingStatusPrecharged, fixture.repo.mustGet(result.Task.ID).BillingStatus)
 }
 
-func TestMediaOrchestratorPublishesReadyOnlyAfterPrechargeAndClearsInitializationLease(t *testing.T) {
+func TestMediaOrchestratorEnqueuesBeforePublishingReadyAndClearsInitializationLease(t *testing.T) {
 	fixture := newMediaOrchestratorFixture(t)
 	fixture.billing.inspectPrecharge = func(task *MediaTask) {
 		stored := fixture.repo.mustGet(task.ID)
@@ -32,13 +32,30 @@ func TestMediaOrchestratorPublishesReadyOnlyAfterPrechargeAndClearsInitializatio
 	}
 	fixture.queue.enqueueHook = func(taskID int64) {
 		stored := fixture.repo.mustGet(taskID)
-		require.Equal(t, MediaBillingStatusPrecharged, stored.BillingStatus)
-		require.Nil(t, stored.LeaseUntil)
+		require.Equal(t, MediaBillingStatusPending, stored.BillingStatus)
+		require.NotNil(t, stored.LeaseUntil)
 	}
 
 	result, err := fixture.orchestrator.Create(context.Background(), validAsyncMediaCreateRequest())
 	require.NoError(t, err)
-	require.Nil(t, fixture.repo.mustGet(result.Task.ID).LeaseUntil)
+	ready := fixture.repo.mustGet(result.Task.ID)
+	require.Equal(t, MediaBillingStatusPrecharged, ready.BillingStatus)
+	require.Nil(t, ready.LeaseUntil)
+}
+
+func TestMediaOrchestratorReadyPublishWriteAppliedButReturnedErrorReusesReadyTask(t *testing.T) {
+	fixture := newMediaOrchestratorFixture(t)
+	fixture.repo.readyWriteAppliedErrors = 1
+
+	result, err := fixture.orchestrator.Create(context.Background(), validAsyncMediaCreateRequest())
+	require.NoError(t, err)
+	require.Equal(t, MediaCreateDispositionAccepted, result.Disposition)
+	stored := fixture.repo.mustGet(result.Task.ID)
+	require.Equal(t, MediaTaskStatusQueued, stored.Status)
+	require.Equal(t, MediaBillingStatusPrecharged, stored.BillingStatus)
+	require.Equal(t, fixture.pricing.snapshot.EstimatedAmount, stored.PrechargedAmount)
+	require.Nil(t, stored.LeaseUntil)
+	require.Equal(t, 0, fixture.billing.settleFailureCalls())
 }
 
 func TestMediaOrchestratorIdempotencyRetryDoesNotAcceptActiveInitialization(t *testing.T) {
@@ -97,6 +114,116 @@ func TestMediaOrchestratorConcurrentIdempotencyLoserCannotBypassReadiness(t *tes
 	close(release)
 	require.NoError(t, <-firstDone)
 	require.Equal(t, 1, fixture.queue.enqueueCalls())
+}
+
+func TestMediaOrchestratorStaleInitializationOwnerCannotFailOrRefundTakeoverWinner(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+	}{
+		{name: "stale precharge success"},
+		{name: "stale precharge failure", err: errors.New("stale precharge response failed")},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fixture := newMediaOrchestratorFixture(t)
+			req := validAsyncMediaCreateRequest()
+			req.IdempotencyKey = "idem-owner-fence-" + tt.name
+			entered := make(chan struct{})
+			release := make(chan struct{})
+			fixture.billing.prechargeFunc = func(call int, _ *MediaTask) error {
+				if call == 1 {
+					close(entered)
+					<-release
+					return tt.err
+				}
+				return nil
+			}
+
+			type createOutcome struct {
+				result *MediaCreateResult
+				err    error
+			}
+			firstDone := make(chan createOutcome, 1)
+			go func() {
+				result, err := fixture.orchestrator.Create(context.Background(), req)
+				firstDone <- createOutcome{result: result, err: err}
+			}()
+			select {
+			case <-entered:
+			case <-time.After(time.Second):
+				t.Fatal("first initializer did not reach precharge")
+			}
+			stored := fixture.repo.onlyTask()
+			fixture.repo.mutate(stored.ID, func(task *MediaTask) {
+				task.LeaseUntil = mediaTimePointer(fixture.clock.Now().Add(-time.Minute))
+			})
+
+			winner, err := fixture.orchestrator.Create(context.Background(), req)
+			require.NoError(t, err)
+			require.Equal(t, MediaCreateDispositionAccepted, winner.Disposition)
+			close(release)
+			loser := <-firstDone
+			if tt.err == nil {
+				require.NoError(t, loser.err)
+				require.Equal(t, MediaCreateDispositionAccepted, loser.result.Disposition)
+			} else {
+				require.ErrorIs(t, loser.err, tt.err)
+				require.Nil(t, loser.result)
+			}
+
+			ready := fixture.repo.mustGet(stored.ID)
+			require.Equal(t, MediaTaskStatusQueued, ready.Status)
+			require.Equal(t, MediaBillingStatusPrecharged, ready.BillingStatus)
+			require.Nil(t, ready.LeaseUntil)
+			require.Empty(t, ready.SettlementRecovery)
+			require.Equal(t, 0, fixture.billing.settleFailureCalls())
+		})
+	}
+}
+
+func TestMediaOrchestratorStaleEnqueueFailureCannotFailOrRefundTakeoverWinner(t *testing.T) {
+	fixture := newMediaOrchestratorFixture(t)
+	req := validAsyncMediaCreateRequest()
+	req.IdempotencyKey = "idem-stale-enqueue"
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	queueErr := errors.New("stale enqueue response failed")
+	fixture.queue.enqueueFunc = func(call int, _ int64) error {
+		if call == 1 {
+			close(entered)
+			<-release
+			return queueErr
+		}
+		return nil
+	}
+
+	firstDone := make(chan error, 1)
+	go func() {
+		_, err := fixture.orchestrator.Create(context.Background(), req)
+		firstDone <- err
+	}()
+	select {
+	case <-entered:
+	case <-time.After(time.Second):
+		t.Fatal("first initializer did not reach enqueue")
+	}
+	stored := fixture.repo.onlyTask()
+	fixture.repo.mutate(stored.ID, func(task *MediaTask) {
+		task.LeaseUntil = mediaTimePointer(fixture.clock.Now().Add(-time.Minute))
+	})
+
+	winner, err := fixture.orchestrator.Create(context.Background(), req)
+	require.NoError(t, err)
+	require.Equal(t, MediaCreateDispositionAccepted, winner.Disposition)
+	close(release)
+	require.ErrorIs(t, <-firstDone, queueErr)
+	ready := fixture.repo.mustGet(stored.ID)
+	require.Equal(t, MediaTaskStatusQueued, ready.Status)
+	require.Equal(t, MediaBillingStatusPrecharged, ready.BillingStatus)
+	require.Nil(t, ready.LeaseUntil)
+	require.Empty(t, ready.SettlementRecovery)
+	require.Equal(t, 0, fixture.billing.settleFailureCalls())
 }
 
 func TestMediaOrchestratorPersistsResolvedCandidateAndDurableInputSnapshot(t *testing.T) {
@@ -314,22 +441,137 @@ func TestMediaOrchestratorQueueFailureCompensatesAfterClientCancellation(t *test
 	require.Equal(t, float64(1), fixture.billing.lastFailure().RefundRatio)
 }
 
-func TestMediaOrchestratorPrechargeFailureMarksTaskFailedWithoutEnqueue(t *testing.T) {
+func TestMediaOrchestratorPrechargedInitializationFailurePersistsRecoveryBeforePlanWrite(t *testing.T) {
+	tests := []struct {
+		name    string
+		code    string
+		arrange func(*mediaOrchestratorFixture) MediaCreateRequest
+	}{
+		{name: "queue", code: "system_queue", arrange: func(fixture *mediaOrchestratorFixture) MediaCreateRequest {
+			fixture.queue.enqueueErr = errors.New("redis unavailable")
+			return validAsyncMediaCreateRequest()
+		}},
+		{name: "ready publish", code: "system_billing_state", arrange: func(fixture *mediaOrchestratorFixture) MediaCreateRequest {
+			fixture.repo.readyWriteErrors = 1
+			return validAsyncMediaCreateRequest()
+		}},
+		{name: "input persistence", code: "system_input", arrange: func(fixture *mediaOrchestratorFixture) MediaCreateRequest {
+			fixture.artifacts.createErr = errors.New("object metadata unavailable")
+			req := validAsyncMediaCreateRequest()
+			req.Operation = MediaOperationImageToImage
+			req.Inputs = []MediaArtifactInput{validOrchestratorImageInput(0, "image/png")}
+			return req
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fixture := newMediaOrchestratorFixture(t)
+			fixture.pricing.snapshot.EstimatedAmount = 3.25
+			fixture.repo.failSettlementPlanWrites = 1
+			req := tt.arrange(fixture)
+
+			_, err := fixture.orchestrator.Create(context.Background(), req)
+			require.Error(t, err)
+			stored := fixture.repo.onlyTask()
+			require.Equal(t, MediaTaskStatusFailed, stored.Status)
+			require.Equal(t, tt.code, stored.ErrorCode)
+			require.Equal(t, MediaBillingStatusPrecharged, stored.BillingStatus)
+			require.Equal(t, 3.25, stored.PrechargedAmount)
+			require.Empty(t, stored.SettlementPlan)
+			require.NotEmpty(t, stored.SettlementRecovery)
+			recovery, decodeErr := decodeMediaSettlementPlan(stored.SettlementRecovery)
+			require.NoError(t, decodeErr)
+			require.Equal(t, MediaSettlementPlan{
+				Type: MediaSettlementTypeFailure,
+				Failure: &MediaFailureSettlement{
+					Kind:        MediaFailureKindSystem,
+					RefundRatio: 1,
+					ErrorCode:   tt.code,
+				},
+			}, recovery)
+			pending, pendingErr := fixture.repo.ListSettlementPending(context.Background(), 10)
+			require.NoError(t, pendingErr)
+			require.Len(t, pending, 1)
+			require.Equal(t, stored.ID, pending[0].ID)
+		})
+	}
+}
+
+func TestMediaOrchestratorPrechargedInitializationFailureRefundsActualAmount(t *testing.T) {
+	tests := []struct {
+		name    string
+		arrange func(*mediaOrchestratorFixture) MediaCreateRequest
+	}{
+		{name: "queue", arrange: func(fixture *mediaOrchestratorFixture) MediaCreateRequest {
+			fixture.queue.enqueueErr = errors.New("redis unavailable")
+			return validAsyncMediaCreateRequest()
+		}},
+		{name: "ready publish", arrange: func(fixture *mediaOrchestratorFixture) MediaCreateRequest {
+			fixture.repo.readyWriteErrors = 1
+			return validAsyncMediaCreateRequest()
+		}},
+		{name: "input persistence", arrange: func(fixture *mediaOrchestratorFixture) MediaCreateRequest {
+			fixture.artifacts.createErr = errors.New("object metadata unavailable")
+			req := validAsyncMediaCreateRequest()
+			req.Operation = MediaOperationImageToImage
+			req.Inputs = []MediaArtifactInput{validOrchestratorImageInput(0, "image/png")}
+			return req
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fixture := newMediaOrchestratorFixture(t)
+			fixture.pricing.snapshot.EstimatedAmount = 3.25
+			req := tt.arrange(fixture)
+
+			_, err := fixture.orchestrator.Create(context.Background(), req)
+			require.Error(t, err)
+			stored := fixture.repo.onlyTask()
+			require.Equal(t, MediaTaskStatusFailed, stored.Status)
+			require.Equal(t, MediaBillingStatusSettled, stored.BillingStatus)
+			require.Equal(t, 3.25, stored.PrechargedAmount)
+			require.Equal(t, 3.25, stored.RefundedAmount)
+			require.Zero(t, stored.FinalAmount)
+		})
+	}
+}
+
+func TestMediaOrchestratorCompensationWriteAppliedButReturnedErrorStillSettles(t *testing.T) {
+	fixture := newMediaOrchestratorFixture(t)
+	fixture.pricing.snapshot.EstimatedAmount = 3.25
+	fixture.queue.enqueueErr = errors.New("redis unavailable")
+	fixture.repo.transitionQueuedAppliedErrors = 1
+
+	_, err := fixture.orchestrator.Create(context.Background(), validAsyncMediaCreateRequest())
+	require.ErrorContains(t, err, "redis unavailable")
+	stored := fixture.repo.onlyTask()
+	require.Equal(t, MediaTaskStatusFailed, stored.Status)
+	require.Equal(t, "system_queue", stored.ErrorCode)
+	require.Equal(t, MediaBillingStatusSettled, stored.BillingStatus)
+	require.Equal(t, 3.25, stored.PrechargedAmount)
+	require.Equal(t, 3.25, stored.RefundedAmount)
+	require.Zero(t, stored.FinalAmount)
+}
+
+func TestMediaOrchestratorPrechargeFailureLeavesFencedPendingForIdempotentRecovery(t *testing.T) {
 	fixture := newMediaOrchestratorFixture(t)
 	fixture.billing.prechargeErr = errors.New("balance unavailable")
 	_, err := fixture.orchestrator.Create(context.Background(), validAsyncMediaCreateRequest())
 	require.ErrorContains(t, err, "balance unavailable")
 	stored := fixture.repo.onlyTask()
-	require.Equal(t, MediaTaskStatusFailed, stored.Status)
-	require.Equal(t, "billing_precharge", stored.ErrorCode)
+	require.Equal(t, MediaTaskStatusQueued, stored.Status)
+	require.Equal(t, MediaBillingStatusPending, stored.BillingStatus)
+	require.NotNil(t, stored.LeaseUntil)
+	require.Empty(t, stored.ErrorCode)
 	require.Equal(t, 0, fixture.queue.enqueueCalls())
 	require.Equal(t, 0, fixture.billing.settleFailureCalls())
 }
 
 func TestMediaOrchestratorSyncSubscribePrecedesFirstDBRead(t *testing.T) {
 	fixture := newMediaOrchestratorFixture(t)
-	fixture.queue.enqueueHook = func(taskID int64) {
-		fixture.repo.setTerminal(taskID, MediaTaskStatusCompleted)
+	fixture.repo.readyPublishedHook = func(task *MediaTask) {
+		task.Status = MediaTaskStatusCompleted
+		task.Stage = MediaTaskStageCompleted
 	}
 	result, err := fixture.orchestrator.Create(context.Background(), validSyncMediaCreateRequest())
 	require.NoError(t, err)
@@ -702,31 +944,33 @@ func newMediaOrchestratorFixture(t *testing.T) *mediaOrchestratorFixture {
 func newTimedOutMediaOrchestratorFixture(t *testing.T, stage MediaTaskStage, submittedAt *time.Time) *mediaOrchestratorFixture {
 	t.Helper()
 	fixture := newMediaOrchestratorFixture(t)
-	fixture.queue.enqueueHook = func(taskID int64) {
-		fixture.repo.mutate(taskID, func(task *MediaTask) {
-			task.Stage = stage
-			task.SubmittedAt = submittedAt
-			if stage != MediaTaskStageQueued {
-				task.Status = MediaTaskStatusInProgress
-			}
-		})
+	fixture.repo.readyPublishedHook = func(task *MediaTask) {
+		task.Stage = stage
+		task.SubmittedAt = submittedAt
+		if stage != MediaTaskStageQueued {
+			task.Status = MediaTaskStatusInProgress
+		}
 	}
 	return fixture
 }
 
 type orchestratorTaskRepository struct {
-	mu                       sync.Mutex
-	tasks                    map[int64]*MediaTask
-	nextID                   int64
-	publicSequence           int64
-	creates                  int
-	gets                     int
-	createRaceWinner         *MediaTask
-	completeOnNextTransition bool
-	completeOnNextFallback   bool
-	failSettlementPlanWrites int
-	events                   *orchestratorEvents
-	getHook                  func(int, *MediaTask)
+	mu                            sync.Mutex
+	tasks                         map[int64]*MediaTask
+	nextID                        int64
+	publicSequence                int64
+	creates                       int
+	gets                          int
+	createRaceWinner              *MediaTask
+	completeOnNextTransition      bool
+	completeOnNextFallback        bool
+	failSettlementPlanWrites      int
+	readyWriteErrors              int
+	readyWriteAppliedErrors       int
+	transitionQueuedAppliedErrors int
+	readyPublishedHook            func(*MediaTask)
+	events                        *orchestratorEvents
+	getHook                       func(int, *MediaTask)
 }
 
 func newOrchestratorTaskRepository() *orchestratorTaskRepository {
@@ -816,8 +1060,39 @@ func (r *orchestratorTaskRepository) UpdateQueued(ctx context.Context, id, versi
 	if !ok || task.Status != MediaTaskStatusQueued || task.Version != version {
 		return false, nil
 	}
+	if _, publishesReady := updates["billing_status"]; publishesReady && r.readyWriteErrors > 0 {
+		r.readyWriteErrors--
+		return false, errors.New("ready write failed")
+	}
 	applyOrchestratorTaskUpdates(task, updates)
 	task.Version++
+	if _, publishesReady := updates["billing_status"]; publishesReady && r.readyPublishedHook != nil {
+		r.readyPublishedHook(task)
+	}
+	if _, publishesReady := updates["billing_status"]; publishesReady && r.readyWriteAppliedErrors > 0 {
+		r.readyWriteAppliedErrors--
+		return false, errors.New("ready write result unavailable")
+	}
+	return true, nil
+}
+
+func (r *orchestratorTaskRepository) TransitionQueued(ctx context.Context, id, expectedVersion int64, to MediaTaskStatus, updates map[string]any) (bool, error) {
+	if err := ctx.Err(); err != nil {
+		return false, err
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	task, ok := r.tasks[id]
+	if !ok || task.Status != MediaTaskStatusQueued || task.Version != expectedVersion || to != MediaTaskStatusFailed {
+		return false, nil
+	}
+	applyOrchestratorTaskUpdates(task, updates)
+	task.Status = to
+	task.Version++
+	if r.transitionQueuedAppliedErrors > 0 {
+		r.transitionQueuedAppliedErrors--
+		return true, errors.New("transition result unavailable")
+	}
 	return true, nil
 }
 
@@ -880,8 +1155,22 @@ func (r *orchestratorTaskRepository) MarkSyncFallback(ctx context.Context, id in
 func (r *orchestratorTaskRepository) ListRecoverable(context.Context, time.Time, int) ([]MediaTask, error) {
 	return nil, nil
 }
-func (r *orchestratorTaskRepository) ListSettlementPending(context.Context, int) ([]MediaTask, error) {
-	return nil, nil
+func (r *orchestratorTaskRepository) ListSettlementPending(_ context.Context, limit int) ([]MediaTask, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	result := make([]MediaTask, 0, limit)
+	for _, task := range r.tasks {
+		billingPending := task.BillingStatus == MediaBillingStatusPrecharged ||
+			task.BillingStatus == MediaBillingStatusSettling || task.BillingStatus == MediaBillingStatusRetry
+		hasRecovery := task.Status.IsTerminal() && len(task.SettlementRecovery) > 0
+		if billingPending && (len(task.SettlementPlan) > 0 || hasRecovery) {
+			result = append(result, *cloneOrchestratorTask(task))
+			if len(result) >= limit {
+				break
+			}
+		}
+	}
+	return result, nil
 }
 
 func (r *orchestratorTaskRepository) UpdateBilling(ctx context.Context, id int64, fromStatus string, updates map[string]any) (bool, error) {
@@ -1025,9 +1314,10 @@ func cloneOrchestratorTime(value *time.Time) *time.Time {
 }
 
 type orchestratorArtifactRepository struct {
-	mu     sync.Mutex
-	nextID int64
-	items  map[int64][]MediaArtifact
+	mu        sync.Mutex
+	nextID    int64
+	items     map[int64][]MediaArtifact
+	createErr error
 }
 
 func newOrchestratorArtifactRepository() *orchestratorArtifactRepository {
@@ -1039,6 +1329,9 @@ func (r *orchestratorArtifactRepository) Create(ctx context.Context, artifact *M
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if r.createErr != nil {
+		return nil, r.createErr
+	}
 	copy := *artifact
 	copy.ID = r.nextID
 	r.nextID++
@@ -1062,6 +1355,7 @@ type orchestratorQueue struct {
 	enqueues          int
 	enqueueErr        error
 	enqueueHook       func(int64)
+	enqueueFunc       func(int, int64) error
 	subscribeHook     func()
 	closeSubscription bool
 }
@@ -1074,10 +1368,14 @@ func (q *orchestratorQueue) Enqueue(ctx context.Context, taskID int64, priority 
 	q.mu.Lock()
 	q.priority = priority
 	q.enqueues++
-	hook, err := q.enqueueHook, q.enqueueErr
+	call := q.enqueues
+	hook, enqueueFunc, err := q.enqueueHook, q.enqueueFunc, q.enqueueErr
 	q.mu.Unlock()
 	if hook != nil {
 		hook(taskID)
+	}
+	if enqueueFunc != nil {
+		return enqueueFunc(call, taskID)
 	}
 	return err
 }
@@ -1168,6 +1466,7 @@ type orchestratorBilling struct {
 	failures           []MediaFailureSettlement
 	settleFailureErr   error
 	prechargeErr       error
+	prechargeFunc      func(int, *MediaTask) error
 	inspectPrecharge   func(*MediaTask)
 	prechargeEntered   chan struct{}
 	prechargeBlock     <-chan struct{}
@@ -1177,7 +1476,8 @@ type orchestratorBilling struct {
 func (b *orchestratorBilling) Precharge(_ context.Context, task *MediaTask, _ MediaBillingSnapshot) error {
 	b.mu.Lock()
 	b.precharges++
-	inspect, entered, block, err := b.inspectPrecharge, b.prechargeEntered, b.prechargeBlock, b.prechargeErr
+	call := b.precharges
+	inspect, prechargeFunc, entered, block, err := b.inspectPrecharge, b.prechargeFunc, b.prechargeEntered, b.prechargeBlock, b.prechargeErr
 	b.mu.Unlock()
 	if inspect != nil {
 		inspect(task)
@@ -1187,6 +1487,9 @@ func (b *orchestratorBilling) Precharge(_ context.Context, task *MediaTask, _ Me
 	}
 	if block != nil {
 		<-block
+	}
+	if prechargeFunc != nil {
+		return prechargeFunc(call, task)
 	}
 	return err
 }

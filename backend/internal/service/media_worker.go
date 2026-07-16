@@ -59,15 +59,16 @@ type MediaArtifactWriter interface {
 }
 
 type MediaWorkerDependencies struct {
-	Tasks     MediaTaskRepository
-	Queue     MediaTaskQueue
-	Scheduler *MediaScheduler
-	Models    *MediaModelRegistry
-	Adapters  *MediaAdapterRegistry
-	Artifacts MediaArtifactWriter
-	Billing   MediaSettlementCoordinator
-	Metrics   MediaTaskMetrics
-	Logger    *slog.Logger
+	Tasks      MediaTaskRepository
+	Queue      MediaTaskQueue
+	Scheduler  *MediaScheduler
+	Models     *MediaModelRegistry
+	Adapters   *MediaAdapterRegistry
+	Artifacts  MediaArtifactWriter
+	Precharger MediaBillingPort
+	Billing    MediaSettlementCoordinator
+	Metrics    MediaTaskMetrics
+	Logger     *slog.Logger
 }
 
 type MediaWorker struct {
@@ -308,7 +309,13 @@ func (w *MediaWorker) processMessage(ctx context.Context, message *MediaQueueMes
 		}
 	}()
 	if err := w.ProcessOne(ctx, message.TaskID); err != nil {
-		return fmt.Errorf("process media task %d: %w", message.TaskID, err)
+		if !errors.Is(err, ErrMediaTaskNotClaimed) {
+			return fmt.Errorf("process media task %d: %w", message.TaskID, err)
+		}
+		if ackErr := w.deps.Queue.Ack(ctx, message); ackErr != nil {
+			return fmt.Errorf("ack unclaimed media task %d: %w", message.TaskID, ackErr)
+		}
+		return nil
 	}
 	if err := w.deps.Queue.Ack(ctx, message); err != nil {
 		return fmt.Errorf("ack media task %d: %w", message.TaskID, err)
@@ -1049,6 +1056,16 @@ func (w *MediaWorker) RecoverOnce(ctx context.Context) error {
 	}
 	for index := range tasks {
 		task := &tasks[index]
+		if task.Status == MediaTaskStatusQueued && task.BillingStatus == MediaBillingStatusPending {
+			cleaned, cleanupErr := w.cleanupExpiredInitializer(ctx, task)
+			if cleanupErr != nil {
+				return cleanupErr
+			}
+			if cleaned {
+				w.deps.Metrics.IncrementRecovery(task.MediaType)
+			}
+			continue
+		}
 		priority := MediaQueuePriorityAsync
 		if !task.ClientAsync && !task.SyncFallback {
 			priority = MediaQueuePrioritySync
@@ -1068,6 +1085,100 @@ func (w *MediaWorker) RecoverOnce(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+func (w *MediaWorker) cleanupExpiredInitializer(ctx context.Context, task *MediaTask) (bool, error) {
+	leaseUntil := time.Now().UTC().Add(w.cfg.LeaseTTL)
+	ownerVersion := task.Version
+	acquired, acquireErr := w.deps.Tasks.UpdateQueued(ctx, task.ID, ownerVersion, map[string]any{"lease_until": leaseUntil})
+	if acquireErr != nil || !acquired {
+		fresh, readErr := w.deps.Tasks.GetByID(ctx, task.ID)
+		if readErr != nil {
+			return false, errors.Join(
+				fmt.Errorf("acquire expired media initializer %d: %w", task.ID, acquireErr),
+				fmt.Errorf("reload expired media initializer %d: %w", task.ID, readErr),
+			)
+		}
+		applied := fresh.Status == MediaTaskStatusQueued && fresh.BillingStatus == MediaBillingStatusPending &&
+			fresh.Version == ownerVersion+1 && fresh.LeaseUntil != nil && fresh.LeaseUntil.Equal(leaseUntil)
+		if !applied {
+			if acquireErr != nil && fresh.Status == MediaTaskStatusQueued && fresh.Version == ownerVersion {
+				return false, fmt.Errorf("acquire expired media initializer %d: %w", task.ID, acquireErr)
+			}
+			return false, nil
+		}
+		*task = *fresh
+	} else {
+		task.Version++
+		task.LeaseUntil = mediaTimePointer(leaseUntil)
+	}
+
+	var snapshot MediaBillingSnapshot
+	if err := json.Unmarshal(task.BillingSnapshot, &snapshot); err != nil {
+		return false, fmt.Errorf("decode expired media initializer %d billing snapshot: %w", task.ID, err)
+	}
+	if err := w.deps.Precharger.Precharge(ctx, task, snapshot); err != nil {
+		return false, fmt.Errorf("reconcile expired media initializer %d precharge: %w", task.ID, err)
+	}
+
+	settlement := MediaFailureSettlement{
+		Kind: MediaFailureKindSystem, RefundRatio: 1, ErrorCode: "system_initialization_expired",
+	}
+	recovery, err := json.Marshal(MediaSettlementPlan{Type: MediaSettlementTypeFailure, Failure: &settlement})
+	if err != nil {
+		return false, fmt.Errorf("encode expired media initializer %d recovery: %w", task.ID, err)
+	}
+	finishedAt := time.Now().UTC()
+	transitioned, transitionErr := w.deps.Tasks.TransitionQueued(
+		ctx,
+		task.ID,
+		task.Version,
+		MediaTaskStatusFailed,
+		map[string]any{
+			"stage":               MediaTaskStageFailed,
+			"error_code":          settlement.ErrorCode,
+			"error_message":       settlement.ErrorCode,
+			"finished_at":         finishedAt,
+			"billing_status":      MediaBillingStatusPrecharged,
+			"precharged_amount":   snapshot.EstimatedAmount,
+			"settlement_recovery": json.RawMessage(recovery),
+			"lease_until":         nil,
+		},
+	)
+	if !transitioned {
+		fresh, readErr := w.deps.Tasks.GetByID(ctx, task.ID)
+		if readErr != nil {
+			return false, errors.Join(
+				fmt.Errorf("fail expired media initializer %d: %w", task.ID, transitionErr),
+				fmt.Errorf("reload expired media initializer %d after failure CAS: %w", task.ID, readErr),
+			)
+		}
+		matchingFailure := fresh.Status == MediaTaskStatusFailed && fresh.ErrorCode == settlement.ErrorCode &&
+			fresh.BillingStatus == MediaBillingStatusPrecharged && fresh.PrechargedAmount == snapshot.EstimatedAmount &&
+			mediaSettlementPlansEqual(fresh.SettlementRecovery, recovery)
+		if !matchingFailure {
+			if transitionErr != nil && fresh.Status == MediaTaskStatusQueued && fresh.Version == task.Version {
+				return false, fmt.Errorf("fail expired media initializer %d: %w", task.ID, transitionErr)
+			}
+			return false, nil
+		}
+		*task = *fresh
+	} else {
+		task.Status = MediaTaskStatusFailed
+		task.Stage = MediaTaskStageFailed
+		task.ErrorCode = settlement.ErrorCode
+		task.ErrorMessage = settlement.ErrorCode
+		task.FinishedAt = mediaTimePointer(finishedAt)
+		task.BillingStatus = MediaBillingStatusPrecharged
+		task.PrechargedAmount = snapshot.EstimatedAmount
+		task.SettlementRecovery = append(json.RawMessage(nil), recovery...)
+		task.LeaseUntil = nil
+		task.Version++
+	}
+	if err := w.deps.Billing.SettleFailure(ctx, task, settlement); err != nil {
+		return true, fmt.Errorf("settle expired media initializer %d: %w", task.ID, err)
+	}
+	return true, nil
 }
 
 func (w *MediaWorker) StopForSyncTimeout(taskID int64) bool {
@@ -1154,7 +1265,7 @@ func (w *MediaWorker) mediaAdapterRetryMode(task *MediaTask, adapter MediaAdapte
 func (w *MediaWorker) validateDependencies() error {
 	if w == nil || w.deps.Tasks == nil || w.deps.Queue == nil || w.deps.Scheduler == nil ||
 		w.deps.Models == nil || w.deps.Adapters == nil || w.deps.Artifacts == nil ||
-		w.deps.Billing == nil || w.deps.Metrics == nil {
+		w.deps.Precharger == nil || w.deps.Billing == nil || w.deps.Metrics == nil {
 		return errors.New("media worker dependencies are incomplete")
 	}
 	return nil

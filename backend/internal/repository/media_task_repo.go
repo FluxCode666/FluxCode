@@ -35,6 +35,16 @@ var (
 		"lease_until",
 		"submitted_at",
 	)
+	transitionQueuedFields = mediaTaskUpdateFieldSet(
+		"stage",
+		"error_code",
+		"error_message",
+		"finished_at",
+		"billing_status",
+		"precharged_amount",
+		"settlement_recovery",
+		"lease_until",
+	)
 	updateClaimedFields = mediaTaskUpdateFieldSet(
 		"channel_id",
 		"account_id",
@@ -226,6 +236,34 @@ func (r *mediaTaskRepository) UpdateQueued(ctx context.Context, id, version int6
 	return updated == 1, err
 }
 
+func (r *mediaTaskRepository) TransitionQueued(
+	ctx context.Context,
+	id, expectedVersion int64,
+	to service.MediaTaskStatus,
+	updates map[string]any,
+) (bool, error) {
+	if to != service.MediaTaskStatusFailed || !service.MediaTaskStatusQueued.CanTransitionTo(to) {
+		return false, nil
+	}
+	if err := validateMediaTaskUpdateFields("TransitionQueued", updates, transitionQueuedFields); err != nil {
+		return false, err
+	}
+	update := r.client.MediaTask.Update().
+		Where(
+			mediatask.IDEQ(id),
+			mediatask.StatusEQ(string(service.MediaTaskStatusQueued)),
+			mediatask.VersionEQ(expectedVersion),
+		)
+	if err := applyMediaTaskUpdates(update, updates); err != nil {
+		return false, err
+	}
+	updated, err := update.
+		SetStatus(string(to)).
+		AddVersion(1).
+		Save(ctx)
+	return updated == 1, err
+}
+
 func (r *mediaTaskRepository) Claim(ctx context.Context, id int64, workerID string, leaseUntil time.Time, version int64) (bool, error) {
 	now := time.Now().UTC()
 	leaseAvailable := mediatask.Or(mediatask.LeaseUntilIsNil(), mediatask.LeaseUntilLTE(now))
@@ -353,7 +391,7 @@ func (r *mediaTaskRepository) ListRecoverable(ctx context.Context, now time.Time
 		Where(mediatask.Or(
 			mediatask.And(
 				mediatask.StatusEQ(string(service.MediaTaskStatusQueued)),
-				mediatask.BillingStatusEQ(service.MediaBillingStatusPrecharged),
+				mediatask.BillingStatusIn(service.MediaBillingStatusPending, service.MediaBillingStatusPrecharged),
 				mediatask.Or(mediatask.LeaseUntilIsNil(), mediatask.LeaseUntilLTE(now.UTC())),
 			),
 			mediatask.And(

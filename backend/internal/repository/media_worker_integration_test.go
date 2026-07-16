@@ -120,8 +120,8 @@ func newIntegrationMediaWorker(t *testing.T) *integrationMediaWorkerFixture {
 	metrics := service.NewAtomicMediaTaskMetrics()
 	worker := service.NewMediaWorker(service.MediaWorkerConfig{WorkerCount: 1, TaskTimeout: time.Second, LeaseTTL: 200 * time.Millisecond, LeaseRenewInterval: 50 * time.Millisecond, PollInterval: time.Millisecond, RecoveryInterval: time.Second, RecoveryBatchSize: 10}, service.MediaWorkerDependencies{
 		Tasks: taskRepo, Queue: queue, Scheduler: scheduler, Models: models, Adapters: adapters,
-		Artifacts: &integrationArtifactWriter{repo: artifactRepo},
-		Billing:   service.NewMediaBillingCoordinator(taskRepo, billing), Metrics: metrics,
+		Artifacts:  &integrationArtifactWriter{repo: artifactRepo},
+		Precharger: billing, Billing: service.NewMediaBillingCoordinator(taskRepo, billing), Metrics: metrics,
 	})
 	return &integrationMediaWorkerFixture{worker: worker, queue: queue, taskRepo: taskRepo, artifactRepo: artifactRepo, adapter: adapter, billing: billing, metrics: metrics, account: account, candidates: candidates}
 }

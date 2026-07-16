@@ -81,6 +81,9 @@ type MediaTaskRepository interface {
 	GetByPublicIDForUser(ctx context.Context, publicID string, userID int64) (*MediaTask, error)
 	GetByIdempotencyKey(ctx context.Context, userID, apiKeyID int64, key string) (*MediaTask, error)
 	UpdateQueued(ctx context.Context, id, version int64, updates map[string]any) (bool, error)
+	// TransitionQueued is the initialization-owner terminal path. It requires
+	// the queued state and expected version in the same CAS update.
+	TransitionQueued(ctx context.Context, id, expectedVersion int64, to MediaTaskStatus, updates map[string]any) (bool, error)
 	Claim(ctx context.Context, id int64, workerID string, leaseUntil time.Time, version int64) (bool, error)
 	RenewLease(ctx context.Context, id int64, workerID string, leaseUntil time.Time) (bool, error)
 	UpdateClaimed(ctx context.Context, id int64, workerID string, updates map[string]any) (bool, error)

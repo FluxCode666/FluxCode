@@ -444,7 +444,7 @@ func TestMediaTaskRepositoryListsRecoverableAndSettlementPending(t *testing.T) {
 	initializing := newRepositoryMediaTask("task_recover_initializing")
 	initializing.BillingStatus = service.MediaBillingStatusPending
 	initializing.LeaseUntil = mediaRepositoryTimePointer(now.Add(-time.Minute))
-	_, err = repo.Create(ctx, initializing)
+	initializingTask, err := repo.Create(ctx, initializing)
 	require.NoError(t, err)
 	notPublished := newRepositoryMediaTask("task_recover_not_published")
 	notPublished.LeaseUntil = mediaRepositoryTimePointer(now.Add(time.Minute))
@@ -465,7 +465,7 @@ func TestMediaTaskRepositoryListsRecoverableAndSettlementPending(t *testing.T) {
 
 	recoverable, err := repo.ListRecoverable(ctx, now, 10)
 	require.NoError(t, err)
-	require.Equal(t, []int64{queued.ID, expired.ID}, mediaTaskIDs(recoverable))
+	require.Equal(t, []int64{queued.ID, initializingTask.ID, expired.ID}, mediaTaskIDs(recoverable))
 	limited, err := repo.ListRecoverable(ctx, now, 1)
 	require.NoError(t, err)
 	require.Len(t, limited, 1)
@@ -534,6 +534,61 @@ func TestMediaTaskRepositoryTransitionPersistsSettlementRecoveryForPendingScan(t
 	stored, err := repo.GetByID(ctx, task.ID)
 	require.NoError(t, err)
 	require.JSONEq(t, string(recovery), string(stored.SettlementRecovery))
+	pending, err := repo.ListSettlementPending(ctx, 10)
+	require.NoError(t, err)
+	require.Equal(t, []int64{task.ID}, mediaTaskIDs(pending))
+}
+
+func TestMediaTaskRepositoryTransitionQueuedFencesInitializationOwnerAndPersistsRefundIntent(t *testing.T) {
+	repo, _ := newMediaTaskRepositoryTestHarness(t)
+	ctx := context.Background()
+	input := newRepositoryMediaTask("task_initialization_owner_fence")
+	input.BillingStatus = service.MediaBillingStatusPending
+	input.LeaseUntil = mediaRepositoryTimePointer(time.Now().Add(time.Minute))
+	task, err := repo.Create(ctx, input)
+	require.NoError(t, err)
+
+	recovery := json.RawMessage(`{"type":"failure","failure":{"Kind":"system","RefundRatio":1,"PenaltyRatio":0,"ErrorCode":"system_queue"}}`)
+	stale, err := repo.TransitionQueued(ctx, task.ID, task.Version+1, service.MediaTaskStatusFailed, map[string]any{
+		"stage":               service.MediaTaskStageFailed,
+		"billing_status":      service.MediaBillingStatusPrecharged,
+		"precharged_amount":   3.25,
+		"settlement_recovery": recovery,
+	})
+	require.NoError(t, err)
+	require.False(t, stale)
+	illegal, err := repo.TransitionQueued(ctx, task.ID, task.Version, service.MediaTaskStatusCompleted, nil)
+	require.NoError(t, err)
+	require.False(t, illegal)
+
+	finishedAt := time.Now().UTC().Truncate(time.Millisecond)
+	transitioned, err := repo.TransitionQueued(ctx, task.ID, task.Version, service.MediaTaskStatusFailed, map[string]any{
+		"stage":               service.MediaTaskStageFailed,
+		"error_code":          "system_queue",
+		"error_message":       "system_queue",
+		"finished_at":         finishedAt,
+		"billing_status":      service.MediaBillingStatusPrecharged,
+		"precharged_amount":   3.25,
+		"settlement_recovery": recovery,
+		"lease_until":         nil,
+	})
+	require.NoError(t, err)
+	require.True(t, transitioned)
+
+	stored, err := repo.GetByID(ctx, task.ID)
+	require.NoError(t, err)
+	require.Equal(t, service.MediaTaskStatusFailed, stored.Status)
+	require.Equal(t, service.MediaTaskStageFailed, stored.Stage)
+	require.Equal(t, "system_queue", stored.ErrorCode)
+	require.Equal(t, service.MediaBillingStatusPrecharged, stored.BillingStatus)
+	require.Equal(t, 3.25, stored.PrechargedAmount)
+	require.JSONEq(t, string(recovery), string(stored.SettlementRecovery))
+	require.Nil(t, stored.LeaseUntil)
+	require.Equal(t, task.Version+1, stored.Version)
+
+	staleAfterSuccess, err := repo.TransitionQueued(ctx, task.ID, task.Version, service.MediaTaskStatusFailed, nil)
+	require.NoError(t, err)
+	require.False(t, staleAfterSuccess)
 	pending, err := repo.ListSettlementPending(ctx, 10)
 	require.NoError(t, err)
 	require.Equal(t, []int64{task.ID}, mediaTaskIDs(pending))

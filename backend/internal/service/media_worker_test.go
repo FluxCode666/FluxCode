@@ -55,6 +55,29 @@ func TestMediaWorkerDoesNotExecuteQueuedTaskBeforeReady(t *testing.T) {
 	require.Zero(t, fixture.adapter.submitCalls.Load())
 }
 
+func TestMediaWorkerAcksEarlyInitializationMessageAndRecoveryRequeuesAfterReady(t *testing.T) {
+	fixture := newMediaWorkerFixture(t, true, NativeAsyncOptional)
+	fixture.repo.mu.Lock()
+	stored := fixture.repo.tasks[fixture.task.ID]
+	stored.BillingStatus = MediaBillingStatusPending
+	stored.LeaseUntil = mediaTimePointer(time.Now().Add(time.Minute))
+	fixture.repo.mu.Unlock()
+
+	err := fixture.worker.processMessage(context.Background(), &MediaQueueMessage{ID: "early", TaskID: fixture.task.ID, Priority: MediaQueuePriorityAsync})
+	require.NoError(t, err)
+	require.Equal(t, int64(1), fixture.queue.ackCalls.Load())
+	require.Zero(t, fixture.adapter.syncCalls.Load())
+	require.Zero(t, fixture.adapter.submitCalls.Load())
+
+	fixture.repo.mu.Lock()
+	stored.BillingStatus = MediaBillingStatusPrecharged
+	stored.LeaseUntil = nil
+	stored.Version++
+	fixture.repo.mu.Unlock()
+	require.NoError(t, fixture.worker.RecoverOnce(context.Background()))
+	require.Equal(t, []int64{fixture.task.ID}, fixture.queue.enqueuedTaskIDs())
+}
+
 func TestMediaWorkerInitialExecutionUsesStableTaskSlotID(t *testing.T) {
 	fixture := newMediaWorkerFixture(t, true, NativeAsyncRequired)
 	require.NoError(t, fixture.worker.ProcessOne(context.Background(), fixture.task.ID))
@@ -395,6 +418,94 @@ func TestMediaWorkerRecoverOnceRequeuesExpiredLease(t *testing.T) {
 	require.Equal(t, []int64{fixture.task.ID}, fixture.queue.enqueuedTaskIDs())
 	require.Equal(t, []MediaQueuePriority{MediaQueuePriorityAsync}, fixture.queue.enqueuedPriorities())
 	require.Equal(t, int64(1), fixture.metrics.Recoveries())
+}
+
+func TestMediaWorkerRecoverOnceCleansExpiredPendingInitializerWithoutIdempotencyKey(t *testing.T) {
+	tests := []struct {
+		name               string
+		prechargeBeforeRun bool
+	}{
+		{name: "crash after create"},
+		{name: "crash after external precharge", prechargeBeforeRun: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fixture := newMediaWorkerFixture(t, true, NativeAsyncOptional)
+			snapshot := MediaBillingSnapshot{RequestedModel: "fake-image", EstimatedAmount: 2}
+			encoded, err := json.Marshal(snapshot)
+			require.NoError(t, err)
+			fixture.repo.mu.Lock()
+			stored := fixture.repo.tasks[fixture.task.ID]
+			stored.IdempotencyKey = ""
+			stored.BillingStatus = MediaBillingStatusPending
+			stored.PrechargedAmount = 0
+			stored.BillingSnapshot = encoded
+			stored.LeaseUntil = mediaTimePointer(time.Now().Add(-time.Minute))
+			fixture.repo.mu.Unlock()
+
+			port := newWorkerInitializationBillingPort()
+			fixture.worker.deps.Precharger = port
+			fixture.worker.deps.Billing = NewMediaBillingCoordinator(fixture.repo, port)
+			if tt.prechargeBeforeRun {
+				require.NoError(t, port.Precharge(context.Background(), fixture.repo.mustGet(fixture.task.ID), snapshot))
+			}
+
+			require.NoError(t, fixture.worker.RecoverOnce(context.Background()))
+			cleaned := fixture.repo.mustGet(fixture.task.ID)
+			require.Equal(t, MediaTaskStatusFailed, cleaned.Status)
+			require.Equal(t, "system_initialization_expired", cleaned.ErrorCode)
+			require.Equal(t, MediaBillingStatusSettled, cleaned.BillingStatus)
+			require.Equal(t, 2.0, cleaned.PrechargedAmount)
+			require.Equal(t, 2.0, cleaned.RefundedAmount)
+			require.Zero(t, cleaned.FinalAmount)
+			require.NotEmpty(t, cleaned.SettlementRecovery)
+			require.NotEmpty(t, cleaned.SettlementPlan)
+			require.Equal(t, 1, port.prechargeMutationCalls())
+			require.Zero(t, port.balanceAmount())
+			require.Empty(t, fixture.queue.enqueuedTaskIDs())
+		})
+	}
+}
+
+func TestMediaWorkerRecoverOnceRetriesUnknownPrechargeResultBeforeCleanup(t *testing.T) {
+	fixture := newMediaWorkerFixture(t, true, NativeAsyncOptional)
+	snapshot := MediaBillingSnapshot{RequestedModel: "fake-image", EstimatedAmount: 2}
+	encoded, err := json.Marshal(snapshot)
+	require.NoError(t, err)
+	fixture.repo.mu.Lock()
+	stored := fixture.repo.tasks[fixture.task.ID]
+	stored.IdempotencyKey = ""
+	stored.BillingStatus = MediaBillingStatusPending
+	stored.PrechargedAmount = 0
+	stored.BillingSnapshot = encoded
+	stored.LeaseUntil = mediaTimePointer(time.Now().Add(-time.Minute))
+	fixture.repo.mu.Unlock()
+
+	port := newWorkerInitializationBillingPort()
+	port.failAfterFirstPrechargeMutation = true
+	fixture.worker.deps.Precharger = port
+	fixture.worker.deps.Billing = NewMediaBillingCoordinator(fixture.repo, port)
+
+	err = fixture.worker.RecoverOnce(context.Background())
+	require.ErrorContains(t, err, "precharge result unavailable")
+	unknown := fixture.repo.mustGet(fixture.task.ID)
+	require.Equal(t, MediaTaskStatusQueued, unknown.Status)
+	require.Equal(t, MediaBillingStatusPending, unknown.BillingStatus)
+	require.NotNil(t, unknown.LeaseUntil)
+	require.True(t, unknown.LeaseUntil.After(time.Now()))
+	require.Equal(t, 1, port.prechargeMutationCalls())
+	require.Equal(t, -2.0, port.balanceAmount())
+
+	fixture.repo.mu.Lock()
+	fixture.repo.tasks[fixture.task.ID].LeaseUntil = mediaTimePointer(time.Now().Add(-time.Minute))
+	fixture.repo.mu.Unlock()
+	require.NoError(t, fixture.worker.RecoverOnce(context.Background()))
+	cleaned := fixture.repo.mustGet(fixture.task.ID)
+	require.Equal(t, MediaTaskStatusFailed, cleaned.Status)
+	require.Equal(t, MediaBillingStatusSettled, cleaned.BillingStatus)
+	require.Equal(t, 2.0, cleaned.RefundedAmount)
+	require.Equal(t, 1, port.prechargeMutationCalls())
+	require.Zero(t, port.balanceAmount())
 }
 
 func TestMediaWorkerRecoveryPreservesSynchronousPriority(t *testing.T) {
@@ -1859,7 +1970,7 @@ func newMediaWorkerFixture(t *testing.T, clientAsync bool, mode NativeAsyncMode)
 		RecoveryInterval: time.Second, RecoveryBatchSize: 10,
 	}, MediaWorkerDependencies{
 		Tasks: repo, Queue: queue, Scheduler: scheduler, Models: modelRegistry, Adapters: registry,
-		Artifacts: artifactWriter, Billing: billing, Metrics: metrics,
+		Artifacts: artifactWriter, Precharger: DisabledMediaBilling{}, Billing: billing, Metrics: metrics,
 	})
 	return &mediaWorkerFixture{
 		worker: worker, repo: repo, queue: queue, adapter: adapter, billing: billing, metrics: metrics,
@@ -1957,6 +2068,67 @@ type workerTaskRepository struct {
 	failSettlementPlanWrites  int
 }
 
+type workerInitializationBillingPort struct {
+	mu                              sync.Mutex
+	seen                            map[string]struct{}
+	prechargeMutations              int
+	balance                         float64
+	failAfterFirstPrechargeMutation bool
+}
+
+func newWorkerInitializationBillingPort() *workerInitializationBillingPort {
+	return &workerInitializationBillingPort{seen: make(map[string]struct{})}
+}
+
+func (p *workerInitializationBillingPort) Precharge(_ context.Context, task *MediaTask, snapshot MediaBillingSnapshot) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	key, err := MediaBillingIdempotencyKey(task, MediaBillingOperationPrecharge)
+	if err != nil {
+		return err
+	}
+	if _, exists := p.seen[key]; !exists {
+		p.seen[key] = struct{}{}
+		p.prechargeMutations++
+		p.balance -= snapshot.EstimatedAmount
+		if p.failAfterFirstPrechargeMutation {
+			p.failAfterFirstPrechargeMutation = false
+			return errors.New("precharge result unavailable")
+		}
+	}
+	return nil
+}
+
+func (p *workerInitializationBillingPort) SettleSuccess(context.Context, *MediaTask, MediaUsage) error {
+	return nil
+}
+
+func (p *workerInitializationBillingPort) SettleFailure(_ context.Context, task *MediaTask, settlement MediaFailureSettlement) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	key, err := MediaBillingIdempotencyKey(task, MediaBillingOperationFailure)
+	if err != nil {
+		return err
+	}
+	if _, exists := p.seen[key]; !exists {
+		p.seen[key] = struct{}{}
+		p.balance += task.PrechargedAmount * settlement.RefundRatio
+	}
+	return nil
+}
+
+func (p *workerInitializationBillingPort) prechargeMutationCalls() int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.prechargeMutations
+}
+
+func (p *workerInitializationBillingPort) balanceAmount() float64 {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.balance
+}
+
 func newWorkerTaskRepository(tasks ...*MediaTask) *workerTaskRepository {
 	repo := &workerTaskRepository{tasks: make(map[int64]*MediaTask, len(tasks))}
 	for _, task := range tasks {
@@ -1989,8 +2161,28 @@ func (r *workerTaskRepository) GetByPublicIDForUser(context.Context, string, int
 func (r *workerTaskRepository) GetByIdempotencyKey(context.Context, int64, int64, string) (*MediaTask, error) {
 	return nil, errors.New("not implemented")
 }
-func (r *workerTaskRepository) UpdateQueued(context.Context, int64, int64, map[string]any) (bool, error) {
-	return false, errors.New("not implemented")
+func (r *workerTaskRepository) UpdateQueued(_ context.Context, id, version int64, updates map[string]any) (bool, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	task := r.tasks[id]
+	if task == nil || task.Status != MediaTaskStatusQueued || task.Version != version {
+		return false, nil
+	}
+	applyWorkerTaskUpdates(task, updates)
+	task.Version++
+	return true, nil
+}
+func (r *workerTaskRepository) TransitionQueued(_ context.Context, id, expectedVersion int64, to MediaTaskStatus, updates map[string]any) (bool, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	task := r.tasks[id]
+	if task == nil || task.Status != MediaTaskStatusQueued || task.Version != expectedVersion || to != MediaTaskStatusFailed {
+		return false, nil
+	}
+	applyWorkerTaskUpdates(task, updates)
+	task.Status = to
+	task.Version++
+	return true, nil
 }
 func (r *workerTaskRepository) Claim(_ context.Context, id int64, workerID string, leaseUntil time.Time, version int64) (bool, error) {
 	r.mu.Lock()
@@ -2102,9 +2294,10 @@ func (r *workerTaskRepository) ListRecoverable(_ context.Context, now time.Time,
 		if len(result) >= limit {
 			break
 		}
-		readyQueued := task.Status == MediaTaskStatusQueued && task.BillingStatus == MediaBillingStatusPrecharged
+		recoverableQueued := task.Status == MediaTaskStatusQueued &&
+			(task.BillingStatus == MediaBillingStatusPending || task.BillingStatus == MediaBillingStatusPrecharged)
 		expiredInProgress := task.Status == MediaTaskStatusInProgress
-		if (readyQueued || expiredInProgress) && (task.LeaseUntil == nil || !task.LeaseUntil.After(now)) {
+		if (recoverableQueued || expiredInProgress) && (task.LeaseUntil == nil || !task.LeaseUntil.After(now)) {
 			result = append(result, *cloneWorkerTask(task))
 		}
 	}
@@ -2118,7 +2311,8 @@ func (r *workerTaskRepository) ListSettlementPending(_ context.Context, limit in
 		if len(result) >= limit {
 			break
 		}
-		if len(task.SettlementPlan) > 0 && task.BillingStatus != MediaBillingStatusSettled {
+		hasRecovery := task.Status.IsTerminal() && len(task.SettlementRecovery) > 0
+		if (len(task.SettlementPlan) > 0 || hasRecovery) && task.BillingStatus != MediaBillingStatusSettled {
 			result = append(result, *cloneWorkerTask(task))
 		}
 	}
@@ -2196,10 +2390,18 @@ func applyWorkerTaskUpdates(task *MediaTask, updates map[string]any) {
 			task.SettlementRecovery = append(json.RawMessage(nil), value.(json.RawMessage)...)
 		case "billing_status":
 			task.BillingStatus = value.(string)
+		case "precharged_amount":
+			task.PrechargedAmount = value.(float64)
 		case "final_amount":
 			task.FinalAmount = value.(float64)
 		case "refunded_amount":
 			task.RefundedAmount = value.(float64)
+		case "lease_until":
+			if value == nil {
+				task.LeaseUntil = nil
+			} else {
+				task.LeaseUntil = workerTimePtr(value.(time.Time))
+			}
 		}
 	}
 }
