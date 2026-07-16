@@ -57,6 +57,7 @@ func newRepositoryMediaTask(publicID string) *service.MediaTask {
 		CandidateSnapshot:  json.RawMessage(`[]`),
 		RequestFingerprint: "fp",
 		Status:             service.MediaTaskStatusQueued,
+		BillingStatus:      service.MediaBillingStatusPrecharged,
 	}
 }
 
@@ -196,6 +197,60 @@ func TestMediaTaskRepositoryUpdateQueuedPersistsRequestSpecWithCAS(t *testing.T)
 	stale, err := repo.UpdateQueued(ctx, task.ID, task.Version, map[string]any{"request_spec": json.RawMessage(`{}`)})
 	require.NoError(t, err)
 	require.False(t, stale)
+}
+
+func TestMediaTaskRepositoryReadyCASClearsInitializationLease(t *testing.T) {
+	repo, _ := newMediaTaskRepositoryTestHarness(t)
+	ctx := context.Background()
+	task := newRepositoryMediaTask("task_ready_clears_initialization_lease")
+	task.BillingStatus = service.MediaBillingStatusPending
+	initializationLease := time.Now().UTC().Add(time.Minute)
+	task.LeaseUntil = &initializationLease
+	created, err := repo.Create(ctx, task)
+	require.NoError(t, err)
+
+	updated, err := repo.UpdateQueued(ctx, created.ID, created.Version, map[string]any{
+		"billing_status":    service.MediaBillingStatusPrecharged,
+		"precharged_amount": float64(2),
+		"lease_until":       nil,
+	})
+	require.NoError(t, err)
+	require.True(t, updated)
+	ready, err := repo.GetByID(ctx, created.ID)
+	require.NoError(t, err)
+	require.Equal(t, service.MediaBillingStatusPrecharged, ready.BillingStatus)
+	require.Nil(t, ready.LeaseUntil)
+}
+
+func TestMediaTaskRepositoryQueuedClaimRequiresReadyBillingAndExpiredLease(t *testing.T) {
+	repo, _ := newMediaTaskRepositoryTestHarness(t)
+	ctx := context.Background()
+	now := time.Now().UTC()
+
+	initializing := newRepositoryMediaTask("task_claim_initializing")
+	initializing.BillingStatus = service.MediaBillingStatusPending
+	initializing.LeaseUntil = mediaRepositoryTimePointer(now.Add(-time.Minute))
+	initializingTask, err := repo.Create(ctx, initializing)
+	require.NoError(t, err)
+	claimed, err := repo.Claim(ctx, initializingTask.ID, "worker", now.Add(time.Minute), initializingTask.Version)
+	require.NoError(t, err)
+	require.False(t, claimed)
+
+	notPublished := newRepositoryMediaTask("task_claim_not_published")
+	notPublished.LeaseUntil = mediaRepositoryTimePointer(now.Add(time.Minute))
+	notPublishedTask, err := repo.Create(ctx, notPublished)
+	require.NoError(t, err)
+	claimed, err = repo.Claim(ctx, notPublishedTask.ID, "worker", now.Add(2*time.Minute), notPublishedTask.Version)
+	require.NoError(t, err)
+	require.False(t, claimed)
+
+	ready := newRepositoryMediaTask("task_claim_ready")
+	ready.LeaseUntil = mediaRepositoryTimePointer(now.Add(-time.Minute))
+	readyTask, err := repo.Create(ctx, ready)
+	require.NoError(t, err)
+	claimed, err = repo.Claim(ctx, readyTask.ID, "worker", now.Add(time.Minute), readyTask.Version)
+	require.NoError(t, err)
+	require.True(t, claimed)
 }
 
 func TestMediaTaskRepositoryRequestSpecUpdateRequiresRawMessageAndQueuedPath(t *testing.T) {
@@ -386,6 +441,15 @@ func TestMediaTaskRepositoryListsRecoverableAndSettlementPending(t *testing.T) {
 
 	queued, err := repo.Create(ctx, newRepositoryMediaTask("task_recover_queued"))
 	require.NoError(t, err)
+	initializing := newRepositoryMediaTask("task_recover_initializing")
+	initializing.BillingStatus = service.MediaBillingStatusPending
+	initializing.LeaseUntil = mediaRepositoryTimePointer(now.Add(-time.Minute))
+	_, err = repo.Create(ctx, initializing)
+	require.NoError(t, err)
+	notPublished := newRepositoryMediaTask("task_recover_not_published")
+	notPublished.LeaseUntil = mediaRepositoryTimePointer(now.Add(time.Minute))
+	_, err = repo.Create(ctx, notPublished)
+	require.NoError(t, err)
 	expired, err := repo.Create(ctx, newRepositoryMediaTask("task_recover_expired"))
 	require.NoError(t, err)
 	requireClaimed(t, ctx, repo, expired, "worker-expired", now.Add(time.Minute))
@@ -437,6 +501,45 @@ func TestMediaTaskRepositoryListsRecoverableAndSettlementPending(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []int64{pendingTask.ID, recoveryOnlyTask.ID, retryingTask.ID}, mediaTaskIDs(settlementPending))
 }
+
+func TestMediaTaskRepositoryTransitionPersistsSettlementRecoveryForPendingScan(t *testing.T) {
+	repo, _ := newMediaTaskRepositoryTestHarness(t)
+	ctx := context.Background()
+	input := newRepositoryMediaTask("task_timeout_recovery")
+	input.BillingStatus = service.MediaBillingStatusPrecharged
+	task, err := repo.Create(ctx, input)
+	require.NoError(t, err)
+
+	plan := service.MediaSettlementPlan{
+		Type: service.MediaSettlementTypeFailure,
+		Failure: &service.MediaFailureSettlement{
+			Kind:        service.MediaFailureKindSyncTimeout,
+			RefundRatio: 1,
+			ErrorCode:   "sync_timeout",
+		},
+	}
+	recovery, err := json.Marshal(plan)
+	require.NoError(t, err)
+	finishedAt := time.Now().UTC().Truncate(time.Millisecond)
+	transitioned, err := repo.Transition(ctx, task.ID, service.MediaTaskStatusQueued, service.MediaTaskStatusFailed, map[string]any{
+		"stage":               service.MediaTaskStageFailed,
+		"error_code":          "sync_timeout",
+		"error_message":       "synchronous media wait timed out",
+		"finished_at":         finishedAt,
+		"settlement_recovery": json.RawMessage(recovery),
+	})
+	require.NoError(t, err)
+	require.True(t, transitioned)
+
+	stored, err := repo.GetByID(ctx, task.ID)
+	require.NoError(t, err)
+	require.JSONEq(t, string(recovery), string(stored.SettlementRecovery))
+	pending, err := repo.ListSettlementPending(ctx, 10)
+	require.NoError(t, err)
+	require.Equal(t, []int64{task.ID}, mediaTaskIDs(pending))
+}
+
+func mediaRepositoryTimePointer(value time.Time) *time.Time { return &value }
 
 func TestMediaTaskRepositoryUpdateBillingUsesBillingStatusCASWithoutChangingTaskStatus(t *testing.T) {
 	repo, _ := newMediaTaskRepositoryTestHarness(t)
@@ -535,7 +638,7 @@ func TestMediaTaskRepositoryOperationFieldWhitelistsRejectCrossDomainUpdates(t *
 		stored, err := repo.GetByID(ctx, task.ID)
 		require.NoError(t, err)
 		require.Equal(t, 0, stored.Progress)
-		require.Equal(t, "pending", stored.BillingStatus)
+		require.Equal(t, service.MediaBillingStatusPrecharged, stored.BillingStatus)
 		require.Equal(t, int64(2), stored.Version)
 	})
 
@@ -573,7 +676,7 @@ func TestMediaTaskRepositoryOperationFieldWhitelistsRejectCrossDomainUpdates(t *
 		require.NoError(t, err)
 		require.Equal(t, service.MediaTaskStatusQueued, stored.Status)
 		require.Empty(t, stored.ErrorCode)
-		require.Equal(t, "pending", stored.BillingStatus)
+		require.Equal(t, service.MediaBillingStatusPrecharged, stored.BillingStatus)
 	})
 
 	t.Run("UpdateBilling rejects execution fields and does not partially update", func(t *testing.T) {
@@ -647,7 +750,7 @@ func TestMediaTaskRepositoryTransitionClaimedProtectsWorkerVersionLeaseAndState(
 	require.NoError(t, err)
 	require.Equal(t, service.MediaTaskStatusInProgress, afterRejectedPatch.Status)
 	require.Equal(t, 0, afterRejectedPatch.Progress)
-	require.Equal(t, "pending", afterRejectedPatch.BillingStatus)
+	require.Equal(t, service.MediaBillingStatusPrecharged, afterRejectedPatch.BillingStatus)
 	require.Equal(t, claimed.Version, afterRejectedPatch.Version)
 
 	forceMediaTaskLease(t, ctx, client, task.ID, time.Now().Add(-time.Minute))

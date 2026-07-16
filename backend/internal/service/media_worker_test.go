@@ -42,6 +42,19 @@ func TestMediaWorkerExecutionMatrix(t *testing.T) {
 	}
 }
 
+func TestMediaWorkerDoesNotExecuteQueuedTaskBeforeReady(t *testing.T) {
+	fixture := newMediaWorkerFixture(t, true, NativeAsyncOptional)
+	fixture.repo.mu.Lock()
+	fixture.repo.tasks[fixture.task.ID].BillingStatus = MediaBillingStatusPending
+	fixture.repo.tasks[fixture.task.ID].LeaseUntil = mediaTimePointer(time.Now().Add(time.Minute))
+	fixture.repo.mu.Unlock()
+
+	err := fixture.worker.ProcessOne(context.Background(), fixture.task.ID)
+	require.ErrorIs(t, err, ErrMediaTaskNotClaimed)
+	require.Zero(t, fixture.adapter.syncCalls.Load())
+	require.Zero(t, fixture.adapter.submitCalls.Load())
+}
+
 func TestMediaWorkerInitialExecutionUsesStableTaskSlotID(t *testing.T) {
 	fixture := newMediaWorkerFixture(t, true, NativeAsyncRequired)
 	require.NoError(t, fixture.worker.ProcessOne(context.Background(), fixture.task.ID))
@@ -1986,6 +1999,10 @@ func (r *workerTaskRepository) Claim(_ context.Context, id int64, workerID strin
 	if task == nil || task.Version != version || task.Status.IsTerminal() {
 		return false, nil
 	}
+	if task.Status == MediaTaskStatusQueued &&
+		(task.BillingStatus != MediaBillingStatusPrecharged || (task.LeaseUntil != nil && task.LeaseUntil.After(time.Now()))) {
+		return false, nil
+	}
 	if task.Status == MediaTaskStatusInProgress && task.LeaseUntil != nil && task.LeaseUntil.After(time.Now()) {
 		return false, nil
 	}
@@ -2085,7 +2102,9 @@ func (r *workerTaskRepository) ListRecoverable(_ context.Context, now time.Time,
 		if len(result) >= limit {
 			break
 		}
-		if !task.Status.IsTerminal() && (task.LeaseUntil == nil || !task.LeaseUntil.After(now)) {
+		readyQueued := task.Status == MediaTaskStatusQueued && task.BillingStatus == MediaBillingStatusPrecharged
+		expiredInProgress := task.Status == MediaTaskStatusInProgress
+		if (readyQueued || expiredInProgress) && (task.LeaseUntil == nil || !task.LeaseUntil.After(now)) {
 			result = append(result, *cloneWorkerTask(task))
 		}
 	}

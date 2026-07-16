@@ -32,6 +32,7 @@ var (
 		"settlement_plan",
 		"billing_status",
 		"precharged_amount",
+		"lease_until",
 		"submitted_at",
 	)
 	updateClaimedFields = mediaTaskUpdateFieldSet(
@@ -57,6 +58,7 @@ var (
 		"error_code",
 		"error_message",
 		"finished_at",
+		"settlement_recovery",
 	)
 	transitionClaimedFields = mediaTaskUpdateFieldSet(
 		"stage",
@@ -226,11 +228,16 @@ func (r *mediaTaskRepository) UpdateQueued(ctx context.Context, id, version int6
 
 func (r *mediaTaskRepository) Claim(ctx context.Context, id int64, workerID string, leaseUntil time.Time, version int64) (bool, error) {
 	now := time.Now().UTC()
+	leaseAvailable := mediatask.Or(mediatask.LeaseUntilIsNil(), mediatask.LeaseUntilLTE(now))
 	claimable := mediatask.Or(
-		mediatask.StatusEQ(string(service.MediaTaskStatusQueued)),
+		mediatask.And(
+			mediatask.StatusEQ(string(service.MediaTaskStatusQueued)),
+			mediatask.BillingStatusEQ(service.MediaBillingStatusPrecharged),
+			leaseAvailable,
+		),
 		mediatask.And(
 			mediatask.StatusEQ(string(service.MediaTaskStatusInProgress)),
-			mediatask.Or(mediatask.LeaseUntilIsNil(), mediatask.LeaseUntilLTE(now)),
+			leaseAvailable,
 		),
 	)
 	updated, err := r.client.MediaTask.Update().
@@ -343,13 +350,17 @@ func (r *mediaTaskRepository) MarkSyncFallback(ctx context.Context, id int64, at
 
 func (r *mediaTaskRepository) ListRecoverable(ctx context.Context, now time.Time, limit int) ([]service.MediaTask, error) {
 	tasks, err := r.client.MediaTask.Query().
-		Where(
-			mediatask.StatusIn(
-				string(service.MediaTaskStatusQueued),
-				string(service.MediaTaskStatusInProgress),
+		Where(mediatask.Or(
+			mediatask.And(
+				mediatask.StatusEQ(string(service.MediaTaskStatusQueued)),
+				mediatask.BillingStatusEQ(service.MediaBillingStatusPrecharged),
+				mediatask.Or(mediatask.LeaseUntilIsNil(), mediatask.LeaseUntilLTE(now.UTC())),
 			),
-			mediatask.Or(mediatask.LeaseUntilIsNil(), mediatask.LeaseUntilLTE(now.UTC())),
-		).
+			mediatask.And(
+				mediatask.StatusEQ(string(service.MediaTaskStatusInProgress)),
+				mediatask.Or(mediatask.LeaseUntilIsNil(), mediatask.LeaseUntilLTE(now.UTC())),
+			),
+		)).
 		Order(mediatask.ByID()).
 		Limit(limit).
 		All(ctx)
@@ -730,6 +741,10 @@ func applyMediaTaskUpdates(update *dbent.MediaTaskUpdate, updates map[string]any
 			}
 		case "finished_at":
 			if err := setOptionalTime(update.SetFinishedAt, update.ClearFinishedAt, value); err != nil {
+				return updateTypeError(field, err)
+			}
+		case "lease_until":
+			if err := setOptionalTime(update.SetLeaseUntil, update.ClearLeaseUntil, value); err != nil {
 				return updateTypeError(field, err)
 			}
 		default:

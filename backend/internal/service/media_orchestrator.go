@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"mime"
 	"net/url"
 	"slices"
 	"strings"
@@ -23,9 +24,13 @@ var (
 	ErrMediaInputNotRecoverable        = errors.New("media input is not recoverable")
 	ErrMediaTerminalSubscriptionClosed = errors.New("media terminal subscription closed")
 	ErrMediaOrchestratorStateConflict  = errors.New("media orchestrator state CAS conflict")
+	ErrMediaTaskInitializing           = errors.New("media task initialization is still in progress")
 )
 
-const mediaOrchestratorDetachedTimeout = 30 * time.Second
+const (
+	mediaOrchestratorDetachedTimeout = 30 * time.Second
+	mediaTaskInitializationLease     = 5 * time.Minute
+)
 
 type MediaCreateRequest struct {
 	UserID         int64
@@ -177,7 +182,7 @@ func (o *MediaOrchestrator) Create(ctx context.Context, req MediaCreateRequest) 
 		existing, lookupErr := o.deps.Tasks.GetByIdempotencyKey(ctx, req.UserID, req.APIKeyID, req.IdempotencyKey)
 		switch {
 		case lookupErr == nil:
-			return o.reuseTask(ctx, existing, fingerprint, req.ClientAsync, nil)
+			return o.reuseOrResumeTask(ctx, existing, req, inputs, fingerprint, nil)
 		case errors.Is(lookupErr, ErrMediaTaskNotFound):
 		case lookupErr != nil:
 			return nil, fmt.Errorf("lookup media idempotency key: %w", lookupErr)
@@ -220,13 +225,14 @@ func (o *MediaOrchestrator) Create(ctx context.Context, req MediaCreateRequest) 
 		return nil, fmt.Errorf("encode media request spec: %w", err)
 	}
 	now := o.deps.Clock.Now().UTC()
+	initializationLease := now.Add(mediaTaskInitializationLease)
 	task := &MediaTask{
 		PublicID: publicID, UserID: req.UserID, APIKeyID: req.APIKeyID, GroupID: req.GroupID,
 		MediaType: req.MediaType, Operation: req.Operation, RequestedModel: strings.TrimSpace(req.RequestedModel),
 		ClientAsync: req.ClientAsync, Status: MediaTaskStatusQueued, Stage: MediaTaskStageQueued,
 		RequestSpec: initialSpec, CandidateSnapshot: candidateJSON, RequestFingerprint: fingerprint,
 		IdempotencyKey: req.IdempotencyKey, BillingSnapshot: billingJSON, BillingStatus: MediaBillingStatusPending,
-		CreatedAt: now, UpdatedAt: now,
+		LeaseUntil: &initializationLease, CreatedAt: now, UpdatedAt: now,
 	}
 	created, createErr := o.deps.Tasks.Create(ctx, task)
 	if createErr != nil {
@@ -236,7 +242,7 @@ func (o *MediaOrchestrator) Create(ctx context.Context, req MediaCreateRequest) 
 		winner, readErr := o.deps.Tasks.GetByIdempotencyKey(ctx, req.UserID, req.APIKeyID, req.IdempotencyKey)
 		switch {
 		case readErr == nil:
-			return o.reuseTask(ctx, winner, fingerprint, req.ClientAsync, settings)
+			return o.reuseOrResumeTask(ctx, winner, req, inputs, fingerprint, settings)
 		case errors.Is(readErr, ErrMediaTaskNotFound):
 			return nil, fmt.Errorf("create media task: %w", createErr)
 		default:
@@ -247,59 +253,7 @@ func (o *MediaOrchestrator) Create(ctx context.Context, req MediaCreateRequest) 
 		}
 	}
 	task = created
-
-	if len(inputs) > 0 {
-		artifactIDs, persistErr := o.persistInputs(ctx, task, inputs)
-		if persistErr != nil {
-			return nil, o.failBeforePrecharge(ctx, task, "system_input", persistErr)
-		}
-		durableSpec, specErr := mediaSpecWithInputArtifacts(req.Spec, req.Operation, artifactIDs)
-		if specErr != nil {
-			return nil, o.failBeforePrecharge(ctx, task, "system_input", specErr)
-		}
-		encoded, encodeErr := json.Marshal(durableSpec)
-		if encodeErr != nil {
-			return nil, o.failBeforePrecharge(ctx, task, "system_input", fmt.Errorf("encode durable media request spec: %w", encodeErr))
-		}
-		updated, updateErr := o.deps.Tasks.UpdateQueued(ctx, task.ID, task.Version, map[string]any{"request_spec": json.RawMessage(encoded)})
-		if updateErr != nil {
-			return nil, o.failBeforePrecharge(ctx, task, "system_input", fmt.Errorf("persist durable media request spec: %w", updateErr))
-		}
-		if !updated {
-			return nil, o.failBeforePrecharge(ctx, task, "system_input", fmt.Errorf("%w: persist durable media request spec", ErrMediaOrchestratorStateConflict))
-		}
-		task.RequestSpec = encoded
-		task.Version++
-	}
-
-	if err := o.deps.Billing.Precharge(ctx, task, billingSnapshot); err != nil {
-		return nil, o.failBeforePrecharge(ctx, task, "billing_precharge", fmt.Errorf("precharge media task: %w", err))
-	}
-	updated, updateErr := o.deps.Tasks.UpdateQueued(ctx, task.ID, task.Version, map[string]any{
-		"billing_status": MediaBillingStatusPrecharged, "precharged_amount": billingSnapshot.EstimatedAmount,
-	})
-	if updateErr != nil || !updated {
-		stateErr := updateErr
-		if stateErr == nil {
-			stateErr = ErrMediaOrchestratorStateConflict
-		}
-		return nil, o.failAfterPrecharge(ctx, task, "system_billing_state", fmt.Errorf("persist media precharge state: %w", stateErr))
-	}
-	task.BillingStatus = MediaBillingStatusPrecharged
-	task.PrechargedAmount = billingSnapshot.EstimatedAmount
-	task.Version++
-
-	priority := MediaQueuePrioritySync
-	if req.ClientAsync {
-		priority = MediaQueuePriorityAsync
-	}
-	if err := o.deps.Queue.Enqueue(ctx, task.ID, priority); err != nil {
-		return nil, o.failAfterPrecharge(ctx, task, "system_queue", fmt.Errorf("enqueue media task: %w", err))
-	}
-	if req.ClientAsync {
-		return &MediaCreateResult{Task: task, Disposition: MediaCreateDispositionAccepted}, nil
-	}
-	return o.waitSync(ctx, task, settings)
+	return o.initializeAndEnqueue(ctx, task, req, inputs, billingSnapshot, settings)
 }
 
 func (o *MediaOrchestrator) GetForUser(ctx context.Context, publicID string, userID int64) (*MediaCreateResult, error) {
@@ -362,6 +316,9 @@ func (o *MediaOrchestrator) waitSync(ctx context.Context, task *MediaTask, setti
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		case <-timeout:
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
 			timeoutCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), mediaOrchestratorDetachedTimeout)
 			result, timeoutErr := o.handleSyncTimeout(timeoutCtx, current, settings)
 			cancel()
@@ -408,10 +365,19 @@ func (o *MediaOrchestrator) handleSyncTimeout(ctx context.Context, task *MediaTa
 		return &MediaCreateResult{Task: fresh, Disposition: MediaCreateDispositionFallbackAsync}, nil
 	}
 
+	settlement := mediaSyncTimeoutSettlement(&timeoutState, settings)
+	recovery, marshalErr := json.Marshal(MediaSettlementPlan{
+		Type:    MediaSettlementTypeFailure,
+		Failure: &settlement,
+	})
+	if marshalErr != nil {
+		return nil, fmt.Errorf("encode media sync timeout settlement recovery: %w", marshalErr)
+	}
 	finishedAt := o.deps.Clock.Now().UTC()
 	transitioned, transitionErr := o.deps.Tasks.Transition(ctx, current.ID, current.Status, MediaTaskStatusFailed, map[string]any{
 		"stage": MediaTaskStageFailed, "error_code": "sync_timeout",
 		"error_message": "synchronous media wait timed out", "finished_at": finishedAt,
+		"settlement_recovery": json.RawMessage(recovery),
 	})
 	if transitionErr != nil {
 		return nil, fmt.Errorf("fail media task at sync timeout: %w", transitionErr)
@@ -431,11 +397,11 @@ func (o *MediaOrchestrator) handleSyncTimeout(ctx context.Context, task *MediaTa
 	current.ErrorCode = "sync_timeout"
 	current.ErrorMessage = "synchronous media wait timed out"
 	current.FinishedAt = &finishedAt
+	current.SettlementRecovery = append(json.RawMessage(nil), recovery...)
 	if o.deps.Controller != nil {
 		o.deps.Controller.StopForSyncTimeout(current.ID)
 	}
 
-	settlement := mediaSyncTimeoutSettlement(&timeoutState, settings)
 	settlementCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), mediaOrchestratorDetachedTimeout)
 	defer cancel()
 	_ = o.deps.Settlement.SettleFailure(settlementCtx, current, settlement)
@@ -513,14 +479,23 @@ func (o *MediaOrchestrator) validateRequest(ctx context.Context, req MediaCreate
 }
 
 func normalizeMediaInputs(inputs []MediaArtifactInput, operation MediaOperation) ([]MediaArtifactInput, error) {
-	if len(inputs) == 0 {
-		return nil, nil
-	}
+	var sourceMediaType MediaType
 	switch operation {
+	case MediaOperationTextToImage, MediaOperationTextToVideo:
+		if len(inputs) != 0 {
+			return nil, fmt.Errorf("%w: operation %q does not accept inputs", ErrMediaInputNotRecoverable, operation)
+		}
+		return nil, nil
 	case MediaOperationImageToImage, MediaOperationImageEdit, MediaOperationImageToVideo,
-		MediaOperationReferenceVideo, MediaOperationVideoExtend, MediaOperationVideoRemix:
+		MediaOperationReferenceVideo:
+		sourceMediaType = MediaTypeImage
+	case MediaOperationVideoExtend, MediaOperationVideoRemix:
+		sourceMediaType = MediaTypeVideo
 	default:
-		return nil, fmt.Errorf("%w: operation %q does not accept inputs", ErrMediaInputNotRecoverable, operation)
+		return nil, fmt.Errorf("%w: unsupported operation %q", ErrMediaInputNotRecoverable, operation)
+	}
+	if len(inputs) == 0 {
+		return nil, fmt.Errorf("%w: operation %q requires input", ErrMediaInputNotRecoverable, operation)
 	}
 	result := append([]MediaArtifactInput(nil), inputs...)
 	slices.SortFunc(result, func(a, b MediaArtifactInput) int {
@@ -536,11 +511,25 @@ func normalizeMediaInputs(inputs []MediaArtifactInput, operation MediaOperation)
 	for i := range result {
 		input := &result[i]
 		if len(input.Data) != 0 || input.Position < 0 || (input.Direction != "" && input.Direction != "input") ||
-			(input.MediaType != MediaTypeImage && input.MediaType != MediaTypeVideo) || strings.TrimSpace(input.ContentType) == "" {
+			(input.MediaType != MediaTypeImage && input.MediaType != MediaTypeVideo) {
 			return nil, fmt.Errorf("%w: invalid input at position %d", ErrMediaInputNotRecoverable, input.Position)
 		}
 		if i > 0 && result[i-1].Position == input.Position {
 			return nil, fmt.Errorf("%w: duplicate input position %d", ErrMediaInputNotRecoverable, input.Position)
+		}
+		expectedMediaType := MediaTypeImage
+		if i == 0 {
+			expectedMediaType = sourceMediaType
+		}
+		if input.MediaType != expectedMediaType {
+			return nil, fmt.Errorf("%w: input position %d must be %s", ErrMediaInputNotRecoverable, input.Position, expectedMediaType)
+		}
+		input.ContentType = strings.TrimSpace(input.ContentType)
+		parsedContentType, _, parseErr := mime.ParseMediaType(input.ContentType)
+		slash := strings.IndexByte(parsedContentType, '/')
+		if parseErr != nil || slash <= 0 || slash == len(parsedContentType)-1 || parsedContentType[slash+1:] == "*" ||
+			parsedContentType[:slash] != string(input.MediaType) {
+			return nil, fmt.Errorf("%w: invalid content type at position %d", ErrMediaInputNotRecoverable, input.Position)
 		}
 		input.ObjectKey = strings.TrimSpace(input.ObjectKey)
 		input.ExternalURL = strings.TrimSpace(input.ExternalURL)
@@ -647,6 +636,84 @@ func mediaCreateFingerprint(req MediaCreateRequest) (string, error) {
 	return hex.EncodeToString(sum[:]), nil
 }
 
+func (o *MediaOrchestrator) initializeAndEnqueue(
+	ctx context.Context,
+	task *MediaTask,
+	req MediaCreateRequest,
+	inputs []MediaArtifactInput,
+	billingSnapshot MediaBillingSnapshot,
+	settings *SystemSettings,
+) (*MediaCreateResult, error) {
+	if len(inputs) > 0 {
+		artifactIDs, persistErr := o.persistInputs(ctx, task, inputs)
+		if persistErr != nil {
+			return nil, o.failBeforePrecharge(ctx, task, "system_input", persistErr)
+		}
+		durableSpec, specErr := mediaSpecWithInputArtifacts(req.Spec, req.Operation, artifactIDs)
+		if specErr != nil {
+			return nil, o.failBeforePrecharge(ctx, task, "system_input", specErr)
+		}
+		encoded, encodeErr := json.Marshal(durableSpec)
+		if encodeErr != nil {
+			return nil, o.failBeforePrecharge(ctx, task, "system_input", fmt.Errorf("encode durable media request spec: %w", encodeErr))
+		}
+		updated, updateErr := o.deps.Tasks.UpdateQueued(ctx, task.ID, task.Version, map[string]any{"request_spec": json.RawMessage(encoded)})
+		if updateErr != nil {
+			return nil, o.failBeforePrecharge(ctx, task, "system_input", fmt.Errorf("persist durable media request spec: %w", updateErr))
+		}
+		if !updated {
+			return nil, fmt.Errorf("%w: persist durable media request spec", ErrMediaOrchestratorStateConflict)
+		}
+		task.RequestSpec = encoded
+		task.Version++
+	}
+
+	if err := o.deps.Billing.Precharge(ctx, task, billingSnapshot); err != nil {
+		return nil, o.failBeforePrecharge(ctx, task, "billing_precharge", fmt.Errorf("precharge media task: %w", err))
+	}
+	updated, updateErr := o.deps.Tasks.UpdateQueued(ctx, task.ID, task.Version, map[string]any{
+		"billing_status": MediaBillingStatusPrecharged, "precharged_amount": billingSnapshot.EstimatedAmount,
+		"lease_until": nil,
+	})
+	if updateErr != nil || !updated {
+		if updateErr == nil {
+			fresh, readErr := o.deps.Tasks.GetByID(ctx, task.ID)
+			if readErr == nil && fresh.BillingStatus == MediaBillingStatusPrecharged && fresh.LeaseUntil == nil {
+				return o.reuseTask(ctx, fresh, task.RequestFingerprint, req.ClientAsync, settings)
+			}
+			if readErr != nil {
+				updateErr = fmt.Errorf("reload media task after ready CAS: %w", readErr)
+			} else {
+				updateErr = ErrMediaOrchestratorStateConflict
+			}
+		}
+		return nil, o.failAfterPrecharge(ctx, task, "system_billing_state", fmt.Errorf("persist media precharge state: %w", updateErr))
+	}
+	task.BillingStatus = MediaBillingStatusPrecharged
+	task.PrechargedAmount = billingSnapshot.EstimatedAmount
+	task.LeaseUntil = nil
+	task.Version++
+
+	priority := MediaQueuePrioritySync
+	if req.ClientAsync {
+		priority = MediaQueuePriorityAsync
+	}
+	if err := o.deps.Queue.Enqueue(ctx, task.ID, priority); err != nil {
+		return nil, o.failAfterPrecharge(ctx, task, "system_queue", fmt.Errorf("enqueue media task: %w", err))
+	}
+	if req.ClientAsync {
+		return &MediaCreateResult{Task: task, Disposition: MediaCreateDispositionAccepted}, nil
+	}
+	if settings == nil {
+		var err error
+		settings, err = o.loadSettings(ctx)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return o.waitSync(ctx, task, settings)
+}
+
 func (o *MediaOrchestrator) persistInputs(ctx context.Context, task *MediaTask, inputs []MediaArtifactInput) ([]int64, error) {
 	ids := make([]int64, 0, len(inputs))
 	for _, input := range inputs {
@@ -702,6 +769,60 @@ func (o *MediaOrchestrator) reuseTask(ctx context.Context, task *MediaTask, fing
 	return o.waitSync(ctx, task, settings)
 }
 
+func (o *MediaOrchestrator) reuseOrResumeTask(
+	ctx context.Context,
+	task *MediaTask,
+	req MediaCreateRequest,
+	inputs []MediaArtifactInput,
+	fingerprint string,
+	settings *SystemSettings,
+) (*MediaCreateResult, error) {
+	if task == nil || task.RequestFingerprint != fingerprint {
+		return nil, ErrMediaIdempotencyConflict
+	}
+	if task.Status.IsTerminal() {
+		return o.terminalResult(ctx, task)
+	}
+	if task.Status != MediaTaskStatusQueued {
+		if task.BillingStatus != MediaBillingStatusPrecharged {
+			return nil, ErrMediaTaskInitializing
+		}
+		return o.reuseTask(ctx, task, fingerprint, req.ClientAsync, settings)
+	}
+	if task.BillingStatus == MediaBillingStatusPrecharged && task.LeaseUntil == nil {
+		return o.reuseTask(ctx, task, fingerprint, req.ClientAsync, settings)
+	}
+	now := o.deps.Clock.Now().UTC()
+	if task.LeaseUntil != nil && task.LeaseUntil.After(now) {
+		return nil, ErrMediaTaskInitializing
+	}
+	if task.BillingStatus != MediaBillingStatusPending && task.BillingStatus != MediaBillingStatusPrecharged {
+		return nil, fmt.Errorf("%w: task %d has billing status %q", ErrMediaOrchestratorStateConflict, task.ID, task.BillingStatus)
+	}
+	initializationLease := now.Add(mediaTaskInitializationLease)
+	acquired, err := o.deps.Tasks.UpdateQueued(ctx, task.ID, task.Version, map[string]any{"lease_until": initializationLease})
+	if err != nil {
+		return nil, fmt.Errorf("acquire media initialization lease: %w", err)
+	}
+	if !acquired {
+		fresh, readErr := o.deps.Tasks.GetByID(ctx, task.ID)
+		if readErr != nil {
+			return nil, fmt.Errorf("reload media initialization lease: %w", readErr)
+		}
+		if fresh.BillingStatus == MediaBillingStatusPrecharged && fresh.LeaseUntil == nil {
+			return o.reuseTask(ctx, fresh, fingerprint, req.ClientAsync, settings)
+		}
+		return nil, ErrMediaTaskInitializing
+	}
+	task.LeaseUntil = &initializationLease
+	task.Version++
+	var billingSnapshot MediaBillingSnapshot
+	if err := json.Unmarshal(task.BillingSnapshot, &billingSnapshot); err != nil {
+		return nil, o.failBeforePrecharge(ctx, task, "system_billing_snapshot", fmt.Errorf("decode media billing snapshot: %w", err))
+	}
+	return o.initializeAndEnqueue(ctx, task, req, inputs, billingSnapshot, settings)
+}
+
 func (o *MediaOrchestrator) loadSettings(ctx context.Context) (*SystemSettings, error) {
 	settings, err := o.deps.Settings.GetAllSettings(ctx)
 	if err != nil {
@@ -734,6 +855,11 @@ func (o *MediaOrchestrator) terminalResult(ctx context.Context, task *MediaTask)
 		return &MediaCreateResult{Task: task, Artifacts: artifacts, Disposition: MediaCreateDispositionCompleted}, nil
 	}
 	if task.Status == MediaTaskStatusFailed {
+		if task.ErrorCode == "sync_timeout" {
+			gatewayTask := *task
+			gatewayTask.PublicID = ""
+			return &MediaCreateResult{Task: &gatewayTask, Disposition: MediaCreateDispositionGatewayTimeout}, nil
+		}
 		return &MediaCreateResult{Task: task, Disposition: MediaCreateDispositionFailed}, nil
 	}
 	return nil, fmt.Errorf("media task %d is not terminal", task.ID)

@@ -22,7 +22,7 @@ func validImageModelDefinition() MediaModelDefinition {
 	return MediaModelDefinition{
 		ModelID:     "fake-image",
 		MediaType:   MediaTypeImage,
-		Operations:  []MediaOperation{MediaOperationTextToImage, MediaOperationImageToImage},
+		Operations:  []MediaOperation{MediaOperationTextToImage, MediaOperationImageToImage, MediaOperationImageEdit},
 		Constraints: json.RawMessage(`{}`),
 		Enabled:     true,
 	}
@@ -30,9 +30,15 @@ func validImageModelDefinition() MediaModelDefinition {
 
 func validVideoModelDefinition() MediaModelDefinition {
 	return MediaModelDefinition{
-		ModelID:     "fake-video",
-		MediaType:   MediaTypeVideo,
-		Operations:  []MediaOperation{MediaOperationTextToVideo, MediaOperationImageToVideo},
+		ModelID:   "fake-video",
+		MediaType: MediaTypeVideo,
+		Operations: []MediaOperation{
+			MediaOperationTextToVideo,
+			MediaOperationImageToVideo,
+			MediaOperationReferenceVideo,
+			MediaOperationVideoExtend,
+			MediaOperationVideoRemix,
+		},
 		Constraints: json.RawMessage(`{}`),
 		Enabled:     true,
 	}

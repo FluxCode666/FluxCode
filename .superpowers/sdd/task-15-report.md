@@ -187,3 +187,138 @@
 - 无阻断问题。
 - 生产路由、Handler/InputStager、真实 Pricing/Billing/Provider Adapter 和 DI 属于后续任务，本阶段不可达是设计结果，不是遗漏。
 - Coordinator 的 Port 暂时失败恢复已有直接测试；真实 DB/进程故障演练未在本任务执行，发布前应由后续 integration/observability 收口。
+
+## 9. 首轮复审修复（2026-07-16）
+
+### 9.1 范围与基线
+
+- 修复前 HEAD：`0edc017cc85b0189a8304c26c767683a24893d40`。
+- 复审提出的 5 个 Important 已逐项按 RED→GREEN 修复。
+- 生产改动仍仅位于：
+  - `backend/internal/service/media_orchestrator.go`
+  - `backend/internal/repository/media_task_repo.go`
+- 回归测试位于：
+  - `backend/internal/service/media_orchestrator_test.go`
+  - `backend/internal/service/media_worker_test.go`
+  - `backend/internal/repository/media_task_repo_test.go`
+  - `backend/internal/service/media_model_registry_test.go`
+- `media_model_registry_test.go` 仅扩展共享测试 fixture：image definition 增加 `image_edit`，video definition 增加 `reference_to_video`、`video_extend`、`video_remix`；Orchestrator fixture 同时加载 image/video definition，使各 operation 测试能够到达输入校验。生产 Registry 无改动。
+- 未修改 progress ledger、路由、Handler、Provider Adapter、UI、schema/migration、`go.mod` 或 `go.sum`；未扩展到 Task 16。
+
+### 9.2 Important 1：初始化可见性与 ready 屏障
+
+实现：
+
+- 新任务以 `billing_status=pending` 和 5 分钟初始化 `lease_until` 创建。
+- ready 发布通过同一个 `UpdateQueued` version CAS 原子写入 `billing_status=precharged`、`precharged_amount` 并清空 `lease_until`。
+- Repository `Claim` 和 `ListRecoverable` 仅允许账单已预扣且初始化 lease 为空/过期的 queued task；in-progress 仍按执行 lease 恢复。
+- active 初始化任务的幂等重放返回 `ErrMediaTaskInitializing`，不再返回 `accepted`。
+- 初始化 lease 过期后，重放方以 `UpdateQueued` version CAS 接管；复用持久化 BillingSnapshot 和固定预扣幂等键继续初始化。并发 loser 不能越过 ready 屏障。
+
+RED 直接证据：
+
+- Repository：`lease_until` 不在 queued 更新白名单；pending queued 可被 Claim；恢复扫描包含 pending queued。
+- Service：新任务无初始化 lease；active loser 被返回 `accepted`；expired 初始化不能接管；Worker 会执行 pending queued task。
+
+GREEN：
+
+- Repository 精确回归：PASS，`ok .../internal/repository 0.831s`。
+- Service 精确回归：PASS，`ok .../internal/service 0.963s`。
+- 直接测试：`TestMediaTaskRepositoryReadyCASClearsInitializationLease`、`TestMediaTaskRepositoryQueuedClaimRequiresReadyBillingAndExpiredLease`、`TestMediaWorkerDoesNotExecuteQueuedTaskBeforeReady`、`TestMediaOrchestratorPublishesReadyOnlyAfterPrechargeAndClearsInitializationLease`、`TestMediaOrchestratorIdempotencyRetryDoesNotAcceptActiveInitialization`、`TestMediaOrchestratorIdempotencyRetryTakesOverExpiredInitialization`、`TestMediaOrchestratorConcurrentIdempotencyLoserCannotBypassReadiness`。
+
+### 9.3 Important 2：parent cancel 与 timeout 同时 ready
+
+RED：
+
+- `TestMediaOrchestratorParentCancelWinsWhenTimeoutAlsoReady` 使用 64 次迭代，fake timer 已 ready，并在首次 DB read hook 中同步 cancel parent context。
+- 修复前第 0 次迭代即随机进入 timeout 路径并返回 nil error。
+
+GREEN：
+
+- timeout case 在进入 `context.WithoutCancel` 前再次检查 `ctx.Err()`。
+- 精确测试 PASS，`ok .../internal/service 0.854s`；64 次迭代均返回 `context.Canceled`，0 Stop、0 失败结算。
+
+### 9.4 Important 3：timeout 终态与 settlement recovery 原子持久化
+
+RED：
+
+- `go test ./internal/repository -run '^TestMediaTaskRepositoryTransitionPersistsSettlementRecoveryForPendingScan$' -count=1`
+  - FAIL，`media task Transition field "settlement_recovery" is not allowed`，0.828s。
+- `go test ./internal/service -run '^TestMediaOrchestratorSyncTimeoutTransitionPersistsRecoveryBeforeSettlementPlan$' -count=1`
+  - FAIL，首次 `settlement_plan` 写入失败后 `SettlementRecovery` 为空，1.177s。
+
+GREEN：
+
+- 普通 `Transition` 白名单最小增加 `settlement_recovery`。
+- timeout 在状态 CAS 前计算并编码 `MediaSettlementPlan{type=failure}`；同一个 `Transition` 原子写入 `failed/sync_timeout`、finished fields 和 `settlement_recovery`。
+- CAS 成功后再 Stop 和调用 Coordinator。即使 Coordinator 首次正式计划写失败，任务仍保持 `billing_status=precharged`、终态 recovery 非空，并可被 `ListSettlementPending` 找到恢复。
+- Repository 精确测试 PASS，0.877s；Service 精确测试 PASS，1.435s。Coordinator 对 recovery/plan 一致性校验无冲突。
+
+### 9.5 Important 4：sync_timeout 幂等重放语义
+
+RED：
+
+- `go test ./internal/service -run '^TestMediaOrchestratorIdempotentRetryAfterSyncTimeoutKeepsGatewayTimeoutPrivate$' -count=1`
+- FAIL：第二次相同 sync IdempotencyKey 重放返回 disposition `failed`，预期 `gateway_timeout`，0.911s。
+
+GREEN：
+
+- `terminalResult` 对 `status=failed && error_code=sync_timeout` 始终返回 `gateway_timeout` 的任务副本并清空 `PublicID`。
+- 首次 timeout 和第二 waiter/幂等重放保持相同私有超时语义，且预扣和入队调用均仍为 1 次。
+- 与 timeout CAS loss/recovery 测试合并执行 PASS，`ok .../internal/service 0.951s`。
+
+### 9.6 Important 5：operation-specific 输入与 MIME
+
+RED：
+
+- `go test ./internal/service -run '^(TestMediaOrchestratorEnforcesOperationSpecificInputContractsBeforeTaskAndCharge|TestMediaOrchestratorVideoInputMappingUsesSortedSourceAndImageReferences)$' -count=1`
+- FAIL，现实现误接受：6 类必须输入为空、图片/视频角色错配、声明 MediaType 与 MIME 前缀不一致、`image/`、`image/*`、非 image/video 顶级类型、排序后首个 source 为图片、video reference 等情况；0.957s。
+
+GREEN：
+
+- `text_to_image` / `text_to_video` 强制 0 输入。
+- `image_to_image` / `image_edit` / `image_to_video` / `reference_to_video` 至少 1 输入且全部为 image。
+- `video_extend` / `video_remix` 至少 1 输入；按 Position 排序后首个必须为 video source，其余必须为 image reference。
+- 使用标准库 `mime.ParseMediaType`；拒绝不可解析、空/通配 subtype、顶级类型与声明 MediaType 不一致的 Content-Type，同时接受合法参数。
+- source/reference Artifact ID 映射保持排序后首个 ID 为 `SourceArtifactID`，其余为 `ReferenceArtifactIDs`。
+- 精确输入回归 PASS，`ok .../internal/service 0.876s`。
+- 原 raw/nonrecoverable 测试切换到 `image_to_image` 并提供合法 `image/png`，确保失败原因仍直接覆盖 raw Data/持久引用问题。
+
+### 9.7 扩大回归、race 与最终门禁
+
+定向非 race：
+
+- `go test ./internal/service -run '^(TestMediaOrchestrator|TestMediaBilling|TestMediaWorkerDoesNotExecuteQueuedTaskBeforeReady)' -count=1`：PASS，1.236s。
+- `go test ./internal/service -run '^TestMediaModel' -count=1`：PASS，1.929s。
+- `go test ./internal/repository -run '^TestMediaTaskRepository' -count=1`：最终 PASS，1.114s。
+- 扩大仓储回归首次发现 3 个跨域白名单测试仍断言旧 fixture 初值 `pending`；通用可 Claim fixture 已因 ready 契约改为 `precharged`，因此只将“不应被更新改变”的预期同步为 `MediaBillingStatusPrecharged`，未修改生产行为。
+
+精确 race：
+
+- `go test -race ./internal/service -run '^(TestMediaOrchestrator|TestMediaBilling|TestMediaWorkerDoesNotExecuteQueuedTaskBeforeReady)' -count=1`：PASS，2.165s。
+- `go test -race ./internal/repository -run '^TestMediaTaskRepository' -count=1`：PASS，8.963s。
+
+静态、构建和模块：
+
+- `gofmt`：已执行。
+- `git diff --check`：PASS，exit 0。
+- `go vet ./...`：PASS，exit 0。
+- `go build ./...`：PASS，exit 0。
+- `go test ./... -run '^$' -count=1`：PASS，exit 0；全仓包完成编译且不执行测试体。
+- `go mod verify`：PASS，`all modules verified`。
+
+未执行：
+
+- 仍未执行完整 `go test ./internal/service` 测试体套件：既有 OpenAI stub 在并发运行时存在 concurrent map fatal，本轮禁止修改无关基线；精确 service/repository/Worker 测试、精确 race、全仓无测试编译替代该门禁。
+
+### 9.8 复审后代码审计
+
+- 审计深度：高。原因是变更涉及预扣可见性、幂等接管、DB CAS、队列执行资格、同步 timeout、失败结算恢复和外部媒体输入边界。
+- 需求对账：5 个 Important 均有原失败直接测试、最小生产修复和 GREEN 证据。
+- 调用链：`Create -> validateRequest/normalizeMediaInputs -> 初始化 lease -> 持久输入/预扣 -> ready CAS -> Queue/Worker Claim`；`waitSync -> handleSyncTimeout -> failed+recovery CAS -> Stop -> Coordinator -> ListSettlementPending`；`reuseOrResumeTask/terminalResult` 覆盖初始化重放和 sync_timeout 重放。
+- 数据/契约：复用既有 `lease_until`、`settlement_recovery`、billing fields 和 Artifact 字段；无 schema、迁移、HTTP DTO、OpenAPI、SDK 或缓存/队列 topic 变化。
+- 并发反例：active initializer、expired takeover、concurrent loser、cancel+timeout 同时 ready、timeout CAS loss、首次 settlement plan 写失败、第二 waiter/幂等重放均有直接测试。
+- 输入反例：空输入、禁止输入、角色错配、排序错位、MediaType/MIME 不一致、非法 MIME、raw Data、无/多重持久引用均在任务创建和预扣前拒绝。
+- 低级假通过排除：已检查实际 diff、生产方/调用方/消费方、仓储与 Worker fake、错误码/枚举/字段搜索、异常与并发路径；未把静态工具通过单独当作结论。
+- 字段对账：未新增字段；仅扩大既有 `lease_until`/`settlement_recovery` 的受控更新路径。编辑/删除链路不涉及。
+- 结论：通过；未发现新的阻断或非阻断代码风险。唯一保留的验证缺口是上述既有 OpenAI stub 限制导致未跑完整 service 测试体套件。
