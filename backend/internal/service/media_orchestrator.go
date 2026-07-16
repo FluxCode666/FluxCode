@@ -347,17 +347,29 @@ func (o *MediaOrchestrator) handleSyncTimeout(ctx context.Context, task *MediaTa
 	if current.Status.IsTerminal() {
 		return o.terminalResult(ctx, current)
 	}
+	if current.SyncFallback {
+		return &MediaCreateResult{Task: current, Disposition: MediaCreateDispositionFallbackAsync}, nil
+	}
 	if settings.MediaSyncTimeoutFallbackAsyncEnabled {
 		marked, markErr := o.deps.Tasks.MarkSyncFallback(ctx, current.ID, o.deps.Clock.Now().UTC())
-		if markErr != nil {
-			return nil, fmt.Errorf("mark media sync fallback: %w", markErr)
-		}
 		fresh, readErr := o.deps.Tasks.GetByID(ctx, current.ID)
 		if readErr != nil {
+			if markErr != nil {
+				return nil, errors.Join(
+					fmt.Errorf("mark media sync fallback: %w", markErr),
+					fmt.Errorf("reload media sync fallback task: %w", readErr),
+				)
+			}
 			return nil, fmt.Errorf("reload media sync fallback task: %w", readErr)
 		}
 		if fresh.Status.IsTerminal() {
 			return o.terminalResult(ctx, fresh)
+		}
+		if fresh.SyncFallback {
+			return &MediaCreateResult{Task: fresh, Disposition: MediaCreateDispositionFallbackAsync}, nil
+		}
+		if markErr != nil {
+			return nil, fmt.Errorf("mark media sync fallback: %w", markErr)
 		}
 		if !marked && !fresh.SyncFallback {
 			return nil, fmt.Errorf("%w: mark media sync fallback", ErrMediaOrchestratorStateConflict)
@@ -369,6 +381,7 @@ func (o *MediaOrchestrator) handleSyncTimeout(ctx context.Context, task *MediaTa
 	var recovery []byte
 	var finishedAt time.Time
 	transitioned := false
+	loadedPersistedTimeout := false
 	for attempt := 0; attempt < mediaSyncTimeoutTransitionTries; attempt++ {
 		if err := ctx.Err(); err != nil {
 			return nil, err
@@ -397,6 +410,24 @@ func (o *MediaOrchestrator) handleSyncTimeout(ctx context.Context, task *MediaTa
 			},
 		)
 		if transitionErr != nil {
+			fresh, readErr := o.deps.Tasks.GetByID(ctx, current.ID)
+			if readErr != nil {
+				return nil, errors.Join(
+					fmt.Errorf("fail media task at sync timeout: %w", transitionErr),
+					fmt.Errorf("reload media task after timeout transition error: %w", readErr),
+				)
+			}
+			matchingTimeout := fresh.Status == MediaTaskStatusFailed && fresh.Stage == MediaTaskStageFailed &&
+				fresh.ErrorCode == "sync_timeout" && mediaSettlementPlansEqual(fresh.SettlementRecovery, recovery)
+			if matchingTimeout {
+				current = fresh
+				transitioned = true
+				loadedPersistedTimeout = true
+				break
+			}
+			if fresh.Status.IsTerminal() {
+				return o.terminalResult(ctx, fresh)
+			}
 			return nil, fmt.Errorf("fail media task at sync timeout: %w", transitionErr)
 		}
 		if transitioned {
@@ -409,18 +440,23 @@ func (o *MediaOrchestrator) handleSyncTimeout(ctx context.Context, task *MediaTa
 		if fresh.Status.IsTerminal() {
 			return o.terminalResult(ctx, fresh)
 		}
+		if fresh.SyncFallback {
+			return &MediaCreateResult{Task: fresh, Disposition: MediaCreateDispositionFallbackAsync}, nil
+		}
 		current = fresh
 	}
 	if !transitioned {
 		return nil, fmt.Errorf("%w: fail media task at sync timeout", ErrMediaOrchestratorStateConflict)
 	}
-	current.Status = MediaTaskStatusFailed
-	current.Stage = MediaTaskStageFailed
-	current.ErrorCode = "sync_timeout"
-	current.ErrorMessage = "synchronous media wait timed out"
-	current.FinishedAt = &finishedAt
-	current.SettlementRecovery = append(json.RawMessage(nil), recovery...)
-	current.Version++
+	if !loadedPersistedTimeout {
+		current.Status = MediaTaskStatusFailed
+		current.Stage = MediaTaskStageFailed
+		current.ErrorCode = "sync_timeout"
+		current.ErrorMessage = "synchronous media wait timed out"
+		current.FinishedAt = &finishedAt
+		current.SettlementRecovery = append(json.RawMessage(nil), recovery...)
+		current.Version++
+	}
 	if o.deps.Controller != nil {
 		o.deps.Controller.StopForSyncTimeout(current.ID)
 	}
@@ -963,6 +999,9 @@ func (o *MediaOrchestrator) transitionInitializationFailed(
 		updates["billing_status"] = MediaBillingStatusPrecharged
 		updates["precharged_amount"] = prechargedAmount
 		updates["settlement_recovery"] = recovery
+	} else {
+		updates["billing_status"] = MediaBillingStatusSettled
+		updates["precharged_amount"] = float64(0)
 	}
 	expectedVersion := task.Version
 	transitioned, transitionErr := o.deps.Tasks.TransitionQueued(
@@ -980,6 +1019,9 @@ func (o *MediaOrchestrator) transitionInitializationFailed(
 			task.BillingStatus = MediaBillingStatusPrecharged
 			task.PrechargedAmount = prechargedAmount
 			task.SettlementRecovery = append(json.RawMessage(nil), recovery...)
+		} else {
+			task.BillingStatus = MediaBillingStatusSettled
+			task.PrechargedAmount = 0
 		}
 		return true, nil
 	}
@@ -1015,7 +1057,8 @@ func mediaInitializationFailureMatches(
 		return false
 	}
 	if !precharged {
-		return true
+		return task.BillingStatus == MediaBillingStatusSettled &&
+			task.PrechargedAmount == 0 && len(task.SettlementRecovery) == 0
 	}
 	return task.BillingStatus == MediaBillingStatusPrecharged &&
 		task.PrechargedAmount == prechargedAmount &&

@@ -657,7 +657,7 @@ func TestMediaOrchestratorDeterministicPrechargeFailureTerminatesWithoutRefund(t
 	require.Equal(t, MediaTaskStatusFailed, stored.Status)
 	require.Equal(t, MediaTaskStageFailed, stored.Stage)
 	require.Equal(t, "billing_precharge", stored.ErrorCode)
-	require.Equal(t, MediaBillingStatusPending, stored.BillingStatus)
+	require.Equal(t, MediaBillingStatusSettled, stored.BillingStatus)
 	require.Zero(t, stored.PrechargedAmount)
 	require.Nil(t, stored.LeaseUntil)
 	require.Empty(t, stored.SettlementRecovery)
@@ -678,7 +678,7 @@ func TestMediaOrchestratorDeterministicReconciledPrechargeFailureTerminatesWitho
 	stored := fixture.repo.onlyTask()
 	require.Equal(t, MediaTaskStatusFailed, stored.Status)
 	require.Equal(t, "billing_precharge", stored.ErrorCode)
-	require.Equal(t, MediaBillingStatusPending, stored.BillingStatus)
+	require.Equal(t, MediaBillingStatusSettled, stored.BillingStatus)
 	require.Zero(t, stored.PrechargedAmount)
 	require.Nil(t, stored.LeaseUntil)
 	require.Empty(t, stored.SettlementRecovery)
@@ -754,6 +754,108 @@ func TestMediaOrchestratorFallbackMarkSuccessReturnsCompletionThatWinsReload(t *
 	require.Equal(t, MediaCreateDispositionCompleted, result.Disposition)
 	require.Len(t, result.Artifacts, 1)
 	require.Equal(t, int64(41), result.Artifacts[0].ID)
+	require.Equal(t, 0, fixture.controller.stopCalls())
+	require.Equal(t, 0, fixture.billing.settleFailureCalls())
+}
+
+func TestMediaOrchestratorFallbackMarkAppliedErrorReloadsPersistedFallback(t *testing.T) {
+	fixture := newTimedOutMediaOrchestratorFixture(t, MediaTaskStageGenerating, mediaTimePointer(time.Now()))
+	fixture.settings.settings.MediaSyncTimeoutFallbackAsyncEnabled = true
+	fixture.repo.markFallbackAppliedErr = errors.New("mark fallback result unavailable")
+
+	result, err := fixture.orchestrator.Create(context.Background(), validSyncMediaCreateRequest())
+	require.NoError(t, err)
+	require.Equal(t, MediaCreateDispositionFallbackAsync, result.Disposition)
+	stored := fixture.repo.mustGet(result.Task.ID)
+	require.True(t, stored.SyncFallback)
+	require.Equal(t, 0, fixture.controller.stopCalls())
+	require.Equal(t, 0, fixture.billing.settleFailureCalls())
+}
+
+func TestMediaOrchestratorFallbackMarkAppliedErrorReloadsCompletion(t *testing.T) {
+	fixture := newTimedOutMediaOrchestratorFixture(t, MediaTaskStageGenerating, mediaTimePointer(time.Now()))
+	fixture.settings.settings.MediaSyncTimeoutFallbackAsyncEnabled = true
+	fixture.repo.completeAfterSuccessfulFallback = true
+	fixture.repo.markFallbackAppliedErr = errors.New("mark fallback result unavailable")
+	fixture.repo.readyPublishedHook = func(task *MediaTask) {
+		task.Status = MediaTaskStatusInProgress
+		task.Stage = MediaTaskStageGenerating
+		task.SubmittedAt = mediaTimePointer(time.Now())
+		fixture.artifacts.mu.Lock()
+		fixture.artifacts.items[task.ID] = []MediaArtifact{{ID: 71, TaskID: task.ID, Direction: "output", Position: 0}}
+		fixture.artifacts.mu.Unlock()
+	}
+
+	result, err := fixture.orchestrator.Create(context.Background(), validSyncMediaCreateRequest())
+	require.NoError(t, err)
+	require.Equal(t, MediaCreateDispositionCompleted, result.Disposition)
+	require.Len(t, result.Artifacts, 1)
+	require.Equal(t, int64(71), result.Artifacts[0].ID)
+	require.Equal(t, 0, fixture.controller.stopCalls())
+	require.Equal(t, 0, fixture.billing.settleFailureCalls())
+}
+
+func TestMediaOrchestratorFallbackMarkUnappliedErrorPreservesOriginalError(t *testing.T) {
+	fixture := newTimedOutMediaOrchestratorFixture(t, MediaTaskStageGenerating, mediaTimePointer(time.Now()))
+	fixture.settings.settings.MediaSyncTimeoutFallbackAsyncEnabled = true
+	markErr := errors.New("mark fallback write failed")
+	fixture.repo.markFallbackErr = markErr
+
+	result, err := fixture.orchestrator.Create(context.Background(), validSyncMediaCreateRequest())
+	require.ErrorIs(t, err, markErr)
+	require.Nil(t, result)
+	stored := fixture.repo.onlyTask()
+	require.False(t, stored.Status.IsTerminal())
+	require.False(t, stored.SyncFallback)
+	require.Equal(t, 0, fixture.controller.stopCalls())
+	require.Equal(t, 0, fixture.billing.settleFailureCalls())
+}
+
+func TestMediaOrchestratorPersistedFallbackWinsAcrossWaitersWithDifferentSettings(t *testing.T) {
+	fixture := newMediaOrchestratorFixture(t)
+	created, err := fixture.orchestrator.Create(context.Background(), validAsyncMediaCreateRequest())
+	require.NoError(t, err)
+	fixture.repo.mutate(created.Task.ID, func(task *MediaTask) {
+		task.ClientAsync = false
+		task.Status = MediaTaskStatusInProgress
+		task.Stage = MediaTaskStageGenerating
+		task.SubmittedAt = mediaTimePointer(time.Now())
+		task.Version++
+	})
+	staleForWaiterA := fixture.repo.mustGet(created.Task.ID)
+
+	waiterBSettings := fixture.settings.settings
+	waiterBSettings.MediaSyncTimeoutFallbackAsyncEnabled = true
+	waiterB, err := fixture.orchestrator.handleSyncTimeout(context.Background(), staleForWaiterA, &waiterBSettings)
+	require.NoError(t, err)
+	require.Equal(t, MediaCreateDispositionFallbackAsync, waiterB.Disposition)
+
+	waiterASettings := waiterBSettings
+	waiterASettings.MediaSyncTimeoutFallbackAsyncEnabled = false
+	waiterA, err := fixture.orchestrator.handleSyncTimeout(context.Background(), staleForWaiterA, &waiterASettings)
+	require.NoError(t, err)
+	require.Equal(t, MediaCreateDispositionFallbackAsync, waiterA.Disposition)
+	stored := fixture.repo.mustGet(created.Task.ID)
+	require.False(t, stored.Status.IsTerminal())
+	require.True(t, stored.SyncFallback)
+	require.Equal(t, 0, fixture.controller.stopCalls())
+	require.Equal(t, 0, fixture.billing.settleFailureCalls())
+}
+
+func TestMediaOrchestratorTimeoutVersionConflictReloadsPersistedFallback(t *testing.T) {
+	fixture := newTimedOutMediaOrchestratorFixture(t, MediaTaskStageGenerating, mediaTimePointer(time.Now()))
+	fixture.repo.beforeNextVersionedTransition = func(task *MediaTask) {
+		task.SyncFallback = true
+		task.SyncFallbackAt = mediaTimePointer(time.Now())
+		task.Version++
+	}
+
+	result, err := fixture.orchestrator.Create(context.Background(), validSyncMediaCreateRequest())
+	require.NoError(t, err)
+	require.Equal(t, MediaCreateDispositionFallbackAsync, result.Disposition)
+	stored := fixture.repo.mustGet(result.Task.ID)
+	require.False(t, stored.Status.IsTerminal())
+	require.True(t, stored.SyncFallback)
 	require.Equal(t, 0, fixture.controller.stopCalls())
 	require.Equal(t, 0, fixture.billing.settleFailureCalls())
 }
@@ -921,6 +1023,58 @@ func TestMediaOrchestratorTimeoutCASLossReturnsRealCompletion(t *testing.T) {
 	result, err := fixture.orchestrator.Create(context.Background(), validSyncMediaCreateRequest())
 	require.NoError(t, err)
 	require.Equal(t, MediaCreateDispositionCompleted, result.Disposition)
+	require.Equal(t, 0, fixture.controller.stopCalls())
+	require.Equal(t, 0, fixture.billing.settleFailureCalls())
+}
+
+func TestMediaOrchestratorTimeoutTransitionAppliedErrorContinuesStopAndSettlement(t *testing.T) {
+	fixture := newTimedOutMediaOrchestratorFixture(t, MediaTaskStageScheduling, nil)
+	fixture.repo.transitionVersionedAppliedErr = errors.New("timeout transition result unavailable")
+
+	result, err := fixture.orchestrator.Create(context.Background(), validSyncMediaCreateRequest())
+	require.NoError(t, err)
+	require.Equal(t, MediaCreateDispositionGatewayTimeout, result.Disposition)
+	require.Empty(t, result.Task.PublicID)
+	require.Equal(t, 1, fixture.controller.stopCalls())
+	require.Equal(t, 1, fixture.billing.settleFailureCalls())
+	stored := fixture.repo.mustGet(result.Task.ID)
+	require.Equal(t, MediaTaskStatusFailed, stored.Status)
+	require.Equal(t, "sync_timeout", stored.ErrorCode)
+	require.NotEmpty(t, stored.SettlementRecovery)
+	require.Equal(t, MediaBillingStatusSettled, stored.BillingStatus)
+}
+
+func TestMediaOrchestratorTimeoutTransitionErrorReloadsCompletedWinner(t *testing.T) {
+	fixture := newTimedOutMediaOrchestratorFixture(t, MediaTaskStageGenerating, mediaTimePointer(time.Now()))
+	fixture.repo.transitionVersionedErr = errors.New("timeout transition failed")
+	fixture.repo.beforeNextVersionedTransition = func(task *MediaTask) {
+		task.Status = MediaTaskStatusCompleted
+		task.Stage = MediaTaskStageCompleted
+		task.Version++
+		fixture.artifacts.mu.Lock()
+		fixture.artifacts.items[task.ID] = []MediaArtifact{{ID: 81, TaskID: task.ID, Direction: "output", Position: 0}}
+		fixture.artifacts.mu.Unlock()
+	}
+
+	result, err := fixture.orchestrator.Create(context.Background(), validSyncMediaCreateRequest())
+	require.NoError(t, err)
+	require.Equal(t, MediaCreateDispositionCompleted, result.Disposition)
+	require.Len(t, result.Artifacts, 1)
+	require.Equal(t, int64(81), result.Artifacts[0].ID)
+	require.Equal(t, 0, fixture.controller.stopCalls())
+	require.Equal(t, 0, fixture.billing.settleFailureCalls())
+}
+
+func TestMediaOrchestratorTimeoutTransitionUnappliedErrorPreservesOriginalError(t *testing.T) {
+	fixture := newTimedOutMediaOrchestratorFixture(t, MediaTaskStageScheduling, nil)
+	transitionErr := errors.New("timeout transition failed")
+	fixture.repo.transitionVersionedErr = transitionErr
+
+	result, err := fixture.orchestrator.Create(context.Background(), validSyncMediaCreateRequest())
+	require.ErrorIs(t, err, transitionErr)
+	require.Nil(t, result)
+	stored := fixture.repo.onlyTask()
+	require.False(t, stored.Status.IsTerminal())
 	require.Equal(t, 0, fixture.controller.stopCalls())
 	require.Equal(t, 0, fixture.billing.settleFailureCalls())
 }
@@ -1148,7 +1302,11 @@ type orchestratorTaskRepository struct {
 	completeOnNextTransition        bool
 	completeOnNextFallback          bool
 	completeAfterSuccessfulFallback bool
+	markFallbackErr                 error
+	markFallbackAppliedErr          error
 	beforeNextVersionedTransition   func(*MediaTask)
+	transitionVersionedErr          error
+	transitionVersionedAppliedErr   error
 	failSettlementPlanWrites        int
 	readyWriteErrors                int
 	readyWriteAppliedErrors         int
@@ -1351,12 +1509,22 @@ func (r *orchestratorTaskRepository) TransitionVersioned(ctx context.Context, id
 		r.beforeNextVersionedTransition = nil
 		hook(task)
 	}
+	if r.transitionVersionedErr != nil {
+		err := r.transitionVersionedErr
+		r.transitionVersionedErr = nil
+		return false, err
+	}
 	if task.Status != from || task.Version != expectedVersion {
 		return false, nil
 	}
 	task.Status = to
 	applyOrchestratorTaskUpdates(task, updates)
 	task.Version++
+	if r.transitionVersionedAppliedErr != nil {
+		err := r.transitionVersionedAppliedErr
+		r.transitionVersionedAppliedErr = nil
+		return true, err
+	}
 	return true, nil
 }
 
@@ -1374,6 +1542,11 @@ func (r *orchestratorTaskRepository) MarkSyncFallback(ctx context.Context, id in
 	if !ok || task.Status.IsTerminal() || task.SyncFallback {
 		return false, nil
 	}
+	if r.markFallbackErr != nil {
+		err := r.markFallbackErr
+		r.markFallbackErr = nil
+		return false, err
+	}
 	if r.completeOnNextFallback {
 		r.completeOnNextFallback = false
 		task.Status = MediaTaskStatusCompleted
@@ -1387,6 +1560,11 @@ func (r *orchestratorTaskRepository) MarkSyncFallback(ctx context.Context, id in
 		task.Status = MediaTaskStatusCompleted
 		task.Stage = MediaTaskStageCompleted
 		task.Version++
+	}
+	if r.markFallbackAppliedErr != nil {
+		err := r.markFallbackAppliedErr
+		r.markFallbackAppliedErr = nil
+		return true, err
 	}
 	return true, nil
 }

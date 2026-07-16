@@ -531,7 +531,7 @@ func TestMediaWorkerRecoverOnceTerminatesDeterministicPrechargeRejectionWithoutR
 	require.Equal(t, MediaTaskStatusFailed, failed.Status)
 	require.Equal(t, MediaTaskStageFailed, failed.Stage)
 	require.Equal(t, "billing_precharge", failed.ErrorCode)
-	require.Equal(t, MediaBillingStatusPending, failed.BillingStatus)
+	require.Equal(t, MediaBillingStatusSettled, failed.BillingStatus)
 	require.Zero(t, failed.PrechargedAmount)
 	require.Nil(t, failed.LeaseUntil)
 	require.Empty(t, failed.SettlementRecovery)
@@ -539,6 +539,38 @@ func TestMediaWorkerRecoverOnceTerminatesDeterministicPrechargeRejectionWithoutR
 	require.Equal(t, 0, port.prechargeMutationCalls())
 	require.Zero(t, port.balanceAmount())
 	require.Empty(t, fixture.queue.enqueuedTaskIDs())
+}
+
+func TestMediaWorkerAcksResidualMessageForDeterministicPrechargeRejectionWithoutSettlement(t *testing.T) {
+	fixture := newMediaWorkerFixture(t, true, NativeAsyncOptional)
+	snapshot := MediaBillingSnapshot{RequestedModel: "fake-image", EstimatedAmount: 2}
+	encoded, err := json.Marshal(snapshot)
+	require.NoError(t, err)
+	fixture.repo.mu.Lock()
+	stored := fixture.repo.tasks[fixture.task.ID]
+	stored.BillingStatus = MediaBillingStatusPending
+	stored.PrechargedAmount = 0
+	stored.BillingSnapshot = encoded
+	stored.LeaseUntil = mediaTimePointer(time.Now().Add(-time.Minute))
+	fixture.repo.mu.Unlock()
+
+	port := newWorkerInitializationBillingPort()
+	port.prechargeErr = errors.New("insufficient balance")
+	fixture.worker.deps.Precharger = port
+
+	require.NoError(t, fixture.worker.RecoverOnce(context.Background()))
+	err = fixture.worker.processMessage(context.Background(), &MediaQueueMessage{
+		ID: "residual-precharge-rejection", TaskID: fixture.task.ID, Priority: MediaQueuePriorityAsync,
+	})
+	require.NoError(t, err)
+	failed := fixture.repo.mustGet(fixture.task.ID)
+	require.Equal(t, MediaTaskStatusFailed, failed.Status)
+	require.Equal(t, "billing_precharge", failed.ErrorCode)
+	require.Equal(t, MediaBillingStatusSettled, failed.BillingStatus)
+	require.Equal(t, int64(1), fixture.queue.ackCalls.Load())
+	require.Equal(t, 0, fixture.billing.settlementCalls())
+	require.Zero(t, fixture.adapter.syncCalls.Load())
+	require.Zero(t, fixture.adapter.submitCalls.Load())
 }
 
 func TestMediaWorkerRecoveryPreservesSynchronousPriority(t *testing.T) {

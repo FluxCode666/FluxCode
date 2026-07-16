@@ -1193,11 +1193,13 @@ func (w *MediaWorker) failExpiredInitializerPrecharge(ctx context.Context, task 
 		task.Version,
 		MediaTaskStatusFailed,
 		map[string]any{
-			"stage":         MediaTaskStageFailed,
-			"error_code":    errorCode,
-			"error_message": errorCode,
-			"finished_at":   finishedAt,
-			"lease_until":   nil,
+			"stage":             MediaTaskStageFailed,
+			"error_code":        errorCode,
+			"error_message":     errorCode,
+			"finished_at":       finishedAt,
+			"billing_status":    MediaBillingStatusSettled,
+			"precharged_amount": float64(0),
+			"lease_until":       nil,
 		},
 	)
 	if transitioned {
@@ -1206,6 +1208,8 @@ func (w *MediaWorker) failExpiredInitializerPrecharge(ctx context.Context, task 
 		task.ErrorCode = errorCode
 		task.ErrorMessage = errorCode
 		task.FinishedAt = mediaTimePointer(finishedAt)
+		task.BillingStatus = MediaBillingStatusSettled
+		task.PrechargedAmount = 0
 		task.LeaseUntil = nil
 		task.Version++
 		return true, nil
@@ -1218,7 +1222,7 @@ func (w *MediaWorker) failExpiredInitializerPrecharge(ctx context.Context, task 
 		)
 	}
 	matchingFailure := fresh.Status == MediaTaskStatusFailed && fresh.ErrorCode == errorCode &&
-		fresh.BillingStatus == MediaBillingStatusPending && fresh.PrechargedAmount == 0 &&
+		fresh.BillingStatus == MediaBillingStatusSettled && fresh.PrechargedAmount == 0 &&
 		len(fresh.SettlementRecovery) == 0
 	if matchingFailure {
 		*task = *fresh

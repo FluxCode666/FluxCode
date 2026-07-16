@@ -583,3 +583,110 @@ GREEN：
 - 测试证据质量：资金/竞态均为直接 RED→GREEN；扩大定向与精确 race 无 skip/only 或缓存复用（均 `-count=1`）。完整 service 测试体仍受既有 OpenAI stub 限制，已明确列为验证缺口，未包装成全量通过。
 - 低级假通过排除：已检查实际 diff 与全调用链，不只看改动文件；覆盖确定性/unknown、正反向 fresh-state、Mark success/CAS loss、双投成功/失败、applied-error、重复/早到消息，不只测 happy path；未把 vet/build 或间接全量编译单独当作行为通过。
 - 结论：第三轮 4 个 Important 通过；未发现新的阻断或非阻断代码风险。原 Minor（`media_orchestrator.go` 较大）继续记录但不在资金/并发修复中重构，避免扩大 Task 15 风险与范围。
+
+## 12. 第四轮复审修复（2026-07-17）
+
+### 12.1 范围、协议与文件
+
+- 第四轮 2 个 Important 及 1 个相邻高置信风险已按 RED→GREEN 修复；修复起点为 `edfd7bcfc71636cae77504924ff79ccee738f4e0`。
+- DB 写结果未知统一遵守“error 后重读持久事实”：
+  - `MarkSyncFallback` error 后，terminal 优先；其次 persisted `SyncFallback=true`；只有 fresh 仍非终态且 flag=false 时保留原 mark error。
+  - timeout `TransitionVersioned` error 后，等价 `failed/sync_timeout + matching recovery` 继续 Stop 和幂等 Coordinator；其他 terminal 服从 winner；fresh 非终态且写未应用时保留原 transition error。
+- persisted `SyncFallback` 是所有 waiter 的共享事实：`handleSyncTimeout` 初始 fresh 与 version CAS conflict fresh 均在 terminal 之后、任何本地 settings/penalty 决策之前返回 fallback_async。
+- 确定性 Precharge 拒绝被建模为“无需结算的终态”：`failed/billing_precharge + billing_status=settled + amount=0 + no plan/recovery`。这取代第三轮报告中该状态保持 billing pending 的局部结论，使残留/重复 stream message 可安全 ACK，同时不放宽其他无 recovery terminal。
+- 修改文件：
+  - `backend/internal/service/media_orchestrator.go`
+  - `backend/internal/service/media_orchestrator_test.go`
+  - `backend/internal/service/media_worker.go`
+  - `backend/internal/service/media_worker_test.go`
+- 未修改 progress ledger、Task 16、repository interface/实现、schema/migration、Handler/DTO、Provider Adapter、UI、依赖、cache key 或 queue topic。
+
+### 12.2 Important 1A：MarkSyncFallback applied-but-error 重读
+
+RED：
+
+- `go test ./internal/service -run '^TestMediaOrchestratorFallbackMarkAppliedErrorReloads(PersistedFallback|Completion)$' -count=1`
+  - FAIL，0.976s；Mark 已写 `SyncFallback=true` 但返回 error 时，nonterminal 与随后 completed 两条路径均直接返回 mark error，没有服从 DB。
+
+GREEN：
+
+- Mark 后始终重读。fresh terminal 走 `terminalResult` 并返回 completed artifact；fresh nonterminal+flag=true 返回 fallback_async；若 Mark error 与 reload error 同时发生，使用 `errors.Join` 同时保留两条错误链。
+- applied-error 两条路径与原正常 Mark/CAS-loss/Mark-success-terminal 合并执行 PASS，0.895s。
+- `TestMediaOrchestratorFallbackMarkUnappliedErrorPreservesOriginalError` 单独 PASS，0.949s；fresh 非终态、flag=false 时 `errors.Is` 仍命中原 mark error，0 Stop/settle。
+
+### 12.3 Important 1B：timeout TransitionVersioned applied-but-error 重读
+
+RED：
+
+- `go test ./internal/service -run '^TestMediaOrchestratorTimeoutTransition(AppliedErrorContinuesStopAndSettlement|ErrorReloadsCompletedWinner|UnappliedErrorPreservesOriginalError)$' -count=1`
+  - FAIL，0.872s；applied+error 路径未 Stop/settle，completed winner 也被 transition error 覆盖；未应用 error 对照仍保留原错误。
+
+GREEN：
+
+- Transition error 后重读：只有 fresh 为 failed/failed-stage/`sync_timeout` 且 `settlement_recovery` 与本次 recovery 等价时，才视为本次或等价写已持久化，使用 fresh version/state 继续 Stop 和 Coordinator。
+- 等价 applied-error 测试最终返回私有 gateway_timeout（PublicID 空）、Stop=1、即时 settlement=1、billing settled；Coordinator 保持幂等。
+- fresh 为其他 terminal 时走真实 `terminalResult`；completed winner 返回 artifact，Stop=0、settlement=0。fresh 仍非终态时返回原 DB error；reload 也失败时 `errors.Join` 保留两条错误链。
+- 三类测试与原 CAS-loss completion、recovery-before-plan 合并执行 PASS，0.881s。
+
+### 12.4 Important 2：persisted SyncFallback 优先于 waiter settings
+
+RED：
+
+- `go test ./internal/service -run '^TestMediaOrchestrator(PersistedFallbackWinsAcrossWaitersWithDifferentSettings|TimeoutVersionConflictReloadsPersistedFallback)$' -count=1`
+  - FAIL，0.883s；waiter B 已 Mark fallback 后，持旧 fail settings 的 waiter A 仍写 sync_timeout；CAS conflict fresh 已出现 flag 时也继续下一轮 terminal CAS。两条均错误返回 gateway_timeout。
+
+GREEN：
+
+- 初始 fresh：terminal 检查后立即检查 `current.SyncFallback`，再读取本地 `MediaSyncTimeoutFallbackAsyncEnabled`。
+- CAS conflict fresh：terminal 检查后立即检查 `fresh.SyncFallback`，再决定是否用 fresh Stage/SubmittedAt 重算并重试。
+- 两 waiter 不同 settings 与 CAS 窗口写 flag 均返回 fallback_async；任务保持 queued/in_progress+SyncFallback，0 Transition winner、0 Stop、0 settlement。
+- 两条新测试、正反向 fresh penalty/refund 与正常 fallback 合并执行 PASS，0.930s。
+
+### 12.5 相邻风险：确定性拒绝终态残留消息 ACK
+
+RED：
+
+- `go test ./internal/service -run '^TestMediaWorkerAcksResidualMessageForDeterministicPrechargeRejectionWithoutSettlement$' -count=1`
+  - FAIL，0.870s；后台已写 `failed/billing_precharge + billing pending + no recovery` 后，残留消息进入 `retryTerminalSettlement`，返回 `ErrMediaSettlementPlanNotPersisted` 且不 ACK。
+
+GREEN：
+
+- Orchestrator 直接/补确认 Precharge 确定性拒绝，以及 Worker expired initializer 确定性拒绝，均在 owner-fenced terminal CAS 内写 `billing_status=settled`、`precharged_amount=0`、无 recovery；applied-error matching 也要求该完整模型。
+- `retryTerminalSettlement` 的既有 settled no-op 使残留消息 ACK；直接测试断言 ACK=1、settlement=0、sync/submit=0，PASS，0.885s。
+- 未修改 `processMessage` 或 `retryTerminalSettlement` 的通用校验；其他 terminal+非 settled+无 recovery 继续报错，不会被错误 ACK。
+- Orchestrator 直接/补确认拒绝、Worker cleanup 与残留消息合并执行 PASS，0.843s。
+
+### 12.6 扩大回归、race 与最终门禁
+
+最终代码的扩大回归：
+
+- `go test ./internal/service -run '^(TestMediaOrchestrator|TestMediaBilling|TestMediaWorker)' -count=1`：PASS，2.078s。
+- `go test ./internal/repository -run '^TestMediaTaskRepository' -count=1`：PASS，0.766s。
+
+最终代码的精确 race：
+
+- `go test -race ./internal/service -run '^(TestMediaOrchestrator|TestMediaBilling|TestMediaWorker)' -count=1`：PASS，4.174s。
+- `go test -race ./internal/repository -run '^TestMediaTaskRepository' -count=1`：PASS，8.409s。
+
+最终门禁：
+
+- `gofmt`：已执行。
+- `git diff --check`：PASS，exit 0。
+- `go vet ./...`：PASS，exit 0。
+- `go build ./...`：PASS，exit 0。
+- `go test ./... -run '^$' -count=1`：PASS，单独轮询确认 exit 0。
+- `go mod verify`：PASS，`all modules verified`。
+- 仍不执行完整 `go test ./internal/service` 测试体套件：既有 OpenAI stub concurrent map fatal 不属于 Task 15；继续使用精确 service/repository tests、精确 race 和全仓无测试编译替代该门禁。
+
+### 12.7 第四轮高风险代码审计
+
+- 审计深度：高；涉及 DB 写结果未知、跨 waiter settings 一致性、同步 timeout 对外语义、Stop/结算副作用和残留队列消息 ACK。
+- 需求对账：2 个 Important 与相邻 terminal ACK 风险均有直接 RED→GREEN；Mark/Transition 的 applied、other winner、unapplied 三类事实均分开验证。
+- 状态/资金证明：只有 recovery 精确等价的 timeout failure 才在 transition error 后继续 Stop/settle；persisted fallback 永不被本地 fail settings 覆盖；确定性零扣款拒绝以 settled/0 终止，不创建退款意图或调用 settlement。
+- 队列证明：没有放宽通用 ACK 规则；早到 pending 仍以 `ErrMediaTaskNotClaimed` ACK，settled/0 terminal duplicate 以安全 no-op ACK，其他损坏的 terminal settlement 状态仍保持可见错误。
+- 接口/字段对账：无新字段、schema、迁移或公共接口；仅调整既有 `sync_fallback`、`billing_status`、amount/recovery 的状态组合。`billing_precharge` 全局搜索仍仅命中 Orchestrator/Worker 生产方和直接测试，无前端硬解析、OpenAPI/SDK、报表或脚本消费者。
+- 调用链搜索：已搜索 `MarkSyncFallback/SyncFallback/sync_fallback`、`TransitionVersioned/sync_timeout/SettlementRecovery`、`billing_precharge/MediaBillingStatusSettled/retryTerminalSettlement/ListSettlementPending` 与 `processMessage/ErrMediaTaskNotClaimed/Ack`；生产方、DB 实现、Worker 消费方、后台恢复和测试 fake 均已分类复核。
+- 测试证据质量：核心竞态均为直接、确定性 RED→GREEN；扩大与 race 均 `-count=1`，diff 未新增 skip/only。完整 service 测试体限制继续明确列为证据缺口，未包装成全量通过。
+- 低级假通过排除：不仅看 diff，也追了 DB 实现、Worker terminal consumer、恢复扫描与 error/enum 消费面；覆盖 applied/unapplied、nonterminal/terminal、不同 settings、CAS conflict、残留消息，不只测 happy path；静态工具仅作为辅助证据。
+- Minor：ready 第二次 Enqueue error 仍无专用 log/metric；`media_orchestrator.go` 仍较大。两者不影响本轮资金/并发正确性，按要求不扩大接口或重构。
+- 结论：第四轮修复通过；未发现新的阻断或非阻断代码风险。唯一保留验证缺口是既有 OpenAI stub 限制导致未跑完整 service 测试体套件。
