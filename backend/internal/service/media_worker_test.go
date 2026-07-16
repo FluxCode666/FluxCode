@@ -508,6 +508,39 @@ func TestMediaWorkerRecoverOnceRetriesUnknownPrechargeResultBeforeCleanup(t *tes
 	require.Zero(t, port.balanceAmount())
 }
 
+func TestMediaWorkerRecoverOnceTerminatesDeterministicPrechargeRejectionWithoutRefund(t *testing.T) {
+	fixture := newMediaWorkerFixture(t, true, NativeAsyncOptional)
+	snapshot := MediaBillingSnapshot{RequestedModel: "fake-image", EstimatedAmount: 2}
+	encoded, err := json.Marshal(snapshot)
+	require.NoError(t, err)
+	fixture.repo.mu.Lock()
+	stored := fixture.repo.tasks[fixture.task.ID]
+	stored.BillingStatus = MediaBillingStatusPending
+	stored.PrechargedAmount = 0
+	stored.BillingSnapshot = encoded
+	stored.LeaseUntil = mediaTimePointer(time.Now().Add(-time.Minute))
+	fixture.repo.mu.Unlock()
+
+	port := newWorkerInitializationBillingPort()
+	port.prechargeErr = errors.New("insufficient balance")
+	fixture.worker.deps.Precharger = port
+	fixture.worker.deps.Billing = NewMediaBillingCoordinator(fixture.repo, port)
+
+	require.NoError(t, fixture.worker.RecoverOnce(context.Background()))
+	failed := fixture.repo.mustGet(fixture.task.ID)
+	require.Equal(t, MediaTaskStatusFailed, failed.Status)
+	require.Equal(t, MediaTaskStageFailed, failed.Stage)
+	require.Equal(t, "billing_precharge", failed.ErrorCode)
+	require.Equal(t, MediaBillingStatusPending, failed.BillingStatus)
+	require.Zero(t, failed.PrechargedAmount)
+	require.Nil(t, failed.LeaseUntil)
+	require.Empty(t, failed.SettlementRecovery)
+	require.Empty(t, failed.SettlementPlan)
+	require.Equal(t, 0, port.prechargeMutationCalls())
+	require.Zero(t, port.balanceAmount())
+	require.Empty(t, fixture.queue.enqueuedTaskIDs())
+}
+
 func TestMediaWorkerRecoveryPreservesSynchronousPriority(t *testing.T) {
 	fixture := newMediaWorkerFixture(t, false, NativeAsyncUnsupported)
 	fixture.repo.setExpiredLease(fixture.task.ID, "dead-worker")
@@ -2074,6 +2107,7 @@ type workerInitializationBillingPort struct {
 	prechargeMutations              int
 	balance                         float64
 	failAfterFirstPrechargeMutation bool
+	prechargeErr                    error
 }
 
 func newWorkerInitializationBillingPort() *workerInitializationBillingPort {
@@ -2083,6 +2117,9 @@ func newWorkerInitializationBillingPort() *workerInitializationBillingPort {
 func (p *workerInitializationBillingPort) Precharge(_ context.Context, task *MediaTask, snapshot MediaBillingSnapshot) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	if p.prechargeErr != nil {
+		return p.prechargeErr
+	}
 	key, err := MediaBillingIdempotencyKey(task, MediaBillingOperationPrecharge)
 	if err != nil {
 		return err
@@ -2093,7 +2130,7 @@ func (p *workerInitializationBillingPort) Precharge(_ context.Context, task *Med
 		p.balance -= snapshot.EstimatedAmount
 		if p.failAfterFirstPrechargeMutation {
 			p.failAfterFirstPrechargeMutation = false
-			return errors.New("precharge result unavailable")
+			return fmt.Errorf("precharge result unavailable: %w", ErrMediaPrechargeResultUnknown)
 		}
 	}
 	return nil
@@ -2177,6 +2214,18 @@ func (r *workerTaskRepository) TransitionQueued(_ context.Context, id, expectedV
 	defer r.mu.Unlock()
 	task := r.tasks[id]
 	if task == nil || task.Status != MediaTaskStatusQueued || task.Version != expectedVersion || to != MediaTaskStatusFailed {
+		return false, nil
+	}
+	applyWorkerTaskUpdates(task, updates)
+	task.Status = to
+	task.Version++
+	return true, nil
+}
+func (r *workerTaskRepository) TransitionVersioned(_ context.Context, id, expectedVersion int64, from, to MediaTaskStatus, updates map[string]any) (bool, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	task := r.tasks[id]
+	if task == nil || task.Status != from || task.Version != expectedVersion || !from.CanTransitionTo(to) {
 		return false, nil
 	}
 	applyWorkerTaskUpdates(task, updates)

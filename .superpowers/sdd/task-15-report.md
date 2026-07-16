@@ -468,3 +468,118 @@ GREEN：
 - 异常/并发直接证据：expired pending 无 Key、已扣/未扣/未知、A/B takeover、stale precharge success/error、stale enqueue error、早到 ACK、ready applied-error、terminal applied-error、plan 首写失败均有直接回归。
 - 结论：第二轮 Important 通过；未发现新的阻断风险。
 - 第二轮 Minor（`media_orchestrator.go` 初始化职责较多）未在本轮拆文件：此轮状态机/资金时序改动面较大，额外物理重构会提高审查风险；不影响行为正确性，后续可在独立纯重构任务中移动输入规范化/初始化状态机并保持现有回归全绿。
+
+## 11. 第三轮复审修复（2026-07-17）
+
+### 11.1 范围、协议与文件
+
+- 第三轮 4 个 Important 已按 RED→GREEN 修复；修复起点为 `8e088a974715498a46fd88d501ea1da406021489`。
+- 初始化协议扩展为：持久输入 → 同键 Precharge → 第一次 durable Enqueue（pending，不可 Claim）→ ready version CAS → 第二次 best-effort Enqueue（ready，可立即 Claim）。第二次 Enqueue 失败不回滚 ready、不退款、不写 recovery；异步仍 accepted，同步继续正常等待，依赖第一条 durable 消息或后台恢复。
+- Precharge 错误契约扩展为：只有 `errors.Is(err, ErrMediaPrechargeResultUnknown)` 才表示无法判断外部扣款是否发生，并保留 pending+finite lease；普通错误是确定性拒绝，owner-fenced 终态 `failed/billing_precharge`，金额 0、无退款。
+- timeout 终态路径改用 `status+version` CAS；冲突后重读 fresh Stage/SubmittedAt/Version 并重新计算 settlement/recovery，最多 8 次且受 detached context 收口；不放宽 Worker 的 owner+version+live lease 终态路径。
+- 修改文件：
+  - `backend/internal/service/media_billing.go`
+  - `backend/internal/service/media_task.go`
+  - `backend/internal/repository/media_task_repo.go`
+  - `backend/internal/repository/media_task_repo_test.go`
+  - `backend/internal/service/media_orchestrator.go`
+  - `backend/internal/service/media_orchestrator_test.go`
+  - `backend/internal/service/media_worker.go`
+  - `backend/internal/service/media_worker_test.go`
+- 未修改 progress ledger、Task 16、schema/migration、Handler/DTO、Provider Adapter、UI、依赖、cache key 或 queue topic。
+
+### 11.2 Important 1：Precharge 错误分类
+
+RED：
+
+- `go test ./internal/service -run '^(TestMediaOrchestrator(DeterministicPrechargeFailureTerminatesWithoutRefund|UnknownPrechargeResultLeavesFencedPendingForIdempotentRecovery)|TestMediaWorkerRecoverOnce(RetriesUnknownPrechargeResultBeforeCleanup|TerminatesDeterministicPrechargeRejectionWithoutRefund))$' -count=1`
+  - 首次 build FAIL：`ErrMediaPrechargeResultUnknown` 不存在。
+  - 补 sentinel 后行为 FAIL，0.890s：Orchestrator 普通拒绝仍为 queued；Worker 普通拒绝直接返回 reconcile error，未终态化。
+- `go test ./internal/service -run '^TestMediaOrchestratorDeterministicReconciledPrechargeFailureTerminatesWithoutRefund$' -count=1`
+  - FAIL，0.889s：输入持久化失败后的补确认 Precharge 普通拒绝仍为 queued。
+
+GREEN：
+
+- 新增可 `errors.Is` 的 `ErrMediaPrechargeResultUnknown`；`MediaBillingPort` 注释要求真实实现只在无法确定 mutation 是否发生时包裹该 sentinel，确定性拒绝返回普通错误。
+- Orchestrator 的直接 Precharge 与 input failure 补确认 Precharge 均按 taxonomy 分流；确定性拒绝使用 `TransitionQueued(expectedVersion)` 写 `failed/billing_precharge`、清 lease，不写 precharged amount/recovery，不调用 settlement。
+- Worker expired initializer 普通拒绝同样 owner-fenced 终态化，保持 `billing_status=pending`、amount=0、无 settlement；unknown 继续 pending+finite lease，mutation 后 unknown 的同键重试仍只扣一次并最终全退。
+- 上述 5 个直接测试合并执行 PASS，0.896s。
+
+### 11.3 Important 2：sync timeout fresh-state version fence
+
+RED：
+
+- `go test ./internal/repository -run '^TestMediaTaskRepositoryTransitionVersionedFencesFreshSystemState$' -count=1`
+  - build FAIL：`MediaTaskRepository` 不存在 `TransitionVersioned`。
+- `go test ./internal/service -run '^TestMediaOrchestratorTimeoutVersionConflictRecomputes(Penalty|FullRefund)FromFreshState$' -count=1`
+  - FAIL，0.886s：初始 scheduling 在 CAS 前变为 generating 时错误全退；初始 generating 在 CAS 前变为 scheduling 时错误收罚金。
+
+GREEN：
+
+- 新增 `TransitionVersioned(ctx,id,expectedVersion,from,to,updates)`；真实 Ent repository 在同一更新中检查 id+status+version，复用 system transition 字段白名单并递增 version。仓储直接测试 PASS，0.864s。
+- timeout 每次尝试均从当前快照生成 settlement/recovery，并用当前 version CAS；CAS loss 后若 fresh 终态则返回真实终态，否则用 fresh Stage/SubmittedAt/Version 重算后重试。
+- 重试最多 8 次，每轮先检查 ctx；外层继续使用 30s detached timeout。持续 CAS starvation 最终返回 `ErrMediaOrchestratorStateConflict`，不会无限自旋。
+- 两向竞态、原 parent cancel 优先、CAS loss completion、refund/penalty 矩阵与 recovery-before-settlement-plan 合并执行 PASS，0.880s。
+
+### 11.4 Important 3：fallback 标记后的终态竞态
+
+RED：
+
+- `go test ./internal/service -run '^TestMediaOrchestratorFallbackMarkSuccessReturnsCompletionThatWinsReload$' -count=1`
+  - FAIL，1.265s：Mark 成功后 Worker completed，reload 已看到 completed，但返回 `fallback_async`。
+
+GREEN：
+
+- Mark 后 reload 无论 `marked` true/false 均先检查 terminal，并通过 `terminalResult` 返回真实 completed/failed 语义；completed 测试同时验证 output artifact 被返回。
+- 新测试、原 Mark CAS loss completion 与正常 fallback 合并执行 PASS，0.867s。
+
+### 11.5 Important 4：ready 后立即第二次 Enqueue
+
+RED：
+
+- `go test ./internal/service -run '^TestMediaOrchestrator(EnqueuesBeforePublishingReadyAndClearsInitializationLease|ReadyWakeupClaimsImmediatelyAfterEarlyMessageAck|ReadyWakeupFailureKeepsReadyTaskWithoutRefund)$' -count=1`
+  - FAIL，1.156s：只有第一次 Enqueue；pending 消息不可 Claim 后没有 ready wake-up，第二次失败分支也未被调用。
+- 扩大审计新增 `TestMediaOrchestratorReadyPublishAppliedErrorReloadsRealTerminalResult`：RED，0.878s；ready 写已应用但返回 error、reload 恰逢 completed 时，双投重排曾误报 accepted。
+
+GREEN：
+
+- 第一次 Enqueue 保持 durable-before-ready；ready CAS 成功或写结果未知但重读确认 ready 后，立即用同 task ID/priority 再 Enqueue。
+- 第一次消息在 pending+active init lease 时 Claim=false，由既有 Worker `ErrMediaTaskNotClaimed` ACK；第二次消息观察 ready/precharged+lease nil，可立即 Claim 并在同步 timer select 前完成，返回 completed+artifact。
+- 第二次 Enqueue 是 best-effort：单独返回 `ready wakeup unavailable` 时 Create 仍 accepted，任务保持 queued/precharged、真实金额、lease nil、recovery 空、0 settlement/refund。
+- ready applied-error 分支在第二次 wake-up 后复用 `reuseTask/terminalResult`，保留 reload 已终态时的真实返回语义。
+- 全部 `TestMediaOrchestrator` 最终 PASS，0.880s。
+
+### 11.6 扩大回归、race 与最终门禁
+
+最终代码的扩大回归：
+
+- `go test ./internal/service -run '^(TestMediaOrchestrator|TestMediaBilling|TestMediaWorker)' -count=1`：PASS，2.261s。
+- `go test ./internal/repository -run '^TestMediaTaskRepository' -count=1`：PASS，0.861s。
+
+最终代码的精确 race：
+
+- `go test -race ./internal/service -run '^(TestMediaOrchestrator|TestMediaBilling|TestMediaWorker)' -count=1`：PASS，3.156s。
+- `go test -race ./internal/repository -run '^TestMediaTaskRepository' -count=1`：PASS，9.139s。
+
+最终门禁：
+
+- `gofmt`：已执行。
+- `go vet ./...`：PASS，exit 0。
+- `go build ./...`：PASS，exit 0。
+- `go test ./... -run '^$' -count=1`：PASS，单独轮询确认 exit 0。
+- `go mod verify`：PASS，`all modules verified`。
+- 完成报告后再次执行 `git diff --check` 与 cached diff 检查。
+- 仍不执行完整 `go test ./internal/service` 测试体套件：既有 OpenAI stub concurrent map fatal 不属于 Task 15；本轮继续使用精确 service/repository tests、精确 race 和全仓无测试编译替代该门禁。
+
+### 11.7 第三轮高风险代码审计
+
+- 审计深度：高；原因是改动涉及余额 mutation 结果分类、终态/退款不变量、DB version CAS、队列乱序/重复投递、后台恢复和同步 timeout 对外语义。
+- 需求对账：4 个 Important 均有原失败直接测试、最小生产修复与最终 GREEN；额外发现的 ready applied-error terminal 返回回归也已按 RED→GREEN 修复。
+- 资金状态证明：unknown 只保留 pending 并使用同键恢复；确定性拒绝终态 pending/amount=0 且不退款；已确认扣款后的 queue/ready 失败仍走原 owner-fenced full refund；第二 wake-up 失败不反向补偿 ready task。
+- 并发状态证明：timeout CAS 同时匹配 status+version，fresh 非终态重算、fresh 终态服从 winner；Worker completion 仍匹配 owner+version+live lease；fallback reload 始终让 terminal 胜出。
+- 队列状态证明：第一次 pending 消息不可 Claim 且 ACK；第二次 ready 消息可 Claim；重复 ready 消息由 Claim CAS/duplicate ACK 收口；第二次失败仍有第一次 durable 消息和 `RecoverOnce` DB 扫描兜底。
+- 接口/字段对账：新增 service sentinel 与 repository interface method；复用既有 version/lease/billing/recovery 字段，无 schema 或迁移。新增持久错误码 `billing_precharge` 的全局搜索仅命中 Orchestrator/Worker 生产方及直接测试，没有独立枚举、前端硬解析、OpenAPI/SDK/报表/脚本消费者需要同步。
+- 调用链搜索：已全量搜索 `Transition*`、`Enqueue`、`ErrMediaTaskNotClaimed/Ack`、`sync_timeout`、`billing_precharge`、`precharged_amount`、`settlement_recovery` 与 `MediaTaskRepository` 构造/测试 fake；真实 repository、Orchestrator fake、Worker fake 均同步 `TransitionVersioned`，由全仓无测试编译进一步证明无漏实现。
+- 测试证据质量：资金/竞态均为直接 RED→GREEN；扩大定向与精确 race 无 skip/only 或缓存复用（均 `-count=1`）。完整 service 测试体仍受既有 OpenAI stub 限制，已明确列为验证缺口，未包装成全量通过。
+- 低级假通过排除：已检查实际 diff 与全调用链，不只看改动文件；覆盖确定性/unknown、正反向 fresh-state、Mark success/CAS loss、双投成功/失败、applied-error、重复/早到消息，不只测 happy path；未把 vet/build 或间接全量编译单独当作行为通过。
+- 结论：第三轮 4 个 Important 通过；未发现新的阻断或非阻断代码风险。原 Minor（`media_orchestrator.go` 较大）继续记录但不在资金/并发修复中重构，避免扩大 Task 15 风险与范围。

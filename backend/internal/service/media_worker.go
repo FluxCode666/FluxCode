@@ -1118,7 +1118,10 @@ func (w *MediaWorker) cleanupExpiredInitializer(ctx context.Context, task *Media
 		return false, fmt.Errorf("decode expired media initializer %d billing snapshot: %w", task.ID, err)
 	}
 	if err := w.deps.Precharger.Precharge(ctx, task, snapshot); err != nil {
-		return false, fmt.Errorf("reconcile expired media initializer %d precharge: %w", task.ID, err)
+		if errors.Is(err, ErrMediaPrechargeResultUnknown) {
+			return false, fmt.Errorf("reconcile expired media initializer %d precharge: %w", task.ID, err)
+		}
+		return w.failExpiredInitializerPrecharge(ctx, task)
 	}
 
 	settlement := MediaFailureSettlement{
@@ -1179,6 +1182,52 @@ func (w *MediaWorker) cleanupExpiredInitializer(ctx context.Context, task *Media
 		return true, fmt.Errorf("settle expired media initializer %d: %w", task.ID, err)
 	}
 	return true, nil
+}
+
+func (w *MediaWorker) failExpiredInitializerPrecharge(ctx context.Context, task *MediaTask) (bool, error) {
+	const errorCode = "billing_precharge"
+	finishedAt := time.Now().UTC()
+	transitioned, transitionErr := w.deps.Tasks.TransitionQueued(
+		ctx,
+		task.ID,
+		task.Version,
+		MediaTaskStatusFailed,
+		map[string]any{
+			"stage":         MediaTaskStageFailed,
+			"error_code":    errorCode,
+			"error_message": errorCode,
+			"finished_at":   finishedAt,
+			"lease_until":   nil,
+		},
+	)
+	if transitioned {
+		task.Status = MediaTaskStatusFailed
+		task.Stage = MediaTaskStageFailed
+		task.ErrorCode = errorCode
+		task.ErrorMessage = errorCode
+		task.FinishedAt = mediaTimePointer(finishedAt)
+		task.LeaseUntil = nil
+		task.Version++
+		return true, nil
+	}
+	fresh, readErr := w.deps.Tasks.GetByID(ctx, task.ID)
+	if readErr != nil {
+		return false, errors.Join(
+			fmt.Errorf("fail rejected media initializer %d: %w", task.ID, transitionErr),
+			fmt.Errorf("reload rejected media initializer %d: %w", task.ID, readErr),
+		)
+	}
+	matchingFailure := fresh.Status == MediaTaskStatusFailed && fresh.ErrorCode == errorCode &&
+		fresh.BillingStatus == MediaBillingStatusPending && fresh.PrechargedAmount == 0 &&
+		len(fresh.SettlementRecovery) == 0
+	if matchingFailure {
+		*task = *fresh
+		return true, nil
+	}
+	if transitionErr != nil && fresh.Status == MediaTaskStatusQueued && fresh.Version == task.Version {
+		return false, fmt.Errorf("fail rejected media initializer %d: %w", task.ID, transitionErr)
+	}
+	return false, nil
 }
 
 func (w *MediaWorker) StopForSyncTimeout(taskID int64) bool {

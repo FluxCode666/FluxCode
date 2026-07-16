@@ -18,6 +18,10 @@ const (
 )
 
 var (
+	// ErrMediaPrechargeResultUnknown marks a precharge error for which the
+	// implementation cannot determine whether the external balance mutation
+	// happened. Callers must reconcile it with the same idempotency key.
+	ErrMediaPrechargeResultUnknown     = errors.New("media precharge result unknown")
 	ErrMediaSettlementPlanConflict     = errors.New("media settlement plan conflict")
 	ErrMediaSettlementCASConflict      = errors.New("media settlement CAS conflict")
 	ErrMediaSettlementPlanNotPersisted = errors.New("media settlement plan was not persisted")
@@ -49,7 +53,9 @@ type MediaFailureSettlement struct {
 
 type MediaBillingPort interface {
 	// Implementations must use MediaBillingIdempotencyKey with the matching
-	// operation before applying any external balance mutation.
+	// operation before applying any external balance mutation. Precharge must
+	// wrap ErrMediaPrechargeResultUnknown only when it cannot determine whether
+	// that mutation happened; deterministic rejections must return ordinary errors.
 	Precharge(ctx context.Context, task *MediaTask, snapshot MediaBillingSnapshot) error
 	SettleSuccess(ctx context.Context, task *MediaTask, usage MediaUsage) error
 	SettleFailure(ctx context.Context, task *MediaTask, settlement MediaFailureSettlement) error
