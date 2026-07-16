@@ -3,8 +3,11 @@
 package repository
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -97,7 +100,7 @@ func (s *ConcurrencyCacheSuite) TestAccountSlot_StableMediaTaskRecoveryRefreshes
 	accountID := int64(778)
 	firstService := service.NewConcurrencyService(s.cache)
 	secondService := service.NewConcurrencyService(s.cache)
-	sameSlotID := service.MediaTaskSlotID("hard-crash-task")
+	sameSlotID := service.MediaTaskSlotID(42)
 
 	first, err := firstService.AcquireAccountSlotWithID(s.ctx, accountID, 1, sameSlotID)
 	require.NoError(s.T(), err)
@@ -105,18 +108,142 @@ func (s *ConcurrencyCacheSuite) TestAccountSlot_StableMediaTaskRecoveryRefreshes
 	second, err := secondService.AcquireAccountSlotWithID(s.ctx, accountID, 1, sameSlotID)
 	require.NoError(s.T(), err)
 	require.True(s.T(), second.Acquired, "same stable member must refresh after hard crash")
-	other, err := secondService.AcquireAccountSlotWithID(s.ctx, accountID, 1, service.MediaTaskSlotID("other-task"))
+	other, err := secondService.AcquireAccountSlotWithID(s.ctx, accountID, 1, service.MediaTaskSlotID(43))
 	require.NoError(s.T(), err)
 	require.False(s.T(), other.Acquired, "different task must remain blocked at max=1")
 	current, err := s.cache.GetAccountConcurrency(s.ctx, accountID)
 	require.NoError(s.T(), err)
 	require.Equal(s.T(), 1, current)
 
+	first.ReleaseFunc()
+	current, err = s.cache.GetAccountConcurrency(s.ctx, accountID)
+	require.NoError(s.T(), err)
+	require.Equal(s.T(), 1, current, "delayed release from the fenced worker must not remove the new owner")
+	firstOwned, err := first.RefreshFunc(s.ctx)
+	require.NoError(s.T(), err)
+	require.False(s.T(), firstOwned, "the fenced worker must not refresh the replacement epoch")
+	secondOwned, err := second.RefreshFunc(s.ctx)
+	require.NoError(s.T(), err)
+	require.True(s.T(), secondOwned)
+
 	second.ReleaseFunc()
 	second.ReleaseFunc()
 	current, err = s.cache.GetAccountConcurrency(s.ctx, accountID)
 	require.NoError(s.T(), err)
 	require.Zero(s.T(), current)
+}
+
+func (s *ConcurrencyCacheSuite) TestAccountSlot_StableMediaTaskConcurrentTakeoverHasSingleEpochOwner() {
+	const contenders = 16
+	accountID := int64(779)
+	logicalSlotID := service.MediaTaskSlotID(42)
+	results := make([]*service.AcquireResult, contenders)
+	errs := make(chan error, contenders)
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	for index := range contenders {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			result, err := service.NewConcurrencyService(s.cache).AcquireAccountSlotWithID(s.ctx, accountID, 1, logicalSlotID)
+			results[index] = result
+			errs <- err
+		}()
+	}
+	close(start)
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		require.NoError(s.T(), err)
+	}
+
+	current, err := s.cache.GetAccountConcurrency(s.ctx, accountID)
+	require.NoError(s.T(), err)
+	require.Equal(s.T(), 1, current)
+	winner := -1
+	for index, result := range results {
+		require.NotNil(s.T(), result)
+		require.True(s.T(), result.Acquired)
+		owned, refreshErr := result.RefreshFunc(s.ctx)
+		require.NoError(s.T(), refreshErr)
+		if owned {
+			require.Equal(s.T(), -1, winner, "only one exact epoch may remain current")
+			winner = index
+		}
+	}
+	require.NotEqual(s.T(), -1, winner)
+
+	for index, result := range results {
+		if index != winner {
+			result.ReleaseFunc()
+		}
+	}
+	current, err = s.cache.GetAccountConcurrency(s.ctx, accountID)
+	require.NoError(s.T(), err)
+	require.Equal(s.T(), 1, current, "losing epochs must not release the winning epoch")
+	owned, err := results[winner].RefreshFunc(s.ctx)
+	require.NoError(s.T(), err)
+	require.True(s.T(), owned)
+	results[winner].ReleaseFunc()
+	current, err = s.cache.GetAccountConcurrency(s.ctx, accountID)
+	require.NoError(s.T(), err)
+	require.Zero(s.T(), current)
+}
+
+func (s *ConcurrencyCacheSuite) TestAccountSlot_StableMediaTaskRefreshKeepsShortTTLAlive() {
+	shortTTLCache := &concurrencyCache{rdb: s.rdb, slotTTLSeconds: 1, waitQueueTTLSeconds: 1}
+	concurrency := service.NewConcurrencyService(shortTTLCache)
+	accountID := int64(780)
+	lease, err := concurrency.AcquireAccountSlotWithID(s.ctx, accountID, 1, service.MediaTaskSlotID(42))
+	require.NoError(s.T(), err)
+	require.True(s.T(), lease.Acquired)
+
+	heartbeatCtx, cancelHeartbeat := context.WithCancel(s.ctx)
+	heartbeatDone := make(chan struct{})
+	heartbeatErr := make(chan error, 1)
+	var refreshes atomic.Int64
+	go func() {
+		defer close(heartbeatDone)
+		ticker := time.NewTicker(100 * time.Millisecond)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-heartbeatCtx.Done():
+				return
+			case <-ticker.C:
+				owned, refreshErr := lease.RefreshFunc(heartbeatCtx)
+				if refreshErr != nil {
+					heartbeatErr <- refreshErr
+					return
+				}
+				if !owned {
+					heartbeatErr <- errors.New("stable slot ownership lost during heartbeat")
+					return
+				}
+				refreshes.Add(1)
+			}
+		}
+	}()
+
+	time.Sleep(1500 * time.Millisecond)
+	require.GreaterOrEqual(s.T(), refreshes.Load(), int64(5))
+	other, err := concurrency.AcquireAccountSlotWithID(s.ctx, accountID, 1, service.MediaTaskSlotID(43))
+	require.NoError(s.T(), err)
+	require.False(s.T(), other.Acquired, "continuous refresh must keep a healthy owner over the one-second TTL")
+	cancelHeartbeat()
+	<-heartbeatDone
+	select {
+	case heartbeatFailure := <-heartbeatErr:
+		require.NoError(s.T(), heartbeatFailure)
+	default:
+	}
+
+	time.Sleep(2100 * time.Millisecond)
+	other, err = concurrency.AcquireAccountSlotWithID(s.ctx, accountID, 1, service.MediaTaskSlotID(43))
+	require.NoError(s.T(), err)
+	require.True(s.T(), other.Acquired, "stopped refresh must allow TTL cleanup")
+	other.ReleaseFunc()
 }
 
 func (s *ConcurrencyCacheSuite) TestAccountSlot_ReleaseIdempotent() {
@@ -289,7 +416,7 @@ func (s *ConcurrencyCacheSuite) TestCleanupStaleProcessSlots() {
 	require.NoError(s.T(), s.rdb.ZAdd(s.ctx, accountKey,
 		redis.Z{Score: float64(now), Member: "oldproc-1"},
 		redis.Z{Score: float64(now), Member: "keep-1"},
-		redis.Z{Score: float64(now), Member: service.MediaTaskSlotID("stable-1")},
+		redis.Z{Score: float64(now), Member: service.MediaTaskSlotID(1) + "#epoch"},
 	).Err())
 	require.NoError(s.T(), s.rdb.ZAdd(s.ctx, userKey,
 		redis.Z{Score: float64(now), Member: "oldproc-2"},
@@ -302,7 +429,7 @@ func (s *ConcurrencyCacheSuite) TestCleanupStaleProcessSlots() {
 
 	accountMembers, err := s.rdb.ZRange(s.ctx, accountKey, 0, -1).Result()
 	require.NoError(s.T(), err)
-	require.ElementsMatch(s.T(), []string{"keep-1", service.MediaTaskSlotID("stable-1")}, accountMembers)
+	require.ElementsMatch(s.T(), []string{"keep-1", service.MediaTaskSlotID(1) + "#epoch"}, accountMembers)
 
 	userMembers, err := s.rdb.ZRange(s.ctx, userKey, 0, -1).Result()
 	require.NoError(s.T(), err)

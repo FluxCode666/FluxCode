@@ -35,6 +35,7 @@ type MediaAccountSelection struct {
 	ResolvedModel ResolvedMediaAccountModel
 	Acquired      bool
 	ReleaseFunc   func()
+	RefreshFunc   func(context.Context) (bool, error)
 	WaitPlan      *AccountWaitPlan
 }
 
@@ -202,11 +203,11 @@ func (s *MediaScheduler) Select(ctx context.Context, req MediaScheduleRequest) (
 		return nil, fmt.Errorf("%w: selector returned account %d outside candidate snapshot", ErrNoAvailableAccounts, selected.Account.ID)
 	}
 	if selected.Acquired {
-		if selected.WaitPlan != nil || selected.ReleaseFunc == nil {
+		if selected.WaitPlan != nil || selected.ReleaseFunc == nil || (req.SlotID != "" && selected.RefreshFunc == nil) {
 			releaseAccountSelectionResult(selected)
 			return nil, fmt.Errorf("%w: inconsistent acquired media account selection", ErrNoAvailableAccounts)
 		}
-	} else if !validMediaAccountWaitPlan(canonical, selected.WaitPlan, req.SlotID) || selected.ReleaseFunc != nil {
+	} else if !validMediaAccountWaitPlan(canonical, selected.WaitPlan, req.SlotID) || selected.ReleaseFunc != nil || selected.RefreshFunc != nil {
 		releaseAccountSelectionResult(selected)
 		return nil, fmt.Errorf("%w: inconsistent waiting media account selection", ErrNoAvailableAccounts)
 	}
@@ -216,6 +217,7 @@ func (s *MediaScheduler) Select(ctx context.Context, req MediaScheduleRequest) (
 		ResolvedModel: snapshots[canonical.ID].ResolvedModel,
 		Acquired:      selected.Acquired,
 		ReleaseFunc:   wrapOptionalIdempotentRelease(selected.ReleaseFunc),
+		RefreshFunc:   selected.RefreshFunc,
 		WaitPlan:      cloneAccountWaitPlan(selected.WaitPlan),
 	}, nil
 }
@@ -247,11 +249,11 @@ func (s *MediaScheduler) SelectFixed(ctx context.Context, req MediaFixedAccountR
 		return nil, fmt.Errorf("%w: fixed account selector changed account %d", ErrNoAvailableAccounts, req.AccountID)
 	}
 	if selected.Acquired {
-		if selected.WaitPlan != nil || selected.ReleaseFunc == nil {
+		if selected.WaitPlan != nil || selected.ReleaseFunc == nil || (req.SlotID != "" && selected.RefreshFunc == nil) {
 			releaseAccountSelectionResult(selected)
 			return nil, fmt.Errorf("%w: inconsistent acquired fixed media account selection", ErrNoAvailableAccounts)
 		}
-	} else if !validMediaAccountWaitPlan(&canonical, selected.WaitPlan, req.SlotID) || selected.ReleaseFunc != nil {
+	} else if !validMediaAccountWaitPlan(&canonical, selected.WaitPlan, req.SlotID) || selected.ReleaseFunc != nil || selected.RefreshFunc != nil {
 		releaseAccountSelectionResult(selected)
 		return nil, fmt.Errorf("%w: inconsistent waiting fixed media account selection", ErrNoAvailableAccounts)
 	}
@@ -259,6 +261,7 @@ func (s *MediaScheduler) SelectFixed(ctx context.Context, req MediaFixedAccountR
 		Account:     &canonical,
 		Acquired:    selected.Acquired,
 		ReleaseFunc: wrapOptionalIdempotentRelease(selected.ReleaseFunc),
+		RefreshFunc: selected.RefreshFunc,
 		WaitPlan:    cloneAccountWaitPlan(selected.WaitPlan),
 	}, nil
 }
@@ -329,14 +332,46 @@ func wrapOptionalIdempotentRelease(release func()) func() {
 	}
 }
 
-func (s *MediaScheduler) WaitForSlot(ctx context.Context, selection *MediaAccountSelection) (func(), error) {
+func (s *MediaScheduler) WaitForSlot(ctx context.Context, selection *MediaAccountSelection) (*AcquireResult, error) {
 	if s == nil || s.selector == nil || !validMediaWaitSelection(selection) {
 		if selection != nil && selection.ReleaseFunc != nil {
 			selection.ReleaseFunc()
 		}
 		return nil, ErrAccountConcurrencySaturated
 	}
-	return s.selector.Wait(ctx, cloneAccountWaitPlan(selection.WaitPlan))
+	plan := cloneAccountWaitPlan(selection.WaitPlan)
+	if plan.SlotID == "" {
+		release, err := s.selector.Wait(ctx, plan)
+		if err != nil {
+			return nil, err
+		}
+		if release == nil {
+			return nil, ErrAccountConcurrencySaturated
+		}
+		return &AcquireResult{Acquired: true, ReleaseFunc: wrapOptionalIdempotentRelease(release)}, nil
+	}
+	waiter, ok := s.selector.(stableAccountCandidateWaiter)
+	if !ok {
+		return nil, ErrStableAccountSlotUnsupported
+	}
+	lease, err := waiter.WaitStable(ctx, plan)
+	if err != nil {
+		if lease != nil && lease.ReleaseFunc != nil {
+			lease.ReleaseFunc()
+		}
+		return nil, err
+	}
+	if lease == nil || !lease.Acquired || lease.ReleaseFunc == nil || lease.RefreshFunc == nil {
+		if lease != nil && lease.ReleaseFunc != nil {
+			lease.ReleaseFunc()
+		}
+		return nil, ErrStableAccountSlotUnsupported
+	}
+	return &AcquireResult{
+		Acquired:    true,
+		ReleaseFunc: wrapOptionalIdempotentRelease(lease.ReleaseFunc),
+		RefreshFunc: lease.RefreshFunc,
+	}, nil
 }
 
 func validMediaWaitSelection(selection *MediaAccountSelection) bool {

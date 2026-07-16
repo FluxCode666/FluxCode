@@ -22,6 +22,7 @@ type accountCandidateConcurrencyStub struct {
 	acquireErrors     map[int64][]error
 	acquireCalls      []int64
 	stableSlotIDs     []string
+	refreshCalls      int
 	releaseCalls      map[int64]int
 	waitAllowed       bool
 	waitErr           error
@@ -91,7 +92,16 @@ func (s *accountCandidateConcurrencyStub) AcquireAccountSlotWithID(ctx context.C
 	s.mu.Lock()
 	s.stableSlotIDs = append(s.stableSlotIDs, slotID)
 	s.mu.Unlock()
-	return s.AcquireAccountSlot(ctx, accountID, maxConcurrency)
+	result, err := s.AcquireAccountSlot(ctx, accountID, maxConcurrency)
+	if err == nil && result != nil && result.Acquired {
+		result.RefreshFunc = func(context.Context) (bool, error) {
+			s.mu.Lock()
+			s.refreshCalls++
+			s.mu.Unlock()
+			return true, nil
+		}
+	}
+	return result, err
 }
 
 func (s *accountCandidateConcurrencyStub) IncrementAccountWaitCount(ctx context.Context, _ int64, _ int) (bool, error) {
@@ -691,11 +701,16 @@ func TestAccountCandidateSelectorUsesStableSlotIDForAcquireAndWait(t *testing.T)
 		})
 		require.NoError(t, err)
 		require.True(t, result.Acquired)
+		require.NotNil(t, result.RefreshFunc)
+		owned, refreshErr := result.RefreshFunc(context.Background())
+		require.NoError(t, refreshErr)
+		require.True(t, owned)
 		result.ReleaseFunc()
 		result.ReleaseFunc()
 		concurrency.mu.Lock()
 		require.Equal(t, []string{"media-task:public-1"}, concurrency.stableSlotIDs)
 		require.Equal(t, 1, concurrency.releaseCalls[1])
+		require.Equal(t, 1, concurrency.refreshCalls)
 		concurrency.mu.Unlock()
 	})
 
@@ -710,12 +725,19 @@ func TestAccountCandidateSelectorUsesStableSlotIDForAcquireAndWait(t *testing.T)
 		require.NoError(t, err)
 		require.False(t, result.Acquired)
 		require.Equal(t, "media-task:public-1", result.WaitPlan.SlotID)
-		release, err := selector.Wait(context.Background(), result.WaitPlan)
+		stableWaiter, ok := selector.(stableAccountCandidateWaiter)
+		require.True(t, ok)
+		lease, err := stableWaiter.WaitStable(context.Background(), result.WaitPlan)
 		require.NoError(t, err)
-		release()
+		require.NotNil(t, lease.RefreshFunc)
+		owned, refreshErr := lease.RefreshFunc(context.Background())
+		require.NoError(t, refreshErr)
+		require.True(t, owned)
+		lease.ReleaseFunc()
 		concurrency.mu.Lock()
 		require.Equal(t, []string{"media-task:public-1", "media-task:public-1"}, concurrency.stableSlotIDs)
 		require.Equal(t, 1, concurrency.releaseCalls[1])
+		require.Equal(t, 1, concurrency.refreshCalls)
 		concurrency.mu.Unlock()
 	})
 }

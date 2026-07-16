@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"os"
 	"strconv"
 	"strings"
@@ -54,6 +55,11 @@ type ConcurrencyCache interface {
 	CleanupStaleProcessSlots(ctx context.Context, activeRequestPrefix string) error
 }
 
+type stableAccountConcurrencyCache interface {
+	AcquireStableAccountSlot(ctx context.Context, accountID int64, maxConcurrency int, logicalSlotID, epoch string) (bool, error)
+	RefreshAccountSlot(ctx context.Context, accountID int64, member string) (bool, error)
+}
+
 var (
 	requestIDPrefix             = initRequestIDPrefix()
 	requestIDCounter            atomic.Uint64
@@ -61,6 +67,8 @@ var (
 )
 
 const MediaTaskSlotPrefix = "media-task:"
+
+const stableAccountSlotEpochSeparator = "#"
 
 func initRequestIDPrefix() string {
 	b := make([]byte, 8)
@@ -80,15 +88,14 @@ func generateRequestID() string {
 	return requestIDPrefix + "-" + strconv.FormatUint(seq, 36)
 }
 
-// MediaTaskSlotID returns the stable concurrency member owned by a media task.
-// Stable members let a recovered worker refresh the original slot instead of
-// consuming a second slot for the same persisted task.
-func MediaTaskSlotID(publicID string) string {
-	publicID = strings.TrimSpace(publicID)
-	if publicID == "" {
+// MediaTaskSlotID returns the logical concurrency owner for a persisted media task.
+// The database primary key is stable across retries and cannot be influenced by
+// public request identifiers.
+func MediaTaskSlotID(taskID int64) string {
+	if taskID <= 0 {
 		return ""
 	}
-	return MediaTaskSlotPrefix + publicID
+	return MediaTaskSlotPrefix + strconv.FormatInt(taskID, 10)
 }
 
 func (s *ConcurrencyService) CleanupStaleProcessSlots(ctx context.Context) error {
@@ -117,6 +124,7 @@ func NewConcurrencyService(cache ConcurrencyCache) *ConcurrencyService {
 type AcquireResult struct {
 	Acquired    bool
 	ReleaseFunc func() // Must be called when done (typically via defer)
+	RefreshFunc func(ctx context.Context) (bool, error)
 }
 
 type AccountWithConcurrency struct {
@@ -153,7 +161,53 @@ func (s *ConcurrencyService) AcquireAccountSlot(ctx context.Context, accountID i
 // AcquireAccountSlotWithID acquires an account slot using a caller-owned stable
 // member. Callers must use an ID that remains unchanged across retries/recovery.
 func (s *ConcurrencyService) AcquireAccountSlotWithID(ctx context.Context, accountID int64, maxConcurrency int, slotID string) (*AcquireResult, error) {
-	return s.acquireAccountSlot(ctx, accountID, maxConcurrency, strings.TrimSpace(slotID))
+	logicalSlotID := strings.TrimSpace(slotID)
+	if logicalSlotID == "" || strings.Contains(logicalSlotID, stableAccountSlotEpochSeparator) {
+		return nil, ErrInvalidConcurrencySlotID
+	}
+	if maxConcurrency <= 0 {
+		return &AcquireResult{
+			Acquired:    true,
+			ReleaseFunc: func() {},
+			RefreshFunc: func(context.Context) (bool, error) { return true, nil },
+		}, nil
+	}
+
+	epoch := generateRequestID()
+	member := logicalSlotID + stableAccountSlotEpochSeparator + epoch
+	stableCache, ok := s.cache.(stableAccountConcurrencyCache)
+	if !ok {
+		return nil, ErrInvalidConcurrencySlotID
+	}
+	acquired, err := stableCache.AcquireStableAccountSlot(ctx, accountID, maxConcurrency, logicalSlotID, epoch)
+	if err != nil {
+		return nil, err
+	}
+	if !acquired {
+		return &AcquireResult{Acquired: false}, nil
+	}
+
+	var released atomic.Bool
+	return &AcquireResult{
+		Acquired: true,
+		ReleaseFunc: func() {
+			if !released.CompareAndSwap(false, true) {
+				return
+			}
+			bgCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if err := s.cache.ReleaseAccountSlot(bgCtx, accountID, member); err != nil {
+				logger.LegacyPrintf("service.concurrency", "Warning: failed to release stable account slot for %d: %v", accountID, err)
+			}
+		},
+		RefreshFunc: func(refreshCtx context.Context) (bool, error) {
+			refreshed, refreshErr := stableCache.RefreshAccountSlot(refreshCtx, accountID, member)
+			if refreshErr != nil {
+				return false, fmt.Errorf("refresh stable account slot %d: %w", accountID, refreshErr)
+			}
+			return refreshed, nil
+		},
+	}, nil
 }
 
 func (s *ConcurrencyService) acquireAccountSlot(ctx context.Context, accountID int64, maxConcurrency int, requestID string) (*AcquireResult, error) {

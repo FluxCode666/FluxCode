@@ -83,6 +83,7 @@ type mediaSchedulerSelectorStub struct {
 	requests        int
 	waitCalls       int
 	waitFunc        func()
+	waitRefreshFunc func(context.Context) (bool, error)
 	waitErr         error
 	returnNil       bool
 	lastGroupID     int64
@@ -110,7 +111,11 @@ func (s *mediaSchedulerSelectorStub) Select(_ context.Context, req AccountCandid
 	}
 	for _, candidate := range req.Candidates {
 		if candidate.ID == s.selectedID {
-			return &AccountSelectionResult{Account: candidate, Acquired: true, ReleaseFunc: func() {}}, nil
+			result := &AccountSelectionResult{Account: candidate, Acquired: true, ReleaseFunc: func() {}}
+			if req.SlotID != "" {
+				result.RefreshFunc = func(context.Context) (bool, error) { return true, nil }
+			}
+			return result, nil
 		}
 	}
 	return nil, ErrNoAvailableAccounts
@@ -121,6 +126,17 @@ func (s *mediaSchedulerSelectorStub) Wait(context.Context, *AccountWaitPlan) (fu
 	defer s.mu.Unlock()
 	s.waitCalls++
 	return s.waitFunc, s.waitErr
+}
+
+func (s *mediaSchedulerSelectorStub) WaitStable(context.Context, *AccountWaitPlan) (*AcquireResult, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.waitCalls++
+	refresh := s.waitRefreshFunc
+	if refresh == nil {
+		refresh = func(context.Context) (bool, error) { return true, nil }
+	}
+	return &AcquireResult{Acquired: true, ReleaseFunc: s.waitFunc, RefreshFunc: refresh}, s.waitErr
 }
 
 func task12Account(id int64, platform, model, upstream, adapter string, mode NativeAsyncMode) Account {
@@ -158,6 +174,10 @@ func TestMediaSchedulerSelectsAcrossPlatformsForSameModel(t *testing.T) {
 	require.Equal(t, "veo-xai", selection.ResolvedModel.UpstreamModel)
 	require.Len(t, selector.candidates, 2)
 	require.Equal(t, "media-task:first-task", selector.lastSlotID)
+	require.NotNil(t, selection.RefreshFunc)
+	owned, refreshErr := selection.RefreshFunc(context.Background())
+	require.NoError(t, refreshErr)
+	require.True(t, owned)
 }
 
 func TestMediaSchedulerSnapshotFiltersAvailabilityModelAndAdapterMethodSets(t *testing.T) {
@@ -319,6 +339,28 @@ func TestMediaSchedulerReleasesSelectorResultReturnedWithError(t *testing.T) {
 	require.Equal(t, int64(1), releases.Load())
 }
 
+func TestMediaSchedulerRejectsStableAcquiredSelectionWithoutRefresh(t *testing.T) {
+	var releases atomic.Int64
+	account := task12Account(1, PlatformOpenAI, "image", "up", "sync", NativeAsyncUnsupported)
+	repo := &mediaSchedulerAccountRepoStub{accounts: []Account{account}}
+	selector := &mediaSchedulerSelectorStub{result: &AccountSelectionResult{
+		Account: &Account{ID: account.ID}, Acquired: true,
+		ReleaseFunc: func() { releases.Add(1) },
+	}}
+	registry := NewMediaAdapterRegistry()
+	registry.Register("sync", NewFakeMediaAdapter(FakeMediaAdapterOptions{Name: "sync", NativeAsyncMode: NativeAsyncUnsupported}))
+	scheduler := NewMediaScheduler(repo, selector, registry)
+	snapshot, err := scheduler.SnapshotCandidates(context.Background(), 1, "image")
+	require.NoError(t, err)
+
+	selection, err := scheduler.Select(context.Background(), MediaScheduleRequest{
+		GroupID: 1, SlotID: "media-task:1", CandidateSnapshot: snapshot,
+	})
+	require.Nil(t, selection)
+	require.ErrorIs(t, err, ErrNoAvailableAccounts)
+	require.Equal(t, int64(1), releases.Load())
+}
+
 func TestMediaSchedulerRejectsMalformedSelectorWaitPlans(t *testing.T) {
 	account := task12Account(1, PlatformOpenAI, "image", "up", "sync", NativeAsyncUnsupported)
 	repo := &mediaSchedulerAccountRepoStub{accounts: []Account{account}}
@@ -436,6 +478,7 @@ func TestMediaSchedulerSelectFixedUsesSingleRealtimeAccountAndStableKey(t *testi
 	var releases atomic.Int64
 	selector := &mediaSchedulerSelectorStub{result: &AccountSelectionResult{
 		Account: &Account{ID: account.ID}, Acquired: true, ReleaseFunc: func() { releases.Add(1) },
+		RefreshFunc: func(context.Context) (bool, error) { return true, nil },
 	}}
 	scheduler := NewMediaScheduler(repo, selector, NewMediaAdapterRegistry())
 
@@ -481,10 +524,14 @@ func TestMediaSchedulerSelectFixedReturnsTrustedWaitPlan(t *testing.T) {
 	require.False(t, selection.Acquired)
 	require.Equal(t, account.ID, selection.WaitPlan.AccountID)
 	require.Equal(t, "media-task:task_public_id", selection.WaitPlan.SlotID)
-	release, err := scheduler.WaitForSlot(context.Background(), selection)
+	lease, err := scheduler.WaitForSlot(context.Background(), selection)
 	require.NoError(t, err)
-	require.NotNil(t, release)
-	release()
+	require.NotNil(t, lease.ReleaseFunc)
+	require.NotNil(t, lease.RefreshFunc)
+	owned, refreshErr := lease.RefreshFunc(context.Background())
+	require.NoError(t, refreshErr)
+	require.True(t, owned)
+	lease.ReleaseFunc()
 	require.Equal(t, int64(1), waitReleaseCalls.Load())
 	require.Equal(t, 1, selector.waitCalls)
 }

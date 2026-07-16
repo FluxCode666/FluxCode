@@ -19,6 +19,7 @@ import (
 var (
 	ErrMediaTaskNotClaimed       = errors.New("media task was not claimed")
 	ErrMediaWorkerLeaseLost      = errors.New("media worker lease lost")
+	ErrMediaAccountSlotLost      = errors.New("media account slot ownership lost")
 	ErrMediaTaskDeadlineExceeded = errors.New("media task deployment timeout exceeded")
 	ErrMediaSyncTimeoutStopped   = errors.New("media sync timeout stopped local execution")
 	errMediaWorkerMessagePanic   = errors.New("media worker message panic")
@@ -98,6 +99,28 @@ type mediaActiveExecution struct {
 	upstreamTaskID string
 	pollMetadata   json.RawMessage
 	stopRequested  bool
+
+	slotMu sync.Mutex
+	slot   *mediaAccountSlotGuard
+}
+
+type mediaAccountSlotGuard struct {
+	worker  *MediaWorker
+	active  *mediaActiveExecution
+	taskID  int64
+	refresh func(context.Context) (bool, error)
+	release func()
+
+	ctx    context.Context
+	cancel context.CancelFunc
+	done   chan struct{}
+
+	refreshMu sync.Mutex
+	closeOnce sync.Once
+	lostOnce  sync.Once
+	closed    atomic.Bool
+	lostMu    sync.RWMutex
+	lostErr   error
 }
 
 type mediaActiveAbortTarget struct {
@@ -362,6 +385,7 @@ func (w *MediaWorker) ProcessOne(ctx context.Context, taskID int64) error {
 		})
 	}
 	defer func() {
+		active.closeAccountSlot()
 		stopLeaseRenewer()
 		executionCancel(context.Canceled)
 		w.unregisterActive(task.ID, active)
@@ -410,6 +434,8 @@ func (w *MediaWorker) ProcessOne(ctx context.Context, taskID int64) error {
 			}
 		case errors.Is(context.Cause(executionCtx), ErrMediaSyncTimeoutStopped):
 			return fmt.Errorf("task %d: %w", task.ID, ErrMediaSyncTimeoutStopped)
+		case errors.Is(context.Cause(executionCtx), ErrMediaAccountSlotLost):
+			return fmt.Errorf("task %d: %w", task.ID, context.Cause(executionCtx))
 		case errors.Is(context.Cause(executionCtx), ErrMediaWorkerLeaseLost):
 			return fmt.Errorf("task %d: %w", task.ID, context.Cause(executionCtx))
 		case ctx.Err() != nil:
@@ -419,13 +445,24 @@ func (w *MediaWorker) ProcessOne(ctx context.Context, taskID int64) error {
 		}
 	}
 	if failure != nil {
+		if err := active.ensureAccountSlotOwned(ctx); err != nil {
+			active.closeAccountSlot()
+			return err
+		}
+		active.closeAccountSlot()
 		return w.completeFailure(ctx, task, failure, trace, active, stopLeaseRenewer)
 	}
 	if result == nil {
+		active.closeAccountSlot()
 		return errors.New("media adapter completed without a result")
 	}
 	completeErr := w.completeSuccess(taskCtx, task, result, trace, active, stopLeaseRenewer)
 	if completeErr != nil && errors.Is(context.Cause(taskCtx), ErrMediaTaskDeadlineExceeded) && ctx.Err() == nil && !task.Status.IsTerminal() {
+		if ownershipErr := active.ensureAccountSlotOwned(ctx); ownershipErr != nil {
+			active.closeAccountSlot()
+			return ownershipErr
+		}
+		active.closeAccountSlot()
 		return w.completeFailure(ctx, task, &mediaExecutionFailure{
 			settlement: MediaFailureSettlement{Kind: MediaFailureKindSystem, RefundRatio: 1, ErrorCode: "system_timeout"},
 			message:    "media task exceeded deployment timeout",
@@ -466,7 +503,7 @@ func (w *MediaWorker) execute(ctx context.Context, task *MediaTask, active *medi
 	for len(excluded) < len(candidates) {
 		selection, selectErr := w.deps.Scheduler.Select(ctx, MediaScheduleRequest{
 			GroupID: task.GroupID, RequestedModel: task.RequestedModel, Operation: task.Operation,
-			SessionHash: task.RequestFingerprint, SlotID: MediaTaskSlotID(task.PublicID),
+			SessionHash: task.RequestFingerprint, SlotID: MediaTaskSlotID(task.ID),
 			ExcludedAccountIDs: excluded, CandidateSnapshot: candidates,
 		})
 		if selectErr != nil {
@@ -479,7 +516,7 @@ func (w *MediaWorker) execute(ctx context.Context, task *MediaTask, active *medi
 			}
 			return nil, systemMediaFailure("system_scheduler", "no media account is available"), nil
 		}
-		release, acquireErr := w.acquireSelection(ctx, selection)
+		acquireErr := w.acquireSelection(ctx, task, active, selection)
 		if acquireErr != nil {
 			w.observeStage(task, trace, MediaTaskStageScheduling, stageStarted)
 			if ctx.Err() != nil {
@@ -488,16 +525,14 @@ func (w *MediaWorker) execute(ctx context.Context, task *MediaTask, active *medi
 			return nil, systemMediaFailure("system_scheduler", "media account concurrency is unavailable"), nil
 		}
 		w.observeStage(task, trace, MediaTaskStageScheduling, stageStarted)
-		result, failure, retry, executeErr := func() (*MediaGenerateResult, *mediaExecutionFailure, bool, error) {
-			defer release()
-			return w.executeSelected(ctx, task, active, trace, spec, definition, selection)
-		}()
+		result, failure, retry, executeErr := w.executeSelected(ctx, task, active, trace, spec, definition, selection)
 		if executeErr != nil {
 			return nil, nil, executeErr
 		}
 		if !retry {
 			return result, failure, nil
 		}
+		active.closeAccountSlot()
 		lastFailure = failure
 		excluded[selection.Account.ID] = struct{}{}
 		task.RetryCount++
@@ -569,11 +604,10 @@ func (w *MediaWorker) resumeUnknownSubmission(
 	if err != nil {
 		return nil, systemMediaFailure("system_model", "stored media model is unavailable"), nil
 	}
-	selection, release, err := w.acquireFixedSelection(ctx, task)
+	selection, err := w.acquireFixedSelection(ctx, task, active)
 	if err != nil {
 		return nil, nil, err
 	}
-	defer release()
 	result, failure, _, executeErr := w.executeSelected(ctx, task, active, trace, spec, definition, selection)
 	return result, failure, executeErr
 }
@@ -725,11 +759,10 @@ func (w *MediaWorker) resumePolling(ctx context.Context, task *MediaTask, active
 	if err := ctx.Err(); err != nil {
 		return nil, nil, err
 	}
-	selection, release, err := w.acquireFixedSelection(ctx, task)
+	selection, err := w.acquireFixedSelection(ctx, task, active)
 	if err != nil {
 		return nil, nil, err
 	}
-	defer release()
 	if active.bind(MediaExecutionPathNativeAsync, selection.Account, adapter, task.UpstreamTaskID, task.PollMetadata) {
 		w.abortActiveUpstream(task.ID, active)
 		if err := ctx.Err(); err != nil {
@@ -766,25 +799,25 @@ func (w *MediaWorker) bindPersistedUpstreamForCleanup(ctx context.Context, task 
 	return nil
 }
 
-func (w *MediaWorker) acquireFixedSelection(ctx context.Context, task *MediaTask) (*MediaAccountSelection, func(), error) {
+func (w *MediaWorker) acquireFixedSelection(ctx context.Context, task *MediaTask, active *mediaActiveExecution) (*MediaAccountSelection, error) {
 	if task == nil || task.AccountID == nil {
-		return nil, nil, ErrNoAvailableAccounts
+		return nil, ErrNoAvailableAccounts
 	}
 	selection, err := w.deps.Scheduler.SelectFixed(ctx, MediaFixedAccountRequest{
 		AccountID: *task.AccountID, GroupID: task.GroupID, SessionHash: task.PublicID,
-		SlotID: MediaTaskSlotID(task.PublicID),
+		SlotID: MediaTaskSlotID(task.ID),
 	})
 	if err != nil {
-		return nil, nil, fmt.Errorf("select fixed media account %d: %w", *task.AccountID, err)
+		return nil, fmt.Errorf("select fixed media account %d: %w", *task.AccountID, err)
 	}
 	selection.ResolvedModel = ResolvedMediaAccountModel{
 		Adapter: task.Adapter, UpstreamModel: task.UpstreamModel, NativeAsyncMode: task.NativeAsyncMode,
 	}
-	release, err := w.acquireSelection(ctx, selection)
+	err = w.acquireSelection(ctx, task, active, selection)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
-	return selection, release, nil
+	return selection, nil
 }
 
 func (w *MediaWorker) poll(ctx context.Context, task *MediaTask, account *Account, adapter MediaAdapter, trace *mediaExecutionTrace) (*MediaGenerateResult, *mediaExecutionFailure, error) {
@@ -874,9 +907,22 @@ func (w *MediaWorker) completeSuccess(
 		return err
 	}
 	task.Stage = MediaTaskStageStoring
+	if err := active.ensureAccountSlotOwned(ctx); err != nil {
+		return err
+	}
 	_, err := w.deps.Artifacts.PersistOutputs(ctx, task, result.Artifacts)
 	w.observeStage(task, trace, MediaTaskStageStoring, stageStarted)
+	if err == nil {
+		if ownershipErr := active.ensureAccountSlotOwned(ctx); ownershipErr != nil {
+			active.closeAccountSlot()
+			return ownershipErr
+		}
+	}
+	active.closeAccountSlot()
 	if err != nil {
+		if cause := context.Cause(active.ctx); errors.Is(cause, ErrMediaAccountSlotLost) {
+			return cause
+		}
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
@@ -1096,24 +1142,38 @@ func (w *MediaWorker) validateDependencies() error {
 	return nil
 }
 
-func (w *MediaWorker) acquireSelection(ctx context.Context, selection *MediaAccountSelection) (func(), error) {
+func (w *MediaWorker) acquireSelection(ctx context.Context, task *MediaTask, active *mediaActiveExecution, selection *MediaAccountSelection) error {
 	if selection == nil {
-		return nil, ErrNoAvailableAccounts
+		return ErrNoAvailableAccounts
 	}
+	var lease *AcquireResult
 	if selection.Acquired {
-		if selection.ReleaseFunc == nil {
-			return nil, ErrAccountConcurrencySaturated
+		if selection.ReleaseFunc == nil || selection.RefreshFunc == nil {
+			if selection.ReleaseFunc != nil {
+				selection.ReleaseFunc()
+			}
+			return ErrStableAccountSlotUnsupported
 		}
-		return selection.ReleaseFunc, nil
+		lease = &AcquireResult{Acquired: true, ReleaseFunc: selection.ReleaseFunc, RefreshFunc: selection.RefreshFunc}
+	} else {
+		var err error
+		lease, err = w.deps.Scheduler.WaitForSlot(ctx, selection)
+		if err != nil {
+			return fmt.Errorf("wait for media account slot: %w", err)
+		}
 	}
-	release, err := w.deps.Scheduler.WaitForSlot(ctx, selection)
-	if err != nil {
-		return nil, fmt.Errorf("wait for media account slot: %w", err)
+	if lease == nil || !lease.Acquired || lease.ReleaseFunc == nil || lease.RefreshFunc == nil {
+		if lease != nil && lease.ReleaseFunc != nil {
+			lease.ReleaseFunc()
+		}
+		return ErrStableAccountSlotUnsupported
 	}
-	if release == nil {
-		return nil, ErrAccountConcurrencySaturated
+	if task == nil || task.ID <= 0 || active == nil {
+		lease.ReleaseFunc()
+		return ErrInvalidConcurrencySlotID
 	}
-	return release, nil
+	active.replaceAccountSlot(newMediaAccountSlotGuard(w, active, task.ID, lease.RefreshFunc, lease.ReleaseFunc))
+	return nil
 }
 
 func (w *MediaWorker) updateClaimed(ctx context.Context, task *MediaTask, updates map[string]any) error {
@@ -1168,6 +1228,122 @@ func (w *MediaWorker) startLeaseRenewer(ctx context.Context, active *mediaActive
 	return done
 }
 
+func newMediaAccountSlotGuard(
+	worker *MediaWorker,
+	active *mediaActiveExecution,
+	taskID int64,
+	refresh func(context.Context) (bool, error),
+	release func(),
+) *mediaAccountSlotGuard {
+	ctx, cancel := context.WithCancel(active.ctx)
+	guard := &mediaAccountSlotGuard{
+		worker: worker, active: active, taskID: taskID, refresh: refresh, release: release,
+		ctx: ctx, cancel: cancel, done: make(chan struct{}),
+	}
+	go guard.run(worker.cfg.LeaseRenewInterval)
+	return guard
+}
+
+func (g *mediaAccountSlotGuard) run(interval time.Duration) {
+	defer close(g.done)
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-g.ctx.Done():
+			return
+		case <-ticker.C:
+			if err := g.refreshOwned(g.ctx, interval); err != nil {
+				if g.closed.Load() || g.ctx.Err() != nil {
+					return
+				}
+				g.lose(err)
+				return
+			}
+		}
+	}
+}
+
+func (g *mediaAccountSlotGuard) EnsureOwned(ctx context.Context) error {
+	if g == nil {
+		return nil
+	}
+	if err := g.currentLoss(); err != nil {
+		return err
+	}
+	if err := g.refreshOwned(ctx, g.worker.cfg.LeaseRenewInterval); err != nil {
+		if g.closed.Load() {
+			return context.Canceled
+		}
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		return g.lose(err)
+	}
+	return nil
+}
+
+func (g *mediaAccountSlotGuard) refreshOwned(ctx context.Context, timeout time.Duration) error {
+	g.refreshMu.Lock()
+	defer g.refreshMu.Unlock()
+	if err := g.currentLoss(); err != nil {
+		return err
+	}
+	if g.closed.Load() {
+		return context.Canceled
+	}
+	callCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	owned, err := callMediaAccountSlotRefresh(g.refresh, callCtx)
+	if err != nil {
+		return fmt.Errorf("refresh stable media account slot: %w", err)
+	}
+	if !owned {
+		return errors.New("stable media account slot refresh rejected")
+	}
+	return nil
+}
+
+func callMediaAccountSlotRefresh(refresh func(context.Context) (bool, error), ctx context.Context) (owned bool, err error) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			owned = false
+			err = fmt.Errorf("stable media account slot refresh panic: %v", recovered)
+		}
+	}()
+	return refresh(ctx)
+}
+
+func (g *mediaAccountSlotGuard) lose(cause error) error {
+	g.lostOnce.Do(func() {
+		lost := fmt.Errorf("%w: task %d: %w", ErrMediaAccountSlotLost, g.taskID, cause)
+		g.lostMu.Lock()
+		g.lostErr = lost
+		g.lostMu.Unlock()
+		g.active.cancel(lost)
+		g.worker.reportError(lost)
+	})
+	return g.currentLoss()
+}
+
+func (g *mediaAccountSlotGuard) currentLoss() error {
+	g.lostMu.RLock()
+	defer g.lostMu.RUnlock()
+	return g.lostErr
+}
+
+func (g *mediaAccountSlotGuard) Close() {
+	if g == nil {
+		return
+	}
+	g.closeOnce.Do(func() {
+		g.closed.Store(true)
+		g.cancel()
+		<-g.done
+		g.release()
+	})
+}
+
 func (w *MediaWorker) registerActive(taskID int64, active *mediaActiveExecution) bool {
 	w.activeMu.Lock()
 	defer w.activeMu.Unlock()
@@ -1207,6 +1383,48 @@ func (a *mediaActiveExecution) bind(path MediaExecutionPath, account *Account, a
 	a.upstreamTaskID = upstreamTaskID
 	a.pollMetadata = append(json.RawMessage(nil), pollMetadata...)
 	return a.stopRequested && a.hasAbortTargetLocked()
+}
+
+func (a *mediaActiveExecution) replaceAccountSlot(slot *mediaAccountSlotGuard) {
+	if a == nil {
+		if slot != nil {
+			slot.Close()
+		}
+		return
+	}
+	a.slotMu.Lock()
+	previous := a.slot
+	a.slot = slot
+	a.slotMu.Unlock()
+	if previous != nil {
+		previous.Close()
+	}
+}
+
+func (a *mediaActiveExecution) closeAccountSlot() {
+	if a == nil {
+		return
+	}
+	a.slotMu.Lock()
+	slot := a.slot
+	a.slot = nil
+	a.slotMu.Unlock()
+	if slot != nil {
+		slot.Close()
+	}
+}
+
+func (a *mediaActiveExecution) ensureAccountSlotOwned(ctx context.Context) error {
+	if a == nil {
+		return nil
+	}
+	a.slotMu.Lock()
+	slot := a.slot
+	a.slotMu.Unlock()
+	if slot == nil {
+		return nil
+	}
+	return slot.EnsureOwned(ctx)
 }
 
 func (a *mediaActiveExecution) requestStop() bool {
@@ -1407,6 +1625,8 @@ func stableMediaWorkerErrorCode(err error, fallback string) string {
 		return "settlement_plan_conflict"
 	case errors.Is(err, ErrMediaSettlementCASConflict):
 		return "settlement_cas_conflict"
+	case errors.Is(err, ErrMediaAccountSlotLost):
+		return "slot_lost"
 	case errors.Is(err, ErrMediaWorkerLeaseLost):
 		return "lease_lost"
 	case errors.Is(err, ErrMediaTaskNotClaimed):

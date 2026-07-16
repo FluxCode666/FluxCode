@@ -33,6 +33,10 @@ type stubConcurrencyCacheForTest struct {
 	releasedAccountIDs []int64
 	releasedRequestIDs []string
 	acquiredRequestIDs []string
+	stableLogicalIDs   []string
+	stableEpochs       []string
+	refreshResults     []bool
+	refreshedMembers   []string
 }
 
 var _ ConcurrencyCache = (*stubConcurrencyCacheForTest)(nil)
@@ -40,6 +44,20 @@ var _ ConcurrencyCache = (*stubConcurrencyCacheForTest)(nil)
 func (c *stubConcurrencyCacheForTest) AcquireAccountSlot(_ context.Context, _ int64, _ int, requestID string) (bool, error) {
 	c.acquiredRequestIDs = append(c.acquiredRequestIDs, requestID)
 	return c.acquireResult, c.acquireErr
+}
+func (c *stubConcurrencyCacheForTest) AcquireStableAccountSlot(_ context.Context, _ int64, _ int, logicalSlotID, epoch string) (bool, error) {
+	c.stableLogicalIDs = append(c.stableLogicalIDs, logicalSlotID)
+	c.stableEpochs = append(c.stableEpochs, epoch)
+	return c.acquireResult, c.acquireErr
+}
+func (c *stubConcurrencyCacheForTest) RefreshAccountSlot(_ context.Context, _ int64, member string) (bool, error) {
+	c.refreshedMembers = append(c.refreshedMembers, member)
+	if len(c.refreshResults) == 0 {
+		return true, nil
+	}
+	refreshed := c.refreshResults[0]
+	c.refreshResults = c.refreshResults[1:]
+	return refreshed, nil
 }
 func (c *stubConcurrencyCacheForTest) ReleaseAccountSlot(_ context.Context, accountID int64, requestID string) error {
 	c.releasedAccountIDs = append(c.releasedAccountIDs, accountID)
@@ -159,10 +177,14 @@ func TestAcquireAccountSlotWithIDUnlimitedConcurrencyDoesNotTouchCache(t *testin
 	svc := NewConcurrencyService(cache)
 
 	for _, maxConcurrency := range []int{0, -1} {
-		result, err := svc.AcquireAccountSlotWithID(context.Background(), 1, maxConcurrency, MediaTaskSlotID("unlimited"))
+		result, err := svc.AcquireAccountSlotWithID(context.Background(), 1, maxConcurrency, MediaTaskSlotID(1))
 		require.NoError(t, err)
 		require.True(t, result.Acquired)
 		require.NotNil(t, result.ReleaseFunc)
+		require.NotNil(t, result.RefreshFunc)
+		refreshed, refreshErr := result.RefreshFunc(context.Background())
+		require.NoError(t, refreshErr)
+		require.True(t, refreshed)
 		result.ReleaseFunc()
 		result.ReleaseFunc()
 	}
@@ -196,11 +218,11 @@ func TestAcquireAccountSlot_ReleaseDecrements(t *testing.T) {
 	require.NotEmpty(t, cache.releasedRequestIDs[0], "requestID 不应为空")
 }
 
-func TestAcquireAccountSlotWithIDUsesStableMemberAndIdempotentRelease(t *testing.T) {
-	cache := &stubConcurrencyCacheForTest{acquireResult: true}
+func TestAcquireAccountSlotWithIDUsesFencedEpochAndIdempotentRelease(t *testing.T) {
+	cache := &stubConcurrencyCacheForTest{acquireResult: true, refreshResults: []bool{false, true}}
 	firstService := NewConcurrencyService(cache)
 	secondService := NewConcurrencyService(cache)
-	slotID := MediaTaskSlotID(" task_public_id ")
+	slotID := MediaTaskSlotID(42)
 
 	first, err := firstService.AcquireAccountSlotWithID(context.Background(), 42, 1, slotID)
 	require.NoError(t, err)
@@ -208,11 +230,25 @@ func TestAcquireAccountSlotWithIDUsesStableMemberAndIdempotentRelease(t *testing
 	second, err := secondService.AcquireAccountSlotWithID(context.Background(), 42, 1, slotID)
 	require.NoError(t, err)
 	require.True(t, second.Acquired)
-	require.Equal(t, []string{"media-task:task_public_id", "media-task:task_public_id"}, cache.acquiredRequestIDs)
+	require.Equal(t, []string{"media-task:42", "media-task:42"}, cache.stableLogicalIDs)
+	require.Len(t, cache.stableEpochs, 2)
+	require.NotEmpty(t, cache.stableEpochs[0])
+	require.NotEqual(t, cache.stableEpochs[0], cache.stableEpochs[1])
 
+	firstOwned, err := first.RefreshFunc(context.Background())
+	require.NoError(t, err)
+	require.False(t, firstOwned)
+	secondOwned, err := second.RefreshFunc(context.Background())
+	require.NoError(t, err)
+	require.True(t, secondOwned)
+
+	first.ReleaseFunc()
+	first.ReleaseFunc()
 	second.ReleaseFunc()
 	second.ReleaseFunc()
-	require.Equal(t, []string{"media-task:task_public_id"}, cache.releasedRequestIDs)
+	require.Len(t, cache.releasedRequestIDs, 2)
+	require.NotEqual(t, cache.releasedRequestIDs[0], cache.releasedRequestIDs[1])
+	require.Equal(t, cache.releasedRequestIDs, cache.refreshedMembers)
 }
 
 func TestAcquireAccountSlotWithoutIDKeepsRandomRequestIDs(t *testing.T) {
@@ -231,17 +267,12 @@ func TestAcquireAccountSlotWithoutIDKeepsRandomRequestIDs(t *testing.T) {
 	second.ReleaseFunc()
 }
 
-func TestMediaTaskSlotIDRejectsEmptyAndPrefixesPublicID(t *testing.T) {
-	require.Empty(t, MediaTaskSlotID("   "))
-	require.Equal(t, "media-task:public-1", MediaTaskSlotID(" public-1 "))
-	require.Equal(t, "media-task:media-task:public-1", MediaTaskSlotID("media-task:public-1"))
-}
-
-func TestMediaTaskSlotIDDoesNotCollideWithPrefixedPublicID(t *testing.T) {
-	plain := MediaTaskSlotID("public-1")
-	prefixed := MediaTaskSlotID("media-task:public-1")
-	require.NotEqual(t, plain, prefixed)
-	require.Equal(t, "media-task:media-task:public-1", prefixed)
+func TestMediaTaskSlotIDUsesPositiveDatabaseID(t *testing.T) {
+	require.Empty(t, MediaTaskSlotID(0))
+	require.Empty(t, MediaTaskSlotID(-1))
+	require.Equal(t, "media-task:1", MediaTaskSlotID(1))
+	require.Equal(t, "media-task:2", MediaTaskSlotID(2))
+	require.NotEqual(t, MediaTaskSlotID(1), MediaTaskSlotID(2))
 }
 
 func TestAcquireUserSlot_IndependentFromAccount(t *testing.T) {

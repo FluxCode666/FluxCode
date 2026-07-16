@@ -76,6 +76,60 @@ var (
 		return 0
 	`)
 
+	// acquireStableAccountSlotScript 在单个账号 ZSET 内原子接管 logical owner。
+	// KEYS[1] = 账号槽位 ZSET
+	// ARGV[1] = maxConcurrency
+	// ARGV[2] = TTL（秒）
+	// ARGV[3] = logical owner prefix（含 # 分隔符）
+	// ARGV[4] = 新的精确 epoch member
+	acquireStableAccountSlotScript = redis.NewScript(`
+		local key = KEYS[1]
+		local maxConcurrency = tonumber(ARGV[1])
+		local ttl = tonumber(ARGV[2])
+		local logicalPrefix = ARGV[3]
+		local member = ARGV[4]
+
+		local timeResult = redis.call('TIME')
+		local now = tonumber(timeResult[1])
+		local expireBefore = now - ttl
+		redis.call('ZREMRANGEBYSCORE', key, '-inf', expireBefore)
+
+		local replaced = false
+		local members = redis.call('ZRANGE', key, 0, -1)
+		for _, existing in ipairs(members) do
+			if string.sub(existing, 1, string.len(logicalPrefix)) == logicalPrefix then
+				redis.call('ZREM', key, existing)
+				replaced = true
+			end
+		end
+
+		if not replaced and redis.call('ZCARD', key) >= maxConcurrency then
+			return 0
+		end
+
+		redis.call('ZADD', key, now, member)
+		redis.call('EXPIRE', key, ttl)
+		return 1
+	`)
+
+	// refreshAccountSlotScript 只刷新当前精确 epoch member；被接管的旧 epoch 返回 0。
+	// KEYS[1] = 账号槽位 ZSET
+	// ARGV[1] = TTL（秒）
+	// ARGV[2] = 精确 epoch member
+	refreshAccountSlotScript = redis.NewScript(`
+		local key = KEYS[1]
+		local ttl = tonumber(ARGV[1])
+		local member = ARGV[2]
+		if redis.call('ZSCORE', key, member) == false then
+			return 0
+		end
+		local timeResult = redis.call('TIME')
+		local now = tonumber(timeResult[1])
+		redis.call('ZADD', key, now, member)
+		redis.call('EXPIRE', key, ttl)
+		return 1
+	`)
+
 	// getCountScript 统计有序集合中的槽位数量并清理过期条目
 	// 使用 Redis TIME 命令获取服务器时间
 	// KEYS[1] = 有序集合键
@@ -238,6 +292,34 @@ func (c *concurrencyCache) AcquireAccountSlot(ctx context.Context, accountID int
 	key := accountSlotKey(accountID)
 	// 时间戳在 Lua 脚本内使用 Redis TIME 命令获取，确保多实例时钟一致
 	result, err := acquireScript.Run(ctx, c.rdb, []string{key}, maxConcurrency, c.slotTTLSeconds, requestID).Int()
+	if err != nil {
+		return false, err
+	}
+	return result == 1, nil
+}
+
+func (c *concurrencyCache) AcquireStableAccountSlot(ctx context.Context, accountID int64, maxConcurrency int, logicalSlotID, epoch string) (bool, error) {
+	key := accountSlotKey(accountID)
+	logicalPrefix := logicalSlotID + "#"
+	member := logicalPrefix + epoch
+	result, err := acquireStableAccountSlotScript.Run(
+		ctx,
+		c.rdb,
+		[]string{key},
+		maxConcurrency,
+		c.slotTTLSeconds,
+		logicalPrefix,
+		member,
+	).Int()
+	if err != nil {
+		return false, err
+	}
+	return result == 1, nil
+}
+
+func (c *concurrencyCache) RefreshAccountSlot(ctx context.Context, accountID int64, member string) (bool, error) {
+	key := accountSlotKey(accountID)
+	result, err := refreshAccountSlotScript.Run(ctx, c.rdb, []string{key}, c.slotTTLSeconds, member).Int()
 	if err != nil {
 		return false, err
 	}

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -44,7 +45,19 @@ func TestMediaWorkerExecutionMatrix(t *testing.T) {
 func TestMediaWorkerInitialExecutionUsesStableTaskSlotID(t *testing.T) {
 	fixture := newMediaWorkerFixture(t, true, NativeAsyncRequired)
 	require.NoError(t, fixture.worker.ProcessOne(context.Background(), fixture.task.ID))
-	require.Equal(t, MediaTaskSlotID(fixture.task.PublicID), fixture.selector.lastStableSlotID())
+	require.Equal(t, MediaTaskSlotID(fixture.task.ID), fixture.selector.lastStableSlotID())
+}
+
+func TestMediaWorkerStableSlotIgnoresPublicIDWhitespaceAndSubmitPreservesPublicID(t *testing.T) {
+	fixture := newMediaWorkerFixture(t, true, NativeAsyncRequired)
+	publicID := "  public task id  "
+	fixture.repo.mu.Lock()
+	fixture.repo.tasks[fixture.task.ID].PublicID = publicID
+	fixture.repo.mu.Unlock()
+
+	require.NoError(t, fixture.worker.ProcessOne(context.Background(), fixture.task.ID))
+	require.Equal(t, MediaTaskSlotID(fixture.task.ID), fixture.selector.lastStableSlotID())
+	require.Equal(t, publicID, fixture.adapter.lastRequest().IdempotencyKey)
 }
 
 func TestMediaWorkerInitialExecutionAllowsUnlimitedAccountConcurrency(t *testing.T) {
@@ -233,6 +246,158 @@ func TestMediaWorkerRenewsLeaseWhilePolling(t *testing.T) {
 	require.NoError(t, <-done)
 }
 
+func TestMediaWorkerRefreshesStableAccountSlotWhilePollingAndStopsBeforeRelease(t *testing.T) {
+	fixture := newMediaWorkerFixture(t, true, NativeAsyncRequired)
+	fixture.worker.cfg.LeaseRenewInterval = 5 * time.Millisecond
+	fixture.adapter.blockPollUntil(fixture.releasePoll)
+	done := make(chan error, 1)
+	go func() { done <- fixture.worker.ProcessOne(context.Background(), fixture.task.ID) }()
+
+	require.Eventually(t, func() bool {
+		return fixture.selector.refreshCalls.Load() >= 3
+	}, time.Second, time.Millisecond)
+	close(fixture.releasePoll)
+	require.NoError(t, <-done)
+	require.Equal(t, int64(1), fixture.selector.releaseCalls.Load())
+	require.False(t, fixture.selector.releaseWhileRefreshing.Load())
+	refreshCalls := fixture.selector.refreshCalls.Load()
+	time.Sleep(4 * fixture.worker.cfg.LeaseRenewInterval)
+	require.Equal(t, refreshCalls, fixture.selector.refreshCalls.Load())
+}
+
+func TestMediaWorkerReleasesStableAccountSlotBeforeTerminalSettlement(t *testing.T) {
+	fixture := newMediaWorkerFixture(t, false, NativeAsyncUnsupported)
+	fixture.worker.cfg.LeaseRenewInterval = 5 * time.Millisecond
+	persistRelease := make(chan struct{})
+	fixture.artifactWriter.block = persistRelease
+	blocking := &blockingSettlementCoordinator{
+		inner: fixture.billing, entered: make(chan struct{}), release: make(chan struct{}),
+	}
+	fixture.worker.deps.Billing = blocking
+	t.Cleanup(func() {
+		select {
+		case <-persistRelease:
+		default:
+			close(persistRelease)
+		}
+		select {
+		case <-blocking.release:
+		default:
+			close(blocking.release)
+		}
+	})
+	done := make(chan error, 1)
+	go func() { done <- fixture.worker.ProcessOne(context.Background(), fixture.task.ID) }()
+
+	require.Eventually(t, func() bool {
+		return fixture.selector.refreshCalls.Load() >= 2
+	}, time.Second, time.Millisecond)
+	close(persistRelease)
+	select {
+	case <-blocking.entered:
+	case <-time.After(time.Second):
+		t.Fatal("expected terminal settlement to start")
+	}
+	require.Equal(t, int64(1), fixture.selector.releaseCalls.Load())
+	require.False(t, fixture.selector.releaseWhileRefreshing.Load())
+	refreshCalls := fixture.selector.refreshCalls.Load()
+	time.Sleep(4 * fixture.worker.cfg.LeaseRenewInterval)
+	require.Equal(t, refreshCalls, fixture.selector.refreshCalls.Load())
+	close(blocking.release)
+	require.NoError(t, <-done)
+}
+
+func TestMediaWorkerRefreshesStableAccountSlotAcquiredAfterWait(t *testing.T) {
+	fixture := newMediaWorkerFixture(t, true, NativeAsyncRequired)
+	fixture.worker.cfg.LeaseRenewInterval = 5 * time.Millisecond
+	waitEntered := make(chan struct{})
+	releaseWait := make(chan struct{})
+	fixture.selector.configureWait(waitEntered, releaseWait)
+	fixture.adapter.blockPollUntil(fixture.releasePoll)
+	done := make(chan error, 1)
+	go func() { done <- fixture.worker.ProcessOne(context.Background(), fixture.task.ID) }()
+
+	select {
+	case <-waitEntered:
+	case <-time.After(time.Second):
+		t.Fatal("expected stable media account slot wait")
+	}
+	close(releaseWait)
+	require.Eventually(t, func() bool {
+		return fixture.selector.refreshCalls.Load() >= 2
+	}, time.Second, time.Millisecond)
+	close(fixture.releasePoll)
+	require.NoError(t, <-done)
+	require.Equal(t, int64(1), fixture.selector.waitCalls.Load())
+	require.Equal(t, int64(1), fixture.selector.releaseCalls.Load())
+}
+
+func TestMediaWorkerSlotOwnershipLossCancelsPollingWithoutTerminalStateOrAck(t *testing.T) {
+	fixture := newMediaWorkerFixture(t, true, NativeAsyncRequired)
+	fixture.worker.cfg.LeaseRenewInterval = 5 * time.Millisecond
+	fixture.selector.configureRefresh(false, nil, "")
+	fixture.adapter.blockPollUntil(make(chan struct{}))
+
+	err := fixture.worker.processMessage(context.Background(), &MediaQueueMessage{TaskID: fixture.task.ID})
+	require.ErrorIs(t, err, ErrMediaAccountSlotLost)
+	require.GreaterOrEqual(t, fixture.selector.refreshCalls.Load(), int64(1))
+	require.Equal(t, int64(1), fixture.selector.releaseCalls.Load())
+	require.Equal(t, MediaTaskStatusInProgress, fixture.repo.mustGet(fixture.task.ID).Status)
+	require.Zero(t, fixture.billing.settlementCalls())
+	require.Zero(t, fixture.queue.publishCalls.Load())
+	require.Zero(t, fixture.queue.ackCalls.Load())
+}
+
+func TestMediaWorkerSlotRefreshErrorIsReportedWithoutLeakingSensitiveDetails(t *testing.T) {
+	fixture := newMediaWorkerFixture(t, true, NativeAsyncRequired)
+	fixture.worker.cfg.LeaseRenewInterval = 5 * time.Millisecond
+	var output bytes.Buffer
+	fixture.worker.logger = slog.New(slog.NewJSONHandler(&output, nil))
+	sensitive := "redis refresh failed token=slot-secret"
+	fixture.selector.configureRefresh(false, errors.New(sensitive), "")
+	fixture.adapter.blockPollUntil(make(chan struct{}))
+	fixture.queue.deliver(&MediaQueueMessage{ID: "slot-lost", TaskID: fixture.task.ID, Priority: MediaQueuePriorityAsync})
+
+	require.NoError(t, fixture.worker.Start())
+	t.Cleanup(fixture.worker.Stop)
+	require.Eventually(t, func() bool {
+		return fixture.selector.releaseCalls.Load() == 1
+	}, time.Second, time.Millisecond)
+	fixture.worker.Stop()
+	require.Zero(t, fixture.queue.ackCalls.Load())
+	require.Equal(t, MediaTaskStatusInProgress, fixture.repo.mustGet(fixture.task.ID).Status)
+	require.Zero(t, fixture.billing.settlementCalls())
+	require.Contains(t, output.String(), `"error_code":"slot_lost"`)
+	require.NotContains(t, output.String(), sensitive)
+
+	var reported error
+	require.Eventually(t, func() bool {
+		select {
+		case reported = <-fixture.worker.Errors():
+			return errors.Is(reported, ErrMediaAccountSlotLost) && strings.Contains(reported.Error(), sensitive)
+		default:
+			return false
+		}
+	}, time.Second, time.Millisecond)
+}
+
+func TestMediaWorkerSlotRefreshPanicCancelsExecutionAndReleasesAfterHeartbeatStops(t *testing.T) {
+	fixture := newMediaWorkerFixture(t, true, NativeAsyncRequired)
+	fixture.worker.cfg.LeaseRenewInterval = 5 * time.Millisecond
+	fixture.selector.configureRefresh(false, nil, "refresh panic secret")
+	fixture.adapter.blockPollUntil(make(chan struct{}))
+
+	err := fixture.worker.ProcessOne(context.Background(), fixture.task.ID)
+	require.ErrorIs(t, err, ErrMediaAccountSlotLost)
+	require.Equal(t, int64(1), fixture.selector.releaseCalls.Load())
+	require.False(t, fixture.selector.releaseWhileRefreshing.Load())
+	refreshCalls := fixture.selector.refreshCalls.Load()
+	time.Sleep(4 * fixture.worker.cfg.LeaseRenewInterval)
+	require.Equal(t, refreshCalls, fixture.selector.refreshCalls.Load())
+	require.Equal(t, MediaTaskStatusInProgress, fixture.repo.mustGet(fixture.task.ID).Status)
+	require.Zero(t, fixture.billing.settlementCalls())
+}
+
 func TestMediaWorkerCancelsExecutionWhenLeaseIsLostBeforeTerminalTransition(t *testing.T) {
 	fixture := newMediaWorkerFixture(t, true, NativeAsyncRequired)
 	fixture.worker.cfg.LeaseRenewInterval = 10 * time.Millisecond
@@ -336,7 +501,7 @@ func TestMediaWorkerResumesExistingUpstreamTaskWithoutSubmit(t *testing.T) {
 	require.Equal(t, int64(1), fixture.selector.selectCalls.Load())
 	require.Equal(t, int64(1), fixture.selector.releaseCalls.Load())
 	require.Equal(t, fixture.task.PublicID, fixture.selector.lastSessionKey())
-	require.Equal(t, MediaTaskSlotID(fixture.task.PublicID), fixture.selector.lastStableSlotID())
+	require.Equal(t, MediaTaskSlotID(fixture.task.ID), fixture.selector.lastStableSlotID())
 	require.Equal(t, []int64{fixture.account.ID}, fixture.selector.lastCandidateAccountIDs())
 	require.Zero(t, fixture.adapter.submitCalls.Load())
 	require.GreaterOrEqual(t, fixture.adapter.pollCalls.Load(), int64(1))
@@ -522,7 +687,7 @@ func TestMediaWorkerRecoversUnknownSubmissionOnFixedIdempotentAdapter(t *testing
 	require.Equal(t, int64(1), fixture.selector.selectCalls.Load())
 	require.Equal(t, int64(1), fixture.selector.releaseCalls.Load())
 	require.Equal(t, fixture.task.PublicID, fixture.selector.lastSessionKey())
-	require.Equal(t, MediaTaskSlotID(fixture.task.PublicID), fixture.selector.lastStableSlotID())
+	require.Equal(t, MediaTaskSlotID(fixture.task.ID), fixture.selector.lastStableSlotID())
 	require.Equal(t, []int64{fixedAccount.ID}, fixture.selector.lastCandidateAccountIDs())
 	require.Zero(t, fixture.adapter.submitCalls.Load())
 	require.Equal(t, int64(1), fixedAdapter.submitCalls.Load())
@@ -1313,7 +1478,7 @@ func newMediaWorkerFixture(t *testing.T, clientAsync bool, mode NativeAsyncMode)
 	registry.Register(adapter.Name(), adapter)
 	account := &Account{ID: 7, Platform: PlatformOpenAI, Status: StatusActive, Schedulable: true, Concurrency: 1}
 	accountRepo := &workerAccountRepository{account: account}
-	selector := &workerSelector{}
+	selector := &workerSelector{refreshOwned: true}
 	scheduler := NewMediaScheduler(accountRepo, selector, registry)
 	modelRegistry := NewMediaModelRegistry(&workerModelRepository{definition: MediaModelDefinition{
 		ModelID: "fake-image", MediaType: MediaTypeImage, Operations: []MediaOperation{MediaOperationTextToImage}, Enabled: true,
@@ -1848,18 +2013,24 @@ func (r *workerAccountRepository) UpdateLastUsed(context.Context, int64) error {
 }
 
 type workerSelector struct {
-	selectCalls  atomic.Int64
-	releaseCalls atomic.Int64
-	waitCalls    atomic.Int64
-	waitMode     atomic.Bool
-	driftID      atomic.Int64
-	mu           sync.Mutex
-	lastSession  string
-	lastSlotID   string
-	lastIDs      []int64
-	waitEntered  chan struct{}
-	waitBlock    <-chan struct{}
-	waitOnce     sync.Once
+	selectCalls            atomic.Int64
+	releaseCalls           atomic.Int64
+	refreshCalls           atomic.Int64
+	refreshActive          atomic.Int64
+	releaseWhileRefreshing atomic.Bool
+	waitCalls              atomic.Int64
+	waitMode               atomic.Bool
+	driftID                atomic.Int64
+	mu                     sync.Mutex
+	lastSession            string
+	lastSlotID             string
+	lastIDs                []int64
+	waitEntered            chan struct{}
+	waitBlock              <-chan struct{}
+	waitOnce               sync.Once
+	refreshOwned           bool
+	refreshErr             error
+	refreshPanic           string
 }
 
 func (s *workerSelector) Select(_ context.Context, req AccountCandidateSelectionRequest) (*AccountSelectionResult, error) {
@@ -1889,7 +2060,10 @@ func (s *workerSelector) Select(_ context.Context, req AccountCandidateSelection
 			},
 		}, nil
 	}
-	return &AccountSelectionResult{Account: req.Candidates[0], Acquired: true, ReleaseFunc: func() { s.releaseCalls.Add(1) }}, nil
+	return &AccountSelectionResult{
+		Account: req.Candidates[0], Acquired: true,
+		ReleaseFunc: s.release, RefreshFunc: s.refresh,
+	}, nil
 }
 func (s *workerSelector) Wait(ctx context.Context, _ *AccountWaitPlan) (func(), error) {
 	s.waitCalls.Add(1)
@@ -1907,7 +2081,43 @@ func (s *workerSelector) Wait(ctx context.Context, _ *AccountWaitPlan) (func(), 
 			return nil, ctx.Err()
 		}
 	}
-	return func() { s.releaseCalls.Add(1) }, nil
+	return s.release, nil
+}
+
+func (s *workerSelector) WaitStable(ctx context.Context, plan *AccountWaitPlan) (*AcquireResult, error) {
+	release, err := s.Wait(ctx, plan)
+	if err != nil {
+		return nil, err
+	}
+	return &AcquireResult{Acquired: true, ReleaseFunc: release, RefreshFunc: s.refresh}, nil
+}
+
+func (s *workerSelector) refresh(context.Context) (bool, error) {
+	s.refreshCalls.Add(1)
+	s.refreshActive.Add(1)
+	defer s.refreshActive.Add(-1)
+	s.mu.Lock()
+	owned, err, panicMessage := s.refreshOwned, s.refreshErr, s.refreshPanic
+	s.mu.Unlock()
+	if panicMessage != "" {
+		panic(panicMessage)
+	}
+	return owned, err
+}
+
+func (s *workerSelector) release() {
+	if s.refreshActive.Load() != 0 {
+		s.releaseWhileRefreshing.Store(true)
+	}
+	s.releaseCalls.Add(1)
+}
+
+func (s *workerSelector) configureRefresh(owned bool, err error, panicMessage string) {
+	s.mu.Lock()
+	s.refreshOwned = owned
+	s.refreshErr = err
+	s.refreshPanic = panicMessage
+	s.mu.Unlock()
 }
 func (s *workerSelector) configureWait(entered chan struct{}, block <-chan struct{}) {
 	s.waitMode.Store(true)

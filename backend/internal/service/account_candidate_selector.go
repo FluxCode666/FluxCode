@@ -45,6 +45,10 @@ type accountSlotIDAcquirer interface {
 	AcquireAccountSlotWithID(ctx context.Context, accountID int64, maxConcurrency int, slotID string) (*AcquireResult, error)
 }
 
+type stableAccountCandidateWaiter interface {
+	WaitStable(ctx context.Context, plan *AccountWaitPlan) (*AcquireResult, error)
+}
+
 type accountCandidateSelector struct {
 	concurrency AccountCandidateConcurrency
 	cache       GatewayCache
@@ -294,7 +298,11 @@ func (s *accountCandidateSelector) acquire(ctx context.Context, account *Account
 		return nil, err
 	}
 	if s == nil || s.concurrency == nil {
-		return &AccountSelectionResult{Account: account, Acquired: true, ReleaseFunc: func() {}}, nil
+		result := &AccountSelectionResult{Account: account, Acquired: true, ReleaseFunc: func() {}}
+		if slotID != "" {
+			result.RefreshFunc = func(context.Context) (bool, error) { return true, nil }
+		}
+		return result, nil
 	}
 	var (
 		result *AcquireResult
@@ -316,10 +324,17 @@ func (s *accountCandidateSelector) acquire(ctx context.Context, account *Account
 	if result == nil || !result.Acquired {
 		return &AccountSelectionResult{Account: account}, nil
 	}
+	if result.ReleaseFunc == nil || (slotID != "" && result.RefreshFunc == nil) {
+		if result.ReleaseFunc != nil {
+			result.ReleaseFunc()
+		}
+		return nil, ErrStableAccountSlotUnsupported
+	}
 	return &AccountSelectionResult{
 		Account:     account,
 		Acquired:    true,
 		ReleaseFunc: idempotentRelease(result.ReleaseFunc),
+		RefreshFunc: result.RefreshFunc,
 	}, nil
 }
 
@@ -336,11 +351,26 @@ func idempotentRelease(release func()) func() {
 }
 
 func (s *accountCandidateSelector) Wait(ctx context.Context, plan *AccountWaitPlan) (func(), error) {
+	lease, err := s.waitForSlot(ctx, plan, false)
+	if err != nil {
+		return nil, err
+	}
+	return lease.ReleaseFunc, nil
+}
+
+func (s *accountCandidateSelector) WaitStable(ctx context.Context, plan *AccountWaitPlan) (*AcquireResult, error) {
+	return s.waitForSlot(ctx, plan, true)
+}
+
+func (s *accountCandidateSelector) waitForSlot(ctx context.Context, plan *AccountWaitPlan, stable bool) (*AcquireResult, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 	if s == nil || s.concurrency == nil || plan == nil || plan.AccountID <= 0 || plan.MaxConcurrency <= 0 || plan.MaxWaiting <= 0 || plan.Timeout <= 0 {
 		return nil, ErrAccountConcurrencySaturated
+	}
+	if stable != (plan.SlotID != "") {
+		return nil, ErrStableAccountSlotUnsupported
 	}
 	planCtx, cancel := context.WithTimeout(ctx, plan.Timeout)
 	defer cancel()
@@ -367,12 +397,12 @@ func (s *accountCandidateSelector) Wait(ctx context.Context, plan *AccountWaitPl
 		return nil, waitErr
 	}
 
-	tryAcquire := func() (func(), bool, error) {
+	tryAcquire := func() (*AcquireResult, bool, error) {
 		var (
 			result     *AcquireResult
 			acquireErr error
 		)
-		if plan.SlotID == "" {
+		if !stable {
 			result, acquireErr = s.concurrency.AcquireAccountSlot(planCtx, plan.AccountID, plan.MaxConcurrency)
 		} else if stable, ok := s.concurrency.(accountSlotIDAcquirer); ok {
 			result, acquireErr = stable.AcquireAccountSlotWithID(planCtx, plan.AccountID, plan.MaxConcurrency, plan.SlotID)
@@ -391,11 +421,21 @@ func (s *accountCandidateSelector) Wait(ctx context.Context, plan *AccountWaitPl
 		if result == nil || !result.Acquired {
 			return nil, false, nil
 		}
-		return idempotentRelease(result.ReleaseFunc), true, nil
+		if result.ReleaseFunc == nil || (stable && result.RefreshFunc == nil) {
+			if result.ReleaseFunc != nil {
+				result.ReleaseFunc()
+			}
+			return nil, false, ErrStableAccountSlotUnsupported
+		}
+		return &AcquireResult{
+			Acquired:    true,
+			ReleaseFunc: idempotentRelease(result.ReleaseFunc),
+			RefreshFunc: result.RefreshFunc,
+		}, true, nil
 	}
 
-	if release, acquired, acquireErr := tryAcquire(); acquired || acquireErr != nil {
-		return release, acquireErr
+	if lease, acquired, acquireErr := tryAcquire(); acquired || acquireErr != nil {
+		return lease, acquireErr
 	}
 
 	ticker := time.NewTicker(accountCandidateWaitPollInterval)
@@ -405,12 +445,12 @@ func (s *accountCandidateSelector) Wait(ctx context.Context, plan *AccountWaitPl
 		case <-planCtx.Done():
 			return nil, accountWaitContextError(ctx, planCtx)
 		case <-ticker.C:
-			release, acquired, acquireErr := tryAcquire()
+			lease, acquired, acquireErr := tryAcquire()
 			if acquireErr != nil {
 				return nil, acquireErr
 			}
 			if acquired {
-				return release, nil
+				return lease, nil
 			}
 		}
 	}

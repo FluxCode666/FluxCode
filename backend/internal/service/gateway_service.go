@@ -509,6 +509,7 @@ type AccountSelectionResult struct {
 	Account     *Account
 	Acquired    bool
 	ReleaseFunc func()
+	RefreshFunc func(ctx context.Context) (bool, error)
 	WaitPlan    *AccountWaitPlan // nil means no wait allowed
 }
 

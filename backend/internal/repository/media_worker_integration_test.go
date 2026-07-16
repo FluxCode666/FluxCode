@@ -203,10 +203,19 @@ func (*integrationWorkerAccounts) UpdateLastUsed(context.Context, int64) error {
 type integrationWorkerSelector struct{}
 
 func (*integrationWorkerSelector) Select(_ context.Context, req service.AccountCandidateSelectionRequest) (*service.AccountSelectionResult, error) {
-	return &service.AccountSelectionResult{Account: req.Candidates[0], Acquired: true, ReleaseFunc: func() {}}, nil
+	return &service.AccountSelectionResult{
+		Account: req.Candidates[0], Acquired: true, ReleaseFunc: func() {},
+		RefreshFunc: func(context.Context) (bool, error) { return true, nil },
+	}, nil
 }
 func (*integrationWorkerSelector) Wait(context.Context, *service.AccountWaitPlan) (func(), error) {
 	return func() {}, nil
+}
+func (*integrationWorkerSelector) WaitStable(context.Context, *service.AccountWaitPlan) (*service.AcquireResult, error) {
+	return &service.AcquireResult{
+		Acquired: true, ReleaseFunc: func() {},
+		RefreshFunc: func(context.Context) (bool, error) { return true, nil },
+	}, nil
 }
 
 type integrationWorkerModels struct{}
