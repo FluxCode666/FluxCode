@@ -89,6 +89,98 @@ func TestMediaWorkerRecoveryRequeuesSettlementPendingAtNormalPriority(t *testing
 	require.Equal(t, []MediaQueuePriority{MediaQueuePriorityAsync}, fixture.queue.enqueuedPriorities())
 }
 
+func TestMediaWorkerRecoveryStageMatrix(t *testing.T) {
+	fixedAccountID := int64(7)
+	tests := []struct {
+		name string
+		task MediaTask
+		want mediaTaskRecoveryMode
+	}{
+		{name: "queued task", task: MediaTask{Status: MediaTaskStatusQueued, Stage: MediaTaskStageQueued}, want: mediaTaskRecoveryReschedule},
+		{name: "claimed queued stage", task: MediaTask{Status: MediaTaskStatusInProgress, Stage: MediaTaskStageQueued}, want: mediaTaskRecoveryReschedule},
+		{name: "scheduling", task: MediaTask{Status: MediaTaskStatusInProgress, Stage: MediaTaskStageScheduling}, want: mediaTaskRecoveryReschedule},
+		{name: "submitting before fixed fields", task: MediaTask{Status: MediaTaskStatusInProgress, Stage: MediaTaskStageSubmitting}, want: mediaTaskRecoveryReschedule},
+		{name: "unknown fixed submission", task: MediaTask{
+			Status: MediaTaskStatusInProgress, Stage: MediaTaskStageSubmitting, AccountID: &fixedAccountID,
+			Adapter: "fixed", UpstreamModel: "fixed-model",
+		}, want: mediaTaskRecoveryUnknownSubmission},
+		{name: "unknown generating result", task: MediaTask{Status: MediaTaskStatusInProgress, Stage: MediaTaskStageGenerating}, want: mediaTaskRecoveryUnknownResult},
+		{name: "unknown storing result", task: MediaTask{Status: MediaTaskStatusInProgress, Stage: MediaTaskStageStoring}, want: mediaTaskRecoveryUnknownResult},
+		{name: "unknown settling result", task: MediaTask{Status: MediaTaskStatusInProgress, Stage: MediaTaskStageSettling}, want: mediaTaskRecoveryUnknownResult},
+		{name: "existing upstream wins", task: MediaTask{
+			Status: MediaTaskStatusInProgress, Stage: MediaTaskStageGenerating, UpstreamTaskID: "upstream-1",
+		}, want: mediaTaskRecoveryExistingUpstream},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, classifyMediaTaskRecovery(&tt.task))
+		})
+	}
+}
+
+func TestMediaWorkerFailsRecoveredGeneratingWithoutReexecution(t *testing.T) {
+	fixture := newMediaWorkerFixture(t, false, NativeAsyncUnsupported)
+	prepareRecoverableSyncStage(fixture, MediaTaskStageGenerating)
+	fixture.queue.deliver(&MediaQueueMessage{ID: "recover-generating", TaskID: fixture.task.ID, Priority: MediaQueuePrioritySync})
+
+	require.NoError(t, fixture.worker.Start())
+	t.Cleanup(fixture.worker.Stop)
+	require.Eventually(t, func() bool {
+		return fixture.repo.mustGet(fixture.task.ID).Status.IsTerminal()
+	}, time.Second, 10*time.Millisecond)
+	require.Eventually(t, func() bool { return fixture.queue.ackCalls.Load() == 1 }, time.Second, 10*time.Millisecond)
+
+	require.Zero(t, fixture.selector.selectCalls.Load())
+	require.Zero(t, fixture.adapter.syncCalls.Load())
+	require.Zero(t, fixture.artifactWriter.calls.Load())
+	stored := fixture.repo.mustGet(fixture.task.ID)
+	require.Equal(t, MediaTaskStatusFailed, stored.Status)
+	require.Equal(t, "upstream_generate_failed", stored.ErrorCode)
+	require.Equal(t, MediaFailureSettlement{
+		Kind: MediaFailureKindUpstream, RefundRatio: 1, ErrorCode: "upstream_generate_failed",
+	}, fixture.billing.lastFailure())
+	require.Equal(t, MediaBillingStatusSettled, stored.BillingStatus)
+	require.NotEmpty(t, stored.SettlementRecovery)
+	require.NotEmpty(t, stored.SettlementPlan)
+	require.True(t, mediaSettlementPlansEqual(stored.SettlementRecovery, stored.SettlementPlan))
+}
+
+func TestMediaWorkerFailsRecoveredStoringWithoutReexecution(t *testing.T) {
+	fixture := newMediaWorkerFixture(t, false, NativeAsyncUnsupported)
+	prepareRecoverableSyncStage(fixture, MediaTaskStageStoring)
+	existing := []MediaArtifact{{
+		TaskID: fixture.task.ID, Direction: "output", Position: 0, MediaType: MediaTypeImage,
+		ContentType: "image/png", SizeBytes: 123, StorageStatus: "stored",
+	}}
+	fixture.artifactWriter.outputs = map[int64][]MediaArtifact{fixture.task.ID: append([]MediaArtifact(nil), existing...)}
+	fixture.queue.deliver(&MediaQueueMessage{ID: "recover-storing", TaskID: fixture.task.ID, Priority: MediaQueuePrioritySync})
+
+	require.NoError(t, fixture.worker.Start())
+	t.Cleanup(fixture.worker.Stop)
+	require.Eventually(t, func() bool {
+		return fixture.repo.mustGet(fixture.task.ID).Status.IsTerminal()
+	}, time.Second, 10*time.Millisecond)
+	require.Eventually(t, func() bool { return fixture.queue.ackCalls.Load() == 1 }, time.Second, 10*time.Millisecond)
+
+	require.Zero(t, fixture.selector.selectCalls.Load())
+	require.Zero(t, fixture.adapter.syncCalls.Load())
+	require.Zero(t, fixture.artifactWriter.calls.Load())
+	fixture.artifactWriter.mu.Lock()
+	storedOutputs := append([]MediaArtifact(nil), fixture.artifactWriter.outputs[fixture.task.ID]...)
+	fixture.artifactWriter.mu.Unlock()
+	require.Equal(t, existing, storedOutputs)
+	stored := fixture.repo.mustGet(fixture.task.ID)
+	require.Equal(t, MediaTaskStatusFailed, stored.Status)
+	require.Equal(t, "upstream_generate_failed", stored.ErrorCode)
+	require.Equal(t, MediaFailureSettlement{
+		Kind: MediaFailureKindUpstream, RefundRatio: 1, ErrorCode: "upstream_generate_failed",
+	}, fixture.billing.lastFailure())
+	require.Equal(t, MediaBillingStatusSettled, stored.BillingStatus)
+	require.NotEmpty(t, stored.SettlementRecovery)
+	require.NotEmpty(t, stored.SettlementPlan)
+	require.True(t, mediaSettlementPlansEqual(stored.SettlementRecovery, stored.SettlementPlan))
+}
+
 func TestMediaWorkerStorageFailureAlwaysRefunds(t *testing.T) {
 	fixture := newMediaWorkerFixture(t, true, NativeAsyncRequired)
 	fixture.artifactWriter.err = errors.New("object storage unavailable")
@@ -120,6 +212,86 @@ func TestMediaWorkerRenewsLeaseWhilePolling(t *testing.T) {
 	require.Eventually(t, func() bool { return fixture.repo.renewLeaseCalls.Load() >= 1 }, time.Second, 10*time.Millisecond)
 	close(fixture.releasePoll)
 	require.NoError(t, <-done)
+}
+
+func TestMediaWorkerCancelsExecutionWhenLeaseIsLostBeforeTerminalTransition(t *testing.T) {
+	fixture := newMediaWorkerFixture(t, true, NativeAsyncRequired)
+	fixture.worker.cfg.LeaseRenewInterval = 10 * time.Millisecond
+	fixture.repo.rejectRenewLease.Store(true)
+	fixture.adapter.blockPollUntil(make(chan struct{}))
+
+	err := fixture.worker.ProcessOne(context.Background(), fixture.task.ID)
+	require.ErrorIs(t, err, ErrMediaWorkerLeaseLost)
+	require.GreaterOrEqual(t, fixture.repo.renewLeaseCalls.Load(), int64(1))
+	require.Equal(t, MediaTaskStatusInProgress, fixture.repo.mustGet(fixture.task.ID).Status)
+	require.Zero(t, fixture.billing.settlementCalls())
+	require.Zero(t, fixture.queue.publishCalls.Load())
+}
+
+func TestMediaWorkerStopsLeaseRenewalBeforeTerminalSettlement(t *testing.T) {
+	fixture := newMediaWorkerFixture(t, false, NativeAsyncUnsupported)
+	fixture.worker.cfg.LeaseRenewInterval = 10 * time.Millisecond
+	blocking := &blockingSettlementCoordinator{
+		inner:   fixture.billing,
+		entered: make(chan struct{}),
+		release: make(chan struct{}),
+	}
+	fixture.worker.deps.Billing = blocking
+	t.Cleanup(func() {
+		select {
+		case <-blocking.release:
+		default:
+			close(blocking.release)
+		}
+	})
+
+	done := make(chan error, 1)
+	go func() { done <- fixture.worker.ProcessOne(context.Background(), fixture.task.ID) }()
+	select {
+	case <-blocking.entered:
+	case <-time.After(time.Second):
+		t.Fatal("expected terminal settlement to start")
+	}
+	require.Equal(t, MediaTaskStatusCompleted, fixture.repo.mustGet(fixture.task.ID).Status)
+	renewCalls := fixture.repo.renewLeaseCalls.Load()
+	require.Never(t, func() bool {
+		return fixture.repo.renewLeaseCalls.Load() > renewCalls
+	}, 5*fixture.worker.cfg.LeaseRenewInterval, time.Millisecond)
+	require.False(t, blocking.ctxCanceled.Load())
+
+	close(blocking.release)
+	require.NoError(t, <-done)
+	require.False(t, blocking.ctxCanceled.Load())
+	require.Equal(t, int64(1), fixture.queue.publishCalls.Load())
+	require.Equal(t, MediaBillingStatusSettled, fixture.repo.mustGet(fixture.task.ID).BillingStatus)
+}
+
+func TestMediaWorkerTerminalTransitionWinsRaceWithLeaseRenewer(t *testing.T) {
+	fixture := newMediaWorkerFixture(t, false, NativeAsyncUnsupported)
+	fixture.worker.cfg.LeaseRenewInterval = 5 * time.Millisecond
+	applied := make(chan struct{})
+	releaseTransition := make(chan struct{})
+	fixture.repo.terminalTransitionApplied = applied
+	fixture.repo.releaseTerminalTransition = releaseTransition
+	observing := &contextObservingSettlementCoordinator{inner: fixture.billing}
+	fixture.worker.deps.Billing = observing
+
+	done := make(chan error, 1)
+	go func() { done <- fixture.worker.ProcessOne(context.Background(), fixture.task.ID) }()
+	select {
+	case <-applied:
+	case <-time.After(time.Second):
+		t.Fatal("expected terminal transition to be applied")
+	}
+	renewCalls := fixture.repo.renewLeaseCalls.Load()
+	require.Eventually(t, func() bool {
+		return fixture.repo.renewLeaseCalls.Load() > renewCalls
+	}, time.Second, time.Millisecond)
+	close(releaseTransition)
+
+	require.NoError(t, <-done)
+	require.False(t, observing.ctxCanceled.Load())
+	require.Equal(t, MediaBillingStatusSettled, fixture.repo.mustGet(fixture.task.ID).BillingStatus)
 }
 
 func TestMediaWorkerResumesExistingUpstreamTaskWithoutSubmit(t *testing.T) {
@@ -495,29 +667,65 @@ func TestMediaWorkerAcceptsLegacySettledTaskWithoutSettlementPlans(t *testing.T)
 	require.Zero(t, fixture.adapter.submitCalls.Load())
 }
 
-func TestMediaWorkerReleasesSelectionWhenAdapterPanics(t *testing.T) {
+func TestMediaWorkerConsumerSurvivesAdapterPanicWithoutAcknowledgingFailedMessage(t *testing.T) {
 	fixture := newMediaWorkerFixture(t, true, NativeAsyncRequired)
+	var output bytes.Buffer
+	fixture.worker.logger = slog.New(slog.NewJSONHandler(&output, nil))
+	sensitivePanic := "adapter submit panic https://upstream.example/task token=secret"
 	fixture.adapter.panicSubmit = true
+	fixture.adapter.panicMessage = sensitivePanic
+	second := cloneWorkerTask(fixture.task)
+	second.ID = 2
+	second.PublicID = "worker-after-panic"
+	second.Status = MediaTaskStatusQueued
+	second.Stage = MediaTaskStageQueued
+	second.WorkerID = ""
+	second.LeaseUntil = nil
+	second.StartedAt = nil
+	second.SubmittedAt = nil
+	second.FinishedAt = nil
+	second.AccountID = nil
+	second.Adapter = ""
+	second.UpstreamModel = ""
+	second.UpstreamTaskID = ""
+	second.PollMetadata = nil
+	second.SettlementPlan = nil
+	second.SettlementRecovery = nil
+	second.BillingStatus = MediaBillingStatusPrecharged
+	second.Version = 1
+	_, err := fixture.repo.Create(context.Background(), second)
+	require.NoError(t, err)
 	fixture.queue.deliver(&MediaQueueMessage{ID: "panic-1", TaskID: fixture.task.ID, Priority: MediaQueuePriorityAsync})
 
 	require.NoError(t, fixture.worker.Start())
 	t.Cleanup(fixture.worker.Stop)
 	select {
-	case <-fixture.worker.Errors():
+	case workerErr := <-fixture.worker.Errors():
+		require.Contains(t, workerErr.Error(), sensitivePanic)
 	case <-time.After(time.Second):
 		t.Fatal("expected adapter panic to reach worker error channel")
 	}
 	require.Eventually(t, func() bool {
 		return fixture.selector.releaseCalls.Load() == 1
 	}, time.Second, 10*time.Millisecond)
-	fixture.worker.Stop()
-
 	stored := fixture.repo.mustGet(fixture.task.ID)
 	require.Equal(t, MediaTaskStatusInProgress, stored.Status)
 	require.Equal(t, MediaTaskStageSubmitting, stored.Stage)
 	require.Empty(t, stored.SettlementRecovery)
 	require.Equal(t, int64(1), fixture.adapter.submitCalls.Load())
 	require.Zero(t, fixture.queue.ackCalls.Load())
+
+	fixture.queue.deliver(&MediaQueueMessage{ID: "panic-2", TaskID: second.ID, Priority: MediaQueuePriorityAsync})
+	require.Eventually(t, func() bool {
+		return fixture.repo.mustGet(second.ID).Status == MediaTaskStatusCompleted
+	}, time.Second, 10*time.Millisecond)
+	require.Eventually(t, func() bool { return fixture.queue.ackCalls.Load() == 1 }, time.Second, 10*time.Millisecond)
+	require.Equal(t, int64(2), fixture.selector.releaseCalls.Load())
+	require.Contains(t, output.String(), `"error_code":"worker_panic"`)
+	require.NotContains(t, output.String(), "https://upstream.example")
+	require.NotContains(t, output.String(), "token=secret")
+
+	fixture.worker.Stop()
 	require.Eventually(t, func() bool {
 		current := fixture.repo.mustGet(fixture.task.ID)
 		return current.LeaseUntil != nil && current.LeaseUntil.Before(time.Now())
@@ -700,11 +908,32 @@ func prepareRecoverableSubmittingTask(t *testing.T, fixture *mediaWorkerFixture,
 	return fixedAdapter, fixedAccount
 }
 
+func prepareRecoverableSyncStage(fixture *mediaWorkerFixture, stage MediaTaskStage) {
+	fixture.repo.mu.Lock()
+	defer fixture.repo.mu.Unlock()
+	stored := fixture.repo.tasks[fixture.task.ID]
+	stored.Status = MediaTaskStatusInProgress
+	stored.Stage = stage
+	stored.AccountID = ptrInt64(fixture.account.ID)
+	stored.Adapter = fixture.adapter.Name()
+	stored.UpstreamModel = "upstream-image"
+	stored.NativeAsyncMode = NativeAsyncUnsupported
+	stored.UpstreamTaskID = ""
+	stored.WorkerID = "dead-worker"
+	stored.LeaseUntil = workerTimePtr(time.Now().Add(-time.Minute))
+	stored.StartedAt = workerTimePtr(time.Now().UTC())
+	stored.Version++
+}
+
 type workerTaskRepository struct {
-	mu                       sync.Mutex
-	tasks                    map[int64]*MediaTask
-	renewLeaseCalls          atomic.Int64
-	failSettlementPlanWrites int
+	mu                        sync.Mutex
+	tasks                     map[int64]*MediaTask
+	renewLeaseCalls           atomic.Int64
+	rejectRenewLease          atomic.Bool
+	terminalTransitionApplied chan struct{}
+	releaseTerminalTransition <-chan struct{}
+	terminalTransitionOnce    sync.Once
+	failSettlementPlanWrites  int
 }
 
 func newWorkerTaskRepository(tasks ...*MediaTask) *workerTaskRepository {
@@ -758,6 +987,9 @@ func (r *workerTaskRepository) Claim(_ context.Context, id int64, workerID strin
 }
 func (r *workerTaskRepository) RenewLease(_ context.Context, id int64, workerID string, leaseUntil time.Time) (bool, error) {
 	r.renewLeaseCalls.Add(1)
+	if r.rejectRenewLease.Load() {
+		return false, nil
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	task := r.tasks[id]
@@ -791,14 +1023,23 @@ func (r *workerTaskRepository) Transition(_ context.Context, id int64, from, to 
 }
 func (r *workerTaskRepository) TransitionClaimed(_ context.Context, id int64, workerID string, expectedVersion int64, from, to MediaTaskStatus, updates map[string]any) (bool, error) {
 	r.mu.Lock()
-	defer r.mu.Unlock()
 	task := r.tasks[id]
 	if task == nil || task.Status != from || task.WorkerID != workerID || task.Version != expectedVersion || task.LeaseUntil == nil || !task.LeaseUntil.After(time.Now()) || !from.CanTransitionTo(to) {
+		r.mu.Unlock()
 		return false, nil
 	}
 	applyWorkerTaskUpdates(task, updates)
 	task.Status = to
 	task.Version++
+	applied := r.terminalTransitionApplied
+	release := r.releaseTerminalTransition
+	r.mu.Unlock()
+	if applied != nil {
+		r.terminalTransitionOnce.Do(func() { close(applied) })
+	}
+	if release != nil {
+		<-release
+	}
 	return true, nil
 }
 func (r *workerTaskRepository) MarkSyncFallback(_ context.Context, id int64, at time.Time) (bool, error) {
@@ -961,11 +1202,12 @@ func workerCompletedTask(id int64, publicID string) *MediaTask {
 }
 
 type workerQueue struct {
-	mu         sync.Mutex
-	ids        []int64
-	priorities []MediaQueuePriority
-	receive    chan *MediaQueueMessage
-	ackCalls   atomic.Int64
+	mu           sync.Mutex
+	ids          []int64
+	priorities   []MediaQueuePriority
+	receive      chan *MediaQueueMessage
+	ackCalls     atomic.Int64
+	publishCalls atomic.Int64
 }
 
 func (q *workerQueue) EnsureGroups(context.Context) error { return nil }
@@ -998,7 +1240,10 @@ func (q *workerQueue) Ack(context.Context, *MediaQueueMessage) error {
 	q.ackCalls.Add(1)
 	return nil
 }
-func (q *workerQueue) PublishTerminal(context.Context, int64, MediaTaskStatus) error { return nil }
+func (q *workerQueue) PublishTerminal(context.Context, int64, MediaTaskStatus) error {
+	q.publishCalls.Add(1)
+	return nil
+}
 func (q *workerQueue) SubscribeTerminal(context.Context, int64) (<-chan MediaTaskStatus, func(), error) {
 	ch := make(chan MediaTaskStatus)
 	close(ch)
@@ -1090,6 +1335,7 @@ type workerAdapter struct {
 	supportsIdempotency bool
 	emptySubmission     bool
 	panicSubmit         bool
+	panicMessage        string
 	allowed             map[string]struct{}
 	request             MediaExecutionRequest
 	requests            []MediaExecutionRequest
@@ -1115,10 +1361,17 @@ func (a *workerAdapter) Submit(ctx context.Context, req MediaExecutionRequest) (
 		return nil, err
 	}
 	a.submitCalls.Add(1)
-	if a.panicSubmit {
-		panic("adapter submit panic")
-	}
 	a.mu.Lock()
+	panicSubmit := a.panicSubmit
+	panicMessage := a.panicMessage
+	a.panicSubmit = false
+	if panicMessage == "" {
+		panicMessage = "adapter submit panic"
+	}
+	if panicSubmit {
+		a.mu.Unlock()
+		panic(panicMessage)
+	}
 	defer a.mu.Unlock()
 	a.request = req
 	a.requests = append(a.requests, req)
@@ -1242,6 +1495,58 @@ type recordingSettlementCoordinator struct {
 	settlements int
 	retries     int
 	failure     MediaFailureSettlement
+}
+
+type blockingSettlementCoordinator struct {
+	inner       *recordingSettlementCoordinator
+	entered     chan struct{}
+	release     chan struct{}
+	enteredOnce sync.Once
+	ctxCanceled atomic.Bool
+}
+
+type contextObservingSettlementCoordinator struct {
+	inner       *recordingSettlementCoordinator
+	ctxCanceled atomic.Bool
+}
+
+func (c *contextObservingSettlementCoordinator) SettleSuccess(ctx context.Context, task *MediaTask, usage MediaUsage) error {
+	if err := ctx.Err(); err != nil {
+		c.ctxCanceled.Store(true)
+		return err
+	}
+	return c.inner.SettleSuccess(ctx, task, usage)
+}
+
+func (c *contextObservingSettlementCoordinator) SettleFailure(ctx context.Context, task *MediaTask, failure MediaFailureSettlement) error {
+	if err := ctx.Err(); err != nil {
+		c.ctxCanceled.Store(true)
+		return err
+	}
+	return c.inner.SettleFailure(ctx, task, failure)
+}
+
+func (c *contextObservingSettlementCoordinator) RetryPending(ctx context.Context, taskID int64) error {
+	return c.inner.RetryPending(ctx, taskID)
+}
+
+func (c *blockingSettlementCoordinator) SettleSuccess(ctx context.Context, task *MediaTask, usage MediaUsage) error {
+	c.enteredOnce.Do(func() { close(c.entered) })
+	select {
+	case <-c.release:
+		return c.inner.SettleSuccess(ctx, task, usage)
+	case <-ctx.Done():
+		c.ctxCanceled.Store(true)
+		return ctx.Err()
+	}
+}
+
+func (c *blockingSettlementCoordinator) SettleFailure(ctx context.Context, task *MediaTask, failure MediaFailureSettlement) error {
+	return c.inner.SettleFailure(ctx, task, failure)
+}
+
+func (c *blockingSettlementCoordinator) RetryPending(ctx context.Context, taskID int64) error {
+	return c.inner.RetryPending(ctx, taskID)
 }
 
 func (c *recordingSettlementCoordinator) SettleSuccess(ctx context.Context, task *MediaTask, usage MediaUsage) error {

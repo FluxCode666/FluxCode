@@ -21,6 +21,7 @@ var (
 	ErrMediaWorkerLeaseLost      = errors.New("media worker lease lost")
 	ErrMediaTaskDeadlineExceeded = errors.New("media task deployment timeout exceeded")
 	ErrMediaSyncTimeoutStopped   = errors.New("media sync timeout stopped local execution")
+	errMediaWorkerMessagePanic   = errors.New("media worker message panic")
 )
 
 type MediaWorkerConfig struct {
@@ -85,8 +86,9 @@ type MediaWorker struct {
 }
 
 type mediaActiveExecution struct {
-	ctx    context.Context
-	cancel context.CancelCauseFunc
+	ctx           context.Context
+	cancel        context.CancelCauseFunc
+	terminalizing atomic.Bool
 
 	mu             sync.RWMutex
 	path           MediaExecutionPath
@@ -108,6 +110,15 @@ const (
 	mediaAdapterRetryNone mediaAdapterRetryMode = iota
 	mediaAdapterRetryDifferentAccount
 	mediaAdapterRetrySameSelection
+)
+
+type mediaTaskRecoveryMode uint8
+
+const (
+	mediaTaskRecoveryReschedule mediaTaskRecoveryMode = iota
+	mediaTaskRecoveryExistingUpstream
+	mediaTaskRecoveryUnknownSubmission
+	mediaTaskRecoveryUnknownResult
 )
 
 type mediaExecutionTrace struct {
@@ -246,20 +257,28 @@ func (w *MediaWorker) consumeLoop(ctx context.Context) error {
 			w.reportError(fmt.Errorf("receive media task: %w", err))
 			continue
 		}
-		if err := w.ProcessOne(ctx, message.TaskID); err != nil {
+		if err := w.processMessage(ctx, message); err != nil {
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}
-			w.reportError(fmt.Errorf("process media task %d: %w", message.TaskID, err))
-			continue
-		}
-		if err := w.deps.Queue.Ack(ctx, message); err != nil {
-			if ctx.Err() != nil {
-				return ctx.Err()
-			}
-			w.reportError(fmt.Errorf("ack media task %d: %w", message.TaskID, err))
+			w.reportError(err)
 		}
 	}
+}
+
+func (w *MediaWorker) processMessage(ctx context.Context, message *MediaQueueMessage) (err error) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			err = fmt.Errorf("%w: media task %d: %v\n%s", errMediaWorkerMessagePanic, message.TaskID, recovered, debug.Stack())
+		}
+	}()
+	if err := w.ProcessOne(ctx, message.TaskID); err != nil {
+		return fmt.Errorf("process media task %d: %w", message.TaskID, err)
+	}
+	if err := w.deps.Queue.Ack(ctx, message); err != nil {
+		return fmt.Errorf("ack media task %d: %w", message.TaskID, err)
+	}
+	return nil
 }
 
 func (w *MediaWorker) recoveryLoop(ctx context.Context) error {
@@ -292,7 +311,7 @@ func (w *MediaWorker) ProcessOne(ctx context.Context, taskID int64) error {
 		w.deps.Metrics.IncrementDuplicateMessage(task.MediaType)
 		return w.retryTerminalSettlement(ctx, task)
 	}
-	unknownSubmissionRecovery := isUnknownSubmissionRecovery(task)
+	recoveryMode := classifyMediaTaskRecovery(task)
 
 	now := time.Now().UTC()
 	claimed, err := w.deps.Tasks.Claim(ctx, task.ID, w.workerID, now.Add(w.cfg.LeaseTTL), task.Version)
@@ -321,10 +340,18 @@ func (w *MediaWorker) ProcessOne(ctx context.Context, taskID int64) error {
 		executionCancel(ErrMediaTaskNotClaimed)
 		return fmt.Errorf("%w: task %d already active", ErrMediaTaskNotClaimed, task.ID)
 	}
-	renewerDone := w.startLeaseRenewer(executionCtx, active, task.ID)
+	leaseCtx, leaseCancel := context.WithCancel(executionCtx)
+	renewerDone := w.startLeaseRenewer(leaseCtx, active, task.ID)
+	var stopLeaseRenewerOnce sync.Once
+	stopLeaseRenewer := func() {
+		stopLeaseRenewerOnce.Do(func() {
+			leaseCancel()
+			<-renewerDone
+		})
+	}
 	defer func() {
+		stopLeaseRenewer()
 		executionCancel(context.Canceled)
-		<-renewerDone
 		w.unregisterActive(task.ID, active)
 	}()
 
@@ -333,7 +360,7 @@ func (w *MediaWorker) ProcessOne(ctx context.Context, taskID int64) error {
 		startedAt = task.StartedAt.UTC()
 	}
 	updates := make(map[string]any, 2)
-	if !unknownSubmissionRecovery {
+	if recoveryMode == mediaTaskRecoveryReschedule {
 		updates["stage"] = MediaTaskStageScheduling
 	}
 	if task.StartedAt == nil {
@@ -344,7 +371,7 @@ func (w *MediaWorker) ProcessOne(ctx context.Context, taskID int64) error {
 			return err
 		}
 	}
-	if !unknownSubmissionRecovery {
+	if recoveryMode == mediaTaskRecoveryReschedule {
 		task.Stage = MediaTaskStageScheduling
 	}
 	task.StartedAt = mediaTimePointer(startedAt)
@@ -352,7 +379,14 @@ func (w *MediaWorker) ProcessOne(ctx context.Context, taskID int64) error {
 	taskCtx, taskCancel := context.WithDeadlineCause(executionCtx, startedAt.Add(w.cfg.TaskTimeout), ErrMediaTaskDeadlineExceeded)
 	defer taskCancel()
 	trace := &mediaExecutionTrace{durations: make(map[MediaTaskStage]time.Duration)}
-	result, failure, executeErr := w.execute(taskCtx, task, active, trace)
+	var result *MediaGenerateResult
+	var failure *mediaExecutionFailure
+	var executeErr error
+	if recoveryMode == mediaTaskRecoveryUnknownResult {
+		failure = upstreamMediaFailure("upstream_generate_failed", "media generation result is unknown")
+	} else {
+		result, failure, executeErr = w.execute(taskCtx, task, active, trace)
+	}
 	if executeErr != nil {
 		cause := context.Cause(taskCtx)
 		switch {
@@ -373,18 +407,18 @@ func (w *MediaWorker) ProcessOne(ctx context.Context, taskID int64) error {
 		}
 	}
 	if failure != nil {
-		return w.completeFailure(ctx, task, failure, trace)
+		return w.completeFailure(ctx, task, failure, trace, active, stopLeaseRenewer)
 	}
 	if result == nil {
 		return errors.New("media adapter completed without a result")
 	}
-	completeErr := w.completeSuccess(taskCtx, task, result, trace)
+	completeErr := w.completeSuccess(taskCtx, task, result, trace, active, stopLeaseRenewer)
 	if completeErr != nil && errors.Is(context.Cause(taskCtx), ErrMediaTaskDeadlineExceeded) && ctx.Err() == nil && !task.Status.IsTerminal() {
 		return w.completeFailure(ctx, task, &mediaExecutionFailure{
 			settlement: MediaFailureSettlement{Kind: MediaFailureKindSystem, RefundRatio: 1, ErrorCode: "system_timeout"},
 			message:    "media task exceeded deployment timeout",
 			category:   "system_timeout",
-		}, trace)
+		}, trace, active, stopLeaseRenewer)
 	}
 	return completeErr
 }
@@ -477,6 +511,24 @@ func isUnknownSubmissionRecovery(task *MediaTask) bool {
 		task.AccountID != nil &&
 		task.Adapter != "" &&
 		task.UpstreamModel != ""
+}
+
+func classifyMediaTaskRecovery(task *MediaTask) mediaTaskRecoveryMode {
+	if task == nil || task.Status != MediaTaskStatusInProgress {
+		return mediaTaskRecoveryReschedule
+	}
+	if task.UpstreamTaskID != "" {
+		return mediaTaskRecoveryExistingUpstream
+	}
+	if isUnknownSubmissionRecovery(task) {
+		return mediaTaskRecoveryUnknownSubmission
+	}
+	switch task.Stage {
+	case MediaTaskStageGenerating, MediaTaskStageStoring, MediaTaskStageSettling:
+		return mediaTaskRecoveryUnknownResult
+	default:
+		return mediaTaskRecoveryReschedule
+	}
 }
 
 func (w *MediaWorker) resumeUnknownSubmission(
@@ -739,7 +791,14 @@ func (w *MediaWorker) poll(ctx context.Context, task *MediaTask, account *Accoun
 	}
 }
 
-func (w *MediaWorker) completeSuccess(ctx context.Context, task *MediaTask, result *MediaGenerateResult, trace *mediaExecutionTrace) error {
+func (w *MediaWorker) completeSuccess(
+	ctx context.Context,
+	task *MediaTask,
+	result *MediaGenerateResult,
+	trace *mediaExecutionTrace,
+	active *mediaActiveExecution,
+	stopLeaseRenewer func(),
+) error {
 	stageStarted := time.Now()
 	if err := w.updateClaimed(ctx, task, map[string]any{"stage": MediaTaskStageStoring}); err != nil {
 		return err
@@ -752,7 +811,7 @@ func (w *MediaWorker) completeSuccess(ctx context.Context, task *MediaTask, resu
 			return ctx.Err()
 		}
 		w.deps.Metrics.IncrementStorageFailure(task.MediaType)
-		return w.completeFailure(ctx, task, systemMediaFailure("system_storage", "media output storage failed"), trace)
+		return w.completeFailure(ctx, task, systemMediaFailure("system_storage", "media output storage failed"), trace, active, stopLeaseRenewer)
 	}
 
 	stageStarted = time.Now()
@@ -765,6 +824,7 @@ func (w *MediaWorker) completeSuccess(ctx context.Context, task *MediaTask, resu
 		return fmt.Errorf("encode media task %d success settlement recovery: %w", task.ID, err)
 	}
 	finishedAt := time.Now().UTC()
+	active.terminalizing.Store(true)
 	transitioned, err := w.deps.Tasks.TransitionClaimed(ctx, task.ID, w.workerID, task.Version,
 		MediaTaskStatusInProgress, MediaTaskStatusCompleted,
 		map[string]any{
@@ -778,6 +838,7 @@ func (w *MediaWorker) completeSuccess(ctx context.Context, task *MediaTask, resu
 	if !transitioned {
 		return fmt.Errorf("%w: complete media task %d", ErrMediaWorkerLeaseLost, task.ID)
 	}
+	stopLeaseRenewer()
 	task.Status = MediaTaskStatusCompleted
 	task.Stage = MediaTaskStageCompleted
 	task.Progress = 100
@@ -794,7 +855,14 @@ func (w *MediaWorker) completeSuccess(ctx context.Context, task *MediaTask, resu
 	return w.settlementAckError(ctx, task, settlementErr)
 }
 
-func (w *MediaWorker) completeFailure(ctx context.Context, task *MediaTask, failure *mediaExecutionFailure, trace *mediaExecutionTrace) error {
+func (w *MediaWorker) completeFailure(
+	ctx context.Context,
+	task *MediaTask,
+	failure *mediaExecutionFailure,
+	trace *mediaExecutionTrace,
+	active *mediaActiveExecution,
+	stopLeaseRenewer func(),
+) error {
 	if failure == nil {
 		failure = systemMediaFailure("system_worker", "media worker failed")
 	}
@@ -803,6 +871,7 @@ func (w *MediaWorker) completeFailure(ctx context.Context, task *MediaTask, fail
 		return fmt.Errorf("encode media task %d failure settlement recovery: %w", task.ID, err)
 	}
 	finishedAt := time.Now().UTC()
+	active.terminalizing.Store(true)
 	transitioned, err := w.deps.Tasks.TransitionClaimed(ctx, task.ID, w.workerID, task.Version,
 		MediaTaskStatusInProgress, MediaTaskStatusFailed,
 		map[string]any{
@@ -817,6 +886,7 @@ func (w *MediaWorker) completeFailure(ctx context.Context, task *MediaTask, fail
 	if !transitioned {
 		return fmt.Errorf("%w: fail media task %d", ErrMediaWorkerLeaseLost, task.ID)
 	}
+	stopLeaseRenewer()
 	task.Status = MediaTaskStatusFailed
 	task.Stage = MediaTaskStageFailed
 	task.ErrorCode = failure.settlement.ErrorCode
@@ -986,6 +1056,9 @@ func (w *MediaWorker) startLeaseRenewer(ctx context.Context, active *mediaActive
 				callCtx, cancel := context.WithTimeout(ctx, w.cfg.LeaseRenewInterval)
 				renewed, err := w.deps.Tasks.RenewLease(callCtx, taskID, w.workerID, time.Now().UTC().Add(w.cfg.LeaseTTL))
 				cancel()
+				if ctx.Err() != nil || active.terminalizing.Load() {
+					return
+				}
 				if err != nil {
 					active.cancel(fmt.Errorf("%w: renew media task %d: %w", ErrMediaWorkerLeaseLost, taskID, err))
 					return
@@ -1208,6 +1281,8 @@ func stableMediaWorkerErrorCode(err error, fallback string) string {
 		return "lease_lost"
 	case errors.Is(err, ErrMediaTaskNotClaimed):
 		return "task_not_claimed"
+	case errors.Is(err, errMediaWorkerMessagePanic):
+		return "worker_panic"
 	}
 	var adapterErr *MediaAdapterError
 	if errors.As(err, &adapterErr) && validStableMediaErrorCode(adapterErr.Code) {
