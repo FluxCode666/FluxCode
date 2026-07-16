@@ -286,6 +286,86 @@ func TestMediaWorkerSchedulingExhaustionStillFailsAndRefunds(t *testing.T) {
 	})
 }
 
+func TestMediaWorkerDeletedFixedAccountFailsAndRefunds(t *testing.T) {
+	assertSchedulerFailure := func(t *testing.T, fixture *mediaWorkerFixture) {
+		t.Helper()
+		repo := fixture.worker.deps.Scheduler.accountRepo.(*workerAccountRepository)
+		repo.getErr = fmt.Errorf("soft-deleted account: %w", ErrAccountNotFound)
+
+		require.NoError(t, fixture.worker.processMessage(context.Background(), &MediaQueueMessage{TaskID: fixture.task.ID}))
+		stored := fixture.repo.mustGet(fixture.task.ID)
+		require.Equal(t, MediaTaskStatusFailed, stored.Status)
+		require.Equal(t, "system_scheduler", stored.ErrorCode)
+		require.Equal(t, MediaFailureSettlement{
+			Kind: MediaFailureKindSystem, RefundRatio: 1, ErrorCode: "system_scheduler",
+		}, fixture.billing.lastFailure())
+		require.Equal(t, MediaBillingStatusSettled, stored.BillingStatus)
+		require.NotEmpty(t, stored.SettlementPlan)
+		var plan MediaSettlementPlan
+		require.NoError(t, json.Unmarshal(stored.SettlementPlan, &plan))
+		require.Equal(t, MediaSettlementTypeFailure, plan.Type)
+		require.NotNil(t, plan.Failure)
+		require.Equal(t, fixture.billing.lastFailure(), *plan.Failure)
+		require.Equal(t, int64(1), fixture.queue.publishCalls.Load())
+		require.Equal(t, int64(1), fixture.queue.ackCalls.Load())
+	}
+
+	t.Run("existing upstream", func(t *testing.T) {
+		fixture := newMediaWorkerFixture(t, true, NativeAsyncRequired)
+		prepareRecoverableExistingUpstream(fixture, "existing-upstream")
+
+		assertSchedulerFailure(t, fixture)
+		require.Zero(t, fixture.adapter.pollCalls.Load())
+		require.Zero(t, fixture.adapter.abortCalls.Load())
+	})
+
+	t.Run("unknown submission", func(t *testing.T) {
+		fixture := newMediaWorkerFixture(t, true, NativeAsyncRequired)
+		fixedAdapter, _ := prepareRecoverableSubmittingTask(t, fixture, true)
+
+		assertSchedulerFailure(t, fixture)
+		require.Zero(t, fixedAdapter.submitCalls.Load())
+		require.Zero(t, fixture.selector.selectCalls.Load())
+	})
+}
+
+func TestMediaWorkerFixedAccountLookupInfrastructureErrorsRemainPending(t *testing.T) {
+	tests := []struct {
+		name      string
+		lookupErr error
+		prepare   func(*testing.T, *mediaWorkerFixture)
+	}{
+		{
+			name:      "existing upstream database error",
+			lookupErr: errors.New("fixed account database unavailable"),
+			prepare: func(_ *testing.T, fixture *mediaWorkerFixture) {
+				prepareRecoverableExistingUpstream(fixture, "existing-upstream")
+			},
+		},
+		{
+			name:      "unknown submission context deadline",
+			lookupErr: context.DeadlineExceeded,
+			prepare: func(t *testing.T, fixture *mediaWorkerFixture) {
+				prepareRecoverableSubmittingTask(t, fixture, true)
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fixture := newMediaWorkerFixture(t, true, NativeAsyncRequired)
+			tt.prepare(t, fixture)
+			fixture.worker.deps.Scheduler.accountRepo.(*workerAccountRepository).getErr = tt.lookupErr
+
+			err := fixture.worker.processMessage(context.Background(), &MediaQueueMessage{TaskID: fixture.task.ID})
+			require.ErrorIs(t, err, tt.lookupErr)
+			require.Equal(t, MediaTaskStatusInProgress, fixture.repo.mustGet(fixture.task.ID).Status)
+			require.Zero(t, fixture.billing.settlementCalls())
+			require.Zero(t, fixture.queue.publishCalls.Load())
+			require.Zero(t, fixture.queue.ackCalls.Load())
+		})
+	}
+}
+
 func TestMediaWorkerIgnoresDuplicateTerminalMessage(t *testing.T) {
 	fixture := newMediaWorkerFixture(t, true, NativeAsyncRequired)
 	require.NoError(t, fixture.worker.ProcessOne(context.Background(), fixture.task.ID))

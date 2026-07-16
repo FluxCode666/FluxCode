@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"sync/atomic"
@@ -229,9 +230,9 @@ func (s *MediaScheduler) SelectFixed(ctx context.Context, req MediaFixedAccountR
 	if s == nil || s.accountRepo == nil || s.selector == nil || req.AccountID <= 0 {
 		return nil, ErrNoAvailableAccounts
 	}
-	account, err := s.accountRepo.GetByID(ctx, req.AccountID)
+	account, err := s.loadFixedAccount(ctx, req.AccountID)
 	if err != nil {
-		return nil, fmt.Errorf("get fixed media account %d: %w", req.AccountID, err)
+		return nil, err
 	}
 	if account == nil || account.ID != req.AccountID || !account.IsSchedulable() {
 		return nil, ErrNoAvailableAccounts
@@ -396,8 +397,15 @@ func (s *MediaScheduler) GetFixedAccount(ctx context.Context, accountID int64) (
 	if s == nil || s.accountRepo == nil {
 		return nil, fmt.Errorf("get fixed media account %d: %w", accountID, ErrNoAvailableAccounts)
 	}
+	return s.loadFixedAccount(ctx, accountID)
+}
+
+func (s *MediaScheduler) loadFixedAccount(ctx context.Context, accountID int64) (*Account, error) {
 	account, err := s.accountRepo.GetByID(ctx, accountID)
 	if err != nil {
+		if errors.Is(err, ErrAccountNotFound) {
+			err = errors.Join(ErrNoAvailableAccounts, err)
+		}
 		return nil, fmt.Errorf("get fixed media account %d: %w", accountID, err)
 	}
 	if account == nil {

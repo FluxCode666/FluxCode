@@ -472,6 +472,28 @@ func TestMediaSchedulerWaitMarkUsedAndFixedAccountBoundaries(t *testing.T) {
 	require.ErrorIs(t, err, repoErr)
 }
 
+func TestMediaSchedulerDeletedFixedAccountIsUnavailableAndPreservesNotFound(t *testing.T) {
+	accountID := int64(7)
+	repo := &mediaSchedulerAccountRepoStub{
+		getErr: fmt.Errorf("soft-deleted account: %w", ErrAccountNotFound),
+	}
+	selector := &mediaSchedulerSelectorStub{selectedID: accountID}
+	scheduler := NewMediaScheduler(repo, selector, NewMediaAdapterRegistry())
+
+	selection, err := scheduler.SelectFixed(context.Background(), MediaFixedAccountRequest{AccountID: accountID})
+	require.Nil(t, selection)
+	require.ErrorIs(t, err, ErrNoAvailableAccounts)
+	require.ErrorIs(t, err, ErrAccountNotFound)
+	require.Contains(t, err.Error(), "account 7")
+	require.Zero(t, selector.requests)
+
+	account, err := scheduler.GetFixedAccount(context.Background(), accountID)
+	require.Nil(t, account)
+	require.ErrorIs(t, err, ErrNoAvailableAccounts)
+	require.ErrorIs(t, err, ErrAccountNotFound)
+	require.Contains(t, err.Error(), "account 7")
+}
+
 func TestMediaSchedulerSelectFixedUsesSingleRealtimeAccountAndStableKey(t *testing.T) {
 	account := task12Account(7, PlatformOpenAI, "changed-model", "changed-upstream", "changed-adapter", NativeAsyncOptional)
 	repo := &mediaSchedulerAccountRepoStub{accounts: []Account{account}}
