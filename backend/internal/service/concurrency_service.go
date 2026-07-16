@@ -4,8 +4,10 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/binary"
+	"errors"
 	"os"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -53,9 +55,12 @@ type ConcurrencyCache interface {
 }
 
 var (
-	requestIDPrefix  = initRequestIDPrefix()
-	requestIDCounter atomic.Uint64
+	requestIDPrefix             = initRequestIDPrefix()
+	requestIDCounter            atomic.Uint64
+	ErrInvalidConcurrencySlotID = errors.New("invalid concurrency slot id")
 )
+
+const MediaTaskSlotPrefix = "media-task:"
 
 func initRequestIDPrefix() string {
 	b := make([]byte, 8)
@@ -73,6 +78,17 @@ func RequestIDPrefix() string {
 func generateRequestID() string {
 	seq := requestIDCounter.Add(1)
 	return requestIDPrefix + "-" + strconv.FormatUint(seq, 36)
+}
+
+// MediaTaskSlotID returns the stable concurrency member owned by a media task.
+// Stable members let a recovered worker refresh the original slot instead of
+// consuming a second slot for the same persisted task.
+func MediaTaskSlotID(publicID string) string {
+	publicID = strings.TrimSpace(publicID)
+	if publicID == "" {
+		return ""
+	}
+	return MediaTaskSlotPrefix + publicID
 }
 
 func (s *ConcurrencyService) CleanupStaleProcessSlots(ctx context.Context) error {
@@ -131,6 +147,16 @@ type UserLoadInfo struct {
 // If the account is at max concurrency, it waits until a slot is available or timeout.
 // Returns a release function that MUST be called when the request completes.
 func (s *ConcurrencyService) AcquireAccountSlot(ctx context.Context, accountID int64, maxConcurrency int) (*AcquireResult, error) {
+	return s.acquireAccountSlot(ctx, accountID, maxConcurrency, generateRequestID())
+}
+
+// AcquireAccountSlotWithID acquires an account slot using a caller-owned stable
+// member. Callers must use an ID that remains unchanged across retries/recovery.
+func (s *ConcurrencyService) AcquireAccountSlotWithID(ctx context.Context, accountID int64, maxConcurrency int, slotID string) (*AcquireResult, error) {
+	return s.acquireAccountSlot(ctx, accountID, maxConcurrency, strings.TrimSpace(slotID))
+}
+
+func (s *ConcurrencyService) acquireAccountSlot(ctx context.Context, accountID int64, maxConcurrency int, requestID string) (*AcquireResult, error) {
 	// If maxConcurrency is 0 or negative, no limit
 	if maxConcurrency <= 0 {
 		return &AcquireResult{
@@ -138,9 +164,9 @@ func (s *ConcurrencyService) AcquireAccountSlot(ctx context.Context, accountID i
 			ReleaseFunc: func() {}, // no-op
 		}, nil
 	}
-
-	// Generate unique request ID for this slot
-	requestID := generateRequestID()
+	if requestID == "" {
+		return nil, ErrInvalidConcurrencySlotID
+	}
 
 	acquired, err := s.cache.AcquireAccountSlot(ctx, accountID, maxConcurrency, requestID)
 	if err != nil {
@@ -148,9 +174,13 @@ func (s *ConcurrencyService) AcquireAccountSlot(ctx context.Context, accountID i
 	}
 
 	if acquired {
+		var released atomic.Bool
 		return &AcquireResult{
 			Acquired: true,
 			ReleaseFunc: func() {
+				if !released.CompareAndSwap(false, true) {
+					return
+				}
 				bgCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 				defer cancel()
 				if err := s.cache.ReleaseAccountSlot(bgCtx, accountID, requestID); err != nil {

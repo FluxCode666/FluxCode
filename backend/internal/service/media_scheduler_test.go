@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -86,6 +87,7 @@ type mediaSchedulerSelectorStub struct {
 	returnNil       bool
 	lastGroupID     int64
 	lastSessionHash string
+	lastSlotID      string
 }
 
 func (s *mediaSchedulerSelectorStub) Select(_ context.Context, req AccountCandidateSelectionRequest) (*AccountSelectionResult, error) {
@@ -95,6 +97,7 @@ func (s *mediaSchedulerSelectorStub) Select(_ context.Context, req AccountCandid
 	s.candidates = append([]*Account(nil), req.Candidates...)
 	s.lastGroupID = req.GroupID
 	s.lastSessionHash = req.SessionHash
+	s.lastSlotID = req.SlotID
 	if s.returnNil {
 		return nil, nil
 	}
@@ -146,13 +149,15 @@ func TestMediaSchedulerSelectsAcrossPlatformsForSameModel(t *testing.T) {
 	snapshot, err := scheduler.SnapshotCandidates(context.Background(), 7, "veo-3.1")
 	require.NoError(t, err)
 	selection, err := scheduler.Select(context.Background(), MediaScheduleRequest{
-		GroupID: 7, RequestedModel: "veo-3.1", Operation: MediaOperationTextToVideo, CandidateSnapshot: snapshot,
+		GroupID: 7, RequestedModel: "veo-3.1", Operation: MediaOperationTextToVideo,
+		SlotID: "media-task:first-task", CandidateSnapshot: snapshot,
 	})
 	require.NoError(t, err)
 	require.Equal(t, int64(2), selection.Account.ID)
 	require.Equal(t, "xai", selection.ResolvedModel.Adapter)
 	require.Equal(t, "veo-xai", selection.ResolvedModel.UpstreamModel)
 	require.Len(t, selector.candidates, 2)
+	require.Equal(t, "media-task:first-task", selector.lastSlotID)
 }
 
 func TestMediaSchedulerSnapshotFiltersAvailabilityModelAndAdapterMethodSets(t *testing.T) {
@@ -335,6 +340,7 @@ func TestMediaSchedulerRejectsMalformedSelectorWaitPlans(t *testing.T) {
 	}{
 		{name: "wrong account id", mutate: func(result *AccountSelectionResult) { result.WaitPlan.AccountID = 2 }},
 		{name: "wrong concurrency", mutate: func(result *AccountSelectionResult) { result.WaitPlan.MaxConcurrency = 99 }},
+		{name: "wrong stable slot id", mutate: func(result *AccountSelectionResult) { result.WaitPlan.SlotID = "media-task:other" }},
 		{name: "zero timeout", mutate: func(result *AccountSelectionResult) { result.WaitPlan.Timeout = 0 }},
 		{name: "zero max waiting", mutate: func(result *AccountSelectionResult) { result.WaitPlan.MaxWaiting = 0 }},
 	}
@@ -434,7 +440,7 @@ func TestMediaSchedulerSelectFixedUsesSingleRealtimeAccountAndStableKey(t *testi
 	scheduler := NewMediaScheduler(repo, selector, NewMediaAdapterRegistry())
 
 	selection, err := scheduler.SelectFixed(context.Background(), MediaFixedAccountRequest{
-		AccountID: account.ID, GroupID: 3, SessionHash: "task_public_id",
+		AccountID: account.ID, GroupID: 3, SessionHash: "task_public_id", SlotID: "media-task:task_public_id",
 	})
 	require.NoError(t, err)
 	require.Equal(t, account.ID, selection.Account.ID)
@@ -446,6 +452,7 @@ func TestMediaSchedulerSelectFixedUsesSingleRealtimeAccountAndStableKey(t *testi
 	require.Equal(t, account.ID, selector.candidates[0].ID)
 	require.Equal(t, int64(3), selector.lastGroupID)
 	require.Equal(t, "task_public_id", selector.lastSessionHash)
+	require.Equal(t, "media-task:task_public_id", selector.lastSlotID)
 	selection.ReleaseFunc()
 	selection.ReleaseFunc()
 	require.Equal(t, int64(1), releases.Load())
@@ -460,6 +467,7 @@ func TestMediaSchedulerSelectFixedReturnsTrustedWaitPlan(t *testing.T) {
 			Account: &Account{ID: account.ID},
 			WaitPlan: &AccountWaitPlan{
 				AccountID: account.ID, MaxConcurrency: account.Concurrency, Timeout: time.Second, MaxWaiting: 2,
+				SlotID: "media-task:task_public_id",
 			},
 		},
 		waitFunc: func() { waitReleaseCalls.Add(1) },
@@ -467,11 +475,12 @@ func TestMediaSchedulerSelectFixedReturnsTrustedWaitPlan(t *testing.T) {
 	scheduler := NewMediaScheduler(repo, selector, NewMediaAdapterRegistry())
 
 	selection, err := scheduler.SelectFixed(context.Background(), MediaFixedAccountRequest{
-		AccountID: account.ID, GroupID: 3, SessionHash: "task_public_id",
+		AccountID: account.ID, GroupID: 3, SessionHash: "task_public_id", SlotID: "media-task:task_public_id",
 	})
 	require.NoError(t, err)
 	require.False(t, selection.Acquired)
 	require.Equal(t, account.ID, selection.WaitPlan.AccountID)
+	require.Equal(t, "media-task:task_public_id", selection.WaitPlan.SlotID)
 	release, err := scheduler.WaitForSlot(context.Background(), selection)
 	require.NoError(t, err)
 	require.NotNil(t, release)
@@ -490,7 +499,6 @@ func TestMediaSchedulerSelectFixedRejectsUnschedulableAndSelectorDrift(t *testin
 			until := time.Now().Add(time.Minute)
 			account.TempUnschedulableUntil = &until
 		}},
-		{name: "zero concurrency", mutate: func(account *Account) { account.Concurrency = 0 }},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			account := task12Account(7, PlatformOpenAI, "image", "upstream", "adapter", NativeAsyncRequired)
@@ -503,6 +511,23 @@ func TestMediaSchedulerSelectFixedRejectsUnschedulableAndSelectorDrift(t *testin
 			require.Nil(t, selection)
 			require.ErrorIs(t, err, ErrNoAvailableAccounts)
 			require.Zero(t, selector.requests)
+		})
+	}
+
+	for _, concurrency := range []int{0, -1} {
+		t.Run(fmt.Sprintf("unlimited concurrency %d", concurrency), func(t *testing.T) {
+			account := task12Account(7, PlatformOpenAI, "image", "upstream", "adapter", NativeAsyncRequired)
+			account.Concurrency = concurrency
+			repo := &mediaSchedulerAccountRepoStub{accounts: []Account{account}}
+			selector := &mediaSchedulerSelectorStub{selectedID: account.ID}
+			scheduler := NewMediaScheduler(repo, selector, NewMediaAdapterRegistry())
+
+			selection, err := scheduler.SelectFixed(context.Background(), MediaFixedAccountRequest{AccountID: account.ID})
+			require.NoError(t, err)
+			require.NotNil(t, selection)
+			require.True(t, selection.Acquired)
+			require.Nil(t, selection.WaitPlan)
+			require.Equal(t, 1, selector.requests)
 		})
 	}
 

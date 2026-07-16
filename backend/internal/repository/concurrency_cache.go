@@ -165,18 +165,20 @@ var (
 		return 1
 	`)
 
-	// startupCleanupScript 清理非当前进程前缀的槽位成员。
-	// KEYS 是有序集合键列表，ARGV[1] 是当前进程前缀，ARGV[2] 是槽位 TTL。
-	// 遍历每个 KEYS[i]，移除前缀不匹配的成员，清空后删 key，否则刷新 EXPIRE。
+	// startupCleanupScript 清理非当前进程前缀的临时槽位成员。
+	// KEYS 是有序集合键列表，ARGV[1] 是当前进程前缀，ARGV[2] 是槽位 TTL，
+	// ARGV[3] 是跨进程恢复时必须保留的稳定媒体任务槽位前缀。
 	startupCleanupScript = redis.NewScript(`
 		local activePrefix = ARGV[1]
 		local slotTTL = tonumber(ARGV[2])
+		local stableMediaPrefix = ARGV[3]
 		local removed = 0
 		for i = 1, #KEYS do
 			local key = KEYS[i]
 			local members = redis.call('ZRANGE', key, 0, -1)
 			for _, member in ipairs(members) do
-				if string.sub(member, 1, string.len(activePrefix)) ~= activePrefix then
+				if string.sub(member, 1, string.len(activePrefix)) ~= activePrefix
+					and string.sub(member, 1, string.len(stableMediaPrefix)) ~= stableMediaPrefix then
 					removed = removed + redis.call('ZREM', key, member)
 				end
 			end
@@ -544,7 +546,7 @@ func (c *concurrencyCache) cleanupSlotsByPattern(ctx context.Context, pattern, a
 			return fmt.Errorf("scan %s: %w", pattern, err)
 		}
 		if len(keys) > 0 {
-			_, err := startupCleanupScript.Run(ctx, c.rdb, keys, activePrefix, c.slotTTLSeconds).Result()
+			_, err := startupCleanupScript.Run(ctx, c.rdb, keys, activePrefix, c.slotTTLSeconds, service.MediaTaskSlotPrefix).Result()
 			if err != nil {
 				return fmt.Errorf("cleanup slots %s: %w", pattern, err)
 			}

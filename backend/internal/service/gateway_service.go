@@ -502,6 +502,7 @@ type AccountWaitPlan struct {
 	MaxConcurrency int
 	Timeout        time.Duration
 	MaxWaiting     int
+	SlotID         string
 }
 
 type AccountSelectionResult struct {

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -74,6 +75,18 @@ func TestMediaWorkerIntegrationResumesPollWithoutResubmit(t *testing.T) {
 	require.Len(t, artifacts, 1)
 }
 
+func TestMediaWorkerIntegrationFixtureQueueRoundTrip(t *testing.T) {
+	fixture := newIntegrationMediaWorker(t)
+	task := fixture.createQueuedTask(t, true)
+	require.NoError(t, fixture.queue.Enqueue(context.Background(), task.ID, service.MediaQueuePriorityAsync))
+
+	message, err := fixture.queue.Receive(context.Background(), 200*time.Millisecond)
+	require.NoError(t, err)
+	require.Equal(t, task.ID, message.TaskID)
+	require.Equal(t, service.MediaQueuePriorityAsync, message.Priority)
+	require.NoError(t, fixture.queue.Ack(context.Background(), message))
+}
+
 type integrationMediaWorkerFixture struct {
 	worker       *service.MediaWorker
 	queue        *MediaTaskStream
@@ -89,7 +102,8 @@ type integrationMediaWorkerFixture struct {
 func newIntegrationMediaWorker(t *testing.T) *integrationMediaWorkerFixture {
 	t.Helper()
 	client := testEntClient(t)
-	queue := NewMediaTaskStream(testRedis(t), "worker-integration", 100*time.Millisecond)
+	resetMediaTaskStreamKeys(t)
+	queue := NewMediaTaskStream(integrationRedis, fmt.Sprintf("worker-integration-%d", time.Now().UnixNano()), 100*time.Millisecond)
 	require.NoError(t, queue.EnsureGroups(context.Background()))
 	taskRepo := NewMediaTaskRepository(client)
 	artifactRepo := NewMediaArtifactRepository(client)
@@ -121,7 +135,7 @@ func (f *integrationMediaWorkerFixture) createQueuedTask(t *testing.T, clientAsy
 }
 func (f *integrationMediaWorkerFixture) waitForSettledAndAcked(t *testing.T, id int64, priority service.MediaQueuePriority, duplicateMessages int64) {
 	t.Helper()
-	require.Eventually(t, func() bool {
+	if assert.Eventually(t, func() bool {
 		task, err := f.taskRepo.GetByID(context.Background(), id)
 		if err != nil || task.Status != service.MediaTaskStatusCompleted || task.BillingStatus != service.MediaBillingStatusSettled {
 			return false
@@ -131,7 +145,17 @@ func (f *integrationMediaWorkerFixture) waitForSettledAndAcked(t *testing.T, id 
 		}
 		pending, err := f.queue.PendingCount(context.Background(), priority)
 		return err == nil && pending == 0
-	}, 3*time.Second, 10*time.Millisecond)
+	}, 3*time.Second, 10*time.Millisecond) {
+		return
+	}
+	task, taskErr := f.taskRepo.GetByID(context.Background(), id)
+	pending, pendingErr := f.queue.PendingCount(context.Background(), priority)
+	var workerErr error
+	select {
+	case workerErr = <-f.worker.Errors():
+	default:
+	}
+	t.Fatalf("media worker did not settle and ACK: task=%+v task_err=%v pending=%d pending_err=%v worker_err=%v", task, taskErr, pending, pendingErr, workerErr)
 }
 
 type integrationWorkerAdapter struct {

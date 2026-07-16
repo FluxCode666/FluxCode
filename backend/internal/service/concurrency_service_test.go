@@ -32,11 +32,13 @@ type stubConcurrencyCacheForTest struct {
 	// 记录调用
 	releasedAccountIDs []int64
 	releasedRequestIDs []string
+	acquiredRequestIDs []string
 }
 
 var _ ConcurrencyCache = (*stubConcurrencyCacheForTest)(nil)
 
-func (c *stubConcurrencyCacheForTest) AcquireAccountSlot(_ context.Context, _ int64, _ int, _ string) (bool, error) {
+func (c *stubConcurrencyCacheForTest) AcquireAccountSlot(_ context.Context, _ int64, _ int, requestID string) (bool, error) {
+	c.acquiredRequestIDs = append(c.acquiredRequestIDs, requestID)
 	return c.acquireResult, c.acquireErr
 }
 func (c *stubConcurrencyCacheForTest) ReleaseAccountSlot(_ context.Context, accountID int64, requestID string) error {
@@ -152,6 +154,22 @@ func TestAcquireAccountSlot_UnlimitedConcurrency(t *testing.T) {
 	}
 }
 
+func TestAcquireAccountSlotWithIDUnlimitedConcurrencyDoesNotTouchCache(t *testing.T) {
+	cache := &stubConcurrencyCacheForTest{acquireErr: errors.New("cache must not be called")}
+	svc := NewConcurrencyService(cache)
+
+	for _, maxConcurrency := range []int{0, -1} {
+		result, err := svc.AcquireAccountSlotWithID(context.Background(), 1, maxConcurrency, MediaTaskSlotID("unlimited"))
+		require.NoError(t, err)
+		require.True(t, result.Acquired)
+		require.NotNil(t, result.ReleaseFunc)
+		result.ReleaseFunc()
+		result.ReleaseFunc()
+	}
+	require.Empty(t, cache.acquiredRequestIDs)
+	require.Empty(t, cache.releasedRequestIDs)
+}
+
 func TestAcquireAccountSlot_CacheError(t *testing.T) {
 	cache := &stubConcurrencyCacheForTest{acquireErr: errors.New("redis down")}
 	svc := NewConcurrencyService(cache)
@@ -176,6 +194,54 @@ func TestAcquireAccountSlot_ReleaseDecrements(t *testing.T) {
 	require.Equal(t, int64(42), cache.releasedAccountIDs[0])
 	require.Len(t, cache.releasedRequestIDs, 1)
 	require.NotEmpty(t, cache.releasedRequestIDs[0], "requestID 不应为空")
+}
+
+func TestAcquireAccountSlotWithIDUsesStableMemberAndIdempotentRelease(t *testing.T) {
+	cache := &stubConcurrencyCacheForTest{acquireResult: true}
+	firstService := NewConcurrencyService(cache)
+	secondService := NewConcurrencyService(cache)
+	slotID := MediaTaskSlotID(" task_public_id ")
+
+	first, err := firstService.AcquireAccountSlotWithID(context.Background(), 42, 1, slotID)
+	require.NoError(t, err)
+	require.True(t, first.Acquired)
+	second, err := secondService.AcquireAccountSlotWithID(context.Background(), 42, 1, slotID)
+	require.NoError(t, err)
+	require.True(t, second.Acquired)
+	require.Equal(t, []string{"media-task:task_public_id", "media-task:task_public_id"}, cache.acquiredRequestIDs)
+
+	second.ReleaseFunc()
+	second.ReleaseFunc()
+	require.Equal(t, []string{"media-task:task_public_id"}, cache.releasedRequestIDs)
+}
+
+func TestAcquireAccountSlotWithoutIDKeepsRandomRequestIDs(t *testing.T) {
+	cache := &stubConcurrencyCacheForTest{acquireResult: true}
+	svc := NewConcurrencyService(cache)
+
+	first, err := svc.AcquireAccountSlot(context.Background(), 42, 2)
+	require.NoError(t, err)
+	second, err := svc.AcquireAccountSlot(context.Background(), 42, 2)
+	require.NoError(t, err)
+	require.Len(t, cache.acquiredRequestIDs, 2)
+	require.NotEqual(t, cache.acquiredRequestIDs[0], cache.acquiredRequestIDs[1])
+	require.True(t, strings.HasPrefix(cache.acquiredRequestIDs[0], RequestIDPrefix()+"-"))
+	require.True(t, strings.HasPrefix(cache.acquiredRequestIDs[1], RequestIDPrefix()+"-"))
+	first.ReleaseFunc()
+	second.ReleaseFunc()
+}
+
+func TestMediaTaskSlotIDRejectsEmptyAndPrefixesPublicID(t *testing.T) {
+	require.Empty(t, MediaTaskSlotID("   "))
+	require.Equal(t, "media-task:public-1", MediaTaskSlotID(" public-1 "))
+	require.Equal(t, "media-task:media-task:public-1", MediaTaskSlotID("media-task:public-1"))
+}
+
+func TestMediaTaskSlotIDDoesNotCollideWithPrefixedPublicID(t *testing.T) {
+	plain := MediaTaskSlotID("public-1")
+	prefixed := MediaTaskSlotID("media-task:public-1")
+	require.NotEqual(t, plain, prefixed)
+	require.Equal(t, "media-task:media-task:public-1", prefixed)
 }
 
 func TestAcquireUserSlot_IndependentFromAccount(t *testing.T) {

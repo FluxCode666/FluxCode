@@ -138,6 +138,8 @@ type mediaExecutionTrace struct {
 
 var mediaWorkerSequence atomic.Uint64
 
+const mediaUpstreamCleanupTimeout = 5 * time.Second
+
 func NewMediaWorker(cfg MediaWorkerConfig, deps MediaWorkerDependencies) *MediaWorker {
 	cfg = normalizeMediaWorkerConfig(cfg)
 	if deps.Metrics == nil {
@@ -464,7 +466,8 @@ func (w *MediaWorker) execute(ctx context.Context, task *MediaTask, active *medi
 	for len(excluded) < len(candidates) {
 		selection, selectErr := w.deps.Scheduler.Select(ctx, MediaScheduleRequest{
 			GroupID: task.GroupID, RequestedModel: task.RequestedModel, Operation: task.Operation,
-			SessionHash: task.RequestFingerprint, ExcludedAccountIDs: excluded, CandidateSnapshot: candidates,
+			SessionHash: task.RequestFingerprint, SlotID: MediaTaskSlotID(task.PublicID),
+			ExcludedAccountIDs: excluded, CandidateSnapshot: candidates,
 		})
 		if selectErr != nil {
 			w.observeStage(task, trace, MediaTaskStageScheduling, stageStarted)
@@ -716,6 +719,12 @@ func (w *MediaWorker) resumePolling(ctx context.Context, task *MediaTask, active
 	if err != nil {
 		return nil, systemMediaFailure("system_adapter", "fixed media adapter is unavailable"), nil
 	}
+	if err := w.bindPersistedUpstreamForCleanup(ctx, task, active, adapter); err != nil {
+		return nil, nil, err
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, nil, err
+	}
 	selection, release, err := w.acquireFixedSelection(ctx, task)
 	if err != nil {
 		return nil, nil, err
@@ -737,12 +746,33 @@ func (w *MediaWorker) resumePolling(ctx context.Context, task *MediaTask, active
 	return w.poll(ctx, task, selection.Account, adapter, trace)
 }
 
+// bindPersistedUpstreamForCleanup resolves and binds the persisted abort target
+// before fixed-slot selection can block. The cleanup lookup deliberately
+// survives execution cancellation, but remains bounded, so a concurrent stop
+// cannot lose the upstream Abort handshake while waiting for an account slot.
+func (w *MediaWorker) bindPersistedUpstreamForCleanup(ctx context.Context, task *MediaTask, active *mediaActiveExecution, adapter MediaAdapter) error {
+	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), mediaUpstreamCleanupTimeout)
+	defer cancel()
+	account, err := w.deps.Scheduler.GetFixedAccount(cleanupCtx, *task.AccountID)
+	if err != nil {
+		return fmt.Errorf("resolve persisted upstream cleanup account %d: %w", *task.AccountID, err)
+	}
+	if account == nil || account.ID != *task.AccountID {
+		return fmt.Errorf("resolve persisted upstream cleanup account %d: %w", *task.AccountID, ErrNoAvailableAccounts)
+	}
+	if active.bind(MediaExecutionPathNativeAsync, account, adapter, task.UpstreamTaskID, task.PollMetadata) {
+		w.abortActiveUpstream(task.ID, active)
+	}
+	return nil
+}
+
 func (w *MediaWorker) acquireFixedSelection(ctx context.Context, task *MediaTask) (*MediaAccountSelection, func(), error) {
 	if task == nil || task.AccountID == nil {
 		return nil, nil, ErrNoAvailableAccounts
 	}
 	selection, err := w.deps.Scheduler.SelectFixed(ctx, MediaFixedAccountRequest{
 		AccountID: *task.AccountID, GroupID: task.GroupID, SessionHash: task.PublicID,
+		SlotID: MediaTaskSlotID(task.PublicID),
 	})
 	if err != nil {
 		return nil, nil, fmt.Errorf("select fixed media account %d: %w", *task.AccountID, err)
@@ -1003,9 +1033,9 @@ func (w *MediaWorker) abortActiveUpstream(taskID int64, active *mediaActiveExecu
 		if !ok {
 			return
 		}
-		abortCtx, cancel := context.WithTimeout(context.WithoutCancel(target.ctx), 5*time.Second)
+		abortCtx, cancel := context.WithTimeout(context.WithoutCancel(target.ctx), mediaUpstreamCleanupTimeout)
 		defer cancel()
-		err := aborter.Abort(abortCtx, MediaPollRequest{
+		err := callMediaAborter(aborter, abortCtx, MediaPollRequest{
 			Account: target.account, UpstreamTaskID: target.upstreamTaskID, PollMetadata: target.pollMetadata,
 		})
 		if err == nil {
@@ -1018,6 +1048,15 @@ func (w *MediaWorker) abortActiveUpstream(taskID int64, active *mediaActiveExecu
 		default:
 		}
 	})
+}
+
+func callMediaAborter(aborter MediaAborter, ctx context.Context, request MediaPollRequest) (err error) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			err = fmt.Errorf("media adapter abort panic: %v", recovered)
+		}
+	}()
+	return aborter.Abort(ctx, request)
 }
 
 func chooseMediaExecutionPath(clientAsync bool, mode NativeAsyncMode) MediaExecutionPath {

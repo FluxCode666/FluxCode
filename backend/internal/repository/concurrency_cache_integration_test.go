@@ -93,6 +93,32 @@ func (s *ConcurrencyCacheSuite) TestAccountSlot_DuplicateReqID() {
 	require.Equal(s.T(), 1, cur, "expected concurrency=1 (idempotent)")
 }
 
+func (s *ConcurrencyCacheSuite) TestAccountSlot_StableMediaTaskRecoveryRefreshesWithoutIncrementing() {
+	accountID := int64(778)
+	firstService := service.NewConcurrencyService(s.cache)
+	secondService := service.NewConcurrencyService(s.cache)
+	sameSlotID := service.MediaTaskSlotID("hard-crash-task")
+
+	first, err := firstService.AcquireAccountSlotWithID(s.ctx, accountID, 1, sameSlotID)
+	require.NoError(s.T(), err)
+	require.True(s.T(), first.Acquired)
+	second, err := secondService.AcquireAccountSlotWithID(s.ctx, accountID, 1, sameSlotID)
+	require.NoError(s.T(), err)
+	require.True(s.T(), second.Acquired, "same stable member must refresh after hard crash")
+	other, err := secondService.AcquireAccountSlotWithID(s.ctx, accountID, 1, service.MediaTaskSlotID("other-task"))
+	require.NoError(s.T(), err)
+	require.False(s.T(), other.Acquired, "different task must remain blocked at max=1")
+	current, err := s.cache.GetAccountConcurrency(s.ctx, accountID)
+	require.NoError(s.T(), err)
+	require.Equal(s.T(), 1, current)
+
+	second.ReleaseFunc()
+	second.ReleaseFunc()
+	current, err = s.cache.GetAccountConcurrency(s.ctx, accountID)
+	require.NoError(s.T(), err)
+	require.Zero(s.T(), current)
+}
+
 func (s *ConcurrencyCacheSuite) TestAccountSlot_ReleaseIdempotent() {
 	accountID := int64(13)
 	reqID := "release-test"
@@ -263,6 +289,7 @@ func (s *ConcurrencyCacheSuite) TestCleanupStaleProcessSlots() {
 	require.NoError(s.T(), s.rdb.ZAdd(s.ctx, accountKey,
 		redis.Z{Score: float64(now), Member: "oldproc-1"},
 		redis.Z{Score: float64(now), Member: "keep-1"},
+		redis.Z{Score: float64(now), Member: service.MediaTaskSlotID("stable-1")},
 	).Err())
 	require.NoError(s.T(), s.rdb.ZAdd(s.ctx, userKey,
 		redis.Z{Score: float64(now), Member: "oldproc-2"},
@@ -275,7 +302,7 @@ func (s *ConcurrencyCacheSuite) TestCleanupStaleProcessSlots() {
 
 	accountMembers, err := s.rdb.ZRange(s.ctx, accountKey, 0, -1).Result()
 	require.NoError(s.T(), err)
-	require.Equal(s.T(), []string{"keep-1"}, accountMembers)
+	require.ElementsMatch(s.T(), []string{"keep-1", service.MediaTaskSlotID("stable-1")}, accountMembers)
 
 	userMembers, err := s.rdb.ZRange(s.ctx, userKey, 0, -1).Result()
 	require.NoError(s.T(), err)

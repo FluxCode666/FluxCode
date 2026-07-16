@@ -12,6 +12,7 @@ type MediaScheduleRequest struct {
 	RequestedModel     string
 	Operation          MediaOperation
 	SessionHash        string
+	SlotID             string
 	ExcludedAccountIDs map[int64]struct{}
 	CandidateSnapshot  []MediaAccountCandidateSnapshot
 }
@@ -20,6 +21,7 @@ type MediaFixedAccountRequest struct {
 	AccountID   int64
 	GroupID     int64
 	SessionHash string
+	SlotID      string
 }
 
 type MediaAccountCandidateSnapshot struct {
@@ -182,6 +184,7 @@ func (s *MediaScheduler) Select(ctx context.Context, req MediaScheduleRequest) (
 	selected, err := s.selector.Select(ctx, AccountCandidateSelectionRequest{
 		GroupID:            req.GroupID,
 		SessionHash:        req.SessionHash,
+		SlotID:             req.SlotID,
 		Candidates:         candidates,
 		ExcludedAccountIDs: cloneAccountIDSet(req.ExcludedAccountIDs),
 	})
@@ -203,7 +206,7 @@ func (s *MediaScheduler) Select(ctx context.Context, req MediaScheduleRequest) (
 			releaseAccountSelectionResult(selected)
 			return nil, fmt.Errorf("%w: inconsistent acquired media account selection", ErrNoAvailableAccounts)
 		}
-	} else if !validMediaAccountWaitPlan(canonical, selected.WaitPlan) || selected.ReleaseFunc != nil {
+	} else if !validMediaAccountWaitPlan(canonical, selected.WaitPlan, req.SlotID) || selected.ReleaseFunc != nil {
 		releaseAccountSelectionResult(selected)
 		return nil, fmt.Errorf("%w: inconsistent waiting media account selection", ErrNoAvailableAccounts)
 	}
@@ -228,12 +231,12 @@ func (s *MediaScheduler) SelectFixed(ctx context.Context, req MediaFixedAccountR
 	if err != nil {
 		return nil, fmt.Errorf("get fixed media account %d: %w", req.AccountID, err)
 	}
-	if account == nil || account.ID != req.AccountID || !account.IsSchedulable() || account.Concurrency <= 0 {
+	if account == nil || account.ID != req.AccountID || !account.IsSchedulable() {
 		return nil, ErrNoAvailableAccounts
 	}
 	canonical := *account
 	selected, err := s.selector.Select(ctx, AccountCandidateSelectionRequest{
-		GroupID: req.GroupID, SessionHash: req.SessionHash, Candidates: []*Account{&canonical},
+		GroupID: req.GroupID, SessionHash: req.SessionHash, SlotID: req.SlotID, Candidates: []*Account{&canonical},
 	})
 	if err != nil {
 		releaseAccountSelectionResult(selected)
@@ -248,7 +251,7 @@ func (s *MediaScheduler) SelectFixed(ctx context.Context, req MediaFixedAccountR
 			releaseAccountSelectionResult(selected)
 			return nil, fmt.Errorf("%w: inconsistent acquired fixed media account selection", ErrNoAvailableAccounts)
 		}
-	} else if !validMediaAccountWaitPlan(&canonical, selected.WaitPlan) || selected.ReleaseFunc != nil {
+	} else if !validMediaAccountWaitPlan(&canonical, selected.WaitPlan, req.SlotID) || selected.ReleaseFunc != nil {
 		releaseAccountSelectionResult(selected)
 		return nil, fmt.Errorf("%w: inconsistent waiting fixed media account selection", ErrNoAvailableAccounts)
 	}
@@ -266,7 +269,7 @@ func releaseAccountSelectionResult(selection *AccountSelectionResult) {
 	}
 }
 
-func validMediaAccountWaitPlan(account *Account, plan *AccountWaitPlan) bool {
+func validMediaAccountWaitPlan(account *Account, plan *AccountWaitPlan, slotID string) bool {
 	return account != nil &&
 		account.ID > 0 &&
 		account.Concurrency > 0 &&
@@ -274,7 +277,8 @@ func validMediaAccountWaitPlan(account *Account, plan *AccountWaitPlan) bool {
 		plan.AccountID == account.ID &&
 		plan.MaxConcurrency == account.Concurrency &&
 		plan.Timeout > 0 &&
-		plan.MaxWaiting > 0
+		plan.MaxWaiting > 0 &&
+		plan.SlotID == slotID
 }
 
 func validateMediaCandidateSnapshot(input []MediaAccountCandidateSnapshot) (map[int64]MediaAccountCandidateSnapshot, error) {
@@ -339,7 +343,8 @@ func validMediaWaitSelection(selection *MediaAccountSelection) bool {
 	return selection != nil &&
 		!selection.Acquired &&
 		selection.ReleaseFunc == nil &&
-		validMediaAccountWaitPlan(selection.Account, selection.WaitPlan)
+		selection.WaitPlan != nil &&
+		validMediaAccountWaitPlan(selection.Account, selection.WaitPlan, selection.WaitPlan.SlotID)
 }
 
 func (s *MediaScheduler) MarkUsed(ctx context.Context, accountID int64) error {

@@ -41,6 +41,25 @@ func TestMediaWorkerExecutionMatrix(t *testing.T) {
 	}
 }
 
+func TestMediaWorkerInitialExecutionUsesStableTaskSlotID(t *testing.T) {
+	fixture := newMediaWorkerFixture(t, true, NativeAsyncRequired)
+	require.NoError(t, fixture.worker.ProcessOne(context.Background(), fixture.task.ID))
+	require.Equal(t, MediaTaskSlotID(fixture.task.PublicID), fixture.selector.lastStableSlotID())
+}
+
+func TestMediaWorkerInitialExecutionAllowsUnlimitedAccountConcurrency(t *testing.T) {
+	for _, concurrency := range []int{0, -1} {
+		t.Run(fmt.Sprintf("concurrency_%d", concurrency), func(t *testing.T) {
+			fixture := newMediaWorkerFixture(t, true, NativeAsyncRequired)
+			fixture.account.Concurrency = concurrency
+
+			require.NoError(t, fixture.worker.ProcessOne(context.Background(), fixture.task.ID))
+			require.Equal(t, MediaTaskStatusCompleted, fixture.repo.mustGet(fixture.task.ID).Status)
+			require.Zero(t, fixture.selector.waitCalls.Load())
+		})
+	}
+}
+
 func TestMediaWorkerIgnoresDuplicateTerminalMessage(t *testing.T) {
 	fixture := newMediaWorkerFixture(t, true, NativeAsyncRequired)
 	require.NoError(t, fixture.worker.ProcessOne(context.Background(), fixture.task.ID))
@@ -300,7 +319,7 @@ func TestMediaWorkerResumesExistingUpstreamTaskWithoutSubmit(t *testing.T) {
 	task := fixture.repo.tasks[fixture.task.ID]
 	task.Status = MediaTaskStatusInProgress
 	task.Stage = MediaTaskStagePolling
-	task.AccountID = ptrInt64(fixture.account.ID)
+	task.AccountID = workerInt64Ptr(fixture.account.ID)
 	task.Adapter = fixture.adapter.Name()
 	task.UpstreamModel = "upstream-image"
 	task.NativeAsyncMode = NativeAsyncRequired
@@ -317,6 +336,7 @@ func TestMediaWorkerResumesExistingUpstreamTaskWithoutSubmit(t *testing.T) {
 	require.Equal(t, int64(1), fixture.selector.selectCalls.Load())
 	require.Equal(t, int64(1), fixture.selector.releaseCalls.Load())
 	require.Equal(t, fixture.task.PublicID, fixture.selector.lastSessionKey())
+	require.Equal(t, MediaTaskSlotID(fixture.task.PublicID), fixture.selector.lastStableSlotID())
 	require.Equal(t, []int64{fixture.account.ID}, fixture.selector.lastCandidateAccountIDs())
 	require.Zero(t, fixture.adapter.submitCalls.Load())
 	require.GreaterOrEqual(t, fixture.adapter.pollCalls.Load(), int64(1))
@@ -350,7 +370,7 @@ func TestMediaWorkerRecoveryDoesNotDependOnCurrentModelOrHistoricalRequestSpec(t
 			task := fixture.repo.tasks[fixture.task.ID]
 			task.Status = MediaTaskStatusInProgress
 			task.Stage = MediaTaskStagePolling
-			task.AccountID = ptrInt64(fixture.account.ID)
+			task.AccountID = workerInt64Ptr(fixture.account.ID)
 			task.Adapter = fixture.adapter.Name()
 			task.UpstreamModel = "upstream-image"
 			task.NativeAsyncMode = NativeAsyncRequired
@@ -502,6 +522,7 @@ func TestMediaWorkerRecoversUnknownSubmissionOnFixedIdempotentAdapter(t *testing
 	require.Equal(t, int64(1), fixture.selector.selectCalls.Load())
 	require.Equal(t, int64(1), fixture.selector.releaseCalls.Load())
 	require.Equal(t, fixture.task.PublicID, fixture.selector.lastSessionKey())
+	require.Equal(t, MediaTaskSlotID(fixture.task.PublicID), fixture.selector.lastStableSlotID())
 	require.Equal(t, []int64{fixedAccount.ID}, fixture.selector.lastCandidateAccountIDs())
 	require.Zero(t, fixture.adapter.submitCalls.Load())
 	require.Equal(t, int64(1), fixedAdapter.submitCalls.Load())
@@ -896,6 +917,92 @@ func TestMediaWorkerStopForSyncTimeoutAbortsExistingUpstreamAndStopsPolling(t *t
 	require.Equal(t, MediaTaskStatusInProgress, fixture.repo.mustGet(fixture.task.ID).Status)
 }
 
+func TestMediaWorkerStopWhileExistingUpstreamWaitsForFixedSlotAbortsPersistedTarget(t *testing.T) {
+	fixture := newMediaWorkerFixture(t, true, NativeAsyncRequired)
+	prepareRecoverableExistingUpstream(fixture, "existing-upstream")
+	waitEntered := make(chan struct{})
+	fixture.selector.configureWait(waitEntered, make(chan struct{}))
+
+	done := make(chan error, 1)
+	go func() { done <- fixture.worker.ProcessOne(context.Background(), fixture.task.ID) }()
+	select {
+	case <-waitEntered:
+	case <-time.After(time.Second):
+		t.Fatal("expected existing upstream to wait for its fixed account slot")
+	}
+	require.Zero(t, fixture.adapter.pollCalls.Load())
+
+	require.True(t, fixture.worker.StopForSyncTimeout(fixture.task.ID))
+	require.ErrorIs(t, <-done, ErrMediaSyncTimeoutStopped)
+	require.Equal(t, int64(1), fixture.adapter.abortCalls.Load())
+	require.Zero(t, fixture.adapter.pollCalls.Load())
+	require.Zero(t, fixture.selector.releaseCalls.Load())
+	require.Zero(t, fixture.queue.ackCalls.Load())
+	require.Equal(t, MediaTaskStatusInProgress, fixture.repo.mustGet(fixture.task.ID).Status)
+	require.Eventually(t, func() bool {
+		stored := fixture.repo.mustGet(fixture.task.ID)
+		return stored.LeaseUntil != nil && stored.LeaseUntil.Before(time.Now())
+	}, time.Second, 10*time.Millisecond)
+	fixture.queue.resetEnqueued()
+	require.NoError(t, fixture.worker.RecoverOnce(context.Background()))
+	require.Equal(t, []int64{fixture.task.ID}, fixture.queue.enqueuedTaskIDs())
+}
+
+func TestMediaWorkerExistingUpstreamRecoveryAllowsUnlimitedFixedAccountConcurrency(t *testing.T) {
+	for _, concurrency := range []int{0, -1} {
+		t.Run(fmt.Sprintf("concurrency_%d", concurrency), func(t *testing.T) {
+			fixture := newMediaWorkerFixture(t, true, NativeAsyncRequired)
+			fixture.account.Concurrency = concurrency
+			prepareRecoverableExistingUpstream(fixture, "existing-upstream")
+
+			require.NoError(t, fixture.worker.ProcessOne(context.Background(), fixture.task.ID))
+			require.Equal(t, MediaTaskStatusCompleted, fixture.repo.mustGet(fixture.task.ID).Status)
+			require.GreaterOrEqual(t, fixture.adapter.pollCalls.Load(), int64(1))
+			require.Zero(t, fixture.selector.waitCalls.Load())
+		})
+	}
+}
+
+func TestMediaWorkerStopDuringExistingUpstreamTargetResolutionStillAbortsAfterBind(t *testing.T) {
+	fixture := newMediaWorkerFixture(t, true, NativeAsyncRequired)
+	prepareRecoverableExistingUpstream(fixture, "existing-upstream")
+	accountRepo := fixture.worker.deps.Scheduler.accountRepo.(*workerAccountRepository)
+	resolveEntered := make(chan struct{})
+	releaseResolve := make(chan struct{})
+	defer func() {
+		select {
+		case <-releaseResolve:
+		default:
+			close(releaseResolve)
+		}
+	}()
+	accountRepo.getEntered = resolveEntered
+	accountRepo.getBlock = releaseResolve
+
+	done := make(chan error, 1)
+	go func() { done <- fixture.worker.ProcessOne(context.Background(), fixture.task.ID) }()
+	select {
+	case <-resolveEntered:
+	case <-time.After(time.Second):
+		t.Fatal("expected persisted upstream target resolution to start")
+	}
+	require.True(t, fixture.worker.StopForSyncTimeout(fixture.task.ID))
+	require.Zero(t, fixture.adapter.abortCalls.Load(), "abort target is not bound until account resolution completes")
+	select {
+	case err := <-done:
+		t.Fatalf("execution returned before cleanup target resolution completed: %v", err)
+	case <-time.After(20 * time.Millisecond):
+	}
+	close(releaseResolve)
+
+	require.ErrorIs(t, <-done, ErrMediaSyncTimeoutStopped)
+	require.Equal(t, int64(1), fixture.adapter.abortCalls.Load())
+	require.Zero(t, fixture.adapter.pollCalls.Load())
+	require.Zero(t, fixture.selector.selectCalls.Load(), "canceled execution must not acquire a fixed slot after cleanup binding")
+	require.Zero(t, fixture.queue.ackCalls.Load())
+	require.Equal(t, MediaTaskStatusInProgress, fixture.repo.mustGet(fixture.task.ID).Status)
+}
+
 func TestMediaWorkerAbortsSubmittedUpstreamWhenPersistenceFails(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -1027,6 +1134,95 @@ func TestMediaWorkerAbortFailureDoesNotLeakSensitiveErrorToLogs(t *testing.T) {
 	require.NotContains(t, output.String(), "https://upstream.example")
 	require.NotContains(t, output.String(), "token=secret")
 	require.Contains(t, output.String(), `"error_category":"abort_failed"`)
+}
+
+func TestMediaWorkerStopRecoversAbortPanicAndStillCancelsExecution(t *testing.T) {
+	fixture := newMediaWorkerFixture(t, true, NativeAsyncRequired)
+	prepareRecoverableExistingUpstream(fixture, "existing-upstream")
+	waitEntered := make(chan struct{})
+	fixture.selector.configureWait(waitEntered, make(chan struct{}))
+	fixture.adapter.abortPanic = true
+	fixture.adapter.abortPanicMessage = "https://upstream.example/abort token=panic-secret"
+	var output bytes.Buffer
+	fixture.worker.logger = slog.New(slog.NewJSONHandler(&output, nil))
+
+	done := make(chan error, 1)
+	go func() { done <- fixture.worker.ProcessOne(context.Background(), fixture.task.ID) }()
+	select {
+	case <-waitEntered:
+	case <-time.After(time.Second):
+		t.Fatal("expected existing upstream fixed-slot wait")
+	}
+	active := fixture.worker.activeForTask(fixture.task.ID)
+	require.NotNil(t, active)
+	var stopped bool
+	recovered := captureWorkerTestPanic(func() {
+		stopped = fixture.worker.StopForSyncTimeout(fixture.task.ID)
+	})
+	processErr := <-done
+	var abortEvent error
+	select {
+	case abortEvent = <-fixture.worker.Errors():
+	case <-time.After(100 * time.Millisecond):
+	}
+	secondRecovered := captureWorkerTestPanic(func() {
+		fixture.worker.abortActiveUpstream(fixture.task.ID, active)
+	})
+
+	require.Nil(t, recovered, "StopForSyncTimeout must recover adapter Abort panic")
+	require.True(t, stopped)
+	require.ErrorIs(t, processErr, ErrMediaSyncTimeoutStopped)
+	require.Nil(t, secondRecovered)
+	require.Equal(t, int64(1), fixture.adapter.abortCalls.Load(), "abortOnce must be consumed exactly once")
+	require.Zero(t, fixture.adapter.pollCalls.Load())
+	require.Zero(t, fixture.selector.releaseCalls.Load())
+	require.False(t, fixture.adapter.abortCtxCanceled.Load())
+	require.False(t, fixture.worker.StopForSyncTimeout(fixture.task.ID), "active execution must be unregistered")
+	require.Error(t, abortEvent)
+	require.Contains(t, abortEvent.Error(), "panic-secret", "raw panic diagnostics may remain in the in-memory error channel")
+	require.NotContains(t, output.String(), "https://upstream.example")
+	require.NotContains(t, output.String(), "panic-secret")
+	require.Contains(t, output.String(), `"error_category":"abort_failed"`)
+}
+
+func TestMediaWorkerPersistenceFailureRecoversAbortPanicAndReleasesResources(t *testing.T) {
+	fixture := newMediaWorkerFixture(t, true, NativeAsyncRequired)
+	persistErr := errors.New("upstream id storage unavailable")
+	fixture.repo.upstreamUpdateErr = persistErr
+	fixture.adapter.abortPanic = true
+	fixture.adapter.abortPanicMessage = "https://upstream.example/abort token=db-panic-secret"
+	var output bytes.Buffer
+	fixture.worker.logger = slog.New(slog.NewJSONHandler(&output, nil))
+
+	var processErr error
+	recovered := captureWorkerTestPanic(func() {
+		processErr = fixture.worker.ProcessOne(context.Background(), fixture.task.ID)
+	})
+	var abortEvent error
+	select {
+	case abortEvent = <-fixture.worker.Errors():
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	require.Nil(t, recovered, "persistence cleanup must recover adapter Abort panic")
+	require.ErrorIs(t, processErr, persistErr)
+	require.Equal(t, int64(1), fixture.adapter.abortCalls.Load())
+	require.Zero(t, fixture.adapter.pollCalls.Load())
+	require.Equal(t, int64(1), fixture.selector.releaseCalls.Load())
+	require.False(t, fixture.adapter.abortCtxCanceled.Load())
+	require.False(t, fixture.worker.StopForSyncTimeout(fixture.task.ID), "active execution must be unregistered")
+	require.Equal(t, MediaTaskStatusInProgress, fixture.repo.mustGet(fixture.task.ID).Status)
+	require.Error(t, abortEvent)
+	require.Contains(t, abortEvent.Error(), "db-panic-secret")
+	require.NotContains(t, output.String(), "https://upstream.example")
+	require.NotContains(t, output.String(), "db-panic-secret")
+	require.Contains(t, output.String(), `"error_category":"abort_failed"`)
+}
+
+func captureWorkerTestPanic(run func()) (recovered any) {
+	defer func() { recovered = recover() }()
+	run()
+	return nil
 }
 
 func TestMediaWorkerPersistenceFailureWithNonAbortableAdapterStillReleasesResources(t *testing.T) {
@@ -1181,7 +1377,7 @@ func prepareRecoverableSubmittingTask(t *testing.T, fixture *mediaWorkerFixture,
 	stored := fixture.repo.tasks[fixture.task.ID]
 	stored.Status = MediaTaskStatusInProgress
 	stored.Stage = MediaTaskStageSubmitting
-	stored.AccountID = ptrInt64(fixedAccount.ID)
+	stored.AccountID = workerInt64Ptr(fixedAccount.ID)
 	stored.Adapter = fixedAdapter.Name()
 	stored.UpstreamModel = "fixed-upstream-image"
 	stored.NativeAsyncMode = NativeAsyncRequired
@@ -1195,13 +1391,32 @@ func prepareRecoverableSubmittingTask(t *testing.T, fixture *mediaWorkerFixture,
 	return fixedAdapter, fixedAccount
 }
 
+func prepareRecoverableExistingUpstream(fixture *mediaWorkerFixture, upstreamTaskID string) {
+	fixture.repo.mu.Lock()
+	stored := fixture.repo.tasks[fixture.task.ID]
+	stored.Status = MediaTaskStatusInProgress
+	stored.Stage = MediaTaskStagePolling
+	stored.AccountID = workerInt64Ptr(fixture.account.ID)
+	stored.Adapter = fixture.adapter.Name()
+	stored.UpstreamModel = "upstream-image"
+	stored.NativeAsyncMode = NativeAsyncRequired
+	stored.UpstreamTaskID = upstreamTaskID
+	stored.PollMetadata = json.RawMessage(`{"cursor":1}`)
+	stored.WorkerID = "dead-worker"
+	stored.LeaseUntil = workerTimePtr(time.Now().Add(-time.Minute))
+	stored.StartedAt = workerTimePtr(time.Now().UTC())
+	stored.Version++
+	fixture.repo.mu.Unlock()
+	fixture.adapter.allowUpstream(upstreamTaskID)
+}
+
 func prepareRecoverableSyncStage(fixture *mediaWorkerFixture, stage MediaTaskStage) {
 	fixture.repo.mu.Lock()
 	defer fixture.repo.mu.Unlock()
 	stored := fixture.repo.tasks[fixture.task.ID]
 	stored.Status = MediaTaskStatusInProgress
 	stored.Stage = stage
-	stored.AccountID = ptrInt64(fixture.account.ID)
+	stored.AccountID = workerInt64Ptr(fixture.account.ID)
 	stored.Adapter = fixture.adapter.Name()
 	stored.UpstreamModel = "upstream-image"
 	stored.NativeAsyncMode = NativeAsyncUnsupported
@@ -1504,7 +1719,7 @@ func cloneWorkerTime(v *time.Time) *time.Time {
 	return &copy
 }
 func workerTimePtr(v time.Time) *time.Time { return &v }
-func ptrInt64(v int64) *int64              { return &v }
+func workerInt64Ptr(v int64) *int64        { return &v }
 
 func workerCompletedTask(id int64, publicID string) *MediaTask {
 	now := time.Now().UTC()
@@ -1584,9 +1799,13 @@ func (q *workerQueue) deliver(message *MediaQueueMessage) {
 }
 
 type workerAccountRepository struct {
-	account  *Account
-	extra    []*Account
-	markUsed atomic.Int64
+	account        *Account
+	extra          []*Account
+	markUsed       atomic.Int64
+	getCalls       atomic.Int64
+	getEntered     chan struct{}
+	getBlock       <-chan struct{}
+	getEnteredOnce sync.Once
 }
 
 func (r *workerAccountRepository) ListSchedulableByGroupID(context.Context, int64) ([]Account, error) {
@@ -1596,7 +1815,21 @@ func (r *workerAccountRepository) ListSchedulableByGroupID(context.Context, int6
 	}
 	return accounts, nil
 }
-func (r *workerAccountRepository) GetByID(_ context.Context, id int64) (*Account, error) {
+func (r *workerAccountRepository) GetByID(ctx context.Context, id int64) (*Account, error) {
+	r.getCalls.Add(1)
+	if r.getEntered != nil {
+		r.getEnteredOnce.Do(func() { close(r.getEntered) })
+	}
+	if r.getBlock != nil {
+		select {
+		case <-r.getBlock:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	if r.account.ID == id {
 		copy := *r.account
 		return &copy, nil
@@ -1622,6 +1855,7 @@ type workerSelector struct {
 	driftID      atomic.Int64
 	mu           sync.Mutex
 	lastSession  string
+	lastSlotID   string
 	lastIDs      []int64
 	waitEntered  chan struct{}
 	waitBlock    <-chan struct{}
@@ -1632,6 +1866,7 @@ func (s *workerSelector) Select(_ context.Context, req AccountCandidateSelection
 	s.selectCalls.Add(1)
 	s.mu.Lock()
 	s.lastSession = req.SessionHash
+	s.lastSlotID = req.SlotID
 	s.lastIDs = s.lastIDs[:0]
 	for _, candidate := range req.Candidates {
 		if candidate != nil {
@@ -1650,7 +1885,7 @@ func (s *workerSelector) Select(_ context.Context, req AccountCandidateSelection
 			Account: req.Candidates[0],
 			WaitPlan: &AccountWaitPlan{
 				AccountID: req.Candidates[0].ID, MaxConcurrency: req.Candidates[0].Concurrency,
-				Timeout: time.Second, MaxWaiting: 1,
+				Timeout: time.Second, MaxWaiting: 1, SlotID: req.SlotID,
 			},
 		}, nil
 	}
@@ -1692,6 +1927,11 @@ func (s *workerSelector) lastCandidateAccountIDs() []int64 {
 	defer s.mu.Unlock()
 	return append([]int64(nil), s.lastIDs...)
 }
+func (s *workerSelector) lastStableSlotID() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.lastSlotID
+}
 
 type workerModelRepository struct{ definition MediaModelDefinition }
 
@@ -1718,6 +1958,8 @@ type workerAdapter struct {
 	submitBlock         <-chan struct{}
 	submitEnteredOnce   sync.Once
 	abortErr            error
+	abortPanic          bool
+	abortPanicMessage   string
 	abortRequests       []MediaPollRequest
 	abortCtxCanceled    atomic.Bool
 	allowed             map[string]struct{}
@@ -1834,6 +2076,9 @@ func (a *workerAdapter) Abort(ctx context.Context, req MediaPollRequest) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.abortRequests = append(a.abortRequests, req)
+	if a.abortPanic {
+		panic(a.abortPanicMessage)
+	}
 	if a.abortErr != nil {
 		return a.abortErr
 	}

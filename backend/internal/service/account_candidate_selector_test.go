@@ -21,6 +21,7 @@ type accountCandidateConcurrencyStub struct {
 	acquireErr        error
 	acquireErrors     map[int64][]error
 	acquireCalls      []int64
+	stableSlotIDs     []string
 	releaseCalls      map[int64]int
 	waitAllowed       bool
 	waitErr           error
@@ -84,6 +85,13 @@ func (s *accountCandidateConcurrencyStub) AcquireAccountSlot(ctx context.Context
 		}
 		s.releaseCalls[accountID]++
 	}}, nil
+}
+
+func (s *accountCandidateConcurrencyStub) AcquireAccountSlotWithID(ctx context.Context, accountID int64, maxConcurrency int, slotID string) (*AcquireResult, error) {
+	s.mu.Lock()
+	s.stableSlotIDs = append(s.stableSlotIDs, slotID)
+	s.mu.Unlock()
+	return s.AcquireAccountSlot(ctx, accountID, maxConcurrency)
 }
 
 func (s *accountCandidateConcurrencyStub) IncrementAccountWaitCount(ctx context.Context, _ int64, _ int) (bool, error) {
@@ -672,6 +680,68 @@ func TestAccountCandidateSelectorAcquireRaceAndReleaseAreAtomicAndIdempotent(t *
 	}
 	releaseWG.Wait()
 	require.Equal(t, 1, concurrency.releaseCount())
+}
+
+func TestAccountCandidateSelectorUsesStableSlotIDForAcquireAndWait(t *testing.T) {
+	t.Run("immediate acquire", func(t *testing.T) {
+		concurrency := &accountCandidateConcurrencyStub{}
+		selector := NewAccountCandidateSelector(concurrency, nil, task12SchedulingConfig())
+		result, err := selector.Select(context.Background(), AccountCandidateSelectionRequest{
+			SlotID: "media-task:public-1", Candidates: []*Account{task12CandidateAccount(1, 1, 1)},
+		})
+		require.NoError(t, err)
+		require.True(t, result.Acquired)
+		result.ReleaseFunc()
+		result.ReleaseFunc()
+		concurrency.mu.Lock()
+		require.Equal(t, []string{"media-task:public-1"}, concurrency.stableSlotIDs)
+		require.Equal(t, 1, concurrency.releaseCalls[1])
+		concurrency.mu.Unlock()
+	})
+
+	t.Run("wait retry", func(t *testing.T) {
+		concurrency := &accountCandidateConcurrencyStub{
+			waitAllowed: true, acquireResults: map[int64][]bool{1: {false, true}},
+		}
+		selector := NewAccountCandidateSelector(concurrency, nil, task12SchedulingConfig())
+		result, err := selector.Select(context.Background(), AccountCandidateSelectionRequest{
+			SlotID: "media-task:public-1", Candidates: []*Account{task12CandidateAccount(1, 1, 1)},
+		})
+		require.NoError(t, err)
+		require.False(t, result.Acquired)
+		require.Equal(t, "media-task:public-1", result.WaitPlan.SlotID)
+		release, err := selector.Wait(context.Background(), result.WaitPlan)
+		require.NoError(t, err)
+		release()
+		concurrency.mu.Lock()
+		require.Equal(t, []string{"media-task:public-1", "media-task:public-1"}, concurrency.stableSlotIDs)
+		require.Equal(t, 1, concurrency.releaseCalls[1])
+		concurrency.mu.Unlock()
+	})
+}
+
+func TestAccountCandidateSelectorWithoutSlotIDUsesLegacyAcquire(t *testing.T) {
+	concurrency := &accountCandidateConcurrencyStub{}
+	selector := NewAccountCandidateSelector(concurrency, nil, task12SchedulingConfig())
+	result, err := selector.Select(context.Background(), AccountCandidateSelectionRequest{
+		Candidates: []*Account{task12CandidateAccount(1, 1, 1)},
+	})
+	require.NoError(t, err)
+	result.ReleaseFunc()
+	concurrency.mu.Lock()
+	require.Empty(t, concurrency.stableSlotIDs)
+	require.Equal(t, []int64{1}, concurrency.acquireCalls)
+	concurrency.mu.Unlock()
+}
+
+func TestAccountCandidateSelectorDoesNotDowngradeStableSlotIDToLegacyAcquire(t *testing.T) {
+	concurrency := &atomicAccountCandidateConcurrency{}
+	selector := NewAccountCandidateSelector(concurrency, nil, task12SchedulingConfig())
+	result, err := selector.Select(context.Background(), AccountCandidateSelectionRequest{
+		SlotID: "media-task:public-1", Candidates: []*Account{task12CandidateAccount(1, 1, 1)},
+	})
+	require.Nil(t, result)
+	require.ErrorIs(t, err, ErrStableAccountSlotUnsupported)
 }
 
 type atomicAccountCandidateConcurrency struct {

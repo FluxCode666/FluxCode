@@ -11,13 +11,17 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 )
 
-var ErrAccountConcurrencySaturated = errors.New("account concurrency saturated")
+var (
+	ErrAccountConcurrencySaturated  = errors.New("account concurrency saturated")
+	ErrStableAccountSlotUnsupported = errors.New("stable account concurrency slots are unsupported")
+)
 
 const accountCandidateWaitPollInterval = 100 * time.Millisecond
 
 type AccountCandidateSelectionRequest struct {
 	GroupID            int64
 	SessionHash        string
+	SlotID             string
 	Candidates         []*Account
 	ExcludedAccountIDs map[int64]struct{}
 }
@@ -35,6 +39,10 @@ type AccountCandidateConcurrency interface {
 	IncrementAccountWaitCount(ctx context.Context, accountID int64, maxWait int) (bool, error)
 	DecrementAccountWaitCount(ctx context.Context, accountID int64)
 	GetAccountWaitingCount(ctx context.Context, accountID int64) (int, error)
+}
+
+type accountSlotIDAcquirer interface {
+	AcquireAccountSlotWithID(ctx context.Context, accountID int64, maxConcurrency int, slotID string) (*AcquireResult, error)
 }
 
 type accountCandidateSelector struct {
@@ -92,7 +100,7 @@ func (s *accountCandidateSelector) Select(ctx context.Context, req AccountCandid
 	var firstBusy *Account
 	var acquireErrors []error
 	for _, candidate := range ordered {
-		result, err := s.acquire(ctx, candidate)
+		result, err := s.acquire(ctx, candidate, req.SlotID)
 		if err != nil {
 			if ctxErr := ctx.Err(); ctxErr != nil {
 				return nil, ctxErr
@@ -126,6 +134,7 @@ func (s *accountCandidateSelector) Select(ctx context.Context, req AccountCandid
 			MaxConcurrency: firstBusy.Concurrency,
 			Timeout:        s.config.FallbackWaitTimeout,
 			MaxWaiting:     s.config.FallbackMaxWaiting,
+			SlotID:         req.SlotID,
 		},
 	}, nil
 }
@@ -184,7 +193,7 @@ func (s *accountCandidateSelector) setSticky(ctx context.Context, groupID int64,
 }
 
 func (s *accountCandidateSelector) trySticky(ctx context.Context, req AccountCandidateSelectionRequest, account *Account) (*AccountSelectionResult, bool, error) {
-	result, err := s.acquire(ctx, account)
+	result, err := s.acquire(ctx, account, req.SlotID)
 	if err != nil {
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return nil, true, ctxErr
@@ -218,6 +227,7 @@ func (s *accountCandidateSelector) trySticky(ctx context.Context, req AccountCan
 			MaxConcurrency: account.Concurrency,
 			Timeout:        s.config.StickySessionWaitTimeout,
 			MaxWaiting:     s.config.StickySessionMaxWaiting,
+			SlotID:         req.SlotID,
 		},
 	}, true, nil
 }
@@ -279,14 +289,24 @@ func accountCandidateLoad(loads map[int64]*AccountLoadInfo, accountID int64) Acc
 	return AccountLoadInfo{AccountID: accountID}
 }
 
-func (s *accountCandidateSelector) acquire(ctx context.Context, account *Account) (*AccountSelectionResult, error) {
+func (s *accountCandidateSelector) acquire(ctx context.Context, account *Account, slotID string) (*AccountSelectionResult, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 	if s == nil || s.concurrency == nil {
 		return &AccountSelectionResult{Account: account, Acquired: true, ReleaseFunc: func() {}}, nil
 	}
-	result, err := s.concurrency.AcquireAccountSlot(ctx, account.ID, account.Concurrency)
+	var (
+		result *AcquireResult
+		err    error
+	)
+	if slotID == "" {
+		result, err = s.concurrency.AcquireAccountSlot(ctx, account.ID, account.Concurrency)
+	} else if stable, ok := s.concurrency.(accountSlotIDAcquirer); ok {
+		result, err = stable.AcquireAccountSlotWithID(ctx, account.ID, account.Concurrency, slotID)
+	} else {
+		return nil, ErrStableAccountSlotUnsupported
+	}
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			return nil, err
@@ -348,7 +368,17 @@ func (s *accountCandidateSelector) Wait(ctx context.Context, plan *AccountWaitPl
 	}
 
 	tryAcquire := func() (func(), bool, error) {
-		result, acquireErr := s.concurrency.AcquireAccountSlot(planCtx, plan.AccountID, plan.MaxConcurrency)
+		var (
+			result     *AcquireResult
+			acquireErr error
+		)
+		if plan.SlotID == "" {
+			result, acquireErr = s.concurrency.AcquireAccountSlot(planCtx, plan.AccountID, plan.MaxConcurrency)
+		} else if stable, ok := s.concurrency.(accountSlotIDAcquirer); ok {
+			result, acquireErr = stable.AcquireAccountSlotWithID(planCtx, plan.AccountID, plan.MaxConcurrency, plan.SlotID)
+		} else {
+			return nil, false, ErrStableAccountSlotUnsupported
+		}
 		if acquireErr != nil {
 			if waitErr := accountWaitContextError(ctx, planCtx); waitErr != nil {
 				return nil, false, waitErr
