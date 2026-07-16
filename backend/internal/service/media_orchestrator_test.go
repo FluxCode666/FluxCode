@@ -17,6 +17,7 @@ func TestMediaOrchestratorAsyncReturnsAfterDurableEnqueue(t *testing.T) {
 	result, err := fixture.orchestrator.Create(context.Background(), validAsyncMediaCreateRequest())
 	require.NoError(t, err)
 	require.Equal(t, MediaCreateDispositionAccepted, result.Disposition)
+	require.True(t, result.InputsAdopted)
 	require.Equal(t, MediaQueuePriorityAsync, fixture.queue.lastPriority())
 	require.Equal(t, 1, fixture.billing.prechargeCalls())
 	require.Equal(t, 2, fixture.queue.enqueueCalls())
@@ -263,7 +264,8 @@ func TestMediaOrchestratorStaleInitializationOwnerCannotFailOrRefundTakeoverWinn
 				require.Equal(t, MediaCreateDispositionAccepted, loser.result.Disposition)
 			} else {
 				require.ErrorIs(t, loser.err, tt.err)
-				require.Nil(t, loser.result)
+				require.NotNil(t, loser.result)
+				require.False(t, loser.result.InputsAdopted)
 			}
 
 			ready := fixture.repo.mustGet(stored.ID)
@@ -700,6 +702,22 @@ func TestMediaOrchestratorUnknownPrechargeResultLeavesFencedPendingForIdempotent
 	require.Equal(t, 0, fixture.billing.settleFailureCalls())
 }
 
+func TestMediaOrchestratorUnknownPrechargeResultKeepsDurableInputOwnership(t *testing.T) {
+	fixture := newMediaOrchestratorFixture(t)
+	fixture.billing.prechargeErr = fmt.Errorf("balance outcome unavailable: %w", ErrMediaPrechargeResultUnknown)
+	req := validAsyncMediaCreateRequest()
+	req.Operation = MediaOperationImageToImage
+	req.Inputs = []MediaArtifactInput{validOrchestratorImageInput(0, "image/png")}
+
+	result, err := fixture.orchestrator.Create(context.Background(), req)
+	require.ErrorIs(t, err, ErrMediaPrechargeResultUnknown)
+	require.NotNil(t, result)
+	require.True(t, result.InputsAdopted)
+	artifacts, readErr := fixture.artifacts.ListByTaskID(context.Background(), result.Task.ID)
+	require.NoError(t, readErr)
+	require.Len(t, artifacts, 1)
+}
+
 func TestMediaOrchestratorSyncSubscribePrecedesFirstDBRead(t *testing.T) {
 	fixture := newMediaOrchestratorFixture(t)
 	fixture.repo.readyPublishedHook = func(task *MediaTask) {
@@ -709,6 +727,7 @@ func TestMediaOrchestratorSyncSubscribePrecedesFirstDBRead(t *testing.T) {
 	result, err := fixture.orchestrator.Create(context.Background(), validSyncMediaCreateRequest())
 	require.NoError(t, err)
 	require.Equal(t, MediaCreateDispositionCompleted, result.Disposition)
+	require.True(t, result.InputsAdopted)
 	require.Equal(t, []string{"subscribe", "get"}, fixture.events.snapshotTail(2))
 }
 
@@ -718,6 +737,7 @@ func TestMediaOrchestratorSyncTimeoutFallbackKeepsTaskRunning(t *testing.T) {
 	result, err := fixture.orchestrator.Create(context.Background(), validSyncMediaCreateRequest())
 	require.NoError(t, err)
 	require.Equal(t, MediaCreateDispositionFallbackAsync, result.Disposition)
+	require.True(t, result.InputsAdopted)
 	stored := fixture.repo.mustGet(result.Task.ID)
 	require.True(t, stored.SyncFallback)
 	require.NotNil(t, stored.SyncFallbackAt)
@@ -803,7 +823,8 @@ func TestMediaOrchestratorFallbackMarkUnappliedErrorPreservesOriginalError(t *te
 
 	result, err := fixture.orchestrator.Create(context.Background(), validSyncMediaCreateRequest())
 	require.ErrorIs(t, err, markErr)
-	require.Nil(t, result)
+	require.NotNil(t, result)
+	require.True(t, result.InputsAdopted)
 	stored := fixture.repo.onlyTask()
 	require.False(t, stored.Status.IsTerminal())
 	require.False(t, stored.SyncFallback)
@@ -956,8 +977,10 @@ func TestMediaOrchestratorZeroTimeoutHasNoApplicationTimer(t *testing.T) {
 	fixture.settings.settings.MediaSyncWaitTimeoutSeconds = 0
 	ctx, cancel := context.WithCancel(context.Background())
 	fixture.queue.subscribeHook = cancel
-	_, err := fixture.orchestrator.Create(ctx, validSyncMediaCreateRequest())
+	result, err := fixture.orchestrator.Create(ctx, validSyncMediaCreateRequest())
 	require.ErrorIs(t, err, context.Canceled)
+	require.NotNil(t, result)
+	require.True(t, result.InputsAdopted)
 	require.Equal(t, 0, fixture.clock.newTimerCalls())
 	require.Equal(t, 0, fixture.controller.stopCalls())
 	require.Equal(t, 0, fixture.billing.settleFailureCalls())
@@ -975,10 +998,75 @@ func TestMediaOrchestratorParentCancelWinsWhenTimeoutAlsoReady(t *testing.T) {
 
 		result, err := fixture.orchestrator.Create(ctx, validSyncMediaCreateRequest())
 		require.ErrorIs(t, err, context.Canceled, "iteration %d", iteration)
-		require.Nil(t, result, "iteration %d", iteration)
+		require.NotNil(t, result, "iteration %d", iteration)
+		require.True(t, result.InputsAdopted, "iteration %d", iteration)
 		require.Equal(t, 0, fixture.controller.stopCalls(), "iteration %d", iteration)
 		require.Equal(t, 0, fixture.billing.settleFailureCalls(), "iteration %d", iteration)
 	}
+}
+
+func TestMediaOrchestratorReadyTaskAdoptsInputsWhenSyncWaitIsCanceled(t *testing.T) {
+	fixture := newMediaOrchestratorFixture(t)
+	fixture.settings.settings.MediaSyncWaitTimeoutSeconds = 0
+	ctx, cancel := context.WithCancel(context.Background())
+	fixture.queue.subscribeHook = cancel
+	req := validSyncMediaCreateRequest()
+	req.Operation = MediaOperationImageToImage
+	req.Inputs = []MediaArtifactInput{validOrchestratorImageInput(0, "image/png")}
+
+	result, err := fixture.orchestrator.Create(ctx, req)
+	require.ErrorIs(t, err, context.Canceled)
+	require.NotNil(t, result)
+	require.True(t, result.InputsAdopted)
+	artifacts, readErr := fixture.artifacts.ListByTaskID(context.Background(), result.Task.ID)
+	require.NoError(t, readErr)
+	require.Len(t, artifacts, 1)
+	require.Equal(t, req.Inputs[0].ObjectKey, artifacts[0].ObjectKey)
+}
+
+func TestMediaOrchestratorReadyTaskAdoptsInputsWhenTerminalSubscriptionCloses(t *testing.T) {
+	fixture := newMediaOrchestratorFixture(t)
+	fixture.settings.settings.MediaSyncWaitTimeoutSeconds = 0
+	fixture.queue.closeSubscription = true
+	req := validSyncMediaCreateRequest()
+	req.Operation = MediaOperationImageToImage
+	req.Inputs = []MediaArtifactInput{validOrchestratorImageInput(0, "image/png")}
+
+	result, err := fixture.orchestrator.Create(context.Background(), req)
+	require.ErrorIs(t, err, ErrMediaTerminalSubscriptionClosed)
+	require.NotNil(t, result)
+	require.True(t, result.InputsAdopted)
+	artifacts, readErr := fixture.artifacts.ListByTaskID(context.Background(), result.Task.ID)
+	require.NoError(t, readErr)
+	require.Len(t, artifacts, 1)
+}
+
+func TestMediaOrchestratorQueueFailureDoesNotAdoptInputs(t *testing.T) {
+	fixture := newMediaOrchestratorFixture(t)
+	fixture.queue.enqueueErr = errors.New("redis unavailable")
+	req := validAsyncMediaCreateRequest()
+	req.Operation = MediaOperationImageToImage
+	req.Inputs = []MediaArtifactInput{validOrchestratorImageInput(0, "image/png")}
+
+	result, err := fixture.orchestrator.Create(context.Background(), req)
+	require.ErrorContains(t, err, "redis unavailable")
+	require.NotNil(t, result)
+	require.False(t, result.InputsAdopted)
+}
+
+func TestMediaOrchestratorIdempotentReuseDoesNotAdoptRetryInputs(t *testing.T) {
+	fixture := newMediaOrchestratorFixture(t)
+	req := validAsyncMediaCreateRequest()
+	req.IdempotencyKey = "idem-input-owner"
+	req.Operation = MediaOperationImageToImage
+	req.Inputs = []MediaArtifactInput{validOrchestratorImageInput(0, "image/png")}
+
+	first, err := fixture.orchestrator.Create(context.Background(), req)
+	require.NoError(t, err)
+	require.True(t, first.InputsAdopted)
+	second, err := fixture.orchestrator.Create(context.Background(), req)
+	require.NoError(t, err)
+	require.False(t, second.InputsAdopted)
 }
 
 func TestMediaOrchestratorIdempotentRetryAfterFallbackReturnsImmediately(t *testing.T) {
@@ -1089,7 +1177,8 @@ func TestMediaOrchestratorTimeoutTransitionUnappliedErrorPreservesOriginalError(
 
 	result, err := fixture.orchestrator.Create(context.Background(), validSyncMediaCreateRequest())
 	require.ErrorIs(t, err, transitionErr)
-	require.Nil(t, result)
+	require.NotNil(t, result)
+	require.True(t, result.InputsAdopted)
 	stored := fixture.repo.onlyTask()
 	require.False(t, stored.Status.IsTerminal())
 	require.Equal(t, 0, fixture.controller.stopCalls())

@@ -228,7 +228,7 @@ func validateSecureUpstreamURL(raw string, policy service.SecureHTTPUpstreamPoli
 		return "", errors.New("secure upstream url userinfo is not allowed")
 	}
 	normalized, err := urlvalidator.ValidateHTTPURL(raw, policy.AllowInsecureHTTP, urlvalidator.ValidationOptions{
-		AllowedHosts: policy.AllowedHosts, RequireAllowlist: policy.RequireAllowlist, AllowPrivate: policy.AllowPrivate,
+		AllowedHosts: policy.AllowedHosts, RequireAllowlist: policy.RequireAllowlist, AllowPrivate: false,
 	})
 	if err != nil {
 		return "", fmt.Errorf("validate secure upstream url: %w", err)
@@ -254,12 +254,28 @@ func validateSecureRedirect(req *http.Request, via []*http.Request, policy servi
 	if _, err := validateSecureUpstreamURL(req.URL.String(), policy); err != nil {
 		return err
 	}
-	if previous != nil && previous.URL != nil && !sameSecureUpstreamOrigin(previous.URL, req.URL) {
-		for _, name := range []string{"Authorization", "Proxy-Authorization", "Cookie", "X-Api-Key", "X-Goog-Api-Key"} {
+	if secureRedirectChainCrossedOrigin(req, via) {
+		for _, name := range []string{"Authorization", "Proxy-Authorization", "Cookie", "X-Api-Key", "X-Goog-Api-Key", "Referer"} {
 			req.Header.Del(name)
 		}
 	}
 	return nil
+}
+
+func secureRedirectChainCrossedOrigin(current *http.Request, via []*http.Request) bool {
+	if current == nil || current.URL == nil || len(via) == 0 || via[0] == nil || via[0].URL == nil {
+		return true
+	}
+	initial := via[0].URL
+	if !sameSecureUpstreamOrigin(initial, current.URL) {
+		return true
+	}
+	for _, hop := range via[1:] {
+		if hop == nil || hop.URL == nil || !sameSecureUpstreamOrigin(initial, hop.URL) {
+			return true
+		}
+	}
+	return false
 }
 
 func sameSecureUpstreamOrigin(left, right *url.URL) bool {

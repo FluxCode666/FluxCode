@@ -9,6 +9,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -62,10 +63,30 @@ func (s mediaContentSettingsStub) GetAllSettings(context.Context) (*SystemSettin
 	return s.settings, nil
 }
 
-type mediaContentAccountRepoStub struct{}
+type mediaContentAccountRepoStub struct {
+	account *Account
+	err     error
+}
 
-func (mediaContentAccountRepoStub) GetByID(context.Context, int64) (*Account, error) {
-	return nil, ErrMediaContentUnavailable
+func (s mediaContentAccountRepoStub) GetByID(context.Context, int64) (*Account, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	if s.account == nil {
+		return nil, ErrMediaContentUnavailable
+	}
+	copy := *s.account
+	return &copy, nil
+}
+
+type mediaContentFetcherAdapterStub struct {
+	content *MediaContent
+	err     error
+}
+
+func (*mediaContentFetcherAdapterStub) Name() string { return "content-fetcher" }
+func (s *mediaContentFetcherAdapterStub) OpenContent(context.Context, *Account, *MediaArtifact, string) (*MediaContent, error) {
+	return s.content, s.err
 }
 
 type mediaContentHTTPReaderStub struct{}
@@ -169,6 +190,146 @@ func TestMediaContentServicePropagatesObjectStoreRangeErrorsWithoutProxyFallback
 			require.ErrorIs(t, err, rangeErr)
 		})
 	}
+}
+
+func TestMediaContentServiceFallsBackToInlineDataAfterObjectStoreError(t *testing.T) {
+	storeErr := errors.New("object store unavailable")
+	tasks := &mediaContentTaskRepoStub{task: &MediaTask{
+		ID: 1, PublicID: "task_public", UserID: 42, MediaType: MediaTypeVideo, Status: MediaTaskStatusCompleted,
+	}}
+	artifacts := &mediaContentArtifactRepoStub{items: []MediaArtifact{{
+		ID: 2, TaskID: 1, Direction: "output", MediaType: MediaTypeVideo, ObjectKey: "objects/video",
+		UpstreamReference: "data:video/mp4;base64,MDEyMw==", ContentType: "video/mp4",
+	}}}
+	svc := NewMediaContentService(
+		tasks, artifacts, mediaContentSettingsStub{settings: &SystemSettings{MediaVideoProxyFallbackEnabled: true}},
+		mediaContentAccountRepoStub{}, NewMediaAdapterRegistry(), mediaContentHTTPReaderStub{},
+		mediaContentObjectStoreStub{
+			put:  func(context.Context, MediaArtifactInput) (*MediaArtifact, error) { return nil, nil },
+			open: func(context.Context, *MediaArtifact, string) (*MediaContent, error) { return nil, storeErr },
+		},
+	)
+
+	content, err := svc.OpenVideo(context.Background(), "task_public", 42, "")
+	require.NoError(t, err)
+	defer content.Body.Close()
+	body, readErr := io.ReadAll(content.Body)
+	require.NoError(t, readErr)
+	require.Equal(t, []byte("0123"), body)
+}
+
+func TestMediaContentServiceFallsBackToAdapterAfterObjectStoreError(t *testing.T) {
+	storeErr := errors.New("object store unavailable")
+	accountID := int64(9)
+	tasks := &mediaContentTaskRepoStub{task: &MediaTask{
+		ID: 1, PublicID: "task_public", UserID: 42, AccountID: &accountID, Adapter: "content-fetcher",
+		MediaType: MediaTypeVideo, Status: MediaTaskStatusCompleted,
+	}}
+	artifacts := &mediaContentArtifactRepoStub{items: []MediaArtifact{{
+		ID: 2, TaskID: 1, Direction: "output", MediaType: MediaTypeVideo, ObjectKey: "objects/video",
+		UpstreamReference: "upstream-video-reference", ContentType: "video/mp4",
+	}}}
+	registry := NewMediaAdapterRegistry()
+	registry.Register("content-fetcher", &mediaContentFetcherAdapterStub{content: &MediaContent{
+		Body: io.NopCloser(strings.NewReader("proxy")), StatusCode: http.StatusOK, ContentLength: 5, ContentType: "video/mp4",
+	}})
+	svc := NewMediaContentService(
+		tasks, artifacts, mediaContentSettingsStub{settings: &SystemSettings{MediaVideoProxyFallbackEnabled: true}},
+		mediaContentAccountRepoStub{account: &Account{ID: accountID}}, registry, mediaContentHTTPReaderStub{},
+		mediaContentObjectStoreStub{
+			put:  func(context.Context, MediaArtifactInput) (*MediaArtifact, error) { return nil, nil },
+			open: func(context.Context, *MediaArtifact, string) (*MediaContent, error) { return nil, storeErr },
+		},
+	)
+
+	content, err := svc.OpenVideo(context.Background(), "task_public", 42, "")
+	require.NoError(t, err)
+	defer content.Body.Close()
+	body, readErr := io.ReadAll(content.Body)
+	require.NoError(t, readErr)
+	require.Equal(t, []byte("proxy"), body)
+}
+
+func TestMediaContentServiceFinalFallbackErrorPreservesUnavailableAndInternalCauses(t *testing.T) {
+	storeErr := errors.New("object store unavailable")
+	proxyErr := errors.New("proxy network unavailable")
+	accountID := int64(9)
+	tasks := &mediaContentTaskRepoStub{task: &MediaTask{
+		ID: 1, PublicID: "task_public", UserID: 42, AccountID: &accountID, Adapter: "content-fetcher",
+		MediaType: MediaTypeVideo, Status: MediaTaskStatusCompleted,
+	}}
+	artifacts := &mediaContentArtifactRepoStub{items: []MediaArtifact{{
+		ID: 2, TaskID: 1, Direction: "output", MediaType: MediaTypeVideo, ObjectKey: "objects/video",
+		UpstreamReference: "upstream-video-reference", ContentType: "video/mp4",
+	}}}
+	registry := NewMediaAdapterRegistry()
+	registry.Register("content-fetcher", &mediaContentFetcherAdapterStub{err: proxyErr})
+	svc := NewMediaContentService(
+		tasks, artifacts, mediaContentSettingsStub{settings: &SystemSettings{MediaVideoProxyFallbackEnabled: true}},
+		mediaContentAccountRepoStub{account: &Account{ID: accountID}}, registry, mediaContentHTTPReaderStub{},
+		mediaContentObjectStoreStub{
+			put:  func(context.Context, MediaArtifactInput) (*MediaArtifact, error) { return nil, nil },
+			open: func(context.Context, *MediaArtifact, string) (*MediaContent, error) { return nil, storeErr },
+		},
+	)
+
+	content, err := svc.OpenVideo(context.Background(), "task_public", 42, "")
+	require.Nil(t, content)
+	require.ErrorIs(t, err, ErrMediaContentUnavailable)
+	require.ErrorIs(t, err, storeErr)
+	require.ErrorIs(t, err, proxyErr)
+}
+
+func TestMediaContentServiceSecureProxyFailuresRemainUnavailable(t *testing.T) {
+	for _, proxyErr := range []error{ErrSecureHTTPUpstreamProxyUnsupported, ErrMediaSecureUpstreamRequired} {
+		t.Run(proxyErr.Error(), func(t *testing.T) {
+			accountID := int64(9)
+			tasks := &mediaContentTaskRepoStub{task: &MediaTask{
+				ID: 1, PublicID: "task_public", UserID: 42, AccountID: &accountID, Adapter: "content-fetcher",
+				MediaType: MediaTypeVideo, Status: MediaTaskStatusCompleted,
+			}}
+			artifacts := &mediaContentArtifactRepoStub{items: []MediaArtifact{{
+				ID: 2, TaskID: 1, Direction: "output", MediaType: MediaTypeVideo,
+				UpstreamReference: "upstream-video-reference", ContentType: "video/mp4",
+			}}}
+			registry := NewMediaAdapterRegistry()
+			registry.Register("content-fetcher", &mediaContentFetcherAdapterStub{err: proxyErr})
+			svc := NewMediaContentService(
+				tasks, artifacts, mediaContentSettingsStub{settings: &SystemSettings{MediaVideoProxyFallbackEnabled: true}},
+				mediaContentAccountRepoStub{account: &Account{ID: accountID}}, registry,
+				mediaContentHTTPReaderStub{}, NewDisabledMediaArtifactObjectStore(),
+			)
+
+			content, err := svc.OpenVideo(context.Background(), "task_public", 42, "")
+			require.Nil(t, content)
+			require.ErrorIs(t, err, ErrMediaContentUnavailable)
+			require.ErrorIs(t, err, proxyErr)
+		})
+	}
+}
+
+func TestMediaContentServiceNoFallbackPreservesStoreErrorAsUnavailable(t *testing.T) {
+	storeErr := errors.New("object store unavailable")
+	tasks := &mediaContentTaskRepoStub{task: &MediaTask{
+		ID: 1, PublicID: "task_public", UserID: 42, MediaType: MediaTypeVideo, Status: MediaTaskStatusCompleted,
+	}}
+	artifacts := &mediaContentArtifactRepoStub{items: []MediaArtifact{{
+		ID: 2, TaskID: 1, Direction: "output", MediaType: MediaTypeVideo, ObjectKey: "objects/video",
+		ContentType: "video/mp4",
+	}}}
+	svc := NewMediaContentService(
+		tasks, artifacts, mediaContentSettingsStub{settings: &SystemSettings{MediaVideoProxyFallbackEnabled: false}},
+		mediaContentAccountRepoStub{}, NewMediaAdapterRegistry(), mediaContentHTTPReaderStub{},
+		mediaContentObjectStoreStub{
+			put:  func(context.Context, MediaArtifactInput) (*MediaArtifact, error) { return nil, nil },
+			open: func(context.Context, *MediaArtifact, string) (*MediaContent, error) { return nil, storeErr },
+		},
+	)
+
+	content, err := svc.OpenVideo(context.Background(), "task_public", 42, "")
+	require.Nil(t, content)
+	require.ErrorIs(t, err, ErrMediaContentUnavailable)
+	require.ErrorIs(t, err, storeErr)
 }
 
 func TestMediaContentServiceStageUploadClearsDataAndKeepsChecksum(t *testing.T) {

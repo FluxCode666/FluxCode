@@ -107,7 +107,7 @@ func (r *mediaHTTPContentReader) Open(ctx context.Context, input service.MediaHT
 		input.Account.Concurrency,
 		service.SecureHTTPUpstreamPolicy{
 			AllowedHosts: append([]string(nil), r.allowedHosts...), RequireAllowlist: r.requireAllowlist,
-			AllowInsecureHTTP: r.allowInsecureHTTP, AllowPrivate: false,
+			AllowInsecureHTTP: r.allowInsecureHTTP,
 		},
 	)
 	if err != nil {

@@ -132,7 +132,6 @@ func TestMediaHTTPContentReaderUsesSecurePolicyWhenGlobalConfigIsLoose(t *testin
 	require.NoError(t, content.Body.Close())
 	require.True(t, upstream.secureCalled)
 	require.True(t, upstream.policy.AllowInsecureHTTP)
-	require.False(t, upstream.policy.AllowPrivate)
 	require.Equal(t, []string{"media.example"}, upstream.policy.AllowedHosts)
 }
 

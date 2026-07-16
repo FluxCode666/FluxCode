@@ -297,7 +297,7 @@ func (h *MediaTaskHandler) GetVideoContent(c *gin.Context) {
 	}
 	content, err := h.content.OpenVideo(c.Request.Context(), c.Param("id"), subject.UserID, byteRange)
 	if err != nil {
-		h.writeServiceError(c, err)
+		h.writeContentError(c, err)
 		return
 	}
 	if content == nil || content.Body == nil {
@@ -317,6 +317,17 @@ func (h *MediaTaskHandler) GetVideoContent(c *gin.Context) {
 		contentType = "application/octet-stream"
 	}
 	c.DataFromReader(content.StatusCode, content.ContentLength, contentType, content.Body, headers)
+}
+
+func (h *MediaTaskHandler) writeContentError(c *gin.Context, err error) {
+	switch {
+	case errors.Is(err, service.ErrMediaTaskNotFound):
+		writeMediaError(c, http.StatusNotFound, "media_task_not_found", "Media task not found")
+	case errors.Is(err, service.ErrInvalidMediaRange), errors.Is(err, service.ErrMediaRangeNotSatisfiable):
+		writeMediaError(c, http.StatusRequestedRangeNotSatisfiable, "invalid_range", "The requested range is invalid or unsatisfiable")
+	default:
+		writeMediaError(c, http.StatusBadGateway, "media_content_unavailable", "Media content is temporarily unavailable")
+	}
 }
 
 type mediaIdentity struct {
@@ -497,31 +508,32 @@ func (h *MediaTaskHandler) createMultipartVideo(c *gin.Context, identity mediaId
 
 func (h *MediaTaskHandler) create(c *gin.Context, req service.MediaCreateRequest) bool {
 	result, err := h.app.Create(c.Request.Context(), req)
+	inputsAdopted := result != nil && result.InputsAdopted
 	if err != nil {
 		h.writeServiceError(c, err)
-		return false
+		return inputsAdopted
 	}
 	if result == nil || result.Task == nil {
 		writeMediaError(c, http.StatusBadGateway, "media_generation_failed", "Media generation failed")
-		return false
+		return inputsAdopted
 	}
 	switch result.Disposition {
 	case service.MediaCreateDispositionAccepted, service.MediaCreateDispositionFallbackAsync:
 		c.JSON(http.StatusAccepted, taskResponse(result.Task, result.Artifacts))
-		return true
+		return inputsAdopted
 	case service.MediaCreateDispositionCompleted:
 		if result.Task.MediaType == service.MediaTypeImage {
 			c.JSON(http.StatusOK, imageResponse(result.Task, result.Artifacts))
-			return true
+			return inputsAdopted
 		}
 		c.JSON(http.StatusOK, taskResponse(result.Task, result.Artifacts))
-		return true
+		return inputsAdopted
 	case service.MediaCreateDispositionGatewayTimeout:
 		writeMediaError(c, http.StatusGatewayTimeout, "media_gateway_timeout", "Media generation did not complete before the gateway timeout")
-		return false
+		return inputsAdopted
 	default:
 		writeMediaError(c, http.StatusBadGateway, "media_generation_failed", "Media generation failed")
-		return false
+		return inputsAdopted
 	}
 }
 

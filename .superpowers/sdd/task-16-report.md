@@ -400,3 +400,144 @@ go test ./internal/service ./internal/repository ./internal/handler -run '^TestM
 - `git diff --exit-code c6f881a22 -- backend/internal/server/routes/gateway.go` 与 `git diff --exit-code -- backend/cmd/server/wire_gen.go` 均退出码 `0`，生产 gateway 与生成文件零改动。
 
 最终 code-audit 结论：高风险审计通过，无已知阻断或非阻断代码风险。字段对账仅涉及既定内部任务清洗和公开错误映射，已有直接契约测试；不涉及 DB schema、迁移、依赖、配置、缓存、队列 topic、编辑/删除链路或真实生产路由。测试文件无 Skip/Only；未执行的无过滤完整功能套件及原因继续按上文列为证据边界。
+
+## 第二轮复审修复追加（2026-07-17）
+
+### 范围与结论
+
+- 修复基线：`373713874 fix(media): harden content and task contracts`。
+- 第二轮 2 个 Critical、3 个 Important 和 1 个 Minor 均按独立 RED→GREEN 闭环；首轮安全、生命周期、DTO、Range、MIME 和大小上限行为保持。
+- 本轮仍不修改 progress、生产 gateway、生成文件、Task 17 配置、真实 Adapter、UI 或取消接口。
+
+### Critical 1：staged input 所有权
+
+内部 `MediaCreateResult` 新增 `InputsAdopted bool`，不进入公开 DTO、DB schema 或队列 payload。Handler 不再从 `Create` 是否返回 error 推断所有权，而只按该字段决定 cleanup。
+
+赋值语义：
+
+- 新任务在第一条 queue message 成功且 ready CAS 成功或重读确认后为 `true`；之后同步 wait 的 SubscribeTerminal、DB read、subscription close、request cancel、fallback/timeout 写失败均返回 nonnil result + `true`。
+- 输入 Artifact 和 durable spec 已成功写入、但 precharge 结果未知且任务保留为 fenced pending 时为 `true`，保证幂等恢复仍可读取对象。
+- 创建前验证、确定性 policy/billing 拒绝、输入持久化失败、queue 失败、ready 失败为 `false`。
+- 已有 ready/terminal 任务的幂等复用不接纳本次新 staged inputs，为 `false`；只有 stale initializer 实际使用本次 inputs 并推进到 ready 时才为 `true`。
+- Accepted、Completed、FallbackAsync、ready 后 GatewayTimeout/Failed 均保留已接纳输入。
+
+真实 Orchestrator fixture 覆盖 ready 后 cancel、terminal subscription close、后台 Artifact 可读、queue 前失败、幂等复用和 unknown-precharge durable recovery；Handler 覆盖 error+adopted 不清理、显式 false 清理、accepted/completed/fallback/gateway-timeout 保留。
+
+RED：
+
+```bash
+go test ./internal/service ./internal/handler -run 'TestMedia(Orchestrator.*(AdoptsInputs|DoesNotAdopt|ZeroTimeout|ParentCancel|SyncSubscribe|SyncTimeoutFallback)|TaskHandler.*(AdoptedBeforeError|ExplicitlyRejectsOwnership))' -count=1
+```
+
+`InputsAdopted` 字段不存在，service/handler 编译失败。GREEN 同命令退出码 `0`：service `1.731s`、handler `0.934s`。扩大 Orchestrator 回归退出码 `0`，`0.884s`。
+
+### Critical 2：redirect 完整链凭据
+
+`CheckRedirect` 以 `via[0]` 为初始 origin，并扫描完整历史链。只要 current 非初始 origin，或任一历史 hop 曾离开初始 origin，就删除 `Authorization`、`Proxy-Authorization`、`Cookie`、`X-Api-Key`、`X-Goog-Api-Key` 和自动 `Referer`；因此 A→B→B 的相对 redirect、B→A 回跳都不会从初始 headers 复活凭据或带 signed query 的 Referer。隐式/显式默认端口仍视为同 origin，同源跳转保留凭据和 Referer。
+
+RED：
+
+```bash
+go test ./internal/repository -run '^TestSecureHTTPUpstream(StripsCredentialsOnCrossOriginRedirect|NeverRestoresCredentialsAfterCrossOriginRedirect)$' -count=1
+```
+
+repository FAIL，`0.886s`：Referer 未删除，完整链规则缺失。GREEN（含同源默认端口反例）退出码 `0`，repository `0.863s`。
+
+### Important 1 与 Minor：IANA special-purpose denylist
+
+`ValidateIP` 改用显式 `netip.Prefix` denylist，并在匹配前 `Unmap` IPv4-mapped IPv6。IPv4 覆盖 0/8、RFC1918、CGNAT、loopback、link-local、协议分配、TEST-NET、6to4 relay、benchmark、multicast、reserved/broadcast；IPv6 覆盖 unspecified/loopback、IPv4 translation、discard-only、协议分配、benchmark/ORCHID、documentation、6to4、ULA、link-local、deprecated site-local 和 multicast。
+
+公网纯函数正例使用 `8.8.8.8`、`::ffff:8.8.8.8`、`2606:4700:4700::1111`，不再把 `203.0.113.x` 当公网 fixture。`SecureHTTPUpstreamPolicy.AllowPrivate` 已删除，安全媒体 URL 和 Dial 固定禁止 private/special-purpose 地址，避免策略字段与 Dial 语义不一致。
+
+RED：
+
+```bash
+go test ./internal/util/urlvalidator -run '^TestValidateIP(RejectsIANA|AcceptsPublic)' -count=1
+```
+
+退出码 `1`，`0.415s`；19 个 IPv4/IPv6 special-purpose 样本被错误接受。GREEN 联合命令退出码 `0`：urlvalidator `0.416s`、SecureHTTP/Reader repository `0.824s`。
+
+### Important 2：Wire opt-in 源图
+
+全局 `handler.ProviderSet` 恢复使用旧 `ProvideHandlers`，不含 `NewMediaTaskHandler`、媒体 bindings 或 `MediaTaskProviderSet`。新增 opt-in `MediaTaskProviderSet`，只包含 `NewMediaTaskHandler` 和三个 interface binding；`ProvideHandlersWithMedia` 继续保留手工构造测试，Task 17 在完整 provider 链就绪后再显式合并 opt-in set 并切聚合构造器。
+
+AST 源图契约 RED：
+
+```bash
+go test ./internal/handler -run '^TestMediaTaskWireProvidersRemainOptInUntilProductionDependenciesExist$' -count=1
+```
+
+handler FAIL，`0.862s`：全局 set 含媒体构造和新聚合，不含旧 `ProvideHandlers`。GREEN（连同手工聚合测试）退出码 `0`，handler `0.852s`。
+
+Wire 实际验证：首次 `go generate ./cmd/server` 因本机缺少 `github.com/google/subcommands` 且 `proxy.golang.org` 网络超时退出 `1`，未进入源图分析；随后执行：
+
+```bash
+GOPROXY=https://goproxy.cn,direct go generate ./cmd/server
+```
+
+退出码 `0`，Wire 成功写入生成结果；`git diff --exit-code -- backend/cmd/server/wire_gen.go` 退出码 `0`，生成文件无变化、未提交。
+
+### Important 3：内容 fallback 与稳定 502
+
+`objectStore.Open` 只有 `ErrInvalidMediaRange`、`ErrMediaRangeNotSatisfiable` 直接返回；其他错误保留为内部 cause，并继续尝试 bounded Data URL 或 Adapter proxy。最终失败统一 `errors.Join(ErrMediaContentUnavailable, causes...)`，既保留内部诊断链，又让公开内容入口稳定映射 502。
+
+覆盖：store 普通 error + Data URL 成功、store 普通 error + Adapter 成功、无 fallback、proxy network failure、`ErrSecureHTTPUpstreamProxyUnsupported`、`ErrMediaSecureUpstreamRequired`、nil content，以及 Range 仍为 416。`GetVideoContent` 使用专用错误映射：归属不存在 404、Range 416、其他内容读取错误 502；响应不输出内部 cause。
+
+RED：
+
+```bash
+go test ./internal/service ./internal/handler -run 'TestMedia(ContentService(FallsBack|FinalFallback|NoFallback)|TaskHandlerContentOpenerFailures)' -count=1
+```
+
+退出码 `1`：service `1.633s`，普通 store error 阻断 fallback 且 error chain 缺少 unavailable；handler `0.842s`，secure/network opener error 返回 500。GREEN（含 Range 反例）退出码 `0`：service `0.842s`、handler `1.613s`。
+
+### 第二轮 fresh 验证
+
+全部 finding 联合回归：
+
+```bash
+go test ./internal/service ./internal/repository ./internal/handler ./internal/util/urlvalidator -run 'TestMedia(Orchestrator|TaskHandler|ContentService|TaskWire)|TestSecureHTTPUpstream|TestProvideHandlersWithMedia|TestValidateIP' -count=1
+```
+
+退出码 `0`：service `0.632s`、repository `0.795s`、handler `2.009s`、urlvalidator `1.181s`。
+
+最终精确三包回归：
+
+```bash
+go test ./internal/service ./internal/repository ./internal/handler -run 'TestMedia(TaskHandler|Router|HTTPContent|Content|Orchestrator)|TestSecureHTTPUpstream|TestProvideHandlersWithMedia' -count=1
+```
+
+退出码 `0`：service `1.085s`、repository `0.553s`、handler `1.602s`。
+
+扩大媒体回归：
+
+```bash
+go test ./internal/service ./internal/repository ./internal/handler -run '^TestMedia' -count=1
+```
+
+退出码 `0`：service `3.070s`、repository `3.779s`、handler `3.092s`。URL validator 全包退出码 `0`，`0.201s`。
+
+精确 race：
+
+```bash
+go test -race ./internal/service ./internal/repository ./internal/handler -run 'TestMedia(TaskHandler|Router|HTTPContent|Content|Orchestrator)|TestSecureHTTPUpstream|TestProvideHandlersWithMedia' -count=1
+```
+
+退出码 `0`：service `3.403s`、repository `4.119s`、handler `2.097s`。
+
+最终门禁全部退出码 `0`：
+
+- `gofmt`（全部变更 Go 文件）与 `git diff --check`。
+- `go vet ./...`。
+- `go build ./...`。
+- `go test ./... -run '^$' -count=1`，全仓编译型测试通过。
+- `go mod verify`，输出 `all modules verified`。
+- `git diff --exit-code c6f881a22 -- backend/internal/server/routes/gateway.go`。
+- `git diff --exit-code -- backend/cmd/server/wire_gen.go backend/go.mod backend/go.sum`。
+- 搜索确认无 Cancel/DELETE、无 DTO/Authorization/ObjectKey/UpstreamReference/ErrorMessage 泄露，测试文件无 Skip/Only。
+
+### 第二轮 code-audit
+
+高风险审计范围包含外部 URL/DNS/Dial/redirect、认证凭据、任务/对象所有权、幂等/恢复/queue/ready 状态、内容 fallback、公开错误、Wire 可达性和生成结果。输入所有权仅为内部返回契约，不涉及公开字段、DB、迁移、缓存 key 或队列 schema；special-purpose denylist 不受全局媒体宽松配置绕过；内容内部 causes 只参与 `errors.Is` 和服务端诊断，不进入 DTO 或日志。
+
+审计结论：通过，无已知阻断或非阻断代码风险。未执行项仍是无过滤完整 `go test ./internal/service` / `go test ./...` 功能套件，原因继续为既有 OpenAI stub concurrent-map fatal；本轮没有把编译型全仓 PASS 表述为完整功能 PASS。生产媒体路由和 Task 17 provider 链仍不可达，符合任务边界。

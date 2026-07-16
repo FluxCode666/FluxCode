@@ -181,7 +181,16 @@ func ProvideHandlersWithMedia(
 	}
 }
 
-// ProviderSet is the Wire provider set for all handlers
+// MediaTaskProviderSet is opt-in until Task 17 supplies the complete media
+// dependency chain and switches the aggregate constructor.
+var MediaTaskProviderSet = wire.NewSet(
+	NewMediaTaskHandler,
+	wire.Bind(new(MediaTaskApplication), new(*service.MediaOrchestrator)),
+	wire.Bind(new(MediaVideoContentOpener), new(*service.MediaContentService)),
+	wire.Bind(new(service.MediaInputLifecycle), new(*service.MediaContentService)),
+)
+
+// ProviderSet is the Wire provider set for the current production handlers.
 var ProviderSet = wire.NewSet(
 	// Top-level handlers
 	NewAuthHandler,
@@ -199,10 +208,6 @@ var ProviderSet = wire.NewSet(
 	NewPaymentHandler,
 	NewPaymentWebhookHandler,
 	NewChannelMonitorUserHandler,
-	NewMediaTaskHandler,
-	wire.Bind(new(MediaTaskApplication), new(*service.MediaOrchestrator)),
-	wire.Bind(new(MediaVideoContentOpener), new(*service.MediaContentService)),
-	wire.Bind(new(service.MediaInputLifecycle), new(*service.MediaContentService)),
 
 	// Admin handlers
 	admin.NewDashboardHandler,
@@ -243,5 +248,5 @@ var ProviderSet = wire.NewSet(
 
 	// AdminHandlers and Handlers constructors
 	ProvideAdminHandlers,
-	ProvideHandlersWithMedia,
+	ProvideHandlers,
 )

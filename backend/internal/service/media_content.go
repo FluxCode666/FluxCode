@@ -284,24 +284,26 @@ func (s *MediaContentService) OpenVideo(ctx context.Context, publicID string, us
 	if artifact == nil {
 		return nil, ErrMediaArtifactNotFound
 	}
+	var fallbackCauses []error
 	if artifact.ObjectKey != "" && s.objectStore != nil {
 		content, openErr := s.objectStore.Open(ctx, artifact, byteRange)
 		if openErr == nil && content != nil {
 			return content, nil
 		}
-		switch {
-		case errors.Is(openErr, ErrInvalidMediaRange), errors.Is(openErr, ErrMediaRangeNotSatisfiable):
+		if errors.Is(openErr, ErrInvalidMediaRange) || errors.Is(openErr, ErrMediaRangeNotSatisfiable) {
 			return nil, openErr
-		case openErr == nil, errors.Is(openErr, ErrMediaArtifactObjectStoreDisabled), errors.Is(openErr, ErrMediaContentUnavailable):
-		default:
-			return nil, fmt.Errorf("open stored media content: %w", openErr)
+		}
+		if openErr != nil {
+			fallbackCauses = append(fallbackCauses, fmt.Errorf("open stored media content: %w", openErr))
+		} else {
+			fallbackCauses = append(fallbackCauses, errors.New("object store returned nil media content"))
 		}
 	}
 	if data, contentType, inline, decodeErr := decodeMediaDataReferenceBounded(
 		artifact.UpstreamReference, artifact.ContentType, maxInlineMediaDecodedBytes,
 	); inline {
 		if decodeErr != nil {
-			return nil, decodeErr
+			return nil, mediaContentFallbackError(append(fallbackCauses, decodeErr)...)
 		}
 		if byteRange != "" {
 			return sliceMediaContent(data, contentType, byteRange)
@@ -312,35 +314,57 @@ func (s *MediaContentService) OpenVideo(ctx context.Context, publicID string, us
 		}, nil
 	}
 	if s.settings == nil {
-		return nil, ErrMediaContentUnavailable
+		return nil, mediaContentFallbackError(fallbackCauses...)
 	}
 	settings, err := s.settings.GetAllSettings(ctx)
-	if err != nil || settings == nil || !settings.MediaVideoProxyFallbackEnabled || artifact.UpstreamReference == "" {
-		return nil, ErrMediaContentUnavailable
+	if err != nil {
+		fallbackCauses = append(fallbackCauses, fmt.Errorf("load media proxy settings: %w", err))
+		return nil, mediaContentFallbackError(fallbackCauses...)
+	}
+	if settings == nil || !settings.MediaVideoProxyFallbackEnabled || artifact.UpstreamReference == "" {
+		return nil, mediaContentFallbackError(fallbackCauses...)
 	}
 	if task.AccountID == nil || s.accounts == nil || s.adapters == nil {
-		return nil, ErrMediaContentUnavailable
+		return nil, mediaContentFallbackError(fallbackCauses...)
 	}
 	account, err := s.accounts.GetByID(ctx, *task.AccountID)
-	if err != nil || account == nil {
-		return nil, ErrMediaContentUnavailable
+	if err != nil {
+		fallbackCauses = append(fallbackCauses, fmt.Errorf("load media content account: %w", err))
+		return nil, mediaContentFallbackError(fallbackCauses...)
+	}
+	if account == nil {
+		return nil, mediaContentFallbackError(fallbackCauses...)
 	}
 	adapter, err := s.adapters.Resolve(task.Adapter)
 	if err != nil {
-		return nil, ErrMediaContentUnavailable
+		fallbackCauses = append(fallbackCauses, fmt.Errorf("resolve media content adapter: %w", err))
+		return nil, mediaContentFallbackError(fallbackCauses...)
 	}
 	fetcher, ok := adapter.(MediaContentFetcher)
 	if !ok {
-		return nil, ErrMediaContentUnavailable
+		fallbackCauses = append(fallbackCauses, errors.New("media adapter does not support content fetching"))
+		return nil, mediaContentFallbackError(fallbackCauses...)
 	}
 	content, err := fetcher.OpenContent(ctx, account, artifact, byteRange)
 	if err != nil {
-		return nil, fmt.Errorf("open proxied media content: %w", err)
+		fallbackCauses = append(fallbackCauses, fmt.Errorf("open proxied media content: %w", err))
+		return nil, mediaContentFallbackError(fallbackCauses...)
 	}
 	if content == nil {
-		return nil, ErrMediaContentUnavailable
+		fallbackCauses = append(fallbackCauses, errors.New("media content fetcher returned nil content"))
+		return nil, mediaContentFallbackError(fallbackCauses...)
 	}
 	return content, nil
+}
+
+func mediaContentFallbackError(causes ...error) error {
+	errorsToJoin := []error{ErrMediaContentUnavailable}
+	for _, cause := range causes {
+		if cause != nil {
+			errorsToJoin = append(errorsToJoin, cause)
+		}
+	}
+	return errors.Join(errorsToJoin...)
 }
 
 func ValidateMediaRange(value string) error {

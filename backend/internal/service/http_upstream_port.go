@@ -16,7 +16,6 @@ type SecureHTTPUpstreamPolicy struct {
 	AllowedHosts      []string
 	RequireAllowlist  bool
 	AllowInsecureHTTP bool
-	AllowPrivate      bool
 }
 
 type SecureHTTPUpstream interface {

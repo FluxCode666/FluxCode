@@ -58,9 +58,10 @@ const (
 )
 
 type MediaCreateResult struct {
-	Task        *MediaTask
-	Artifacts   []MediaArtifact
-	Disposition MediaCreateDisposition
+	Task          *MediaTask
+	Artifacts     []MediaArtifact
+	Disposition   MediaCreateDisposition
+	InputsAdopted bool
 }
 
 type MediaSettingsProvider interface {
@@ -697,46 +698,48 @@ func (o *MediaOrchestrator) initializeAndEnqueue(
 	billingSnapshot MediaBillingSnapshot,
 	settings *SystemSettings,
 ) (*MediaCreateResult, error) {
+	inputsDurable := false
 	if len(inputs) > 0 {
 		artifactIDs, persistErr := o.persistInputs(ctx, task, inputs)
 		if persistErr != nil {
-			return nil, o.failWithReconciledPrecharge(ctx, task, billingSnapshot, "system_input", persistErr)
+			return &MediaCreateResult{Task: task}, o.failWithReconciledPrecharge(ctx, task, billingSnapshot, "system_input", persistErr)
 		}
 		durableSpec, specErr := mediaSpecWithInputArtifacts(req.Spec, req.Operation, artifactIDs)
 		if specErr != nil {
-			return nil, o.failWithReconciledPrecharge(ctx, task, billingSnapshot, "system_input", specErr)
+			return &MediaCreateResult{Task: task}, o.failWithReconciledPrecharge(ctx, task, billingSnapshot, "system_input", specErr)
 		}
 		encoded, encodeErr := json.Marshal(durableSpec)
 		if encodeErr != nil {
-			return nil, o.failWithReconciledPrecharge(ctx, task, billingSnapshot, "system_input", fmt.Errorf("encode durable media request spec: %w", encodeErr))
+			return &MediaCreateResult{Task: task}, o.failWithReconciledPrecharge(ctx, task, billingSnapshot, "system_input", fmt.Errorf("encode durable media request spec: %w", encodeErr))
 		}
 		updated, updateErr := o.deps.Tasks.UpdateQueued(ctx, task.ID, task.Version, map[string]any{"request_spec": json.RawMessage(encoded)})
 		if updateErr != nil {
-			return nil, o.failWithReconciledPrecharge(ctx, task, billingSnapshot, "system_input", fmt.Errorf("persist durable media request spec: %w", updateErr))
+			return &MediaCreateResult{Task: task}, o.failWithReconciledPrecharge(ctx, task, billingSnapshot, "system_input", fmt.Errorf("persist durable media request spec: %w", updateErr))
 		}
 		if !updated {
-			return nil, fmt.Errorf("%w: persist durable media request spec", ErrMediaOrchestratorStateConflict)
+			return &MediaCreateResult{Task: task}, fmt.Errorf("%w: persist durable media request spec", ErrMediaOrchestratorStateConflict)
 		}
 		task.RequestSpec = encoded
 		task.Version++
+		inputsDurable = true
 	}
 
 	if err := o.deps.Billing.Precharge(ctx, task, billingSnapshot); err != nil {
 		prechargeErr := fmt.Errorf("precharge media task: %w", err)
 		if errors.Is(err, ErrMediaPrechargeResultUnknown) {
-			return nil, prechargeErr
+			return &MediaCreateResult{Task: task, InputsAdopted: inputsDurable}, prechargeErr
 		}
 		failureCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), mediaOrchestratorDetachedTimeout)
 		defer cancel()
 		_, transitionErr := o.transitionInitializationFailed(failureCtx, task, "billing_precharge", nil, 0)
-		return nil, errors.Join(prechargeErr, transitionErr)
+		return &MediaCreateResult{Task: task}, errors.Join(prechargeErr, transitionErr)
 	}
 	priority := MediaQueuePrioritySync
 	if req.ClientAsync {
 		priority = MediaQueuePriorityAsync
 	}
 	if err := o.deps.Queue.Enqueue(ctx, task.ID, priority); err != nil {
-		return nil, o.failAfterPrecharge(ctx, task, billingSnapshot.EstimatedAmount, "system_queue", fmt.Errorf("enqueue media task: %w", err))
+		return &MediaCreateResult{Task: task}, o.failAfterPrecharge(ctx, task, billingSnapshot.EstimatedAmount, "system_queue", fmt.Errorf("enqueue media task: %w", err))
 	}
 	updated, updateErr := o.deps.Tasks.UpdateQueued(ctx, task.ID, task.Version, map[string]any{
 		"billing_status": MediaBillingStatusPrecharged, "precharged_amount": billingSnapshot.EstimatedAmount,
@@ -755,7 +758,7 @@ func (o *MediaOrchestrator) initializeAndEnqueue(
 			updateErr = ErrMediaOrchestratorStateConflict
 		}
 		if !readyObserved {
-			return nil, o.failAfterPrecharge(ctx, task, billingSnapshot.EstimatedAmount, "system_billing_state", fmt.Errorf("persist media precharge state: %w", updateErr))
+			return &MediaCreateResult{Task: task}, o.failAfterPrecharge(ctx, task, billingSnapshot.EstimatedAmount, "system_billing_state", fmt.Errorf("persist media precharge state: %w", updateErr))
 		}
 	} else {
 		task.BillingStatus = MediaBillingStatusPrecharged
@@ -769,20 +772,32 @@ func (o *MediaOrchestrator) initializeAndEnqueue(
 	// ready CAS; failure leaves the durable ready task for the first message or recovery.
 	_ = o.deps.Queue.Enqueue(ctx, task.ID, priority)
 	if readyReconciled {
-		return o.reuseTask(ctx, task, task.RequestFingerprint, req.ClientAsync, settings)
+		result, err := o.reuseTask(ctx, task, task.RequestFingerprint, req.ClientAsync, settings)
+		return mediaCreateResultWithInputOwnership(result, task, true), err
 	}
 
 	if req.ClientAsync {
-		return &MediaCreateResult{Task: task, Disposition: MediaCreateDispositionAccepted}, nil
+		return &MediaCreateResult{Task: task, Disposition: MediaCreateDispositionAccepted, InputsAdopted: true}, nil
 	}
 	if settings == nil {
 		var err error
 		settings, err = o.loadSettings(ctx)
 		if err != nil {
-			return nil, err
+			return &MediaCreateResult{Task: task, InputsAdopted: true}, err
 		}
 	}
-	return o.waitSync(ctx, task, settings)
+	result, err := o.waitSync(ctx, task, settings)
+	return mediaCreateResultWithInputOwnership(result, task, true), err
+}
+
+func mediaCreateResultWithInputOwnership(result *MediaCreateResult, task *MediaTask, adopted bool) *MediaCreateResult {
+	if result == nil {
+		result = &MediaCreateResult{Task: task}
+	} else if result.Task == nil {
+		result.Task = task
+	}
+	result.InputsAdopted = adopted
+	return result
 }
 
 func (o *MediaOrchestrator) persistInputs(ctx context.Context, task *MediaTask, inputs []MediaArtifactInput) ([]int64, error) {
