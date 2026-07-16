@@ -857,6 +857,7 @@ var (
 		{Name: "poll_metadata", Type: field.TypeJSON, Nullable: true},
 		{Name: "billing_snapshot", Type: field.TypeJSON, Nullable: true},
 		{Name: "settlement_plan", Type: field.TypeJSON, Nullable: true},
+		{Name: "settlement_recovery", Type: field.TypeJSON, Nullable: true, SchemaType: map[string]string{"postgres": "jsonb"}},
 		{Name: "billing_status", Type: field.TypeString, Size: 24, Default: "pending"},
 		{Name: "precharged_amount", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "numeric(20,8)"}},
 		{Name: "final_amount", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "numeric(20,8)"}},
@@ -891,7 +892,7 @@ var (
 			{
 				Name:    "mediatask_status_lease_until",
 				Unique:  false,
-				Columns: []*schema.Column{MediaTasksColumns[17], MediaTasksColumns[36]},
+				Columns: []*schema.Column{MediaTasksColumns[17], MediaTasksColumns[37]},
 			},
 			{
 				Name:    "mediatask_account_id",

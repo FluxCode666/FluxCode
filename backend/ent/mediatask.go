@@ -72,6 +72,8 @@ type MediaTask struct {
 	BillingSnapshot json.RawMessage `json:"billing_snapshot,omitempty"`
 	// SettlementPlan holds the value of the "settlement_plan" field.
 	SettlementPlan json.RawMessage `json:"settlement_plan,omitempty"`
+	// SettlementRecovery holds the value of the "settlement_recovery" field.
+	SettlementRecovery json.RawMessage `json:"settlement_recovery,omitempty"`
 	// BillingStatus holds the value of the "billing_status" field.
 	BillingStatus string `json:"billing_status,omitempty"`
 	// PrechargedAmount holds the value of the "precharged_amount" field.
@@ -108,7 +110,7 @@ func (*MediaTask) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case mediatask.FieldRequestSpec, mediatask.FieldCandidateSnapshot, mediatask.FieldPollMetadata, mediatask.FieldBillingSnapshot, mediatask.FieldSettlementPlan:
+		case mediatask.FieldRequestSpec, mediatask.FieldCandidateSnapshot, mediatask.FieldPollMetadata, mediatask.FieldBillingSnapshot, mediatask.FieldSettlementPlan, mediatask.FieldSettlementRecovery:
 			values[i] = new([]byte)
 		case mediatask.FieldClientAsync, mediatask.FieldSyncFallback:
 			values[i] = new(sql.NullBool)
@@ -314,6 +316,14 @@ func (_m *MediaTask) assignValues(columns []string, values []any) error {
 			} else if value != nil && len(*value) > 0 {
 				if err := json.Unmarshal(*value, &_m.SettlementPlan); err != nil {
 					return fmt.Errorf("unmarshal field settlement_plan: %w", err)
+				}
+			}
+		case mediatask.FieldSettlementRecovery:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field settlement_recovery", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &_m.SettlementRecovery); err != nil {
+					return fmt.Errorf("unmarshal field settlement_recovery: %w", err)
 				}
 			}
 		case mediatask.FieldBillingStatus:
@@ -527,6 +537,9 @@ func (_m *MediaTask) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("settlement_plan=")
 	builder.WriteString(fmt.Sprintf("%v", _m.SettlementPlan))
+	builder.WriteString(", ")
+	builder.WriteString("settlement_recovery=")
+	builder.WriteString(fmt.Sprintf("%v", _m.SettlementRecovery))
 	builder.WriteString(", ")
 	builder.WriteString("billing_status=")
 	builder.WriteString(_m.BillingStatus)

@@ -1414,6 +1414,16 @@ func SettlementPlanNotNil() predicate.MediaTask {
 	return predicate.MediaTask(sql.FieldNotNull(FieldSettlementPlan))
 }
 
+// SettlementRecoveryIsNil applies the IsNil predicate on the "settlement_recovery" field.
+func SettlementRecoveryIsNil() predicate.MediaTask {
+	return predicate.MediaTask(sql.FieldIsNull(FieldSettlementRecovery))
+}
+
+// SettlementRecoveryNotNil applies the NotNil predicate on the "settlement_recovery" field.
+func SettlementRecoveryNotNil() predicate.MediaTask {
+	return predicate.MediaTask(sql.FieldNotNull(FieldSettlementRecovery))
+}
+
 // BillingStatusEQ applies the EQ predicate on the "billing_status" field.
 func BillingStatusEQ(v string) predicate.MediaTask {
 	return predicate.MediaTask(sql.FieldEQ(FieldBillingStatus, v))

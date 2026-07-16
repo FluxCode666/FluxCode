@@ -1076,45 +1076,45 @@ func init() {
 	// mediatask.IdempotencyKeyValidator is a validator for the "idempotency_key" field. It is called by the builders before save.
 	mediatask.IdempotencyKeyValidator = mediataskDescIdempotencyKey.Validators[0].(func(string) error)
 	// mediataskDescBillingStatus is the schema descriptor for billing_status field.
-	mediataskDescBillingStatus := mediataskFields[25].Descriptor()
+	mediataskDescBillingStatus := mediataskFields[26].Descriptor()
 	// mediatask.DefaultBillingStatus holds the default value on creation for the billing_status field.
 	mediatask.DefaultBillingStatus = mediataskDescBillingStatus.Default.(string)
 	// mediatask.BillingStatusValidator is a validator for the "billing_status" field. It is called by the builders before save.
 	mediatask.BillingStatusValidator = mediataskDescBillingStatus.Validators[0].(func(string) error)
 	// mediataskDescPrechargedAmount is the schema descriptor for precharged_amount field.
-	mediataskDescPrechargedAmount := mediataskFields[26].Descriptor()
+	mediataskDescPrechargedAmount := mediataskFields[27].Descriptor()
 	// mediatask.DefaultPrechargedAmount holds the default value on creation for the precharged_amount field.
 	mediatask.DefaultPrechargedAmount = mediataskDescPrechargedAmount.Default.(float64)
 	// mediataskDescFinalAmount is the schema descriptor for final_amount field.
-	mediataskDescFinalAmount := mediataskFields[27].Descriptor()
+	mediataskDescFinalAmount := mediataskFields[28].Descriptor()
 	// mediatask.DefaultFinalAmount holds the default value on creation for the final_amount field.
 	mediatask.DefaultFinalAmount = mediataskDescFinalAmount.Default.(float64)
 	// mediataskDescRefundedAmount is the schema descriptor for refunded_amount field.
-	mediataskDescRefundedAmount := mediataskFields[28].Descriptor()
+	mediataskDescRefundedAmount := mediataskFields[29].Descriptor()
 	// mediatask.DefaultRefundedAmount holds the default value on creation for the refunded_amount field.
 	mediatask.DefaultRefundedAmount = mediataskDescRefundedAmount.Default.(float64)
 	// mediataskDescRetryCount is the schema descriptor for retry_count field.
-	mediataskDescRetryCount := mediataskFields[29].Descriptor()
+	mediataskDescRetryCount := mediataskFields[30].Descriptor()
 	// mediatask.DefaultRetryCount holds the default value on creation for the retry_count field.
 	mediatask.DefaultRetryCount = mediataskDescRetryCount.Default.(int)
 	// mediataskDescErrorCode is the schema descriptor for error_code field.
-	mediataskDescErrorCode := mediataskFields[30].Descriptor()
+	mediataskDescErrorCode := mediataskFields[31].Descriptor()
 	// mediatask.DefaultErrorCode holds the default value on creation for the error_code field.
 	mediatask.DefaultErrorCode = mediataskDescErrorCode.Default.(string)
 	// mediatask.ErrorCodeValidator is a validator for the "error_code" field. It is called by the builders before save.
 	mediatask.ErrorCodeValidator = mediataskDescErrorCode.Validators[0].(func(string) error)
 	// mediataskDescErrorMessage is the schema descriptor for error_message field.
-	mediataskDescErrorMessage := mediataskFields[31].Descriptor()
+	mediataskDescErrorMessage := mediataskFields[32].Descriptor()
 	// mediatask.DefaultErrorMessage holds the default value on creation for the error_message field.
 	mediatask.DefaultErrorMessage = mediataskDescErrorMessage.Default.(string)
 	// mediataskDescWorkerID is the schema descriptor for worker_id field.
-	mediataskDescWorkerID := mediataskFields[32].Descriptor()
+	mediataskDescWorkerID := mediataskFields[33].Descriptor()
 	// mediatask.DefaultWorkerID holds the default value on creation for the worker_id field.
 	mediatask.DefaultWorkerID = mediataskDescWorkerID.Default.(string)
 	// mediatask.WorkerIDValidator is a validator for the "worker_id" field. It is called by the builders before save.
 	mediatask.WorkerIDValidator = mediataskDescWorkerID.Validators[0].(func(string) error)
 	// mediataskDescVersion is the schema descriptor for version field.
-	mediataskDescVersion := mediataskFields[34].Descriptor()
+	mediataskDescVersion := mediataskFields[35].Descriptor()
 	// mediatask.DefaultVersion holds the default value on creation for the version field.
 	mediatask.DefaultVersion = mediataskDescVersion.Default.(int64)
 	paymentauditlogFields := schema.PaymentAuditLog{}.Fields()

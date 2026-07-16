@@ -50,6 +50,7 @@ func (MediaTask) Fields() []ent.Field {
 		field.JSON("poll_metadata", json.RawMessage{}).Optional(),
 		field.JSON("billing_snapshot", json.RawMessage{}).Optional(),
 		field.JSON("settlement_plan", json.RawMessage{}).Optional(),
+		field.JSON("settlement_recovery", json.RawMessage{}).Optional().SchemaType(map[string]string{dialect.Postgres: "jsonb"}),
 		field.String("billing_status").MaxLen(24).Default("pending"),
 		field.Float("precharged_amount").SchemaType(map[string]string{dialect.Postgres: "numeric(20,8)"}).Default(0),
 		field.Float("final_amount").SchemaType(map[string]string{dialect.Postgres: "numeric(20,8)"}).Default(0),

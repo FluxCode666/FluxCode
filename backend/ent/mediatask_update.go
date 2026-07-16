@@ -454,6 +454,24 @@ func (_u *MediaTaskUpdate) ClearSettlementPlan() *MediaTaskUpdate {
 	return _u
 }
 
+// SetSettlementRecovery sets the "settlement_recovery" field.
+func (_u *MediaTaskUpdate) SetSettlementRecovery(v json.RawMessage) *MediaTaskUpdate {
+	_u.mutation.SetSettlementRecovery(v)
+	return _u
+}
+
+// AppendSettlementRecovery appends value to the "settlement_recovery" field.
+func (_u *MediaTaskUpdate) AppendSettlementRecovery(v json.RawMessage) *MediaTaskUpdate {
+	_u.mutation.AppendSettlementRecovery(v)
+	return _u
+}
+
+// ClearSettlementRecovery clears the value of the "settlement_recovery" field.
+func (_u *MediaTaskUpdate) ClearSettlementRecovery() *MediaTaskUpdate {
+	_u.mutation.ClearSettlementRecovery()
+	return _u
+}
+
 // SetBillingStatus sets the "billing_status" field.
 func (_u *MediaTaskUpdate) SetBillingStatus(v string) *MediaTaskUpdate {
 	_u.mutation.SetBillingStatus(v)
@@ -982,6 +1000,17 @@ func (_u *MediaTaskUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if _u.mutation.SettlementPlanCleared() {
 		_spec.ClearField(mediatask.FieldSettlementPlan, field.TypeJSON)
 	}
+	if value, ok := _u.mutation.SettlementRecovery(); ok {
+		_spec.SetField(mediatask.FieldSettlementRecovery, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedSettlementRecovery(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, mediatask.FieldSettlementRecovery, value)
+		})
+	}
+	if _u.mutation.SettlementRecoveryCleared() {
+		_spec.ClearField(mediatask.FieldSettlementRecovery, field.TypeJSON)
+	}
 	if value, ok := _u.mutation.BillingStatus(); ok {
 		_spec.SetField(mediatask.FieldBillingStatus, field.TypeString, value)
 	}
@@ -1495,6 +1524,24 @@ func (_u *MediaTaskUpdateOne) AppendSettlementPlan(v json.RawMessage) *MediaTask
 // ClearSettlementPlan clears the value of the "settlement_plan" field.
 func (_u *MediaTaskUpdateOne) ClearSettlementPlan() *MediaTaskUpdateOne {
 	_u.mutation.ClearSettlementPlan()
+	return _u
+}
+
+// SetSettlementRecovery sets the "settlement_recovery" field.
+func (_u *MediaTaskUpdateOne) SetSettlementRecovery(v json.RawMessage) *MediaTaskUpdateOne {
+	_u.mutation.SetSettlementRecovery(v)
+	return _u
+}
+
+// AppendSettlementRecovery appends value to the "settlement_recovery" field.
+func (_u *MediaTaskUpdateOne) AppendSettlementRecovery(v json.RawMessage) *MediaTaskUpdateOne {
+	_u.mutation.AppendSettlementRecovery(v)
+	return _u
+}
+
+// ClearSettlementRecovery clears the value of the "settlement_recovery" field.
+func (_u *MediaTaskUpdateOne) ClearSettlementRecovery() *MediaTaskUpdateOne {
+	_u.mutation.ClearSettlementRecovery()
 	return _u
 }
 
@@ -2055,6 +2102,17 @@ func (_u *MediaTaskUpdateOne) sqlSave(ctx context.Context) (_node *MediaTask, er
 	}
 	if _u.mutation.SettlementPlanCleared() {
 		_spec.ClearField(mediatask.FieldSettlementPlan, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.SettlementRecovery(); ok {
+		_spec.SetField(mediatask.FieldSettlementRecovery, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedSettlementRecovery(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, mediatask.FieldSettlementRecovery, value)
+		})
+	}
+	if _u.mutation.SettlementRecoveryCleared() {
+		_spec.ClearField(mediatask.FieldSettlementRecovery, field.TypeJSON)
 	}
 	if value, ok := _u.mutation.BillingStatus(); ok {
 		_spec.SetField(mediatask.FieldBillingStatus, field.TypeString, value)

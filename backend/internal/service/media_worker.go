@@ -102,6 +102,14 @@ type mediaExecutionFailure struct {
 	category   string
 }
 
+type mediaAdapterRetryMode uint8
+
+const (
+	mediaAdapterRetryNone mediaAdapterRetryMode = iota
+	mediaAdapterRetryDifferentAccount
+	mediaAdapterRetrySameSelection
+)
+
 type mediaExecutionTrace struct {
 	durations map[MediaTaskStage]time.Duration
 	pollCount int
@@ -282,8 +290,7 @@ func (w *MediaWorker) ProcessOne(ctx context.Context, taskID int64) error {
 	}
 	if task.Status.IsTerminal() {
 		w.deps.Metrics.IncrementDuplicateMessage(task.MediaType)
-		w.retryTerminalSettlement(ctx, task)
-		return nil
+		return w.retryTerminalSettlement(ctx, task)
 	}
 
 	now := time.Now().UTC()
@@ -298,8 +305,7 @@ func (w *MediaWorker) ProcessOne(ctx context.Context, taskID int64) error {
 		}
 		if fresh.Status.IsTerminal() {
 			w.deps.Metrics.IncrementDuplicateMessage(fresh.MediaType)
-			w.retryTerminalSettlement(ctx, fresh)
-			return nil
+			return w.retryTerminalSettlement(ctx, fresh)
 		}
 		return fmt.Errorf("%w: task %d", ErrMediaTaskNotClaimed, task.ID)
 	}
@@ -377,6 +383,10 @@ func (w *MediaWorker) ProcessOne(ctx context.Context, taskID int64) error {
 
 func (w *MediaWorker) execute(ctx context.Context, task *MediaTask, active *mediaActiveExecution, trace *mediaExecutionTrace) (*MediaGenerateResult, *mediaExecutionFailure, error) {
 	stageStarted := time.Now()
+	if task.UpstreamTaskID != "" {
+		w.observeStage(task, trace, MediaTaskStageScheduling, stageStarted)
+		return w.resumePolling(ctx, task, active, trace)
+	}
 	spec, err := decodeWorkerMediaSpec(task.RequestSpec, task.MediaType)
 	if err != nil {
 		w.observeStage(task, trace, MediaTaskStageScheduling, stageStarted)
@@ -386,10 +396,6 @@ func (w *MediaWorker) execute(ctx context.Context, task *MediaTask, active *medi
 	if err != nil {
 		w.observeStage(task, trace, MediaTaskStageScheduling, stageStarted)
 		return nil, systemMediaFailure("system_model", "stored media model is unavailable"), nil
-	}
-	if task.UpstreamTaskID != "" {
-		w.observeStage(task, trace, MediaTaskStageScheduling, stageStarted)
-		return w.resumePolling(ctx, task, active, trace)
 	}
 	candidates, err := decodeWorkerCandidateSnapshot(task.CandidateSnapshot)
 	if err != nil {
@@ -502,7 +508,8 @@ func (w *MediaWorker) executeSelected(
 				return nil, nil, false, ctx.Err()
 			}
 			failure, adapterErr := classifyWorkerAdapterFailure(generateErr, "upstream_generate_failed")
-			return nil, failure, w.mayResubmit(task, adapter, adapterErr), nil
+			retryDifferentAccount := adapterErr != nil && adapterErr.Retryable && !adapterErr.SubmissionUnknown && task.UpstreamTaskID == ""
+			return nil, failure, retryDifferentAccount, nil
 		}
 		return result, nil, false, nil
 	}
@@ -512,19 +519,39 @@ func (w *MediaWorker) executeSelected(
 		w.observeStage(task, trace, MediaTaskStageSubmitting, stageStarted)
 		return nil, systemMediaFailure("system_adapter", "media adapter does not support native async submission"), false, nil
 	}
-	submission, submitErr := submitter.Submit(ctx, request)
-	w.observeStage(task, trace, MediaTaskStageSubmitting, stageStarted)
-	if submitErr != nil {
+	var submission *MediaAsyncSubmission
+	for {
+		var submitErr error
+		submission, submitErr = submitter.Submit(ctx, request)
+		w.observeStage(task, trace, MediaTaskStageSubmitting, stageStarted)
+		if submitErr == nil {
+			break
+		}
 		if ctx.Err() != nil {
 			return nil, nil, false, ctx.Err()
 		}
 		failure, adapterErr := classifyWorkerAdapterFailure(submitErr, "upstream_submit_failed")
-		return nil, failure, w.mayResubmit(task, adapter, adapterErr), nil
+		switch w.mediaAdapterRetryMode(task, adapter, adapterErr) {
+		case mediaAdapterRetryDifferentAccount:
+			return nil, failure, true, nil
+		case mediaAdapterRetrySameSelection:
+			task.RetryCount++
+			if err := w.updateClaimed(ctx, task, map[string]any{"retry_count": task.RetryCount}); err != nil {
+				return nil, nil, false, err
+			}
+			if err := waitMediaInterval(ctx, w.cfg.PollInterval); err != nil {
+				return nil, nil, false, err
+			}
+			stageStarted = time.Now()
+			continue
+		default:
+			return nil, failure, false, nil
+		}
 	}
-	w.markAccountUsed(ctx, task, selection.Account.ID)
 	if submission == nil || strings.TrimSpace(submission.UpstreamTaskID) == "" {
 		return nil, systemMediaFailure("system_adapter", "media adapter returned an empty upstream task id"), false, nil
 	}
+	w.markAccountUsed(ctx, task, selection.Account.ID)
 	submittedAt := time.Now().UTC()
 	if err := w.updateClaimed(ctx, task, map[string]any{
 		"account_id":        selection.Account.ID,
@@ -667,10 +694,17 @@ func (w *MediaWorker) completeSuccess(ctx context.Context, task *MediaTask, resu
 		return err
 	}
 	task.Stage = MediaTaskStageSettling
+	recovery, err := json.Marshal(MediaSettlementPlan{Type: MediaSettlementTypeSuccess, Usage: &result.Usage})
+	if err != nil {
+		return fmt.Errorf("encode media task %d success settlement recovery: %w", task.ID, err)
+	}
 	finishedAt := time.Now().UTC()
 	transitioned, err := w.deps.Tasks.TransitionClaimed(ctx, task.ID, w.workerID, task.Version,
 		MediaTaskStatusInProgress, MediaTaskStatusCompleted,
-		map[string]any{"stage": MediaTaskStageCompleted, "progress": 100, "finished_at": finishedAt},
+		map[string]any{
+			"stage": MediaTaskStageCompleted, "progress": 100, "finished_at": finishedAt,
+			"settlement_recovery": json.RawMessage(recovery),
+		},
 	)
 	if err != nil {
 		return fmt.Errorf("complete media task %d: %w", task.ID, err)
@@ -682,19 +716,25 @@ func (w *MediaWorker) completeSuccess(ctx context.Context, task *MediaTask, resu
 	task.Stage = MediaTaskStageCompleted
 	task.Progress = 100
 	task.FinishedAt = mediaTimePointer(finishedAt)
+	task.SettlementRecovery = append(json.RawMessage(nil), recovery...)
 	task.Version++
-	if err := w.deps.Billing.SettleSuccess(ctx, task, result.Usage); err != nil {
+	settlementErr := w.deps.Billing.SettleSuccess(ctx, task, result.Usage)
+	if settlementErr != nil {
 		w.deps.Metrics.IncrementSettlementRetry(task.MediaType)
-		w.logWorkerError(task, trace, "settlement_success", "settlement_retry", err)
+		w.logWorkerError(task, trace, "settlement_success", "settlement_retry", settlementErr)
 	}
 	w.observeStage(task, trace, MediaTaskStageSettling, stageStarted)
 	w.publishTerminal(ctx, task, trace, "")
-	return nil
+	return w.settlementAckError(ctx, task, settlementErr)
 }
 
 func (w *MediaWorker) completeFailure(ctx context.Context, task *MediaTask, failure *mediaExecutionFailure, trace *mediaExecutionTrace) error {
 	if failure == nil {
 		failure = systemMediaFailure("system_worker", "media worker failed")
+	}
+	recovery, err := json.Marshal(MediaSettlementPlan{Type: MediaSettlementTypeFailure, Failure: &failure.settlement})
+	if err != nil {
+		return fmt.Errorf("encode media task %d failure settlement recovery: %w", task.ID, err)
 	}
 	finishedAt := time.Now().UTC()
 	transitioned, err := w.deps.Tasks.TransitionClaimed(ctx, task.ID, w.workerID, task.Version,
@@ -702,7 +742,7 @@ func (w *MediaWorker) completeFailure(ctx context.Context, task *MediaTask, fail
 		map[string]any{
 			"stage": MediaTaskStageFailed, "finished_at": finishedAt,
 			"error_code": failure.settlement.ErrorCode, "error_message": failure.message,
-			"retry_count": task.RetryCount,
+			"retry_count": task.RetryCount, "settlement_recovery": json.RawMessage(recovery),
 		},
 	)
 	if err != nil {
@@ -716,15 +756,17 @@ func (w *MediaWorker) completeFailure(ctx context.Context, task *MediaTask, fail
 	task.ErrorCode = failure.settlement.ErrorCode
 	task.ErrorMessage = failure.message
 	task.FinishedAt = mediaTimePointer(finishedAt)
+	task.SettlementRecovery = append(json.RawMessage(nil), recovery...)
 	task.Version++
 	stageStarted := time.Now()
-	if err := w.deps.Billing.SettleFailure(ctx, task, failure.settlement); err != nil {
+	settlementErr := w.deps.Billing.SettleFailure(ctx, task, failure.settlement)
+	if settlementErr != nil {
 		w.deps.Metrics.IncrementSettlementRetry(task.MediaType)
-		w.logWorkerError(task, trace, "settlement_failure", "settlement_retry", err)
+		w.logWorkerError(task, trace, "settlement_failure", "settlement_retry", settlementErr)
 	}
 	w.observeStage(task, trace, MediaTaskStageSettling, stageStarted)
 	w.publishTerminal(ctx, task, trace, failure.category)
-	return nil
+	return w.settlementAckError(ctx, task, settlementErr)
 }
 
 func (w *MediaWorker) RecoverOnce(ctx context.Context) error {
@@ -796,17 +838,24 @@ func chooseMediaExecutionPath(clientAsync bool, mode NativeAsyncMode) MediaExecu
 }
 
 func (w *MediaWorker) mayResubmit(task *MediaTask, adapter MediaAdapter, err *MediaAdapterError) bool {
+	return w.mediaAdapterRetryMode(task, adapter, err) != mediaAdapterRetryNone
+}
+
+func (w *MediaWorker) mediaAdapterRetryMode(task *MediaTask, adapter MediaAdapter, err *MediaAdapterError) mediaAdapterRetryMode {
 	if task.UpstreamTaskID != "" {
-		return false
+		return mediaAdapterRetryNone
 	}
 	if err == nil || !err.Retryable {
-		return false
+		return mediaAdapterRetryNone
 	}
 	if err.SubmissionUnknown {
 		idempotent, supportsIdempotency := adapter.(MediaIdempotentSubmitter)
-		return supportsIdempotency && idempotent.SupportsIdempotentSubmit()
+		if supportsIdempotency && idempotent.SupportsIdempotentSubmit() {
+			return mediaAdapterRetrySameSelection
+		}
+		return mediaAdapterRetryNone
 	}
-	return true
+	return mediaAdapterRetryDifferentAccount
 }
 
 func (w *MediaWorker) validateDependencies() error {
@@ -937,14 +986,68 @@ func (w *MediaWorker) observeStage(task *MediaTask, trace *mediaExecutionTrace, 
 	trace.durations[stage] += elapsed
 }
 
-func (w *MediaWorker) retryTerminalSettlement(ctx context.Context, task *MediaTask) {
-	if task.BillingStatus == MediaBillingStatusSettled || len(task.SettlementPlan) == 0 {
-		return
+func (w *MediaWorker) retryTerminalSettlement(ctx context.Context, task *MediaTask) error {
+	if err := validatePersistedMediaSettlementConsistency(task); err != nil {
+		return err
 	}
-	if err := w.deps.Billing.RetryPending(ctx, task.ID); err != nil {
+	if task.BillingStatus == MediaBillingStatusSettled {
+		return nil
+	}
+	if len(task.SettlementPlan) > 0 {
+		if err := w.deps.Billing.RetryPending(ctx, task.ID); err != nil {
+			w.deps.Metrics.IncrementSettlementRetry(task.MediaType)
+			w.logWorkerError(task, &mediaExecutionTrace{durations: map[MediaTaskStage]time.Duration{}}, "retry_settlement", "settlement_retry", err)
+		}
+		return nil
+	}
+	if len(task.SettlementRecovery) == 0 {
+		return fmt.Errorf("%w: terminal task %d has no recovery intent", ErrMediaSettlementPlanNotPersisted, task.ID)
+	}
+	plan, err := decodeMediaSettlementPlan(task.SettlementRecovery)
+	if err != nil {
+		return fmt.Errorf("%w: decode task %d recovery intent: %w", ErrMediaSettlementPlanNotPersisted, task.ID, err)
+	}
+	switch plan.Type {
+	case MediaSettlementTypeSuccess:
+		if plan.Usage == nil || plan.Failure != nil {
+			return fmt.Errorf("%w: task %d has invalid success recovery intent", ErrMediaSettlementPlanNotPersisted, task.ID)
+		}
+		err = w.deps.Billing.SettleSuccess(ctx, task, *plan.Usage)
+	case MediaSettlementTypeFailure:
+		if plan.Failure == nil || plan.Usage != nil {
+			return fmt.Errorf("%w: task %d has invalid failure recovery intent", ErrMediaSettlementPlanNotPersisted, task.ID)
+		}
+		err = w.deps.Billing.SettleFailure(ctx, task, *plan.Failure)
+	default:
+		return fmt.Errorf("%w: task %d has unknown recovery intent type %q", ErrMediaSettlementPlanNotPersisted, task.ID, plan.Type)
+	}
+	if err != nil {
 		w.deps.Metrics.IncrementSettlementRetry(task.MediaType)
 		w.logWorkerError(task, &mediaExecutionTrace{durations: map[MediaTaskStage]time.Duration{}}, "retry_settlement", "settlement_retry", err)
 	}
+	return w.settlementAckError(ctx, task, err)
+}
+
+func (w *MediaWorker) settlementAckError(ctx context.Context, task *MediaTask, settlementErr error) error {
+	fresh, err := w.deps.Tasks.GetByID(ctx, task.ID)
+	if err != nil {
+		return errors.Join(
+			fmt.Errorf("%w: verify task %d formal plan: %w", ErrMediaSettlementPlanNotPersisted, task.ID, err),
+			settlementErr,
+		)
+	}
+	if len(fresh.SettlementPlan) == 0 {
+		if settlementErr == nil {
+			settlementErr = errors.New("settlement coordinator returned without persisting a formal plan")
+		}
+		return fmt.Errorf("%w: task %d: %w", ErrMediaSettlementPlanNotPersisted, task.ID, settlementErr)
+	}
+	if len(fresh.SettlementRecovery) == 0 || !mediaSettlementPlansEqual(fresh.SettlementRecovery, fresh.SettlementPlan) {
+		return fmt.Errorf("%w: task %d recovery intent differs from formal plan", ErrMediaSettlementPlanConflict, task.ID)
+	}
+	task.SettlementPlan = append(json.RawMessage(nil), fresh.SettlementPlan...)
+	task.BillingStatus = fresh.BillingStatus
+	return nil
 }
 
 func (w *MediaWorker) markAccountUsed(ctx context.Context, task *MediaTask, accountID int64) {
@@ -963,7 +1066,7 @@ func (w *MediaWorker) publishTerminal(ctx context.Context, task *MediaTask, trac
 
 func (w *MediaWorker) logWorkerError(task *MediaTask, trace *mediaExecutionTrace, operation, category string, err error) {
 	attrs := w.logAttrs(task, trace, operation, category)
-	attrs = append(attrs, slog.String("error", err.Error()))
+	attrs = append(attrs, slog.String("error_code", stableMediaWorkerErrorCode(err, category)))
 	w.logger.LogAttrs(context.Background(), slog.LevelError, "media worker operation failed", attrs...)
 }
 
@@ -1012,11 +1115,55 @@ func (w *MediaWorker) reportError(err error) {
 	if err == nil {
 		return
 	}
-	w.logger.Error("media worker background error", "error", err)
+	w.logger.Error(
+		"media worker background error",
+		"error_category", "background_error",
+		"error_code", stableMediaWorkerErrorCode(err, "background_error"),
+	)
 	select {
 	case w.errEvents <- err:
 	default:
 	}
+}
+
+func stableMediaWorkerErrorCode(err error, fallback string) string {
+	switch {
+	case errors.Is(err, context.Canceled):
+		return "context_canceled"
+	case errors.Is(err, context.DeadlineExceeded), errors.Is(err, ErrMediaTaskDeadlineExceeded):
+		return "deadline_exceeded"
+	case errors.Is(err, ErrMediaSettlementPlanNotPersisted):
+		return "settlement_plan_not_persisted"
+	case errors.Is(err, ErrMediaSettlementPlanConflict):
+		return "settlement_plan_conflict"
+	case errors.Is(err, ErrMediaSettlementCASConflict):
+		return "settlement_cas_conflict"
+	case errors.Is(err, ErrMediaWorkerLeaseLost):
+		return "lease_lost"
+	case errors.Is(err, ErrMediaTaskNotClaimed):
+		return "task_not_claimed"
+	}
+	var adapterErr *MediaAdapterError
+	if errors.As(err, &adapterErr) && validStableMediaErrorCode(adapterErr.Code) {
+		return adapterErr.Code
+	}
+	return fallback
+}
+
+func validStableMediaErrorCode(code string) bool {
+	if code == "" {
+		return false
+	}
+	for _, character := range code {
+		if (character >= 'a' && character <= 'z') ||
+			(character >= 'A' && character <= 'Z') ||
+			(character >= '0' && character <= '9') ||
+			character == '_' || character == '-' || character == '.' {
+			continue
+		}
+		return false
+	}
+	return true
 }
 
 func decodeWorkerMediaSpec(raw json.RawMessage, mediaType MediaType) (MediaSpec, error) {

@@ -63,6 +63,7 @@ var (
 		"error_code",
 		"error_message",
 		"finished_at",
+		"settlement_recovery",
 	)
 	updateBillingFields = mediaTaskUpdateFieldSet(
 		"billing_snapshot",
@@ -133,6 +134,9 @@ func (r *mediaTaskRepository) Create(ctx context.Context, task *service.MediaTas
 	}
 	if len(task.SettlementPlan) != 0 {
 		create.SetSettlementPlan(cloneRawMessage(task.SettlementPlan))
+	}
+	if len(task.SettlementRecovery) != 0 {
+		create.SetSettlementRecovery(cloneRawMessage(task.SettlementRecovery))
 	}
 	if task.BillingStatus != "" {
 		create.SetBillingStatus(task.BillingStatus)
@@ -350,8 +354,17 @@ func (r *mediaTaskRepository) ListRecoverable(ctx context.Context, now time.Time
 func (r *mediaTaskRepository) ListSettlementPending(ctx context.Context, limit int) ([]service.MediaTask, error) {
 	tasks, err := r.client.MediaTask.Query().
 		Where(
-			mediatask.SettlementPlanNotNil(),
 			mediatask.BillingStatusIn("precharged", "settling", "retry"),
+			mediatask.Or(
+				mediatask.SettlementPlanNotNil(),
+				mediatask.And(
+					mediatask.StatusIn(
+						string(service.MediaTaskStatusCompleted),
+						string(service.MediaTaskStatusFailed),
+					),
+					mediatask.SettlementRecoveryNotNil(),
+				),
+			),
 		).
 		Order(mediatask.ByID()).
 		Limit(limit).
@@ -483,6 +496,7 @@ func mediaTaskFromEnt(task *dbent.MediaTask) *service.MediaTask {
 		PollMetadata:       cloneRawMessage(task.PollMetadata),
 		BillingSnapshot:    cloneRawMessage(task.BillingSnapshot),
 		SettlementPlan:     cloneRawMessage(task.SettlementPlan),
+		SettlementRecovery: cloneRawMessage(task.SettlementRecovery),
 		BillingStatus:      task.BillingStatus,
 		PrechargedAmount:   task.PrechargedAmount,
 		FinalAmount:        task.FinalAmount,
@@ -636,6 +650,16 @@ func applyMediaTaskUpdates(update *dbent.MediaTaskUpdate, updates map[string]any
 				update.ClearSettlementPlan()
 			} else {
 				update.SetSettlementPlan(*v)
+			}
+		case "settlement_recovery":
+			v, err := rawMessagePointerValue(value)
+			if err != nil {
+				return updateTypeError(field, err)
+			}
+			if v == nil {
+				update.ClearSettlementRecovery()
+			} else {
+				update.SetSettlementRecovery(*v)
 			}
 		case "billing_status":
 			v, err := stringUpdateValue(value)

@@ -66,6 +66,77 @@ func TestMediaBillingCoordinatorRejectsConflictingPersistedPlan(t *testing.T) {
 	require.ErrorIs(t, err, ErrMediaSettlementPlanConflict)
 }
 
+func TestMediaBillingCoordinatorMarksInitialPlanPersistenceFailureUnsafeToAck(t *testing.T) {
+	task := workerCompletedTask(104, "billing-plan-write-failure")
+	usage := MediaUsage{ImageCount: 1, ImageSize: "1024x1024"}
+	recovery, err := json.Marshal(MediaSettlementPlan{Type: MediaSettlementTypeSuccess, Usage: &usage})
+	require.NoError(t, err)
+	task.SettlementRecovery = recovery
+	repo := newWorkerTaskRepository(task)
+	repo.failSettlementPlanWrites = 1
+	coordinator := NewMediaBillingCoordinator(repo, &recordingMediaBillingPort{})
+
+	err = coordinator.SettleSuccess(context.Background(), task, usage)
+	require.ErrorIs(t, err, ErrMediaSettlementPlanNotPersisted)
+	require.Empty(t, repo.mustGet(task.ID).SettlementPlan)
+}
+
+func TestMediaBillingCoordinatorRejectsRecoveryAndFormalPlanDivergence(t *testing.T) {
+	task := workerCompletedTask(105, "billing-recovery-conflict")
+	recovery, err := json.Marshal(MediaSettlementPlan{
+		Type:  MediaSettlementTypeSuccess,
+		Usage: &MediaUsage{ImageCount: 1},
+	})
+	require.NoError(t, err)
+	task.SettlementRecovery = recovery
+	repo := newWorkerTaskRepository(task)
+	coordinator := NewMediaBillingCoordinator(repo, &recordingMediaBillingPort{})
+
+	err = coordinator.SettleFailure(context.Background(), task, MediaFailureSettlement{
+		Kind: MediaFailureKindSystem, RefundRatio: 1, ErrorCode: "system_storage",
+	})
+	require.ErrorIs(t, err, ErrMediaSettlementPlanConflict)
+	require.Empty(t, repo.mustGet(task.ID).SettlementPlan)
+}
+
+func TestMediaBillingCoordinatorRejectsSettledRecoveryAndFormalPlanDivergence(t *testing.T) {
+	usage := MediaUsage{ImageCount: 1}
+	formal, err := json.Marshal(MediaSettlementPlan{
+		Type:  MediaSettlementTypeSuccess,
+		Usage: &usage,
+	})
+	require.NoError(t, err)
+	recovery, err := json.Marshal(MediaSettlementPlan{
+		Type: MediaSettlementTypeFailure,
+		Failure: &MediaFailureSettlement{
+			Kind: MediaFailureKindSystem, RefundRatio: 1, ErrorCode: "system_storage",
+		},
+	})
+	require.NoError(t, err)
+
+	t.Run("settle", func(t *testing.T) {
+		task := workerCompletedTask(106, "billing-settled-conflict")
+		task.BillingStatus = MediaBillingStatusSettled
+		task.SettlementPlan = formal
+		task.SettlementRecovery = recovery
+		coordinator := NewMediaBillingCoordinator(newWorkerTaskRepository(task), &recordingMediaBillingPort{})
+
+		err := coordinator.SettleSuccess(context.Background(), task, usage)
+		require.ErrorIs(t, err, ErrMediaSettlementPlanConflict)
+	})
+
+	t.Run("retry", func(t *testing.T) {
+		task := workerCompletedTask(107, "billing-settled-retry-conflict")
+		task.BillingStatus = MediaBillingStatusSettled
+		task.SettlementPlan = formal
+		task.SettlementRecovery = recovery
+		coordinator := NewMediaBillingCoordinator(newWorkerTaskRepository(task), &recordingMediaBillingPort{})
+
+		err := coordinator.RetryPending(context.Background(), task.ID)
+		require.ErrorIs(t, err, ErrMediaSettlementPlanConflict)
+	})
+}
+
 type recordingMediaBillingPort struct {
 	mu                    sync.Mutex
 	failFirstSettlement   bool

@@ -1,10 +1,12 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -145,6 +147,59 @@ func TestMediaWorkerResumesExistingUpstreamTaskWithoutSubmit(t *testing.T) {
 	require.Equal(t, MediaTaskStatusCompleted, fixture.repo.mustGet(fixture.task.ID).Status)
 }
 
+func TestMediaWorkerRecoveryDoesNotDependOnCurrentModelOrHistoricalRequestSpec(t *testing.T) {
+	tests := []struct {
+		name       string
+		mutateTask func(*MediaTask)
+		mutateDeps func(*MediaWorker)
+	}{
+		{
+			name: "deleted_or_disabled_model",
+			mutateDeps: func(worker *MediaWorker) {
+				worker.deps.Models = NewMediaModelRegistry(&workerModelRepository{})
+			},
+		},
+		{
+			name: "historical_request_schema_is_no_longer_parseable",
+			mutateTask: func(task *MediaTask) {
+				task.RequestSpec = json.RawMessage(`{"legacy_shape":true}`)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fixture := newMediaWorkerFixture(t, true, NativeAsyncRequired)
+			fixture.repo.mu.Lock()
+			task := fixture.repo.tasks[fixture.task.ID]
+			task.Status = MediaTaskStatusInProgress
+			task.Stage = MediaTaskStagePolling
+			task.AccountID = ptrInt64(fixture.account.ID)
+			task.Adapter = fixture.adapter.Name()
+			task.UpstreamModel = "upstream-image"
+			task.NativeAsyncMode = NativeAsyncRequired
+			task.UpstreamTaskID = "existing-upstream"
+			task.PollMetadata = json.RawMessage(`{"cursor":1}`)
+			task.WorkerID = "dead-worker"
+			task.LeaseUntil = workerTimePtr(time.Now().Add(-time.Minute))
+			task.Version++
+			if tt.mutateTask != nil {
+				tt.mutateTask(task)
+			}
+			fixture.repo.mu.Unlock()
+			if tt.mutateDeps != nil {
+				tt.mutateDeps(fixture.worker)
+			}
+			fixture.adapter.allowUpstream("existing-upstream")
+
+			require.NoError(t, fixture.worker.ProcessOne(context.Background(), fixture.task.ID))
+			require.Zero(t, fixture.adapter.submitCalls.Load())
+			require.GreaterOrEqual(t, fixture.adapter.pollCalls.Load(), int64(1))
+			require.Equal(t, MediaTaskStatusCompleted, fixture.repo.mustGet(fixture.task.ID).Status)
+		})
+	}
+}
+
 func TestMediaWorkerUsesCandidateSnapshotInsteadOfCurrentModelMapping(t *testing.T) {
 	fixture := newMediaWorkerFixture(t, false, NativeAsyncUnsupported)
 	fixture.account.Extra = map[string]any{"media": map[string]any{
@@ -206,6 +261,175 @@ func TestMediaWorkerSubmissionUnknownWithoutIdempotencyFailsWithoutResubmit(t *t
 	require.Equal(t, int64(1), fixture.adapter.submitCalls.Load())
 	require.Equal(t, MediaTaskStatusFailed, fixture.repo.mustGet(fixture.task.ID).Status)
 	require.Equal(t, float64(1), fixture.billing.lastFailure().RefundRatio)
+}
+
+func TestMediaWorkerSubmissionUnknownWithIdempotencyRetriesSameSingleCandidate(t *testing.T) {
+	fixture := newMediaWorkerFixture(t, true, NativeAsyncRequired)
+	fixture.adapter.supportsIdempotency = true
+	fixture.adapter.submitErrors = []error{&MediaAdapterError{
+		Code: "submission_unknown", Message: "connection closed", Retryable: true, SubmissionUnknown: true,
+	}}
+
+	require.NoError(t, fixture.worker.ProcessOne(context.Background(), fixture.task.ID))
+	require.Equal(t, int64(2), fixture.adapter.submitCalls.Load())
+	requests := fixture.adapter.submitRequests()
+	require.Len(t, requests, 2)
+	require.Equal(t, fixture.account.ID, requests[0].Account.ID)
+	require.Equal(t, fixture.account.ID, requests[1].Account.ID)
+	require.Equal(t, fixture.task.PublicID, requests[0].IdempotencyKey)
+	require.Equal(t, requests[0].IdempotencyKey, requests[1].IdempotencyKey)
+	require.Equal(t, MediaTaskStatusCompleted, fixture.repo.mustGet(fixture.task.ID).Status)
+}
+
+func TestMediaWorkerSubmissionUnknownWithIdempotencyNeverSwitchesCandidate(t *testing.T) {
+	fixture := newMediaWorkerFixture(t, true, NativeAsyncRequired)
+	fixture.adapter.supportsIdempotency = true
+	fixture.adapter.submitErrors = []error{&MediaAdapterError{
+		Code: "submission_unknown", Message: "connection closed", Retryable: true, SubmissionUnknown: true,
+	}}
+	fallback := newWorkerAdapter("worker-fallback-unknown")
+	fixture.worker.deps.Adapters.Register(fallback.Name(), fallback)
+	fallbackAccount := &Account{ID: 9, Platform: PlatformOpenAI, Status: StatusActive, Schedulable: true, Concurrency: 1}
+	accountRepo := fixture.worker.deps.Scheduler.accountRepo.(*workerAccountRepository)
+	accountRepo.extra = append(accountRepo.extra, fallbackAccount)
+	var candidates []MediaAccountCandidateSnapshot
+	require.NoError(t, json.Unmarshal(fixture.task.CandidateSnapshot, &candidates))
+	candidates = append(candidates, MediaAccountCandidateSnapshot{
+		AccountID: fallbackAccount.ID, Platform: fallbackAccount.Platform,
+		ResolvedModel: ResolvedMediaAccountModel{
+			Adapter: fallback.Name(), UpstreamModel: "upstream-fallback", NativeAsyncMode: NativeAsyncRequired,
+		},
+	})
+	encoded, err := json.Marshal(candidates)
+	require.NoError(t, err)
+	fixture.repo.mu.Lock()
+	fixture.repo.tasks[fixture.task.ID].CandidateSnapshot = encoded
+	fixture.repo.mu.Unlock()
+
+	require.NoError(t, fixture.worker.ProcessOne(context.Background(), fixture.task.ID))
+	require.Equal(t, int64(2), fixture.adapter.submitCalls.Load())
+	require.Zero(t, fallback.submitCalls.Load())
+	for _, request := range fixture.adapter.submitRequests() {
+		require.Equal(t, fixture.account.ID, request.Account.ID)
+		require.Equal(t, fixture.task.PublicID, request.IdempotencyKey)
+	}
+}
+
+func TestMediaWorkerDoesNotMarkAccountUsedForInvalidAsyncSubmission(t *testing.T) {
+	fixture := newMediaWorkerFixture(t, true, NativeAsyncRequired)
+	fixture.adapter.emptySubmission = true
+	accountRepo := fixture.worker.deps.Scheduler.accountRepo.(*workerAccountRepository)
+
+	require.NoError(t, fixture.worker.ProcessOne(context.Background(), fixture.task.ID))
+	require.Zero(t, accountRepo.markUsed.Load())
+	require.Equal(t, MediaTaskStatusFailed, fixture.repo.mustGet(fixture.task.ID).Status)
+}
+
+func TestMediaWorkerSuccessfulTerminalPlanPersistenceFailureIsRedeliverable(t *testing.T) {
+	fixture := newMediaWorkerFixture(t, true, NativeAsyncRequired)
+	port := &recordingMediaBillingPort{}
+	fixture.worker.deps.Billing = NewMediaBillingCoordinator(fixture.repo, port)
+	fixture.repo.failSettlementPlanWrites = 1
+	fixture.queue.deliver(&MediaQueueMessage{ID: "plan-failure-1", TaskID: fixture.task.ID, Priority: MediaQueuePriorityAsync})
+
+	require.NoError(t, fixture.worker.Start())
+	require.Eventually(t, func() bool {
+		return fixture.repo.mustGet(fixture.task.ID).Status == MediaTaskStatusCompleted
+	}, time.Second, 10*time.Millisecond)
+	select {
+	case workerErr := <-fixture.worker.Errors():
+		require.ErrorIs(t, workerErr, ErrMediaSettlementPlanNotPersisted)
+	case <-time.After(time.Second):
+		t.Fatal("expected unsafe settlement persistence error")
+	}
+	fixture.worker.Stop()
+	require.Zero(t, fixture.queue.ackCalls.Load())
+	first := fixture.repo.mustGet(fixture.task.ID)
+	require.NotEmpty(t, first.SettlementRecovery)
+	require.Empty(t, first.SettlementPlan)
+	require.Equal(t, int64(1), fixture.adapter.submitCalls.Load())
+	require.Zero(t, port.successfulSettlementCalls())
+
+	require.NoError(t, fixture.worker.ProcessOne(context.Background(), fixture.task.ID))
+	second := fixture.repo.mustGet(fixture.task.ID)
+	require.NotEmpty(t, second.SettlementPlan)
+	require.Equal(t, MediaBillingStatusSettled, second.BillingStatus)
+	require.Equal(t, int64(1), fixture.adapter.submitCalls.Load())
+	require.Equal(t, 1, port.successfulSettlementCalls())
+}
+
+func TestMediaWorkerFailedTerminalPlanPersistenceFailureRebuildsOriginalPlan(t *testing.T) {
+	fixture := newMediaWorkerFixture(t, false, NativeAsyncUnsupported)
+	fixture.artifactWriter.err = errors.New("storage unavailable")
+	port := &recordingMediaBillingPort{}
+	fixture.worker.deps.Billing = NewMediaBillingCoordinator(fixture.repo, port)
+	fixture.repo.failSettlementPlanWrites = 1
+
+	err := fixture.worker.ProcessOne(context.Background(), fixture.task.ID)
+	require.ErrorIs(t, err, ErrMediaSettlementPlanNotPersisted)
+	first := fixture.repo.mustGet(fixture.task.ID)
+	require.Equal(t, MediaTaskStatusFailed, first.Status)
+	require.NotEmpty(t, first.SettlementRecovery)
+	require.Empty(t, first.SettlementPlan)
+	require.Equal(t, int64(1), fixture.adapter.syncCalls.Load())
+	require.Zero(t, port.successfulSettlementCalls())
+
+	require.NoError(t, fixture.worker.ProcessOne(context.Background(), fixture.task.ID))
+	second := fixture.repo.mustGet(fixture.task.ID)
+	require.NotEmpty(t, second.SettlementPlan)
+	require.Equal(t, MediaBillingStatusSettled, second.BillingStatus)
+	require.Equal(t, second.PrechargedAmount, second.RefundedAmount)
+	require.Equal(t, int64(1), fixture.adapter.syncCalls.Load())
+	require.Equal(t, 1, port.successfulSettlementCalls())
+	var recovery MediaSettlementPlan
+	require.NoError(t, json.Unmarshal(second.SettlementRecovery, &recovery))
+	require.Equal(t, MediaSettlementTypeFailure, recovery.Type)
+	require.Equal(t, "system_storage", recovery.Failure.ErrorCode)
+}
+
+func TestMediaWorkerRejectsSettledRecoveryAndFormalPlanDivergence(t *testing.T) {
+	fixture := newMediaWorkerFixture(t, true, NativeAsyncRequired)
+	formal, err := json.Marshal(MediaSettlementPlan{
+		Type:  MediaSettlementTypeSuccess,
+		Usage: &MediaUsage{ImageCount: 1},
+	})
+	require.NoError(t, err)
+	recovery, err := json.Marshal(MediaSettlementPlan{
+		Type: MediaSettlementTypeFailure,
+		Failure: &MediaFailureSettlement{
+			Kind: MediaFailureKindSystem, RefundRatio: 1, ErrorCode: "system_storage",
+		},
+	})
+	require.NoError(t, err)
+	fixture.repo.mu.Lock()
+	stored := fixture.repo.tasks[fixture.task.ID]
+	stored.Status = MediaTaskStatusCompleted
+	stored.BillingStatus = MediaBillingStatusSettled
+	stored.SettlementPlan = formal
+	stored.SettlementRecovery = recovery
+	fixture.repo.mu.Unlock()
+
+	err = fixture.worker.ProcessOne(context.Background(), fixture.task.ID)
+	require.ErrorIs(t, err, ErrMediaSettlementPlanConflict)
+	require.Zero(t, fixture.adapter.submitCalls.Load())
+}
+
+func TestMediaWorkerProductionLogsNeverIncludeRawDependencyErrors(t *testing.T) {
+	fixture := newMediaWorkerFixture(t, true, NativeAsyncRequired)
+	var output bytes.Buffer
+	fixture.worker.logger = slog.New(slog.NewJSONHandler(&output, nil))
+	sensitive := errors.New("https://upstream.example/task token=secret upstream_reference=private-ref")
+	trace := &mediaExecutionTrace{durations: map[MediaTaskStage]time.Duration{}}
+
+	fixture.worker.logWorkerError(fixture.task, trace, "settlement_success", "settlement_retry", sensitive)
+	fixture.worker.reportError(sensitive)
+	logs := output.String()
+	for _, forbidden := range []string{"https://upstream.example", "token=secret", "private-ref", "upstream_reference"} {
+		require.NotContains(t, logs, forbidden)
+	}
+	require.Contains(t, logs, `"error_category":"settlement_retry"`)
+	require.Contains(t, logs, `"error_category":"background_error"`)
+	require.Contains(t, logs, `"error_code"`)
 }
 
 func TestMediaWorkerRetriesExplicitRejectionOnDifferentSnapshottedAccount(t *testing.T) {
@@ -307,7 +531,7 @@ func newMediaWorkerFixture(t *testing.T, clientAsync bool, mode NativeAsyncMode)
 	}
 	repo := newWorkerTaskRepository(task)
 	queue := &workerQueue{}
-	billing := &recordingSettlementCoordinator{}
+	billing := &recordingSettlementCoordinator{repo: repo}
 	metrics := NewAtomicMediaTaskMetrics()
 	artifactWriter := &workerArtifactWriter{}
 	worker := NewMediaWorker(MediaWorkerConfig{
@@ -325,9 +549,10 @@ func newMediaWorkerFixture(t *testing.T, clientAsync bool, mode NativeAsyncMode)
 }
 
 type workerTaskRepository struct {
-	mu              sync.Mutex
-	tasks           map[int64]*MediaTask
-	renewLeaseCalls atomic.Int64
+	mu                       sync.Mutex
+	tasks                    map[int64]*MediaTask
+	renewLeaseCalls          atomic.Int64
+	failSettlementPlanWrites int
 }
 
 func newWorkerTaskRepository(tasks ...*MediaTask) *workerTaskRepository {
@@ -469,6 +694,10 @@ func (r *workerTaskRepository) UpdateBilling(_ context.Context, id int64, fromSt
 	if task == nil || task.BillingStatus != fromStatus {
 		return false, nil
 	}
+	if _, persistsPlan := updates["settlement_plan"]; persistsPlan && r.failSettlementPlanWrites > 0 {
+		r.failSettlementPlanWrites--
+		return false, errors.New("settlement plan storage unavailable")
+	}
 	applyWorkerTaskUpdates(task, updates)
 	return true, nil
 }
@@ -526,6 +755,8 @@ func applyWorkerTaskUpdates(task *MediaTask, updates map[string]any) {
 			case []byte:
 				task.SettlementPlan = append(json.RawMessage(nil), typed...)
 			}
+		case "settlement_recovery":
+			task.SettlementRecovery = append(json.RawMessage(nil), value.(json.RawMessage)...)
 		case "billing_status":
 			task.BillingStatus = value.(string)
 		case "final_amount":
@@ -552,6 +783,7 @@ func cloneWorkerTask(task *MediaTask) *MediaTask {
 	copy.CandidateSnapshot = append(json.RawMessage(nil), task.CandidateSnapshot...)
 	copy.PollMetadata = append(json.RawMessage(nil), task.PollMetadata...)
 	copy.SettlementPlan = append(json.RawMessage(nil), task.SettlementPlan...)
+	copy.SettlementRecovery = append(json.RawMessage(nil), task.SettlementRecovery...)
 	return &copy
 }
 func cloneWorkerInt64(v *int64) *int64 {
@@ -689,17 +921,21 @@ func (r *workerModelRepository) ListEnabled(context.Context) ([]MediaModelDefini
 }
 
 type workerAdapter struct {
-	name        string
-	syncCalls   atomic.Int64
-	submitCalls atomic.Int64
-	pollCalls   atomic.Int64
-	abortCalls  atomic.Int64
-	mu          sync.Mutex
-	pollResult  MediaPollResult
-	pollBlock   <-chan struct{}
-	submitErr   error
-	allowed     map[string]struct{}
-	request     MediaExecutionRequest
+	name                string
+	syncCalls           atomic.Int64
+	submitCalls         atomic.Int64
+	pollCalls           atomic.Int64
+	abortCalls          atomic.Int64
+	mu                  sync.Mutex
+	pollResult          MediaPollResult
+	pollBlock           <-chan struct{}
+	submitErr           error
+	submitErrors        []error
+	supportsIdempotency bool
+	emptySubmission     bool
+	allowed             map[string]struct{}
+	request             MediaExecutionRequest
+	requests            []MediaExecutionRequest
 }
 
 func newWorkerAdapter(name string) *workerAdapter {
@@ -725,11 +961,23 @@ func (a *workerAdapter) Submit(ctx context.Context, req MediaExecutionRequest) (
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.request = req
+	a.requests = append(a.requests, req)
+	if len(a.submitErrors) > 0 {
+		err := a.submitErrors[0]
+		a.submitErrors = a.submitErrors[1:]
+		return nil, err
+	}
 	if a.submitErr != nil {
 		return nil, a.submitErr
 	}
+	if a.emptySubmission {
+		return &MediaAsyncSubmission{}, nil
+	}
 	a.allowed["upstream-1"] = struct{}{}
 	return &MediaAsyncSubmission{UpstreamTaskID: "upstream-1", PollMetadata: json.RawMessage(`{"cursor":0}`)}, nil
+}
+func (a *workerAdapter) SupportsIdempotentSubmit() bool {
+	return a.supportsIdempotency
 }
 func (a *workerAdapter) Poll(ctx context.Context, req MediaPollRequest) (*MediaPollResult, error) {
 	a.pollCalls.Add(1)
@@ -786,6 +1034,11 @@ func (a *workerAdapter) lastRequest() MediaExecutionRequest {
 	defer a.mu.Unlock()
 	return a.request
 }
+func (a *workerAdapter) submitRequests() []MediaExecutionRequest {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return append([]MediaExecutionRequest(nil), a.requests...)
+}
 
 type workerArtifactWriter struct {
 	mu      sync.Mutex
@@ -825,23 +1078,24 @@ func (w *workerArtifactWriter) PersistOutputs(ctx context.Context, task *MediaTa
 
 type recordingSettlementCoordinator struct {
 	mu          sync.Mutex
+	repo        *workerTaskRepository
 	settlements int
 	retries     int
 	failure     MediaFailureSettlement
 }
 
-func (c *recordingSettlementCoordinator) SettleSuccess(context.Context, *MediaTask, MediaUsage) error {
+func (c *recordingSettlementCoordinator) SettleSuccess(ctx context.Context, task *MediaTask, usage MediaUsage) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.settlements++
-	return nil
+	return c.persist(ctx, task, MediaSettlementPlan{Type: MediaSettlementTypeSuccess, Usage: &usage})
 }
-func (c *recordingSettlementCoordinator) SettleFailure(_ context.Context, _ *MediaTask, failure MediaFailureSettlement) error {
+func (c *recordingSettlementCoordinator) SettleFailure(ctx context.Context, task *MediaTask, failure MediaFailureSettlement) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.settlements++
 	c.failure = failure
-	return nil
+	return c.persist(ctx, task, MediaSettlementPlan{Type: MediaSettlementTypeFailure, Failure: &failure})
 }
 func (c *recordingSettlementCoordinator) RetryPending(context.Context, int64) error {
 	c.mu.Lock()
@@ -858,4 +1112,19 @@ func (c *recordingSettlementCoordinator) lastFailure() MediaFailureSettlement {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.failure
+}
+func (c *recordingSettlementCoordinator) persist(ctx context.Context, task *MediaTask, plan MediaSettlementPlan) error {
+	if c.repo == nil {
+		return nil
+	}
+	encoded, err := json.Marshal(plan)
+	if err != nil {
+		return err
+	}
+	stored := c.repo.mustGet(task.ID)
+	_, err = c.repo.UpdateBilling(ctx, task.ID, stored.BillingStatus, map[string]any{
+		"settlement_plan": json.RawMessage(encoded),
+		"billing_status":  MediaBillingStatusSettled,
+	})
+	return err
 }

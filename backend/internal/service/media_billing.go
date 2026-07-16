@@ -17,8 +17,9 @@ const (
 )
 
 var (
-	ErrMediaSettlementPlanConflict = errors.New("media settlement plan conflict")
-	ErrMediaSettlementCASConflict  = errors.New("media settlement CAS conflict")
+	ErrMediaSettlementPlanConflict     = errors.New("media settlement plan conflict")
+	ErrMediaSettlementCASConflict      = errors.New("media settlement CAS conflict")
+	ErrMediaSettlementPlanNotPersisted = errors.New("media settlement plan was not persisted")
 )
 
 type MediaBillingSnapshot struct {
@@ -96,12 +97,18 @@ func (c *MediaBillingCoordinator) RetryPending(ctx context.Context, taskID int64
 	if err != nil {
 		return fmt.Errorf("load media task %d for settlement retry: %w", taskID, err)
 	}
+	if err := validatePersistedMediaSettlementConsistency(task); err != nil {
+		return err
+	}
 	if task.BillingStatus == MediaBillingStatusSettled {
 		return nil
 	}
 	plan, err := decodeMediaSettlementPlan(task.SettlementPlan)
 	if err != nil {
 		return fmt.Errorf("decode media task %d settlement plan: %w", taskID, err)
+	}
+	if err := validateMediaSettlementRecovery(task, plan); err != nil {
+		return err
 	}
 	return c.executePersisted(ctx, task, plan)
 }
@@ -115,17 +122,23 @@ func (c *MediaBillingCoordinator) settle(ctx context.Context, task *MediaTask, p
 	}
 	encoded, err := json.Marshal(plan)
 	if err != nil {
-		return fmt.Errorf("encode media task %d settlement plan: %w", task.ID, err)
+		return fmt.Errorf("%w: encode media task %d settlement plan: %w", ErrMediaSettlementPlanNotPersisted, task.ID, err)
 	}
 
 	current, err := c.repo.GetByID(ctx, task.ID)
 	if err != nil {
-		return fmt.Errorf("load media task %d before settlement: %w", task.ID, err)
+		return fmt.Errorf("%w: load media task %d before settlement: %w", ErrMediaSettlementPlanNotPersisted, task.ID, err)
+	}
+	if err := validatePersistedMediaSettlementConsistency(current); err != nil {
+		return err
 	}
 	if current.BillingStatus == MediaBillingStatusSettled {
 		return nil
 	}
-	if len(current.SettlementPlan) > 0 && !bytes.Equal(current.SettlementPlan, encoded) {
+	if err := validateMediaSettlementRecovery(current, plan); err != nil {
+		return err
+	}
+	if len(current.SettlementPlan) > 0 && !mediaSettlementPlansEqual(current.SettlementPlan, encoded) {
 		return fmt.Errorf("%w: task %d", ErrMediaSettlementPlanConflict, task.ID)
 	}
 	if len(current.SettlementPlan) == 0 {
@@ -134,10 +147,21 @@ func (c *MediaBillingCoordinator) settle(ctx context.Context, task *MediaTask, p
 			"billing_status":  MediaBillingStatusSettling,
 		})
 		if updateErr != nil {
-			return fmt.Errorf("persist media task %d settlement plan: %w", current.ID, updateErr)
+			return fmt.Errorf("%w: persist media task %d settlement plan: %w", ErrMediaSettlementPlanNotPersisted, current.ID, updateErr)
 		}
 		if !updated {
-			return fmt.Errorf("%w: persist task %d settlement plan", ErrMediaSettlementCASConflict, current.ID)
+			fresh, loadErr := c.repo.GetByID(ctx, current.ID)
+			if loadErr == nil && mediaSettlementPlansEqual(fresh.SettlementPlan, encoded) {
+				current = fresh
+				return c.executePersisted(ctx, current, plan)
+			}
+			if loadErr != nil {
+				return errors.Join(
+					fmt.Errorf("%w: persist task %d settlement plan", ErrMediaSettlementPlanNotPersisted, current.ID),
+					fmt.Errorf("reload task after settlement CAS: %w", loadErr),
+				)
+			}
+			return fmt.Errorf("%w: %w: persist task %d settlement plan", ErrMediaSettlementPlanNotPersisted, ErrMediaSettlementCASConflict, current.ID)
 		}
 		current.SettlementPlan = encoded
 		current.BillingStatus = MediaBillingStatusSettling
@@ -240,6 +264,44 @@ func decodeMediaSettlementPlan(raw json.RawMessage) (MediaSettlementPlan, error)
 		return MediaSettlementPlan{}, fmt.Errorf("decode media settlement plan: %w", err)
 	}
 	return plan, nil
+}
+
+func validateMediaSettlementRecovery(task *MediaTask, plan MediaSettlementPlan) error {
+	if task == nil || len(task.SettlementRecovery) == 0 {
+		return nil
+	}
+	encoded, err := json.Marshal(plan)
+	if err != nil {
+		return fmt.Errorf("encode media task settlement plan for recovery validation: %w", err)
+	}
+	if !mediaSettlementPlansEqual(task.SettlementRecovery, encoded) {
+		return fmt.Errorf("%w: task %d recovery intent differs from formal plan", ErrMediaSettlementPlanConflict, task.ID)
+	}
+	return nil
+}
+
+func validatePersistedMediaSettlementConsistency(task *MediaTask) error {
+	if task == nil || len(task.SettlementRecovery) == 0 || len(task.SettlementPlan) == 0 {
+		return nil
+	}
+	if !mediaSettlementPlansEqual(task.SettlementRecovery, task.SettlementPlan) {
+		return fmt.Errorf("%w: task %d recovery intent differs from formal plan", ErrMediaSettlementPlanConflict, task.ID)
+	}
+	return nil
+}
+
+func mediaSettlementPlansEqual(left, right json.RawMessage) bool {
+	if len(left) == 0 || len(right) == 0 {
+		return len(left) == 0 && len(right) == 0
+	}
+	leftPlan, leftErr := decodeMediaSettlementPlan(left)
+	rightPlan, rightErr := decodeMediaSettlementPlan(right)
+	if leftErr != nil || rightErr != nil {
+		return bytes.Equal(left, right)
+	}
+	leftCanonical, leftErr := json.Marshal(leftPlan)
+	rightCanonical, rightErr := json.Marshal(rightPlan)
+	return leftErr == nil && rightErr == nil && bytes.Equal(leftCanonical, rightCanonical)
 }
 
 func clampMediaRatio(value float64) float64 {

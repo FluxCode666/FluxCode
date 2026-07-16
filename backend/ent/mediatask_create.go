@@ -297,6 +297,12 @@ func (_c *MediaTaskCreate) SetSettlementPlan(v json.RawMessage) *MediaTaskCreate
 	return _c
 }
 
+// SetSettlementRecovery sets the "settlement_recovery" field.
+func (_c *MediaTaskCreate) SetSettlementRecovery(v json.RawMessage) *MediaTaskCreate {
+	_c.mutation.SetSettlementRecovery(v)
+	return _c
+}
+
 // SetBillingStatus sets the "billing_status" field.
 func (_c *MediaTaskCreate) SetBillingStatus(v string) *MediaTaskCreate {
 	_c.mutation.SetBillingStatus(v)
@@ -907,6 +913,10 @@ func (_c *MediaTaskCreate) createSpec() (*MediaTask, *sqlgraph.CreateSpec) {
 		_spec.SetField(mediatask.FieldSettlementPlan, field.TypeJSON, value)
 		_node.SettlementPlan = value
 	}
+	if value, ok := _c.mutation.SettlementRecovery(); ok {
+		_spec.SetField(mediatask.FieldSettlementRecovery, field.TypeJSON, value)
+		_node.SettlementRecovery = value
+	}
 	if value, ok := _c.mutation.BillingStatus(); ok {
 		_spec.SetField(mediatask.FieldBillingStatus, field.TypeString, value)
 		_node.BillingStatus = value
@@ -1396,6 +1406,24 @@ func (u *MediaTaskUpsert) UpdateSettlementPlan() *MediaTaskUpsert {
 // ClearSettlementPlan clears the value of the "settlement_plan" field.
 func (u *MediaTaskUpsert) ClearSettlementPlan() *MediaTaskUpsert {
 	u.SetNull(mediatask.FieldSettlementPlan)
+	return u
+}
+
+// SetSettlementRecovery sets the "settlement_recovery" field.
+func (u *MediaTaskUpsert) SetSettlementRecovery(v json.RawMessage) *MediaTaskUpsert {
+	u.Set(mediatask.FieldSettlementRecovery, v)
+	return u
+}
+
+// UpdateSettlementRecovery sets the "settlement_recovery" field to the value that was provided on create.
+func (u *MediaTaskUpsert) UpdateSettlementRecovery() *MediaTaskUpsert {
+	u.SetExcluded(mediatask.FieldSettlementRecovery)
+	return u
+}
+
+// ClearSettlementRecovery clears the value of the "settlement_recovery" field.
+func (u *MediaTaskUpsert) ClearSettlementRecovery() *MediaTaskUpsert {
+	u.SetNull(mediatask.FieldSettlementRecovery)
 	return u
 }
 
@@ -2117,6 +2145,27 @@ func (u *MediaTaskUpsertOne) UpdateSettlementPlan() *MediaTaskUpsertOne {
 func (u *MediaTaskUpsertOne) ClearSettlementPlan() *MediaTaskUpsertOne {
 	return u.Update(func(s *MediaTaskUpsert) {
 		s.ClearSettlementPlan()
+	})
+}
+
+// SetSettlementRecovery sets the "settlement_recovery" field.
+func (u *MediaTaskUpsertOne) SetSettlementRecovery(v json.RawMessage) *MediaTaskUpsertOne {
+	return u.Update(func(s *MediaTaskUpsert) {
+		s.SetSettlementRecovery(v)
+	})
+}
+
+// UpdateSettlementRecovery sets the "settlement_recovery" field to the value that was provided on create.
+func (u *MediaTaskUpsertOne) UpdateSettlementRecovery() *MediaTaskUpsertOne {
+	return u.Update(func(s *MediaTaskUpsert) {
+		s.UpdateSettlementRecovery()
+	})
+}
+
+// ClearSettlementRecovery clears the value of the "settlement_recovery" field.
+func (u *MediaTaskUpsertOne) ClearSettlementRecovery() *MediaTaskUpsertOne {
+	return u.Update(func(s *MediaTaskUpsert) {
+		s.ClearSettlementRecovery()
 	})
 }
 
@@ -3042,6 +3091,27 @@ func (u *MediaTaskUpsertBulk) UpdateSettlementPlan() *MediaTaskUpsertBulk {
 func (u *MediaTaskUpsertBulk) ClearSettlementPlan() *MediaTaskUpsertBulk {
 	return u.Update(func(s *MediaTaskUpsert) {
 		s.ClearSettlementPlan()
+	})
+}
+
+// SetSettlementRecovery sets the "settlement_recovery" field.
+func (u *MediaTaskUpsertBulk) SetSettlementRecovery(v json.RawMessage) *MediaTaskUpsertBulk {
+	return u.Update(func(s *MediaTaskUpsert) {
+		s.SetSettlementRecovery(v)
+	})
+}
+
+// UpdateSettlementRecovery sets the "settlement_recovery" field to the value that was provided on create.
+func (u *MediaTaskUpsertBulk) UpdateSettlementRecovery() *MediaTaskUpsertBulk {
+	return u.Update(func(s *MediaTaskUpsert) {
+		s.UpdateSettlementRecovery()
+	})
+}
+
+// ClearSettlementRecovery clears the value of the "settlement_recovery" field.
+func (u *MediaTaskUpsertBulk) ClearSettlementRecovery() *MediaTaskUpsertBulk {
+	return u.Update(func(s *MediaTaskUpsert) {
+		s.ClearSettlementRecovery()
 	})
 }
 

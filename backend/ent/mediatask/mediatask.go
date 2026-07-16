@@ -67,6 +67,8 @@ const (
 	FieldBillingSnapshot = "billing_snapshot"
 	// FieldSettlementPlan holds the string denoting the settlement_plan field in the database.
 	FieldSettlementPlan = "settlement_plan"
+	// FieldSettlementRecovery holds the string denoting the settlement_recovery field in the database.
+	FieldSettlementRecovery = "settlement_recovery"
 	// FieldBillingStatus holds the string denoting the billing_status field in the database.
 	FieldBillingStatus = "billing_status"
 	// FieldPrechargedAmount holds the string denoting the precharged_amount field in the database.
@@ -129,6 +131,7 @@ var Columns = []string{
 	FieldPollMetadata,
 	FieldBillingSnapshot,
 	FieldSettlementPlan,
+	FieldSettlementRecovery,
 	FieldBillingStatus,
 	FieldPrechargedAmount,
 	FieldFinalAmount,

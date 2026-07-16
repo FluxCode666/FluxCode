@@ -33,6 +33,7 @@ type MediaTask struct {
 	PollMetadata       json.RawMessage
 	BillingSnapshot    json.RawMessage
 	SettlementPlan     json.RawMessage
+	SettlementRecovery json.RawMessage
 	BillingStatus      string
 	PrechargedAmount   float64
 	FinalAmount        float64

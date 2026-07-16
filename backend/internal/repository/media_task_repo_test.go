@@ -101,6 +101,7 @@ func TestMediaTaskRepositoryCreateAndLookupRoundTrip(t *testing.T) {
 	input.PollMetadata = json.RawMessage(`{"attempt":1}`)
 	input.BillingSnapshot = json.RawMessage(`{"price":"1.5"}`)
 	input.SettlementPlan = json.RawMessage(`{"mode":"actual"}`)
+	input.SettlementRecovery = json.RawMessage(`{"type":"success","usage":{"ImageCount":1}}`)
 	input.BillingStatus = "precharged"
 	input.PrechargedAmount = 1.5
 	input.RetryCount = 2
@@ -120,6 +121,7 @@ func TestMediaTaskRepositoryCreateAndLookupRoundTrip(t *testing.T) {
 	require.Equal(t, input.AccountID, created.AccountID)
 	require.Equal(t, input.NativeAsyncMode, created.NativeAsyncMode)
 	require.JSONEq(t, string(input.PollMetadata), string(created.PollMetadata))
+	require.JSONEq(t, string(input.SettlementRecovery), string(created.SettlementRecovery))
 
 	byID, err := repo.GetByID(ctx, created.ID)
 	require.NoError(t, err)
@@ -359,6 +361,13 @@ func TestMediaTaskRepositoryListsRecoverableAndSettlementPending(t *testing.T) {
 	pending.BillingStatus = "precharged"
 	pendingTask, err := repo.Create(ctx, pending)
 	require.NoError(t, err)
+	recoveryOnly := newRepositoryMediaTask("task_settlement_recovery_only")
+	recoveryOnly.Status = service.MediaTaskStatusCompleted
+	recoveryOnly.Stage = service.MediaTaskStageCompleted
+	recoveryOnly.SettlementRecovery = json.RawMessage(`{"type":"success","usage":{"ImageCount":1}}`)
+	recoveryOnly.BillingStatus = "precharged"
+	recoveryOnlyTask, err := repo.Create(ctx, recoveryOnly)
+	require.NoError(t, err)
 	retrying := newRepositoryMediaTask("task_settlement_retry")
 	retrying.SettlementPlan = json.RawMessage(`{"amount":2}`)
 	retrying.BillingStatus = "retry"
@@ -376,7 +385,7 @@ func TestMediaTaskRepositoryListsRecoverableAndSettlementPending(t *testing.T) {
 
 	settlementPending, err := repo.ListSettlementPending(ctx, 10)
 	require.NoError(t, err)
-	require.Equal(t, []int64{pendingTask.ID, retryingTask.ID}, mediaTaskIDs(settlementPending))
+	require.Equal(t, []int64{pendingTask.ID, recoveryOnlyTask.ID, retryingTask.ID}, mediaTaskIDs(settlementPending))
 }
 
 func TestMediaTaskRepositoryUpdateBillingUsesBillingStatusCASWithoutChangingTaskStatus(t *testing.T) {
@@ -480,6 +489,24 @@ func TestMediaTaskRepositoryOperationFieldWhitelistsRejectCrossDomainUpdates(t *
 		require.Equal(t, int64(2), stored.Version)
 	})
 
+	t.Run("UpdateClaimed rejects settlement recovery", func(t *testing.T) {
+		repo, _ := newMediaTaskRepositoryTestHarness(t)
+		ctx := context.Background()
+		task, err := repo.Create(ctx, newRepositoryMediaTask("task_whitelist_claimed_recovery"))
+		require.NoError(t, err)
+		requireClaimed(t, ctx, repo, task, "worker-a", time.Now().Add(time.Minute))
+
+		updated, err := repo.UpdateClaimed(ctx, task.ID, "worker-a", map[string]any{
+			"settlement_recovery": json.RawMessage(`{"type":"success"}`),
+		})
+		require.ErrorContains(t, err, "not allowed")
+		require.False(t, updated)
+		stored, err := repo.GetByID(ctx, task.ID)
+		require.NoError(t, err)
+		require.Empty(t, stored.SettlementRecovery)
+		require.Equal(t, int64(2), stored.Version)
+	})
+
 	t.Run("Transition rejects billing fields and leaves status unchanged", func(t *testing.T) {
 		repo, _ := newMediaTaskRepositoryTestHarness(t)
 		ctx := context.Background()
@@ -517,6 +544,25 @@ func TestMediaTaskRepositoryOperationFieldWhitelistsRejectCrossDomainUpdates(t *
 		require.NoError(t, err)
 		require.Equal(t, float64(0), stored.FinalAmount)
 		require.Equal(t, 0, stored.Progress)
+		require.Equal(t, "precharged", stored.BillingStatus)
+	})
+
+	t.Run("UpdateBilling rejects settlement recovery", func(t *testing.T) {
+		repo, _ := newMediaTaskRepositoryTestHarness(t)
+		ctx := context.Background()
+		input := newRepositoryMediaTask("task_whitelist_billing_recovery")
+		input.BillingStatus = "precharged"
+		task, err := repo.Create(ctx, input)
+		require.NoError(t, err)
+
+		updated, err := repo.UpdateBilling(ctx, task.ID, "precharged", map[string]any{
+			"settlement_recovery": json.RawMessage(`{"type":"success"}`),
+		})
+		require.ErrorContains(t, err, "not allowed")
+		require.False(t, updated)
+		stored, err := repo.GetByID(ctx, task.ID)
+		require.NoError(t, err)
+		require.Empty(t, stored.SettlementRecovery)
 		require.Equal(t, "precharged", stored.BillingStatus)
 	})
 }
@@ -570,9 +616,10 @@ func TestMediaTaskRepositoryTransitionClaimedProtectsWorkerVersionLeaseAndState(
 	require.False(t, oldWorker)
 	finishedAt := time.Now().UTC().Truncate(time.Millisecond)
 	completed, err := repo.TransitionClaimed(ctx, task.ID, "worker-b", recoveredTask.Version, service.MediaTaskStatusInProgress, service.MediaTaskStatusCompleted, map[string]any{
-		"stage":       service.MediaTaskStageCompleted,
-		"progress":    100,
-		"finished_at": finishedAt,
+		"stage":               service.MediaTaskStageCompleted,
+		"progress":            100,
+		"finished_at":         finishedAt,
+		"settlement_recovery": json.RawMessage(`{"type":"success","usage":{"ImageCount":1}}`),
 	})
 	require.NoError(t, err)
 	require.True(t, completed)
@@ -582,6 +629,7 @@ func TestMediaTaskRepositoryTransitionClaimedProtectsWorkerVersionLeaseAndState(
 	require.Equal(t, service.MediaTaskStageCompleted, stored.Stage)
 	require.Equal(t, 100, stored.Progress)
 	require.WithinDuration(t, finishedAt, *stored.FinishedAt, time.Millisecond)
+	require.JSONEq(t, `{"type":"success","usage":{"ImageCount":1}}`, string(stored.SettlementRecovery))
 	require.Equal(t, int64(4), stored.Version)
 
 	reopened, err := repo.TransitionClaimed(ctx, task.ID, "worker-b", stored.Version, service.MediaTaskStatusCompleted, service.MediaTaskStatusInProgress, nil)

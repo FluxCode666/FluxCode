@@ -22142,70 +22142,72 @@ func (m *MediaModelDefinitionMutation) ResetEdge(name string) error {
 // MediaTaskMutation represents an operation that mutates the MediaTask nodes in the graph.
 type MediaTaskMutation struct {
 	config
-	op                       Op
-	typ                      string
-	id                       *int64
-	created_at               *time.Time
-	updated_at               *time.Time
-	public_id                *string
-	user_id                  *int64
-	adduser_id               *int64
-	api_key_id               *int64
-	addapi_key_id            *int64
-	group_id                 *int64
-	addgroup_id              *int64
-	channel_id               *int64
-	addchannel_id            *int64
-	account_id               *int64
-	addaccount_id            *int64
-	media_type               *string
-	operation                *string
-	requested_model          *string
-	upstream_model           *string
-	adapter                  *string
-	native_async_mode        *string
-	client_async             *bool
-	sync_fallback            *bool
-	status                   *string
-	stage                    *string
-	progress                 *int
-	addprogress              *int
-	request_spec             *json.RawMessage
-	appendrequest_spec       json.RawMessage
-	candidate_snapshot       *json.RawMessage
-	appendcandidate_snapshot json.RawMessage
-	request_fingerprint      *string
-	idempotency_key          *string
-	upstream_task_id         *string
-	poll_metadata            *json.RawMessage
-	appendpoll_metadata      json.RawMessage
-	billing_snapshot         *json.RawMessage
-	appendbilling_snapshot   json.RawMessage
-	settlement_plan          *json.RawMessage
-	appendsettlement_plan    json.RawMessage
-	billing_status           *string
-	precharged_amount        *float64
-	addprecharged_amount     *float64
-	final_amount             *float64
-	addfinal_amount          *float64
-	refunded_amount          *float64
-	addrefunded_amount       *float64
-	retry_count              *int
-	addretry_count           *int
-	error_code               *string
-	error_message            *string
-	worker_id                *string
-	lease_until              *time.Time
-	version                  *int64
-	addversion               *int64
-	submitted_at             *time.Time
-	started_at               *time.Time
-	finished_at              *time.Time
-	sync_fallback_at         *time.Time
-	clearedFields            map[string]struct{}
-	done                     bool
-	oldValue                 func(context.Context) (*MediaTask, error)
-	predicates               []predicate.MediaTask
+	op                        Op
+	typ                       string
+	id                        *int64
+	created_at                *time.Time
+	updated_at                *time.Time
+	public_id                 *string
+	user_id                   *int64
+	adduser_id                *int64
+	api_key_id                *int64
+	addapi_key_id             *int64
+	group_id                  *int64
+	addgroup_id               *int64
+	channel_id                *int64
+	addchannel_id             *int64
+	account_id                *int64
+	addaccount_id             *int64
+	media_type                *string
+	operation                 *string
+	requested_model           *string
+	upstream_model            *string
+	adapter                   *string
+	native_async_mode         *string
+	client_async              *bool
+	sync_fallback             *bool
+	status                    *string
+	stage                     *string
+	progress                  *int
+	addprogress               *int
+	request_spec              *json.RawMessage
+	appendrequest_spec        json.RawMessage
+	candidate_snapshot        *json.RawMessage
+	appendcandidate_snapshot  json.RawMessage
+	request_fingerprint       *string
+	idempotency_key           *string
+	upstream_task_id          *string
+	poll_metadata             *json.RawMessage
+	appendpoll_metadata       json.RawMessage
+	billing_snapshot          *json.RawMessage
+	appendbilling_snapshot    json.RawMessage
+	settlement_plan           *json.RawMessage
+	appendsettlement_plan     json.RawMessage
+	settlement_recovery       *json.RawMessage
+	appendsettlement_recovery json.RawMessage
+	billing_status            *string
+	precharged_amount         *float64
+	addprecharged_amount      *float64
+	final_amount              *float64
+	addfinal_amount           *float64
+	refunded_amount           *float64
+	addrefunded_amount        *float64
+	retry_count               *int
+	addretry_count            *int
+	error_code                *string
+	error_message             *string
+	worker_id                 *string
+	lease_until               *time.Time
+	version                   *int64
+	addversion                *int64
+	submitted_at              *time.Time
+	started_at                *time.Time
+	finished_at               *time.Time
+	sync_fallback_at          *time.Time
+	clearedFields             map[string]struct{}
+	done                      bool
+	oldValue                  func(context.Context) (*MediaTask, error)
+	predicates                []predicate.MediaTask
 }
 
 var _ ent.Mutation = (*MediaTaskMutation)(nil)
@@ -23556,6 +23558,71 @@ func (m *MediaTaskMutation) ResetSettlementPlan() {
 	delete(m.clearedFields, mediatask.FieldSettlementPlan)
 }
 
+// SetSettlementRecovery sets the "settlement_recovery" field.
+func (m *MediaTaskMutation) SetSettlementRecovery(jm json.RawMessage) {
+	m.settlement_recovery = &jm
+	m.appendsettlement_recovery = nil
+}
+
+// SettlementRecovery returns the value of the "settlement_recovery" field in the mutation.
+func (m *MediaTaskMutation) SettlementRecovery() (r json.RawMessage, exists bool) {
+	v := m.settlement_recovery
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSettlementRecovery returns the old "settlement_recovery" field's value of the MediaTask entity.
+// If the MediaTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *MediaTaskMutation) OldSettlementRecovery(ctx context.Context) (v json.RawMessage, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSettlementRecovery is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSettlementRecovery requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSettlementRecovery: %w", err)
+	}
+	return oldValue.SettlementRecovery, nil
+}
+
+// AppendSettlementRecovery adds jm to the "settlement_recovery" field.
+func (m *MediaTaskMutation) AppendSettlementRecovery(jm json.RawMessage) {
+	m.appendsettlement_recovery = append(m.appendsettlement_recovery, jm...)
+}
+
+// AppendedSettlementRecovery returns the list of values that were appended to the "settlement_recovery" field in this mutation.
+func (m *MediaTaskMutation) AppendedSettlementRecovery() (json.RawMessage, bool) {
+	if len(m.appendsettlement_recovery) == 0 {
+		return nil, false
+	}
+	return m.appendsettlement_recovery, true
+}
+
+// ClearSettlementRecovery clears the value of the "settlement_recovery" field.
+func (m *MediaTaskMutation) ClearSettlementRecovery() {
+	m.settlement_recovery = nil
+	m.appendsettlement_recovery = nil
+	m.clearedFields[mediatask.FieldSettlementRecovery] = struct{}{}
+}
+
+// SettlementRecoveryCleared returns if the "settlement_recovery" field was cleared in this mutation.
+func (m *MediaTaskMutation) SettlementRecoveryCleared() bool {
+	_, ok := m.clearedFields[mediatask.FieldSettlementRecovery]
+	return ok
+}
+
+// ResetSettlementRecovery resets all changes to the "settlement_recovery" field.
+func (m *MediaTaskMutation) ResetSettlementRecovery() {
+	m.settlement_recovery = nil
+	m.appendsettlement_recovery = nil
+	delete(m.clearedFields, mediatask.FieldSettlementRecovery)
+}
+
 // SetBillingStatus sets the "billing_status" field.
 func (m *MediaTaskMutation) SetBillingStatus(s string) {
 	m.billing_status = &s
@@ -24259,7 +24326,7 @@ func (m *MediaTaskMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *MediaTaskMutation) Fields() []string {
-	fields := make([]string, 0, 41)
+	fields := make([]string, 0, 42)
 	if m.created_at != nil {
 		fields = append(fields, mediatask.FieldCreatedAt)
 	}
@@ -24340,6 +24407,9 @@ func (m *MediaTaskMutation) Fields() []string {
 	}
 	if m.settlement_plan != nil {
 		fields = append(fields, mediatask.FieldSettlementPlan)
+	}
+	if m.settlement_recovery != nil {
+		fields = append(fields, mediatask.FieldSettlementRecovery)
 	}
 	if m.billing_status != nil {
 		fields = append(fields, mediatask.FieldBillingStatus)
@@ -24445,6 +24515,8 @@ func (m *MediaTaskMutation) Field(name string) (ent.Value, bool) {
 		return m.BillingSnapshot()
 	case mediatask.FieldSettlementPlan:
 		return m.SettlementPlan()
+	case mediatask.FieldSettlementRecovery:
+		return m.SettlementRecovery()
 	case mediatask.FieldBillingStatus:
 		return m.BillingStatus()
 	case mediatask.FieldPrechargedAmount:
@@ -24536,6 +24608,8 @@ func (m *MediaTaskMutation) OldField(ctx context.Context, name string) (ent.Valu
 		return m.OldBillingSnapshot(ctx)
 	case mediatask.FieldSettlementPlan:
 		return m.OldSettlementPlan(ctx)
+	case mediatask.FieldSettlementRecovery:
+		return m.OldSettlementRecovery(ctx)
 	case mediatask.FieldBillingStatus:
 		return m.OldBillingStatus(ctx)
 	case mediatask.FieldPrechargedAmount:
@@ -24761,6 +24835,13 @@ func (m *MediaTaskMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetSettlementPlan(v)
+		return nil
+	case mediatask.FieldSettlementRecovery:
+		v, ok := value.(json.RawMessage)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSettlementRecovery(v)
 		return nil
 	case mediatask.FieldBillingStatus:
 		v, ok := value.(string)
@@ -25043,6 +25124,9 @@ func (m *MediaTaskMutation) ClearedFields() []string {
 	if m.FieldCleared(mediatask.FieldSettlementPlan) {
 		fields = append(fields, mediatask.FieldSettlementPlan)
 	}
+	if m.FieldCleared(mediatask.FieldSettlementRecovery) {
+		fields = append(fields, mediatask.FieldSettlementRecovery)
+	}
 	if m.FieldCleared(mediatask.FieldLeaseUntil) {
 		fields = append(fields, mediatask.FieldLeaseUntil)
 	}
@@ -25089,6 +25173,9 @@ func (m *MediaTaskMutation) ClearField(name string) error {
 		return nil
 	case mediatask.FieldSettlementPlan:
 		m.ClearSettlementPlan()
+		return nil
+	case mediatask.FieldSettlementRecovery:
+		m.ClearSettlementRecovery()
 		return nil
 	case mediatask.FieldLeaseUntil:
 		m.ClearLeaseUntil()
@@ -25193,6 +25280,9 @@ func (m *MediaTaskMutation) ResetField(name string) error {
 		return nil
 	case mediatask.FieldSettlementPlan:
 		m.ResetSettlementPlan()
+		return nil
+	case mediatask.FieldSettlementRecovery:
+		m.ResetSettlementRecovery()
 		return nil
 	case mediatask.FieldBillingStatus:
 		m.ResetBillingStatus()
