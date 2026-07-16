@@ -511,6 +511,9 @@ func (w *MediaWorker) execute(ctx context.Context, task *MediaTask, active *medi
 			if ctx.Err() != nil {
 				return nil, nil, ctx.Err()
 			}
+			if errors.Is(selectErr, ErrStableAccountSlotUnsupported) {
+				return nil, nil, selectErr
+			}
 			if lastFailure != nil {
 				return nil, lastFailure, nil
 			}
@@ -521,6 +524,9 @@ func (w *MediaWorker) execute(ctx context.Context, task *MediaTask, active *medi
 			w.observeStage(task, trace, MediaTaskStageScheduling, stageStarted)
 			if ctx.Err() != nil {
 				return nil, nil, ctx.Err()
+			}
+			if errors.Is(acquireErr, ErrStableAccountSlotUnsupported) {
+				return nil, nil, acquireErr
 			}
 			return nil, systemMediaFailure("system_scheduler", "media account concurrency is unavailable"), nil
 		}

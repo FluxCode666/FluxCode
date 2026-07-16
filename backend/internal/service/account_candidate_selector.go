@@ -298,6 +298,9 @@ func (s *accountCandidateSelector) acquire(ctx context.Context, account *Account
 		return nil, err
 	}
 	if s == nil || s.concurrency == nil {
+		if slotID != "" && account.Concurrency > 0 {
+			return nil, ErrStableAccountSlotUnsupported
+		}
 		result := &AccountSelectionResult{Account: account, Acquired: true, ReleaseFunc: func() {}}
 		if slotID != "" {
 			result.RefreshFunc = func(context.Context) (bool, error) { return true, nil }

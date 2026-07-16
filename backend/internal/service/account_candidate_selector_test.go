@@ -621,7 +621,7 @@ func TestAccountCandidateSelectorCapsLoadBatchAndCacheFailuresFailOpen(t *testin
 }
 
 func TestAccountCandidateSelectorNilConcurrencyAndZeroConcurrency(t *testing.T) {
-	t.Run("nil concurrency service", func(t *testing.T) {
+	t.Run("legacy finite concurrency remains fail open without concurrency service", func(t *testing.T) {
 		selector := NewAccountCandidateSelector(nil, nil, task12SchedulingConfig())
 		result, err := selector.Select(context.Background(), AccountCandidateSelectionRequest{
 			Candidates: []*Account{task12CandidateAccount(1, 1, 2)},
@@ -629,8 +629,39 @@ func TestAccountCandidateSelectorNilConcurrencyAndZeroConcurrency(t *testing.T) 
 		require.NoError(t, err)
 		require.True(t, result.Acquired)
 		require.NotNil(t, result.ReleaseFunc)
+		require.Nil(t, result.RefreshFunc)
 		result.ReleaseFunc()
 	})
+
+	t.Run("finite stable concurrency fails closed without concurrency service", func(t *testing.T) {
+		selector := NewAccountCandidateSelector(nil, nil, task12SchedulingConfig())
+		result, err := selector.Select(context.Background(), AccountCandidateSelectionRequest{
+			SlotID: "media-task:1", Candidates: []*Account{task12CandidateAccount(1, 1, 2)},
+		})
+		require.Nil(t, result)
+		require.ErrorIs(t, err, ErrStableAccountSlotUnsupported)
+	})
+
+	for _, tt := range []struct {
+		name        string
+		concurrency int
+	}{{name: "zero", concurrency: 0}, {name: "negative", concurrency: -1}} {
+		t.Run("stable unlimited concurrency remains fail open "+tt.name, func(t *testing.T) {
+			selector := NewAccountCandidateSelector(nil, nil, task12SchedulingConfig())
+			result, err := selector.Select(context.Background(), AccountCandidateSelectionRequest{
+				SlotID: "media-task:1", Candidates: []*Account{task12CandidateAccount(1, 1, tt.concurrency)},
+			})
+			require.NoError(t, err)
+			require.True(t, result.Acquired)
+			require.NotNil(t, result.ReleaseFunc)
+			require.NotNil(t, result.RefreshFunc)
+			owned, refreshErr := result.RefreshFunc(context.Background())
+			require.NoError(t, refreshErr)
+			require.True(t, owned)
+			result.ReleaseFunc()
+			result.ReleaseFunc()
+		})
+	}
 
 	t.Run("zero concurrency is unlimited for immediate acquire", func(t *testing.T) {
 		concurrency := &accountCandidateConcurrencyStub{}

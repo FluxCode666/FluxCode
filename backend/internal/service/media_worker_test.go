@@ -73,6 +73,21 @@ func TestMediaWorkerInitialExecutionAllowsUnlimitedAccountConcurrency(t *testing
 	}
 }
 
+func TestMediaWorkerFiniteStableSlotFailsClosedWithoutConcurrencyService(t *testing.T) {
+	fixture := newMediaWorkerFixture(t, true, NativeAsyncRequired)
+	fixture.worker.deps.Scheduler.selector = NewAccountCandidateSelector(nil, nil, task12SchedulingConfig())
+
+	err := fixture.worker.processMessage(context.Background(), &MediaQueueMessage{TaskID: fixture.task.ID})
+	require.ErrorIs(t, err, ErrStableAccountSlotUnsupported)
+	require.Zero(t, fixture.adapter.syncCalls.Load())
+	require.Zero(t, fixture.adapter.submitCalls.Load())
+	require.Zero(t, fixture.adapter.pollCalls.Load())
+	require.Equal(t, MediaTaskStatusInProgress, fixture.repo.mustGet(fixture.task.ID).Status)
+	require.Zero(t, fixture.billing.settlementCalls())
+	require.Zero(t, fixture.queue.publishCalls.Load())
+	require.Zero(t, fixture.queue.ackCalls.Load())
+}
+
 func TestMediaWorkerIgnoresDuplicateTerminalMessage(t *testing.T) {
 	fixture := newMediaWorkerFixture(t, true, NativeAsyncRequired)
 	require.NoError(t, fixture.worker.ProcessOne(context.Background(), fixture.task.ID))
