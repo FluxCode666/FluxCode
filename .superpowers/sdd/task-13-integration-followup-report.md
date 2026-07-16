@@ -316,3 +316,222 @@ git diff --check                                  # 无输出
 - 资源：unit race 与 integration race 为绿；没有新增生产 goroutine/client/pool/timer owner。
 - 有意残余：超过 1280 个连续 fresh PEL entry 的窗口不会在单次 priority 恢复中扫描到底，而是通过保存 cursor 在后续恢复轮继续。这是保持双优先级公平和单次命令预算的设计，不是消息丢失。
 - 未执行项：按需求未运行已知 fatal 的完整 service 执行套件；已完成 `go test ./... -run '^$' -count=0` 的全仓无测试编译、vet 与 build。
+
+## 首轮复审修复
+
+### 复审范围与 finding
+
+首轮复审基于 follow-up commit `85fdde1ee7e9203589837979828748e2a62ef097`，指出 2 个 Important 和 1 个注释 Minor：
+
+1. non-blocking Redis command 的 100ms hard I/O deadline 如果落在 effective Receive deadline 前 50ms 内，会被 `normalizeMediaReceiveError` 的近 deadline 启发式等待并误写成 `ErrMediaQueueReceiveTimeout`。
+2. ACK 的 `XACK -> EXISTS -> XINFO GROUPS` 多命令 inspection 非原子；Redis 8 返回 `(0,nil)` 时，其他 consumer 可在 XACK 后重建 group，导致已经丢失的 PEL 被误判为普通 NotPending。
+3. Ack 注释仍在描述旧的多命令/`XACK 0` 语义，需要更新为原子三态协议。
+
+本轮 delta 仍严格限制在 Task 13：
+
+- `backend/internal/repository/media_task_stream.go`
+- `backend/internal/repository/media_task_stream_test.go`
+- `backend/internal/repository/media_task_stream_integration_test.go`
+- 本报告
+
+未修改 Task 14/15、Worker/scheduler/billing、路由、schema、adapter 或 frontend。
+
+### Finding 1：non-blocking hard timeout 来源
+
+#### RED
+
+新增精确回归：effective Receive deadline 为 120ms，首个 non-blocking XAUTOCLAIM stall，command hard I/O timeout 为 100ms。
+
+```bash
+go test ./internal/repository \
+  -run '^TestMediaTaskStreamReceivePreservesNonBlockingRedisHardTimeoutNearEffectiveDeadline$' \
+  -count=1 -v
+```
+
+基线输出：
+
+```text
+=== RUN   TestMediaTaskStreamReceivePreservesNonBlockingRedisHardTimeoutNearEffectiveDeadline
+expected: net.Error
+in chain: "media queue receive timeout" (*errors.errorString)
+--- FAIL: TestMediaTaskStreamReceivePreservesNonBlockingRedisHardTimeoutNearEffectiveDeadline (0.12s)
+```
+
+数据流根因：
+
+1. `Receive(120ms)` 建立 internal effective deadline。
+2. `receiveRedisCommand` 取 `min(remaining, 100ms)`，但没有把“100ms hard I/O”这一来源带回调用方。
+3. XAUTOCLAIM 在约 100ms 返回 socket timeout；此时 effective deadline 只剩约 20ms。
+4. `normalizeMediaReceiveError` 看到 `remaining <= mediaTaskMaxBlock(50ms)`，等待至 120ms 后返回 `ErrMediaQueueReceiveTimeout`。
+5. 结果既丢失 `errors.As(net.Error)`，也把 Redis infrastructure timeout 当成“队列暂时无消息”。
+
+#### 最小修复与 deadline 协议
+
+- `receiveRedisCommand` 显式返回 `mediaRedisCommandDeadlineSource`。
+- 只有 `hardTimeout < effective remaining`（严格早于）时标记为 `HardIO`；相等或被 effective context 截断时标记为 `Effective`。
+- `HardIO` 且底层满足 `net.Error.Timeout()` 时，包装为内部 `mediaRedisCommandHardTimeoutError`：
+  - 实现 `net.Error` timeout 语义；
+  - `Unwrap()` 保留底层 Redis/socket error chain；
+  - `normalizeMediaReceiveError` 识别该 marker 后原样返回，不进入近 deadline 启发式。
+- caller 显式 `context.Canceled` 保持最高优先级；已有 cancel 回归证明取消不会被同时观测到的 socket timeout 覆盖。
+- 如果 command timeout 实际由 effective Receive/parent context 封顶，则不加 marker，继续按原 parent/internal deadline 语义归一化。
+- blocking XREAD 的严格早期 hard timeout 仍只表示本轮无消息；non-blocking XAUTOCLAIM、non-blocking XREAD、receive-time group recovery 的 hard timeout 均保留为 infrastructure error。
+
+新增覆盖：
+
+- `TestMediaTaskStreamReceivePreservesNonBlockingRedisHardTimeoutNearEffectiveDeadline`
+- `TestMediaTaskStreamReceivePreservesNonBlockingXReadHardTimeoutNearEffectiveDeadline`
+- `TestMediaTaskStreamReceivePreservesGroupRecoveryHardTimeoutNearEffectiveDeadline`
+
+GREEN：
+
+```text
+=== RUN   TestMediaTaskStreamReceivePreservesNonBlockingRedisHardTimeoutNearEffectiveDeadline
+--- PASS ... (0.10s)
+=== RUN   TestMediaTaskStreamReceivePreservesNonBlockingXReadHardTimeoutNearEffectiveDeadline
+--- PASS ... (0.10s)
+=== RUN   TestMediaTaskStreamReceivePreservesGroupRecoveryHardTimeoutNearEffectiveDeadline
+--- PASS ... (0.10s)
+PASS
+```
+
+三个测试都要求 `errors.As(err, net.Error)`、`Timeout()==true` 且不匹配 `ErrMediaQueueReceiveTimeout`。既有 50ms internal deadline、30ms parent deadline、caller cancel、blocking grace 和 250ms non-blocking infrastructure timeout 测试均保留并通过。
+
+### Finding 2：ACK 原子分类
+
+#### 确定性 RED
+
+新增 unit 协议测试：
+
+- `TestMediaTaskStreamAckMapsAtomicScriptResults`：锁定 1=acked、2=stream missing、3=group missing、4=message not pending 的外部映射。
+- `TestMediaTaskStreamAckClassifiesDestroyedGroupBeforeConcurrentRecreation`：fake 在旧 `XACK` 返回 0 后、inspection 前模拟其他 consumer 重建 group；旧实现会看到 group present 并误报 NotPending。
+
+命令：
+
+```bash
+go test ./internal/repository \
+  -run '^(TestMediaTaskStreamAckMapsAtomicScriptResults|TestMediaTaskStreamAckClassifiesDestroyedGroupBeforeConcurrentRecreation)$' \
+  -count=1 -v
+```
+
+基线关键 RED：
+
+```text
+TestMediaTaskStreamAckMapsAtomicScriptResults/*
+  ack media task: ERR unexpected command
+TestMediaTaskStreamAckClassifiesDestroyedGroupBeforeConcurrentRecreation
+  expected: media queue delivery state is lost
+  in chain: media queue message is not pending
+FAIL
+```
+
+这证明 `(0,nil)` 的 post-XACK inspection 确实存在错误分类窗口，不只是理论竞态。
+
+#### 单 key Lua 原子协议
+
+`mediaTaskAckScript` 只接收一个 key：
+
+```text
+KEYS[1] = 目标 priority stream
+ARGV[1] = media-workers group
+ARGV[2] = message ID
+```
+
+脚本在 Redis 单线程原子区内完成：
+
+1. `redis.pcall('XACK', stream, group, messageID)`。
+2. `acked > 0` -> 返回 `1`。
+3. 显式 NOGROUP -> 继续 classification；其他 XACK Redis error 原样返回。
+4. `EXISTS stream == 0` -> 返回 `2`。
+5. `redis.pcall('XINFO', 'GROUPS', stream)`；Redis error 原样返回。
+6. 逐个解析 RESP2 group info 的交替字段，精确匹配 `name == media-workers`：
+   - target group 不存在 -> 返回 `3`；
+   - target group 存在但 XACK 为 0 -> 返回 `4`。
+
+脚本 mutation/classification 只涉及 `KEYS[1]`，没有 Redis Cluster cross-slot。`redis.Script.Run` 先尝试 EVALSHA；NOSCRIPT 时执行同一单 key EVAL，真正的 XACK 与 classification 始终发生在一次 Lua 原子执行内。
+
+脚本外映射：
+
+- `1` -> success；
+- `2` -> `EnsureGroups` 后幂等 success；
+- `3` -> `EnsureGroups` 后 `ErrMediaQueueDeliveryStateLost`；
+- `4` -> `ErrMediaQueueMessageNotPending`；
+- script/Ensure/context/未知返回码 -> 保留 infrastructure/context error，不转换成功。
+
+Ack 注释已同步为 Stream missing / group missing / message not pending 三态语义。
+
+#### GREEN 与真实 Redis
+
+unit：
+
+```text
+=== RUN   TestMediaTaskStreamAckMapsAtomicScriptResults
+--- PASS
+    --- PASS: acked
+    --- PASS: stream_missing
+    --- PASS: group_missing
+    --- PASS: message_not_pending
+=== RUN   TestMediaTaskStreamAckClassifiesDestroyedGroupBeforeConcurrentRecreation
+--- PASS
+```
+
+真实 Redis 8.4 已验证 Lua group 解析和错误边界：
+
+```text
+TestMediaTaskStreamRecoversMissingGroup                    PASS  # stream missing
+TestMediaTaskStreamAckReportsDestroyedGroupDeliveryState PASS  # group missing
+TestMediaTaskStreamAckTracksTheMessagePriority           PASS  # group present/notpending + normal ACK
+TestMediaTaskStreamAckPreservesAtomicRedisErrors          PASS  # WRONGTYPE 由 pcall 原样返回
+```
+
+首次重跑 `TestMediaTaskStreamRecoversMissingGroup` 时，testcontainers 在测试执行前拉取 PostgreSQL manifest 遇到 Docker Hub `EOF`；`docker image inspect` 确认 PostgreSQL/Redis 本地镜像存在且 daemon 正常，原 exact 命令无代码变更重试后 PASS。该次不计作测试逻辑失败。
+
+### 回归中发现并收口的边界
+
+- caller cancellation 与 100ms hard timeout 同时被观察时，明确的 `context.Canceled` 优先；`TestMediaTaskStreamReceiveCancelInterruptsStalledRedis` 继续 PASS。
+- Lua 迁移后更新 redelivery/malformed fake fixture，使它们观察 EVAL/EVALSHA，而不是过时的 XACK command。
+- ACK context socket deadline 与 `ctx.Err()` 可见性存在极小竞态；复用 `originalContextError` 在 caller deadline 附近等待/归一化。`TestMediaTaskStreamAckPreservesAtomicScriptContextError -count=10` 全部 PASS。
+
+### 首轮复审验证与自审
+
+目标测试：
+
+```text
+go test ./internal/repository -run '^TestMediaTaskStream' -count=1       PASS
+go test -tags=integration ./internal/repository -run '^TestMediaTaskStream' -count=1 -v
+                                                                        PASS
+go test -race ./internal/repository -run '^TestMediaTaskStream' -count=1
+                                                                        PASS
+go test -race -tags=integration ./internal/repository -run '^TestMediaTaskStream' -count=1
+                                                                        PASS
+```
+
+Task 14 Worker：
+
+```text
+=== RUN   TestMediaWorkerIntegrationDuplicateDeliverySettlesOnce
+--- PASS
+=== RUN   TestMediaWorkerIntegrationResumesPollWithoutResubmit
+--- PASS
+```
+
+工具链门禁：
+
+```text
+go vet ./...                              exit 0
+go build ./...                            exit 0
+go test ./... -run '^$' -count=0         exit 0
+go mod verify                             all modules verified
+gofmt -d <三个 media_task_stream Go 文件> 无输出
+git diff --check                          无输出
+```
+
+自审结论：
+
+- page budget、cursor no-progress、双优先级 fairness、blocking hard timeout 与 effective context cap 均未改变。
+- hard-timeout marker 不创建 goroutine/timer/client owner；command context 与 clone client 生命周期保持原实现。
+- Lua 为单 key、固定四码、无循环外 Redis 调用；group 遍历受该 stream 的 group 数量约束。
+- stream/group 重建仍在脚本外执行，但分类已经在 XACK 同一原子快照完成；并发重建只能影响 Ensure 的 BUSYGROUP 幂等结果，不再改变领域分类。
+- errors.Is/As：hard timeout 保留 `net.Error`；context cancellation/deadline、DeliveryStateLost、MessageNotPending 与 Redis cause 均有回归。
+- 有意残余仍与原报告一致：单次 XAUTOCLAIM page budget 为 4；更长 fresh window 通过保存 cursor 在后续 Receive 轮继续。
+- 按任务要求仍未运行已知 fatal 的完整 service 执行套件。

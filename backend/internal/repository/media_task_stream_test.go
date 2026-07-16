@@ -326,6 +326,66 @@ func TestMediaTaskStreamReceivePreservesNonBlockingRedisTimeoutAsInfrastructureE
 	require.Less(t, time.Since(started), 200*time.Millisecond)
 }
 
+func TestMediaTaskStreamReceivePreservesNonBlockingRedisHardTimeoutNearEffectiveDeadline(t *testing.T) {
+	client, _ := newFakeRedisClient(t, func(command []string) fakeRedisAction {
+		if commandName(command) == "xautoclaim" {
+			return fakeRedisAction{stall: true}
+		}
+		return fakeRedisAction{response: respError("unexpected command")}
+	})
+	stream := NewMediaTaskStream(client, "near-deadline-hard-timeout", time.Minute)
+	started := time.Now()
+	message, err := stream.Receive(context.Background(), 120*time.Millisecond)
+	require.Nil(t, message)
+	require.Error(t, err)
+	var timeoutErr net.Error
+	require.ErrorAs(t, err, &timeoutErr)
+	require.True(t, timeoutErr.Timeout())
+	require.NotErrorIs(t, err, service.ErrMediaQueueReceiveTimeout)
+	require.NotErrorIs(t, err, context.DeadlineExceeded)
+	require.Less(t, time.Since(started), 150*time.Millisecond)
+}
+
+func TestMediaTaskStreamReceivePreservesNonBlockingXReadHardTimeoutNearEffectiveDeadline(t *testing.T) {
+	client, _ := newFakeRedisClient(t, func(command []string) fakeRedisAction {
+		switch commandName(command) {
+		case "xautoclaim":
+			return fakeRedisAction{response: respXAutoClaim("0-0", nil)}
+		case "xreadgroup":
+			return fakeRedisAction{stall: true}
+		default:
+			return fakeRedisAction{response: respError("unexpected command")}
+		}
+	})
+	stream := NewMediaTaskStream(client, "near-deadline-xread-timeout", time.Minute)
+	message, err := stream.Receive(context.Background(), 120*time.Millisecond)
+	require.Nil(t, message)
+	var timeoutErr net.Error
+	require.ErrorAs(t, err, &timeoutErr)
+	require.True(t, timeoutErr.Timeout())
+	require.NotErrorIs(t, err, service.ErrMediaQueueReceiveTimeout)
+}
+
+func TestMediaTaskStreamReceivePreservesGroupRecoveryHardTimeoutNearEffectiveDeadline(t *testing.T) {
+	client, _ := newFakeRedisClient(t, func(command []string) fakeRedisAction {
+		switch commandName(command) {
+		case "xautoclaim":
+			return fakeRedisAction{response: respError("NOGROUP No such key or consumer group")}
+		case "xgroup":
+			return fakeRedisAction{stall: true}
+		default:
+			return fakeRedisAction{response: respError("unexpected command")}
+		}
+	})
+	stream := NewMediaTaskStream(client, "near-deadline-group-timeout", time.Minute)
+	message, err := stream.Receive(context.Background(), 120*time.Millisecond)
+	require.Nil(t, message)
+	var timeoutErr net.Error
+	require.ErrorAs(t, err, &timeoutErr)
+	require.True(t, timeoutErr.Timeout())
+	require.NotErrorIs(t, err, service.ErrMediaQueueReceiveTimeout)
+}
+
 func TestMediaTaskStreamRedeliversOwnUnackedMessageAfterLease(t *testing.T) {
 	var syncClaims atomic.Int64
 	var syncReads atomic.Int64
@@ -344,7 +404,7 @@ func TestMediaTaskStreamRedeliversOwnUnackedMessageAfterLease(t *testing.T) {
 				return fakeRedisAction{response: respXRead(mediaTaskSyncStreamKey, []fakeStreamMessage{{id: "10-0", taskID: 10}})}
 			}
 			return fakeRedisAction{response: respNil()}
-		case "xack":
+		case "evalsha", "eval":
 			return fakeRedisAction{response: respInteger(1)}
 		default:
 			return fakeRedisAction{response: respError("unexpected command")}
@@ -379,7 +439,7 @@ func TestMediaTaskStreamRedeliversMalformedPayloadWithoutAckAfterLease(t *testin
 				return fakeRedisAction{response: respXRead(mediaTaskSyncStreamKey, []fakeStreamMessage{{id: "11-0", taskID: "broken"}})}
 			}
 			return fakeRedisAction{response: respNil()}
-		case "xack":
+		case "evalsha", "eval":
 			ackCalls.Add(1)
 			return fakeRedisAction{response: respInteger(1)}
 		default:
@@ -499,12 +559,8 @@ func TestMediaTaskStreamReceiveAllowsRedisBlockCompletionBeforeEffectiveDeadline
 func TestMediaTaskStreamAckRejectsMessageThatIsNotPending(t *testing.T) {
 	client, _ := newFakeRedisClient(t, func(command []string) fakeRedisAction {
 		switch commandName(command) {
-		case "xack":
-			return fakeRedisAction{response: respInteger(0)}
-		case "exists":
-			return fakeRedisAction{response: respInteger(1)}
-		case "xinfo":
-			return fakeRedisAction{response: respXInfoGroups(mediaTaskConsumerGroup)}
+		case "evalsha", "eval":
+			return fakeRedisAction{response: respInteger(4)}
 		default:
 			return fakeRedisAction{response: respError("unexpected command")}
 		}
@@ -518,13 +574,87 @@ func TestMediaTaskStreamAckRejectsMessageThatIsNotPending(t *testing.T) {
 	require.ErrorIs(t, err, service.ErrMediaQueueMessageNotPending)
 }
 
-func TestMediaTaskStreamAckTreatsMissingStreamAfterZeroAckAsIdempotent(t *testing.T) {
+func TestMediaTaskStreamAckMapsAtomicScriptResults(t *testing.T) {
+	const (
+		atomicAcked          = int64(1)
+		atomicStreamMissing  = int64(2)
+		atomicGroupMissing   = int64(3)
+		atomicMessageMissing = int64(4)
+	)
+	tests := []struct {
+		name       string
+		result     int64
+		wantErr    error
+		ensureRuns bool
+	}{
+		{name: "acked", result: atomicAcked},
+		{name: "stream missing", result: atomicStreamMissing, ensureRuns: true},
+		{name: "group missing", result: atomicGroupMissing, wantErr: service.ErrMediaQueueDeliveryStateLost, ensureRuns: true},
+		{name: "message not pending", result: atomicMessageMissing, wantErr: service.ErrMediaQueueMessageNotPending},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client, _ := newFakeRedisClient(t, func(command []string) fakeRedisAction {
+				switch commandName(command) {
+				case "evalsha", "eval":
+					return fakeRedisAction{response: respInteger(tt.result)}
+				case "xgroup":
+					if tt.ensureRuns {
+						return fakeRedisAction{response: respSimpleString("OK")}
+					}
+				}
+				return fakeRedisAction{response: respError("unexpected command")}
+			})
+			stream := NewMediaTaskStream(client, "atomic-ack-result", time.Minute)
+			err := stream.Ack(context.Background(), &service.MediaQueueMessage{
+				ID:       "27-0",
+				TaskID:   27,
+				Priority: service.MediaQueuePriorityAsync,
+			})
+			if tt.wantErr == nil {
+				require.NoError(t, err)
+				return
+			}
+			require.ErrorIs(t, err, tt.wantErr)
+		})
+	}
+}
+
+func TestMediaTaskStreamAckClassifiesDestroyedGroupBeforeConcurrentRecreation(t *testing.T) {
+	var legacyInspectionInterleaved atomic.Bool
 	client, _ := newFakeRedisClient(t, func(command []string) fakeRedisAction {
 		switch commandName(command) {
 		case "xack":
 			return fakeRedisAction{response: respInteger(0)}
 		case "exists":
-			return fakeRedisAction{response: respInteger(0)}
+			legacyInspectionInterleaved.Store(true)
+			return fakeRedisAction{response: respInteger(1)}
+		case "xinfo":
+			return fakeRedisAction{response: respXInfoGroups(mediaTaskConsumerGroup)}
+		case "evalsha", "eval":
+			return fakeRedisAction{response: respInteger(3)}
+		case "xgroup":
+			return fakeRedisAction{response: respError("BUSYGROUP Consumer Group name already exists")}
+		default:
+			return fakeRedisAction{response: respError("unexpected command")}
+		}
+	})
+	stream := NewMediaTaskStream(client, "atomic-ack-interleave", time.Minute)
+	err := stream.Ack(context.Background(), &service.MediaQueueMessage{
+		ID:       "28-0",
+		TaskID:   28,
+		Priority: service.MediaQueuePriorityAsync,
+	})
+	require.ErrorIs(t, err, service.ErrMediaQueueDeliveryStateLost)
+	require.NotErrorIs(t, err, service.ErrMediaQueueMessageNotPending)
+	require.False(t, legacyInspectionInterleaved.Load(), "ACK classification must not expose a post-XACK inspection window")
+}
+
+func TestMediaTaskStreamAckTreatsMissingStreamAfterZeroAckAsIdempotent(t *testing.T) {
+	client, _ := newFakeRedisClient(t, func(command []string) fakeRedisAction {
+		switch commandName(command) {
+		case "evalsha", "eval":
+			return fakeRedisAction{response: respInteger(2)}
 		case "xgroup":
 			return fakeRedisAction{response: respSimpleString("OK")}
 		default:
@@ -542,12 +672,8 @@ func TestMediaTaskStreamAckTreatsMissingStreamAfterZeroAckAsIdempotent(t *testin
 func TestMediaTaskStreamAckReportsLostGroupAfterZeroAck(t *testing.T) {
 	client, _ := newFakeRedisClient(t, func(command []string) fakeRedisAction {
 		switch commandName(command) {
-		case "xack":
-			return fakeRedisAction{response: respInteger(0)}
-		case "exists":
-			return fakeRedisAction{response: respInteger(1)}
-		case "xinfo":
-			return fakeRedisAction{response: respXInfoGroups()}
+		case "evalsha", "eval":
+			return fakeRedisAction{response: respInteger(3)}
 		case "xgroup":
 			return fakeRedisAction{response: respSimpleString("OK")}
 		default:
@@ -563,37 +689,31 @@ func TestMediaTaskStreamAckReportsLostGroupAfterZeroAck(t *testing.T) {
 	require.ErrorIs(t, err, service.ErrMediaQueueDeliveryStateLost)
 }
 
-func TestMediaTaskStreamAckPreservesInspectionErrorAfterZeroAck(t *testing.T) {
+func TestMediaTaskStreamAckPreservesAtomicScriptError(t *testing.T) {
 	client, _ := newFakeRedisClient(t, func(command []string) fakeRedisAction {
 		switch commandName(command) {
-		case "xack":
-			return fakeRedisAction{response: respInteger(0)}
-		case "exists":
-			return fakeRedisAction{response: respInteger(1)}
-		case "xinfo":
-			return fakeRedisAction{response: respError("forced ACK inspection failure")}
+		case "evalsha", "eval":
+			return fakeRedisAction{response: respError("forced atomic ACK failure")}
 		default:
 			return fakeRedisAction{response: respError("unexpected command")}
 		}
 	})
-	stream := NewMediaTaskStream(client, "ack-zero-inspection-error", time.Minute)
+	stream := NewMediaTaskStream(client, "atomic-ack-error", time.Minute)
 	err := stream.Ack(context.Background(), &service.MediaQueueMessage{
 		ID:       "25-0",
 		TaskID:   25,
 		Priority: service.MediaQueuePrioritySync,
 	})
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "forced ACK inspection failure")
+	require.Contains(t, err.Error(), "forced atomic ACK failure")
 	require.NotErrorIs(t, err, service.ErrMediaQueueMessageNotPending)
 	require.NotErrorIs(t, err, service.ErrMediaQueueDeliveryStateLost)
 }
 
-func TestMediaTaskStreamAckPreservesInspectionContextErrorAfterZeroAck(t *testing.T) {
+func TestMediaTaskStreamAckPreservesAtomicScriptContextError(t *testing.T) {
 	client, _ := newFakeRedisClientWithOptions(t, func(command []string) fakeRedisAction {
 		switch commandName(command) {
-		case "xack":
-			return fakeRedisAction{response: respInteger(0)}
-		case "exists":
+		case "evalsha", "eval":
 			return fakeRedisAction{stall: true}
 		default:
 			return fakeRedisAction{response: respError("unexpected command")}
@@ -601,7 +721,7 @@ func TestMediaTaskStreamAckPreservesInspectionContextErrorAfterZeroAck(t *testin
 	}, func(options *redis.Options) {
 		options.ContextTimeoutEnabled = true
 	})
-	stream := NewMediaTaskStream(client, "ack-zero-inspection-context", time.Minute)
+	stream := NewMediaTaskStream(client, "atomic-ack-context", time.Minute)
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
 	defer cancel()
 	err := stream.Ack(ctx, &service.MediaQueueMessage{
@@ -615,12 +735,8 @@ func TestMediaTaskStreamAckPreservesInspectionContextErrorAfterZeroAck(t *testin
 func TestMediaTaskStreamAckReportsLostGroupDeliveryState(t *testing.T) {
 	client, _ := newFakeRedisClient(t, func(command []string) fakeRedisAction {
 		switch commandName(command) {
-		case "xack":
-			return fakeRedisAction{response: respError("NOGROUP No such key or consumer group")}
-		case "exists":
-			return fakeRedisAction{response: respInteger(1)}
-		case "xinfo":
-			return fakeRedisAction{response: respXInfoGroups()}
+		case "evalsha", "eval":
+			return fakeRedisAction{response: respInteger(3)}
 		case "xgroup":
 			return fakeRedisAction{response: respSimpleString("OK")}
 		default:
@@ -639,10 +755,8 @@ func TestMediaTaskStreamAckReportsLostGroupDeliveryState(t *testing.T) {
 func TestMediaTaskStreamAckTreatsMissingStreamAsIdempotent(t *testing.T) {
 	client, _ := newFakeRedisClient(t, func(command []string) fakeRedisAction {
 		switch commandName(command) {
-		case "xack":
-			return fakeRedisAction{response: respError("NOGROUP No such key or consumer group")}
-		case "exists":
-			return fakeRedisAction{response: respInteger(0)}
+		case "evalsha", "eval":
+			return fakeRedisAction{response: respInteger(2)}
 		case "xgroup":
 			return fakeRedisAction{response: respSimpleString("OK")}
 		default:

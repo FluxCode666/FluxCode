@@ -44,13 +44,79 @@ const (
 	mediaReceiveDeadlineParent
 )
 
-type mediaAckState uint8
+type mediaRedisCommandDeadlineSource uint8
 
 const (
-	mediaAckStreamMissing mediaAckState = iota
-	mediaAckGroupMissing
-	mediaAckGroupPresent
+	mediaRedisCommandDeadlineEffective mediaRedisCommandDeadlineSource = iota
+	mediaRedisCommandDeadlineHardIO
 )
+
+type mediaRedisCommandHardTimeoutError struct {
+	cause error
+}
+
+func (e *mediaRedisCommandHardTimeoutError) Error() string {
+	return "media Redis command hard I/O timeout: " + e.cause.Error()
+}
+
+func (e *mediaRedisCommandHardTimeoutError) Unwrap() error {
+	return e.cause
+}
+
+func (e *mediaRedisCommandHardTimeoutError) Timeout() bool {
+	return true
+}
+
+func (e *mediaRedisCommandHardTimeoutError) Temporary() bool {
+	var networkErr net.Error
+	return errors.As(e.cause, &networkErr) && networkErr.Temporary()
+}
+
+type mediaAckResult int64
+
+const (
+	mediaAckResultAcked mediaAckResult = iota + 1
+	mediaAckResultStreamMissing
+	mediaAckResultGroupMissing
+	mediaAckResultMessageNotPending
+)
+
+var mediaTaskAckScript = redis.NewScript(`
+	local stream = KEYS[1]
+	local group = ARGV[1]
+	local messageID = ARGV[2]
+
+	local acked = redis.pcall('XACK', stream, group, messageID)
+	if type(acked) == 'table' and acked.err then
+		if not string.find(tostring(acked.err), 'NOGROUP', 1, true) then
+			return acked
+		end
+	elseif type(acked) ~= 'number' then
+		return redis.error_reply('unexpected XACK reply')
+	elseif acked > 0 then
+		return 1
+	end
+
+	if redis.call('EXISTS', stream) == 0 then
+		return 2
+	end
+
+	local groups = redis.pcall('XINFO', 'GROUPS', stream)
+	if type(groups) == 'table' and groups.err then
+		return groups
+	end
+	for _, groupInfo in ipairs(groups) do
+		for index = 1, #groupInfo, 2 do
+			if groupInfo[index] == 'name' then
+				if groupInfo[index + 1] == group then
+					return 4
+				end
+				break
+			end
+		end
+	end
+	return 3
+`)
 
 // MediaTaskStream 使用两个 Redis Streams 保存同步与异步媒体任务。
 // Receive 在同一实例内串行化，确保批量读取的内存 backlog 和 8:1 公平计数一致。
@@ -247,8 +313,9 @@ func (s *MediaTaskStream) Receive(parent context.Context, block time.Duration) (
 }
 
 // Ack 确认一条消息。调用方必须在数据库状态推进成功后显式调用。
-// Stream 不存在时重建 group 并按幂等成功处理；Stream 仍在但 group/PEL 丢失时
-// 返回 ErrMediaQueueDeliveryStateLost，XACK 返回 0 时返回 ErrMediaQueueMessageNotPending。
+// Lua 脚本原子区分：Stream 不存在时重建 group 并幂等成功；Stream 存在但
+// group/PEL 丢失时返回 ErrMediaQueueDeliveryStateLost；group 存在但消息不在
+// PEL 时返回 ErrMediaQueueMessageNotPending。
 func (s *MediaTaskStream) Ack(ctx context.Context, message *service.MediaQueueMessage) error {
 	if message == nil || !isValidMediaStreamID(message.ID) || message.TaskID <= 0 {
 		return fmt.Errorf("%w: ACK requires message ID and positive task ID", service.ErrInvalidMediaQueueMessage)
@@ -257,71 +324,37 @@ func (s *MediaTaskStream) Ack(ctx context.Context, message *service.MediaQueueMe
 	if err != nil {
 		return err
 	}
-	acked, ackErr := s.rdb.XAck(ctx, stream, mediaTaskConsumerGroup, message.ID).Result()
-	if ackErr != nil {
-		if ctx.Err() != nil {
-			return ctx.Err()
-		}
-		if !isRedisNoGroup(ackErr) {
-			return fmt.Errorf("ack media task: %w", ackErr)
-		}
-	}
-	if ackErr == nil && acked > 0 {
-		return nil
-	}
-	return s.resolveUnsuccessfulAck(ctx, stream, message, isRedisNoGroup(ackErr))
-}
-
-func (s *MediaTaskStream) resolveUnsuccessfulAck(
-	ctx context.Context,
-	stream string,
-	message *service.MediaQueueMessage,
-	observedNoGroup bool,
-) error {
-	state, err := s.inspectAckState(ctx, stream)
+	result, err := mediaTaskAckScript.Run(
+		ctx,
+		s.rdb,
+		[]string{stream},
+		mediaTaskConsumerGroup,
+		message.ID,
+	).Int64()
 	if err != nil {
-		return err
+		if contextErr := originalContextError(ctx, err); contextErr != nil {
+			return contextErr
+		}
+		return fmt.Errorf("atomically ack media task: %w", err)
 	}
-	if state == mediaAckGroupPresent && !observedNoGroup {
+	switch mediaAckResult(result) {
+	case mediaAckResultAcked:
+		return nil
+	case mediaAckResultMessageNotPending:
 		return fmt.Errorf("%w: message %s is not pending in %s", service.ErrMediaQueueMessageNotPending, message.ID, message.Priority)
-	}
-	if ensureErr := s.EnsureGroups(ctx); ensureErr != nil {
-		return ensureErr
-	}
-	if state == mediaAckStreamMissing {
+	case mediaAckResultStreamMissing:
+		if ensureErr := s.EnsureGroups(ctx); ensureErr != nil {
+			return ensureErr
+		}
 		return nil
-	}
-	return fmt.Errorf("%w: consumer group disappeared before ACK", service.ErrMediaQueueDeliveryStateLost)
-}
-
-func (s *MediaTaskStream) inspectAckState(ctx context.Context, stream string) (mediaAckState, error) {
-	exists, err := s.rdb.Exists(ctx, stream).Result()
-	if err != nil {
-		if ctx.Err() != nil {
-			return 0, ctx.Err()
+	case mediaAckResultGroupMissing:
+		if ensureErr := s.EnsureGroups(ctx); ensureErr != nil {
+			return ensureErr
 		}
-		return 0, fmt.Errorf("inspect media task stream after unsuccessful ACK: %w", err)
+		return fmt.Errorf("%w: consumer group disappeared before ACK", service.ErrMediaQueueDeliveryStateLost)
+	default:
+		return fmt.Errorf("atomically ack media task: unexpected script result %d", result)
 	}
-	if exists == 0 {
-		return mediaAckStreamMissing, nil
-	}
-
-	groups, err := s.rdb.XInfoGroups(ctx, stream).Result()
-	if err != nil {
-		if ctx.Err() != nil {
-			return 0, ctx.Err()
-		}
-		if isRedisNoSuchKey(err) {
-			return mediaAckStreamMissing, nil
-		}
-		return 0, fmt.Errorf("inspect media task consumer groups after unsuccessful ACK: %w", err)
-	}
-	for _, group := range groups {
-		if group.Name == mediaTaskConsumerGroup {
-			return mediaAckGroupPresent, nil
-		}
-	}
-	return mediaAckGroupMissing, nil
 }
 
 // PendingCount 返回某优先级已投递但未 ACK 的消息数，供监控和恢复测试使用。
@@ -553,14 +586,18 @@ func (s *MediaTaskStream) recoverPriority(ctx context.Context, priority service.
 }
 
 func (s *MediaTaskStream) xAutoClaim(ctx context.Context, priority service.MediaQueuePriority, args *redis.XAutoClaimArgs) ([]redis.XMessage, string, error) {
-	client, commandCtx, cancel, err := s.receiveRedisCommand(ctx, mediaTaskRedisIOTimeout)
+	client, commandCtx, cancel, deadlineSource, err := s.receiveRedisCommand(ctx, mediaTaskRedisIOTimeout)
 	if err != nil {
 		return nil, "", err
 	}
 	messages, next, err := client.XAutoClaim(commandCtx, args).Result()
 	cancel()
+	err = markMediaRedisCommandHardTimeout(err, deadlineSource)
 	if err == nil || err == redis.Nil {
 		return messages, next, nil
+	}
+	if isMediaRedisCommandHardTimeout(err) {
+		return nil, "", fmt.Errorf("recover pending media tasks: %w", err)
 	}
 	if ctx.Err() != nil {
 		return nil, "", ctx.Err()
@@ -574,14 +611,18 @@ func (s *MediaTaskStream) xAutoClaim(ctx context.Context, priority service.Media
 	}
 	retryArgs := *args
 	retryArgs.Start = "0-0"
-	client, commandCtx, cancel, err = s.receiveRedisCommand(ctx, mediaTaskRedisIOTimeout)
+	client, commandCtx, cancel, deadlineSource, err = s.receiveRedisCommand(ctx, mediaTaskRedisIOTimeout)
 	if err != nil {
 		return nil, "", err
 	}
 	messages, next, err = client.XAutoClaim(commandCtx, &retryArgs).Result()
 	cancel()
+	err = markMediaRedisCommandHardTimeout(err, deadlineSource)
 	if err == nil || err == redis.Nil {
 		return messages, next, nil
+	}
+	if isMediaRedisCommandHardTimeout(err) {
+		return nil, "", fmt.Errorf("recover pending media tasks after group recreation: %w", err)
 	}
 	if ctx.Err() != nil {
 		return nil, "", ctx.Err()
@@ -628,14 +669,21 @@ func (s *MediaTaskStream) xReadGroup(ctx context.Context, args *redis.XReadGroup
 		// 固定 I/O grace，但最终仍由 Receive 的 effective deadline 封顶。
 		hardTimeout += args.Block
 	}
-	client, commandCtx, cancel, err := s.receiveRedisCommand(ctx, hardTimeout)
+	client, commandCtx, cancel, deadlineSource, err := s.receiveRedisCommand(ctx, hardTimeout)
 	if err != nil {
 		return nil, err
 	}
 	streams, err := client.XReadGroup(commandCtx, args).Result()
 	cancel()
+	err = markMediaRedisCommandHardTimeout(err, deadlineSource)
 	if err == nil || err == redis.Nil {
 		return streams, nil
+	}
+	if isMediaRedisCommandHardTimeout(err) {
+		if args.Block >= 0 {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("receive media tasks: %w", err)
 	}
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
@@ -656,14 +704,21 @@ func (s *MediaTaskStream) xReadGroup(ctx context.Context, args *redis.XReadGroup
 	if ensureErr := s.ensureGroupsForReceive(ctx); ensureErr != nil {
 		return nil, ensureErr
 	}
-	client, commandCtx, cancel, err = s.receiveRedisCommand(ctx, hardTimeout)
+	client, commandCtx, cancel, deadlineSource, err = s.receiveRedisCommand(ctx, hardTimeout)
 	if err != nil {
 		return nil, err
 	}
 	streams, err = client.XReadGroup(commandCtx, args).Result()
 	cancel()
+	err = markMediaRedisCommandHardTimeout(err, deadlineSource)
 	if err == nil || err == redis.Nil {
 		return streams, nil
+	}
+	if isMediaRedisCommandHardTimeout(err) {
+		if args.Block >= 0 {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("receive media tasks after group recreation: %w", err)
 	}
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
@@ -676,14 +731,18 @@ func (s *MediaTaskStream) xReadGroup(ctx context.Context, args *redis.XReadGroup
 
 func (s *MediaTaskStream) ensureGroupsForReceive(ctx context.Context) error {
 	for _, stream := range []string{mediaTaskSyncStreamKey, mediaTaskAsyncStreamKey} {
-		client, commandCtx, cancel, err := s.receiveRedisCommand(ctx, mediaTaskRedisIOTimeout)
+		client, commandCtx, cancel, deadlineSource, err := s.receiveRedisCommand(ctx, mediaTaskRedisIOTimeout)
 		if err != nil {
 			return err
 		}
 		err = client.XGroupCreateMkStream(commandCtx, stream, mediaTaskConsumerGroup, "0-0").Err()
 		cancel()
+		err = markMediaRedisCommandHardTimeout(err, deadlineSource)
 		if err == nil || isRedisBusyGroup(err) {
 			continue
+		}
+		if isMediaRedisCommandHardTimeout(err) {
+			return fmt.Errorf("ensure media task group for %s while receiving: %w", stream, err)
 		}
 		if ctx.Err() != nil {
 			return ctx.Err()
@@ -693,26 +752,34 @@ func (s *MediaTaskStream) ensureGroupsForReceive(ctx context.Context) error {
 	return nil
 }
 
-func (s *MediaTaskStream) receiveRedisCommand(ctx context.Context, hardTimeout time.Duration) (*redis.Client, context.Context, context.CancelFunc, error) {
+func (s *MediaTaskStream) receiveRedisCommand(
+	ctx context.Context,
+	hardTimeout time.Duration,
+) (*redis.Client, context.Context, context.CancelFunc, mediaRedisCommandDeadlineSource, error) {
 	deadline, ok := ctx.Deadline()
 	if !ok {
-		return nil, nil, nil, fmt.Errorf("receive media task command requires deadline")
+		return nil, nil, nil, 0, fmt.Errorf("receive media task command requires deadline")
 	}
 	remaining := time.Until(deadline)
 	if remaining <= 0 {
 		if err := ctx.Err(); err != nil {
-			return nil, nil, nil, err
+			return nil, nil, nil, 0, err
 		}
-		return nil, nil, nil, context.DeadlineExceeded
+		return nil, nil, nil, 0, context.DeadlineExceeded
 	}
-	timeout := min(remaining, hardTimeout)
+	timeout := remaining
+	deadlineSource := mediaRedisCommandDeadlineEffective
+	if hardTimeout < remaining {
+		timeout = hardTimeout
+		deadlineSource = mediaRedisCommandDeadlineHardIO
+	}
 	commandCtx, cancel := context.WithTimeout(ctx, timeout)
 	client := s.rdb.WithTimeout(timeout)
 	// WithTimeout clones Options before sharing the underlying pool, so this does not
 	// mutate the application client while allowing command deadlines to beat the
 	// XREADGROUP BLOCK read-timeout grace used by go-redis.
 	client.Options().ContextTimeoutEnabled = true
-	return client, commandCtx, cancel, nil
+	return client, commandCtx, cancel, deadlineSource, nil
 }
 
 func (s *MediaTaskStream) bufferStreams(streams []redis.XStream) bool {
@@ -834,6 +901,9 @@ func normalizeMediaReceiveError(
 	parentErr := parent.Err()
 	if errors.Is(parentErr, context.Canceled) {
 		return context.Canceled
+	}
+	if isMediaRedisCommandHardTimeout(err) {
+		return err
 	}
 	if deadlineSource == mediaReceiveDeadlineParent {
 		if parentErr != nil {
@@ -986,13 +1056,21 @@ func isRedisNoGroup(err error) bool {
 	return err != nil && strings.Contains(err.Error(), "NOGROUP")
 }
 
-func isRedisNoSuchKey(err error) bool {
-	return err != nil && strings.Contains(strings.ToLower(err.Error()), "no such key")
-}
-
 func isRedisTimeout(err error) bool {
 	var networkErr net.Error
 	return errors.As(err, &networkErr) && networkErr.Timeout()
+}
+
+func markMediaRedisCommandHardTimeout(err error, deadlineSource mediaRedisCommandDeadlineSource) error {
+	if err == nil || deadlineSource != mediaRedisCommandDeadlineHardIO || !isRedisTimeout(err) {
+		return err
+	}
+	return &mediaRedisCommandHardTimeoutError{cause: err}
+}
+
+func isMediaRedisCommandHardTimeout(err error) bool {
+	var hardTimeoutErr *mediaRedisCommandHardTimeoutError
+	return errors.As(err, &hardTimeoutErr)
 }
 
 func newMediaTaskConsumerName() string {

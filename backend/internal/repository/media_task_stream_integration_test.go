@@ -412,6 +412,22 @@ func TestMediaTaskStreamAckReportsDestroyedGroupDeliveryState(t *testing.T) {
 	require.NoError(t, stream.EnsureGroups(ctx))
 }
 
+func TestMediaTaskStreamAckPreservesAtomicRedisErrors(t *testing.T) {
+	ctx := context.Background()
+	stream := newTestMediaTaskStream(t, "worker-ack-wrongtype", time.Minute)
+	require.NoError(t, integrationRedis.Set(ctx, mediaTaskAsyncStreamKey, "not-a-stream", 0).Err())
+
+	err := stream.Ack(ctx, &service.MediaQueueMessage{
+		ID:       "1-0",
+		TaskID:   1,
+		Priority: service.MediaQueuePriorityAsync,
+	})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "WRONGTYPE")
+	require.NotErrorIs(t, err, service.ErrMediaQueueDeliveryStateLost)
+	require.NotErrorIs(t, err, service.ErrMediaQueueMessageNotPending)
+}
+
 func TestMediaTaskStreamTerminalSubscriptionFiltersAndStops(t *testing.T) {
 	ctx := context.Background()
 	stream := newTestMediaTaskStream(t, "worker-terminal", time.Minute)
