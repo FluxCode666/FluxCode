@@ -273,7 +273,13 @@ func (s *MediaContentService) OpenVideo(ctx context.Context, publicID string, us
 		}
 	}
 	task, err := s.tasks.GetByPublicIDForUser(ctx, strings.TrimSpace(publicID), userID)
-	if err != nil || task == nil || task.MediaType != MediaTypeVideo || task.Status != MediaTaskStatusCompleted {
+	if err != nil {
+		if errors.Is(err, ErrMediaTaskNotFound) {
+			return nil, ErrMediaTaskNotFound
+		}
+		return nil, errors.Join(ErrMediaContentUnavailable, fmt.Errorf("load video task: %w", err))
+	}
+	if task == nil || task.MediaType != MediaTypeVideo || task.Status != MediaTaskStatusCompleted {
 		return nil, ErrMediaTaskNotFound
 	}
 	artifacts, err := s.artifacts.ListByTaskID(ctx, task.ID)

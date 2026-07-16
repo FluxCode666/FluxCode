@@ -112,6 +112,7 @@ func TestValidateIPRejectsIANAIPv6SpecialPurposeAddresses(t *testing.T) {
 		"64:ff9b::1",
 		"64:ff9b:1::1",
 		"100::1",
+		"100:0:0:1::1",
 		"2001::1",
 		"2001:2::1",
 		"2001:db8::1",

@@ -15,9 +15,11 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 )
 
 const (
@@ -25,6 +27,7 @@ const (
 	maxMediaUploadFiles         = 16
 	defaultMediaRequestMaxBytes = 64 << 20
 	mediaStagingCleanupTimeout  = 10 * time.Second
+	mediaInputCleanupErrorClass = "discard_failed"
 )
 
 type MediaTaskApplication interface {
@@ -36,10 +39,31 @@ type MediaVideoContentOpener interface {
 	OpenVideo(ctx context.Context, publicID string, userID int64, byteRange string) (*service.MediaContent, error)
 }
 
+type MediaInputCleanupObserver interface {
+	ObserveMediaInputCleanupFailure(ctx context.Context, operation service.MediaOperation, inputCount int, classification string)
+}
+
+type mediaInputCleanupLogObserver struct{}
+
+func (mediaInputCleanupLogObserver) ObserveMediaInputCleanupFailure(
+	ctx context.Context,
+	operation service.MediaOperation,
+	inputCount int,
+	classification string,
+) {
+	logger.FromContext(ctx).Warn(
+		"media.input_cleanup_failed",
+		zap.String("operation", string(operation)),
+		zap.Int("input_count", inputCount),
+		zap.String("error_classification", classification),
+	)
+}
+
 type MediaTaskHandler struct {
 	app             MediaTaskApplication
 	content         MediaVideoContentOpener
 	stager          service.MediaInputLifecycle
+	cleanupObserver MediaInputCleanupObserver
 	maxRequestBytes int64
 }
 
@@ -53,7 +77,16 @@ func NewMediaTaskHandler(
 	if cfg != nil && cfg.Server.MaxRequestBodySize > 0 {
 		maxBytes = cfg.Server.MaxRequestBodySize
 	}
-	return &MediaTaskHandler{app: app, content: content, stager: stager, maxRequestBytes: maxBytes}
+	return &MediaTaskHandler{
+		app: app, content: content, stager: stager,
+		cleanupObserver: mediaInputCleanupLogObserver{}, maxRequestBytes: maxBytes,
+	}
+}
+
+func (h *MediaTaskHandler) SetInputCleanupObserver(observer MediaInputCleanupObserver) {
+	if h != nil {
+		h.cleanupObserver = observer
+	}
 }
 
 type mediaJSONCreateRequest struct {
@@ -139,7 +172,7 @@ func (h *MediaTaskHandler) CreateImageGeneration(c *gin.Context) {
 			OutputFormat: request.OutputFormat, ResponseFormat: request.ResponseFormat,
 		}},
 	}
-	_ = h.create(c, req)
+	h.handleCreate(c, req, identity.userID, nil)
 }
 
 func (h *MediaTaskHandler) CreateImageEdit(c *gin.Context) {
@@ -193,9 +226,7 @@ func (h *MediaTaskHandler) CreateImageEdit(c *gin.Context) {
 		}},
 		Inputs: inputs,
 	}
-	if !h.create(c, req) {
-		_ = h.discardStagedInputs(c.Request.Context(), identity.userID, inputs)
-	}
+	h.handleCreate(c, req, identity.userID, inputs)
 }
 
 func (h *MediaTaskHandler) GetImageTask(c *gin.Context) {
@@ -269,9 +300,7 @@ func (h *MediaTaskHandler) CreateVideo(c *gin.Context) {
 		}},
 		Inputs: inputs,
 	}
-	if !h.create(c, req) {
-		_ = h.discardStagedInputs(c.Request.Context(), identity.userID, inputs)
-	}
+	h.handleCreate(c, req, identity.userID, inputs)
 }
 
 func (h *MediaTaskHandler) GetVideoTask(c *gin.Context) {
@@ -501,39 +530,63 @@ func (h *MediaTaskHandler) createMultipartVideo(c *gin.Context, identity mediaId
 		}},
 		Inputs: inputs,
 	}
-	if !h.create(c, req) {
-		_ = h.discardStagedInputs(c.Request.Context(), identity.userID, inputs)
+	h.handleCreate(c, req, identity.userID, inputs)
+}
+
+func (h *MediaTaskHandler) handleCreate(
+	c *gin.Context,
+	req service.MediaCreateRequest,
+	userID int64,
+	inputs []service.MediaArtifactInput,
+) {
+	inputsAdopted, createErr := h.create(c, req)
+	if !inputsAdopted && len(inputs) > 0 {
+		cleanupErr := h.discardStagedInputs(c.Request.Context(), userID, inputs)
+		if cleanupErr != nil {
+			h.observeInputCleanupFailure(c.Request.Context(), req.Operation, len(inputs))
+			createErr = errors.Join(createErr, cleanupErr)
+		}
+	}
+	if createErr != nil && !c.Writer.Written() {
+		h.writeServiceError(c, createErr)
 	}
 }
 
-func (h *MediaTaskHandler) create(c *gin.Context, req service.MediaCreateRequest) bool {
+func (h *MediaTaskHandler) observeInputCleanupFailure(ctx context.Context, operation service.MediaOperation, inputCount int) {
+	observer := h.cleanupObserver
+	if observer == nil {
+		observer = mediaInputCleanupLogObserver{}
+	}
+	observer.ObserveMediaInputCleanupFailure(ctx, operation, inputCount, mediaInputCleanupErrorClass)
+}
+
+func (h *MediaTaskHandler) create(c *gin.Context, req service.MediaCreateRequest) (bool, error) {
 	result, err := h.app.Create(c.Request.Context(), req)
 	inputsAdopted := result != nil && result.InputsAdopted
 	if err != nil {
-		h.writeServiceError(c, err)
-		return inputsAdopted
+		return inputsAdopted, err
 	}
 	if result == nil || result.Task == nil {
 		writeMediaError(c, http.StatusBadGateway, "media_generation_failed", "Media generation failed")
-		return inputsAdopted
+		return inputsAdopted, nil
 	}
 	switch result.Disposition {
 	case service.MediaCreateDispositionAccepted, service.MediaCreateDispositionFallbackAsync:
 		c.JSON(http.StatusAccepted, taskResponse(result.Task, result.Artifacts))
-		return inputsAdopted
+		return inputsAdopted, nil
 	case service.MediaCreateDispositionCompleted:
 		if result.Task.MediaType == service.MediaTypeImage {
 			c.JSON(http.StatusOK, imageResponse(result.Task, result.Artifacts))
-			return inputsAdopted
+			return inputsAdopted, nil
 		}
 		c.JSON(http.StatusOK, taskResponse(result.Task, result.Artifacts))
-		return inputsAdopted
+		return inputsAdopted, nil
 	case service.MediaCreateDispositionGatewayTimeout:
 		writeMediaError(c, http.StatusGatewayTimeout, "media_gateway_timeout", "Media generation did not complete before the gateway timeout")
-		return inputsAdopted
+		return inputsAdopted, nil
 	default:
 		writeMediaError(c, http.StatusBadGateway, "media_generation_failed", "Media generation failed")
-		return inputsAdopted
+		return inputsAdopted, nil
 	}
 }
 

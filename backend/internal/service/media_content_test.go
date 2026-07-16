@@ -23,10 +23,18 @@ func inlineVideoDataURL(size int) string {
 }
 
 type mediaContentTaskRepoStub struct {
-	task *MediaTask
+	task      *MediaTask
+	err       error
+	returnNil bool
 }
 
 func (s *mediaContentTaskRepoStub) GetByPublicIDForUser(_ context.Context, publicID string, userID int64) (*MediaTask, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	if s.returnNil {
+		return nil, nil
+	}
 	if s.task == nil || s.task.PublicID != publicID || s.task.UserID != userID {
 		return nil, ErrMediaTaskNotFound
 	}
@@ -564,6 +572,61 @@ func TestMediaContentServiceOpenVideoRequiresCompletedVideoOwnedByUser(t *testin
 	)
 	_, err := svc.OpenVideo(context.Background(), "task_public", 42, "")
 	require.ErrorIs(t, err, ErrMediaTaskNotFound)
+}
+
+func TestMediaContentServiceOpenVideoClassifiesTaskRepositoryErrors(t *testing.T) {
+	databaseErr := errors.New("database unavailable")
+	for _, tt := range []struct {
+		name          string
+		repositoryErr error
+		wantNotFound  bool
+	}{
+		{name: "not found", repositoryErr: ErrMediaTaskNotFound, wantNotFound: true},
+		{name: "database failure", repositoryErr: databaseErr},
+		{name: "deadline exceeded", repositoryErr: context.DeadlineExceeded},
+		{name: "request canceled", repositoryErr: context.Canceled},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			svc := NewMediaContentService(
+				&mediaContentTaskRepoStub{err: tt.repositoryErr}, &mediaContentArtifactRepoStub{},
+				mediaContentSettingsStub{settings: &SystemSettings{}}, mediaContentAccountRepoStub{},
+				NewMediaAdapterRegistry(), mediaContentHTTPReaderStub{}, NewDisabledMediaArtifactObjectStore(),
+			)
+
+			content, err := svc.OpenVideo(context.Background(), "task_public", 42, "")
+			require.Nil(t, content)
+			if tt.wantNotFound {
+				require.ErrorIs(t, err, ErrMediaTaskNotFound)
+				require.NotErrorIs(t, err, ErrMediaContentUnavailable)
+				return
+			}
+			require.ErrorIs(t, err, tt.repositoryErr)
+			require.ErrorIs(t, err, ErrMediaContentUnavailable)
+			require.NotErrorIs(t, err, ErrMediaTaskNotFound)
+		})
+	}
+}
+
+func TestMediaContentServiceOpenVideoHidesIneligibleTaskStates(t *testing.T) {
+	for _, tt := range []struct {
+		name      string
+		task      *MediaTask
+		returnNil bool
+	}{
+		{name: "nil task", returnNil: true},
+		{name: "non video", task: &MediaTask{ID: 1, PublicID: "task_public", UserID: 42, MediaType: MediaTypeImage, Status: MediaTaskStatusCompleted}},
+		{name: "not completed", task: &MediaTask{ID: 1, PublicID: "task_public", UserID: 42, MediaType: MediaTypeVideo, Status: MediaTaskStatusInProgress}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			svc := NewMediaContentService(
+				&mediaContentTaskRepoStub{task: tt.task, returnNil: tt.returnNil}, &mediaContentArtifactRepoStub{},
+				mediaContentSettingsStub{settings: &SystemSettings{}}, mediaContentAccountRepoStub{},
+				NewMediaAdapterRegistry(), mediaContentHTTPReaderStub{}, NewDisabledMediaArtifactObjectStore(),
+			)
+			_, err := svc.OpenVideo(context.Background(), "task_public", 42, "")
+			require.ErrorIs(t, err, ErrMediaTaskNotFound)
+		})
+	}
 }
 
 func TestMediaContentServiceRejectsInvalidBase64DataURL(t *testing.T) {

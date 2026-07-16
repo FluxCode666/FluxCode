@@ -39,8 +39,28 @@ type mediaTaskApplicationStub struct {
 	stageErrAt                int
 	stageCalls                int
 	discarded                 []service.MediaArtifactInput
+	discardErr                error
 	requireLiveDiscardContext bool
 	discardHasDeadline        bool
+}
+
+type mediaInputCleanupObserverStub struct {
+	calls          int
+	operation      service.MediaOperation
+	inputCount     int
+	classification string
+}
+
+func (s *mediaInputCleanupObserverStub) ObserveMediaInputCleanupFailure(
+	_ context.Context,
+	operation service.MediaOperation,
+	inputCount int,
+	classification string,
+) {
+	s.calls++
+	s.operation = operation
+	s.inputCount = inputCount
+	s.classification = classification
 }
 
 type handlerMediaHTTPReader struct{}
@@ -96,7 +116,7 @@ func (s *mediaTaskApplicationStub) Discard(ctx context.Context, _ int64, input s
 		return ctx.Err()
 	}
 	s.discarded = append(s.discarded, input)
-	return nil
+	return s.discardErr
 }
 
 func imageEditRequest(t *testing.T, async string) (*http.Request, string) {
@@ -220,10 +240,18 @@ func mixedVideoUploadRequest(t *testing.T) *http.Request {
 }
 
 func newStandaloneMediaRouter(t *testing.T) (*gin.Engine, *mediaTaskApplicationStub) {
-	return newStandaloneMediaRouterWithStager(t, nil)
+	return newStandaloneMediaRouterWithStagerAndCleanupObserver(t, nil, nil)
 }
 
 func newStandaloneMediaRouterWithStager(t *testing.T, stager service.MediaInputLifecycle) (*gin.Engine, *mediaTaskApplicationStub) {
+	return newStandaloneMediaRouterWithStagerAndCleanupObserver(t, stager, nil)
+}
+
+func newStandaloneMediaRouterWithStagerAndCleanupObserver(
+	t *testing.T,
+	stager service.MediaInputLifecycle,
+	observer MediaInputCleanupObserver,
+) (*gin.Engine, *mediaTaskApplicationStub) {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 	app := &mediaTaskApplicationStub{createResult: &service.MediaCreateResult{
@@ -237,6 +265,9 @@ func newStandaloneMediaRouterWithStager(t *testing.T, stager service.MediaInputL
 		stager = app
 	}
 	h := NewMediaTaskHandler(app, app, stager, &config.Config{Server: config.ServerConfig{MaxRequestBodySize: 1 << 20}})
+	if observer != nil {
+		h.SetInputCleanupObserver(observer)
+	}
 	router := gin.New()
 	router.Use(func(c *gin.Context) {
 		userID, _ := strconv.ParseInt(c.GetHeader("X-Test-User-ID"), 10, 64)
@@ -405,6 +436,43 @@ func TestMediaTaskHandlerCleansStagedInputsWhenApplicationRejects(t *testing.T) 
 	require.Equal(t, http.StatusBadRequest, rec.Code)
 	require.Len(t, app.discarded, 1)
 	require.Equal(t, "staged/input-1", app.discarded[0].ObjectKey)
+}
+
+func TestMediaTaskHandlerCleanupFailurePreservesBusinessErrorAndReportsSafeMetadata(t *testing.T) {
+	observer := &mediaInputCleanupObserverStub{}
+	router, app := newStandaloneMediaRouterWithStagerAndCleanupObserver(t, nil, observer)
+	app.createResult = nil
+	app.createErr = service.ErrMediaInputNotRecoverable
+	app.discardErr = errors.New("discard staged/input-1 https://private.example Authorization=secret failed")
+	req, _ := imageEditRequest(t, "false")
+
+	rec := performRequest(router, req, 42, true)
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	require.Contains(t, rec.Body.String(), `"code":"invalid_media_input"`)
+	for _, secret := range []string{"staged/input-1", "private.example", "Authorization", "secret", "discard"} {
+		require.NotContains(t, rec.Body.String(), secret)
+	}
+	require.Equal(t, 1, observer.calls)
+	require.Equal(t, service.MediaOperationImageEdit, observer.operation)
+	require.Equal(t, 1, observer.inputCount)
+	require.Equal(t, "discard_failed", observer.classification)
+}
+
+func TestMediaTaskHandlerCleanupFailureAfterWrittenResponseIsObserved(t *testing.T) {
+	observer := &mediaInputCleanupObserverStub{}
+	router, app := newStandaloneMediaRouterWithStagerAndCleanupObserver(t, nil, observer)
+	app.createResult.InputsAdopted = false
+	app.discardErr = errors.New("discard private-object-key failed")
+	req, _ := imageEditRequest(t, "true")
+
+	rec := performRequest(router, req, 42, true)
+	require.Equal(t, http.StatusAccepted, rec.Code)
+	require.NotContains(t, rec.Body.String(), "private-object-key")
+	require.NotContains(t, rec.Body.String(), "discard")
+	require.Equal(t, 1, observer.calls)
+	require.Equal(t, service.MediaOperationImageEdit, observer.operation)
+	require.Equal(t, 1, observer.inputCount)
+	require.Equal(t, "discard_failed", observer.classification)
 }
 
 func TestMediaTaskHandlerKeepsStagedInputsWhenApplicationAdoptedBeforeError(t *testing.T) {
@@ -816,6 +884,9 @@ func TestMediaTaskHandlerContentOpenerFailuresReturn502WithoutCauseLeak(t *testi
 		{name: "secure proxy unsupported", err: service.ErrSecureHTTPUpstreamProxyUnsupported},
 		{name: "secure upstream required", err: service.ErrMediaSecureUpstreamRequired},
 		{name: "network failure", err: errors.New("dial tcp internal-upstream: secret network failure")},
+		{name: "task repository database failure", err: errors.Join(service.ErrMediaContentUnavailable, errors.New("postgres private-dsn credential failure"))},
+		{name: "task repository deadline", err: errors.Join(service.ErrMediaContentUnavailable, context.DeadlineExceeded)},
+		{name: "task repository cancellation", err: errors.Join(service.ErrMediaContentUnavailable, context.Canceled)},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			router, app := newStandaloneMediaRouter(t)
@@ -826,6 +897,10 @@ func TestMediaTaskHandlerContentOpenerFailuresReturn502WithoutCauseLeak(t *testi
 			require.Contains(t, rec.Body.String(), `"code":"media_content_unavailable"`)
 			require.NotContains(t, rec.Body.String(), "internal-upstream")
 			require.NotContains(t, rec.Body.String(), "secret")
+			require.NotContains(t, rec.Body.String(), "private-dsn")
+			require.NotContains(t, rec.Body.String(), "credential")
+			require.NotContains(t, rec.Body.String(), "deadline")
+			require.NotContains(t, rec.Body.String(), "canceled")
 		})
 	}
 }

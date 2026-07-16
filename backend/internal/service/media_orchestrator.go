@@ -758,7 +758,7 @@ func (o *MediaOrchestrator) initializeAndEnqueue(
 			updateErr = ErrMediaOrchestratorStateConflict
 		}
 		if !readyObserved {
-			return &MediaCreateResult{Task: task}, o.failAfterPrecharge(ctx, task, billingSnapshot.EstimatedAmount, "system_billing_state", fmt.Errorf("persist media precharge state: %w", updateErr))
+			return &MediaCreateResult{Task: task, InputsAdopted: true}, o.failAfterPrecharge(ctx, task, billingSnapshot.EstimatedAmount, "system_billing_state", fmt.Errorf("persist media precharge state: %w", updateErr))
 		}
 	} else {
 		task.BillingStatus = MediaBillingStatusPrecharged

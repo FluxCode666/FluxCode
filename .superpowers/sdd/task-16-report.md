@@ -541,3 +541,87 @@ go test -race ./internal/service ./internal/repository ./internal/handler -run '
 高风险审计范围包含外部 URL/DNS/Dial/redirect、认证凭据、任务/对象所有权、幂等/恢复/queue/ready 状态、内容 fallback、公开错误、Wire 可达性和生成结果。输入所有权仅为内部返回契约，不涉及公开字段、DB、迁移、缓存 key 或队列 schema；special-purpose denylist 不受全局媒体宽松配置绕过；内容内部 causes 只参与 `errors.Is` 和服务端诊断，不进入 DTO 或日志。
 
 审计结论：通过，无已知阻断或非阻断代码风险。未执行项仍是无过滤完整 `go test ./internal/service` / `go test ./...` 功能套件，原因继续为既有 OpenAI stub concurrent-map fatal；本轮没有把编译型全仓 PASS 表述为完整功能 PASS。生产媒体路由和 Task 17 provider 链仍不可达，符合任务边界。
+
+## 第三轮复审修复追加（2026-07-17）
+
+### 范围与结论
+
+- 修复基线：`b2dae388f fix(media): harden input ownership and content fallback`。
+- 第三轮 1 个 Critical、2 个 Important、1 个 Minor 均完成独立 RED→GREEN；所有权、内容公开错误、URL 安全和 cleanup 生命周期契约保持向后兼容。
+- 本轮只修改 Orchestrator/Content/Handler/URL validator 及其测试；仍未修改 progress、生产 gateway、`wire_gen.go`、Task 17 配置、真实 Adapter、UI 或取消接口。
+
+### Critical：durable enqueue 后的输入所有权
+
+第一条 durable `Queue.Enqueue` 成功即为输入所有权转移点。该点之后即使 ready CAS 返回不确定错误、原 request context 的紧接重读失败，detached 补偿也可能通过旧 version CAS 失败后重读确认任务已经 ready；此时 `Create` 即使仍返回内部错误，也必须返回 nonnil `MediaCreateResult` 且 `InputsAdopted=true`，避免 Handler 删除后台任务仍在读取的对象。第一条 enqueue 明确失败仍保持 `false`。
+
+新增 fixture 可注入一次 `GetByID` 错误，组合 `readyWriteAppliedErrors=1` 覆盖“ready 写已提交但结果未知、原上下文重读失败、detached 重读确认 ready”。测试同时验证后台 task 为 queued/precharged、lease 已清除，且输入 Artifact 仍可读取。
+
+RED：
+
+```bash
+go test ./internal/service -run '^TestMediaOrchestratorDurableEnqueueConservativelyAdoptsInputsWhenReadyOutcomeIsUncertain$' -count=1
+```
+
+service FAIL，`0.931s`，失败点为 `InputsAdopted` 实际 `false`。GREEN（同时包含 queue failure 反例和 ready 正常重读）退出码 `0`，service `0.851s`。
+
+### Important 1：RFC 9780 IPv6 Dummy Prefix
+
+出站 IP denylist 新增 RFC 9780 Dummy IPv6 Prefix `100:0:0:1::/64`，拒绝 `100:0:0:1::1`。公网反例 `8.8.8.8`、`::ffff:8.8.8.8`、`2606:4700:4700::1111` 保持通过。
+
+RED：IPv6 精确用例退出码 `1`，`0.401s`，dummy 地址被错误接受。GREEN：URL validator 全包退出码 `0`，`0.462s`。
+
+### Important 2：OpenVideo task repository 错误分类
+
+`OpenVideo` 仅在 repository error 满足 `errors.Is(err, ErrMediaTaskNotFound)` 时返回隐藏式 404。repository 返回 nil task，以及 task 非 video/非 completed/非当前用户时仍统一隐藏为 404；DB/infra、`context.DeadlineExceeded`、`context.Canceled` 则保留原 cause，并通过 `errors.Join` 同时携带 `ErrMediaContentUnavailable`。Handler 内容入口继续稳定返回安全 502，不输出数据库、网络、上下文或凭据 cause。
+
+RED：service 分类表中 DB/deadline/cancel 三例均只得到 `ErrMediaTaskNotFound`，命令退出码 `1`，`0.892s`。GREEN：service 分类与不合格任务状态测试退出码 `0`，`0.848s`；Handler 的 502/不泄露回归退出码 `0`，`0.884s`。
+
+### Minor：staged input cleanup error 可观测
+
+Handler 构造签名不变，新增可选 `MediaInputCleanupObserver` 与 setter；默认 observer 写结构化 warning，但只记录 operation、input_count 和固定 `discard_failed` classification，不接收或记录 raw cleanup error、ObjectKey、URL、Authorization 或凭据。
+
+Create 应用错误改为延迟输出：若输入未被接纳，先执行 detached cleanup，再用 `errors.Join` 合并 cleanup error，因此原 `ErrMediaInputNotRecoverable` 仍可通过 `errors.Is` 映射为公开 400 `invalid_media_input`，响应不泄露 cleanup cause。若 Accepted/Completed/GatewayTimeout 等响应已经写出，cleanup 失败不会二次写响应，但仍触发安全 observer。
+
+RED：新增 observer API 尚不存在，Handler 编译失败，退出码 `1`。GREEN：业务错误和已写响应两条 cleanup failure 路径连同既有 ownership 回归均通过，handler `0.850s`。
+
+### 第三轮 fresh 验证
+
+精确媒体回归：
+
+```bash
+go test ./internal/service ./internal/repository ./internal/handler -run 'TestMedia(TaskHandler|Router|HTTPContent|Content|Orchestrator)|TestSecureHTTPUpstream|TestProvideHandlersWithMedia' -count=1
+```
+
+退出码 `0`：service `0.672s`、repository `1.799s`、handler `2.341s`。
+
+扩大媒体回归：
+
+```bash
+go test ./internal/service ./internal/repository ./internal/handler -run '^TestMedia' -count=1
+```
+
+退出码 `0`：service `2.156s`、repository `1.952s`、handler `1.307s`。URL validator 全包退出码 `0`，`0.462s`。
+
+精确 race：
+
+```bash
+go test -race ./internal/service ./internal/repository ./internal/handler -run 'TestMedia(TaskHandler|Router|HTTPContent|Content|Orchestrator)|TestSecureHTTPUpstream|TestProvideHandlersWithMedia' -count=1
+```
+
+退出码 `0`：service `2.408s`、repository `4.037s`、handler `3.013s`。
+
+其余最终门禁全部退出码 `0`：
+
+- `GOPROXY=https://goproxy.cn,direct go generate ./cmd/server`，Wire 成功生成，`wire_gen.go` 零 diff。
+- `gofmt`、`git diff --check`、`go vet ./...`、`go build ./...`。
+- `go test ./... -run '^$' -count=1`，全仓编译型测试通过。
+- `go mod verify`，输出 `all modules verified`。
+- `git diff --exit-code c6f881a22 -- backend/internal/server/routes/gateway.go`。
+- `git diff --exit-code -- backend/cmd/server/wire_gen.go backend/go.mod backend/go.sum`。
+- 搜索确认无 Cancel/DELETE、无新公开 DTO 或 ObjectKey/URL/Authorization/ErrorMessage 泄露，变更测试无 Skip/Only。
+
+### 第三轮 code-audit
+
+高风险复审覆盖 queue/ready/补偿 CAS 的输入所有权、后台 Artifact 生命周期、task repository 错误链、内容公开 404/502、IPv6 special-purpose denylist，以及 cleanup error 的响应前合并和响应后安全可观测性。默认日志不接触 raw cleanup error；内部 repository causes 只参与服务端 error chain，不进入公开响应。
+
+审计结论：通过，无已知阻断或非阻断代码风险。仍未执行无过滤完整 service/全仓功能套件，原因继续为既有 OpenAI stub concurrent-map fatal；本轮仅将 `go test ./... -run '^$'` 表述为全仓编译型 PASS。

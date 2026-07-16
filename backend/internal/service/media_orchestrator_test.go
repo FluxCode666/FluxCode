@@ -133,6 +133,29 @@ func TestMediaOrchestratorReadyPublishWriteAppliedButReturnedErrorReusesReadyTas
 	require.Equal(t, 0, fixture.billing.settleFailureCalls())
 }
 
+func TestMediaOrchestratorDurableEnqueueConservativelyAdoptsInputsWhenReadyOutcomeIsUncertain(t *testing.T) {
+	fixture := newMediaOrchestratorFixture(t)
+	fixture.repo.readyWriteAppliedErrors = 1
+	fixture.repo.getErrors = 1
+	req := validAsyncMediaCreateRequest()
+	req.Operation = MediaOperationImageToImage
+	req.Inputs = []MediaArtifactInput{validOrchestratorImageInput(0, "image/png")}
+
+	result, err := fixture.orchestrator.Create(context.Background(), req)
+	require.Error(t, err)
+	require.NotNil(t, result)
+	require.True(t, result.InputsAdopted)
+
+	stored := fixture.repo.mustGet(result.Task.ID)
+	require.Equal(t, MediaTaskStatusQueued, stored.Status)
+	require.Equal(t, MediaBillingStatusPrecharged, stored.BillingStatus)
+	require.Nil(t, stored.LeaseUntil)
+	artifacts, readErr := fixture.artifacts.ListByTaskID(context.Background(), stored.ID)
+	require.NoError(t, readErr)
+	require.Len(t, artifacts, 1)
+	require.Equal(t, req.Inputs[0].ObjectKey, artifacts[0].ObjectKey)
+}
+
 func TestMediaOrchestratorReadyPublishAppliedErrorReloadsRealTerminalResult(t *testing.T) {
 	fixture := newMediaOrchestratorFixture(t)
 	fixture.repo.readyWriteAppliedErrors = 1
@@ -1439,6 +1462,7 @@ type orchestratorTaskRepository struct {
 	failSettlementPlanWrites        int
 	readyWriteErrors                int
 	readyWriteAppliedErrors         int
+	getErrors                       int
 	transitionQueuedAppliedErrors   int
 	readyPublishedHook              func(*MediaTask)
 	events                          *orchestratorEvents
@@ -1483,6 +1507,10 @@ func (r *orchestratorTaskRepository) GetByID(ctx context.Context, id int64) (*Me
 	r.gets++
 	if r.events != nil {
 		r.events.add("get")
+	}
+	if r.getErrors > 0 {
+		r.getErrors--
+		return nil, errors.New("task read unavailable")
 	}
 	task, ok := r.tasks[id]
 	if !ok {
