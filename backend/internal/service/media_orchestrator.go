@@ -608,6 +608,14 @@ func normalizeMediaInputs(inputs []MediaArtifactInput, operation MediaOperation)
 		if references != 1 {
 			return nil, fmt.Errorf("%w: input position %d must have exactly one durable reference", ErrMediaInputNotRecoverable, input.Position)
 		}
+		if input.ExternalURL == "" {
+			checksum := strings.TrimSpace(input.ChecksumSHA256)
+			decodedChecksum, err := hex.DecodeString(checksum)
+			if input.SizeBytes <= 0 || err != nil || len(decodedChecksum) != sha256.Size {
+				return nil, fmt.Errorf("%w: input position %d requires stable upload content identity", ErrMediaInputNotRecoverable, input.Position)
+			}
+			input.ChecksumSHA256 = strings.ToLower(checksum)
+		}
 		input.Direction = "input"
 		input.Data = nil
 	}

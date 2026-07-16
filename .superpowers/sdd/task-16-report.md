@@ -803,3 +803,89 @@ go test -race ./internal/service -run 'TestMedia(Orchestrator|CreateFingerprint)
 自审重点覆盖 canonical JSON 字段、输入排序、存储引用排除、内容差异反例、外部 URL、MediaType 验证与公开任务 JSON。实现只改变内部 RequestFingerprint 的输入子结构，不改变任务 RequestSpec、durable Artifact、队列 payload、公开 DTO、数据库 schema 或依赖。
 
 历史 fingerprint 兼容性不构成当前生产迁移风险：Task 16 的生产媒体路由/provider 链仍按既定边界保持 opt-in 且不可达，Task 17 尚未启用。除此之外无已知 concerns。两个已登记 Minor（nil Body fallback、Range 数值语义）按控制器要求未在本轮处理。
+
+## 第六轮复审修复追加（2026-07-17）
+
+### 范围与结论
+
+- 修复基线：`42ea27fe0 fix(media): stabilize staged input fingerprints`。
+- 本轮仅修复 1 个 Important：被排除瞬态引用的非 URL 输入必须具备稳定内容身份，不能因 checksum/size 缺失而静默合并。
+- 实际代码改动文件为 `backend/internal/service/media_orchestrator.go` 和 `backend/internal/service/media_orchestrator_test.go`；本报告为第三个改动文件。未修改生产 gateway、生成文件、Adapter、取消 API、文本链路、RequestSpec/Artifact/queue payload shape，也未处理已登记的 nil Body 与 Range 两个 Minor。
+
+### Important：非 URL 输入的稳定内容身份契约
+
+第五轮 canonical 正确排除了随机 `ObjectKey`/`UpstreamReference`，但此前 `normalizeMediaInputs` 未要求非 URL 输入携带 checksum/size。两个真实内容不同、只靠不同对象引用区分且 checksum/size 均为空的内部请求因此得到相同指纹，并错误复用首任务。
+
+本轮在请求创建和指纹计算共用的 normalize 阶段增加严格契约：
+
+- `ExternalURL` 输入继续以 Stage 已规范化的 URL 为稳定身份，不要求上传 checksum/size。
+- 非 `ExternalURL` 输入必须满足 `SizeBytes > 0`。
+- checksum 必须可解码为恰好 32 bytes，即有效 64 位十六进制 SHA-256；通过后规范为小写，与 `MediaContentService.Stage` 的 `hex.EncodeToString` 真实产出一致。
+- 缺失 size/checksum、短 checksum 或非十六进制 checksum 均返回现有安全领域错误 `ErrMediaInputNotRecoverable`，且发生在 task create、precharge 和 Artifact 持久化之前。
+- 正常 canonical 仍不加入随机 `ObjectKey`/`UpstreamReference`，也不加入原始 Data。
+
+RED：
+
+```bash
+go test ./internal/service -run '^TestMediaOrchestratorRejectsUnidentifiedNonURLInputsBeforeIdempotentReuse$' -count=1
+```
+
+退出码 `1`，service `0.856s`。ObjectKey 与 UpstreamReference 两个子例的关键失败均为：
+
+```text
+Expected error with "media input is not recoverable" in chain but got nil.
+```
+
+测试在断言前实际执行首次请求和不同瞬态引用的第二次请求；当前实现两次均无错误并复用同一任务，失败原因与 finding 一致。
+
+最小实现后的 GREEN：同一命令退出码 `0`，service `0.856s`；两个请求均在 task create 前返回 `ErrMediaInputNotRecoverable`，create/precharge 调用数均为 0。
+
+补充守护覆盖：
+
+- 缺 size、缺 checksum、63 位 checksum、64 位非十六进制 checksum 均拒绝。
+- 有效相同 checksum + 不同 ObjectKey/UpstreamReference 继续复用。
+- 不同 checksum 继续返回 `ErrMediaIdempotencyConflict`。
+- ExternalURL 不携带上传 checksum/size 仍能创建并幂等复用。
+- 仅对语义上代表已 Stage 上传的既有 fixture 补充正 size 和真实 64 位十六进制 checksum，没有放宽输入契约。
+
+聚焦联合测试：
+
+```bash
+go test ./internal/service -run '^(TestMediaOrchestrator(IdempotencyRetryReusesUploadWhen(ObjectKey|UpstreamReference)Changes|RejectsUnidentifiedNonURLInputsBeforeIdempotentReuse|ExternalURLDoesNotRequireUploadContentIdentity)|TestMediaCreateFingerprint(RejectsInvalidNonURLContentIdentity|PreservesStableInputDifferences|DistinguishesNormalizedExternalURLs))$' -count=1
+```
+
+退出码 `0`，service `0.921s`。
+
+### 第六轮扩大验证
+
+直接 Orchestrator 与 fingerprint 回归：
+
+```bash
+go test ./internal/service -run 'TestMedia(Orchestrator|CreateFingerprint)' -count=1
+```
+
+退出码 `0`，service `0.829s`。
+
+扩大三包媒体回归：
+
+```bash
+go test ./internal/service ./internal/repository ./internal/handler -run '^TestMedia' -count=1
+```
+
+退出码 `0`：service `1.824s`、repository `2.044s`、handler `1.672s`。
+
+直接相关 race：
+
+```bash
+go test -race ./internal/service -run 'TestMedia(Orchestrator|CreateFingerprint)' -count=1
+```
+
+退出码 `0`，service `2.209s`。
+
+其余门禁：`gofmt`、`git diff --check` 均退出码 `0`；`git diff --exit-code c6f881a22 -- backend/internal/server/routes/gateway.go` 以及 `git diff --exit-code -- backend/cmd/server/wire_gen.go backend/go.mod backend/go.sum` 均退出码 `0`。搜索确认无 Cancel/DELETE、无测试 Skip/Only。
+
+### 第六轮 code-audit
+
+自审覆盖校验顺序、SHA-256 长度/十六进制语义、size 与真实 Stage 输出、ExternalURL 豁免、指纹 canonical、Artifact 生命周期和错误公开映射。`hex.DecodeString` 的结果必须恰好为 `sha256.Size`，避免仅检查字符串长度；规范化后的 checksum 同时进入 stable fingerprint 与后续 durable Artifact metadata。
+
+实现不改变 RequestSpec、Artifact/queue payload shape、公开 DTO、数据库 schema 或依赖。无新增 concerns；两个登记 Minor 按要求未处理。

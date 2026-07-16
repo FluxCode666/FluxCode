@@ -358,6 +358,7 @@ func TestMediaOrchestratorPersistsResolvedCandidateAndDurableInputSnapshot(t *te
 	req.Operation = MediaOperationImageToImage
 	req.Inputs = []MediaArtifactInput{{
 		Position: 0, MediaType: MediaTypeImage, ContentType: "image/png", ObjectKey: "media/input/source.png",
+		SizeBytes: 128, ChecksumSHA256: strings.Repeat("d", 64),
 	}}
 
 	result, err := fixture.orchestrator.Create(context.Background(), req)
@@ -561,6 +562,100 @@ func TestMediaOrchestratorIdempotencyRetryReusesUploadWhenUpstreamReferenceChang
 	first, err := fixture.orchestrator.Create(context.Background(), req)
 	require.NoError(t, err)
 	req.Inputs[0].UpstreamReference = "temporary-upstream-reference-second"
+	second, err := fixture.orchestrator.Create(context.Background(), req)
+	require.NoError(t, err)
+	require.Equal(t, first.Task.PublicID, second.Task.PublicID)
+	require.False(t, second.InputsAdopted)
+	require.Equal(t, 1, fixture.repo.createCalls())
+	require.Equal(t, 1, fixture.billing.prechargeCalls())
+}
+
+func TestMediaOrchestratorRejectsUnidentifiedNonURLInputsBeforeIdempotentReuse(t *testing.T) {
+	for _, tt := range []struct {
+		name      string
+		firstRef  func(*MediaArtifactInput)
+		secondRef func(*MediaArtifactInput)
+	}{
+		{
+			name: "object key",
+			firstRef: func(input *MediaArtifactInput) {
+				input.ObjectKey = "staged/unidentified-object-first"
+			},
+			secondRef: func(input *MediaArtifactInput) {
+				input.ObjectKey = "staged/unidentified-object-second"
+			},
+		},
+		{
+			name: "upstream reference",
+			firstRef: func(input *MediaArtifactInput) {
+				input.UpstreamReference = "unidentified-upstream-first"
+			},
+			secondRef: func(input *MediaArtifactInput) {
+				input.UpstreamReference = "unidentified-upstream-second"
+			},
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			fixture := newMediaOrchestratorFixture(t)
+			req := validAsyncMediaCreateRequest()
+			req.Operation = MediaOperationImageToImage
+			req.IdempotencyKey = "idem-unidentified-" + tt.name
+			req.Inputs = []MediaArtifactInput{{
+				Direction: "input", Position: 0, MediaType: MediaTypeImage, ContentType: "image/png",
+			}}
+			tt.firstRef(&req.Inputs[0])
+
+			first, firstErr := fixture.orchestrator.Create(context.Background(), req)
+			req.Inputs[0].ObjectKey = ""
+			req.Inputs[0].UpstreamReference = ""
+			tt.secondRef(&req.Inputs[0])
+			second, secondErr := fixture.orchestrator.Create(context.Background(), req)
+
+			require.ErrorIs(t, firstErr, ErrMediaInputNotRecoverable)
+			require.ErrorIs(t, secondErr, ErrMediaInputNotRecoverable)
+			require.Nil(t, first)
+			require.Nil(t, second)
+			require.Equal(t, 0, fixture.repo.createCalls())
+			require.Equal(t, 0, fixture.billing.prechargeCalls())
+		})
+	}
+}
+
+func TestMediaCreateFingerprintRejectsInvalidNonURLContentIdentity(t *testing.T) {
+	validChecksum := strings.Repeat("e", 64)
+	for _, tt := range []struct {
+		name     string
+		size     int64
+		checksum string
+	}{
+		{name: "missing size", checksum: validChecksum},
+		{name: "missing checksum", size: 128},
+		{name: "short checksum", size: 128, checksum: strings.Repeat("a", 63)},
+		{name: "non hex checksum", size: 128, checksum: strings.Repeat("z", 64)},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			req := validMediaCreateRequestForOperation(MediaOperationImageToImage)
+			req.Inputs = []MediaArtifactInput{{
+				Direction: "input", Position: 0, MediaType: MediaTypeImage, ContentType: "image/png",
+				SizeBytes: tt.size, ChecksumSHA256: tt.checksum, ObjectKey: "staged/input",
+			}}
+			_, err := mediaCreateFingerprint(req)
+			require.ErrorIs(t, err, ErrMediaInputNotRecoverable)
+		})
+	}
+}
+
+func TestMediaOrchestratorExternalURLDoesNotRequireUploadContentIdentity(t *testing.T) {
+	fixture := newMediaOrchestratorFixture(t)
+	req := validMediaCreateRequestForOperation(MediaOperationImageToImage)
+	req.IdempotencyKey = "idem-external-url-without-upload-checksum"
+	req.Inputs = []MediaArtifactInput{{
+		Direction: "input", Position: 0, MediaType: MediaTypeImage, ContentType: "image/png",
+		ExternalURL: "https://media.example/input.png?version=1",
+	}}
+
+	first, err := fixture.orchestrator.Create(context.Background(), req)
+	require.NoError(t, err)
 	second, err := fixture.orchestrator.Create(context.Background(), req)
 	require.NoError(t, err)
 	require.Equal(t, first.Task.PublicID, second.Task.PublicID)
@@ -1459,14 +1554,16 @@ func validMediaCreateRequestForOperation(operation MediaOperation) MediaCreateRe
 func validOrchestratorImageInput(position int, contentType string) MediaArtifactInput {
 	return MediaArtifactInput{
 		Position: position, MediaType: MediaTypeImage, ContentType: contentType,
-		ObjectKey: fmt.Sprintf("media/input/image-%d", position),
+		ObjectKey: fmt.Sprintf("media/input/image-%d", position), SizeBytes: int64(100 + position),
+		ChecksumSHA256: fmt.Sprintf("%064x", position+1),
 	}
 }
 
 func validOrchestratorVideoInput(position int, contentType string) MediaArtifactInput {
 	return MediaArtifactInput{
 		Position: position, MediaType: MediaTypeVideo, ContentType: contentType,
-		ObjectKey: fmt.Sprintf("media/input/video-%d", position),
+		ObjectKey: fmt.Sprintf("media/input/video-%d", position), SizeBytes: int64(100 + position),
+		ChecksumSHA256: fmt.Sprintf("%064x", position+1),
 	}
 }
 
