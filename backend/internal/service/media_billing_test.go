@@ -166,12 +166,103 @@ func TestMediaBillingCoordinatorRejectsSettledRecoveryWithoutFormalPlan(t *testi
 	})
 }
 
+func TestMediaBillingCoordinatorRejectsSettledSuccessToFailureConflict(t *testing.T) {
+	usage := MediaUsage{ImageCount: 2, ImageSize: "1024x1024"}
+	task := settledMediaBillingTask(t, 110, "billing-settled-success-conflict", MediaSettlementPlan{
+		Type: MediaSettlementTypeSuccess, Usage: &usage,
+	})
+	task.FinalAmount = task.PrechargedAmount
+	task.RefundedAmount = 0
+	repo := newWorkerTaskRepository(task)
+	port := &recordingMediaBillingPort{}
+	coordinator := NewMediaBillingCoordinator(repo, port)
+	before := repo.mustGet(task.ID)
+
+	err := coordinator.SettleFailure(context.Background(), task, MediaFailureSettlement{
+		Kind: MediaFailureKindSyncTimeout, RefundRatio: 1, ErrorCode: "system_timeout",
+	})
+	require.ErrorIs(t, err, ErrMediaSettlementPlanConflict)
+	assertSettledMediaBillingTaskUnchanged(t, before, repo.mustGet(task.ID))
+	require.Zero(t, port.settlementAttemptCalls())
+}
+
+func TestMediaBillingCoordinatorRejectsSettledFailureToSuccessConflict(t *testing.T) {
+	failure := MediaFailureSettlement{
+		Kind: MediaFailureKindSystem, RefundRatio: 1, ErrorCode: "system_storage",
+	}
+	task := settledMediaBillingTask(t, 111, "billing-settled-failure-conflict", MediaSettlementPlan{
+		Type: MediaSettlementTypeFailure, Failure: &failure,
+	})
+	task.FinalAmount = 0
+	task.RefundedAmount = task.PrechargedAmount
+	repo := newWorkerTaskRepository(task)
+	port := &recordingMediaBillingPort{}
+	coordinator := NewMediaBillingCoordinator(repo, port)
+	before := repo.mustGet(task.ID)
+
+	err := coordinator.SettleSuccess(context.Background(), task, MediaUsage{ImageCount: 1})
+	require.ErrorIs(t, err, ErrMediaSettlementPlanConflict)
+	assertSettledMediaBillingTaskUnchanged(t, before, repo.mustGet(task.ID))
+	require.Zero(t, port.settlementAttemptCalls())
+}
+
+func TestMediaBillingCoordinatorTreatsMatchingSettledPlanAsIdempotent(t *testing.T) {
+	usage := MediaUsage{ImageCount: 1, ImageSize: "1024x1024"}
+	task := settledMediaBillingTask(t, 112, "billing-settled-same-plan", MediaSettlementPlan{
+		Type: MediaSettlementTypeSuccess, Usage: &usage,
+	})
+	task.FinalAmount = task.PrechargedAmount
+	repo := newWorkerTaskRepository(task)
+	port := &recordingMediaBillingPort{}
+	coordinator := NewMediaBillingCoordinator(repo, port)
+	before := repo.mustGet(task.ID)
+
+	require.NoError(t, coordinator.SettleSuccess(context.Background(), task, usage))
+	require.NoError(t, coordinator.RetryPending(context.Background(), task.ID))
+	assertSettledMediaBillingTaskUnchanged(t, before, repo.mustGet(task.ID))
+	require.Zero(t, port.settlementAttemptCalls())
+}
+
 func TestMediaBillingCoordinatorAcceptsLegacySettledTaskWithoutSettlementPlans(t *testing.T) {
-	task := workerCompletedTask(110, "billing-legacy-settled")
+	task := workerCompletedTask(113, "billing-legacy-settled")
 	task.BillingStatus = MediaBillingStatusSettled
-	coordinator := NewMediaBillingCoordinator(newWorkerTaskRepository(task), &recordingMediaBillingPort{})
+	task.FinalAmount = 1.25
+	task.RefundedAmount = 1.75
+	repo := newWorkerTaskRepository(task)
+	port := &recordingMediaBillingPort{}
+	coordinator := NewMediaBillingCoordinator(repo, port)
+	before := repo.mustGet(task.ID)
 
 	require.NoError(t, coordinator.RetryPending(context.Background(), task.ID))
+	require.NoError(t, coordinator.SettleFailure(context.Background(), task, MediaFailureSettlement{
+		Kind: MediaFailureKindSystem, RefundRatio: 1, ErrorCode: "system_storage",
+	}))
+	assertSettledMediaBillingTaskUnchanged(t, before, repo.mustGet(task.ID))
+	require.Empty(t, repo.mustGet(task.ID).SettlementPlan)
+	require.Empty(t, repo.mustGet(task.ID).SettlementRecovery)
+	require.Zero(t, port.settlementAttemptCalls())
+}
+
+func settledMediaBillingTask(t *testing.T, id int64, publicID string, plan MediaSettlementPlan) *MediaTask {
+	t.Helper()
+	encoded, err := json.Marshal(plan)
+	require.NoError(t, err)
+	task := workerCompletedTask(id, publicID)
+	task.BillingStatus = MediaBillingStatusSettled
+	task.SettlementPlan = append(json.RawMessage(nil), encoded...)
+	task.SettlementRecovery = append(json.RawMessage(nil), encoded...)
+	return task
+}
+
+func assertSettledMediaBillingTaskUnchanged(t *testing.T, before, after *MediaTask) {
+	t.Helper()
+	require.Equal(t, before.Status, after.Status)
+	require.Equal(t, before.BillingStatus, after.BillingStatus)
+	require.Equal(t, before.PrechargedAmount, after.PrechargedAmount)
+	require.Equal(t, before.FinalAmount, after.FinalAmount)
+	require.Equal(t, before.RefundedAmount, after.RefundedAmount)
+	require.Equal(t, before.SettlementPlan, after.SettlementPlan)
+	require.Equal(t, before.SettlementRecovery, after.SettlementRecovery)
 }
 
 type recordingMediaBillingPort struct {
@@ -212,4 +303,10 @@ func (p *recordingMediaBillingPort) successfulSettlementCalls() int {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.successfulSettlements
+}
+
+func (p *recordingMediaBillingPort) settlementAttemptCalls() int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.settlementAttempts
 }

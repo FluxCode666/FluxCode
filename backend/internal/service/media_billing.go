@@ -132,14 +132,14 @@ func (c *MediaBillingCoordinator) settle(ctx context.Context, task *MediaTask, p
 	if err := validatePersistedMediaSettlementConsistency(current); err != nil {
 		return err
 	}
-	if current.BillingStatus == MediaBillingStatusSettled {
-		return nil
-	}
 	if err := validateMediaSettlementRecovery(current, plan); err != nil {
 		return err
 	}
 	if len(current.SettlementPlan) > 0 && !mediaSettlementPlansEqual(current.SettlementPlan, encoded) {
 		return fmt.Errorf("%w: task %d", ErrMediaSettlementPlanConflict, task.ID)
+	}
+	if current.BillingStatus == MediaBillingStatusSettled {
+		return nil
 	}
 	if len(current.SettlementPlan) == 0 {
 		updated, updateErr := c.repo.UpdateBilling(ctx, current.ID, current.BillingStatus, map[string]any{
