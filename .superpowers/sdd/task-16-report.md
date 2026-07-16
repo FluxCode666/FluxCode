@@ -716,3 +716,90 @@ go test -race ./internal/service ./internal/repository ./internal/handler -run '
 高风险复审覆盖 primary/cleanup error chain 隔离、partial object lifecycle、observer 去重与安全字段、MOV 文件扩展与内容一致性、ISO-BMFF size/整数/截断/scan 上限、MP4/WebM 和 URL `.MOV` 反例。box size 在转换为 `int` 前已限制为不超过当前 `[]byte` 剩余长度；brand payload 只可能来自 4 KiB sniff 范围。
 
 审计结论：通过，无已知阻断或非阻断代码风险。仍未执行无过滤完整 service/全仓功能套件，原因继续为既有 OpenAI stub concurrent-map fatal；本轮仅将 `go test ./... -run '^$'` 表述为全仓编译型 PASS。
+
+## 第五轮复审修复追加（2026-07-17）
+
+### 范围与结论
+
+- 修复基线：`91a48ac32 fix(media): isolate cleanup errors and validate mov`。
+- 本轮仅修复 1 个 Important：multipart Stage 的瞬态存储引用不得影响 Idempotency-Key 请求指纹。
+- 实际代码改动文件为 `backend/internal/service/media_orchestrator.go` 和 `backend/internal/service/media_orchestrator_test.go`；本报告为第三个改动文件。未修改 progress、生产 gateway、生成文件、Adapter、取消 API、文本链路、nil Body fallback 或 Range 数值语义。
+
+### Important：上传输入的稳定指纹身份
+
+原 `mediaCreateFingerprint` 直接序列化完整 `MediaArtifactInput`，因此 Stage 每次随机生成的 `ObjectKey` 或 `UpstreamReference` 都进入 SHA-256 指纹。同一 multipart 内容使用同一 Idempotency-Key 重试时，即使 checksum、size、position 和媒体元数据完全相同，只要临时对象引用变化就被错误判为冲突。
+
+新增稳定输入身份，仅包含：
+
+- position、MediaType、ContentType；
+- SizeBytes、ChecksumSHA256；
+- Width、Height、DurationSeconds、Resolution、FPS；
+- 已由 Stage 规范化的 ExternalURL。
+
+`ObjectKey`、`UpstreamReference`、Direction 和原始 Data 均不进入指纹。Direction 已在 `normalizeMediaInputs` 固定为 `input`；Data 在同一层明确拒绝并清空。输入仍按 position 排序，因此仅切换 slice 物理顺序不会改变指纹，而 position 与内容的对应关系变化仍会改变指纹。
+
+RED：
+
+```bash
+go test ./internal/service -run '^TestMediaOrchestratorIdempotencyRetryReusesUploadWhenObjectKeyChanges$' -count=1
+```
+
+退出码 `1`，service `0.854s`。关键失败为第二次请求返回：
+
+```text
+media idempotency key conflicts with the original request
+```
+
+失败原因与 finding 一致：唯一变化是 `ObjectKey` 从 `staged/random-object-first` 变为 `staged/random-object-second`，checksum、size、position 和媒体元数据相同。
+
+最小实现后的 GREEN：同一命令退出码 `0`，service `0.853s`；第二次请求复用首个 PublicID、`InputsAdopted=false`、task create 与 billing precharge 均只有一次，后台仅保留首个输入 Artifact。
+
+补充守护测试覆盖：
+
+- 相同 checksum 但不同 `UpstreamReference` 同样复用；
+- checksum 真正变化仍返回 `ErrMediaIdempotencyConflict`；
+- position 对应关系、size 元数据和规范化 ExternalURL 变化仍产生不同指纹；
+- 输入 slice 物理顺序变化但 position 不变时指纹保持相同；
+- 不符合 operation 的 MediaType 仍被 `ErrMediaInputNotRecoverable` 拒绝。
+
+联合直接测试：
+
+```bash
+go test ./internal/service -run '^(TestMediaOrchestratorIdempotencyRetryReusesUploadWhen(ObjectKey|UpstreamReference)Changes|TestMediaCreateFingerprint(PreservesStableInputDifferences|DistinguishesNormalizedExternalURLs))$' -count=1
+```
+
+退出码 `0`，service `0.912s`。
+
+### 第五轮扩大验证
+
+直接 Orchestrator 与 fingerprint 回归：
+
+```bash
+go test ./internal/service -run 'TestMedia(Orchestrator|CreateFingerprint)' -count=1
+```
+
+退出码 `0`，service `0.622s`。
+
+扩大三包媒体回归：
+
+```bash
+go test ./internal/service ./internal/repository ./internal/handler -run '^TestMedia' -count=1
+```
+
+退出码 `0`：service `1.560s`、repository `1.960s`、handler `1.593s`。
+
+直接相关 race：
+
+```bash
+go test -race ./internal/service -run 'TestMedia(Orchestrator|CreateFingerprint)' -count=1
+```
+
+退出码 `0`，service `2.133s`。
+
+其余门禁：`gofmt`、`git diff --check` 均退出码 `0`；`git diff --exit-code c6f881a22 -- backend/internal/server/routes/gateway.go` 以及 `git diff --exit-code -- backend/cmd/server/wire_gen.go backend/go.mod backend/go.sum` 均退出码 `0`。搜索确认无 Cancel/DELETE、无测试 Skip/Only，稳定身份结构不含 Data、ObjectKey 或 UpstreamReference。
+
+### 第五轮 code-audit
+
+自审重点覆盖 canonical JSON 字段、输入排序、存储引用排除、内容差异反例、外部 URL、MediaType 验证与公开任务 JSON。实现只改变内部 RequestFingerprint 的输入子结构，不改变任务 RequestSpec、durable Artifact、队列 payload、公开 DTO、数据库 schema 或依赖。
+
+历史 fingerprint 兼容性不构成当前生产迁移风险：Task 16 的生产媒体路由/provider 链仍按既定边界保持 opt-in 且不可达，Task 17 尚未启用。除此之外无已知 concerns。两个已登记 Minor（nil Body fallback、Range 数值语义）按控制器要求未在本轮处理。

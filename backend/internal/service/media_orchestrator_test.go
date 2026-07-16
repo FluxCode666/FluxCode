@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -508,6 +509,123 @@ func TestMediaOrchestratorIdempotencyKeyReusesTaskWithoutSecondCharge(t *testing
 	req.Spec.Image.Prompt = "different"
 	_, err = fixture.orchestrator.Create(context.Background(), req)
 	require.ErrorIs(t, err, ErrMediaIdempotencyConflict)
+}
+
+func TestMediaOrchestratorIdempotencyRetryReusesUploadWhenObjectKeyChanges(t *testing.T) {
+	fixture := newMediaOrchestratorFixture(t)
+	req := validAsyncMediaCreateRequest()
+	req.Operation = MediaOperationImageToImage
+	req.IdempotencyKey = "idem-stable-upload"
+	req.Inputs = []MediaArtifactInput{{
+		Direction: "input", Position: 0, MediaType: MediaTypeImage, ContentType: "image/png",
+		SizeBytes: 128, ChecksumSHA256: strings.Repeat("a", 64), ObjectKey: "staged/random-object-first",
+		Width: 16, Height: 8, Resolution: "16x8",
+	}}
+
+	first, err := fixture.orchestrator.Create(context.Background(), req)
+	require.NoError(t, err)
+	require.True(t, first.InputsAdopted)
+	req.Inputs[0].ObjectKey = "staged/random-object-second"
+
+	second, err := fixture.orchestrator.Create(context.Background(), req)
+	require.NoError(t, err)
+	require.Equal(t, first.Task.PublicID, second.Task.PublicID)
+	require.False(t, second.InputsAdopted)
+	require.Equal(t, 1, fixture.repo.createCalls())
+	require.Equal(t, 1, fixture.billing.prechargeCalls())
+	artifacts, readErr := fixture.artifacts.ListByTaskID(context.Background(), first.Task.ID)
+	require.NoError(t, readErr)
+	require.Len(t, artifacts, 1)
+	require.Equal(t, "staged/random-object-first", artifacts[0].ObjectKey)
+
+	differentContent := req
+	differentContent.Inputs = append([]MediaArtifactInput(nil), req.Inputs...)
+	differentContent.Inputs[0].ObjectKey = "staged/random-object-third"
+	differentContent.Inputs[0].ChecksumSHA256 = strings.Repeat("b", 64)
+	_, err = fixture.orchestrator.Create(context.Background(), differentContent)
+	require.ErrorIs(t, err, ErrMediaIdempotencyConflict)
+	require.Equal(t, 1, fixture.billing.prechargeCalls())
+}
+
+func TestMediaOrchestratorIdempotencyRetryReusesUploadWhenUpstreamReferenceChanges(t *testing.T) {
+	fixture := newMediaOrchestratorFixture(t)
+	req := validAsyncMediaCreateRequest()
+	req.Operation = MediaOperationImageToImage
+	req.IdempotencyKey = "idem-stable-upstream-reference"
+	req.Inputs = []MediaArtifactInput{{
+		Direction: "input", Position: 0, MediaType: MediaTypeImage, ContentType: "image/png",
+		SizeBytes: 128, ChecksumSHA256: strings.Repeat("c", 64),
+		UpstreamReference: "temporary-upstream-reference-first", Width: 16, Height: 8,
+	}}
+
+	first, err := fixture.orchestrator.Create(context.Background(), req)
+	require.NoError(t, err)
+	req.Inputs[0].UpstreamReference = "temporary-upstream-reference-second"
+	second, err := fixture.orchestrator.Create(context.Background(), req)
+	require.NoError(t, err)
+	require.Equal(t, first.Task.PublicID, second.Task.PublicID)
+	require.False(t, second.InputsAdopted)
+	require.Equal(t, 1, fixture.repo.createCalls())
+	require.Equal(t, 1, fixture.billing.prechargeCalls())
+}
+
+func TestMediaCreateFingerprintPreservesStableInputDifferences(t *testing.T) {
+	req := validMediaCreateRequestForOperation(MediaOperationReferenceVideo)
+	req.Inputs = []MediaArtifactInput{
+		{
+			Direction: "input", Position: 0, MediaType: MediaTypeImage, ContentType: "image/png",
+			SizeBytes: 100, ChecksumSHA256: strings.Repeat("1", 64), ObjectKey: "staged/first",
+		},
+		{
+			Direction: "input", Position: 1, MediaType: MediaTypeImage, ContentType: "image/jpeg",
+			SizeBytes: 200, ChecksumSHA256: strings.Repeat("2", 64), ObjectKey: "staged/second",
+		},
+	}
+	base, err := mediaCreateFingerprint(req)
+	require.NoError(t, err)
+
+	reversed := req
+	reversed.Inputs = []MediaArtifactInput{req.Inputs[1], req.Inputs[0]}
+	reversedFingerprint, err := mediaCreateFingerprint(reversed)
+	require.NoError(t, err)
+	require.Equal(t, base, reversedFingerprint)
+
+	positionsChanged := req
+	positionsChanged.Inputs = append([]MediaArtifactInput(nil), req.Inputs...)
+	positionsChanged.Inputs[0].Position = 1
+	positionsChanged.Inputs[1].Position = 0
+	positionsFingerprint, err := mediaCreateFingerprint(positionsChanged)
+	require.NoError(t, err)
+	require.NotEqual(t, base, positionsFingerprint)
+
+	metadataChanged := req
+	metadataChanged.Inputs = append([]MediaArtifactInput(nil), req.Inputs...)
+	metadataChanged.Inputs[0].SizeBytes++
+	metadataFingerprint, err := mediaCreateFingerprint(metadataChanged)
+	require.NoError(t, err)
+	require.NotEqual(t, base, metadataFingerprint)
+
+	wrongMediaType := req
+	wrongMediaType.Inputs = append([]MediaArtifactInput(nil), req.Inputs...)
+	wrongMediaType.Inputs[0].MediaType = MediaTypeVideo
+	wrongMediaType.Inputs[0].ContentType = "video/mp4"
+	_, err = mediaCreateFingerprint(wrongMediaType)
+	require.ErrorIs(t, err, ErrMediaInputNotRecoverable)
+}
+
+func TestMediaCreateFingerprintDistinguishesNormalizedExternalURLs(t *testing.T) {
+	req := validMediaCreateRequestForOperation(MediaOperationImageToImage)
+	req.Inputs = []MediaArtifactInput{{
+		Direction: "input", Position: 0, MediaType: MediaTypeImage, ContentType: "image/png",
+		ExternalURL: "https://media.example/input.png?version=1",
+	}}
+	first, err := mediaCreateFingerprint(req)
+	require.NoError(t, err)
+
+	req.Inputs[0].ExternalURL = "https://media.example/input.png?version=2"
+	second, err := mediaCreateFingerprint(req)
+	require.NoError(t, err)
+	require.NotEqual(t, first, second)
 }
 
 func TestMediaOrchestratorIdempotencyCreateRaceLoserNeverPrecharges(t *testing.T) {

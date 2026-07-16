@@ -666,21 +666,43 @@ func mediaCreateFingerprint(req MediaCreateRequest) (string, error) {
 	if err != nil && len(req.Inputs) > 0 {
 		return "", err
 	}
+	type stableInputIdentity struct {
+		Position        int       `json:"position"`
+		MediaType       MediaType `json:"media_type"`
+		ContentType     string    `json:"content_type"`
+		SizeBytes       int64     `json:"size_bytes"`
+		ChecksumSHA256  string    `json:"checksum_sha256"`
+		ExternalURL     string    `json:"external_url,omitempty"`
+		Width           int       `json:"width,omitempty"`
+		Height          int       `json:"height,omitempty"`
+		DurationSeconds float64   `json:"duration_seconds,omitempty"`
+		Resolution      string    `json:"resolution,omitempty"`
+		FPS             float64   `json:"fps,omitempty"`
+	}
+	stableInputs := make([]stableInputIdentity, len(inputs))
+	for i, input := range inputs {
+		stableInputs[i] = stableInputIdentity{
+			Position: input.Position, MediaType: input.MediaType, ContentType: input.ContentType,
+			SizeBytes: input.SizeBytes, ChecksumSHA256: input.ChecksumSHA256, ExternalURL: input.ExternalURL,
+			Width: input.Width, Height: input.Height, DurationSeconds: input.DurationSeconds,
+			Resolution: input.Resolution, FPS: input.FPS,
+		}
+	}
 	canonical := struct {
-		UserID         int64                `json:"user_id"`
-		APIKeyID       int64                `json:"api_key_id"`
-		GroupID        int64                `json:"group_id"`
-		MediaType      MediaType            `json:"media_type"`
-		Operation      MediaOperation       `json:"operation"`
-		RequestedModel string               `json:"requested_model"`
-		Spec           MediaSpec            `json:"spec"`
-		Inputs         []MediaArtifactInput `json:"inputs,omitempty"`
-		ClientAsync    bool                 `json:"client_async"`
-		SessionHash    string               `json:"session_hash,omitempty"`
+		UserID         int64                 `json:"user_id"`
+		APIKeyID       int64                 `json:"api_key_id"`
+		GroupID        int64                 `json:"group_id"`
+		MediaType      MediaType             `json:"media_type"`
+		Operation      MediaOperation        `json:"operation"`
+		RequestedModel string                `json:"requested_model"`
+		Spec           MediaSpec             `json:"spec"`
+		Inputs         []stableInputIdentity `json:"inputs,omitempty"`
+		ClientAsync    bool                  `json:"client_async"`
+		SessionHash    string                `json:"session_hash,omitempty"`
 	}{
 		UserID: req.UserID, APIKeyID: req.APIKeyID, GroupID: req.GroupID,
 		MediaType: req.MediaType, Operation: req.Operation, RequestedModel: strings.TrimSpace(req.RequestedModel),
-		Spec: req.Spec, Inputs: inputs, ClientAsync: req.ClientAsync, SessionHash: req.SessionHash,
+		Spec: req.Spec, Inputs: stableInputs, ClientAsync: req.ClientAsync, SessionHash: req.SessionHash,
 	}
 	encoded, err := json.Marshal(canonical)
 	if err != nil {
