@@ -358,7 +358,7 @@ func TestMediaOrchestratorPersistsResolvedCandidateAndDurableInputSnapshot(t *te
 	req.Operation = MediaOperationImageToImage
 	req.Inputs = []MediaArtifactInput{{
 		Position: 0, MediaType: MediaTypeImage, ContentType: "image/png", ObjectKey: "media/input/source.png",
-		SizeBytes: 128, ChecksumSHA256: strings.Repeat("d", 64),
+		SizeBytes: 128, ChecksumSHA256: strings.Repeat("D", 64),
 	}}
 
 	result, err := fixture.orchestrator.Create(context.Background(), req)
@@ -370,10 +370,15 @@ func TestMediaOrchestratorPersistsResolvedCandidateAndDurableInputSnapshot(t *te
 	var spec MediaSpec
 	require.NoError(t, json.Unmarshal(stored.RequestSpec, &spec))
 	require.Len(t, spec.Image.InputArtifactIDs, 1)
+	require.NotContains(t, string(stored.RequestSpec), "checksum")
+	require.NotContains(t, string(stored.RequestSpec), "size_bytes")
 	artifacts, err := fixture.artifacts.ListByTaskID(context.Background(), stored.ID)
 	require.NoError(t, err)
 	require.Equal(t, "input", artifacts[0].Direction)
 	require.Equal(t, "media/input/source.png", artifacts[0].ObjectKey)
+	require.Equal(t, int64(128), artifacts[0].SizeBytes)
+	require.Equal(t, strings.Repeat("d", 64), artifacts[0].ChecksumSHA256)
+	require.Equal(t, 2, fixture.queue.enqueueCalls())
 }
 
 func TestMediaOrchestratorRejectsRawOrNonRecoverableInputsBeforeTaskAndCharge(t *testing.T) {
@@ -561,6 +566,14 @@ func TestMediaOrchestratorIdempotencyRetryReusesUploadWhenUpstreamReferenceChang
 
 	first, err := fixture.orchestrator.Create(context.Background(), req)
 	require.NoError(t, err)
+	artifacts, readErr := fixture.artifacts.ListByTaskID(context.Background(), first.Task.ID)
+	require.NoError(t, readErr)
+	require.Len(t, artifacts, 1)
+	require.Empty(t, artifacts[0].ObjectKey)
+	require.Equal(t, "temporary-upstream-reference-first", artifacts[0].UpstreamReference)
+	require.Empty(t, artifacts[0].PublicURL)
+	require.Equal(t, int64(128), artifacts[0].SizeBytes)
+	require.Equal(t, strings.Repeat("c", 64), artifacts[0].ChecksumSHA256)
 	req.Inputs[0].UpstreamReference = "temporary-upstream-reference-second"
 	second, err := fixture.orchestrator.Create(context.Background(), req)
 	require.NoError(t, err)
@@ -656,6 +669,14 @@ func TestMediaOrchestratorExternalURLDoesNotRequireUploadContentIdentity(t *test
 
 	first, err := fixture.orchestrator.Create(context.Background(), req)
 	require.NoError(t, err)
+	artifacts, readErr := fixture.artifacts.ListByTaskID(context.Background(), first.Task.ID)
+	require.NoError(t, readErr)
+	require.Len(t, artifacts, 1)
+	require.Empty(t, artifacts[0].ObjectKey)
+	require.Empty(t, artifacts[0].UpstreamReference)
+	require.Equal(t, req.Inputs[0].ExternalURL, artifacts[0].PublicURL)
+	require.Zero(t, artifacts[0].SizeBytes)
+	require.Empty(t, artifacts[0].ChecksumSHA256)
 	second, err := fixture.orchestrator.Create(context.Background(), req)
 	require.NoError(t, err)
 	require.Equal(t, first.Task.PublicID, second.Task.PublicID)

@@ -889,3 +889,90 @@ go test -race ./internal/service -run 'TestMedia(Orchestrator|CreateFingerprint)
 自审覆盖校验顺序、SHA-256 长度/十六进制语义、size 与真实 Stage 输出、ExternalURL 豁免、指纹 canonical、Artifact 生命周期和错误公开映射。`hex.DecodeString` 的结果必须恰好为 `sha256.Size`，避免仅检查字符串长度；规范化后的 checksum 同时进入 stable fingerprint 与后续 durable Artifact metadata。
 
 实现不改变 RequestSpec、Artifact/queue payload shape、公开 DTO、数据库 schema 或依赖。无新增 concerns；两个登记 Minor 按要求未处理。
+
+## 第七轮复审修复追加（2026-07-17）
+
+### 范围与结论
+
+- 修复基线：`6a29a1d2f fix(media): require stable upload identity`。
+- 本轮仅修复 1 个 Important：已验证/规范化的上传 size/checksum 必须进入 durable input Artifact。
+- 实际代码改动文件为 `backend/internal/service/media_orchestrator.go` 和 `backend/internal/service/media_orchestrator_test.go`；本报告为第三个改动文件。未修改生产 gateway、生成文件、Adapter、取消 API、文本链路、RequestSpec/queue payload shape，也未处理已登记的两个 Minor。
+
+### Important：durable Artifact 保留稳定内容元数据
+
+原 `persistInputs` 创建 `MediaArtifact` 时复制了 ContentType、对象引用和媒体尺寸元数据，但遗漏 `SizeBytes` 与 `ChecksumSHA256`。第六轮 normalize 已验证的稳定内容身份因此只存在于 fingerprint，最终 durable Artifact 仍为 size=0、checksum=""，削弱恢复、审计和完整性校验。
+
+本轮最小生产修复仅在 `MediaArtifact` 初始化中增加：
+
+```go
+SizeBytes: input.SizeBytes, ChecksumSHA256: input.ChecksumSHA256
+```
+
+输入来自 `validateRequest` 返回的 normalized inputs，因此大写 SHA-256 已在持久化前规范为小写。没有改变 Artifact 类型、repository 接口、DB schema 或 payload shape。
+
+RED：
+
+```bash
+go test ./internal/service -run '^TestMediaOrchestratorPersistsResolvedCandidateAndDurableInputSnapshot$' -count=1
+```
+
+退出码 `1`，service `0.927s`。测试传入 `SizeBytes=128` 和大写 64 位十六进制 SHA-256，关键失败为：
+
+```text
+expected: 128
+actual  : 0
+```
+
+失败原因与 finding 一致：真实持久化路径创建 Artifact 时未复制 size；checksum 也会因同一遗漏保持为空。
+
+GREEN：同一命令退出码 `0`，service `0.907s`；durable input Artifact 的 size 为 128，checksum 为 normalize 后的小写 64 位 SHA-256。
+
+守护测试同时验证：
+
+- RequestSpec 仍只保存 input Artifact ID，不包含 checksum 或 size_bytes。
+- queue enqueue 调用次数保持 2。
+- ObjectKey 继续写入 ObjectKey；UpstreamReference 继续写入 UpstreamReference；ExternalURL 继续写入 PublicURL。
+- ExternalURL 输入仍保持 size=0/checksum=""，不被误当作上传内容身份。
+- UpstreamReference staged 上传同时保留原引用及 size/checksum。
+
+守护联合命令：
+
+```bash
+go test ./internal/service -run '^TestMediaOrchestrator(PersistsResolvedCandidateAndDurableInputSnapshot|IdempotencyRetryReusesUploadWhenUpstreamReferenceChanges|ExternalURLDoesNotRequireUploadContentIdentity)$' -count=1
+```
+
+退出码 `0`，service `0.846s`。
+
+### 第七轮扩大验证
+
+直接 Orchestrator 与 fingerprint 回归：
+
+```bash
+go test ./internal/service -run 'TestMedia(Orchestrator|CreateFingerprint)' -count=1
+```
+
+退出码 `0`，service `0.612s`。
+
+扩大三包媒体回归：
+
+```bash
+go test ./internal/service ./internal/repository ./internal/handler -run '^TestMedia' -count=1
+```
+
+退出码 `0`：service `1.582s`、repository `1.961s`、handler `1.585s`。
+
+直接相关 race：
+
+```bash
+go test -race ./internal/service -run 'TestMedia(Orchestrator|CreateFingerprint)' -count=1
+```
+
+退出码 `0`，service `2.143s`。
+
+其余门禁：`gofmt`、`git diff --check` 均退出码 `0`；`git diff --exit-code c6f881a22 -- backend/internal/server/routes/gateway.go` 以及 `git diff --exit-code -- backend/cmd/server/wire_gen.go backend/go.mod backend/go.sum` 均退出码 `0`。搜索确认无 Cancel/DELETE、无测试 Skip/Only。
+
+### 第七轮 code-audit
+
+自审覆盖 normalize→fingerprint→persistInputs 数据流、大小写规范化、Artifact 引用字段、RequestSpec 和 queue 行为。生产差异仅为 durable Artifact 初始化新增两个已有字段赋值，不改变任何外部契约、schema 或接口。
+
+无新增 concerns；两个登记 Minor 按要求未处理。

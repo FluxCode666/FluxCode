@@ -835,8 +835,9 @@ func (o *MediaOrchestrator) persistInputs(ctx context.Context, task *MediaTask, 
 	for _, input := range inputs {
 		artifact := &MediaArtifact{
 			TaskID: task.ID, Direction: "input", Position: input.Position, MediaType: input.MediaType,
-			ContentType: input.ContentType, ObjectKey: input.ObjectKey, PublicURL: input.ExternalURL,
-			UpstreamReference: input.UpstreamReference, Resolution: input.Resolution,
+			ContentType: input.ContentType, SizeBytes: input.SizeBytes, ChecksumSHA256: input.ChecksumSHA256,
+			ObjectKey: input.ObjectKey, PublicURL: input.ExternalURL, UpstreamReference: input.UpstreamReference,
+			Resolution: input.Resolution,
 		}
 		if input.Width > 0 {
 			artifact.Width = mediaIntPointer(input.Width)
