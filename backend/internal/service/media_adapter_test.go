@@ -111,6 +111,18 @@ func TestMediaAdapterRegistryReturnsStableNotFoundError(t *testing.T) {
 	require.Equal(t, "late", adapter.Name())
 }
 
+func TestMediaArtifactInputCarriesDurableObjectKey(t *testing.T) {
+	input := MediaArtifactInput{
+		Direction: "input",
+		Position:  0,
+		MediaType: MediaTypeImage,
+		ObjectKey: "media/input/task-1/source.png",
+	}
+
+	cloned := cloneMediaArtifactInputs([]MediaArtifactInput{input})
+	require.Equal(t, input.ObjectKey, cloned[0].ObjectKey)
+}
+
 func TestMediaAdapterRegistrySupportsConcurrentRegisterAndResolve(t *testing.T) {
 	t.Parallel()
 

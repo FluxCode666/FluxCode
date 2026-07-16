@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -25,6 +26,7 @@ var (
 		"native_async_mode",
 		"stage",
 		"progress",
+		"request_spec",
 		"candidate_snapshot",
 		"billing_snapshot",
 		"settlement_plan",
@@ -180,6 +182,9 @@ func (r *mediaTaskRepository) GetByPublicIDForUser(ctx context.Context, publicID
 		Where(mediatask.PublicIDEQ(publicID), mediatask.UserIDEQ(userID)).
 		Only(ctx)
 	if err != nil {
+		if dbent.IsNotFound(err) {
+			return nil, fmt.Errorf("%w: %w", service.ErrMediaTaskNotFound, err)
+		}
 		return nil, err
 	}
 	return mediaTaskFromEnt(task), nil
@@ -194,6 +199,9 @@ func (r *mediaTaskRepository) GetByIdempotencyKey(ctx context.Context, userID, a
 		).
 		Only(ctx)
 	if err != nil {
+		if dbent.IsNotFound(err) {
+			return nil, fmt.Errorf("%w: %w", service.ErrMediaTaskNotFound, err)
+		}
 		return nil, err
 	}
 	return mediaTaskFromEnt(task), nil
@@ -605,6 +613,15 @@ func applyMediaTaskUpdates(update *dbent.MediaTaskUpdate, updates map[string]any
 				return updateTypeError(field, err)
 			}
 			update.SetProgress(v)
+		case "request_spec":
+			v, ok := value.(json.RawMessage)
+			if !ok {
+				return updateTypeError(field, fmt.Errorf("got %T, want json.RawMessage", value))
+			}
+			if !json.Valid(v) {
+				return updateTypeError(field, errors.New("invalid JSON"))
+			}
+			update.SetRequestSpec(cloneRawMessage(v))
 		case "candidate_snapshot":
 			v, err := rawMessageValue(value)
 			if err != nil {

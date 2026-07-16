@@ -26,6 +26,7 @@ type MediaArtifactInput struct {
 	MediaType         MediaType
 	ContentType       string
 	Data              []byte
+	ObjectKey         string
 	ExternalURL       string
 	UpstreamReference string
 	Width             int

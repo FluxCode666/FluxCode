@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -134,8 +135,10 @@ func TestMediaTaskRepositoryCreateAndLookupRoundTrip(t *testing.T) {
 	require.Equal(t, created.ID, byIdempotencyKey.ID)
 
 	_, err = repo.GetByPublicIDForUser(ctx, created.PublicID, created.UserID+1)
+	require.ErrorIs(t, err, service.ErrMediaTaskNotFound)
 	require.True(t, dbent.IsNotFound(err))
 	_, err = repo.GetByIdempotencyKey(ctx, created.UserID, created.APIKeyID, "")
+	require.ErrorIs(t, err, service.ErrMediaTaskNotFound)
 	require.True(t, dbent.IsNotFound(err))
 }
 
@@ -174,6 +177,53 @@ func TestMediaTaskRepositoryUpdateQueuedUsesStatusAndVersionCAS(t *testing.T) {
 	notQueued, err := repo.UpdateQueued(ctx, task.ID, stored.Version+1, map[string]any{"progress": 11})
 	require.NoError(t, err)
 	require.False(t, notQueued)
+}
+
+func TestMediaTaskRepositoryUpdateQueuedPersistsRequestSpecWithCAS(t *testing.T) {
+	repo, _ := newMediaTaskRepositoryTestHarness(t)
+	ctx := context.Background()
+	task, err := repo.Create(ctx, newRepositoryMediaTask("task_update_queued_request_spec"))
+	require.NoError(t, err)
+	requestSpec := json.RawMessage(`{"image":{"prompt":"cat","n":1,"input_artifact_ids":[17]}}`)
+
+	updated, err := repo.UpdateQueued(ctx, task.ID, task.Version, map[string]any{"request_spec": requestSpec})
+	require.NoError(t, err)
+	require.True(t, updated)
+	stored, err := repo.GetByID(ctx, task.ID)
+	require.NoError(t, err)
+	require.JSONEq(t, string(requestSpec), string(stored.RequestSpec))
+
+	stale, err := repo.UpdateQueued(ctx, task.ID, task.Version, map[string]any{"request_spec": json.RawMessage(`{}`)})
+	require.NoError(t, err)
+	require.False(t, stale)
+}
+
+func TestMediaTaskRepositoryRequestSpecUpdateRequiresRawMessageAndQueuedPath(t *testing.T) {
+	repo, _ := newMediaTaskRepositoryTestHarness(t)
+	ctx := context.Background()
+	task, err := repo.Create(ctx, newRepositoryMediaTask("task_request_spec_strict_type"))
+	require.NoError(t, err)
+
+	_, err = repo.UpdateQueued(ctx, task.ID, task.Version, map[string]any{"request_spec": []byte(`{}`)})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "want json.RawMessage")
+	_, err = repo.UpdateQueued(ctx, task.ID, task.Version, map[string]any{"request_spec": json.RawMessage(`{"broken"`)})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "invalid JSON")
+
+	_, err = repo.UpdateClaimed(ctx, task.ID, "worker-a", map[string]any{"request_spec": json.RawMessage(`{}`)})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "is not allowed")
+}
+
+func TestMediaTaskRepositoryMediaNotFoundMappingPreservesContextErrors(t *testing.T) {
+	repo, _ := newMediaTaskRepositoryTestHarness(t)
+	canceled, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err := repo.GetByPublicIDForUser(canceled, "task_missing", 1)
+	require.ErrorIs(t, err, context.Canceled)
+	require.False(t, errors.Is(err, service.ErrMediaTaskNotFound))
 }
 
 func TestMediaTaskRepositoryClaimSupportsLeaseRecoveryAndRejectsActiveOrStaleClaims(t *testing.T) {

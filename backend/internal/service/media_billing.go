@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 )
 
 const (
@@ -20,6 +21,7 @@ var (
 	ErrMediaSettlementPlanConflict     = errors.New("media settlement plan conflict")
 	ErrMediaSettlementCASConflict      = errors.New("media settlement CAS conflict")
 	ErrMediaSettlementPlanNotPersisted = errors.New("media settlement plan was not persisted")
+	ErrInvalidMediaFailureSettlement   = errors.New("invalid media failure settlement")
 )
 
 type MediaBillingSnapshot struct {
@@ -46,9 +48,48 @@ type MediaFailureSettlement struct {
 }
 
 type MediaBillingPort interface {
+	// Implementations must use MediaBillingIdempotencyKey with the matching
+	// operation before applying any external balance mutation.
 	Precharge(ctx context.Context, task *MediaTask, snapshot MediaBillingSnapshot) error
 	SettleSuccess(ctx context.Context, task *MediaTask, usage MediaUsage) error
 	SettleFailure(ctx context.Context, task *MediaTask, settlement MediaFailureSettlement) error
+}
+
+// DisabledMediaBilling is the phase-one safe default. It never changes a
+// balance, while still satisfying the complete billing lifecycle contract.
+type DisabledMediaBilling struct{}
+
+func (DisabledMediaBilling) Precharge(context.Context, *MediaTask, MediaBillingSnapshot) error {
+	return nil
+}
+
+func (DisabledMediaBilling) SettleSuccess(context.Context, *MediaTask, MediaUsage) error {
+	return nil
+}
+
+func (DisabledMediaBilling) SettleFailure(context.Context, *MediaTask, MediaFailureSettlement) error {
+	return nil
+}
+
+type MediaBillingOperation string
+
+const (
+	MediaBillingOperationPrecharge MediaBillingOperation = "precharge"
+	MediaBillingOperationSuccess   MediaBillingOperation = "success"
+	MediaBillingOperationFailure   MediaBillingOperation = "failure"
+)
+
+// MediaBillingIdempotencyKey is the mandatory key shape for billing ports.
+func MediaBillingIdempotencyKey(task *MediaTask, operation MediaBillingOperation) (string, error) {
+	if task == nil || task.PublicID == "" {
+		return "", errors.New("media billing task public id is empty")
+	}
+	switch operation {
+	case MediaBillingOperationPrecharge, MediaBillingOperationSuccess, MediaBillingOperationFailure:
+		return task.PublicID + ":" + string(operation), nil
+	default:
+		return "", fmt.Errorf("unknown media billing operation %q", operation)
+	}
 }
 
 type MediaSettlementType string
@@ -85,8 +126,23 @@ func (c *MediaBillingCoordinator) SettleSuccess(ctx context.Context, task *Media
 }
 
 func (c *MediaBillingCoordinator) SettleFailure(ctx context.Context, task *MediaTask, settlement MediaFailureSettlement) error {
+	if err := validateMediaFailureSettlement(settlement); err != nil {
+		return err
+	}
 	plan := MediaSettlementPlan{Type: MediaSettlementTypeFailure, Failure: &settlement}
 	return c.settle(ctx, task, plan)
+}
+
+func validateMediaFailureSettlement(settlement MediaFailureSettlement) error {
+	if settlement.Kind == "" ||
+		math.IsNaN(settlement.RefundRatio) || math.IsInf(settlement.RefundRatio, 0) ||
+		math.IsNaN(settlement.PenaltyRatio) || math.IsInf(settlement.PenaltyRatio, 0) ||
+		settlement.RefundRatio < 0 || settlement.RefundRatio > 1 ||
+		settlement.PenaltyRatio < 0 || settlement.PenaltyRatio > 1 ||
+		math.Abs(settlement.RefundRatio+settlement.PenaltyRatio-1) > 1e-9 {
+		return fmt.Errorf("%w: refund_ratio=%v penalty_ratio=%v", ErrInvalidMediaFailureSettlement, settlement.RefundRatio, settlement.PenaltyRatio)
+	}
+	return nil
 }
 
 func (c *MediaBillingCoordinator) RetryPending(ctx context.Context, taskID int64) error {
@@ -170,6 +226,11 @@ func (c *MediaBillingCoordinator) settle(ctx context.Context, task *MediaTask, p
 }
 
 func (c *MediaBillingCoordinator) executePersisted(ctx context.Context, task *MediaTask, plan MediaSettlementPlan) error {
+	if plan.Type == MediaSettlementTypeFailure && plan.Failure != nil {
+		if err := validateMediaFailureSettlement(*plan.Failure); err != nil {
+			return err
+		}
+	}
 	if task.BillingStatus == MediaBillingStatusSettled {
 		return nil
 	}

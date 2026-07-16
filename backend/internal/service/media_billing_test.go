@@ -28,6 +28,78 @@ func TestMediaBillingCoordinatorRetriesPersistedSettlementIdempotently(t *testin
 	require.Equal(t, task.PrechargedAmount, repo.mustGet(task.ID).RefundedAmount)
 }
 
+func TestDisabledMediaBillingSucceedsWithoutSideEffects(t *testing.T) {
+	task := &MediaTask{PublicID: "task_disabled"}
+	port := DisabledMediaBilling{}
+	require.NoError(t, port.Precharge(context.Background(), task, MediaBillingSnapshot{EstimatedAmount: 2}))
+	require.NoError(t, port.SettleSuccess(context.Background(), task, MediaUsage{ImageCount: 1}))
+	require.NoError(t, port.SettleFailure(context.Background(), task, MediaFailureSettlement{
+		Kind: MediaFailureKindSystem, RefundRatio: 1,
+	}))
+}
+
+func TestMediaBillingIdempotencyKeyUsesPublicIDAndSettlementType(t *testing.T) {
+	task := &MediaTask{PublicID: "task_idempotent"}
+	precharge, err := MediaBillingIdempotencyKey(task, MediaBillingOperationPrecharge)
+	require.NoError(t, err)
+	success, err := MediaBillingIdempotencyKey(task, MediaBillingOperationSuccess)
+	require.NoError(t, err)
+	failure, err := MediaBillingIdempotencyKey(task, MediaBillingOperationFailure)
+	require.NoError(t, err)
+	require.Equal(t, "task_idempotent:precharge", precharge)
+	require.Equal(t, "task_idempotent:success", success)
+	require.Equal(t, "task_idempotent:failure", failure)
+	require.NotEqual(t, success, failure)
+}
+
+func TestRecordingMediaBillingDeduplicatesSamePublicIDAndSettlementType(t *testing.T) {
+	recorder := newIdempotentRecordingMediaBilling()
+	task := &MediaTask{PublicID: "task_recorded"}
+	for range 2 {
+		require.NoError(t, recorder.Precharge(context.Background(), task, MediaBillingSnapshot{}))
+		require.NoError(t, recorder.SettleSuccess(context.Background(), task, MediaUsage{}))
+		require.NoError(t, recorder.SettleFailure(context.Background(), task, MediaFailureSettlement{
+			Kind: MediaFailureKindSystem, RefundRatio: 1,
+		}))
+	}
+	require.Equal(t, 1, recorder.calls(MediaBillingOperationPrecharge))
+	require.Equal(t, 1, recorder.calls(MediaBillingOperationSuccess))
+	require.Equal(t, 1, recorder.calls(MediaBillingOperationFailure))
+}
+
+func TestMediaBillingCoordinatorRejectsInvalidFailureRatiosBeforePersistence(t *testing.T) {
+	task := workerCompletedTask(100, "billing-invalid-ratios")
+	repo := newWorkerTaskRepository(task)
+	coordinator := NewMediaBillingCoordinator(repo, &recordingMediaBillingPort{})
+
+	err := coordinator.SettleFailure(context.Background(), task, MediaFailureSettlement{
+		Kind: MediaFailureKindSyncTimeout, RefundRatio: 0.5, PenaltyRatio: 0.6,
+	})
+	require.ErrorIs(t, err, ErrInvalidMediaFailureSettlement)
+	require.Empty(t, repo.mustGet(task.ID).SettlementPlan)
+}
+
+func TestMediaBillingCoordinatorRetryRejectsInvalidPersistedFailureRatios(t *testing.T) {
+	task := workerCompletedTask(99, "billing-invalid-persisted-ratios")
+	plan, err := json.Marshal(MediaSettlementPlan{
+		Type: MediaSettlementTypeFailure,
+		Failure: &MediaFailureSettlement{
+			Kind: MediaFailureKindSyncTimeout, RefundRatio: 0.4, PenaltyRatio: 0.4,
+		},
+	})
+	require.NoError(t, err)
+	task.BillingStatus = MediaBillingStatusRetry
+	task.SettlementPlan = plan
+	repo := newWorkerTaskRepository(task)
+	port := &recordingMediaBillingPort{}
+	coordinator := NewMediaBillingCoordinator(repo, port)
+
+	err = coordinator.RetryPending(context.Background(), task.ID)
+	require.ErrorIs(t, err, ErrInvalidMediaFailureSettlement)
+	require.Equal(t, MediaBillingStatusRetry, repo.mustGet(task.ID).BillingStatus)
+	require.Zero(t, port.settlementAttemptCalls())
+}
+
 func TestMediaBillingCoordinatorPersistsImmutablePlanBeforeCallingPort(t *testing.T) {
 	repo := newWorkerTaskRepository(workerCompletedTask(102, "billing-plan"))
 	port := &recordingMediaBillingPort{inspect: func(task *MediaTask) {
@@ -309,4 +381,52 @@ func (p *recordingMediaBillingPort) settlementAttemptCalls() int {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.settlementAttempts
+}
+
+type idempotentRecordingMediaBilling struct {
+	mu    sync.Mutex
+	seen  map[string]struct{}
+	count map[MediaBillingOperation]int
+}
+
+func newIdempotentRecordingMediaBilling() *idempotentRecordingMediaBilling {
+	return &idempotentRecordingMediaBilling{
+		seen: make(map[string]struct{}), count: make(map[MediaBillingOperation]int),
+	}
+}
+
+func (b *idempotentRecordingMediaBilling) Precharge(_ context.Context, task *MediaTask, _ MediaBillingSnapshot) error {
+	return b.record(task, MediaBillingOperationPrecharge)
+}
+
+func (b *idempotentRecordingMediaBilling) SettleSuccess(_ context.Context, task *MediaTask, _ MediaUsage) error {
+	return b.record(task, MediaBillingOperationSuccess)
+}
+
+func (b *idempotentRecordingMediaBilling) SettleFailure(_ context.Context, task *MediaTask, settlement MediaFailureSettlement) error {
+	if err := validateMediaFailureSettlement(settlement); err != nil {
+		return err
+	}
+	return b.record(task, MediaBillingOperationFailure)
+}
+
+func (b *idempotentRecordingMediaBilling) record(task *MediaTask, operation MediaBillingOperation) error {
+	key, err := MediaBillingIdempotencyKey(task, operation)
+	if err != nil {
+		return err
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if _, exists := b.seen[key]; exists {
+		return nil
+	}
+	b.seen[key] = struct{}{}
+	b.count[operation]++
+	return nil
+}
+
+func (b *idempotentRecordingMediaBilling) calls(operation MediaBillingOperation) int {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.count[operation]
 }
