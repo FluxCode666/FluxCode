@@ -89,9 +89,19 @@ type mediaActiveExecution struct {
 	ctx           context.Context
 	cancel        context.CancelCauseFunc
 	terminalizing atomic.Bool
+	abortOnce     sync.Once
 
 	mu             sync.RWMutex
 	path           MediaExecutionPath
+	account        *Account
+	adapter        MediaAdapter
+	upstreamTaskID string
+	pollMetadata   json.RawMessage
+	stopRequested  bool
+}
+
+type mediaActiveAbortTarget struct {
+	ctx            context.Context
 	account        *Account
 	adapter        MediaAdapter
 	upstreamTaskID string
@@ -537,13 +547,6 @@ func (w *MediaWorker) resumeUnknownSubmission(
 	active *mediaActiveExecution,
 	trace *mediaExecutionTrace,
 ) (*MediaGenerateResult, *mediaExecutionFailure, error) {
-	account, err := w.deps.Scheduler.GetFixedAccount(ctx, *task.AccountID)
-	if err != nil {
-		if ctx.Err() != nil {
-			return nil, nil, ctx.Err()
-		}
-		return nil, systemMediaFailure("system_recovery", "fixed media account is unavailable"), nil
-	}
 	adapter, err := w.deps.Adapters.Resolve(task.Adapter)
 	if err != nil {
 		return nil, systemMediaFailure("system_adapter", "fixed media adapter is unavailable"), nil
@@ -563,12 +566,11 @@ func (w *MediaWorker) resumeUnknownSubmission(
 	if err != nil {
 		return nil, systemMediaFailure("system_model", "stored media model is unavailable"), nil
 	}
-	selection := &MediaAccountSelection{
-		Account: account,
-		ResolvedModel: ResolvedMediaAccountModel{
-			Adapter: task.Adapter, UpstreamModel: task.UpstreamModel, NativeAsyncMode: task.NativeAsyncMode,
-		},
+	selection, release, err := w.acquireFixedSelection(ctx, task)
+	if err != nil {
+		return nil, nil, err
 	}
+	defer release()
 	result, failure, _, executeErr := w.executeSelected(ctx, task, active, trace, spec, definition, selection)
 	return result, failure, executeErr
 }
@@ -588,6 +590,9 @@ func (w *MediaWorker) executeSelected(
 	}
 	path := chooseMediaExecutionPath(task.ClientAsync, selection.ResolvedModel.NativeAsyncMode)
 	active.bind(path, selection.Account, adapter, "", nil)
+	if err := ctx.Err(); err != nil {
+		return nil, nil, false, err
+	}
 	stage := MediaTaskStageGenerating
 	if path == MediaExecutionPathNativeAsync {
 		stage = MediaTaskStageSubmitting
@@ -669,6 +674,13 @@ func (w *MediaWorker) executeSelected(
 	if submission == nil || strings.TrimSpace(submission.UpstreamTaskID) == "" {
 		return nil, systemMediaFailure("system_adapter", "media adapter returned an empty upstream task id"), false, nil
 	}
+	if active.bind(path, selection.Account, adapter, submission.UpstreamTaskID, submission.PollMetadata) {
+		w.abortActiveUpstream(task.ID, active)
+		if err := ctx.Err(); err != nil {
+			return nil, nil, false, err
+		}
+		return nil, nil, false, ErrMediaSyncTimeoutStopped
+	}
 	w.markAccountUsed(ctx, task, selection.Account.ID)
 	submittedAt := time.Now().UTC()
 	if err := w.updateClaimed(ctx, task, map[string]any{
@@ -681,13 +693,17 @@ func (w *MediaWorker) executeSelected(
 		"submitted_at":      submittedAt,
 		"stage":             MediaTaskStagePolling,
 	}); err != nil {
+		w.abortActiveUpstream(task.ID, active)
 		return nil, nil, false, err
 	}
 	task.UpstreamTaskID = submission.UpstreamTaskID
 	task.PollMetadata = append(json.RawMessage(nil), submission.PollMetadata...)
 	task.SubmittedAt = mediaTimePointer(submittedAt)
 	task.Stage = MediaTaskStagePolling
-	active.bind(path, selection.Account, adapter, task.UpstreamTaskID, task.PollMetadata)
+	if err := ctx.Err(); err != nil {
+		w.abortActiveUpstream(task.ID, active)
+		return nil, nil, false, err
+	}
 	result, failure, pollErr := w.poll(ctx, task, selection.Account, adapter, trace)
 	return result, failure, false, pollErr
 }
@@ -696,25 +712,49 @@ func (w *MediaWorker) resumePolling(ctx context.Context, task *MediaTask, active
 	if task.AccountID == nil || task.Adapter == "" || task.UpstreamModel == "" {
 		return nil, systemMediaFailure("system_recovery", "submitted media task is missing fixed execution data"), nil
 	}
-	account, err := w.deps.Scheduler.GetFixedAccount(ctx, *task.AccountID)
-	if err != nil {
-		if ctx.Err() != nil {
-			return nil, nil, ctx.Err()
-		}
-		return nil, systemMediaFailure("system_recovery", "fixed media account is unavailable"), nil
-	}
 	adapter, err := w.deps.Adapters.Resolve(task.Adapter)
 	if err != nil {
 		return nil, systemMediaFailure("system_adapter", "fixed media adapter is unavailable"), nil
 	}
-	active.bind(MediaExecutionPathNativeAsync, account, adapter, task.UpstreamTaskID, task.PollMetadata)
+	selection, release, err := w.acquireFixedSelection(ctx, task)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer release()
+	if active.bind(MediaExecutionPathNativeAsync, selection.Account, adapter, task.UpstreamTaskID, task.PollMetadata) {
+		w.abortActiveUpstream(task.ID, active)
+		if err := ctx.Err(); err != nil {
+			return nil, nil, err
+		}
+		return nil, nil, ErrMediaSyncTimeoutStopped
+	}
 	if task.Stage != MediaTaskStagePolling {
 		if err := w.updateClaimed(ctx, task, map[string]any{"stage": MediaTaskStagePolling}); err != nil {
 			return nil, nil, err
 		}
 		task.Stage = MediaTaskStagePolling
 	}
-	return w.poll(ctx, task, account, adapter, trace)
+	return w.poll(ctx, task, selection.Account, adapter, trace)
+}
+
+func (w *MediaWorker) acquireFixedSelection(ctx context.Context, task *MediaTask) (*MediaAccountSelection, func(), error) {
+	if task == nil || task.AccountID == nil {
+		return nil, nil, ErrNoAvailableAccounts
+	}
+	selection, err := w.deps.Scheduler.SelectFixed(ctx, MediaFixedAccountRequest{
+		AccountID: *task.AccountID, GroupID: task.GroupID, SessionHash: task.PublicID,
+	})
+	if err != nil {
+		return nil, nil, fmt.Errorf("select fixed media account %d: %w", *task.AccountID, err)
+	}
+	selection.ResolvedModel = ResolvedMediaAccountModel{
+		Adapter: task.Adapter, UpstreamModel: task.UpstreamModel, NativeAsyncMode: task.NativeAsyncMode,
+	}
+	release, err := w.acquireSelection(ctx, selection)
+	if err != nil {
+		return nil, nil, err
+	}
+	return selection, release, nil
 }
 
 func (w *MediaWorker) poll(ctx context.Context, task *MediaTask, account *Account, adapter MediaAdapter, trace *mediaExecutionTrace) (*MediaGenerateResult, *mediaExecutionFailure, error) {
@@ -946,24 +986,38 @@ func (w *MediaWorker) StopForSyncTimeout(taskID int64) bool {
 	if active == nil {
 		return false
 	}
-	path, account, adapter, upstreamTaskID, pollMetadata, activeCtx := active.snapshot()
-	if path == MediaExecutionPathNativeAsync && upstreamTaskID != "" && account != nil {
-		if aborter, ok := adapter.(MediaAborter); ok {
-			abortCtx, cancel := context.WithTimeout(context.WithoutCancel(activeCtx), 5*time.Second)
-			err := aborter.Abort(abortCtx, MediaPollRequest{Account: account, UpstreamTaskID: upstreamTaskID, PollMetadata: pollMetadata})
-			cancel()
-			if err != nil {
-				wrapped := fmt.Errorf("abort media task %d after sync timeout: %w", taskID, err)
-				w.logger.Warn("media task abort failed", "task_id", taskID, "error_category", "abort_failed")
-				select {
-				case w.errEvents <- wrapped:
-				default:
-				}
-			}
-		}
-	}
+	shouldAbort := active.requestStop()
 	active.cancel(ErrMediaSyncTimeoutStopped)
+	if shouldAbort {
+		w.abortActiveUpstream(taskID, active)
+	}
 	return true
+}
+
+func (w *MediaWorker) abortActiveUpstream(taskID int64, active *mediaActiveExecution) {
+	if active == nil {
+		return
+	}
+	active.abortBoundUpstream(func(target mediaActiveAbortTarget) {
+		aborter, ok := target.adapter.(MediaAborter)
+		if !ok {
+			return
+		}
+		abortCtx, cancel := context.WithTimeout(context.WithoutCancel(target.ctx), 5*time.Second)
+		defer cancel()
+		err := aborter.Abort(abortCtx, MediaPollRequest{
+			Account: target.account, UpstreamTaskID: target.upstreamTaskID, PollMetadata: target.pollMetadata,
+		})
+		if err == nil {
+			return
+		}
+		wrapped := fmt.Errorf("abort media task %d: %w", taskID, err)
+		w.logger.Warn("media task abort failed", "task_id", taskID, "error_category", "abort_failed")
+		select {
+		case w.errEvents <- wrapped:
+		default:
+		}
+	})
 }
 
 func chooseMediaExecutionPath(clientAsync bool, mode NativeAsyncMode) MediaExecutionPath {
@@ -1043,7 +1097,9 @@ func (w *MediaWorker) startLeaseRenewer(ctx context.Context, active *mediaActive
 			if recovered := recover(); recovered != nil {
 				err := fmt.Errorf("%w: lease renew panic: %v\n%s", ErrMediaWorkerLeaseLost, recovered, debug.Stack())
 				w.reportError(err)
-				active.cancel(err)
+				if !active.terminalizing.Load() {
+					active.cancel(err)
+				}
 			}
 		}()
 		ticker := time.NewTicker(w.cfg.LeaseRenewInterval)
@@ -1103,7 +1159,7 @@ func (w *MediaWorker) cancelAllActive(cause error) {
 	}
 }
 
-func (a *mediaActiveExecution) bind(path MediaExecutionPath, account *Account, adapter MediaAdapter, upstreamTaskID string, pollMetadata json.RawMessage) {
+func (a *mediaActiveExecution) bind(path MediaExecutionPath, account *Account, adapter MediaAdapter, upstreamTaskID string, pollMetadata json.RawMessage) bool {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.path = path
@@ -1111,6 +1167,41 @@ func (a *mediaActiveExecution) bind(path MediaExecutionPath, account *Account, a
 	a.adapter = adapter
 	a.upstreamTaskID = upstreamTaskID
 	a.pollMetadata = append(json.RawMessage(nil), pollMetadata...)
+	return a.stopRequested && a.hasAbortTargetLocked()
+}
+
+func (a *mediaActiveExecution) requestStop() bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.stopRequested = true
+	return a.hasAbortTargetLocked()
+}
+
+func (a *mediaActiveExecution) hasAbortTargetLocked() bool {
+	return a.path == MediaExecutionPathNativeAsync &&
+		a.account != nil &&
+		a.adapter != nil &&
+		strings.TrimSpace(a.upstreamTaskID) != ""
+}
+
+func (a *mediaActiveExecution) abortBoundUpstream(abort func(mediaActiveAbortTarget)) {
+	if a == nil || abort == nil {
+		return
+	}
+	a.mu.RLock()
+	if !a.hasAbortTargetLocked() {
+		a.mu.RUnlock()
+		return
+	}
+	target := mediaActiveAbortTarget{
+		ctx:            a.ctx,
+		account:        a.account,
+		adapter:        a.adapter,
+		upstreamTaskID: a.upstreamTaskID,
+		pollMetadata:   append(json.RawMessage(nil), a.pollMetadata...),
+	}
+	a.mu.RUnlock()
+	a.abortOnce.Do(func() { abort(target) })
 }
 
 func (a *mediaActiveExecution) snapshot() (MediaExecutionPath, *Account, MediaAdapter, string, json.RawMessage, context.Context) {

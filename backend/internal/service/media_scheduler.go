@@ -16,6 +16,12 @@ type MediaScheduleRequest struct {
 	CandidateSnapshot  []MediaAccountCandidateSnapshot
 }
 
+type MediaFixedAccountRequest struct {
+	AccountID   int64
+	GroupID     int64
+	SessionHash string
+}
+
 type MediaAccountCandidateSnapshot struct {
 	AccountID     int64                     `json:"account_id"`
 	Platform      string                    `json:"platform"`
@@ -208,6 +214,49 @@ func (s *MediaScheduler) Select(ctx context.Context, req MediaScheduleRequest) (
 		Acquired:      selected.Acquired,
 		ReleaseFunc:   wrapOptionalIdempotentRelease(selected.ReleaseFunc),
 		WaitPlan:      cloneAccountWaitPlan(selected.WaitPlan),
+	}, nil
+}
+
+func (s *MediaScheduler) SelectFixed(ctx context.Context, req MediaFixedAccountRequest) (*MediaAccountSelection, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if s == nil || s.accountRepo == nil || s.selector == nil || req.AccountID <= 0 {
+		return nil, ErrNoAvailableAccounts
+	}
+	account, err := s.accountRepo.GetByID(ctx, req.AccountID)
+	if err != nil {
+		return nil, fmt.Errorf("get fixed media account %d: %w", req.AccountID, err)
+	}
+	if account == nil || account.ID != req.AccountID || !account.IsSchedulable() || account.Concurrency <= 0 {
+		return nil, ErrNoAvailableAccounts
+	}
+	canonical := *account
+	selected, err := s.selector.Select(ctx, AccountCandidateSelectionRequest{
+		GroupID: req.GroupID, SessionHash: req.SessionHash, Candidates: []*Account{&canonical},
+	})
+	if err != nil {
+		releaseAccountSelectionResult(selected)
+		return nil, err
+	}
+	if selected == nil || selected.Account == nil || selected.Account.ID != canonical.ID {
+		releaseAccountSelectionResult(selected)
+		return nil, fmt.Errorf("%w: fixed account selector changed account %d", ErrNoAvailableAccounts, req.AccountID)
+	}
+	if selected.Acquired {
+		if selected.WaitPlan != nil || selected.ReleaseFunc == nil {
+			releaseAccountSelectionResult(selected)
+			return nil, fmt.Errorf("%w: inconsistent acquired fixed media account selection", ErrNoAvailableAccounts)
+		}
+	} else if !validMediaAccountWaitPlan(&canonical, selected.WaitPlan) || selected.ReleaseFunc != nil {
+		releaseAccountSelectionResult(selected)
+		return nil, fmt.Errorf("%w: inconsistent waiting fixed media account selection", ErrNoAvailableAccounts)
+	}
+	return &MediaAccountSelection{
+		Account:     &canonical,
+		Acquired:    selected.Acquired,
+		ReleaseFunc: wrapOptionalIdempotentRelease(selected.ReleaseFunc),
+		WaitPlan:    cloneAccountWaitPlan(selected.WaitPlan),
 	}, nil
 }
 

@@ -75,15 +75,17 @@ func (s *mediaSchedulerAccountRepoStub) replaceAccounts(accounts []Account) {
 type mediaSchedulerSelectorStub struct {
 	mu sync.Mutex
 
-	selectedID int64
-	result     *AccountSelectionResult
-	err        error
-	candidates []*Account
-	requests   int
-	waitCalls  int
-	waitFunc   func()
-	waitErr    error
-	returnNil  bool
+	selectedID      int64
+	result          *AccountSelectionResult
+	err             error
+	candidates      []*Account
+	requests        int
+	waitCalls       int
+	waitFunc        func()
+	waitErr         error
+	returnNil       bool
+	lastGroupID     int64
+	lastSessionHash string
 }
 
 func (s *mediaSchedulerSelectorStub) Select(_ context.Context, req AccountCandidateSelectionRequest) (*AccountSelectionResult, error) {
@@ -91,6 +93,8 @@ func (s *mediaSchedulerSelectorStub) Select(_ context.Context, req AccountCandid
 	defer s.mu.Unlock()
 	s.requests++
 	s.candidates = append([]*Account(nil), req.Candidates...)
+	s.lastGroupID = req.GroupID
+	s.lastSessionHash = req.SessionHash
 	if s.returnNil {
 		return nil, nil
 	}
@@ -418,6 +422,104 @@ func TestMediaSchedulerWaitMarkUsedAndFixedAccountBoundaries(t *testing.T) {
 	repo.getErr = repoErr
 	_, err = scheduler.GetFixedAccount(context.Background(), 7)
 	require.ErrorIs(t, err, repoErr)
+}
+
+func TestMediaSchedulerSelectFixedUsesSingleRealtimeAccountAndStableKey(t *testing.T) {
+	account := task12Account(7, PlatformOpenAI, "changed-model", "changed-upstream", "changed-adapter", NativeAsyncOptional)
+	repo := &mediaSchedulerAccountRepoStub{accounts: []Account{account}}
+	var releases atomic.Int64
+	selector := &mediaSchedulerSelectorStub{result: &AccountSelectionResult{
+		Account: &Account{ID: account.ID}, Acquired: true, ReleaseFunc: func() { releases.Add(1) },
+	}}
+	scheduler := NewMediaScheduler(repo, selector, NewMediaAdapterRegistry())
+
+	selection, err := scheduler.SelectFixed(context.Background(), MediaFixedAccountRequest{
+		AccountID: account.ID, GroupID: 3, SessionHash: "task_public_id",
+	})
+	require.NoError(t, err)
+	require.Equal(t, account.ID, selection.Account.ID)
+	require.Equal(t, account.Platform, selection.Account.Platform)
+	require.True(t, selection.Acquired)
+	require.NotNil(t, selection.ReleaseFunc)
+	require.Equal(t, ResolvedMediaAccountModel{}, selection.ResolvedModel, "固定槽位入口不得重解析当前模型映射")
+	require.Len(t, selector.candidates, 1)
+	require.Equal(t, account.ID, selector.candidates[0].ID)
+	require.Equal(t, int64(3), selector.lastGroupID)
+	require.Equal(t, "task_public_id", selector.lastSessionHash)
+	selection.ReleaseFunc()
+	selection.ReleaseFunc()
+	require.Equal(t, int64(1), releases.Load())
+}
+
+func TestMediaSchedulerSelectFixedReturnsTrustedWaitPlan(t *testing.T) {
+	account := task12Account(7, PlatformOpenAI, "image", "upstream", "adapter", NativeAsyncRequired)
+	repo := &mediaSchedulerAccountRepoStub{accounts: []Account{account}}
+	waitReleaseCalls := atomic.Int64{}
+	selector := &mediaSchedulerSelectorStub{
+		result: &AccountSelectionResult{
+			Account: &Account{ID: account.ID},
+			WaitPlan: &AccountWaitPlan{
+				AccountID: account.ID, MaxConcurrency: account.Concurrency, Timeout: time.Second, MaxWaiting: 2,
+			},
+		},
+		waitFunc: func() { waitReleaseCalls.Add(1) },
+	}
+	scheduler := NewMediaScheduler(repo, selector, NewMediaAdapterRegistry())
+
+	selection, err := scheduler.SelectFixed(context.Background(), MediaFixedAccountRequest{
+		AccountID: account.ID, GroupID: 3, SessionHash: "task_public_id",
+	})
+	require.NoError(t, err)
+	require.False(t, selection.Acquired)
+	require.Equal(t, account.ID, selection.WaitPlan.AccountID)
+	release, err := scheduler.WaitForSlot(context.Background(), selection)
+	require.NoError(t, err)
+	require.NotNil(t, release)
+	release()
+	require.Equal(t, int64(1), waitReleaseCalls.Load())
+	require.Equal(t, 1, selector.waitCalls)
+}
+
+func TestMediaSchedulerSelectFixedRejectsUnschedulableAndSelectorDrift(t *testing.T) {
+	for _, tt := range []struct {
+		name   string
+		mutate func(*Account)
+	}{
+		{name: "disabled account", mutate: func(account *Account) { account.Status = StatusDisabled }},
+		{name: "cooling account", mutate: func(account *Account) {
+			until := time.Now().Add(time.Minute)
+			account.TempUnschedulableUntil = &until
+		}},
+		{name: "zero concurrency", mutate: func(account *Account) { account.Concurrency = 0 }},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			account := task12Account(7, PlatformOpenAI, "image", "upstream", "adapter", NativeAsyncRequired)
+			tt.mutate(&account)
+			repo := &mediaSchedulerAccountRepoStub{accounts: []Account{account}}
+			selector := &mediaSchedulerSelectorStub{selectedID: account.ID}
+			scheduler := NewMediaScheduler(repo, selector, NewMediaAdapterRegistry())
+
+			selection, err := scheduler.SelectFixed(context.Background(), MediaFixedAccountRequest{AccountID: account.ID})
+			require.Nil(t, selection)
+			require.ErrorIs(t, err, ErrNoAvailableAccounts)
+			require.Zero(t, selector.requests)
+		})
+	}
+
+	t.Run("selector returns different account", func(t *testing.T) {
+		account := task12Account(7, PlatformOpenAI, "image", "upstream", "adapter", NativeAsyncRequired)
+		repo := &mediaSchedulerAccountRepoStub{accounts: []Account{account}}
+		var releases atomic.Int64
+		selector := &mediaSchedulerSelectorStub{result: &AccountSelectionResult{
+			Account: &Account{ID: 99}, Acquired: true, ReleaseFunc: func() { releases.Add(1) },
+		}}
+		scheduler := NewMediaScheduler(repo, selector, NewMediaAdapterRegistry())
+
+		selection, err := scheduler.SelectFixed(context.Background(), MediaFixedAccountRequest{AccountID: account.ID})
+		require.Nil(t, selection)
+		require.ErrorIs(t, err, ErrNoAvailableAccounts)
+		require.Equal(t, int64(1), releases.Load())
+	})
 }
 
 func TestMediaSchedulerWaitForSlotRejectsUntrustedSelections(t *testing.T) {
