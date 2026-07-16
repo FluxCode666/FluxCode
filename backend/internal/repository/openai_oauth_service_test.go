@@ -90,7 +90,9 @@ func configureOpenAIOAuthCodexUserAgent(t *testing.T, userAgent string) {
 	repo := &openAIOAuthSettingRepoStub{values: map[string]string{}}
 	settingService := servicepkg.NewSettingService(repo, &config.Config{})
 	err := settingService.UpdateSettings(context.Background(), &servicepkg.SystemSettings{
-		CodexCLIUserAgent: userAgent,
+		CodexCLIUserAgent:             userAgent,
+		MediaSyncTimeoutBillingPolicy: servicepkg.MediaTimeoutBillingPolicyPenalty,
+		MediaVideoStorageMode:         servicepkg.MediaVideoStorageModeHybrid,
 	})
 	require.NoError(t, err)
 }
