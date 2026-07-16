@@ -1064,11 +1064,19 @@ func sanitizeMediaTaskForUser(task *MediaTask) *MediaTask {
 		return nil
 	}
 	copy := *task
+	copy.ID = 0
+	copy.UserID = 0
+	copy.APIKeyID = 0
+	copy.GroupID = 0
 	copy.ChannelID = nil
 	copy.AccountID = nil
 	copy.UpstreamModel = ""
 	copy.Adapter = ""
 	copy.NativeAsyncMode = ""
+	copy.ClientAsync = false
+	copy.SyncFallback = false
+	copy.Stage = ""
+	copy.RequestSpec = nil
 	copy.CandidateSnapshot = nil
 	copy.RequestFingerprint = ""
 	copy.IdempotencyKey = ""
@@ -1077,8 +1085,20 @@ func sanitizeMediaTaskForUser(task *MediaTask) *MediaTask {
 	copy.BillingSnapshot = nil
 	copy.SettlementPlan = nil
 	copy.SettlementRecovery = nil
+	copy.BillingStatus = ""
+	copy.PrechargedAmount = 0
+	copy.FinalAmount = 0
+	copy.RefundedAmount = 0
+	copy.RetryCount = 0
+	copy.ErrorMessage = ""
 	copy.WorkerID = ""
 	copy.LeaseUntil = nil
+	copy.Version = 0
+	copy.SubmittedAt = nil
+	copy.StartedAt = nil
+	copy.FinishedAt = nil
+	copy.SyncFallbackAt = nil
+	copy.UpdatedAt = time.Time{}
 	return &copy
 }
 

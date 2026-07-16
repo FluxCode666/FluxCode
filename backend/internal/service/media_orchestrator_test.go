@@ -1152,6 +1152,16 @@ func TestMediaOrchestratorGetForUserSanitizesInternalTaskFields(t *testing.T) {
 		task.UpstreamTaskID = "upstream-secret"
 		task.PollMetadata = json.RawMessage(`{"secret":true}`)
 		task.BillingSnapshot = json.RawMessage(`{"amount":1}`)
+		task.ErrorMessage = "Authorization Bearer secret at https://upstream.example"
+		task.RequestSpec = json.RawMessage(`{"internal":true}`)
+		task.BillingStatus = MediaBillingStatusPrecharged
+		task.PrechargedAmount = 12
+		task.FinalAmount = 10
+		task.RefundedAmount = 2
+		task.Stage = MediaTaskStageGenerating
+		now := time.Unix(1784112001, 0)
+		task.SubmittedAt = &now
+		task.StartedAt = &now
 	})
 	fixture.artifacts.items[created.Task.ID] = []MediaArtifact{{
 		ID: 1, TaskID: created.Task.ID, ObjectKey: "private/object", UpstreamReference: "private-upstream", PublicURL: "https://example.test/media",
@@ -1165,6 +1175,19 @@ func TestMediaOrchestratorGetForUserSanitizesInternalTaskFields(t *testing.T) {
 	require.Empty(t, task.BillingSnapshot)
 	require.Empty(t, task.RequestFingerprint)
 	require.Empty(t, task.IdempotencyKey)
+	require.Zero(t, task.ID)
+	require.Zero(t, task.UserID)
+	require.Zero(t, task.APIKeyID)
+	require.Zero(t, task.GroupID)
+	require.Empty(t, task.ErrorMessage)
+	require.Empty(t, task.RequestSpec)
+	require.Empty(t, task.BillingStatus)
+	require.Zero(t, task.PrechargedAmount)
+	require.Zero(t, task.FinalAmount)
+	require.Zero(t, task.RefundedAmount)
+	require.Empty(t, task.Stage)
+	require.Nil(t, task.SubmittedAt)
+	require.Nil(t, task.StartedAt)
 	require.Empty(t, artifacts[0].ObjectKey)
 	require.Empty(t, artifacts[0].UpstreamReference)
 	require.Equal(t, "https://example.test/media", artifacts[0].PublicURL)

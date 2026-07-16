@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -56,6 +57,13 @@ func (r *mediaHTTPContentReader) ValidateURL(raw string) (string, error) {
 	if r == nil {
 		return "", errors.New("media content reader is nil")
 	}
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return "", errors.New("invalid media content url")
+	}
+	if parsed.User != nil {
+		return "", errors.New("media content url userinfo is not allowed")
+	}
 	return urlvalidator.ValidateHTTPURL(raw, r.allowInsecureHTTP, urlvalidator.ValidationOptions{
 		AllowedHosts: r.allowedHosts, RequireAllowlist: r.requireAllowlist, AllowPrivate: false,
 	})
@@ -87,7 +95,21 @@ func (r *mediaHTTPContentReader) Open(ctx context.Context, input service.MediaHT
 	if input.ByteRange != "" {
 		req.Header.Set("Range", input.ByteRange)
 	}
-	resp, err := r.upstream.Do(req, input.Account.EffectiveProxyURL(), input.Account.ID, input.Account.Concurrency)
+	secureUpstream, ok := r.upstream.(service.SecureHTTPUpstream)
+	if !ok {
+		cancel()
+		return nil, service.ErrMediaSecureUpstreamRequired
+	}
+	resp, err := secureUpstream.DoSecure(
+		req,
+		input.Account.EffectiveProxyURL(),
+		input.Account.ID,
+		input.Account.Concurrency,
+		service.SecureHTTPUpstreamPolicy{
+			AllowedHosts: append([]string(nil), r.allowedHosts...), RequireAllowlist: r.requireAllowlist,
+			AllowInsecureHTTP: r.allowInsecureHTTP, AllowPrivate: false,
+		},
+	)
 	if err != nil {
 		cancel()
 		return nil, fmt.Errorf("request media content: %w", err)

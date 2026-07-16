@@ -68,10 +68,20 @@ type MediaContentFetcher interface {
 type MediaArtifactObjectStore interface {
 	Put(ctx context.Context, input MediaArtifactInput) (*MediaArtifact, error)
 	Open(ctx context.Context, artifact *MediaArtifact, byteRange string) (*MediaContent, error)
+	Discard(ctx context.Context, input MediaArtifactInput) error
 }
 
 type MediaInputStager interface {
 	Stage(ctx context.Context, userID int64, input MediaArtifactInput) (MediaArtifactInput, error)
+}
+
+type MediaInputDiscarder interface {
+	Discard(ctx context.Context, userID int64, input MediaArtifactInput) error
+}
+
+type MediaInputLifecycle interface {
+	MediaInputStager
+	MediaInputDiscarder
 }
 
 type MediaUsage struct {

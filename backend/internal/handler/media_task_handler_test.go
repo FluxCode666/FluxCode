@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"sort"
 	"strconv"
 	"strings"
 	"testing"
@@ -21,19 +23,30 @@ import (
 )
 
 type mediaTaskApplicationStub struct {
-	lastCreate   service.MediaCreateRequest
-	createResult *service.MediaCreateResult
-	createErr    error
-	createCalls  int
-	getTask      *service.MediaTask
-	getArtifacts []service.MediaArtifact
-	getErr       error
-	content      *service.MediaContent
-	contentErr   error
-	contentCalls int
-	lastRange    string
-	stageErr     error
-	stageCalls   int
+	lastCreate                service.MediaCreateRequest
+	createResult              *service.MediaCreateResult
+	createErr                 error
+	createCalls               int
+	getTask                   *service.MediaTask
+	getArtifacts              []service.MediaArtifact
+	getErr                    error
+	content                   *service.MediaContent
+	contentErr                error
+	contentCalls              int
+	lastRange                 string
+	stageErr                  error
+	stageErrAt                int
+	stageCalls                int
+	discarded                 []service.MediaArtifactInput
+	requireLiveDiscardContext bool
+	discardHasDeadline        bool
+}
+
+type handlerMediaHTTPReader struct{}
+
+func (handlerMediaHTTPReader) ValidateURL(raw string) (string, error) { return raw, nil }
+func (handlerMediaHTTPReader) Open(context.Context, service.MediaHTTPContentRequest) (*service.MediaContent, error) {
+	return nil, service.ErrMediaContentUnavailable
 }
 
 func (s *mediaTaskApplicationStub) Create(_ context.Context, req service.MediaCreateRequest) (*service.MediaCreateResult, error) {
@@ -66,12 +79,23 @@ func (s *mediaTaskApplicationStub) OpenVideo(_ context.Context, _ string, _ int6
 
 func (s *mediaTaskApplicationStub) Stage(_ context.Context, _ int64, input service.MediaArtifactInput) (service.MediaArtifactInput, error) {
 	s.stageCalls++
-	if s.stageErr != nil {
+	if s.stageErr != nil && (s.stageErrAt == 0 || s.stageCalls == s.stageErrAt) {
 		return service.MediaArtifactInput{}, s.stageErr
 	}
 	input.Data = nil
-	input.ObjectKey = "staged/input"
+	input.ObjectKey = fmt.Sprintf("staged/input-%d", s.stageCalls)
 	return input, nil
+}
+
+func (s *mediaTaskApplicationStub) Discard(ctx context.Context, _ int64, input service.MediaArtifactInput) error {
+	if _, ok := ctx.Deadline(); ok {
+		s.discardHasDeadline = true
+	}
+	if s.requireLiveDiscardContext && ctx.Err() != nil {
+		return ctx.Err()
+	}
+	s.discarded = append(s.discarded, input)
+	return nil
 }
 
 func imageEditRequest(t *testing.T, async string) (*http.Request, string) {
@@ -94,6 +118,30 @@ func imageEditRequest(t *testing.T, async string) (*http.Request, string) {
 	return req, contentType
 }
 
+func multiImageEditRequest(t *testing.T, files map[string][]byte) *http.Request {
+	t.Helper()
+	var body bytes.Buffer
+	w := multipart.NewWriter(&body)
+	require.NoError(t, w.WriteField("model", "fake-edit"))
+	require.NoError(t, w.WriteField("prompt", "edit"))
+	names := make([]string, 0, len(files))
+	for name := range files {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		data := files[name]
+		part, err := w.CreateFormFile("image", name)
+		require.NoError(t, err)
+		_, err = part.Write(data)
+		require.NoError(t, err)
+	}
+	require.NoError(t, w.Close())
+	req := newAPIKeyRequest(http.MethodPost, "/v1/images/edits", &body, 42)
+	req.Header.Set("Content-Type", w.FormDataContentType())
+	return req
+}
+
 func videoUploadRequest(t *testing.T) *http.Request {
 	t.Helper()
 	var body bytes.Buffer
@@ -106,6 +154,30 @@ func videoUploadRequest(t *testing.T) *http.Request {
 	require.NoError(t, err)
 	require.NoError(t, w.Close())
 	req := newAPIKeyRequest(http.MethodPost, "/v1/videos", &body, 42)
+	req.Header.Set("Content-Type", w.FormDataContentType())
+	return req
+}
+
+func mediaMultipartRequestWithFields(
+	t *testing.T,
+	path string,
+	fileField string,
+	fileName string,
+	fileData []byte,
+	fields map[string]string,
+) *http.Request {
+	t.Helper()
+	var body bytes.Buffer
+	w := multipart.NewWriter(&body)
+	for key, value := range fields {
+		require.NoError(t, w.WriteField(key, value))
+	}
+	part, err := w.CreateFormFile(fileField, fileName)
+	require.NoError(t, err)
+	_, err = part.Write(fileData)
+	require.NoError(t, err)
+	require.NoError(t, w.Close())
+	req := newAPIKeyRequest(http.MethodPost, path, &body, 42)
 	req.Header.Set("Content-Type", w.FormDataContentType())
 	return req
 }
@@ -147,6 +219,10 @@ func mixedVideoUploadRequest(t *testing.T) *http.Request {
 }
 
 func newStandaloneMediaRouter(t *testing.T) (*gin.Engine, *mediaTaskApplicationStub) {
+	return newStandaloneMediaRouterWithStager(t, nil)
+}
+
+func newStandaloneMediaRouterWithStager(t *testing.T, stager service.MediaInputLifecycle) (*gin.Engine, *mediaTaskApplicationStub) {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 	app := &mediaTaskApplicationStub{createResult: &service.MediaCreateResult{
@@ -156,14 +232,21 @@ func newStandaloneMediaRouter(t *testing.T) (*gin.Engine, *mediaTaskApplicationS
 		},
 		Disposition: service.MediaCreateDispositionAccepted,
 	}}
-	h := NewMediaTaskHandler(app, app, app, &config.Config{Server: config.ServerConfig{MaxRequestBodySize: 1 << 20}})
+	if stager == nil {
+		stager = app
+	}
+	h := NewMediaTaskHandler(app, app, stager, &config.Config{Server: config.ServerConfig{MaxRequestBodySize: 1 << 20}})
 	router := gin.New()
 	router.Use(func(c *gin.Context) {
 		userID, _ := strconv.ParseInt(c.GetHeader("X-Test-User-ID"), 10, 64)
 		c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{UserID: userID})
 		if c.GetHeader("X-Test-API-Key") != "" {
+			apiKeyUserID := userID
+			if raw := c.GetHeader("X-Test-API-Key-User-ID"); raw != "" {
+				apiKeyUserID, _ = strconv.ParseInt(raw, 10, 64)
+			}
 			groupID := int64(7)
-			c.Set(string(middleware.ContextKeyAPIKey), &service.APIKey{ID: 8, UserID: userID, GroupID: &groupID})
+			c.Set(string(middleware.ContextKeyAPIKey), &service.APIKey{ID: 8, UserID: apiKeyUserID, GroupID: &groupID})
 		}
 		c.Next()
 	})
@@ -174,6 +257,34 @@ func newStandaloneMediaRouter(t *testing.T) (*gin.Engine, *mediaTaskApplicationS
 	router.GET("/v1/videos/:id", h.GetVideoTask)
 	router.GET("/v1/videos/:id/content", h.GetVideoContent)
 	return router, app
+}
+
+func TestMediaTaskHandlerExternalURLUsesRealStagerContentTypeContract(t *testing.T) {
+	stager := service.NewMediaContentService(nil, nil, nil, nil, nil, handlerMediaHTTPReader{}, service.NewDisabledMediaArtifactObjectStore())
+
+	t.Run("valid image URL reaches create", func(t *testing.T) {
+		router, app := newStandaloneMediaRouterWithStager(t, stager)
+		rec := performAPIKeyRequest(router, http.MethodPost, "/v1/videos", `{
+			"model":"fake-video","prompt":"sunset","image_url":"https://media.example/input.png?token=internal"
+		}`, 42)
+		require.Equal(t, http.StatusAccepted, rec.Code)
+		require.Equal(t, 1, app.createCalls)
+		require.Equal(t, "image/png", app.lastCreate.Inputs[0].ContentType)
+	})
+
+	for _, raw := range []string{
+		"https://media.example/input.mp4",
+		"https://media.example/no-extension",
+	} {
+		t.Run(raw, func(t *testing.T) {
+			router, app := newStandaloneMediaRouterWithStager(t, stager)
+			rec := performAPIKeyRequest(router, http.MethodPost, "/v1/videos", `{
+				"model":"fake-video","prompt":"sunset","image_url":"`+raw+`"
+			}`, 42)
+			require.Equal(t, http.StatusBadRequest, rec.Code)
+			require.Zero(t, app.createCalls)
+		})
+	}
 }
 
 func newAPIKeyRequest(method, path string, body io.Reader, userID int64) *http.Request {
@@ -213,6 +324,15 @@ func TestMediaTaskHandlerAsyncVideoReturns202(t *testing.T) {
 	require.True(t, app.lastCreate.ClientAsync)
 }
 
+func TestMediaTaskHandlerRejectsMismatchedAuthSubjectAndAPIKeyUser(t *testing.T) {
+	router, app := newStandaloneMediaRouter(t)
+	req := newAPIKeyRequest(http.MethodPost, "/v1/videos", strings.NewReader(`{"model":"fake-video","prompt":"sunset"}`), 42)
+	req.Header.Set("X-Test-API-Key-User-ID", "99")
+	rec := performRequest(router, req, 42, true)
+	require.Equal(t, http.StatusUnauthorized, rec.Code)
+	require.Zero(t, app.createCalls)
+}
+
 func TestMediaTaskHandlerSyncImageKeepsOpenAIResponseShape(t *testing.T) {
 	router, app := newStandaloneMediaRouter(t)
 	app.createResult = &service.MediaCreateResult{
@@ -247,6 +367,67 @@ func TestMediaTaskHandlerImageEditMultipartAsync(t *testing.T) {
 	require.Nil(t, app.lastCreate.Inputs[0].Data)
 }
 
+func TestMediaTaskHandlerValidatesEveryUploadBeforeStaging(t *testing.T) {
+	router, app := newStandaloneMediaRouter(t)
+	req := multiImageEditRequest(t, map[string][]byte{
+		"first.png":  []byte("\x89PNG\r\n\x1a\n"),
+		"second.png": {0x00, 0x01, 0x02, 0x03},
+	})
+	rec := performRequest(router, req, 42, true)
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	require.Zero(t, app.stageCalls)
+	require.Zero(t, app.createCalls)
+}
+
+func TestMediaTaskHandlerCleansStagedInputsOnPartialStageFailure(t *testing.T) {
+	router, app := newStandaloneMediaRouter(t)
+	app.stageErr = service.ErrInvalidMediaInput
+	app.stageErrAt = 2
+	req := multiImageEditRequest(t, map[string][]byte{
+		"first.png":  []byte("\x89PNG\r\n\x1a\n"),
+		"second.png": []byte("\x89PNG\r\n\x1a\n"),
+	})
+	rec := performRequest(router, req, 42, true)
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	require.Equal(t, 2, app.stageCalls)
+	require.Len(t, app.discarded, 1)
+	require.Equal(t, "staged/input-1", app.discarded[0].ObjectKey)
+	require.Zero(t, app.createCalls)
+}
+
+func TestMediaTaskHandlerCleansStagedInputsWhenApplicationRejects(t *testing.T) {
+	router, app := newStandaloneMediaRouter(t)
+	app.createErr = service.ErrMediaInputNotRecoverable
+	req, _ := imageEditRequest(t, "false")
+	rec := performRequest(router, req, 42, true)
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	require.Len(t, app.discarded, 1)
+	require.Equal(t, "staged/input-1", app.discarded[0].ObjectKey)
+}
+
+func TestMediaTaskHandlerCleansMultipleStagedInputsInReverseOrderWhenApplicationRejects(t *testing.T) {
+	router, app := newStandaloneMediaRouter(t)
+	app.createErr = service.ErrMediaInputNotRecoverable
+	req := multiImageEditRequest(t, map[string][]byte{
+		"first.png":  []byte("\x89PNG\r\n\x1a\n"),
+		"second.png": []byte("\x89PNG\r\n\x1a\n"),
+	})
+
+	rec := performRequest(router, req, 42, true)
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	require.Len(t, app.discarded, 2)
+	require.Equal(t, "staged/input-2", app.discarded[0].ObjectKey)
+	require.Equal(t, "staged/input-1", app.discarded[1].ObjectKey)
+}
+
+func TestMediaTaskHandlerKeepsStagedInputsWhenApplicationAccepts(t *testing.T) {
+	router, app := newStandaloneMediaRouter(t)
+	req, _ := imageEditRequest(t, "true")
+	rec := performRequest(router, req, 42, true)
+	require.Equal(t, http.StatusAccepted, rec.Code)
+	require.Empty(t, app.discarded)
+}
+
 func TestMediaTaskHandlerGatewayTimeoutDoesNotExposeTaskID(t *testing.T) {
 	router, app := newStandaloneMediaRouter(t)
 	app.createResult = &service.MediaCreateResult{
@@ -256,6 +437,68 @@ func TestMediaTaskHandlerGatewayTimeoutDoesNotExposeTaskID(t *testing.T) {
 	rec := performAPIKeyRequest(router, http.MethodPost, "/v1/videos", `{"model":"fake-video","prompt":"sunset"}`, 42)
 	require.Equal(t, http.StatusGatewayTimeout, rec.Code)
 	require.NotContains(t, rec.Body.String(), "task_secret")
+}
+
+func TestMediaTaskHandlerCleansStagedInputOnGatewayTimeout(t *testing.T) {
+	router, app := newStandaloneMediaRouter(t)
+	app.createResult = &service.MediaCreateResult{
+		Task:        &service.MediaTask{PublicID: "task_secret", MediaType: service.MediaTypeVideo},
+		Disposition: service.MediaCreateDispositionGatewayTimeout,
+	}
+
+	rec := performAPIKeyRequest(router, http.MethodPost, "/v1/videos", `{
+		"model":"fake-video","prompt":"sunset","image_url":"https://media.example/input.png"
+	}`, 42)
+	require.Equal(t, http.StatusGatewayTimeout, rec.Code)
+	require.Len(t, app.discarded, 1)
+	require.Equal(t, "staged/input-1", app.discarded[0].ObjectKey)
+}
+
+func TestMediaTaskHandlerCleansStagedInputAfterRequestCancellation(t *testing.T) {
+	router, app := newStandaloneMediaRouter(t)
+	app.createErr = service.ErrMediaInputNotRecoverable
+	app.requireLiveDiscardContext = true
+	req := newAPIKeyRequest(http.MethodPost, "/v1/videos", strings.NewReader(`{
+		"model":"fake-video","prompt":"sunset","image_url":"https://media.example/input.png"
+	}`), 42)
+	ctx, cancel := context.WithCancel(req.Context())
+	cancel()
+	req = req.WithContext(ctx)
+
+	rec := performRequest(router, req, 42, true)
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	require.Len(t, app.discarded, 1)
+	require.Equal(t, "staged/input-1", app.discarded[0].ObjectKey)
+	require.True(t, app.discardHasDeadline)
+}
+
+func TestMediaTaskHandlerMapsStableServiceErrorsWithoutLeak(t *testing.T) {
+	for _, tt := range []struct {
+		name   string
+		err    error
+		status int
+		code   string
+	}{
+		{name: "idempotency conflict", err: service.ErrMediaIdempotencyConflict, status: http.StatusConflict, code: "idempotency_conflict"},
+		{name: "content rejected", err: service.ErrMediaContentRejected, status: http.StatusForbidden, code: "content_policy_violation"},
+		{name: "generation disabled", err: service.ErrMediaGenerationNotAllowed, status: http.StatusForbidden, code: "media_generation_not_allowed"},
+		{name: "input not recoverable", err: service.ErrMediaInputNotRecoverable, status: http.StatusBadRequest, code: "invalid_media_input"},
+		{name: "task initializing", err: service.ErrMediaTaskInitializing, status: http.StatusConflict, code: "media_task_initializing"},
+		{name: "group missing", err: service.ErrGroupNotFound, status: http.StatusNotFound, code: "group_not_found"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			router, app := newStandaloneMediaRouter(t)
+			app.createErr = fmt.Errorf("internal upstream Authorization secret: %w", tt.err)
+			rec := performAPIKeyRequest(router, http.MethodPost, "/v1/images/generations", `{
+				"model":"fake-image","prompt":"cat"
+			}`, 42)
+			require.Equal(t, tt.status, rec.Code)
+			require.Contains(t, rec.Body.String(), `"code":"`+tt.code+`"`)
+			require.NotContains(t, rec.Body.String(), "upstream")
+			require.NotContains(t, rec.Body.String(), "Authorization")
+			require.NotContains(t, rec.Body.String(), "secret")
+		})
+	}
 }
 
 func TestMediaTaskHandlerHidesTaskFromDifferentUser(t *testing.T) {
@@ -328,6 +571,30 @@ func TestMediaTaskHandlerMultipartAsyncThreeStates(t *testing.T) {
 			} else {
 				require.Zero(t, app.createCalls)
 			}
+		})
+	}
+}
+
+func TestMediaTaskHandlerRejectsInvalidMultipartNumbersBeforeStaging(t *testing.T) {
+	png := []byte("\x89PNG\r\n\x1a\n")
+	mp4 := []byte("\x00\x00\x00\x18ftypisom\x00\x00\x00\x00mp42isom")
+	for _, tt := range []struct {
+		name, path, fileField, fileName string
+		data                            []byte
+		fields                          map[string]string
+	}{
+		{name: "negative image count", path: "/v1/images/edits", fileField: "image", fileName: "input.png", data: png, fields: map[string]string{"model": "fake", "prompt": "edit", "n": "-1"}},
+		{name: "invalid image count", path: "/v1/images/edits", fileField: "image", fileName: "input.png", data: png, fields: map[string]string{"model": "fake", "prompt": "edit", "n": "many"}},
+		{name: "negative duration", path: "/v1/videos", fileField: "video", fileName: "input.mp4", data: mp4, fields: map[string]string{"model": "fake", "prompt": "edit", "duration_seconds": "-1"}},
+		{name: "invalid fps", path: "/v1/videos", fileField: "video", fileName: "input.mp4", data: mp4, fields: map[string]string{"model": "fake", "prompt": "edit", "fps": "fast"}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			router, app := newStandaloneMediaRouter(t)
+			req := mediaMultipartRequestWithFields(t, tt.path, tt.fileField, tt.fileName, tt.data, tt.fields)
+			rec := performRequest(router, req, 42, true)
+			require.Equal(t, http.StatusBadRequest, rec.Code)
+			require.Zero(t, app.stageCalls)
+			require.Zero(t, app.createCalls)
 		})
 	}
 }
@@ -466,6 +733,19 @@ func TestMediaTaskHandlerInvalidRangeReturns416WithoutOpeningContent(t *testing.
 	rec := performRequest(router, req, 42, false)
 	require.Equal(t, http.StatusRequestedRangeNotSatisfiable, rec.Code)
 	require.Zero(t, app.contentCalls)
+}
+
+func TestMediaTaskHandlerContentOpenerRangeErrorReturns416(t *testing.T) {
+	router, app := newStandaloneMediaRouter(t)
+	app.contentErr = fmt.Errorf("object store range: %w", service.ErrMediaRangeNotSatisfiable)
+	req := newAPIKeyRequest(http.MethodGet, "/v1/videos/task_public/content", nil, 42)
+	req.Header.Set("Range", "bytes=99-100")
+
+	rec := performRequest(router, req, 42, false)
+	require.Equal(t, http.StatusRequestedRangeNotSatisfiable, rec.Code)
+	require.Equal(t, 1, app.contentCalls)
+	require.Contains(t, rec.Body.String(), `"code":"invalid_range"`)
+	require.NotContains(t, rec.Body.String(), "object store")
 }
 
 func TestMediaTaskHandlerMissingCompletedArtifactReturns502WithoutLeak(t *testing.T) {

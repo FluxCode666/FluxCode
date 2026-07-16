@@ -101,7 +101,8 @@ func ProvideSettingHandler(settingService *service.SettingService, buildInfo Bui
 	return NewSettingHandler(settingService, buildInfo.Version)
 }
 
-// ProvideHandlers creates the Handlers struct
+// ProvideHandlers keeps the generated production graph compatible until the
+// media dependency chain is provided by Task 17.
 func ProvideHandlers(
 	authHandler *AuthHandler,
 	userHandler *UserHandler,
@@ -121,6 +122,39 @@ func ProvideHandlers(
 	referralHandler *ReferralHandler,
 	salesCommissionHandler *SalesCommissionHandler,
 	channelMonitorHandler *ChannelMonitorUserHandler,
+	idempotencyCoordinator *service.IdempotencyCoordinator,
+	idempotencyCleanupService *service.IdempotencyCleanupService,
+) *Handlers {
+	return ProvideHandlersWithMedia(
+		authHandler, userHandler, apiKeyHandler, usageHandler, redeemHandler,
+		subscriptionHandler, announcementHandler, adminHandlers, gatewayHandler,
+		openaiGatewayHandler, settingHandler, totpHandler, modelPricingHandler,
+		paymentHandler, paymentWebhookHandler, referralHandler, salesCommissionHandler,
+		channelMonitorHandler, nil, idempotencyCoordinator, idempotencyCleanupService,
+	)
+}
+
+// ProvideHandlersWithMedia creates the future media-aware Handlers aggregate.
+func ProvideHandlersWithMedia(
+	authHandler *AuthHandler,
+	userHandler *UserHandler,
+	apiKeyHandler *APIKeyHandler,
+	usageHandler *UsageHandler,
+	redeemHandler *RedeemHandler,
+	subscriptionHandler *SubscriptionHandler,
+	announcementHandler *AnnouncementHandler,
+	adminHandlers *AdminHandlers,
+	gatewayHandler *GatewayHandler,
+	openaiGatewayHandler *OpenAIGatewayHandler,
+	settingHandler *SettingHandler,
+	totpHandler *TotpHandler,
+	modelPricingHandler *ModelPricingHandler,
+	paymentHandler *PaymentHandler,
+	paymentWebhookHandler *PaymentWebhookHandler,
+	referralHandler *ReferralHandler,
+	salesCommissionHandler *SalesCommissionHandler,
+	channelMonitorHandler *ChannelMonitorUserHandler,
+	mediaTaskHandler *MediaTaskHandler,
 	_ *service.IdempotencyCoordinator,
 	_ *service.IdempotencyCleanupService,
 ) *Handlers {
@@ -143,6 +177,7 @@ func ProvideHandlers(
 		Referral:        referralHandler,
 		SalesCommission: salesCommissionHandler,
 		ChannelMonitor:  channelMonitorHandler,
+		MediaTask:       mediaTaskHandler,
 	}
 }
 
@@ -167,7 +202,7 @@ var ProviderSet = wire.NewSet(
 	NewMediaTaskHandler,
 	wire.Bind(new(MediaTaskApplication), new(*service.MediaOrchestrator)),
 	wire.Bind(new(MediaVideoContentOpener), new(*service.MediaContentService)),
-	wire.Bind(new(service.MediaInputStager), new(*service.MediaContentService)),
+	wire.Bind(new(service.MediaInputLifecycle), new(*service.MediaContentService)),
 
 	// Admin handlers
 	admin.NewDashboardHandler,
@@ -208,5 +243,5 @@ var ProviderSet = wire.NewSet(
 
 	// AdminHandlers and Handlers constructors
 	ProvideAdminHandlers,
-	ProvideHandlers,
+	ProvideHandlersWithMedia,
 )

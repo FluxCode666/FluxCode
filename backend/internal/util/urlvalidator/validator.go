@@ -17,6 +17,8 @@ type ValidationOptions struct {
 	AllowPrivate     bool
 }
 
+var carrierGradeNAT = &net.IPNet{IP: net.IPv4(100, 64, 0, 0), Mask: net.CIDRMask(10, 32)}
+
 // ValidateHTTPURL validates an outbound HTTP/HTTPS URL.
 //
 // It provides a single validation entry point that supports:
@@ -117,10 +119,20 @@ func ValidateResolvedIP(host string) error {
 	}
 
 	for _, ip := range ips {
-		if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() ||
-			ip.IsLinkLocalMulticast() || ip.IsUnspecified() {
-			return fmt.Errorf("resolved ip %s is not allowed", ip.String())
+		if err := ValidateIP(ip); err != nil {
+			return err
 		}
+	}
+	return nil
+}
+
+func ValidateIP(ip net.IP) error {
+	if ip == nil {
+		return errors.New("resolved ip is invalid")
+	}
+	if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() ||
+		ip.IsMulticast() || ip.IsUnspecified() || carrierGradeNAT.Contains(ip) {
+		return fmt.Errorf("resolved ip %s is not allowed", ip.String())
 	}
 	return nil
 }
@@ -167,7 +179,7 @@ func isBlockedHost(host string) bool {
 		return true
 	}
 	if ip := net.ParseIP(host); ip != nil {
-		if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsUnspecified() {
+		if ValidateIP(ip) != nil {
 			return true
 		}
 	}

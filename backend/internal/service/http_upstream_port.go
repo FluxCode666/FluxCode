@@ -1,10 +1,33 @@
 package service
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 )
+
+var (
+	ErrMediaSecureUpstreamRequired        = errors.New("secure http upstream is required")
+	ErrSecureHTTPUpstreamProxyUnsupported = errors.New("secure http upstream proxy is unsupported")
+)
+
+type SecureHTTPUpstreamPolicy struct {
+	AllowedHosts      []string
+	RequireAllowlist  bool
+	AllowInsecureHTTP bool
+	AllowPrivate      bool
+}
+
+type SecureHTTPUpstream interface {
+	DoSecure(
+		req *http.Request,
+		proxyURL string,
+		accountID int64,
+		accountConcurrency int,
+		policy SecureHTTPUpstreamPolicy,
+	) (*http.Response, error)
+}
 
 // HTTPUpstream 上游 HTTP 请求接口
 // 用于向上游 API（Claude、OpenAI、Gemini 等）发送请求

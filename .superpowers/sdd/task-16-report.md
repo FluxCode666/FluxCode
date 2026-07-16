@@ -194,3 +194,209 @@ cd backend && go test ./internal/service ./internal/repository ./internal/handle
 - context 沿 Handler → Service → Reader → HTTPUpstream 透传。
 - 没有日志新增，因此没有 URL、Authorization、账号凭证日志泄露面。
 - 搜索确认生产 Handler 仅有六个方法，未出现 Cancel；生产 gateway 文件零 diff。
+
+## 首轮复审修复追加（2026-07-17）
+
+### 复审范围与结论
+
+- 修复基线：`ceb4513c7 feat(media): define task and video content api contracts`。
+- 首轮复审指出的 SSRF、URL MIME、Range 错误传播、稳定错误映射、inline Data URL 上限、staging 生命周期、Wire 聚合和三个 Minor 均已按 RED→GREEN 闭环。
+- 自审另外补齐 URL `userinfo` 的暂存入口拒绝、CGNAT/全局 multicast 阻断，以及跨 origin redirect 自定义 API key 剥离。
+- 仍未挂生产媒体路由，未增加真实媒体 Adapter/对象存储 Provider、进度/UI、取消 API 或 Task 17 专用配置。
+
+### Critical：SSRF 与 DNS rebinding
+
+新增显式小端口：
+
+```go
+type SecureHTTPUpstreamPolicy struct {
+	AllowedHosts      []string
+	RequireAllowlist  bool
+	AllowInsecureHTTP bool
+	AllowPrivate      bool
+}
+
+type SecureHTTPUpstream interface {
+	DoSecure(...)
+}
+```
+
+Reader 对未实现 `SecureHTTPUpstream` 的普通 upstream fail closed。媒体策略固定 `AllowPrivate=false`，不继承全局 `AllowPrivateHosts` 的宽松值；初始请求和每次 redirect 都重新校验 scheme、allowlist、userinfo 和私网字面量，并拒绝 HTTPS→HTTP downgrade。账号配置代理时返回 `ErrSecureHTTPUpstreamProxyUnsupported`，不回退到不安全代理路径。
+
+安全 transport 每个请求独立创建。`DialContext` 对目标 hostname 只解析一次，逐个调用 `urlvalidator.ValidateIP`，跳过不允许的地址，只把通过校验的同一个 IP 用 `net.JoinHostPort` 绑定到实际 socket dial；Request URL/Host 保留原 hostname，因此标准 `http.Transport` 的 TLS SNI 和证书验证仍针对原 hostname。Body Close 时关闭该 transport 的 idle connections。
+
+复审 RED 是缺少安全策略、`DoSecure`、redirect 校验和解析结果绑定导致编译/行为失败；初次 GREEN：
+
+```bash
+go test ./internal/repository -run 'Test(MediaHTTPContentReaderFailsClosed|MediaHTTPContentReaderUsesSecurePolicy|SecureHTTPUpstream)' -count=1
+```
+
+退出码 `0`，repository PASS，`0.814s`。原 Reader 回归：
+
+```bash
+go test ./internal/repository -run 'TestMediaHTTPContent' -count=1
+```
+
+退出码 `0`，repository PASS，`0.561s`。
+
+追加安全 RED→GREEN：
+
+- `TestMediaHTTPContentReaderRejectsURLUserinfoDuringValidation`：RED 时 `ValidateURL("https://user:pass@media.example/video.mp4")` 返回 nil error；修复后 GREEN，repository PASS，`0.805s`。
+- `TestValidateIPRejectsNonPublicAddressSpace`：RED 时 `100.64.0.1`、`239.1.1.1`、`ff0e::1` 均被接受；修复后 CGNAT 和所有 multicast 同时用于 DNS 结果与 IP 字面量校验，GREEN，`0.404s`。
+- `TestSecureHTTPUpstreamStripsCredentialsOnCrossOriginRedirect`：RED 时跨 Host redirect 仍携带 `Authorization`；修复后跨 origin 剥离 `Authorization`、`Proxy-Authorization`、`Cookie`、`X-Api-Key`、`X-Goog-Api-Key`，同 origin（包括隐式/显式默认端口）保留，GREEN，repository PASS，`0.814s`。
+
+### Important：内容与错误契约
+
+1. 外部 URL MIME
+   - `MediaContentService.Stage` 只从 URL path 严格映射 png/jpeg/webp 与 mp4/webm/quicktime；query 保留在内部引用但不参与扩展名判断。
+   - 无扩展或媒体类别不匹配返回 `ErrInvalidMediaInput`。
+   - RED 时合法 `.png` 的 ContentType 为空，错类/无扩展返回 202；GREEN 命令：
+
+```bash
+go test ./internal/service ./internal/handler -run 'TestMedia(ContentServiceStageExternalURL|TaskHandlerExternalURL)' -count=1
+```
+
+退出码 `0`：service `1.541s`，handler `0.730s`。
+
+2. object store Range 错误传播
+   - `OpenVideo` 对 `ErrInvalidMediaRange` 和 `ErrMediaRangeNotSatisfiable` 直接传播，只有 disabled/unavailable 才允许代理 fallback；其他存储错误用 `%w` 返回。
+   - RED 时 Range 错误被忽略并从 Data URL 返回 206；GREEN：
+
+```bash
+go test ./internal/service -run 'TestMediaContentServicePropagatesObjectStoreRangeErrors' -count=1
+```
+
+退出码 `0`，service PASS，`0.943s`。Handler 组合直接测试确认 opener 包装后的不可满足 Range 最终为 416 且不泄露内部错误。
+
+3. Handler 稳定错误映射
+   - `ErrMediaIdempotencyConflict` → 409；`ErrMediaContentRejected` / `ErrMediaGenerationNotAllowed` → 403；`ErrMediaInputNotRecoverable` → 400；`ErrMediaTaskInitializing` → 409；`ErrGroupNotFound` → 404。
+   - RED 时全部返回 500；GREEN：
+
+```bash
+go test ./internal/handler -run 'TestMediaTaskHandlerMapsStableServiceErrors' -count=1
+```
+
+退出码 `0`，handler PASS，`0.676s`；测试使用含 Authorization/upstream secret 的包装错误并断言响应不泄露。
+
+4. Inline Data URL 上限
+   - 统一上限 `maxInlineMediaDecodedBytes = 1 << 20`；PersistOutputs 在 Artifact 写入前校验。
+   - 使用 `base64.NewDecoder` 与 `io.LimitReader(max+1)` bounded decode，避免先整体解码分配；OpenVideo 使用相同路径。
+   - 精确 1 MiB 接受，1 MiB+1 返回 `ErrMediaContentTooLarge` 且 Artifact 零写入。
+   - RED 时超限仍写 DB，Open 返回 1,048,577 字节 Body；GREEN：
+
+```bash
+go test ./internal/service -run 'TestMediaContentServiceBoundsInlineData' -count=1
+```
+
+退出码 `0`，service PASS，`0.955s`。
+
+### Important：staging 生命周期与 Wire
+
+新增生命周期端口：
+
+```go
+type MediaInputDiscarder interface {
+	Discard(ctx context.Context, userID int64, input MediaArtifactInput) error
+}
+
+type MediaInputLifecycle interface {
+	MediaInputStager
+	MediaInputDiscarder
+}
+```
+
+`MediaArtifactObjectStore` 同步增加 `Discard`。外部 URL 或无 durable key 的输入 cleanup 为 no-op；ObjectKey/内部引用交给 object store，错误用 `%w` 保留。
+
+Handler 在任何 Stage 前读取并验证全部上传；部分 Stage 失败时用 `errors.Join` 保留原错误并逆序 cleanup。Create 返回错误、nil result、GatewayTimeout 或 Failed 时清理；Accepted、FallbackAsync、Completed 保留。JSON 外部 URL 经真实 ContentService cleanup 为 no-op。直接测试覆盖了两个输入在应用拒绝时按 input-2、input-1 逆序清理，以及 GatewayTimeout 清理。
+
+复审 RED 分别表现为第二文件非法时已 Stage 第一文件、第二次 Stage 失败时 cleanup 为零、应用拒绝时 cleanup 为零；GREEN：
+
+```bash
+go test ./internal/handler -run 'TestMediaTaskHandler(ValidatesEveryUpload|CleansStagedInputs|KeepsStagedInputs)' -count=1
+```
+
+退出码 `0`，handler PASS，`0.643s`。新增 Discard/416/逆序直接覆盖组合命令退出码 `0`：service `1.651s`、handler `0.852s`；GatewayTimeout cleanup 单测 PASS，`0.855s`。
+
+Wire 保留旧 `ProvideHandlers(...)` 供现有 `wire_gen.go` 使用；新增 `ProvideHandlersWithMedia(...)` 设置 `Handlers.MediaTask`，`ProviderSet` 使用新聚合并绑定 `service.MediaInputLifecycle -> *MediaContentService`。未手改生成文件，完整生产依赖链仍留给 Task 17。
+
+Wire RED 为 `ProvideHandlersWithMedia` 未定义；GREEN：
+
+```bash
+go test ./internal/handler -run 'TestProvideHandlersWithMedia' -count=1
+```
+
+退出码 `0`，handler PASS，`0.871s`。
+
+### Minor
+
+- Create 要求 `AuthSubject.UserID == APIKey.UserID`，事实源使用 `APIKey.UserID`。
+- Multipart `n`、`duration_seconds`、`fps` 省略时使用默认；显式非法、零或负数在 Stage 前返回 400。
+- `sanitizeMediaTaskForUser` 额外清除 ID/User/APIKey/Group、ErrorMessage、RequestSpec、Stage、async/fallback、Billing/金额/Retry、Version、执行时间和 UpdatedAt 等内部字段。
+
+RED 时身份不一致返回 202、非法数字返回 202、sanitize 后 ID 仍为 1；GREEN：
+
+```bash
+go test ./internal/handler ./internal/service -run 'TestMedia(TaskHandlerRejectsMismatched|TaskHandlerRejectsInvalidMultipartNumbers|OrchestratorGetForUserSanitizes)' -count=1
+```
+
+退出码 `0`：handler `0.642s`，service `0.832s`。
+
+### 复审后最终验证
+
+精确三包回归（含安全 upstream 和 Wire）：
+
+```bash
+go test ./internal/service ./internal/repository ./internal/handler -run 'TestMedia(TaskHandler|Router|HTTPContent|Content)|TestSecureHTTPUpstream|TestProvideHandlersWithMedia' -count=1
+```
+
+退出码 `0`：service `1.084s`、repository `0.543s`、handler `1.568s`。
+
+最终精确 race：
+
+```bash
+go test -race ./internal/service ./internal/repository ./internal/handler -run 'TestMedia(TaskHandler|Router|HTTPContent|Content)|TestSecureHTTPUpstream|TestProvideHandlersWithMedia' -count=1
+```
+
+退出码 `0`：service `2.146s`、repository `2.191s`、handler `2.835s`。
+
+扩大媒体回归：
+
+```bash
+go test ./internal/service ./internal/repository ./internal/handler -run '^TestMedia' -count=1
+```
+
+退出码 `0`：service `1.529s`、repository `2.210s`、handler `1.560s`。URL validator 全包回归退出码 `0`，`0.406s`。
+
+最终门禁：
+
+- `gofmt`：执行全部变更 Go 文件。
+- `git diff --check`：退出码 `0`。
+- `go vet ./...`：退出码 `0`。
+- `go build ./...`：退出码 `0`。
+- `go test ./... -run '^$' -count=1`：退出码 `0`，全仓编译型测试通过。
+- `go mod verify`：退出码 `0`，输出 `all modules verified`。
+- `git diff --exit-code c6f881a22 -- backend/internal/server/routes/gateway.go`：退出码 `0`。
+- 搜索确认 standalone Handler 仍只有六个公开方法，没有 Cancel/DELETE；DTO 只从安全字段构造，没有输出 ObjectKey、UpstreamReference、Authorization 或内部 ErrorMessage。
+
+### 已知基线与边界
+
+- 按任务账本，本轮仍未运行无过滤条件的完整 `go test ./internal/service` / `go test ./...` 功能套件；既有 OpenAI stub concurrent map fatal 与本任务无关。本轮执行了精确/扩大媒体功能回归、race 和全仓编译型测试，没有把编译型 PASS 表述为完整功能套件 PASS。
+- 未修改 `backend/internal/server/routes/gateway.go`、progress、UI、取消接口、真实 Adapter 或 Task 17 配置。
+
+### 提交前 code-audit 追加
+
+高风险外部输入与对象生命周期审计发现：客户端在已 Stage 后断开时，原实现把已经取消的 request context 直接传给 `Discard`，cleanup 会立即失败并遗留对象。
+
+- RED：`TestMediaTaskHandlerCleansStagedInputAfterRequestCancellation` 中 Discard 零调用成功，期望 1，handler FAIL，`0.853s`。
+- GREEN：cleanup 使用 `context.WithoutCancel` 保留 request values、脱离客户端取消，再统一增加 10 秒 timeout；逆序和 `errors.Join` 语义不变。直接测试 handler PASS，`0.865s`。
+
+最后一次生产代码变更后的 fresh 验证：
+
+- 精确三包回归退出码 `0`：service `0.876s`、repository `2.156s`、handler `2.681s`。
+- 扩大 `^TestMedia` 退出码 `0`：service `2.359s`、repository `4.342s`、handler `3.681s`。
+- 精确 race 退出码 `0`：service `2.379s`、repository `3.129s`、handler `3.720s`。
+- URL validator 全包退出码 `0`，`0.436s`。
+- `gofmt`、`git diff --check`、`go vet ./...`、`go build ./...`、`go test ./... -run '^$' -count=1`、`go mod verify` 均再次退出码 `0`。
+- `git diff --exit-code c6f881a22 -- backend/internal/server/routes/gateway.go` 与 `git diff --exit-code -- backend/cmd/server/wire_gen.go` 均退出码 `0`，生产 gateway 与生成文件零改动。
+
+最终 code-audit 结论：高风险审计通过，无已知阻断或非阻断代码风险。字段对账仅涉及既定内部任务清洗和公开错误映射，已有直接契约测试；不涉及 DB schema、迁移、依赖、配置、缓存、队列 topic、编辑/删除链路或真实生产路由。测试文件无 Skip/Only；未执行的无过滤完整功能套件及原因继续按上文列为证据边界。

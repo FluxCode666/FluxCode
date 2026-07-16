@@ -1,9 +1,12 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
+	"errors"
 	"io"
 	"net/http"
 	"testing"
@@ -11,6 +14,12 @@ import (
 
 	"github.com/stretchr/testify/require"
 )
+
+const testInlineMediaDecodedBytes = 1 << 20
+
+func inlineVideoDataURL(size int) string {
+	return "data:video/mp4;base64," + base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{'v'}, size))
+}
 
 type mediaContentTaskRepoStub struct {
 	task *MediaTask
@@ -67,14 +76,26 @@ func (mediaContentHTTPReaderStub) Open(context.Context, MediaHTTPContentRequest)
 }
 
 type mediaContentObjectStoreStub struct {
-	put func(context.Context, MediaArtifactInput) (*MediaArtifact, error)
+	put     func(context.Context, MediaArtifactInput) (*MediaArtifact, error)
+	open    func(context.Context, *MediaArtifact, string) (*MediaContent, error)
+	discard func(context.Context, MediaArtifactInput) error
+}
+
+func (s mediaContentObjectStoreStub) Discard(ctx context.Context, input MediaArtifactInput) error {
+	if s.discard != nil {
+		return s.discard(ctx, input)
+	}
+	return nil
 }
 
 func (s mediaContentObjectStoreStub) Put(ctx context.Context, input MediaArtifactInput) (*MediaArtifact, error) {
 	return s.put(ctx, input)
 }
 
-func (mediaContentObjectStoreStub) Open(context.Context, *MediaArtifact, string) (*MediaContent, error) {
+func (s mediaContentObjectStoreStub) Open(ctx context.Context, artifact *MediaArtifact, byteRange string) (*MediaContent, error) {
+	if s.open != nil {
+		return s.open(ctx, artifact, byteRange)
+	}
 	return nil, ErrMediaArtifactObjectStoreDisabled
 }
 
@@ -125,6 +146,31 @@ func TestMediaContentServiceRejectsUnsatisfiableRange(t *testing.T) {
 	require.ErrorIs(t, err, ErrMediaRangeNotSatisfiable)
 }
 
+func TestMediaContentServicePropagatesObjectStoreRangeErrorsWithoutProxyFallback(t *testing.T) {
+	for _, rangeErr := range []error{ErrInvalidMediaRange, ErrMediaRangeNotSatisfiable} {
+		t.Run(rangeErr.Error(), func(t *testing.T) {
+			tasks := &mediaContentTaskRepoStub{task: &MediaTask{
+				ID: 1, PublicID: "task_public", UserID: 42, MediaType: MediaTypeVideo, Status: MediaTaskStatusCompleted,
+			}}
+			artifacts := &mediaContentArtifactRepoStub{items: []MediaArtifact{{
+				ID: 2, TaskID: 1, Direction: "output", MediaType: MediaTypeVideo, ObjectKey: "objects/video",
+				UpstreamReference: "data:video/mp4;base64,MDEyMw==", ContentType: "video/mp4",
+			}}}
+			svc := NewMediaContentService(
+				tasks, artifacts, mediaContentSettingsStub{settings: &SystemSettings{MediaVideoProxyFallbackEnabled: true}},
+				mediaContentAccountRepoStub{}, NewMediaAdapterRegistry(), mediaContentHTTPReaderStub{},
+				mediaContentObjectStoreStub{
+					put:  func(context.Context, MediaArtifactInput) (*MediaArtifact, error) { return nil, nil },
+					open: func(context.Context, *MediaArtifact, string) (*MediaContent, error) { return nil, rangeErr },
+				},
+			)
+			content, err := svc.OpenVideo(context.Background(), "task_public", 42, "bytes=0-1")
+			require.Nil(t, content)
+			require.ErrorIs(t, err, rangeErr)
+		})
+	}
+}
+
 func TestMediaContentServiceStageUploadClearsDataAndKeepsChecksum(t *testing.T) {
 	data := []byte("fake-image")
 	svc := NewMediaContentService(
@@ -145,6 +191,88 @@ func TestMediaContentServiceStageUploadClearsDataAndKeepsChecksum(t *testing.T) 
 	require.Equal(t, "objects/input", staged.ObjectKey)
 	sum := sha256.Sum256(data)
 	require.Equal(t, hex.EncodeToString(sum[:]), staged.ChecksumSHA256)
+}
+
+func TestMediaContentServiceStageExternalURLDerivesStrictContentType(t *testing.T) {
+	svc := NewMediaContentService(
+		nil, nil, nil, nil, nil, mediaContentHTTPReaderStub{}, NewDisabledMediaArtifactObjectStore(),
+	)
+	image, err := svc.Stage(context.Background(), 42, MediaArtifactInput{
+		MediaType: MediaTypeImage, ExternalURL: "https://media.example/input.PNG?token=internal",
+	})
+	require.NoError(t, err)
+	require.Equal(t, "image/png", image.ContentType)
+	require.Equal(t, "https://media.example/input.PNG?token=internal", image.ExternalURL)
+
+	video, err := svc.Stage(context.Background(), 42, MediaArtifactInput{
+		MediaType: MediaTypeVideo, ExternalURL: "https://media.example/input.mp4?signature=internal",
+	})
+	require.NoError(t, err)
+	require.Equal(t, "video/mp4", video.ContentType)
+}
+
+func TestMediaContentServiceStageExternalURLRejectsUnknownOrWrongMediaExtension(t *testing.T) {
+	svc := NewMediaContentService(
+		nil, nil, nil, nil, nil, mediaContentHTTPReaderStub{}, NewDisabledMediaArtifactObjectStore(),
+	)
+	for _, input := range []MediaArtifactInput{
+		{MediaType: MediaTypeImage, ExternalURL: "https://media.example/no-extension"},
+		{MediaType: MediaTypeImage, ExternalURL: "https://media.example/wrong.mp4"},
+		{MediaType: MediaTypeVideo, ExternalURL: "https://media.example/wrong.png"},
+	} {
+		_, err := svc.Stage(context.Background(), 42, input)
+		require.ErrorIs(t, err, ErrInvalidMediaInput)
+	}
+}
+
+func TestMediaContentServiceDiscardExternalURLIsNoop(t *testing.T) {
+	discardCalls := 0
+	svc := NewMediaContentService(
+		nil, nil, nil, nil, nil, mediaContentHTTPReaderStub{},
+		mediaContentObjectStoreStub{
+			discard: func(context.Context, MediaArtifactInput) error {
+				discardCalls++
+				return nil
+			},
+		},
+	)
+
+	err := svc.Discard(context.Background(), 42, MediaArtifactInput{
+		MediaType: MediaTypeImage, ExternalURL: "https://media.example/input.png",
+	})
+	require.NoError(t, err)
+	require.Zero(t, discardCalls)
+}
+
+func TestMediaContentServiceDiscardObjectKeyUsesObjectStore(t *testing.T) {
+	input := MediaArtifactInput{MediaType: MediaTypeVideo, ObjectKey: "staged/input-video"}
+	var discarded MediaArtifactInput
+	svc := NewMediaContentService(
+		nil, nil, nil, nil, nil, mediaContentHTTPReaderStub{},
+		mediaContentObjectStoreStub{
+			discard: func(_ context.Context, value MediaArtifactInput) error {
+				discarded = value
+				return nil
+			},
+		},
+	)
+
+	err := svc.Discard(context.Background(), 42, input)
+	require.NoError(t, err)
+	require.Equal(t, input, discarded)
+}
+
+func TestMediaContentServiceDiscardPreservesObjectStoreError(t *testing.T) {
+	discardErr := errors.New("discard failed")
+	svc := NewMediaContentService(
+		nil, nil, nil, nil, nil, mediaContentHTTPReaderStub{},
+		mediaContentObjectStoreStub{
+			discard: func(context.Context, MediaArtifactInput) error { return discardErr },
+		},
+	)
+
+	err := svc.Discard(context.Background(), 42, MediaArtifactInput{ObjectKey: "staged/input"})
+	require.ErrorIs(t, err, discardErr)
 }
 
 func TestDisabledMediaArtifactObjectStoreRejectsPutAndOpen(t *testing.T) {
@@ -198,6 +326,51 @@ func TestMediaContentServiceRejectsVideoProxyWhenFallbackDisabled(t *testing.T) 
 	require.Empty(t, artifacts.items)
 }
 
+func TestMediaContentServiceBoundsInlineDataBeforePersistingArtifact(t *testing.T) {
+	t.Run("boundary accepted", func(t *testing.T) {
+		artifacts := &mediaContentArtifactRepoStub{}
+		svc := NewMediaContentService(
+			nil, artifacts, mediaContentSettingsStub{settings: &SystemSettings{MediaVideoProxyFallbackEnabled: true}},
+			nil, nil, mediaContentHTTPReaderStub{}, NewDisabledMediaArtifactObjectStore(),
+		)
+		stored, err := svc.PersistOutputs(context.Background(), &MediaTask{ID: 10}, []MediaArtifactInput{{
+			MediaType: MediaTypeVideo, ContentType: "video/mp4", UpstreamReference: inlineVideoDataURL(testInlineMediaDecodedBytes),
+		}})
+		require.NoError(t, err)
+		require.Len(t, stored, 1)
+	})
+
+	t.Run("over limit rejected without DB write", func(t *testing.T) {
+		artifacts := &mediaContentArtifactRepoStub{}
+		svc := NewMediaContentService(
+			nil, artifacts, mediaContentSettingsStub{settings: &SystemSettings{MediaVideoProxyFallbackEnabled: true}},
+			nil, nil, mediaContentHTTPReaderStub{}, NewDisabledMediaArtifactObjectStore(),
+		)
+		_, err := svc.PersistOutputs(context.Background(), &MediaTask{ID: 10}, []MediaArtifactInput{{
+			MediaType: MediaTypeVideo, ContentType: "video/mp4", UpstreamReference: inlineVideoDataURL(testInlineMediaDecodedBytes + 1),
+		}})
+		require.ErrorIs(t, err, ErrMediaContentTooLarge)
+		require.Empty(t, artifacts.items)
+	})
+}
+
+func TestMediaContentServiceBoundsInlineDataWhileOpening(t *testing.T) {
+	tasks := &mediaContentTaskRepoStub{task: &MediaTask{
+		ID: 1, PublicID: "task_public", UserID: 42, MediaType: MediaTypeVideo, Status: MediaTaskStatusCompleted,
+	}}
+	artifacts := &mediaContentArtifactRepoStub{items: []MediaArtifact{{
+		ID: 2, TaskID: 1, Direction: "output", MediaType: MediaTypeVideo,
+		ContentType: "video/mp4", UpstreamReference: inlineVideoDataURL(testInlineMediaDecodedBytes + 1),
+	}}}
+	svc := NewMediaContentService(
+		tasks, artifacts, mediaContentSettingsStub{settings: &SystemSettings{MediaVideoProxyFallbackEnabled: true}},
+		mediaContentAccountRepoStub{}, NewMediaAdapterRegistry(), mediaContentHTTPReaderStub{}, NewDisabledMediaArtifactObjectStore(),
+	)
+	content, err := svc.OpenVideo(context.Background(), "task_public", 42, "")
+	require.Nil(t, content)
+	require.ErrorIs(t, err, ErrMediaContentTooLarge)
+}
+
 func TestMediaContentServiceStoredOutputKeepsInputMetadata(t *testing.T) {
 	artifacts := &mediaContentArtifactRepoStub{}
 	svc := NewMediaContentService(
@@ -241,5 +414,5 @@ func TestMediaContentServiceRejectsInvalidBase64DataURL(t *testing.T) {
 
 var (
 	_ MediaArtifactWriter = (*MediaContentService)(nil)
-	_ MediaInputStager    = (*MediaContentService)(nil)
+	_ MediaInputLifecycle = (*MediaContentService)(nil)
 )

@@ -15,8 +15,36 @@ import (
 )
 
 type mediaHTTPUpstreamStub struct {
+	called       bool
+	secureCalled bool
+	policy       service.SecureHTTPUpstreamPolicy
+	do           func(*http.Request) (*http.Response, error)
+}
+
+type mediaOrdinaryHTTPUpstreamStub struct {
 	called bool
 	do     func(*http.Request) (*http.Response, error)
+}
+
+func (s *mediaHTTPUpstreamStub) DoSecure(
+	req *http.Request,
+	_ string,
+	_ int64,
+	_ int,
+	policy service.SecureHTTPUpstreamPolicy,
+) (*http.Response, error) {
+	s.secureCalled = true
+	s.policy = policy
+	return s.do(req)
+}
+
+func (s *mediaOrdinaryHTTPUpstreamStub) Do(req *http.Request, _ string, _ int64, _ int) (*http.Response, error) {
+	s.called = true
+	return s.do(req)
+}
+
+func (s *mediaOrdinaryHTTPUpstreamStub) DoWithTLS(req *http.Request, _ string, _ int64, _ int, _ *tlsfingerprint.Profile) (*http.Response, error) {
+	return s.Do(req, "", 0, 0)
 }
 
 type mediaContentTrackedBody struct {
@@ -52,7 +80,7 @@ func mediaContentTestConfig() *config.Config {
 }
 
 func TestMediaHTTPContentReaderRejectsPrivateAddress(t *testing.T) {
-	upstream := &mediaHTTPUpstreamStub{do: func(*http.Request) (*http.Response, error) {
+	upstream := &mediaOrdinaryHTTPUpstreamStub{do: func(*http.Request) (*http.Response, error) {
 		t.Fatal("HTTP upstream must not be called for a private address")
 		return nil, nil
 	}}
@@ -63,6 +91,49 @@ func TestMediaHTTPContentReaderRejectsPrivateAddress(t *testing.T) {
 	})
 	require.Error(t, err)
 	require.False(t, upstream.called)
+}
+
+func TestMediaHTTPContentReaderRejectsURLUserinfoDuringValidation(t *testing.T) {
+	reader := NewMediaHTTPContentReader(&mediaHTTPUpstreamStub{}, mediaContentTestConfig())
+
+	normalized, err := reader.ValidateURL("https://user:pass@media.example/video.mp4")
+	require.Error(t, err)
+	require.Empty(t, normalized)
+}
+
+func TestMediaHTTPContentReaderFailsClosedWithoutSecureUpstream(t *testing.T) {
+	upstream := &mediaOrdinaryHTTPUpstreamStub{do: func(*http.Request) (*http.Response, error) {
+		t.Fatal("ordinary upstream path must not be used for media content")
+		return nil, nil
+	}}
+	reader := NewMediaHTTPContentReader(upstream, mediaContentTestConfig())
+	_, err := reader.Open(context.Background(), service.MediaHTTPContentRequest{
+		URL: "http://media.example/video.mp4", Account: &service.Account{ID: 1, Concurrency: 1},
+	})
+	require.ErrorIs(t, err, service.ErrMediaSecureUpstreamRequired)
+	require.False(t, upstream.called)
+}
+
+func TestMediaHTTPContentReaderUsesSecurePolicyWhenGlobalConfigIsLoose(t *testing.T) {
+	cfg := mediaContentTestConfig()
+	cfg.Security.URLAllowlist.Enabled = false
+	cfg.Security.URLAllowlist.AllowPrivateHosts = true
+	upstream := &mediaHTTPUpstreamStub{do: func(*http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"video/mp4"}},
+			ContentLength: 1, Body: io.NopCloser(strings.NewReader("x")),
+		}, nil
+	}}
+	reader := NewMediaHTTPContentReader(upstream, cfg)
+	content, err := reader.Open(context.Background(), service.MediaHTTPContentRequest{
+		URL: "http://media.example/video.mp4", Account: &service.Account{ID: 1, Concurrency: 1},
+	})
+	require.NoError(t, err)
+	require.NoError(t, content.Body.Close())
+	require.True(t, upstream.secureCalled)
+	require.True(t, upstream.policy.AllowInsecureHTTP)
+	require.False(t, upstream.policy.AllowPrivate)
+	require.Equal(t, []string{"media.example"}, upstream.policy.AllowedHosts)
 }
 
 func TestMediaHTTPContentReaderForwardsOnlyAllowedHeadersAndSingleRange(t *testing.T) {

@@ -3,6 +3,7 @@ package repository
 import (
 	"compress/flate"
 	"compress/gzip"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -53,6 +54,10 @@ const (
 
 var errUpstreamClientLimitReached = errors.New("upstream client cache limit reached")
 
+type secureIPResolver interface {
+	LookupIPAddr(ctx context.Context, host string) ([]net.IPAddr, error)
+}
+
 // poolSettings 连接池配置参数
 // 封装 Transport 所需的各项连接池参数
 type poolSettings struct {
@@ -91,9 +96,11 @@ type upstreamClientEntry struct {
 // 7. 代理变更时清空旧连接池，避免复用错误代理
 // 8. 账号并发数与连接池上限对应（账号隔离策略下）
 type httpUpstreamService struct {
-	cfg     *config.Config                  // 全局配置
-	mu      sync.RWMutex                    // 保护 clients map 的读写锁
-	clients map[string]*upstreamClientEntry // 客户端缓存池，key 由隔离策略决定
+	cfg               *config.Config                  // 全局配置
+	mu                sync.RWMutex                    // 保护 clients map 的读写锁
+	clients           map[string]*upstreamClientEntry // 客户端缓存池，key 由隔离策略决定
+	secureResolver    secureIPResolver
+	secureDialContext func(context.Context, string, string) (net.Conn, error)
 }
 
 // NewHTTPUpstream 创建通用 HTTP 上游服务
@@ -158,6 +165,166 @@ func (s *httpUpstreamService) Do(req *http.Request, proxyURL string, accountID i
 	})
 
 	return resp, nil
+}
+
+func (s *httpUpstreamService) DoSecure(
+	req *http.Request,
+	proxyURL string,
+	_ int64,
+	accountConcurrency int,
+	policy service.SecureHTTPUpstreamPolicy,
+) (*http.Response, error) {
+	if s == nil {
+		return nil, errors.New("http upstream is nil")
+	}
+	if strings.TrimSpace(proxyURL) != "" {
+		return nil, service.ErrSecureHTTPUpstreamProxyUnsupported
+	}
+	if req == nil || req.URL == nil {
+		return nil, errors.New("request url is nil")
+	}
+	if req.Method != http.MethodGet {
+		return nil, errors.New("secure http upstream only allows GET")
+	}
+	normalized, err := validateSecureUpstreamURL(req.URL.String(), policy)
+	if err != nil {
+		return nil, err
+	}
+	parsed, err := url.Parse(normalized)
+	if err != nil {
+		return nil, fmt.Errorf("parse secure upstream url: %w", err)
+	}
+	secureRequest := req.Clone(req.Context())
+	secureRequest.URL = parsed
+	secureRequest.Host = req.Host
+
+	transport, err := buildUpstreamTransport(s.resolvePoolSettings(config.ConnectionPoolIsolationAccount, accountConcurrency), nil)
+	if err != nil {
+		return nil, fmt.Errorf("build secure upstream transport: %w", err)
+	}
+	transport.DialContext = s.secureDirectDialer()
+	client := &http.Client{
+		Transport: transport,
+		CheckRedirect: func(redirect *http.Request, via []*http.Request) error {
+			return validateSecureRedirect(redirect, via, policy)
+		},
+	}
+	resp, err := client.Do(secureRequest)
+	if err != nil {
+		transport.CloseIdleConnections()
+		return nil, err
+	}
+	decompressResponseBody(resp)
+	resp.Body = wrapTrackedBody(resp.Body, transport.CloseIdleConnections)
+	return resp, nil
+}
+
+func validateSecureUpstreamURL(raw string, policy service.SecureHTTPUpstreamPolicy) (string, error) {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || parsed == nil {
+		return "", errors.New("invalid secure upstream url")
+	}
+	if parsed.User != nil {
+		return "", errors.New("secure upstream url userinfo is not allowed")
+	}
+	normalized, err := urlvalidator.ValidateHTTPURL(raw, policy.AllowInsecureHTTP, urlvalidator.ValidationOptions{
+		AllowedHosts: policy.AllowedHosts, RequireAllowlist: policy.RequireAllowlist, AllowPrivate: policy.AllowPrivate,
+	})
+	if err != nil {
+		return "", fmt.Errorf("validate secure upstream url: %w", err)
+	}
+	return normalized, nil
+}
+
+func validateSecureRedirect(req *http.Request, via []*http.Request, policy service.SecureHTTPUpstreamPolicy) error {
+	if len(via) >= 10 {
+		return errors.New("stopped after 10 redirects")
+	}
+	if req == nil || req.URL == nil {
+		return errors.New("redirect url is nil")
+	}
+	var previous *http.Request
+	if len(via) > 0 {
+		previous = via[len(via)-1]
+		if previous != nil && previous.URL != nil && strings.EqualFold(previous.URL.Scheme, "https") &&
+			strings.EqualFold(req.URL.Scheme, "http") {
+			return errors.New("secure upstream redirect downgrade is not allowed")
+		}
+	}
+	if _, err := validateSecureUpstreamURL(req.URL.String(), policy); err != nil {
+		return err
+	}
+	if previous != nil && previous.URL != nil && !sameSecureUpstreamOrigin(previous.URL, req.URL) {
+		for _, name := range []string{"Authorization", "Proxy-Authorization", "Cookie", "X-Api-Key", "X-Goog-Api-Key"} {
+			req.Header.Del(name)
+		}
+	}
+	return nil
+}
+
+func sameSecureUpstreamOrigin(left, right *url.URL) bool {
+	if left == nil || right == nil || !strings.EqualFold(left.Scheme, right.Scheme) ||
+		!strings.EqualFold(left.Hostname(), right.Hostname()) {
+		return false
+	}
+	return secureUpstreamPort(left) == secureUpstreamPort(right)
+}
+
+func secureUpstreamPort(value *url.URL) string {
+	if value == nil {
+		return ""
+	}
+	if port := value.Port(); port != "" {
+		return port
+	}
+	if strings.EqualFold(value.Scheme, "https") {
+		return "443"
+	}
+	if strings.EqualFold(value.Scheme, "http") {
+		return "80"
+	}
+	return ""
+}
+
+func (s *httpUpstreamService) secureDirectDialer() func(context.Context, string, string) (net.Conn, error) {
+	resolver := secureIPResolver(net.DefaultResolver)
+	if s != nil && s.secureResolver != nil {
+		resolver = s.secureResolver
+	}
+	baseDial := (&net.Dialer{}).DialContext
+	if s != nil && s.secureDialContext != nil {
+		baseDial = s.secureDialContext
+	}
+	return func(ctx context.Context, network, address string) (net.Conn, error) {
+		host, port, err := net.SplitHostPort(address)
+		if err != nil {
+			return nil, fmt.Errorf("split secure upstream address: %w", err)
+		}
+		resolved, err := resolver.LookupIPAddr(ctx, host)
+		if err != nil {
+			return nil, fmt.Errorf("resolve secure upstream host: %w", err)
+		}
+		var dialErrors []error
+		for _, candidate := range resolved {
+			if err := urlvalidator.ValidateIP(candidate.IP); err != nil {
+				continue
+			}
+			ipHost := candidate.IP.String()
+			if candidate.Zone != "" {
+				ipHost += "%" + candidate.Zone
+			}
+			boundAddress := net.JoinHostPort(ipHost, port)
+			conn, dialErr := baseDial(ctx, network, boundAddress)
+			if dialErr == nil {
+				return conn, nil
+			}
+			dialErrors = append(dialErrors, fmt.Errorf("dial validated secure upstream address: %w", dialErr))
+		}
+		if len(dialErrors) > 0 {
+			return nil, errors.Join(dialErrors...)
+		}
+		return nil, errors.New("secure upstream host has no allowed resolved address")
+	}
 }
 
 // DoWithTLS 执行带 TLS 指纹伪装的 HTTP 请求

@@ -1,6 +1,9 @@
 package urlvalidator
 
-import "testing"
+import (
+	"net"
+	"testing"
+)
 
 func TestValidateURLFormat(t *testing.T) {
 	if _, err := ValidateURLFormat("", false); err == nil {
@@ -71,5 +74,19 @@ func TestValidateHTTPURL(t *testing.T) {
 	}
 	if _, err := ValidateHTTPURL("https://localhost", false, ValidationOptions{AllowPrivate: false}); err == nil {
 		t.Fatalf("expected localhost to be blocked when allow_private_hosts is false")
+	}
+}
+
+func TestValidateIPRejectsNonPublicAddressSpace(t *testing.T) {
+	for _, raw := range []string{
+		"100.64.0.1",
+		"239.1.1.1",
+		"ff0e::1",
+	} {
+		t.Run(raw, func(t *testing.T) {
+			if err := ValidateIP(net.ParseIP(raw)); err == nil {
+				t.Fatalf("expected non-public address %s to be rejected", raw)
+			}
+		})
 	}
 }

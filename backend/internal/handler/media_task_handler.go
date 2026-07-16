@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -23,6 +24,7 @@ const (
 	maxMediaIdempotencyKeyBytes = 255
 	maxMediaUploadFiles         = 16
 	defaultMediaRequestMaxBytes = 64 << 20
+	mediaStagingCleanupTimeout  = 10 * time.Second
 )
 
 type MediaTaskApplication interface {
@@ -37,14 +39,14 @@ type MediaVideoContentOpener interface {
 type MediaTaskHandler struct {
 	app             MediaTaskApplication
 	content         MediaVideoContentOpener
-	stager          service.MediaInputStager
+	stager          service.MediaInputLifecycle
 	maxRequestBytes int64
 }
 
 func NewMediaTaskHandler(
 	app MediaTaskApplication,
 	content MediaVideoContentOpener,
-	stager service.MediaInputStager,
+	stager service.MediaInputLifecycle,
 	cfg *config.Config,
 ) *MediaTaskHandler {
 	maxBytes := int64(defaultMediaRequestMaxBytes)
@@ -137,7 +139,7 @@ func (h *MediaTaskHandler) CreateImageGeneration(c *gin.Context) {
 			OutputFormat: request.OutputFormat, ResponseFormat: request.ResponseFormat,
 		}},
 	}
-	h.create(c, req)
+	_ = h.create(c, req)
 }
 
 func (h *MediaTaskHandler) CreateImageEdit(c *gin.Context) {
@@ -164,6 +166,11 @@ func (h *MediaTaskHandler) CreateImageEdit(c *gin.Context) {
 		writeMediaError(c, http.StatusBadRequest, "invalid_async", "async must be true, false, or omitted")
 		return
 	}
+	count, ok := parseOptionalPositiveFormInt(firstFormValue(form.Value, "n"), 1)
+	if !ok {
+		writeMediaError(c, http.StatusBadRequest, "invalid_number", "n must be a positive integer")
+		return
+	}
 	files := form.File["image"]
 	if len(files) == 0 || len(files) > maxMediaUploadFiles {
 		writeMediaError(c, http.StatusBadRequest, "invalid_image", "A supported image upload is required")
@@ -174,7 +181,6 @@ func (h *MediaTaskHandler) CreateImageEdit(c *gin.Context) {
 		h.writeServiceError(c, err)
 		return
 	}
-	count := parsePositiveFormInt(firstFormValue(form.Value, "n"), 1)
 	req := service.MediaCreateRequest{
 		UserID: identity.userID, APIKeyID: identity.apiKeyID, GroupID: identity.groupID,
 		MediaType: service.MediaTypeImage, Operation: service.MediaOperationImageEdit,
@@ -187,7 +193,9 @@ func (h *MediaTaskHandler) CreateImageEdit(c *gin.Context) {
 		}},
 		Inputs: inputs,
 	}
-	h.create(c, req)
+	if !h.create(c, req) {
+		_ = h.discardStagedInputs(c.Request.Context(), identity.userID, inputs)
+	}
 }
 
 func (h *MediaTaskHandler) GetImageTask(c *gin.Context) {
@@ -240,16 +248,16 @@ func (h *MediaTaskHandler) CreateVideo(c *gin.Context) {
 			mediaType service.MediaType
 		}{request.VideoURL, service.MediaTypeVideo})
 	}
-	inputs := make([]service.MediaArtifactInput, 0, len(inputValues))
+	pending := make([]service.MediaArtifactInput, 0, len(inputValues))
 	for position, item := range inputValues {
-		staged, err := h.stager.Stage(c.Request.Context(), identity.userID, service.MediaArtifactInput{
+		pending = append(pending, service.MediaArtifactInput{
 			Direction: "input", Position: position, MediaType: item.mediaType, ExternalURL: item.value,
 		})
-		if err != nil {
-			h.writeServiceError(c, err)
-			return
-		}
-		inputs = append(inputs, staged)
+	}
+	inputs, err := h.stageInputs(c.Request.Context(), identity.userID, pending)
+	if err != nil {
+		h.writeServiceError(c, err)
+		return
 	}
 	req := service.MediaCreateRequest{
 		UserID: identity.userID, APIKeyID: identity.apiKeyID, GroupID: identity.groupID,
@@ -261,7 +269,9 @@ func (h *MediaTaskHandler) CreateVideo(c *gin.Context) {
 		}},
 		Inputs: inputs,
 	}
-	h.create(c, req)
+	if !h.create(c, req) {
+		_ = h.discardStagedInputs(c.Request.Context(), identity.userID, inputs)
+	}
 }
 
 func (h *MediaTaskHandler) GetVideoTask(c *gin.Context) {
@@ -316,10 +326,11 @@ type mediaIdentity struct {
 func mediaCreateIdentity(c *gin.Context) (mediaIdentity, bool) {
 	apiKey, keyOK := middleware2.GetAPIKeyFromContext(c)
 	subject, subjectOK := middleware2.GetAuthSubjectFromContext(c)
-	if !keyOK || !subjectOK || apiKey == nil || apiKey.GroupID == nil || *apiKey.GroupID <= 0 || subject.UserID <= 0 {
+	if !keyOK || !subjectOK || apiKey == nil || apiKey.GroupID == nil || *apiKey.GroupID <= 0 ||
+		apiKey.UserID <= 0 || subject.UserID != apiKey.UserID {
 		return mediaIdentity{}, false
 	}
-	return mediaIdentity{userID: subject.UserID, apiKeyID: apiKey.ID, groupID: *apiKey.GroupID}, true
+	return mediaIdentity{userID: apiKey.UserID, apiKeyID: apiKey.ID, groupID: *apiKey.GroupID}, true
 }
 
 func (h *MediaTaskHandler) decodeJSON(c *gin.Context, target any) bool {
@@ -368,7 +379,7 @@ func (h *MediaTaskHandler) parseMultipart(c *gin.Context) (*multipart.Form, bool
 }
 
 func (h *MediaTaskHandler) stageUploads(ctx context.Context, userID int64, files []*multipart.FileHeader, mediaType service.MediaType) ([]service.MediaArtifactInput, error) {
-	inputs := make([]service.MediaArtifactInput, 0, len(files))
+	pending := make([]service.MediaArtifactInput, 0, len(files))
 	for position, header := range files {
 		if header == nil || header.Size <= 0 || header.Size > h.maxRequestBytes || !allowedMediaUploadExtension(header.Filename, mediaType) {
 			return nil, service.ErrInvalidMediaInput
@@ -382,19 +393,39 @@ func (h *MediaTaskHandler) stageUploads(ctx context.Context, userID int64, files
 		if readErr != nil || closeErr != nil || int64(len(data)) > h.maxRequestBytes || !allowedDetectedMediaType(data, mediaType) {
 			return nil, service.ErrInvalidMediaInput
 		}
-		staged, err := h.stager.Stage(ctx, userID, service.MediaArtifactInput{
+		pending = append(pending, service.MediaArtifactInput{
 			Direction: "input", Position: position, MediaType: mediaType,
 			ContentType: http.DetectContentType(data), Data: data, SizeBytes: int64(len(data)),
 		})
+	}
+	return h.stageInputs(ctx, userID, pending)
+}
+
+func (h *MediaTaskHandler) stageInputs(ctx context.Context, userID int64, pending []service.MediaArtifactInput) ([]service.MediaArtifactInput, error) {
+	stagedInputs := make([]service.MediaArtifactInput, 0, len(pending))
+	for i := range pending {
+		staged, err := h.stager.Stage(ctx, userID, pending[i])
 		if err != nil {
-			return nil, err
+			return nil, errors.Join(err, h.discardStagedInputs(ctx, userID, stagedInputs))
 		}
 		if len(staged.Data) != 0 || (staged.ObjectKey == "" && staged.UpstreamReference == "" && staged.ExternalURL == "") {
-			return nil, service.ErrInvalidMediaInput
+			return nil, errors.Join(service.ErrInvalidMediaInput, h.discardStagedInputs(ctx, userID, append(stagedInputs, staged)))
 		}
-		inputs = append(inputs, staged)
+		stagedInputs = append(stagedInputs, staged)
 	}
-	return inputs, nil
+	return stagedInputs, nil
+}
+
+func (h *MediaTaskHandler) discardStagedInputs(ctx context.Context, userID int64, inputs []service.MediaArtifactInput) error {
+	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), mediaStagingCleanupTimeout)
+	defer cancel()
+	var cleanupErrors []error
+	for i := len(inputs) - 1; i >= 0; i-- {
+		if err := h.stager.Discard(cleanupCtx, userID, inputs[i]); err != nil {
+			cleanupErrors = append(cleanupErrors, fmt.Errorf("discard staged media input: %w", err))
+		}
+	}
+	return errors.Join(cleanupErrors...)
 }
 
 func (h *MediaTaskHandler) createMultipartVideo(c *gin.Context, identity mediaIdentity, idempotencyKey string) {
@@ -410,6 +441,16 @@ func (h *MediaTaskHandler) createMultipartVideo(c *gin.Context, identity mediaId
 	async, ok := parseMultipartAsync(form.Value["async"])
 	if !ok {
 		writeMediaError(c, http.StatusBadRequest, "invalid_async", "async must be true, false, or omitted")
+		return
+	}
+	durationSeconds, ok := parseOptionalPositiveFormInt(firstFormValue(form.Value, "duration_seconds"), 0)
+	if !ok {
+		writeMediaError(c, http.StatusBadRequest, "invalid_number", "duration_seconds must be a positive integer")
+		return
+	}
+	fps, ok := parseOptionalPositiveFormInt(firstFormValue(form.Value, "fps"), 0)
+	if !ok {
+		writeMediaError(c, http.StatusBadRequest, "invalid_number", "fps must be a positive integer")
 		return
 	}
 	var files []*multipart.FileHeader
@@ -444,37 +485,43 @@ func (h *MediaTaskHandler) createMultipartVideo(c *gin.Context, identity mediaId
 		IdempotencyKey: idempotencyKey,
 		Spec: service.MediaSpec{Video: &service.VideoSpec{
 			Prompt:          firstFormValue(form.Value, "prompt"),
-			DurationSeconds: parsePositiveFormInt(firstFormValue(form.Value, "duration_seconds"), 0),
-			Resolution:      firstFormValue(form.Value, "resolution"), FPS: parsePositiveFormInt(firstFormValue(form.Value, "fps"), 0),
+			DurationSeconds: durationSeconds,
+			Resolution:      firstFormValue(form.Value, "resolution"), FPS: fps,
 		}},
 		Inputs: inputs,
 	}
-	h.create(c, req)
+	if !h.create(c, req) {
+		_ = h.discardStagedInputs(c.Request.Context(), identity.userID, inputs)
+	}
 }
 
-func (h *MediaTaskHandler) create(c *gin.Context, req service.MediaCreateRequest) {
+func (h *MediaTaskHandler) create(c *gin.Context, req service.MediaCreateRequest) bool {
 	result, err := h.app.Create(c.Request.Context(), req)
 	if err != nil {
 		h.writeServiceError(c, err)
-		return
+		return false
 	}
 	if result == nil || result.Task == nil {
 		writeMediaError(c, http.StatusBadGateway, "media_generation_failed", "Media generation failed")
-		return
+		return false
 	}
 	switch result.Disposition {
 	case service.MediaCreateDispositionAccepted, service.MediaCreateDispositionFallbackAsync:
 		c.JSON(http.StatusAccepted, taskResponse(result.Task, result.Artifacts))
+		return true
 	case service.MediaCreateDispositionCompleted:
 		if result.Task.MediaType == service.MediaTypeImage {
 			c.JSON(http.StatusOK, imageResponse(result.Task, result.Artifacts))
-			return
+			return true
 		}
 		c.JSON(http.StatusOK, taskResponse(result.Task, result.Artifacts))
+		return true
 	case service.MediaCreateDispositionGatewayTimeout:
 		writeMediaError(c, http.StatusGatewayTimeout, "media_gateway_timeout", "Media generation did not complete before the gateway timeout")
+		return false
 	default:
 		writeMediaError(c, http.StatusBadGateway, "media_generation_failed", "Media generation failed")
+		return false
 	}
 }
 
@@ -612,12 +659,16 @@ func validMultipartFileSet(form *multipart.Form, allowed map[string]struct{}) bo
 	return true
 }
 
-func parsePositiveFormInt(raw string, fallback int) int {
-	value, err := strconv.Atoi(strings.TrimSpace(raw))
-	if err != nil || value < 0 {
-		return fallback
+func parseOptionalPositiveFormInt(raw string, fallback int) (int, bool) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return fallback, true
 	}
-	return value
+	value, err := strconv.Atoi(trimmed)
+	if err != nil || value <= 0 {
+		return 0, false
+	}
+	return value, true
 }
 
 func allowedMediaUploadExtension(name string, mediaType service.MediaType) bool {
@@ -640,6 +691,18 @@ func (h *MediaTaskHandler) writeServiceError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, service.ErrMediaTaskNotFound):
 		writeMediaError(c, http.StatusNotFound, "media_task_not_found", "Media task not found")
+	case errors.Is(err, service.ErrGroupNotFound):
+		writeMediaError(c, http.StatusNotFound, "group_not_found", "Media group not found")
+	case errors.Is(err, service.ErrMediaIdempotencyConflict):
+		writeMediaError(c, http.StatusConflict, "idempotency_conflict", "Idempotency-Key conflicts with an earlier request")
+	case errors.Is(err, service.ErrMediaTaskInitializing):
+		writeMediaError(c, http.StatusConflict, "media_task_initializing", "Media task initialization is still in progress")
+	case errors.Is(err, service.ErrMediaContentRejected):
+		writeMediaError(c, http.StatusForbidden, "content_policy_violation", "The media request was rejected by content policy")
+	case errors.Is(err, service.ErrMediaGenerationNotAllowed):
+		writeMediaError(c, http.StatusForbidden, "media_generation_not_allowed", "Media generation is not allowed for this group")
+	case errors.Is(err, service.ErrMediaInputNotRecoverable):
+		writeMediaError(c, http.StatusBadRequest, "invalid_media_input", "The media input is invalid")
 	case errors.Is(err, service.ErrInvalidMediaRange), errors.Is(err, service.ErrMediaRangeNotSatisfiable):
 		writeMediaError(c, http.StatusRequestedRangeNotSatisfiable, "invalid_range", "The requested range is invalid or unsatisfiable")
 	case errors.Is(err, service.ErrMediaVideoObjectStorageRequired):
@@ -661,7 +724,7 @@ func writeMediaError(c *gin.Context, status int, code, message string) {
 }
 
 var (
-	_ MediaTaskApplication     = (*service.MediaOrchestrator)(nil)
-	_ MediaVideoContentOpener  = (*service.MediaContentService)(nil)
-	_ service.MediaInputStager = (*service.MediaContentService)(nil)
+	_ MediaTaskApplication        = (*service.MediaOrchestrator)(nil)
+	_ MediaVideoContentOpener     = (*service.MediaContentService)(nil)
+	_ service.MediaInputLifecycle = (*service.MediaContentService)(nil)
 )
