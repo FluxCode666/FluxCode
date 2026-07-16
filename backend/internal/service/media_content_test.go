@@ -378,6 +378,12 @@ func TestMediaContentServiceStageExternalURLDerivesStrictContentType(t *testing.
 	})
 	require.NoError(t, err)
 	require.Equal(t, "video/mp4", video.ContentType)
+
+	quickTime, err := svc.Stage(context.Background(), 42, MediaArtifactInput{
+		MediaType: MediaTypeVideo, ExternalURL: "https://media.example/input.MOV?signature=internal",
+	})
+	require.NoError(t, err)
+	require.Equal(t, "video/quicktime", quickTime.ContentType)
 }
 
 func TestMediaContentServiceStageExternalURLRejectsUnknownOrWrongMediaExtension(t *testing.T) {

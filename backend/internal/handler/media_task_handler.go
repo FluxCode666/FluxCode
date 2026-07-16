@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -28,6 +29,8 @@ const (
 	defaultMediaRequestMaxBytes = 64 << 20
 	mediaStagingCleanupTimeout  = 10 * time.Second
 	mediaInputCleanupErrorClass = "discard_failed"
+	quickTimeBoxScanBytes       = 4 << 10
+	quickTimeBoxScanLimit       = 32
 )
 
 type MediaTaskApplication interface {
@@ -209,7 +212,9 @@ func (h *MediaTaskHandler) CreateImageEdit(c *gin.Context) {
 		writeMediaError(c, http.StatusBadRequest, "invalid_image", "A supported image upload is required")
 		return
 	}
-	inputs, err := h.stageUploads(c.Request.Context(), identity.userID, files, service.MediaTypeImage)
+	inputs, err := h.stageUploads(
+		c.Request.Context(), identity.userID, files, service.MediaTypeImage, service.MediaOperationImageEdit,
+	)
 	if err != nil {
 		h.writeServiceError(c, err)
 		return
@@ -285,7 +290,7 @@ func (h *MediaTaskHandler) CreateVideo(c *gin.Context) {
 			Direction: "input", Position: position, MediaType: item.mediaType, ExternalURL: item.value,
 		})
 	}
-	inputs, err := h.stageInputs(c.Request.Context(), identity.userID, pending)
+	inputs, err := h.stageInputs(c.Request.Context(), identity.userID, pending, operation)
 	if err != nil {
 		h.writeServiceError(c, err)
 		return
@@ -418,7 +423,13 @@ func (h *MediaTaskHandler) parseMultipart(c *gin.Context) (*multipart.Form, bool
 	return c.Request.MultipartForm, true
 }
 
-func (h *MediaTaskHandler) stageUploads(ctx context.Context, userID int64, files []*multipart.FileHeader, mediaType service.MediaType) ([]service.MediaArtifactInput, error) {
+func (h *MediaTaskHandler) stageUploads(
+	ctx context.Context,
+	userID int64,
+	files []*multipart.FileHeader,
+	mediaType service.MediaType,
+	operation service.MediaOperation,
+) ([]service.MediaArtifactInput, error) {
 	pending := make([]service.MediaArtifactInput, 0, len(files))
 	for position, header := range files {
 		if header == nil || header.Size <= 0 || header.Size > h.maxRequestBytes || !allowedMediaUploadExtension(header.Filename, mediaType) {
@@ -430,26 +441,37 @@ func (h *MediaTaskHandler) stageUploads(ctx context.Context, userID int64, files
 		}
 		data, readErr := io.ReadAll(io.LimitReader(file, h.maxRequestBytes+1))
 		closeErr := file.Close()
-		if readErr != nil || closeErr != nil || int64(len(data)) > h.maxRequestBytes || !allowedDetectedMediaType(data, mediaType) {
+		if readErr != nil || closeErr != nil || int64(len(data)) > h.maxRequestBytes {
+			return nil, service.ErrInvalidMediaInput
+		}
+		contentType, ok := detectedMediaUploadContentType(data, mediaType, header.Filename)
+		if !ok {
 			return nil, service.ErrInvalidMediaInput
 		}
 		pending = append(pending, service.MediaArtifactInput{
 			Direction: "input", Position: position, MediaType: mediaType,
-			ContentType: http.DetectContentType(data), Data: data, SizeBytes: int64(len(data)),
+			ContentType: contentType, Data: data, SizeBytes: int64(len(data)),
 		})
 	}
-	return h.stageInputs(ctx, userID, pending)
+	return h.stageInputs(ctx, userID, pending, operation)
 }
 
-func (h *MediaTaskHandler) stageInputs(ctx context.Context, userID int64, pending []service.MediaArtifactInput) ([]service.MediaArtifactInput, error) {
+func (h *MediaTaskHandler) stageInputs(
+	ctx context.Context,
+	userID int64,
+	pending []service.MediaArtifactInput,
+	operation service.MediaOperation,
+) ([]service.MediaArtifactInput, error) {
 	stagedInputs := make([]service.MediaArtifactInput, 0, len(pending))
 	for i := range pending {
 		staged, err := h.stager.Stage(ctx, userID, pending[i])
 		if err != nil {
-			return nil, errors.Join(err, h.discardStagedInputs(ctx, userID, stagedInputs))
+			h.cleanupStagedInputs(ctx, userID, operation, stagedInputs)
+			return nil, err
 		}
 		if len(staged.Data) != 0 || (staged.ObjectKey == "" && staged.UpstreamReference == "" && staged.ExternalURL == "") {
-			return nil, errors.Join(service.ErrInvalidMediaInput, h.discardStagedInputs(ctx, userID, append(stagedInputs, staged)))
+			h.cleanupStagedInputs(ctx, userID, operation, append(stagedInputs, staged))
+			return nil, service.ErrInvalidMediaInput
 		}
 		stagedInputs = append(stagedInputs, staged)
 	}
@@ -466,6 +488,20 @@ func (h *MediaTaskHandler) discardStagedInputs(ctx context.Context, userID int64
 		}
 	}
 	return errors.Join(cleanupErrors...)
+}
+
+func (h *MediaTaskHandler) cleanupStagedInputs(
+	ctx context.Context,
+	userID int64,
+	operation service.MediaOperation,
+	inputs []service.MediaArtifactInput,
+) {
+	if len(inputs) == 0 {
+		return
+	}
+	if err := h.discardStagedInputs(ctx, userID, inputs); err != nil {
+		h.observeInputCleanupFailure(ctx, operation, len(inputs))
+	}
 }
 
 func (h *MediaTaskHandler) createMultipartVideo(c *gin.Context, identity mediaIdentity, idempotencyKey string) {
@@ -513,7 +549,7 @@ func (h *MediaTaskHandler) createMultipartVideo(c *gin.Context, identity mediaId
 		writeMediaError(c, http.StatusBadRequest, "invalid_media", "A supported media upload is required")
 		return
 	}
-	inputs, err := h.stageUploads(c.Request.Context(), identity.userID, files, mediaType)
+	inputs, err := h.stageUploads(c.Request.Context(), identity.userID, files, mediaType, operation)
 	if err != nil {
 		h.writeServiceError(c, err)
 		return
@@ -541,11 +577,7 @@ func (h *MediaTaskHandler) handleCreate(
 ) {
 	inputsAdopted, createErr := h.create(c, req)
 	if !inputsAdopted && len(inputs) > 0 {
-		cleanupErr := h.discardStagedInputs(c.Request.Context(), userID, inputs)
-		if cleanupErr != nil {
-			h.observeInputCleanupFailure(c.Request.Context(), req.Operation, len(inputs))
-			createErr = errors.Join(createErr, cleanupErr)
-		}
+		h.cleanupStagedInputs(c.Request.Context(), userID, req.Operation, inputs)
 	}
 	if createErr != nil && !c.Writer.Written() {
 		h.writeServiceError(c, createErr)
@@ -750,6 +782,72 @@ func allowedDetectedMediaType(data []byte, mediaType service.MediaType) bool {
 		return detected == "image/png" || detected == "image/jpeg" || detected == "image/webp"
 	}
 	return detected == "video/mp4" || detected == "video/webm" || detected == "video/quicktime"
+}
+
+func detectedMediaUploadContentType(data []byte, mediaType service.MediaType, filename string) (string, bool) {
+	if mediaType == service.MediaTypeVideo && strings.EqualFold(filepath.Ext(filename), ".mov") {
+		if !hasQuickTimeFileTypeBox(data) {
+			return "", false
+		}
+		return "video/quicktime", true
+	}
+	detected := strings.ToLower(strings.SplitN(http.DetectContentType(data), ";", 2)[0])
+	if !allowedDetectedMediaType(data, mediaType) {
+		return "", false
+	}
+	return detected, true
+}
+
+func hasQuickTimeFileTypeBox(data []byte) bool {
+	for offset, boxes := 0, 0; offset < len(data) && offset < quickTimeBoxScanBytes && boxes < quickTimeBoxScanLimit; boxes++ {
+		if len(data)-offset < 8 {
+			return false
+		}
+		size32 := binary.BigEndian.Uint32(data[offset : offset+4])
+		boxType := string(data[offset+4 : offset+8])
+		headerSize := uint64(8)
+		boxSize := uint64(size32)
+		switch size32 {
+		case 0:
+			boxSize = uint64(len(data) - offset)
+		case 1:
+			if len(data)-offset < 16 {
+				return false
+			}
+			headerSize = 16
+			boxSize = binary.BigEndian.Uint64(data[offset+8 : offset+16])
+		}
+		if boxSize < headerSize || boxSize > uint64(len(data)-offset) {
+			return false
+		}
+		end := offset + int(boxSize)
+		if end > quickTimeBoxScanBytes {
+			return false
+		}
+		if boxType == "ftyp" {
+			return quickTimeFileTypePayload(data[offset+int(headerSize) : end])
+		}
+		if size32 == 0 {
+			return false
+		}
+		offset = end
+	}
+	return false
+}
+
+func quickTimeFileTypePayload(payload []byte) bool {
+	if len(payload) < 8 || (len(payload)-8)%4 != 0 {
+		return false
+	}
+	if string(payload[:4]) == "qt  " {
+		return true
+	}
+	for offset := 8; offset < len(payload); offset += 4 {
+		if string(payload[offset:offset+4]) == "qt  " {
+			return true
+		}
+	}
+	return false
 }
 
 func (h *MediaTaskHandler) writeServiceError(c *gin.Context, err error) {

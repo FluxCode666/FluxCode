@@ -37,6 +37,7 @@ type mediaTaskApplicationStub struct {
 	lastRange                 string
 	stageErr                  error
 	stageErrAt                int
+	invalidStageAt            int
 	stageCalls                int
 	discarded                 []service.MediaArtifactInput
 	discardErr                error
@@ -102,6 +103,9 @@ func (s *mediaTaskApplicationStub) Stage(_ context.Context, _ int64, input servi
 	s.stageCalls++
 	if s.stageErr != nil && (s.stageErrAt == 0 || s.stageCalls == s.stageErrAt) {
 		return service.MediaArtifactInput{}, s.stageErr
+	}
+	if s.invalidStageAt > 0 && s.stageCalls == s.invalidStageAt {
+		return service.MediaArtifactInput{}, nil
 	}
 	input.Data = nil
 	input.ObjectKey = fmt.Sprintf("staged/input-%d", s.stageCalls)
@@ -399,6 +403,117 @@ func TestMediaTaskHandlerImageEditMultipartAsync(t *testing.T) {
 	require.Nil(t, app.lastCreate.Inputs[0].Data)
 }
 
+func TestMediaTaskHandlerAcceptsStrictQuickTimeMOVUpload(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		data []byte
+	}{
+		{name: "major brand", data: []byte{
+			0x00, 0x00, 0x00, 0x14, 'f', 't', 'y', 'p',
+			'q', 't', ' ', ' ', 0x00, 0x00, 0x00, 0x00,
+			'q', 't', ' ', ' ',
+		}},
+		{name: "compatible brand", data: []byte{
+			0x00, 0x00, 0x00, 0x18, 'f', 't', 'y', 'p',
+			'i', 's', 'o', 'm', 0x00, 0x00, 0x00, 0x00,
+			'm', 'p', '4', '2', 'q', 't', ' ', ' ',
+		}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			router, app := newStandaloneMediaRouter(t)
+			req := mediaMultipartRequestWithFields(
+				t, "/v1/videos", "video", "input.mov", tt.data,
+				map[string]string{"model": "fake-video", "prompt": "remix"},
+			)
+
+			rec := performRequest(router, req, 42, true)
+			require.Equal(t, http.StatusAccepted, rec.Code)
+			require.Equal(t, 1, app.stageCalls)
+			require.Equal(t, 1, app.createCalls)
+			require.Len(t, app.lastCreate.Inputs, 1)
+			require.Equal(t, "video/quicktime", app.lastCreate.Inputs[0].ContentType)
+			require.Nil(t, app.lastCreate.Inputs[0].Data)
+		})
+	}
+}
+
+func TestMediaTaskHandlerRejectsMalformedOrNonQuickTimeMOVUpload(t *testing.T) {
+	oversizedFTYP := make([]byte, quickTimeBoxScanBytes+4)
+	copy(oversizedFTYP, []byte{
+		0x00, 0x00, 0x10, 0x04, 'f', 't', 'y', 'p',
+		'q', 't', ' ', ' ', 0x00, 0x00, 0x00, 0x00,
+	})
+	for _, tt := range []struct {
+		name string
+		data []byte
+	}{
+		{name: "arbitrary ftyp substring", data: []byte("not-a-box-ftypqt  ")},
+		{name: "ftyp exceeds bounded scan", data: oversizedFTYP},
+		{name: "truncated box", data: []byte{
+			0x00, 0x00, 0x00, 0x20, 'f', 't', 'y', 'p',
+			'q', 't', ' ', ' ', 0x00, 0x00, 0x00, 0x00,
+			'q', 't', ' ', ' ',
+		}},
+		{name: "wrong brand", data: []byte{
+			0x00, 0x00, 0x00, 0x18, 'f', 't', 'y', 'p',
+			'i', 's', 'o', 'm', 0x00, 0x00, 0x00, 0x00,
+			'm', 'p', '4', '2', 'i', 's', 'o', 'm',
+		}},
+		{name: "undersized ftyp", data: []byte{
+			0x00, 0x00, 0x00, 0x0c, 'f', 't', 'y', 'p',
+			'q', 't', ' ', ' ',
+		}},
+		{name: "misaligned compatible brands", data: []byte{
+			0x00, 0x00, 0x00, 0x12, 'f', 't', 'y', 'p',
+			'q', 't', ' ', ' ', 0x00, 0x00, 0x00, 0x00, 'q', 't',
+		}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			router, app := newStandaloneMediaRouter(t)
+			req := mediaMultipartRequestWithFields(
+				t, "/v1/videos", "video", "input.mov", tt.data,
+				map[string]string{"model": "fake-video", "prompt": "remix"},
+			)
+
+			rec := performRequest(router, req, 42, true)
+			require.Equal(t, http.StatusBadRequest, rec.Code)
+			require.Zero(t, app.stageCalls)
+			require.Zero(t, app.createCalls)
+		})
+	}
+}
+
+func TestMediaTaskHandlerKeepsMP4AndWebMUploadDetection(t *testing.T) {
+	for _, tt := range []struct {
+		name        string
+		filename    string
+		data        []byte
+		contentType string
+	}{
+		{
+			name: "mp4", filename: "input.mp4", contentType: "video/mp4",
+			data: []byte("\x00\x00\x00\x18ftypisom\x00\x00\x00\x00mp42isom"),
+		},
+		{
+			name: "webm", filename: "input.webm", contentType: "video/webm",
+			data: []byte("\x1a\x45\xdf\xa3\x9f\x42\x86\x81\x01"),
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			router, app := newStandaloneMediaRouter(t)
+			req := mediaMultipartRequestWithFields(
+				t, "/v1/videos", "video", tt.filename, tt.data,
+				map[string]string{"model": "fake-video", "prompt": "remix"},
+			)
+
+			rec := performRequest(router, req, 42, true)
+			require.Equal(t, http.StatusAccepted, rec.Code)
+			require.Len(t, app.lastCreate.Inputs, 1)
+			require.Equal(t, tt.contentType, app.lastCreate.Inputs[0].ContentType)
+		})
+	}
+}
+
 func TestMediaTaskHandlerValidatesEveryUploadBeforeStaging(t *testing.T) {
 	router, app := newStandaloneMediaRouter(t)
 	req := multiImageEditRequest(t, map[string][]byte{
@@ -455,6 +570,115 @@ func TestMediaTaskHandlerCleanupFailurePreservesBusinessErrorAndReportsSafeMetad
 	require.Equal(t, 1, observer.calls)
 	require.Equal(t, service.MediaOperationImageEdit, observer.operation)
 	require.Equal(t, 1, observer.inputCount)
+	require.Equal(t, "discard_failed", observer.classification)
+}
+
+func TestMediaTaskHandlerCleanupFailureCannotOverrideCreateErrorClassification(t *testing.T) {
+	primaryErrors := []struct {
+		name string
+		err  error
+		code string
+	}{
+		{name: "model not found", err: service.ErrMediaModelNotFound, code: "invalid_request"},
+		{name: "invalid spec", err: service.ErrInvalidMediaSpec, code: "invalid_request"},
+		{name: "input not recoverable", err: service.ErrMediaInputNotRecoverable, code: "invalid_media_input"},
+	}
+	cleanupErrors := []struct {
+		name string
+		err  error
+	}{
+		{name: "object store disabled", err: service.ErrMediaArtifactObjectStoreDisabled},
+		{name: "content unavailable", err: service.ErrMediaContentUnavailable},
+	}
+	for _, primary := range primaryErrors {
+		for _, cleanup := range cleanupErrors {
+			t.Run(primary.name+"/"+cleanup.name, func(t *testing.T) {
+				observer := &mediaInputCleanupObserverStub{}
+				router, app := newStandaloneMediaRouterWithStagerAndCleanupObserver(t, nil, observer)
+				app.createResult = nil
+				app.createErr = primary.err
+				app.discardErr = fmt.Errorf("cleanup private-object https://private.example Authorization=secret: %w", cleanup.err)
+				req, _ := imageEditRequest(t, "false")
+
+				rec := performRequest(router, req, 42, true)
+				require.Equal(t, http.StatusBadRequest, rec.Code)
+				require.Contains(t, rec.Body.String(), `"code":"`+primary.code+`"`)
+				for _, secret := range []string{"private-object", "private.example", "Authorization", "secret", "media_content_unavailable"} {
+					require.NotContains(t, rec.Body.String(), secret)
+				}
+				require.Equal(t, 1, observer.calls)
+				require.Equal(t, service.MediaOperationImageEdit, observer.operation)
+				require.Equal(t, 1, observer.inputCount)
+				require.Equal(t, "discard_failed", observer.classification)
+			})
+		}
+	}
+}
+
+func TestMediaTaskHandlerCleanupFailureCannotOverridePartialStageErrorClassification(t *testing.T) {
+	primaryErrors := []struct {
+		name string
+		err  error
+		code string
+	}{
+		{name: "model not found", err: service.ErrMediaModelNotFound, code: "invalid_request"},
+		{name: "invalid spec", err: service.ErrInvalidMediaSpec, code: "invalid_request"},
+		{name: "input not recoverable", err: service.ErrMediaInputNotRecoverable, code: "invalid_media_input"},
+	}
+	cleanupErrors := []struct {
+		name string
+		err  error
+	}{
+		{name: "object store disabled", err: service.ErrMediaArtifactObjectStoreDisabled},
+		{name: "content unavailable", err: service.ErrMediaContentUnavailable},
+	}
+	for _, primary := range primaryErrors {
+		for _, cleanup := range cleanupErrors {
+			t.Run(primary.name+"/"+cleanup.name, func(t *testing.T) {
+				observer := &mediaInputCleanupObserverStub{}
+				router, app := newStandaloneMediaRouterWithStagerAndCleanupObserver(t, nil, observer)
+				app.stageErr = primary.err
+				app.stageErrAt = 2
+				app.discardErr = fmt.Errorf("cleanup staged/input-1 https://private.example: %w", cleanup.err)
+				req := multiImageEditRequest(t, map[string][]byte{
+					"first.png":  []byte("\x89PNG\r\n\x1a\n"),
+					"second.png": []byte("\x89PNG\r\n\x1a\n"),
+				})
+
+				rec := performRequest(router, req, 42, true)
+				require.Equal(t, http.StatusBadRequest, rec.Code)
+				require.Contains(t, rec.Body.String(), `"code":"`+primary.code+`"`)
+				require.NotContains(t, rec.Body.String(), "private.example")
+				require.NotContains(t, rec.Body.String(), "staged/input-1")
+				require.Zero(t, app.createCalls)
+				require.Equal(t, 1, observer.calls)
+				require.Equal(t, service.MediaOperationImageEdit, observer.operation)
+				require.Equal(t, 1, observer.inputCount)
+				require.Equal(t, "discard_failed", observer.classification)
+			})
+		}
+	}
+}
+
+func TestMediaTaskHandlerInvalidStagedResultReportsCleanupFailureOnce(t *testing.T) {
+	observer := &mediaInputCleanupObserverStub{}
+	router, app := newStandaloneMediaRouterWithStagerAndCleanupObserver(t, nil, observer)
+	app.invalidStageAt = 2
+	app.discardErr = errors.New("cleanup staged/input-1 private-object failed")
+	req := multiImageEditRequest(t, map[string][]byte{
+		"first.png":  []byte("\x89PNG\r\n\x1a\n"),
+		"second.png": []byte("\x89PNG\r\n\x1a\n"),
+	})
+
+	rec := performRequest(router, req, 42, true)
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	require.Contains(t, rec.Body.String(), `"code":"invalid_request"`)
+	require.NotContains(t, rec.Body.String(), "private-object")
+	require.NotContains(t, rec.Body.String(), "staged/input-1")
+	require.Zero(t, app.createCalls)
+	require.Equal(t, 1, observer.calls)
+	require.Equal(t, service.MediaOperationImageEdit, observer.operation)
+	require.Equal(t, 2, observer.inputCount)
 	require.Equal(t, "discard_failed", observer.classification)
 }
 

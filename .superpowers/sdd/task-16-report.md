@@ -625,3 +625,94 @@ go test -race ./internal/service ./internal/repository ./internal/handler -run '
 高风险复审覆盖 queue/ready/补偿 CAS 的输入所有权、后台 Artifact 生命周期、task repository 错误链、内容公开 404/502、IPv6 special-purpose denylist，以及 cleanup error 的响应前合并和响应后安全可观测性。默认日志不接触 raw cleanup error；内部 repository causes 只参与服务端 error chain，不进入公开响应。
 
 审计结论：通过，无已知阻断或非阻断代码风险。仍未执行无过滤完整 service/全仓功能套件，原因继续为既有 OpenAI stub concurrent-map fatal；本轮仅将 `go test ./... -run '^$'` 表述为全仓编译型 PASS。
+
+## 第四轮复审修复追加（2026-07-17）
+
+### 范围与结论
+
+- 修复基线：`e754d10f5 fix(media): close ownership and cleanup gaps`。
+- 第四轮 2 个 Important、1 个 Minor 均完成 RED→GREEN；前三轮所有权、内容 fallback、URL 安全和公开 DTO 契约保持。
+- 生产代码仅修改 `backend/internal/handler/media_task_handler.go`；另修改 Handler 测试和 Content 的 `.MOV` URL 回归测试。未修改 progress、生产 gateway、生成文件、Task 17 配置、UI、取消接口或真实 Adapter。
+
+### Important 1：cleanup 错误分类隔离
+
+所有 create、partial-stage 和 staged-result 验证失败路径均把 primary 业务错误与 cleanup error 分离。公开 `writeServiceError` 只接收原 primary error；cleanup sentinel 不再通过 `errors.Is` 抢占 status/code。cleanup error 仅决定是否调用安全 observer，raw error、ObjectKey、URL、Authorization 和凭据均不进入 HTTP mapper 或 observer 参数。
+
+覆盖矩阵包含 primary `ErrMediaModelNotFound`、`ErrInvalidMediaSpec`、`ErrMediaInputNotRecoverable`，以及 cleanup `ErrMediaArtifactObjectStoreDisabled`、`ErrMediaContentUnavailable`。create 与 partial-stage 的全部组合仍分别返回 400 `invalid_request` 或 400 `invalid_media_input`，响应不泄露 cleanup cause。
+
+RED：
+
+```bash
+go test ./internal/handler -run '^TestMediaTaskHandler(CleanupFailureCannotOverride.*|InvalidStagedResultReportsCleanupFailureOnce)$' -count=1
+```
+
+handler 退出码 `1`，`0.627s`：model/spec 的 create 与 partial-stage 组合被 cleanup sentinel 改为 502；partial-stage 和 invalid staged-result 的 observer 调用数为 0。GREEN：同组连同既有响应前/响应后 cleanup 测试退出码 `0`，handler `0.855s`。
+
+### Important 2：严格 bounded QuickTime/MOV 检测
+
+`.mov` multipart 上传不再依赖扩展名或 `http.DetectContentType` 的宽松结果。新增 ISO-BMFF 顶层 box 解析：
+
+- 仅在结构有效的 `ftyp` box 中识别 major brand 或 compatible brand `qt  `，并统一映射 `video/quicktime`。
+- 校验 32-bit size、64-bit large size、header 最小值、box 边界、`ftyp` 最小 payload 和 compatible brand 四字节对齐。
+- 扫描上限固定为 4 KiB/32 boxes，且 `ftyp` box 自身不得越过 sniff 上限，避免大 payload brand 扫描。
+- 拒绝任意 `ftypqt` 子串、截断 box、错 brand、undersized box、compatible brand 不对齐和超出 bounded scan 的 `ftyp`。
+
+真实最小 MOV major-brand 和 compatible-brand 两种 header 均通过 Handler、进入 Stage，并以 `video/quicktime` 传给应用。MP4/WebM 上传检测保持通过；外部 URL `.MOV` 继续由 Content Stage 映射为 `video/quicktime`。
+
+首个 RED：
+
+```bash
+go test ./internal/handler -run '^TestMediaTaskHandler(AcceptsStrictQuickTimeMOVUpload|RejectsMalformedOrNonQuickTimeMOVUpload)$' -count=1
+```
+
+handler 退出码 `1`，`0.901s`：真实 `qt  ` MOV 返回 400，错 brand `.mov` 返回 202。初次 GREEN 退出码 `0`，`0.865s`。
+
+自审补充 bounded RED：结构边界自洽但 `ftyp` size 超过 4 KiB 的样本仍返回 202，handler 退出码 `1`，`0.948s`。将 box 自身纳入 sniff 上限后，MOV 正反例及 MP4/WebM 回归全部退出码 `0`，handler `0.862s`。
+
+### Minor：所有 cleanup failure 统一安全 observer
+
+新增单一内部 `cleanupStagedInputs` helper，统一处理 partial Stage 失败、staged-result 验证失败、应用拒绝以及响应已写后的 cleanup。helper 只在至少一个输入需要 cleanup 且 `Discard` 返回错误时调用一次 observer，operation、input_count 和固定 `discard_failed` classification 保持一致；不传递 raw cleanup error，避免重复 observer 和敏感信息日志。
+
+invalid staged-result 测试验证两次 Discard 失败只产生一次 observer，operation 为 `image_edit`、input_count 为 2；partial-stage 测试验证 input_count 为 1 且不会进入应用 Create。
+
+### 第四轮 fresh 验证
+
+精确媒体回归：
+
+```bash
+go test ./internal/service ./internal/repository ./internal/handler -run 'TestMedia(TaskHandler|Router|HTTPContent|Content|Orchestrator)|TestSecureHTTPUpstream|TestProvideHandlersWithMedia' -count=1
+```
+
+退出码 `0`：service `1.856s`、repository `2.321s`、handler `2.852s`。
+
+扩大媒体回归：
+
+```bash
+go test ./internal/service ./internal/repository ./internal/handler -run '^TestMedia' -count=1
+```
+
+退出码 `0`：service `2.265s`、repository `1.972s`、handler `3.348s`。URL validator 全包退出码 `0`，`0.432s`。
+
+精确 race：
+
+```bash
+go test -race ./internal/service ./internal/repository ./internal/handler -run 'TestMedia(TaskHandler|Router|HTTPContent|Content|Orchestrator)|TestSecureHTTPUpstream|TestProvideHandlersWithMedia' -count=1
+```
+
+退出码 `0`：service `3.440s`、repository `2.128s`、handler `4.084s`。
+
+其余最终门禁全部退出码 `0`：
+
+- `GOPROXY=https://goproxy.cn,direct go generate ./cmd/server`，Wire 成功生成，`wire_gen.go` 零 diff。
+- `gofmt`、`git diff --check`、`go vet ./...`、`go build ./...`。
+- `go test ./... -run '^$' -count=1`，全仓编译型测试通过。
+- `go mod verify`，输出 `all modules verified`。
+- `git diff --exit-code c6f881a22 -- backend/internal/server/routes/gateway.go`。
+- `git diff --exit-code -- backend/cmd/server/wire_gen.go backend/go.mod backend/go.sum`。
+- 搜索确认无 Cancel/DELETE、无 cleanup error 进入公开 mapper/observer、无新公开 DTO 或 Authorization/ErrorMessage 泄露，变更测试无 Skip/Only。
+
+### 第四轮 code-audit
+
+高风险复审覆盖 primary/cleanup error chain 隔离、partial object lifecycle、observer 去重与安全字段、MOV 文件扩展与内容一致性、ISO-BMFF size/整数/截断/scan 上限、MP4/WebM 和 URL `.MOV` 反例。box size 在转换为 `int` 前已限制为不超过当前 `[]byte` 剩余长度；brand payload 只可能来自 4 KiB sniff 范围。
+
+审计结论：通过，无已知阻断或非阻断代码风险。仍未执行无过滤完整 service/全仓功能套件，原因继续为既有 OpenAI stub concurrent-map fatal；本轮仅将 `go test ./... -run '^$'` 表述为全仓编译型 PASS。
