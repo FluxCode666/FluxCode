@@ -1,0 +1,1123 @@
+package service
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"log/slog"
+	"os"
+	"runtime/debug"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"time"
+)
+
+var (
+	ErrMediaTaskNotClaimed       = errors.New("media task was not claimed")
+	ErrMediaWorkerLeaseLost      = errors.New("media worker lease lost")
+	ErrMediaTaskDeadlineExceeded = errors.New("media task deployment timeout exceeded")
+	ErrMediaSyncTimeoutStopped   = errors.New("media sync timeout stopped local execution")
+)
+
+type MediaWorkerConfig struct {
+	WorkerCount        int
+	TaskTimeout        time.Duration
+	LeaseTTL           time.Duration
+	LeaseRenewInterval time.Duration
+	PollInterval       time.Duration
+	RecoveryInterval   time.Duration
+	RecoveryBatchSize  int
+}
+
+type MediaExecutionPath string
+
+const (
+	MediaExecutionPathSync        MediaExecutionPath = "sync"
+	MediaExecutionPathNativeAsync MediaExecutionPath = "native_async"
+)
+
+type MediaExecutionController interface {
+	StopForSyncTimeout(taskID int64) bool
+}
+
+type MediaTaskMetrics interface {
+	ObserveStage(mediaType MediaType, stage MediaTaskStage, elapsed time.Duration)
+	IncrementRecovery(mediaType MediaType)
+	IncrementDuplicateMessage(mediaType MediaType)
+	IncrementStorageFailure(mediaType MediaType)
+	IncrementSettlementRetry(mediaType MediaType)
+}
+
+type MediaArtifactWriter interface {
+	PersistOutputs(ctx context.Context, task *MediaTask, inputs []MediaArtifactInput) ([]MediaArtifact, error)
+}
+
+type MediaWorkerDependencies struct {
+	Tasks     MediaTaskRepository
+	Queue     MediaTaskQueue
+	Scheduler *MediaScheduler
+	Models    *MediaModelRegistry
+	Adapters  *MediaAdapterRegistry
+	Artifacts MediaArtifactWriter
+	Billing   MediaSettlementCoordinator
+	Metrics   MediaTaskMetrics
+	Logger    *slog.Logger
+}
+
+type MediaWorker struct {
+	cfg       MediaWorkerConfig
+	deps      MediaWorkerDependencies
+	workerID  string
+	logger    *slog.Logger
+	errEvents chan error
+
+	activeMu sync.RWMutex
+	active   map[int64]*mediaActiveExecution
+
+	lifecycleMu sync.Mutex
+	runCancel   context.CancelFunc
+	runWG       sync.WaitGroup
+	started     bool
+}
+
+type mediaActiveExecution struct {
+	ctx    context.Context
+	cancel context.CancelCauseFunc
+
+	mu             sync.RWMutex
+	path           MediaExecutionPath
+	account        *Account
+	adapter        MediaAdapter
+	upstreamTaskID string
+	pollMetadata   json.RawMessage
+}
+
+type mediaExecutionFailure struct {
+	settlement MediaFailureSettlement
+	message    string
+	category   string
+}
+
+type mediaExecutionTrace struct {
+	durations map[MediaTaskStage]time.Duration
+	pollCount int
+}
+
+var mediaWorkerSequence atomic.Uint64
+
+func NewMediaWorker(cfg MediaWorkerConfig, deps MediaWorkerDependencies) *MediaWorker {
+	cfg = normalizeMediaWorkerConfig(cfg)
+	if deps.Metrics == nil {
+		deps.Metrics = NewAtomicMediaTaskMetrics()
+	}
+	logger := deps.Logger
+	if logger == nil {
+		logger = slog.Default()
+	}
+	return &MediaWorker{
+		cfg:       cfg,
+		deps:      deps,
+		workerID:  fmt.Sprintf("media-worker-%d-%d", os.Getpid(), mediaWorkerSequence.Add(1)),
+		logger:    logger,
+		errEvents: make(chan error, 64),
+		active:    make(map[int64]*mediaActiveExecution),
+	}
+}
+
+func normalizeMediaWorkerConfig(cfg MediaWorkerConfig) MediaWorkerConfig {
+	if cfg.WorkerCount <= 0 {
+		cfg.WorkerCount = 1
+	}
+	if cfg.TaskTimeout <= 0 {
+		cfg.TaskTimeout = 15 * time.Minute
+	}
+	if cfg.LeaseTTL <= 0 {
+		cfg.LeaseTTL = time.Minute
+	}
+	if cfg.LeaseRenewInterval <= 0 || cfg.LeaseRenewInterval >= cfg.LeaseTTL {
+		cfg.LeaseRenewInterval = cfg.LeaseTTL / 3
+		if cfg.LeaseRenewInterval <= 0 {
+			cfg.LeaseRenewInterval = time.Second
+		}
+	}
+	if cfg.PollInterval <= 0 {
+		cfg.PollInterval = time.Second
+	}
+	if cfg.RecoveryInterval <= 0 {
+		cfg.RecoveryInterval = 30 * time.Second
+	}
+	if cfg.RecoveryBatchSize <= 0 {
+		cfg.RecoveryBatchSize = 100
+	}
+	return cfg
+}
+
+func (w *MediaWorker) Start() error {
+	if err := w.validateDependencies(); err != nil {
+		return err
+	}
+	w.lifecycleMu.Lock()
+	defer w.lifecycleMu.Unlock()
+	if w.started {
+		return nil
+	}
+	startupCtx, startupCancel := context.WithTimeout(context.Background(), w.cfg.LeaseTTL)
+	err := w.deps.Queue.EnsureGroups(startupCtx)
+	startupCancel()
+	if err != nil {
+		return fmt.Errorf("ensure media worker consumer groups: %w", err)
+	}
+	runCtx, cancel := context.WithCancel(context.Background())
+	w.runCancel = cancel
+	w.started = true
+	for index := 0; index < w.cfg.WorkerCount; index++ {
+		workerIndex := index
+		w.runWG.Add(1)
+		go w.runOwned(runCtx, fmt.Sprintf("consumer-%d", workerIndex), w.consumeLoop)
+	}
+	w.runWG.Add(1)
+	go w.runOwned(runCtx, "recovery", w.recoveryLoop)
+	return nil
+}
+
+func (w *MediaWorker) Stop() {
+	if w == nil {
+		return
+	}
+	w.lifecycleMu.Lock()
+	if !w.started {
+		w.lifecycleMu.Unlock()
+		return
+	}
+	cancel := w.runCancel
+	cancel()
+	w.cancelAllActive(context.Canceled)
+	w.runWG.Wait()
+	w.started = false
+	w.runCancel = nil
+	w.lifecycleMu.Unlock()
+}
+
+func (w *MediaWorker) Errors() <-chan error {
+	if w == nil {
+		return nil
+	}
+	return w.errEvents
+}
+
+func (w *MediaWorker) runOwned(ctx context.Context, owner string, run func(context.Context) error) {
+	defer w.runWG.Done()
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			w.reportError(fmt.Errorf("media worker %s panic: %v\n%s", owner, recovered, debug.Stack()))
+		}
+	}()
+	if err := run(ctx); err != nil && !errors.Is(err, context.Canceled) {
+		w.reportError(fmt.Errorf("media worker %s stopped: %w", owner, err))
+	}
+}
+
+func (w *MediaWorker) consumeLoop(ctx context.Context) error {
+	block := w.cfg.PollInterval
+	if block < 10*time.Millisecond {
+		block = 10 * time.Millisecond
+	}
+	for {
+		message, err := w.deps.Queue.Receive(ctx, block)
+		if err != nil {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			if errors.Is(err, ErrMediaQueueReceiveTimeout) || errors.Is(err, context.DeadlineExceeded) {
+				continue
+			}
+			w.reportError(fmt.Errorf("receive media task: %w", err))
+			continue
+		}
+		if err := w.ProcessOne(ctx, message.TaskID); err != nil {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			w.reportError(fmt.Errorf("process media task %d: %w", message.TaskID, err))
+			continue
+		}
+		if err := w.deps.Queue.Ack(ctx, message); err != nil {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			w.reportError(fmt.Errorf("ack media task %d: %w", message.TaskID, err))
+		}
+	}
+}
+
+func (w *MediaWorker) recoveryLoop(ctx context.Context) error {
+	ticker := time.NewTicker(w.cfg.RecoveryInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+			if err := w.RecoverOnce(ctx); err != nil && ctx.Err() == nil {
+				w.reportError(fmt.Errorf("recover media tasks: %w", err))
+			}
+		}
+	}
+}
+
+func (w *MediaWorker) ProcessOne(ctx context.Context, taskID int64) error {
+	if err := w.validateDependencies(); err != nil {
+		return err
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	task, err := w.deps.Tasks.GetByID(ctx, taskID)
+	if err != nil {
+		return fmt.Errorf("load media task %d: %w", taskID, err)
+	}
+	if task.Status.IsTerminal() {
+		w.deps.Metrics.IncrementDuplicateMessage(task.MediaType)
+		w.retryTerminalSettlement(ctx, task)
+		return nil
+	}
+
+	now := time.Now().UTC()
+	claimed, err := w.deps.Tasks.Claim(ctx, task.ID, w.workerID, now.Add(w.cfg.LeaseTTL), task.Version)
+	if err != nil {
+		return fmt.Errorf("claim media task %d: %w", task.ID, err)
+	}
+	if !claimed {
+		fresh, loadErr := w.deps.Tasks.GetByID(ctx, task.ID)
+		if loadErr != nil {
+			return fmt.Errorf("reload unclaimed media task %d: %w", task.ID, loadErr)
+		}
+		if fresh.Status.IsTerminal() {
+			w.deps.Metrics.IncrementDuplicateMessage(fresh.MediaType)
+			w.retryTerminalSettlement(ctx, fresh)
+			return nil
+		}
+		return fmt.Errorf("%w: task %d", ErrMediaTaskNotClaimed, task.ID)
+	}
+	task.Status = MediaTaskStatusInProgress
+	task.WorkerID = w.workerID
+	task.LeaseUntil = mediaTimePointer(now.Add(w.cfg.LeaseTTL))
+	task.Version++
+
+	executionCtx, executionCancel := context.WithCancelCause(ctx)
+	active := &mediaActiveExecution{ctx: executionCtx, cancel: executionCancel}
+	if !w.registerActive(task.ID, active) {
+		executionCancel(ErrMediaTaskNotClaimed)
+		return fmt.Errorf("%w: task %d already active", ErrMediaTaskNotClaimed, task.ID)
+	}
+	renewerDone := w.startLeaseRenewer(executionCtx, active, task.ID)
+	defer func() {
+		executionCancel(context.Canceled)
+		<-renewerDone
+		w.unregisterActive(task.ID, active)
+	}()
+
+	startedAt := now
+	if task.StartedAt != nil {
+		startedAt = task.StartedAt.UTC()
+	}
+	updates := map[string]any{"stage": MediaTaskStageScheduling}
+	if task.StartedAt == nil {
+		updates["started_at"] = startedAt
+	}
+	if err := w.updateClaimed(executionCtx, task, updates); err != nil {
+		return err
+	}
+	task.Stage = MediaTaskStageScheduling
+	task.StartedAt = mediaTimePointer(startedAt)
+
+	taskCtx, taskCancel := context.WithDeadlineCause(executionCtx, startedAt.Add(w.cfg.TaskTimeout), ErrMediaTaskDeadlineExceeded)
+	defer taskCancel()
+	trace := &mediaExecutionTrace{durations: make(map[MediaTaskStage]time.Duration)}
+	result, failure, executeErr := w.execute(taskCtx, task, active, trace)
+	if executeErr != nil {
+		cause := context.Cause(taskCtx)
+		switch {
+		case errors.Is(cause, ErrMediaTaskDeadlineExceeded) && ctx.Err() == nil:
+			failure = &mediaExecutionFailure{
+				settlement: MediaFailureSettlement{Kind: MediaFailureKindSystem, RefundRatio: 1, ErrorCode: "system_timeout"},
+				message:    "media task exceeded deployment timeout",
+				category:   "system_timeout",
+			}
+		case errors.Is(context.Cause(executionCtx), ErrMediaSyncTimeoutStopped):
+			return fmt.Errorf("task %d: %w", task.ID, ErrMediaSyncTimeoutStopped)
+		case errors.Is(context.Cause(executionCtx), ErrMediaWorkerLeaseLost):
+			return fmt.Errorf("task %d: %w", task.ID, context.Cause(executionCtx))
+		case ctx.Err() != nil:
+			return ctx.Err()
+		default:
+			return executeErr
+		}
+	}
+	if failure != nil {
+		return w.completeFailure(ctx, task, failure, trace)
+	}
+	if result == nil {
+		return errors.New("media adapter completed without a result")
+	}
+	completeErr := w.completeSuccess(taskCtx, task, result, trace)
+	if completeErr != nil && errors.Is(context.Cause(taskCtx), ErrMediaTaskDeadlineExceeded) && ctx.Err() == nil && !task.Status.IsTerminal() {
+		return w.completeFailure(ctx, task, &mediaExecutionFailure{
+			settlement: MediaFailureSettlement{Kind: MediaFailureKindSystem, RefundRatio: 1, ErrorCode: "system_timeout"},
+			message:    "media task exceeded deployment timeout",
+			category:   "system_timeout",
+		}, trace)
+	}
+	return completeErr
+}
+
+func (w *MediaWorker) execute(ctx context.Context, task *MediaTask, active *mediaActiveExecution, trace *mediaExecutionTrace) (*MediaGenerateResult, *mediaExecutionFailure, error) {
+	stageStarted := time.Now()
+	spec, err := decodeWorkerMediaSpec(task.RequestSpec, task.MediaType)
+	if err != nil {
+		w.observeStage(task, trace, MediaTaskStageScheduling, stageStarted)
+		return nil, systemMediaFailure("system_request", "stored media request is invalid"), nil
+	}
+	definition, err := w.deps.Models.Resolve(task.RequestedModel, task.Operation)
+	if err != nil {
+		w.observeStage(task, trace, MediaTaskStageScheduling, stageStarted)
+		return nil, systemMediaFailure("system_model", "stored media model is unavailable"), nil
+	}
+	if task.UpstreamTaskID != "" {
+		w.observeStage(task, trace, MediaTaskStageScheduling, stageStarted)
+		return w.resumePolling(ctx, task, active, trace)
+	}
+	candidates, err := decodeWorkerCandidateSnapshot(task.CandidateSnapshot)
+	if err != nil {
+		w.observeStage(task, trace, MediaTaskStageScheduling, stageStarted)
+		return nil, systemMediaFailure("system_scheduler", "media candidate snapshot is invalid"), nil
+	}
+
+	excluded := make(map[int64]struct{})
+	var lastFailure *mediaExecutionFailure
+	for len(excluded) < len(candidates) {
+		selection, selectErr := w.deps.Scheduler.Select(ctx, MediaScheduleRequest{
+			GroupID: task.GroupID, RequestedModel: task.RequestedModel, Operation: task.Operation,
+			SessionHash: task.RequestFingerprint, ExcludedAccountIDs: excluded, CandidateSnapshot: candidates,
+		})
+		if selectErr != nil {
+			w.observeStage(task, trace, MediaTaskStageScheduling, stageStarted)
+			if ctx.Err() != nil {
+				return nil, nil, ctx.Err()
+			}
+			if lastFailure != nil {
+				return nil, lastFailure, nil
+			}
+			return nil, systemMediaFailure("system_scheduler", "no media account is available"), nil
+		}
+		release, acquireErr := w.acquireSelection(ctx, selection)
+		if acquireErr != nil {
+			w.observeStage(task, trace, MediaTaskStageScheduling, stageStarted)
+			if ctx.Err() != nil {
+				return nil, nil, ctx.Err()
+			}
+			return nil, systemMediaFailure("system_scheduler", "media account concurrency is unavailable"), nil
+		}
+		w.observeStage(task, trace, MediaTaskStageScheduling, stageStarted)
+		result, failure, retry, executeErr := w.executeSelected(ctx, task, active, trace, spec, definition, selection)
+		release()
+		if executeErr != nil {
+			return nil, nil, executeErr
+		}
+		if !retry {
+			return result, failure, nil
+		}
+		lastFailure = failure
+		excluded[selection.Account.ID] = struct{}{}
+		task.RetryCount++
+		if err := w.updateClaimed(ctx, task, map[string]any{
+			"retry_count": task.RetryCount,
+			"stage":       MediaTaskStageScheduling,
+		}); err != nil {
+			return nil, nil, err
+		}
+		task.Stage = MediaTaskStageScheduling
+		stageStarted = time.Now()
+	}
+	if lastFailure != nil {
+		return nil, lastFailure, nil
+	}
+	return nil, systemMediaFailure("system_scheduler", "no media account is available"), nil
+}
+
+func (w *MediaWorker) executeSelected(
+	ctx context.Context,
+	task *MediaTask,
+	active *mediaActiveExecution,
+	trace *mediaExecutionTrace,
+	spec MediaSpec,
+	definition *MediaModelDefinition,
+	selection *MediaAccountSelection,
+) (*MediaGenerateResult, *mediaExecutionFailure, bool, error) {
+	adapter, err := w.deps.Adapters.Resolve(selection.ResolvedModel.Adapter)
+	if err != nil {
+		return nil, systemMediaFailure("system_adapter", "media adapter is unavailable"), false, nil
+	}
+	path := chooseMediaExecutionPath(task.ClientAsync, selection.ResolvedModel.NativeAsyncMode)
+	active.bind(path, selection.Account, adapter, "", nil)
+	stage := MediaTaskStageGenerating
+	if path == MediaExecutionPathNativeAsync {
+		stage = MediaTaskStageSubmitting
+	}
+	if err := w.updateClaimed(ctx, task, map[string]any{
+		"account_id":        selection.Account.ID,
+		"adapter":           selection.ResolvedModel.Adapter,
+		"upstream_model":    selection.ResolvedModel.UpstreamModel,
+		"native_async_mode": selection.ResolvedModel.NativeAsyncMode,
+		"stage":             stage,
+	}); err != nil {
+		return nil, nil, false, err
+	}
+	task.AccountID = mediaInt64Pointer(selection.Account.ID)
+	task.Adapter = selection.ResolvedModel.Adapter
+	task.UpstreamModel = selection.ResolvedModel.UpstreamModel
+	task.NativeAsyncMode = selection.ResolvedModel.NativeAsyncMode
+	task.Stage = stage
+	request := MediaExecutionRequest{
+		Task: task, Account: selection.Account, Definition: definition, Spec: spec,
+		UpstreamModel: selection.ResolvedModel.UpstreamModel, IdempotencyKey: task.PublicID,
+	}
+
+	stageStarted := time.Now()
+	if path == MediaExecutionPathSync {
+		generator, ok := adapter.(MediaSyncGenerator)
+		if !ok {
+			w.observeStage(task, trace, MediaTaskStageGenerating, stageStarted)
+			return nil, systemMediaFailure("system_adapter", "media adapter does not support synchronous generation"), false, nil
+		}
+		result, generateErr := generator.Generate(ctx, request)
+		w.observeStage(task, trace, MediaTaskStageGenerating, stageStarted)
+		w.markAccountUsed(ctx, task, selection.Account.ID)
+		if generateErr != nil {
+			if ctx.Err() != nil {
+				return nil, nil, false, ctx.Err()
+			}
+			failure, adapterErr := classifyWorkerAdapterFailure(generateErr, "upstream_generate_failed")
+			return nil, failure, w.mayResubmit(task, adapter, adapterErr), nil
+		}
+		return result, nil, false, nil
+	}
+
+	submitter, submitOK := adapter.(MediaAsyncSubmitter)
+	if !submitOK {
+		w.observeStage(task, trace, MediaTaskStageSubmitting, stageStarted)
+		return nil, systemMediaFailure("system_adapter", "media adapter does not support native async submission"), false, nil
+	}
+	submission, submitErr := submitter.Submit(ctx, request)
+	w.observeStage(task, trace, MediaTaskStageSubmitting, stageStarted)
+	if submitErr != nil {
+		if ctx.Err() != nil {
+			return nil, nil, false, ctx.Err()
+		}
+		failure, adapterErr := classifyWorkerAdapterFailure(submitErr, "upstream_submit_failed")
+		return nil, failure, w.mayResubmit(task, adapter, adapterErr), nil
+	}
+	w.markAccountUsed(ctx, task, selection.Account.ID)
+	if submission == nil || strings.TrimSpace(submission.UpstreamTaskID) == "" {
+		return nil, systemMediaFailure("system_adapter", "media adapter returned an empty upstream task id"), false, nil
+	}
+	submittedAt := time.Now().UTC()
+	if err := w.updateClaimed(ctx, task, map[string]any{
+		"account_id":        selection.Account.ID,
+		"adapter":           selection.ResolvedModel.Adapter,
+		"upstream_model":    selection.ResolvedModel.UpstreamModel,
+		"native_async_mode": selection.ResolvedModel.NativeAsyncMode,
+		"upstream_task_id":  submission.UpstreamTaskID,
+		"poll_metadata":     append(json.RawMessage(nil), submission.PollMetadata...),
+		"submitted_at":      submittedAt,
+		"stage":             MediaTaskStagePolling,
+	}); err != nil {
+		return nil, nil, false, err
+	}
+	task.UpstreamTaskID = submission.UpstreamTaskID
+	task.PollMetadata = append(json.RawMessage(nil), submission.PollMetadata...)
+	task.SubmittedAt = mediaTimePointer(submittedAt)
+	task.Stage = MediaTaskStagePolling
+	active.bind(path, selection.Account, adapter, task.UpstreamTaskID, task.PollMetadata)
+	result, failure, pollErr := w.poll(ctx, task, selection.Account, adapter, trace)
+	return result, failure, false, pollErr
+}
+
+func (w *MediaWorker) resumePolling(ctx context.Context, task *MediaTask, active *mediaActiveExecution, trace *mediaExecutionTrace) (*MediaGenerateResult, *mediaExecutionFailure, error) {
+	if task.AccountID == nil || task.Adapter == "" || task.UpstreamModel == "" {
+		return nil, systemMediaFailure("system_recovery", "submitted media task is missing fixed execution data"), nil
+	}
+	account, err := w.deps.Scheduler.GetFixedAccount(ctx, *task.AccountID)
+	if err != nil {
+		if ctx.Err() != nil {
+			return nil, nil, ctx.Err()
+		}
+		return nil, systemMediaFailure("system_recovery", "fixed media account is unavailable"), nil
+	}
+	adapter, err := w.deps.Adapters.Resolve(task.Adapter)
+	if err != nil {
+		return nil, systemMediaFailure("system_adapter", "fixed media adapter is unavailable"), nil
+	}
+	active.bind(MediaExecutionPathNativeAsync, account, adapter, task.UpstreamTaskID, task.PollMetadata)
+	if task.Stage != MediaTaskStagePolling {
+		if err := w.updateClaimed(ctx, task, map[string]any{"stage": MediaTaskStagePolling}); err != nil {
+			return nil, nil, err
+		}
+		task.Stage = MediaTaskStagePolling
+	}
+	return w.poll(ctx, task, account, adapter, trace)
+}
+
+func (w *MediaWorker) poll(ctx context.Context, task *MediaTask, account *Account, adapter MediaAdapter, trace *mediaExecutionTrace) (*MediaGenerateResult, *mediaExecutionFailure, error) {
+	poller, ok := adapter.(MediaAsyncPoller)
+	if !ok {
+		return nil, systemMediaFailure("system_adapter", "media adapter does not support polling"), nil
+	}
+	stageStarted := time.Now()
+	for {
+		trace.pollCount++
+		result, err := poller.Poll(ctx, MediaPollRequest{Account: account, UpstreamTaskID: task.UpstreamTaskID, PollMetadata: task.PollMetadata})
+		if err != nil {
+			if ctx.Err() != nil {
+				w.observeStage(task, trace, MediaTaskStagePolling, stageStarted)
+				return nil, nil, ctx.Err()
+			}
+			var adapterErr *MediaAdapterError
+			if errors.As(err, &adapterErr) && !adapterErr.Retryable {
+				w.observeStage(task, trace, MediaTaskStagePolling, stageStarted)
+				failure, _ := classifyWorkerAdapterFailure(err, "upstream_poll_failed")
+				return nil, failure, nil
+			}
+			task.RetryCount++
+			if updateErr := w.updateClaimed(ctx, task, map[string]any{"retry_count": task.RetryCount}); updateErr != nil {
+				w.observeStage(task, trace, MediaTaskStagePolling, stageStarted)
+				return nil, nil, updateErr
+			}
+			if waitErr := waitMediaInterval(ctx, w.cfg.PollInterval); waitErr != nil {
+				w.observeStage(task, trace, MediaTaskStagePolling, stageStarted)
+				return nil, nil, waitErr
+			}
+			continue
+		}
+		if result == nil {
+			w.observeStage(task, trace, MediaTaskStagePolling, stageStarted)
+			return nil, systemMediaFailure("system_adapter", "media adapter returned an empty poll result"), nil
+		}
+		switch result.State {
+		case MediaPollStateRunning:
+			progress := min(max(result.Progress, 0), 99)
+			if err := w.updateClaimed(ctx, task, map[string]any{"progress": progress}); err != nil {
+				w.observeStage(task, trace, MediaTaskStagePolling, stageStarted)
+				return nil, nil, err
+			}
+			task.Progress = progress
+			if err := waitMediaInterval(ctx, w.cfg.PollInterval); err != nil {
+				w.observeStage(task, trace, MediaTaskStagePolling, stageStarted)
+				return nil, nil, err
+			}
+		case MediaPollStateCompleted:
+			w.observeStage(task, trace, MediaTaskStagePolling, stageStarted)
+			if result.Result == nil {
+				return nil, systemMediaFailure("system_adapter", "media adapter completed without output"), nil
+			}
+			return result.Result, nil, nil
+		case MediaPollStateCanceled:
+			w.observeStage(task, trace, MediaTaskStagePolling, stageStarted)
+			return nil, &mediaExecutionFailure{
+				settlement: MediaFailureSettlement{Kind: MediaFailureKindUpstream, RefundRatio: 1, ErrorCode: "upstream_canceled"},
+				message:    "upstream media task was canceled",
+				category:   "upstream_canceled",
+			}, nil
+		case MediaPollStateFailed:
+			w.observeStage(task, trace, MediaTaskStagePolling, stageStarted)
+			if result.Error == nil {
+				return nil, upstreamMediaFailure("upstream_failed", "upstream media task failed"), nil
+			}
+			failure, _ := classifyWorkerAdapterFailure(result.Error, "upstream_failed")
+			return nil, failure, nil
+		default:
+			w.observeStage(task, trace, MediaTaskStagePolling, stageStarted)
+			return nil, systemMediaFailure("system_adapter", "media adapter returned an unknown poll state"), nil
+		}
+	}
+}
+
+func (w *MediaWorker) completeSuccess(ctx context.Context, task *MediaTask, result *MediaGenerateResult, trace *mediaExecutionTrace) error {
+	stageStarted := time.Now()
+	if err := w.updateClaimed(ctx, task, map[string]any{"stage": MediaTaskStageStoring}); err != nil {
+		return err
+	}
+	task.Stage = MediaTaskStageStoring
+	_, err := w.deps.Artifacts.PersistOutputs(ctx, task, result.Artifacts)
+	w.observeStage(task, trace, MediaTaskStageStoring, stageStarted)
+	if err != nil {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		w.deps.Metrics.IncrementStorageFailure(task.MediaType)
+		return w.completeFailure(ctx, task, systemMediaFailure("system_storage", "media output storage failed"), trace)
+	}
+
+	stageStarted = time.Now()
+	if err := w.updateClaimed(ctx, task, map[string]any{"stage": MediaTaskStageSettling}); err != nil {
+		return err
+	}
+	task.Stage = MediaTaskStageSettling
+	finishedAt := time.Now().UTC()
+	transitioned, err := w.deps.Tasks.TransitionClaimed(ctx, task.ID, w.workerID, task.Version,
+		MediaTaskStatusInProgress, MediaTaskStatusCompleted,
+		map[string]any{"stage": MediaTaskStageCompleted, "progress": 100, "finished_at": finishedAt},
+	)
+	if err != nil {
+		return fmt.Errorf("complete media task %d: %w", task.ID, err)
+	}
+	if !transitioned {
+		return fmt.Errorf("%w: complete media task %d", ErrMediaWorkerLeaseLost, task.ID)
+	}
+	task.Status = MediaTaskStatusCompleted
+	task.Stage = MediaTaskStageCompleted
+	task.Progress = 100
+	task.FinishedAt = mediaTimePointer(finishedAt)
+	task.Version++
+	if err := w.deps.Billing.SettleSuccess(ctx, task, result.Usage); err != nil {
+		w.deps.Metrics.IncrementSettlementRetry(task.MediaType)
+		w.logWorkerError(task, trace, "settlement_success", "settlement_retry", err)
+	}
+	w.observeStage(task, trace, MediaTaskStageSettling, stageStarted)
+	w.publishTerminal(ctx, task, trace, "")
+	return nil
+}
+
+func (w *MediaWorker) completeFailure(ctx context.Context, task *MediaTask, failure *mediaExecutionFailure, trace *mediaExecutionTrace) error {
+	if failure == nil {
+		failure = systemMediaFailure("system_worker", "media worker failed")
+	}
+	finishedAt := time.Now().UTC()
+	transitioned, err := w.deps.Tasks.TransitionClaimed(ctx, task.ID, w.workerID, task.Version,
+		MediaTaskStatusInProgress, MediaTaskStatusFailed,
+		map[string]any{
+			"stage": MediaTaskStageFailed, "finished_at": finishedAt,
+			"error_code": failure.settlement.ErrorCode, "error_message": failure.message,
+			"retry_count": task.RetryCount,
+		},
+	)
+	if err != nil {
+		return fmt.Errorf("fail media task %d: %w", task.ID, err)
+	}
+	if !transitioned {
+		return fmt.Errorf("%w: fail media task %d", ErrMediaWorkerLeaseLost, task.ID)
+	}
+	task.Status = MediaTaskStatusFailed
+	task.Stage = MediaTaskStageFailed
+	task.ErrorCode = failure.settlement.ErrorCode
+	task.ErrorMessage = failure.message
+	task.FinishedAt = mediaTimePointer(finishedAt)
+	task.Version++
+	stageStarted := time.Now()
+	if err := w.deps.Billing.SettleFailure(ctx, task, failure.settlement); err != nil {
+		w.deps.Metrics.IncrementSettlementRetry(task.MediaType)
+		w.logWorkerError(task, trace, "settlement_failure", "settlement_retry", err)
+	}
+	w.observeStage(task, trace, MediaTaskStageSettling, stageStarted)
+	w.publishTerminal(ctx, task, trace, failure.category)
+	return nil
+}
+
+func (w *MediaWorker) RecoverOnce(ctx context.Context) error {
+	if err := w.validateDependencies(); err != nil {
+		return err
+	}
+	tasks, err := w.deps.Tasks.ListRecoverable(ctx, time.Now().UTC(), w.cfg.RecoveryBatchSize)
+	if err != nil {
+		return fmt.Errorf("list recoverable media tasks: %w", err)
+	}
+	for index := range tasks {
+		task := &tasks[index]
+		priority := MediaQueuePriorityAsync
+		if !task.ClientAsync && !task.SyncFallback {
+			priority = MediaQueuePrioritySync
+		}
+		if err := w.deps.Queue.Enqueue(ctx, task.ID, priority); err != nil {
+			return fmt.Errorf("requeue recoverable media task %d: %w", task.ID, err)
+		}
+		w.deps.Metrics.IncrementRecovery(task.MediaType)
+	}
+	pending, err := w.deps.Tasks.ListSettlementPending(ctx, w.cfg.RecoveryBatchSize)
+	if err != nil {
+		return fmt.Errorf("list settlement-pending media tasks: %w", err)
+	}
+	for index := range pending {
+		if err := w.deps.Queue.Enqueue(ctx, pending[index].ID, MediaQueuePriorityAsync); err != nil {
+			return fmt.Errorf("requeue settlement-pending media task %d: %w", pending[index].ID, err)
+		}
+	}
+	return nil
+}
+
+func (w *MediaWorker) StopForSyncTimeout(taskID int64) bool {
+	if w == nil {
+		return false
+	}
+	w.activeMu.RLock()
+	active := w.active[taskID]
+	w.activeMu.RUnlock()
+	if active == nil {
+		return false
+	}
+	path, account, adapter, upstreamTaskID, pollMetadata, activeCtx := active.snapshot()
+	if path == MediaExecutionPathNativeAsync && upstreamTaskID != "" && account != nil {
+		if aborter, ok := adapter.(MediaAborter); ok {
+			abortCtx, cancel := context.WithTimeout(context.WithoutCancel(activeCtx), 5*time.Second)
+			err := aborter.Abort(abortCtx, MediaPollRequest{Account: account, UpstreamTaskID: upstreamTaskID, PollMetadata: pollMetadata})
+			cancel()
+			if err != nil {
+				wrapped := fmt.Errorf("abort media task %d after sync timeout: %w", taskID, err)
+				w.logger.Warn("media task abort failed", "task_id", taskID, "error_category", "abort_failed")
+				select {
+				case w.errEvents <- wrapped:
+				default:
+				}
+			}
+		}
+	}
+	active.cancel(ErrMediaSyncTimeoutStopped)
+	return true
+}
+
+func chooseMediaExecutionPath(clientAsync bool, mode NativeAsyncMode) MediaExecutionPath {
+	if mode == NativeAsyncRequired || (clientAsync && mode == NativeAsyncOptional) {
+		return MediaExecutionPathNativeAsync
+	}
+	return MediaExecutionPathSync
+}
+
+func (w *MediaWorker) mayResubmit(task *MediaTask, adapter MediaAdapter, err *MediaAdapterError) bool {
+	if task.UpstreamTaskID != "" {
+		return false
+	}
+	if err == nil || !err.Retryable {
+		return false
+	}
+	if err.SubmissionUnknown {
+		idempotent, supportsIdempotency := adapter.(MediaIdempotentSubmitter)
+		return supportsIdempotency && idempotent.SupportsIdempotentSubmit()
+	}
+	return true
+}
+
+func (w *MediaWorker) validateDependencies() error {
+	if w == nil || w.deps.Tasks == nil || w.deps.Queue == nil || w.deps.Scheduler == nil ||
+		w.deps.Models == nil || w.deps.Adapters == nil || w.deps.Artifacts == nil ||
+		w.deps.Billing == nil || w.deps.Metrics == nil {
+		return errors.New("media worker dependencies are incomplete")
+	}
+	return nil
+}
+
+func (w *MediaWorker) acquireSelection(ctx context.Context, selection *MediaAccountSelection) (func(), error) {
+	if selection == nil {
+		return nil, ErrNoAvailableAccounts
+	}
+	if selection.Acquired {
+		if selection.ReleaseFunc == nil {
+			return nil, ErrAccountConcurrencySaturated
+		}
+		return selection.ReleaseFunc, nil
+	}
+	release, err := w.deps.Scheduler.WaitForSlot(ctx, selection)
+	if err != nil {
+		return nil, fmt.Errorf("wait for media account slot: %w", err)
+	}
+	if release == nil {
+		return nil, ErrAccountConcurrencySaturated
+	}
+	return release, nil
+}
+
+func (w *MediaWorker) updateClaimed(ctx context.Context, task *MediaTask, updates map[string]any) error {
+	updated, err := w.deps.Tasks.UpdateClaimed(ctx, task.ID, w.workerID, updates)
+	if err != nil {
+		return fmt.Errorf("update claimed media task %d: %w", task.ID, err)
+	}
+	if !updated {
+		return fmt.Errorf("%w: update media task %d", ErrMediaWorkerLeaseLost, task.ID)
+	}
+	task.Version++
+	return nil
+}
+
+func (w *MediaWorker) startLeaseRenewer(ctx context.Context, active *mediaActiveExecution, taskID int64) <-chan struct{} {
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				err := fmt.Errorf("%w: lease renew panic: %v\n%s", ErrMediaWorkerLeaseLost, recovered, debug.Stack())
+				w.reportError(err)
+				active.cancel(err)
+			}
+		}()
+		ticker := time.NewTicker(w.cfg.LeaseRenewInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				callCtx, cancel := context.WithTimeout(ctx, w.cfg.LeaseRenewInterval)
+				renewed, err := w.deps.Tasks.RenewLease(callCtx, taskID, w.workerID, time.Now().UTC().Add(w.cfg.LeaseTTL))
+				cancel()
+				if err != nil {
+					active.cancel(fmt.Errorf("%w: renew media task %d: %w", ErrMediaWorkerLeaseLost, taskID, err))
+					return
+				}
+				if !renewed {
+					active.cancel(fmt.Errorf("%w: renew media task %d rejected", ErrMediaWorkerLeaseLost, taskID))
+					return
+				}
+			}
+		}
+	}()
+	return done
+}
+
+func (w *MediaWorker) registerActive(taskID int64, active *mediaActiveExecution) bool {
+	w.activeMu.Lock()
+	defer w.activeMu.Unlock()
+	if _, exists := w.active[taskID]; exists {
+		return false
+	}
+	w.active[taskID] = active
+	return true
+}
+
+func (w *MediaWorker) unregisterActive(taskID int64, active *mediaActiveExecution) {
+	w.activeMu.Lock()
+	defer w.activeMu.Unlock()
+	if w.active[taskID] == active {
+		delete(w.active, taskID)
+	}
+}
+
+func (w *MediaWorker) cancelAllActive(cause error) {
+	w.activeMu.RLock()
+	items := make([]*mediaActiveExecution, 0, len(w.active))
+	for _, active := range w.active {
+		items = append(items, active)
+	}
+	w.activeMu.RUnlock()
+	for _, active := range items {
+		active.cancel(cause)
+	}
+}
+
+func (a *mediaActiveExecution) bind(path MediaExecutionPath, account *Account, adapter MediaAdapter, upstreamTaskID string, pollMetadata json.RawMessage) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.path = path
+	a.account = account
+	a.adapter = adapter
+	a.upstreamTaskID = upstreamTaskID
+	a.pollMetadata = append(json.RawMessage(nil), pollMetadata...)
+}
+
+func (a *mediaActiveExecution) snapshot() (MediaExecutionPath, *Account, MediaAdapter, string, json.RawMessage, context.Context) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return a.path, a.account, a.adapter, a.upstreamTaskID, append(json.RawMessage(nil), a.pollMetadata...), a.ctx
+}
+
+func (w *MediaWorker) observeStage(task *MediaTask, trace *mediaExecutionTrace, stage MediaTaskStage, started time.Time) {
+	elapsed := time.Since(started)
+	w.deps.Metrics.ObserveStage(task.MediaType, stage, elapsed)
+	trace.durations[stage] += elapsed
+}
+
+func (w *MediaWorker) retryTerminalSettlement(ctx context.Context, task *MediaTask) {
+	if task.BillingStatus == MediaBillingStatusSettled || len(task.SettlementPlan) == 0 {
+		return
+	}
+	if err := w.deps.Billing.RetryPending(ctx, task.ID); err != nil {
+		w.deps.Metrics.IncrementSettlementRetry(task.MediaType)
+		w.logWorkerError(task, &mediaExecutionTrace{durations: map[MediaTaskStage]time.Duration{}}, "retry_settlement", "settlement_retry", err)
+	}
+}
+
+func (w *MediaWorker) markAccountUsed(ctx context.Context, task *MediaTask, accountID int64) {
+	if err := w.deps.Scheduler.MarkUsed(ctx, accountID); err != nil {
+		w.logWorkerError(task, &mediaExecutionTrace{durations: map[MediaTaskStage]time.Duration{}}, "mark_used", "scheduler_mark_used", err)
+	}
+}
+
+func (w *MediaWorker) publishTerminal(ctx context.Context, task *MediaTask, trace *mediaExecutionTrace, errorCategory string) {
+	if err := w.deps.Queue.PublishTerminal(ctx, task.ID, task.Status); err != nil {
+		w.logWorkerError(task, trace, "publish_terminal", "queue_publish", err)
+	}
+	attrs := w.logAttrs(task, trace, "terminal", errorCategory)
+	w.logger.LogAttrs(ctx, slog.LevelInfo, "media task terminal", attrs...)
+}
+
+func (w *MediaWorker) logWorkerError(task *MediaTask, trace *mediaExecutionTrace, operation, category string, err error) {
+	attrs := w.logAttrs(task, trace, operation, category)
+	attrs = append(attrs, slog.String("error", err.Error()))
+	w.logger.LogAttrs(context.Background(), slog.LevelError, "media worker operation failed", attrs...)
+}
+
+func (w *MediaWorker) logAttrs(task *MediaTask, trace *mediaExecutionTrace, operation, category string) []slog.Attr {
+	accountID := int64(0)
+	platform := ""
+	if task.AccountID != nil {
+		accountID = *task.AccountID
+	}
+	if active := w.activeForTask(task.ID); active != nil {
+		_, account, _, _, _, _ := active.snapshot()
+		if account != nil {
+			platform = account.Platform
+		}
+	}
+	duration := func(stage MediaTaskStage) int64 {
+		if trace == nil {
+			return 0
+		}
+		return trace.durations[stage].Milliseconds()
+	}
+	pollCount := 0
+	if trace != nil {
+		pollCount = trace.pollCount
+	}
+	return []slog.Attr{
+		slog.Int64("task_id", task.ID), slog.String("media_type", string(task.MediaType)),
+		slog.String("operation", string(task.Operation)), slog.String("worker_action", operation),
+		slog.String("requested_model", task.RequestedModel), slog.String("upstream_model", task.UpstreamModel),
+		slog.String("adapter", task.Adapter), slog.String("platform", platform), slog.Int64("account_id", accountID),
+		slog.Int64("group_id", task.GroupID), slog.Int("retry_count", task.RetryCount), slog.Int("poll_count", pollCount),
+		slog.Int64("scheduling_ms", duration(MediaTaskStageScheduling)), slog.Int64("submitting_ms", duration(MediaTaskStageSubmitting)),
+		slog.Int64("generating_ms", duration(MediaTaskStageGenerating)), slog.Int64("polling_ms", duration(MediaTaskStagePolling)),
+		slog.Int64("storing_ms", duration(MediaTaskStageStoring)), slog.Int64("settling_ms", duration(MediaTaskStageSettling)),
+		slog.String("error_category", category),
+	}
+}
+
+func (w *MediaWorker) activeForTask(taskID int64) *mediaActiveExecution {
+	w.activeMu.RLock()
+	defer w.activeMu.RUnlock()
+	return w.active[taskID]
+}
+
+func (w *MediaWorker) reportError(err error) {
+	if err == nil {
+		return
+	}
+	w.logger.Error("media worker background error", "error", err)
+	select {
+	case w.errEvents <- err:
+	default:
+	}
+}
+
+func decodeWorkerMediaSpec(raw json.RawMessage, mediaType MediaType) (MediaSpec, error) {
+	var spec MediaSpec
+	if err := decodeWorkerJSON(raw, &spec); err != nil {
+		return MediaSpec{}, err
+	}
+	if err := spec.Validate(mediaType); err != nil {
+		return MediaSpec{}, err
+	}
+	return spec, nil
+}
+
+func decodeWorkerCandidateSnapshot(raw json.RawMessage) ([]MediaAccountCandidateSnapshot, error) {
+	var candidates []MediaAccountCandidateSnapshot
+	if err := decodeWorkerJSON(raw, &candidates); err != nil {
+		return nil, err
+	}
+	if _, err := validateMediaCandidateSnapshot(candidates); err != nil {
+		return nil, err
+	}
+	return candidates, nil
+}
+
+func decodeWorkerJSON(raw json.RawMessage, output any) error {
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(output); err != nil {
+		return err
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		if err == nil {
+			return errors.New("multiple top-level JSON values")
+		}
+		return err
+	}
+	return nil
+}
+
+func classifyWorkerAdapterFailure(err error, fallbackCode string) (*mediaExecutionFailure, *MediaAdapterError) {
+	var adapterErr *MediaAdapterError
+	if !errors.As(err, &adapterErr) {
+		return upstreamMediaFailure(fallbackCode, "media adapter request failed"), nil
+	}
+	code := strings.TrimSpace(adapterErr.Code)
+	if code == "" {
+		code = fallbackCode
+	}
+	message := strings.TrimSpace(adapterErr.Message)
+	if message == "" {
+		message = "media adapter request failed"
+	}
+	kind := MediaFailureKindUpstream
+	category := "upstream"
+	if adapterErr.SystemFailure {
+		kind = MediaFailureKindSystem
+		category = "system_adapter"
+	}
+	return &mediaExecutionFailure{
+		settlement: MediaFailureSettlement{Kind: kind, RefundRatio: 1, ErrorCode: code},
+		message:    message,
+		category:   category,
+	}, adapterErr
+}
+
+func systemMediaFailure(code, message string) *mediaExecutionFailure {
+	return &mediaExecutionFailure{
+		settlement: MediaFailureSettlement{Kind: MediaFailureKindSystem, RefundRatio: 1, ErrorCode: code},
+		message:    message,
+		category:   code,
+	}
+}
+
+func upstreamMediaFailure(code, message string) *mediaExecutionFailure {
+	return &mediaExecutionFailure{
+		settlement: MediaFailureSettlement{Kind: MediaFailureKindUpstream, RefundRatio: 1, ErrorCode: code},
+		message:    message,
+		category:   code,
+	}
+}
+
+func waitMediaInterval(ctx context.Context, interval time.Duration) error {
+	timer := time.NewTimer(interval)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
+}
+
+func mediaTimePointer(value time.Time) *time.Time {
+	copy := value
+	return &copy
+}
+
+func mediaInt64Pointer(value int64) *int64 {
+	copy := value
+	return &copy
+}
+
+var _ MediaExecutionController = (*MediaWorker)(nil)

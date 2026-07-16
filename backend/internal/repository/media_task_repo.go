@@ -37,6 +37,7 @@ var (
 		"account_id",
 		"upstream_model",
 		"adapter",
+		"native_async_mode",
 		"upstream_task_id",
 		"poll_metadata",
 		"stage",

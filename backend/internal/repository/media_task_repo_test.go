@@ -271,9 +271,10 @@ func TestMediaTaskRepositoryUpdateClaimedRequiresWorkerAndUnexpiredLease(t *test
 	requireClaimed(t, ctx, repo, task, "worker-a", time.Now().Add(time.Minute))
 
 	updated, err := repo.UpdateClaimed(ctx, task.ID, "worker-a", map[string]any{
-		"progress":         47,
-		"poll_metadata":    json.RawMessage(`{"poll":2}`),
-		"upstream_task_id": "up-47",
+		"progress":          47,
+		"poll_metadata":     json.RawMessage(`{"poll":2}`),
+		"upstream_task_id":  "up-47",
+		"native_async_mode": service.NativeAsyncRequired,
 	})
 	require.NoError(t, err)
 	require.True(t, updated)
@@ -282,6 +283,7 @@ func TestMediaTaskRepositoryUpdateClaimedRequiresWorkerAndUnexpiredLease(t *test
 	require.Equal(t, int64(3), stored.Version)
 	require.Equal(t, 47, stored.Progress)
 	require.Equal(t, "up-47", stored.UpstreamTaskID)
+	require.Equal(t, service.NativeAsyncRequired, stored.NativeAsyncMode)
 
 	wrongWorker, err := repo.UpdateClaimed(ctx, task.ID, "worker-b", map[string]any{"progress": 48})
 	require.NoError(t, err)
