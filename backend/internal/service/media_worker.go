@@ -292,6 +292,7 @@ func (w *MediaWorker) ProcessOne(ctx context.Context, taskID int64) error {
 		w.deps.Metrics.IncrementDuplicateMessage(task.MediaType)
 		return w.retryTerminalSettlement(ctx, task)
 	}
+	unknownSubmissionRecovery := isUnknownSubmissionRecovery(task)
 
 	now := time.Now().UTC()
 	claimed, err := w.deps.Tasks.Claim(ctx, task.ID, w.workerID, now.Add(w.cfg.LeaseTTL), task.Version)
@@ -331,14 +332,21 @@ func (w *MediaWorker) ProcessOne(ctx context.Context, taskID int64) error {
 	if task.StartedAt != nil {
 		startedAt = task.StartedAt.UTC()
 	}
-	updates := map[string]any{"stage": MediaTaskStageScheduling}
+	updates := make(map[string]any, 2)
+	if !unknownSubmissionRecovery {
+		updates["stage"] = MediaTaskStageScheduling
+	}
 	if task.StartedAt == nil {
 		updates["started_at"] = startedAt
 	}
-	if err := w.updateClaimed(executionCtx, task, updates); err != nil {
-		return err
+	if len(updates) > 0 {
+		if err := w.updateClaimed(executionCtx, task, updates); err != nil {
+			return err
+		}
 	}
-	task.Stage = MediaTaskStageScheduling
+	if !unknownSubmissionRecovery {
+		task.Stage = MediaTaskStageScheduling
+	}
 	task.StartedAt = mediaTimePointer(startedAt)
 
 	taskCtx, taskCancel := context.WithDeadlineCause(executionCtx, startedAt.Add(w.cfg.TaskTimeout), ErrMediaTaskDeadlineExceeded)
@@ -387,6 +395,10 @@ func (w *MediaWorker) execute(ctx context.Context, task *MediaTask, active *medi
 		w.observeStage(task, trace, MediaTaskStageScheduling, stageStarted)
 		return w.resumePolling(ctx, task, active, trace)
 	}
+	if isUnknownSubmissionRecovery(task) {
+		w.observeStage(task, trace, MediaTaskStageScheduling, stageStarted)
+		return w.resumeUnknownSubmission(ctx, task, active, trace)
+	}
 	spec, err := decodeWorkerMediaSpec(task.RequestSpec, task.MediaType)
 	if err != nil {
 		w.observeStage(task, trace, MediaTaskStageScheduling, stageStarted)
@@ -429,8 +441,10 @@ func (w *MediaWorker) execute(ctx context.Context, task *MediaTask, active *medi
 			return nil, systemMediaFailure("system_scheduler", "media account concurrency is unavailable"), nil
 		}
 		w.observeStage(task, trace, MediaTaskStageScheduling, stageStarted)
-		result, failure, retry, executeErr := w.executeSelected(ctx, task, active, trace, spec, definition, selection)
-		release()
+		result, failure, retry, executeErr := func() (*MediaGenerateResult, *mediaExecutionFailure, bool, error) {
+			defer release()
+			return w.executeSelected(ctx, task, active, trace, spec, definition, selection)
+		}()
 		if executeErr != nil {
 			return nil, nil, executeErr
 		}
@@ -453,6 +467,58 @@ func (w *MediaWorker) execute(ctx context.Context, task *MediaTask, active *medi
 		return nil, lastFailure, nil
 	}
 	return nil, systemMediaFailure("system_scheduler", "no media account is available"), nil
+}
+
+func isUnknownSubmissionRecovery(task *MediaTask) bool {
+	return task != nil &&
+		task.Status == MediaTaskStatusInProgress &&
+		task.Stage == MediaTaskStageSubmitting &&
+		task.UpstreamTaskID == "" &&
+		task.AccountID != nil &&
+		task.Adapter != "" &&
+		task.UpstreamModel != ""
+}
+
+func (w *MediaWorker) resumeUnknownSubmission(
+	ctx context.Context,
+	task *MediaTask,
+	active *mediaActiveExecution,
+	trace *mediaExecutionTrace,
+) (*MediaGenerateResult, *mediaExecutionFailure, error) {
+	account, err := w.deps.Scheduler.GetFixedAccount(ctx, *task.AccountID)
+	if err != nil {
+		if ctx.Err() != nil {
+			return nil, nil, ctx.Err()
+		}
+		return nil, systemMediaFailure("system_recovery", "fixed media account is unavailable"), nil
+	}
+	adapter, err := w.deps.Adapters.Resolve(task.Adapter)
+	if err != nil {
+		return nil, systemMediaFailure("system_adapter", "fixed media adapter is unavailable"), nil
+	}
+	idempotent, supportsIdempotency := adapter.(MediaIdempotentSubmitter)
+	if !supportsIdempotency || !idempotent.SupportsIdempotentSubmit() {
+		return nil, upstreamMediaFailure("upstream_submit_failed", "media submission result is unknown"), nil
+	}
+	if chooseMediaExecutionPath(task.ClientAsync, task.NativeAsyncMode) != MediaExecutionPathNativeAsync {
+		return nil, systemMediaFailure("system_recovery", "stored submitting task has invalid native async mode"), nil
+	}
+	spec, err := decodeWorkerMediaSpec(task.RequestSpec, task.MediaType)
+	if err != nil {
+		return nil, systemMediaFailure("system_request", "stored media request is invalid"), nil
+	}
+	definition, err := w.deps.Models.Resolve(task.RequestedModel, task.Operation)
+	if err != nil {
+		return nil, systemMediaFailure("system_model", "stored media model is unavailable"), nil
+	}
+	selection := &MediaAccountSelection{
+		Account: account,
+		ResolvedModel: ResolvedMediaAccountModel{
+			Adapter: task.Adapter, UpstreamModel: task.UpstreamModel, NativeAsyncMode: task.NativeAsyncMode,
+		},
+	}
+	result, failure, _, executeErr := w.executeSelected(ctx, task, active, trace, spec, definition, selection)
+	return result, failure, executeErr
 }
 
 func (w *MediaWorker) executeSelected(

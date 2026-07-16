@@ -315,6 +315,51 @@ func TestMediaWorkerSubmissionUnknownWithIdempotencyNeverSwitchesCandidate(t *te
 	}
 }
 
+func TestMediaWorkerRecoversUnknownSubmissionOnFixedIdempotentAdapter(t *testing.T) {
+	fixture := newMediaWorkerFixture(t, true, NativeAsyncRequired)
+	fixedAdapter, fixedAccount := prepareRecoverableSubmittingTask(t, fixture, true)
+
+	require.NoError(t, fixture.worker.RecoverOnce(context.Background()))
+	require.Equal(t, []int64{fixture.task.ID}, fixture.queue.enqueuedTaskIDs())
+	require.NoError(t, fixture.worker.ProcessOne(context.Background(), fixture.task.ID))
+
+	require.Zero(t, fixture.selector.selectCalls.Load())
+	require.Zero(t, fixture.adapter.submitCalls.Load())
+	require.Equal(t, int64(1), fixedAdapter.submitCalls.Load())
+	requests := fixedAdapter.submitRequests()
+	require.Len(t, requests, 1)
+	require.Equal(t, fixedAccount.ID, requests[0].Account.ID)
+	require.Equal(t, "fixed-upstream-image", requests[0].UpstreamModel)
+	require.Equal(t, fixture.task.PublicID, requests[0].IdempotencyKey)
+	stored := fixture.repo.mustGet(fixture.task.ID)
+	require.Equal(t, MediaTaskStatusCompleted, stored.Status)
+	require.Equal(t, fixedAccount.ID, *stored.AccountID)
+	require.Equal(t, fixedAdapter.Name(), stored.Adapter)
+	require.Equal(t, MediaBillingStatusSettled, stored.BillingStatus)
+}
+
+func TestMediaWorkerFailsUnknownSubmissionWithoutIdempotentResubmit(t *testing.T) {
+	fixture := newMediaWorkerFixture(t, true, NativeAsyncRequired)
+	fixedAdapter, fixedAccount := prepareRecoverableSubmittingTask(t, fixture, false)
+
+	require.NoError(t, fixture.worker.RecoverOnce(context.Background()))
+	require.Equal(t, []int64{fixture.task.ID}, fixture.queue.enqueuedTaskIDs())
+	require.NoError(t, fixture.worker.ProcessOne(context.Background(), fixture.task.ID))
+
+	require.Zero(t, fixture.selector.selectCalls.Load())
+	require.Zero(t, fixture.adapter.submitCalls.Load())
+	require.Zero(t, fixedAdapter.submitCalls.Load())
+	stored := fixture.repo.mustGet(fixture.task.ID)
+	require.Equal(t, MediaTaskStatusFailed, stored.Status)
+	require.Equal(t, fixedAccount.ID, *stored.AccountID)
+	require.Equal(t, fixedAdapter.Name(), stored.Adapter)
+	require.Equal(t, "upstream_submit_failed", stored.ErrorCode)
+	require.Equal(t, MediaFailureSettlement{
+		Kind: MediaFailureKindUpstream, RefundRatio: 1, ErrorCode: "upstream_submit_failed",
+	}, fixture.billing.lastFailure())
+	require.Equal(t, MediaBillingStatusSettled, stored.BillingStatus)
+}
+
 func TestMediaWorkerDoesNotMarkAccountUsedForInvalidAsyncSubmission(t *testing.T) {
 	fixture := newMediaWorkerFixture(t, true, NativeAsyncRequired)
 	fixture.adapter.emptySubmission = true
@@ -414,6 +459,74 @@ func TestMediaWorkerRejectsSettledRecoveryAndFormalPlanDivergence(t *testing.T) 
 	require.Zero(t, fixture.adapter.submitCalls.Load())
 }
 
+func TestMediaWorkerRejectsSettledRecoveryWithoutFormalPlan(t *testing.T) {
+	fixture := newMediaWorkerFixture(t, true, NativeAsyncRequired)
+	recovery, err := json.Marshal(MediaSettlementPlan{
+		Type:  MediaSettlementTypeSuccess,
+		Usage: &MediaUsage{ImageCount: 1},
+	})
+	require.NoError(t, err)
+	fixture.repo.mu.Lock()
+	stored := fixture.repo.tasks[fixture.task.ID]
+	stored.Status = MediaTaskStatusCompleted
+	stored.Stage = MediaTaskStageCompleted
+	stored.BillingStatus = MediaBillingStatusSettled
+	stored.SettlementRecovery = recovery
+	stored.SettlementPlan = nil
+	fixture.repo.mu.Unlock()
+
+	err = fixture.worker.ProcessOne(context.Background(), fixture.task.ID)
+	require.ErrorIs(t, err, ErrMediaSettlementPlanNotPersisted)
+	require.Zero(t, fixture.adapter.submitCalls.Load())
+}
+
+func TestMediaWorkerAcceptsLegacySettledTaskWithoutSettlementPlans(t *testing.T) {
+	fixture := newMediaWorkerFixture(t, true, NativeAsyncRequired)
+	fixture.repo.mu.Lock()
+	stored := fixture.repo.tasks[fixture.task.ID]
+	stored.Status = MediaTaskStatusCompleted
+	stored.Stage = MediaTaskStageCompleted
+	stored.BillingStatus = MediaBillingStatusSettled
+	stored.SettlementRecovery = nil
+	stored.SettlementPlan = nil
+	fixture.repo.mu.Unlock()
+
+	require.NoError(t, fixture.worker.ProcessOne(context.Background(), fixture.task.ID))
+	require.Zero(t, fixture.adapter.submitCalls.Load())
+}
+
+func TestMediaWorkerReleasesSelectionWhenAdapterPanics(t *testing.T) {
+	fixture := newMediaWorkerFixture(t, true, NativeAsyncRequired)
+	fixture.adapter.panicSubmit = true
+	fixture.queue.deliver(&MediaQueueMessage{ID: "panic-1", TaskID: fixture.task.ID, Priority: MediaQueuePriorityAsync})
+
+	require.NoError(t, fixture.worker.Start())
+	t.Cleanup(fixture.worker.Stop)
+	select {
+	case <-fixture.worker.Errors():
+	case <-time.After(time.Second):
+		t.Fatal("expected adapter panic to reach worker error channel")
+	}
+	require.Eventually(t, func() bool {
+		return fixture.selector.releaseCalls.Load() == 1
+	}, time.Second, 10*time.Millisecond)
+	fixture.worker.Stop()
+
+	stored := fixture.repo.mustGet(fixture.task.ID)
+	require.Equal(t, MediaTaskStatusInProgress, stored.Status)
+	require.Equal(t, MediaTaskStageSubmitting, stored.Stage)
+	require.Empty(t, stored.SettlementRecovery)
+	require.Equal(t, int64(1), fixture.adapter.submitCalls.Load())
+	require.Zero(t, fixture.queue.ackCalls.Load())
+	require.Eventually(t, func() bool {
+		current := fixture.repo.mustGet(fixture.task.ID)
+		return current.LeaseUntil != nil && current.LeaseUntil.Before(time.Now())
+	}, time.Second, 10*time.Millisecond)
+	fixture.queue.resetEnqueued()
+	require.NoError(t, fixture.worker.RecoverOnce(context.Background()))
+	require.Equal(t, []int64{fixture.task.ID}, fixture.queue.enqueuedTaskIDs())
+}
+
 func TestMediaWorkerProductionLogsNeverIncludeRawDependencyErrors(t *testing.T) {
 	fixture := newMediaWorkerFixture(t, true, NativeAsyncRequired)
 	var output bytes.Buffer
@@ -498,6 +611,7 @@ type mediaWorkerFixture struct {
 	artifactWriter *workerArtifactWriter
 	task           *MediaTask
 	account        *Account
+	selector       *workerSelector
 	releasePoll    chan struct{}
 }
 
@@ -508,7 +622,8 @@ func newMediaWorkerFixture(t *testing.T, clientAsync bool, mode NativeAsyncMode)
 	registry.Register(adapter.Name(), adapter)
 	account := &Account{ID: 7, Platform: PlatformOpenAI, Status: StatusActive, Schedulable: true, Concurrency: 1}
 	accountRepo := &workerAccountRepository{account: account}
-	scheduler := NewMediaScheduler(accountRepo, &workerSelector{}, registry)
+	selector := &workerSelector{}
+	scheduler := NewMediaScheduler(accountRepo, selector, registry)
 	modelRegistry := NewMediaModelRegistry(&workerModelRepository{definition: MediaModelDefinition{
 		ModelID: "fake-image", MediaType: MediaTypeImage, Operations: []MediaOperation{MediaOperationTextToImage}, Enabled: true,
 	}})
@@ -544,8 +659,45 @@ func newMediaWorkerFixture(t *testing.T, clientAsync bool, mode NativeAsyncMode)
 	})
 	return &mediaWorkerFixture{
 		worker: worker, repo: repo, queue: queue, adapter: adapter, billing: billing, metrics: metrics,
-		artifactWriter: artifactWriter, task: task, account: account, releasePoll: make(chan struct{}),
+		artifactWriter: artifactWriter, task: task, account: account, selector: selector, releasePoll: make(chan struct{}),
 	}
+}
+
+func prepareRecoverableSubmittingTask(t *testing.T, fixture *mediaWorkerFixture, supportsIdempotency bool) (*workerAdapter, *Account) {
+	t.Helper()
+	fixedAdapter := newWorkerAdapter("worker-fixed-submitter")
+	fixedAdapter.supportsIdempotency = supportsIdempotency
+	fixture.worker.deps.Adapters.Register(fixedAdapter.Name(), fixedAdapter)
+	fixedAccount := &Account{ID: 9, Platform: PlatformOpenAI, Status: StatusActive, Schedulable: true, Concurrency: 1}
+	accountRepo := fixture.worker.deps.Scheduler.accountRepo.(*workerAccountRepository)
+	accountRepo.extra = append(accountRepo.extra, fixedAccount)
+	var candidates []MediaAccountCandidateSnapshot
+	require.NoError(t, json.Unmarshal(fixture.task.CandidateSnapshot, &candidates))
+	candidates = append(candidates, MediaAccountCandidateSnapshot{
+		AccountID: fixedAccount.ID,
+		Platform:  fixedAccount.Platform,
+		ResolvedModel: ResolvedMediaAccountModel{
+			Adapter: fixedAdapter.Name(), UpstreamModel: "fixed-upstream-image", NativeAsyncMode: NativeAsyncRequired,
+		},
+	})
+	encoded, err := json.Marshal(candidates)
+	require.NoError(t, err)
+	fixture.repo.mu.Lock()
+	stored := fixture.repo.tasks[fixture.task.ID]
+	stored.Status = MediaTaskStatusInProgress
+	stored.Stage = MediaTaskStageSubmitting
+	stored.AccountID = ptrInt64(fixedAccount.ID)
+	stored.Adapter = fixedAdapter.Name()
+	stored.UpstreamModel = "fixed-upstream-image"
+	stored.NativeAsyncMode = NativeAsyncRequired
+	stored.UpstreamTaskID = ""
+	stored.CandidateSnapshot = encoded
+	stored.WorkerID = "dead-worker"
+	stored.LeaseUntil = workerTimePtr(time.Now().Add(-time.Minute))
+	stored.StartedAt = workerTimePtr(time.Now().UTC())
+	stored.Version++
+	fixture.repo.mu.Unlock()
+	return fixedAdapter, fixedAccount
 }
 
 type workerTaskRepository struct {
@@ -907,10 +1059,14 @@ func (r *workerAccountRepository) UpdateLastUsed(context.Context, int64) error {
 	return nil
 }
 
-type workerSelector struct{}
+type workerSelector struct {
+	selectCalls  atomic.Int64
+	releaseCalls atomic.Int64
+}
 
-func (*workerSelector) Select(_ context.Context, req AccountCandidateSelectionRequest) (*AccountSelectionResult, error) {
-	return &AccountSelectionResult{Account: req.Candidates[0], Acquired: true, ReleaseFunc: func() {}}, nil
+func (s *workerSelector) Select(_ context.Context, req AccountCandidateSelectionRequest) (*AccountSelectionResult, error) {
+	s.selectCalls.Add(1)
+	return &AccountSelectionResult{Account: req.Candidates[0], Acquired: true, ReleaseFunc: func() { s.releaseCalls.Add(1) }}, nil
 }
 func (*workerSelector) Wait(context.Context, *AccountWaitPlan) (func(), error) { return func() {}, nil }
 
@@ -933,6 +1089,7 @@ type workerAdapter struct {
 	submitErrors        []error
 	supportsIdempotency bool
 	emptySubmission     bool
+	panicSubmit         bool
 	allowed             map[string]struct{}
 	request             MediaExecutionRequest
 	requests            []MediaExecutionRequest
@@ -958,6 +1115,9 @@ func (a *workerAdapter) Submit(ctx context.Context, req MediaExecutionRequest) (
 		return nil, err
 	}
 	a.submitCalls.Add(1)
+	if a.panicSubmit {
+		panic("adapter submit panic")
+	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.request = req

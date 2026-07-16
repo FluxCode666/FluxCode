@@ -281,7 +281,13 @@ func validateMediaSettlementRecovery(task *MediaTask, plan MediaSettlementPlan) 
 }
 
 func validatePersistedMediaSettlementConsistency(task *MediaTask) error {
-	if task == nil || len(task.SettlementRecovery) == 0 || len(task.SettlementPlan) == 0 {
+	if task == nil || len(task.SettlementRecovery) == 0 {
+		return nil
+	}
+	if len(task.SettlementPlan) == 0 {
+		if task.BillingStatus == MediaBillingStatusSettled {
+			return fmt.Errorf("%w: task %d recovery intent exists without formal plan", ErrMediaSettlementPlanNotPersisted, task.ID)
+		}
 		return nil
 	}
 	if !mediaSettlementPlansEqual(task.SettlementRecovery, task.SettlementPlan) {

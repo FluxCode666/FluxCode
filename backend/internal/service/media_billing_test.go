@@ -137,6 +137,43 @@ func TestMediaBillingCoordinatorRejectsSettledRecoveryAndFormalPlanDivergence(t 
 	})
 }
 
+func TestMediaBillingCoordinatorRejectsSettledRecoveryWithoutFormalPlan(t *testing.T) {
+	usage := MediaUsage{ImageCount: 1}
+	recovery, err := json.Marshal(MediaSettlementPlan{
+		Type:  MediaSettlementTypeSuccess,
+		Usage: &usage,
+	})
+	require.NoError(t, err)
+
+	t.Run("settle", func(t *testing.T) {
+		task := workerCompletedTask(108, "billing-settled-plan-missing")
+		task.BillingStatus = MediaBillingStatusSettled
+		task.SettlementRecovery = recovery
+		coordinator := NewMediaBillingCoordinator(newWorkerTaskRepository(task), &recordingMediaBillingPort{})
+
+		err := coordinator.SettleSuccess(context.Background(), task, usage)
+		require.ErrorIs(t, err, ErrMediaSettlementPlanNotPersisted)
+	})
+
+	t.Run("retry", func(t *testing.T) {
+		task := workerCompletedTask(109, "billing-settled-retry-plan-missing")
+		task.BillingStatus = MediaBillingStatusSettled
+		task.SettlementRecovery = recovery
+		coordinator := NewMediaBillingCoordinator(newWorkerTaskRepository(task), &recordingMediaBillingPort{})
+
+		err := coordinator.RetryPending(context.Background(), task.ID)
+		require.ErrorIs(t, err, ErrMediaSettlementPlanNotPersisted)
+	})
+}
+
+func TestMediaBillingCoordinatorAcceptsLegacySettledTaskWithoutSettlementPlans(t *testing.T) {
+	task := workerCompletedTask(110, "billing-legacy-settled")
+	task.BillingStatus = MediaBillingStatusSettled
+	coordinator := NewMediaBillingCoordinator(newWorkerTaskRepository(task), &recordingMediaBillingPort{})
+
+	require.NoError(t, coordinator.RetryPending(context.Background(), task.ID))
+}
+
 type recordingMediaBillingPort struct {
 	mu                    sync.Mutex
 	failFirstSettlement   bool

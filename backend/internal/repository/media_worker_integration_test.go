@@ -24,9 +24,13 @@ func TestMediaWorkerIntegrationDuplicateDeliverySettlesOnce(t *testing.T) {
 	require.NoError(t, fixture.queue.Enqueue(context.Background(), task.ID, service.MediaQueuePriorityAsync))
 	require.NoError(t, fixture.worker.Start())
 	t.Cleanup(fixture.worker.Stop)
-	fixture.waitForStatus(t, task.ID, service.MediaTaskStatusCompleted)
+	fixture.waitForSettledAndAcked(t, task.ID, service.MediaQueuePriorityAsync, 1)
 	require.Equal(t, int64(1), fixture.adapter.submitCalls.Load())
-	require.Equal(t, int64(1), fixture.billing.settlements.Load())
+	require.Equal(t, int64(1), fixture.billing.settlementCount())
+	require.Equal(t, int64(1), fixture.billing.settlementAttempts())
+	stored, err := fixture.taskRepo.GetByID(context.Background(), task.ID)
+	require.NoError(t, err)
+	require.NotEmpty(t, stored.SettlementPlan)
 	artifacts, err := fixture.artifactRepo.ListByTaskID(context.Background(), task.ID)
 	require.NoError(t, err)
 	require.Len(t, artifacts, 1)
@@ -53,12 +57,21 @@ func TestMediaWorkerIntegrationResumesPollWithoutResubmit(t *testing.T) {
 	_ = claimedTask
 
 	require.NoError(t, fixture.worker.RecoverOnce(context.Background()))
-	require.NoError(t, fixture.worker.ProcessOne(context.Background(), task.ID))
+	require.NoError(t, fixture.worker.Start())
+	t.Cleanup(fixture.worker.Stop)
+	fixture.waitForSettledAndAcked(t, task.ID, service.MediaQueuePriorityAsync, 0)
 	require.Zero(t, fixture.adapter.submitCalls.Load())
 	require.GreaterOrEqual(t, fixture.adapter.pollCalls.Load(), int64(1))
+	require.Equal(t, int64(1), fixture.billing.settlementCount())
+	require.Equal(t, int64(1), fixture.billing.settlementAttempts())
 	stored, err := fixture.taskRepo.GetByID(context.Background(), task.ID)
 	require.NoError(t, err)
 	require.Equal(t, service.MediaTaskStatusCompleted, stored.Status)
+	require.Equal(t, service.MediaBillingStatusSettled, stored.BillingStatus)
+	require.NotEmpty(t, stored.SettlementPlan)
+	artifacts, err := fixture.artifactRepo.ListByTaskID(context.Background(), task.ID)
+	require.NoError(t, err)
+	require.Len(t, artifacts, 1)
 }
 
 type integrationMediaWorkerFixture struct {
@@ -67,7 +80,8 @@ type integrationMediaWorkerFixture struct {
 	taskRepo     service.MediaTaskRepository
 	artifactRepo service.MediaArtifactRepository
 	adapter      *integrationWorkerAdapter
-	billing      *integrationWorkerBilling
+	billing      *integrationWorkerBillingPort
+	metrics      *service.AtomicMediaTaskMetrics
 	account      *service.Account
 	candidates   json.RawMessage
 }
@@ -88,12 +102,14 @@ func newIntegrationMediaWorker(t *testing.T) *integrationMediaWorkerFixture {
 	require.NoError(t, models.Refresh(context.Background()))
 	candidates, err := json.Marshal([]service.MediaAccountCandidateSnapshot{{AccountID: account.ID, Platform: account.Platform, ResolvedModel: service.ResolvedMediaAccountModel{Adapter: adapter.Name(), UpstreamModel: "upstream-image", NativeAsyncMode: service.NativeAsyncRequired}}})
 	require.NoError(t, err)
-	billing := &integrationWorkerBilling{}
+	billing := &integrationWorkerBillingPort{settled: make(map[string]struct{})}
+	metrics := service.NewAtomicMediaTaskMetrics()
 	worker := service.NewMediaWorker(service.MediaWorkerConfig{WorkerCount: 1, TaskTimeout: time.Second, LeaseTTL: 200 * time.Millisecond, LeaseRenewInterval: 50 * time.Millisecond, PollInterval: time.Millisecond, RecoveryInterval: time.Second, RecoveryBatchSize: 10}, service.MediaWorkerDependencies{
 		Tasks: taskRepo, Queue: queue, Scheduler: scheduler, Models: models, Adapters: adapters,
-		Artifacts: &integrationArtifactWriter{repo: artifactRepo}, Billing: billing, Metrics: service.NewAtomicMediaTaskMetrics(),
+		Artifacts: &integrationArtifactWriter{repo: artifactRepo},
+		Billing:   service.NewMediaBillingCoordinator(taskRepo, billing), Metrics: metrics,
 	})
-	return &integrationMediaWorkerFixture{worker: worker, queue: queue, taskRepo: taskRepo, artifactRepo: artifactRepo, adapter: adapter, billing: billing, account: account, candidates: candidates}
+	return &integrationMediaWorkerFixture{worker: worker, queue: queue, taskRepo: taskRepo, artifactRepo: artifactRepo, adapter: adapter, billing: billing, metrics: metrics, account: account, candidates: candidates}
 }
 
 func (f *integrationMediaWorkerFixture) createQueuedTask(t *testing.T, clientAsync bool) *service.MediaTask {
@@ -103,11 +119,18 @@ func (f *integrationMediaWorkerFixture) createQueuedTask(t *testing.T, clientAsy
 	require.NoError(t, err)
 	return task
 }
-func (f *integrationMediaWorkerFixture) waitForStatus(t *testing.T, id int64, status service.MediaTaskStatus) {
+func (f *integrationMediaWorkerFixture) waitForSettledAndAcked(t *testing.T, id int64, priority service.MediaQueuePriority, duplicateMessages int64) {
 	t.Helper()
 	require.Eventually(t, func() bool {
 		task, err := f.taskRepo.GetByID(context.Background(), id)
-		return err == nil && task.Status == status
+		if err != nil || task.Status != service.MediaTaskStatusCompleted || task.BillingStatus != service.MediaBillingStatusSettled {
+			return false
+		}
+		if f.metrics.DuplicateMessages() < duplicateMessages {
+			return false
+		}
+		pending, err := f.queue.PendingCount(context.Background(), priority)
+		return err == nil && pending == 0
 	}, 3*time.Second, 10*time.Millisecond)
 }
 
@@ -185,14 +208,35 @@ func (w *integrationArtifactWriter) PersistOutputs(ctx context.Context, task *se
 	return artifacts, nil
 }
 
-type integrationWorkerBilling struct{ settlements atomic.Int64 }
+type integrationWorkerBillingPort struct {
+	mu       sync.Mutex
+	settled  map[string]struct{}
+	attempts atomic.Int64
+}
 
-func (b *integrationWorkerBilling) SettleSuccess(context.Context, *service.MediaTask, service.MediaUsage) error {
-	b.settlements.Add(1)
+func (*integrationWorkerBillingPort) Precharge(context.Context, *service.MediaTask, service.MediaBillingSnapshot) error {
 	return nil
 }
-func (b *integrationWorkerBilling) SettleFailure(context.Context, *service.MediaTask, service.MediaFailureSettlement) error {
-	b.settlements.Add(1)
+func (b *integrationWorkerBillingPort) SettleSuccess(_ context.Context, task *service.MediaTask, _ service.MediaUsage) error {
+	b.attempts.Add(1)
+	b.settle(task, service.MediaSettlementTypeSuccess)
 	return nil
 }
-func (*integrationWorkerBilling) RetryPending(context.Context, int64) error { return nil }
+func (b *integrationWorkerBillingPort) SettleFailure(_ context.Context, task *service.MediaTask, _ service.MediaFailureSettlement) error {
+	b.attempts.Add(1)
+	b.settle(task, service.MediaSettlementTypeFailure)
+	return nil
+}
+func (b *integrationWorkerBillingPort) settle(task *service.MediaTask, planType service.MediaSettlementType) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.settled[task.PublicID+":"+string(planType)] = struct{}{}
+}
+func (b *integrationWorkerBillingPort) settlementCount() int64 {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return int64(len(b.settled))
+}
+func (b *integrationWorkerBillingPort) settlementAttempts() int64 {
+	return b.attempts.Load()
+}
