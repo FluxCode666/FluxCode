@@ -257,30 +257,22 @@ func (o *MediaOrchestrator) Create(ctx context.Context, req MediaCreateRequest) 
 	return o.initializeAndEnqueue(ctx, task, req, inputs, billingSnapshot, settings)
 }
 
-func (o *MediaOrchestrator) GetForUser(ctx context.Context, publicID string, userID int64) (*MediaCreateResult, error) {
+func (o *MediaOrchestrator) GetForUser(ctx context.Context, publicID string, userID int64) (*MediaTask, []MediaArtifact, error) {
 	if err := o.validateRead(); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	task, err := o.deps.Tasks.GetByPublicIDForUser(ctx, publicID, userID)
 	if err != nil {
 		if errors.Is(err, ErrMediaTaskNotFound) {
-			return nil, ErrMediaTaskNotFound
+			return nil, nil, ErrMediaTaskNotFound
 		}
-		return nil, fmt.Errorf("load media task for user: %w", err)
+		return nil, nil, fmt.Errorf("load media task for user: %w", err)
 	}
 	artifacts, err := o.deps.Artifacts.ListByTaskID(ctx, task.ID)
 	if err != nil {
-		return nil, fmt.Errorf("list media task artifacts: %w", err)
+		return nil, nil, fmt.Errorf("list media task artifacts: %w", err)
 	}
-	disposition := MediaCreateDispositionAccepted
-	if task.Status == MediaTaskStatusCompleted {
-		disposition = MediaCreateDispositionCompleted
-	} else if task.Status == MediaTaskStatusFailed {
-		disposition = MediaCreateDispositionFailed
-	}
-	return &MediaCreateResult{
-		Task: sanitizeMediaTaskForUser(task), Artifacts: sanitizeMediaArtifactsForUser(artifacts), Disposition: disposition,
-	}, nil
+	return sanitizeMediaTaskForUser(task), sanitizeMediaArtifactsForUser(artifacts), nil
 }
 
 func (o *MediaOrchestrator) waitSync(ctx context.Context, task *MediaTask, settings *SystemSettings) (*MediaCreateResult, error) {

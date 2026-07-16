@@ -164,6 +164,10 @@ var ProviderSet = wire.NewSet(
 	NewPaymentHandler,
 	NewPaymentWebhookHandler,
 	NewChannelMonitorUserHandler,
+	NewMediaTaskHandler,
+	wire.Bind(new(MediaTaskApplication), new(*service.MediaOrchestrator)),
+	wire.Bind(new(MediaVideoContentOpener), new(*service.MediaContentService)),
+	wire.Bind(new(service.MediaInputStager), new(*service.MediaContentService)),
 
 	// Admin handlers
 	admin.NewDashboardHandler,

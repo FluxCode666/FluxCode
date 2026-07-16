@@ -61,6 +61,7 @@ type Handlers struct {
 	Referral        *ReferralHandler
 	SalesCommission *SalesCommissionHandler
 	ChannelMonitor  *ChannelMonitorUserHandler
+	MediaTask       *MediaTaskHandler
 }
 
 // BuildInfo contains build-time information

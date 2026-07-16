@@ -1157,19 +1157,19 @@ func TestMediaOrchestratorGetForUserSanitizesInternalTaskFields(t *testing.T) {
 		ID: 1, TaskID: created.Task.ID, ObjectKey: "private/object", UpstreamReference: "private-upstream", PublicURL: "https://example.test/media",
 	}}
 
-	result, err := fixture.orchestrator.GetForUser(context.Background(), created.Task.PublicID, created.Task.UserID)
+	task, artifacts, err := fixture.orchestrator.GetForUser(context.Background(), created.Task.PublicID, created.Task.UserID)
 	require.NoError(t, err)
-	require.Nil(t, result.Task.AccountID)
-	require.Empty(t, result.Task.UpstreamTaskID)
-	require.Empty(t, result.Task.PollMetadata)
-	require.Empty(t, result.Task.BillingSnapshot)
-	require.Empty(t, result.Task.RequestFingerprint)
-	require.Empty(t, result.Task.IdempotencyKey)
-	require.Empty(t, result.Artifacts[0].ObjectKey)
-	require.Empty(t, result.Artifacts[0].UpstreamReference)
-	require.Equal(t, "https://example.test/media", result.Artifacts[0].PublicURL)
+	require.Nil(t, task.AccountID)
+	require.Empty(t, task.UpstreamTaskID)
+	require.Empty(t, task.PollMetadata)
+	require.Empty(t, task.BillingSnapshot)
+	require.Empty(t, task.RequestFingerprint)
+	require.Empty(t, task.IdempotencyKey)
+	require.Empty(t, artifacts[0].ObjectKey)
+	require.Empty(t, artifacts[0].UpstreamReference)
+	require.Equal(t, "https://example.test/media", artifacts[0].PublicURL)
 
-	_, err = fixture.orchestrator.GetForUser(context.Background(), created.Task.PublicID, created.Task.UserID+1)
+	_, _, err = fixture.orchestrator.GetForUser(context.Background(), created.Task.PublicID, created.Task.UserID+1)
 	require.ErrorIs(t, err, ErrMediaTaskNotFound)
 }
 

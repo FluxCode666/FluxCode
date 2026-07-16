@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
+	"net/http"
 	"reflect"
 	"strings"
 	"sync"
@@ -26,6 +28,8 @@ type MediaArtifactInput struct {
 	MediaType         MediaType
 	ContentType       string
 	Data              []byte
+	SizeBytes         int64
+	ChecksumSHA256    string
 	ObjectKey         string
 	ExternalURL       string
 	UpstreamReference string
@@ -34,6 +38,40 @@ type MediaArtifactInput struct {
 	DurationSeconds   float64
 	Resolution        string
 	FPS               float64
+}
+
+type MediaContent struct {
+	Body          io.ReadCloser
+	StatusCode    int
+	ContentType   string
+	ContentLength int64
+	ContentRange  string
+	AcceptRanges  string
+}
+
+type MediaHTTPContentRequest struct {
+	URL       string
+	Headers   http.Header
+	Account   *Account
+	ByteRange string
+}
+
+type MediaHTTPContentReader interface {
+	ValidateURL(raw string) (string, error)
+	Open(ctx context.Context, req MediaHTTPContentRequest) (*MediaContent, error)
+}
+
+type MediaContentFetcher interface {
+	OpenContent(ctx context.Context, account *Account, artifact *MediaArtifact, byteRange string) (*MediaContent, error)
+}
+
+type MediaArtifactObjectStore interface {
+	Put(ctx context.Context, input MediaArtifactInput) (*MediaArtifact, error)
+	Open(ctx context.Context, artifact *MediaArtifact, byteRange string) (*MediaContent, error)
+}
+
+type MediaInputStager interface {
+	Stage(ctx context.Context, userID int64, input MediaArtifactInput) (MediaArtifactInput, error)
 }
 
 type MediaUsage struct {
