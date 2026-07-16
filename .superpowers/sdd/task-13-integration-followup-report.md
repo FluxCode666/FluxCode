@@ -6,6 +6,7 @@
 - 仅修改 Task 13 Redis queue：
   - `backend/internal/repository/media_task_stream.go`
   - `backend/internal/repository/media_task_stream_test.go`
+  - `backend/internal/repository/media_task_stream_integration_test.go`
   - 本报告
 - 未修改 Task 14 Worker/scheduler/billing、路由、schema、adapter、frontend 或 Task 15。
 - 未运行需求明确禁止的已知 fatal 完整 service 执行套件；以全仓无测试编译代替执行级全量测试。
