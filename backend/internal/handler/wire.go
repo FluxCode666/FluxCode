@@ -101,8 +101,7 @@ func ProvideSettingHandler(settingService *service.SettingService, buildInfo Bui
 	return NewSettingHandler(settingService, buildInfo.Version)
 }
 
-// ProvideHandlers keeps the generated production graph compatible until the
-// media dependency chain is provided by Task 17.
+// ProvideHandlers keeps a media-free aggregate constructor for focused tests.
 func ProvideHandlers(
 	authHandler *AuthHandler,
 	userHandler *UserHandler,
@@ -181,9 +180,9 @@ func ProvideHandlersWithMedia(
 	}
 }
 
-// MediaTaskProviderSet is opt-in until Task 17 supplies the complete media
-// dependency chain and switches the aggregate constructor.
+// MediaTaskProviderSet provides the standalone media task application handler.
 var MediaTaskProviderSet = wire.NewSet(
+	service.MediaTaskProviderSet,
 	NewMediaTaskHandler,
 	wire.Bind(new(MediaTaskApplication), new(*service.MediaOrchestrator)),
 	wire.Bind(new(MediaVideoContentOpener), new(*service.MediaContentService)),
@@ -248,5 +247,6 @@ var ProviderSet = wire.NewSet(
 
 	// AdminHandlers and Handlers constructors
 	ProvideAdminHandlers,
-	ProvideHandlers,
+	MediaTaskProviderSet,
+	ProvideHandlersWithMedia,
 )

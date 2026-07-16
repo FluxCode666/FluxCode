@@ -15,6 +15,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/redis/go-redis/v9"
 	"github.com/redis/go-redis/v9/maintnotifications"
@@ -155,9 +156,14 @@ func NewMediaTaskStream(rdb *redis.Client, consumerName string, lease time.Durat
 	}
 }
 
-// ProvideMediaTaskQueue 提供默认一分钟租约的媒体任务队列。
-func ProvideMediaTaskQueue(rdb *redis.Client) service.MediaTaskQueue {
-	return NewMediaTaskStream(rdb, newMediaTaskConsumerName(), defaultMediaTaskLease)
+// ProvideMediaTaskQueue creates the deployment-configured media task queue.
+func ProvideMediaTaskQueue(rdb *redis.Client, cfg *config.Config) service.MediaTaskQueue {
+	consumer := mediaWorkerConsumerName()
+	lease := defaultMediaTaskLease
+	if cfg != nil && cfg.MediaTasks.LeaseTTLSeconds > 0 {
+		lease = time.Duration(cfg.MediaTasks.LeaseTTLSeconds) * time.Second
+	}
+	return NewMediaTaskStream(rdb, consumer, lease)
 }
 
 // EnsureGroups 幂等创建两条 Stream 的 consumer group。
@@ -1088,4 +1094,8 @@ func newMediaTaskConsumerName() string {
 		suffix = strconv.FormatInt(time.Now().UnixNano(), 36)
 	}
 	return fmt.Sprintf("%s-%d-%s-%d", hostname, os.Getpid(), suffix, sequence)
+}
+
+func mediaWorkerConsumerName() string {
+	return newMediaTaskConsumerName()
 }

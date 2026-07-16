@@ -86,6 +86,7 @@ type Config struct {
 	Gemini          GeminiConfig      `mapstructure:"gemini"`
 	Update          UpdateConfig      `mapstructure:"update"`
 	Idempotency     IdempotencyConfig `mapstructure:"idempotency"`
+	MediaTasks      MediaTaskConfig   `mapstructure:"media_tasks"`
 }
 
 type LogConfig struct {
@@ -166,6 +167,22 @@ type IdempotencyConfig struct {
 	CleanupIntervalSeconds int `mapstructure:"cleanup_interval_seconds"`
 	// CleanupBatchSize 每次清理的最大记录数。
 	CleanupBatchSize int `mapstructure:"cleanup_batch_size"`
+}
+
+// MediaTaskConfig controls deployment-time media worker and content proxy
+// behavior. These values require a process restart and are not system settings.
+type MediaTaskConfig struct {
+	Enabled                    bool  `mapstructure:"enabled"`
+	WorkerCount                int   `mapstructure:"worker_count"`
+	TaskTimeoutSeconds         int   `mapstructure:"task_timeout_seconds"`
+	LeaseTTLSeconds            int   `mapstructure:"lease_ttl_seconds"`
+	LeaseRenewIntervalSeconds  int   `mapstructure:"lease_renew_interval_seconds"`
+	PollIntervalSeconds        int   `mapstructure:"poll_interval_seconds"`
+	RecoveryIntervalSeconds    int   `mapstructure:"recovery_interval_seconds"`
+	RecoveryBatchSize          int   `mapstructure:"recovery_batch_size"`
+	StreamBlockMilliseconds    int   `mapstructure:"stream_block_milliseconds"`
+	ContentProxyTimeoutSeconds int   `mapstructure:"content_proxy_timeout_seconds"`
+	MaxContentBytes            int64 `mapstructure:"max_content_bytes"`
 }
 
 type LinuxDoConnectConfig struct {
@@ -1377,6 +1394,19 @@ func setDefaults() {
 	viper.SetDefault("idempotency.cleanup_interval_seconds", 60)
 	viper.SetDefault("idempotency.cleanup_batch_size", 500)
 
+	// Media task deployment/runtime settings (not hot-reloaded system settings).
+	viper.SetDefault("media_tasks.enabled", true)
+	viper.SetDefault("media_tasks.worker_count", 4)
+	viper.SetDefault("media_tasks.task_timeout_seconds", 7200)
+	viper.SetDefault("media_tasks.lease_ttl_seconds", 120)
+	viper.SetDefault("media_tasks.lease_renew_interval_seconds", 30)
+	viper.SetDefault("media_tasks.poll_interval_seconds", 2)
+	viper.SetDefault("media_tasks.recovery_interval_seconds", 15)
+	viper.SetDefault("media_tasks.recovery_batch_size", 100)
+	viper.SetDefault("media_tasks.stream_block_milliseconds", 1000)
+	viper.SetDefault("media_tasks.content_proxy_timeout_seconds", 90)
+	viper.SetDefault("media_tasks.max_content_bytes", int64(2147483648))
+
 	// Gateway
 	viper.SetDefault("gateway.response_header_timeout", 600) // 600秒(10分钟)等待上游响应头，LLM高负载时可能排队较久
 	viper.SetDefault("gateway.log_upstream_error_body", true)
@@ -1533,6 +1563,39 @@ func (c *Config) Validate() error {
 	// 选择 bytes 而不是 rune 计数，确保二进制/随机串的长度语义更接近“熵”而非“字符数”。
 	if len([]byte(jwtSecret)) < 32 {
 		return fmt.Errorf("jwt.secret must be at least 32 bytes")
+	}
+	if c.MediaTasks.WorkerCount <= 0 {
+		return fmt.Errorf("media_tasks.worker_count must be positive")
+	}
+	if c.MediaTasks.TaskTimeoutSeconds <= 0 {
+		return fmt.Errorf("media_tasks.task_timeout_seconds must be positive")
+	}
+	if c.MediaTasks.LeaseTTLSeconds <= 0 {
+		return fmt.Errorf("media_tasks.lease_ttl_seconds must be positive")
+	}
+	if c.MediaTasks.LeaseRenewIntervalSeconds <= 0 {
+		return fmt.Errorf("media_tasks.lease_renew_interval_seconds must be positive")
+	}
+	if c.MediaTasks.LeaseRenewIntervalSeconds >= c.MediaTasks.LeaseTTLSeconds {
+		return fmt.Errorf("media_tasks.lease_renew_interval_seconds must be less than media_tasks.lease_ttl_seconds")
+	}
+	if c.MediaTasks.PollIntervalSeconds <= 0 {
+		return fmt.Errorf("media_tasks.poll_interval_seconds must be positive")
+	}
+	if c.MediaTasks.RecoveryIntervalSeconds <= 0 {
+		return fmt.Errorf("media_tasks.recovery_interval_seconds must be positive")
+	}
+	if c.MediaTasks.RecoveryBatchSize <= 0 {
+		return fmt.Errorf("media_tasks.recovery_batch_size must be positive")
+	}
+	if c.MediaTasks.StreamBlockMilliseconds <= 0 {
+		return fmt.Errorf("media_tasks.stream_block_milliseconds must be positive")
+	}
+	if c.MediaTasks.ContentProxyTimeoutSeconds <= 0 {
+		return fmt.Errorf("media_tasks.content_proxy_timeout_seconds must be positive")
+	}
+	if c.MediaTasks.MaxContentBytes <= 0 {
+		return fmt.Errorf("media_tasks.max_content_bytes must be positive")
 	}
 	switch c.Log.Level {
 	case "debug", "info", "warn", "error":

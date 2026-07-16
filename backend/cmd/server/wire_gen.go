@@ -268,9 +268,33 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	handlerReferralHandler := handler.NewReferralHandler(referralService)
 	handlerSalesCommissionHandler := handler.NewSalesCommissionHandler(salesCommissionService)
 	channelMonitorUserHandler := handler.NewChannelMonitorUserHandler(channelMonitorService, settingService)
+	mediaModelDefinitionRepository := repository.NewMediaModelRepository(client)
+	mediaModelRegistry, err := service.ProvideMediaModelRegistry(mediaModelDefinitionRepository)
+	if err != nil {
+		return nil, err
+	}
+	mediaAdapterRegistry := service.ProvideMediaAdapterRegistry()
+	mediaScheduler := service.ProvideMediaScheduler(accountRepository, concurrencyService, gatewayCache, mediaAdapterRegistry, configConfig)
+	mediaContentPolicy := service.ProvideMediaContentPolicy()
+	mediaPricingPort := service.ProvideMediaPricing()
+	mediaTaskRepository := repository.NewMediaTaskRepository(client)
+	mediaArtifactRepository := repository.NewMediaArtifactRepository(client)
+	mediaBillingPort := service.ProvideMediaBilling()
+	mediaBillingCoordinator := service.ProvideMediaSettlementCoordinator(mediaTaskRepository, mediaBillingPort)
+	mediaTaskQueue := repository.ProvideMediaTaskQueue(redisClient, configConfig)
+	mediaHTTPContentReader := repository.ProvideMediaHTTPContentReader(httpUpstream, configConfig)
+	mediaArtifactObjectStore := service.ProvideMediaArtifactObjectStore()
+	mediaContentService := service.ProvideMediaContentService(mediaTaskRepository, mediaArtifactRepository, settingService, accountRepository, mediaAdapterRegistry, mediaHTTPContentReader, mediaArtifactObjectStore)
+	mediaTaskMetrics := service.ProvideMediaTaskMetrics()
+	mediaWorker, err := service.ProvideMediaWorker(mediaTaskQueue, mediaTaskRepository, mediaContentService, mediaScheduler, mediaModelRegistry, mediaAdapterRegistry, mediaBillingPort, mediaBillingCoordinator, mediaTaskMetrics, configConfig)
+	if err != nil {
+		return nil, err
+	}
+	mediaOrchestrator := service.ProvideMediaOrchestrator(mediaModelRegistry, groupRepository, mediaScheduler, settingService, mediaContentPolicy, mediaPricingPort, mediaTaskRepository, mediaArtifactRepository, mediaBillingPort, mediaBillingCoordinator, mediaTaskQueue, mediaWorker)
+	mediaTaskHandler := handler.NewMediaTaskHandler(mediaOrchestrator, mediaContentService, mediaContentService, configConfig)
 	idempotencyCoordinator := service.ProvideIdempotencyCoordinator(idempotencyRepository, configConfig)
 	idempotencyCleanupService := service.ProvideIdempotencyCleanupService(idempotencyRepository, configConfig)
-	handlers := handler.ProvideHandlers(authHandler, userHandler, apiKeyHandler, usageHandler, redeemHandler, subscriptionHandler, announcementHandler, adminHandlers, gatewayHandler, openAIGatewayHandler, handlerSettingHandler, totpHandler, modelPricingHandler, handlerPaymentHandler, paymentWebhookHandler, handlerReferralHandler, handlerSalesCommissionHandler, channelMonitorUserHandler, idempotencyCoordinator, idempotencyCleanupService)
+	handlers := handler.ProvideHandlersWithMedia(authHandler, userHandler, apiKeyHandler, usageHandler, redeemHandler, subscriptionHandler, announcementHandler, adminHandlers, gatewayHandler, openAIGatewayHandler, handlerSettingHandler, totpHandler, modelPricingHandler, handlerPaymentHandler, paymentWebhookHandler, handlerReferralHandler, handlerSalesCommissionHandler, channelMonitorUserHandler, mediaTaskHandler, idempotencyCoordinator, idempotencyCleanupService)
 	jwtAuthMiddleware := middleware.NewJWTAuthMiddleware(authService, userService)
 	adminAuthMiddleware := middleware.NewAdminAuthMiddleware(authService, userService, settingService)
 	apiKeyAuthMiddleware := middleware.NewAPIKeyAuthMiddleware(apiKeyService, subscriptionService, configConfig)
@@ -293,7 +317,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	channelMonitorRunner := service.ProvideChannelMonitorRunner(channelMonitorService, settingService)
 	paymentOrderExpiryService := service.ProvidePaymentOrderExpiryService(paymentService)
 	giftBalanceExpiryService := service.ProvideGiftBalanceExpiryService(referralService)
-	v := provideCleanup(client, redisClient, opsMetricsCollector, opsAggregationService, opsAlertEvaluatorService, opsCleanupService, opsScheduledReportService, opsSystemLogSink, schedulerSnapshotService, tokenRefreshService, accountExpiryService, subscriptionExpiryService, usageCleanupService, generatedImageCleanupService, idempotencyCleanupService, pricingService, openAIPoolMonitorWorker, emailQueueService, billingCacheService, usageRecordWorkerPool, subscriptionService, oAuthService, openAIOAuthService, geminiOAuthService, antigravityOAuthService, openAIGatewayService, scheduledTestRunnerService, channelMonitorRunner, backupService, paymentOrderExpiryService, giftBalanceExpiryService)
+	v := provideCleanup(client, redisClient, mediaWorker, opsMetricsCollector, opsAggregationService, opsAlertEvaluatorService, opsCleanupService, opsScheduledReportService, opsSystemLogSink, schedulerSnapshotService, tokenRefreshService, accountExpiryService, subscriptionExpiryService, usageCleanupService, generatedImageCleanupService, idempotencyCleanupService, pricingService, openAIPoolMonitorWorker, emailQueueService, billingCacheService, usageRecordWorkerPool, subscriptionService, oAuthService, openAIOAuthService, geminiOAuthService, antigravityOAuthService, openAIGatewayService, scheduledTestRunnerService, channelMonitorRunner, backupService, paymentOrderExpiryService, giftBalanceExpiryService)
 	application := &Application{
 		Server:  httpServer,
 		Cleanup: v,
@@ -322,6 +346,7 @@ func provideServiceBuildInfo(buildInfo handler.BuildInfo) service.BuildInfo {
 func provideCleanup(
 	entClient *ent.Client,
 	rdb *redis.Client,
+	mediaWorker *service.MediaWorker,
 	opsMetricsCollector *service.OpsMetricsCollector,
 	opsAggregation *service.OpsAggregationService,
 	opsAlertEvaluator *service.OpsAlertEvaluatorService,
@@ -362,6 +387,12 @@ func provideCleanup(
 		}
 
 		parallelSteps := []cleanupStep{
+			{"MediaWorker", func() error {
+				if mediaWorker != nil {
+					mediaWorker.Stop()
+				}
+				return nil
+			}},
 			{"OpsScheduledReportService", func() error {
 				if opsScheduledReport != nil {
 					opsScheduledReport.Stop()

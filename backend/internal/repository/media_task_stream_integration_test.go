@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
@@ -465,8 +466,9 @@ func TestMediaTaskStreamTerminalSubscriptionFiltersAndStops(t *testing.T) {
 
 func TestMediaTaskStreamProviderUsesUniqueConsumerNames(t *testing.T) {
 	resetMediaTaskStreamKeys(t)
-	first := ProvideMediaTaskQueue(integrationRedis)
-	second := ProvideMediaTaskQueue(integrationRedis)
+	cfg := &config.Config{MediaTasks: config.MediaTaskConfig{LeaseTTLSeconds: int(defaultMediaTaskLease / time.Second)}}
+	first := ProvideMediaTaskQueue(integrationRedis, cfg)
+	second := ProvideMediaTaskQueue(integrationRedis, cfg)
 	firstStream, ok := first.(*MediaTaskStream)
 	require.True(t, ok)
 	secondStream, ok := second.(*MediaTaskStream)

@@ -35,7 +35,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 
 		// Business layer ProviderSets
 		repository.ProviderSet,
-		service.ProviderSet,
+		service.CoreProviderSet,
 		payment.ProviderSet,
 		middleware.ProviderSet,
 		handler.ProviderSet,
@@ -72,6 +72,7 @@ func provideServiceBuildInfo(buildInfo handler.BuildInfo) service.BuildInfo {
 func provideCleanup(
 	entClient *ent.Client,
 	rdb *redis.Client,
+	mediaWorker *service.MediaWorker,
 	opsMetricsCollector *service.OpsMetricsCollector,
 	opsAggregation *service.OpsAggregationService,
 	opsAlertEvaluator *service.OpsAlertEvaluatorService,
@@ -113,6 +114,12 @@ func provideCleanup(
 
 		// 应用层清理步骤可并行执行，基础设施资源（Redis/Ent）最后按顺序关闭。
 		parallelSteps := []cleanupStep{
+			{"MediaWorker", func() error {
+				if mediaWorker != nil {
+					mediaWorker.Stop()
+				}
+				return nil
+			}},
 			{"OpsScheduledReportService", func() error {
 				if opsScheduledReport != nil {
 					opsScheduledReport.Stop()

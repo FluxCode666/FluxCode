@@ -72,6 +72,42 @@ run_mode: "standard"
 # skip_startup_init: true
 
 # =============================================================================
+# Media Task Deployment Configuration
+# 媒体任务部署运行配置
+# =============================================================================
+# These values are process-level deployment parameters and require a restart.
+# They are not hot-reloaded from the system settings page.
+# 以下参数属于进程级部署配置，修改后需要重启；不属于系统设置页热更新项。
+media_tasks:
+  # Start media task consumers and recovery scanning.
+  # 是否启动媒体任务消费者和恢复扫描。
+  enabled: true
+  # Number of fixed Redis Stream consumers per process.
+  # 每个进程固定启动的 Redis Stream 消费者数量。
+  worker_count: 4
+  # End-to-end task execution deadline in seconds.
+  # 单个任务端到端执行超时（秒）。
+  task_timeout_seconds: 7200
+  # Worker ownership lease and renewal interval in seconds.
+  # Worker 所有权租约与续租间隔（秒）；续租间隔必须严格小于租约。
+  lease_ttl_seconds: 120
+  lease_renew_interval_seconds: 30
+  # Upstream native-async polling interval in seconds.
+  # 上游原生异步任务轮询间隔（秒）。
+  poll_interval_seconds: 2
+  # Expired-task recovery scan cadence and batch size.
+  # 过期任务恢复扫描间隔（秒）与单批数量。
+  recovery_interval_seconds: 15
+  recovery_batch_size: 100
+  # Redis Stream blocking read duration in milliseconds.
+  # Redis Stream 阻塞读取时长（毫秒）。
+  stream_block_milliseconds: 1000
+  # Media content proxy timeout and response size cap.
+  # 媒体内容代理超时（秒）与响应体上限（字节，默认 2 GiB）。
+  content_proxy_timeout_seconds: 90
+  max_content_bytes: 2147483648
+
+# =============================================================================
 # CORS Configuration
 # 跨域资源共享 (CORS) 配置
 # =============================================================================

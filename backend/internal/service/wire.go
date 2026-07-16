@@ -660,8 +660,149 @@ func ProvideSettingService(settingRepo SettingRepository, groupRepo GroupReposit
 	return svc
 }
 
-// ProviderSet is the Wire provider set for all services
-var ProviderSet = wire.NewSet(
+func ProvideMediaModelRegistry(repo MediaModelDefinitionRepository) (*MediaModelRegistry, error) {
+	registry := NewMediaModelRegistry(repo)
+	if err := registry.Refresh(context.Background()); err != nil {
+		return nil, err
+	}
+	return registry, nil
+}
+
+func ProvideMediaAdapterRegistry() *MediaAdapterRegistry {
+	return NewMediaAdapterRegistry()
+}
+
+func ProvideMediaBilling() MediaBillingPort {
+	return DisabledMediaBilling{}
+}
+
+func ProvideMediaSettlementCoordinator(tasks MediaTaskRepository, billing MediaBillingPort) *MediaBillingCoordinator {
+	return NewMediaBillingCoordinator(tasks, billing)
+}
+
+func ProvideMediaContentPolicy() MediaContentPolicy {
+	return AllowAllMediaContentPolicy{}
+}
+
+func ProvideMediaPricing() MediaPricingPort {
+	return ZeroMediaPricing{}
+}
+
+func ProvideMediaArtifactObjectStore() MediaArtifactObjectStore {
+	return NewDisabledMediaArtifactObjectStore()
+}
+
+func ProvideMediaTaskMetrics() MediaTaskMetrics {
+	return NewAtomicMediaTaskMetrics()
+}
+
+func ProvideMediaScheduler(
+	accounts AccountRepository,
+	concurrency *ConcurrencyService,
+	cache GatewayCache,
+	adapters *MediaAdapterRegistry,
+	cfg *config.Config,
+) *MediaScheduler {
+	selector := NewAccountCandidateSelector(concurrency, cache, cfg.Gateway.Scheduling)
+	return NewMediaScheduler(accounts, selector, adapters)
+}
+
+func ProvideMediaContentService(
+	tasks MediaTaskRepository,
+	artifacts MediaArtifactRepository,
+	settings *SettingService,
+	accounts AccountRepository,
+	adapters *MediaAdapterRegistry,
+	httpReader MediaHTTPContentReader,
+	objectStore MediaArtifactObjectStore,
+) *MediaContentService {
+	return NewMediaContentService(tasks, artifacts, settings, accounts, adapters, httpReader, objectStore)
+}
+
+func ProvideMediaWorker(
+	queue MediaTaskQueue,
+	tasks MediaTaskRepository,
+	artifactWriter MediaArtifactWriter,
+	scheduler *MediaScheduler,
+	models *MediaModelRegistry,
+	adapters *MediaAdapterRegistry,
+	billing MediaBillingPort,
+	settlements MediaSettlementCoordinator,
+	metrics MediaTaskMetrics,
+	cfg *config.Config,
+) (*MediaWorker, error) {
+	worker := NewMediaWorker(mediaWorkerConfigFrom(cfg), MediaWorkerDependencies{
+		Tasks: tasks, Queue: queue, Scheduler: scheduler, Models: models, Adapters: adapters,
+		Artifacts: artifactWriter, Precharger: billing, Billing: settlements, Metrics: metrics,
+	})
+	if cfg != nil && !cfg.MediaTasks.Enabled {
+		return worker, nil
+	}
+	if err := worker.Start(); err != nil {
+		return nil, err
+	}
+	return worker, nil
+}
+
+func mediaWorkerConfigFrom(cfg *config.Config) MediaWorkerConfig {
+	if cfg == nil {
+		return MediaWorkerConfig{}
+	}
+	media := cfg.MediaTasks
+	return MediaWorkerConfig{
+		WorkerCount:        media.WorkerCount,
+		TaskTimeout:        time.Duration(media.TaskTimeoutSeconds) * time.Second,
+		LeaseTTL:           time.Duration(media.LeaseTTLSeconds) * time.Second,
+		LeaseRenewInterval: time.Duration(media.LeaseRenewIntervalSeconds) * time.Second,
+		PollInterval:       time.Duration(media.PollIntervalSeconds) * time.Second,
+		RecoveryInterval:   time.Duration(media.RecoveryIntervalSeconds) * time.Second,
+		RecoveryBatchSize:  media.RecoveryBatchSize,
+		StreamBlock:        time.Duration(media.StreamBlockMilliseconds) * time.Millisecond,
+	}
+}
+
+func ProvideMediaOrchestrator(
+	registry *MediaModelRegistry,
+	groups GroupRepository,
+	scheduler *MediaScheduler,
+	settings *SettingService,
+	contentPolicy MediaContentPolicy,
+	pricing MediaPricingPort,
+	tasks MediaTaskRepository,
+	artifacts MediaArtifactRepository,
+	billing MediaBillingPort,
+	settlements MediaSettlementCoordinator,
+	queue MediaTaskQueue,
+	worker *MediaWorker,
+) *MediaOrchestrator {
+	return NewMediaOrchestrator(MediaOrchestratorDependencies{
+		Registry: registry, Groups: groups, Scheduler: scheduler, Settings: settings,
+		ContentPolicy: contentPolicy, Pricing: pricing, Tasks: tasks, Artifacts: artifacts,
+		Billing: billing, Settlement: settlements, Queue: queue, Controller: worker,
+	})
+}
+
+var MediaTaskProviderSet = wire.NewSet(
+	ProvideMediaModelRegistry,
+	ProvideMediaAdapterRegistry,
+	ProvideMediaBilling,
+	ProvideMediaSettlementCoordinator,
+	ProvideMediaContentPolicy,
+	ProvideMediaPricing,
+	ProvideMediaArtifactObjectStore,
+	ProvideMediaTaskMetrics,
+	ProvideMediaScheduler,
+	ProvideMediaContentService,
+	ProvideMediaWorker,
+	ProvideMediaOrchestrator,
+	wire.Bind(new(MediaSettlementCoordinator), new(*MediaBillingCoordinator)),
+	wire.Bind(new(MediaInputStager), new(*MediaContentService)),
+	wire.Bind(new(MediaArtifactWriter), new(*MediaContentService)),
+	wire.Bind(new(MediaExecutionController), new(*MediaWorker)),
+)
+
+// CoreProviderSet contains the original non-media service graph.
+var CoreProviderSet = wire.NewSet(
 	NewModelPricingPageService,
 	// Core services
 	ProvideAuthService,
@@ -765,6 +906,9 @@ var ProviderSet = wire.NewSet(
 	ProvideSalesCommissionService,
 	ProvideGiftBalanceExpiryService,
 )
+
+// ProviderSet preserves the complete service graph for non-production callers.
+var ProviderSet = wire.NewSet(CoreProviderSet, MediaTaskProviderSet)
 
 // ProvidePaymentService wires PaymentService post-construction dependencies.
 func ProvidePaymentService(

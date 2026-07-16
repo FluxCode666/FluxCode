@@ -33,6 +33,7 @@ type MediaWorkerConfig struct {
 	PollInterval       time.Duration
 	RecoveryInterval   time.Duration
 	RecoveryBatchSize  int
+	StreamBlock        time.Duration
 }
 
 type MediaExecutionPath string
@@ -208,6 +209,9 @@ func normalizeMediaWorkerConfig(cfg MediaWorkerConfig) MediaWorkerConfig {
 	if cfg.RecoveryBatchSize <= 0 {
 		cfg.RecoveryBatchSize = 100
 	}
+	if cfg.StreamBlock <= 0 {
+		cfg.StreamBlock = cfg.PollInterval
+	}
 	return cfg
 }
 
@@ -232,10 +236,10 @@ func (w *MediaWorker) Start() error {
 	for index := 0; index < w.cfg.WorkerCount; index++ {
 		workerIndex := index
 		w.runWG.Add(1)
-		go w.runOwned(runCtx, fmt.Sprintf("consumer-%d", workerIndex), w.consumeLoop)
+		go w.supervise(runCtx, fmt.Sprintf("consumer-%d", workerIndex), w.consumeLoop)
 	}
 	w.runWG.Add(1)
-	go w.runOwned(runCtx, "recovery", w.recoveryLoop)
+	go w.supervise(runCtx, "recovery", w.recoveryLoop)
 	return nil
 }
 
@@ -264,20 +268,40 @@ func (w *MediaWorker) Errors() <-chan error {
 	return w.errEvents
 }
 
-func (w *MediaWorker) runOwned(ctx context.Context, owner string, run func(context.Context) error) {
+func (w *MediaWorker) supervise(ctx context.Context, owner string, run func(context.Context) error) {
 	defer w.runWG.Done()
+	for ctx.Err() == nil {
+		if !w.runOwned(ctx, owner, run) || ctx.Err() != nil {
+			return
+		}
+		restartTimer := time.NewTimer(10 * time.Millisecond)
+		select {
+		case <-ctx.Done():
+			if !restartTimer.Stop() {
+				<-restartTimer.C
+			}
+			return
+		case <-restartTimer.C:
+		}
+	}
+}
+
+func (w *MediaWorker) runOwned(ctx context.Context, owner string, run func(context.Context) error) (restart bool) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			w.reportError(fmt.Errorf("media worker %s panic: %v\n%s", owner, recovered, debug.Stack()))
+			restart = ctx.Err() == nil
 		}
 	}()
 	if err := run(ctx); err != nil && !errors.Is(err, context.Canceled) {
 		w.reportError(fmt.Errorf("media worker %s stopped: %w", owner, err))
+		return ctx.Err() == nil
 	}
+	return false
 }
 
 func (w *MediaWorker) consumeLoop(ctx context.Context) error {
-	block := w.cfg.PollInterval
+	block := w.cfg.StreamBlock
 	if block < 10*time.Millisecond {
 		block = 10 * time.Millisecond
 	}

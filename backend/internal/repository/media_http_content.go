@@ -49,8 +49,18 @@ func NewMediaHTTPContentReader(upstream service.HTTPUpstream, cfg *config.Config
 		if cfg.Server.MaxRequestBodySize > 0 {
 			reader.maxBytes = cfg.Server.MaxRequestBodySize
 		}
+		if cfg.MediaTasks.ContentProxyTimeoutSeconds > 0 {
+			reader.timeout = time.Duration(cfg.MediaTasks.ContentProxyTimeoutSeconds) * time.Second
+		}
+		if cfg.MediaTasks.MaxContentBytes > 0 {
+			reader.maxBytes = cfg.MediaTasks.MaxContentBytes
+		}
 	}
 	return reader
+}
+
+func ProvideMediaHTTPContentReader(upstream service.HTTPUpstream, cfg *config.Config) service.MediaHTTPContentReader {
+	return NewMediaHTTPContentReader(upstream, cfg)
 }
 
 func (r *mediaHTTPContentReader) ValidateURL(raw string) (string, error) {

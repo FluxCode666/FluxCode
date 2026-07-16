@@ -19,15 +19,14 @@ func TestProvideHandlersWithMediaAssignsMediaTaskHandler(t *testing.T) {
 	require.Same(t, media, handlers.MediaTask)
 }
 
-func TestMediaTaskWireProvidersRemainOptInUntilProductionDependenciesExist(t *testing.T) {
+func TestMediaTaskWireProvidersJoinProductionGraph(t *testing.T) {
 	file, err := parser.ParseFile(token.NewFileSet(), "wire.go", nil, 0)
 	require.NoError(t, err)
 
 	globalProviders, globalBinds := wireProviderSetContents(t, file, "ProviderSet")
-	require.Contains(t, globalProviders, "ProvideHandlers")
-	require.NotContains(t, globalProviders, "ProvideHandlersWithMedia")
-	require.NotContains(t, globalProviders, "NewMediaTaskHandler")
-	require.NotContains(t, globalProviders, "MediaTaskProviderSet")
+	require.NotContains(t, globalProviders, "ProvideHandlers")
+	require.Contains(t, globalProviders, "ProvideHandlersWithMedia")
+	require.Contains(t, globalProviders, "MediaTaskProviderSet")
 	require.Zero(t, globalBinds)
 
 	mediaProviders, mediaBinds := wireProviderSetContents(t, file, "MediaTaskProviderSet")
