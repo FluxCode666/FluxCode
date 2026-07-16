@@ -337,16 +337,16 @@ func (r *mediaTaskRepository) Transition(ctx context.Context, id int64, from, to
 	return updated == 1, err
 }
 
-func (r *mediaTaskRepository) TransitionVersioned(
+func (r *mediaTaskRepository) TransitionSyncTimeout(
 	ctx context.Context,
 	id, expectedVersion int64,
-	from, to service.MediaTaskStatus,
+	from service.MediaTaskStatus,
 	updates map[string]any,
 ) (bool, error) {
-	if !from.CanTransitionTo(to) {
+	if !from.CanTransitionTo(service.MediaTaskStatusFailed) {
 		return false, nil
 	}
-	if err := validateMediaTaskUpdateFields("TransitionVersioned", updates, transitionFields); err != nil {
+	if err := validateMediaTaskUpdateFields("TransitionSyncTimeout", updates, transitionFields); err != nil {
 		return false, err
 	}
 	update := r.client.MediaTask.Update().
@@ -354,12 +354,13 @@ func (r *mediaTaskRepository) TransitionVersioned(
 			mediatask.IDEQ(id),
 			mediatask.StatusEQ(string(from)),
 			mediatask.VersionEQ(expectedVersion),
+			mediatask.SyncFallbackEQ(false),
 		)
 	if err := applyMediaTaskUpdates(update, updates); err != nil {
 		return false, err
 	}
 	updated, err := update.
-		SetStatus(string(to)).
+		SetStatus(string(service.MediaTaskStatusFailed)).
 		AddVersion(1).
 		Save(ctx)
 	return updated == 1, err

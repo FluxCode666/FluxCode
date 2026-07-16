@@ -90,9 +90,9 @@ type MediaTaskRepository interface {
 	// Transition is reserved for orchestrator/system state changes. It enforces the
 	// domain state machine and status CAS, but intentionally does not assert Worker ownership.
 	Transition(ctx context.Context, id int64, from, to MediaTaskStatus, updates map[string]any) (bool, error)
-	// TransitionVersioned is the fresh-snapshot system path. It additionally
-	// requires the expected version without weakening Worker ownership transitions.
-	TransitionVersioned(ctx context.Context, id, expectedVersion int64, from, to MediaTaskStatus, updates map[string]any) (bool, error)
+	// TransitionSyncTimeout is the fresh-snapshot timeout failure path. It requires
+	// the expected version and sync_fallback=false without weakening Worker ownership transitions.
+	TransitionSyncTimeout(ctx context.Context, id, expectedVersion int64, from MediaTaskStatus, updates map[string]any) (bool, error)
 	// TransitionClaimed is the Worker completion/failure path. It additionally
 	// requires the current Worker, expected version, and a live lease in one CAS update.
 	TransitionClaimed(ctx context.Context, id int64, workerID string, expectedVersion int64, from, to MediaTaskStatus, updates map[string]any) (bool, error)

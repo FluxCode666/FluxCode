@@ -847,7 +847,6 @@ func TestMediaOrchestratorTimeoutVersionConflictReloadsPersistedFallback(t *test
 	fixture.repo.beforeNextVersionedTransition = func(task *MediaTask) {
 		task.SyncFallback = true
 		task.SyncFallbackAt = mediaTimePointer(time.Now())
-		task.Version++
 	}
 
 	result, err := fixture.orchestrator.Create(context.Background(), validSyncMediaCreateRequest())
@@ -1061,6 +1060,24 @@ func TestMediaOrchestratorTimeoutTransitionErrorReloadsCompletedWinner(t *testin
 	require.Equal(t, MediaCreateDispositionCompleted, result.Disposition)
 	require.Len(t, result.Artifacts, 1)
 	require.Equal(t, int64(81), result.Artifacts[0].ID)
+	require.Equal(t, 0, fixture.controller.stopCalls())
+	require.Equal(t, 0, fixture.billing.settleFailureCalls())
+}
+
+func TestMediaOrchestratorTimeoutTransitionErrorReloadsPersistedFallback(t *testing.T) {
+	fixture := newTimedOutMediaOrchestratorFixture(t, MediaTaskStageGenerating, mediaTimePointer(time.Now()))
+	fixture.repo.transitionVersionedErr = errors.New("timeout transition failed")
+	fixture.repo.beforeNextVersionedTransition = func(task *MediaTask) {
+		task.SyncFallback = true
+		task.SyncFallbackAt = mediaTimePointer(time.Now())
+	}
+
+	result, err := fixture.orchestrator.Create(context.Background(), validSyncMediaCreateRequest())
+	require.NoError(t, err)
+	require.Equal(t, MediaCreateDispositionFallbackAsync, result.Disposition)
+	stored := fixture.repo.mustGet(result.Task.ID)
+	require.False(t, stored.Status.IsTerminal())
+	require.True(t, stored.SyncFallback)
 	require.Equal(t, 0, fixture.controller.stopCalls())
 	require.Equal(t, 0, fixture.billing.settleFailureCalls())
 }
@@ -1487,7 +1504,7 @@ func (r *orchestratorTaskRepository) Transition(ctx context.Context, id int64, f
 	return true, nil
 }
 
-func (r *orchestratorTaskRepository) TransitionVersioned(ctx context.Context, id, expectedVersion int64, from, to MediaTaskStatus, updates map[string]any) (bool, error) {
+func (r *orchestratorTaskRepository) TransitionSyncTimeout(ctx context.Context, id, expectedVersion int64, from MediaTaskStatus, updates map[string]any) (bool, error) {
 	if err := ctx.Err(); err != nil {
 		return false, err
 	}
@@ -1514,10 +1531,10 @@ func (r *orchestratorTaskRepository) TransitionVersioned(ctx context.Context, id
 		r.transitionVersionedErr = nil
 		return false, err
 	}
-	if task.Status != from || task.Version != expectedVersion {
+	if task.Status != from || task.Version != expectedVersion || task.SyncFallback || !from.CanTransitionTo(MediaTaskStatusFailed) {
 		return false, nil
 	}
-	task.Status = to
+	task.Status = MediaTaskStatusFailed
 	applyOrchestratorTaskUpdates(task, updates)
 	task.Version++
 	if r.transitionVersionedAppliedErr != nil {

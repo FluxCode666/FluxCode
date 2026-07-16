@@ -397,12 +397,11 @@ func (o *MediaOrchestrator) handleSyncTimeout(ctx context.Context, task *MediaTa
 		}
 		finishedAt = o.deps.Clock.Now().UTC()
 		var transitionErr error
-		transitioned, transitionErr = o.deps.Tasks.TransitionVersioned(
+		transitioned, transitionErr = o.deps.Tasks.TransitionSyncTimeout(
 			ctx,
 			current.ID,
 			current.Version,
 			current.Status,
-			MediaTaskStatusFailed,
 			map[string]any{
 				"stage": MediaTaskStageFailed, "error_code": "sync_timeout",
 				"error_message": "synchronous media wait timed out", "finished_at": finishedAt,
@@ -427,6 +426,9 @@ func (o *MediaOrchestrator) handleSyncTimeout(ctx context.Context, task *MediaTa
 			}
 			if fresh.Status.IsTerminal() {
 				return o.terminalResult(ctx, fresh)
+			}
+			if fresh.SyncFallback {
+				return &MediaCreateResult{Task: fresh, Disposition: MediaCreateDispositionFallbackAsync}, nil
 			}
 			return nil, fmt.Errorf("fail media task at sync timeout: %w", transitionErr)
 		}

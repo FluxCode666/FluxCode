@@ -539,7 +539,7 @@ func TestMediaTaskRepositoryTransitionPersistsSettlementRecoveryForPendingScan(t
 	require.Equal(t, []int64{task.ID}, mediaTaskIDs(pending))
 }
 
-func TestMediaTaskRepositoryTransitionVersionedFencesFreshSystemState(t *testing.T) {
+func TestMediaTaskRepositoryTransitionSyncTimeoutFencesFreshSystemState(t *testing.T) {
 	repo, _ := newMediaTaskRepositoryTestHarness(t)
 	ctx := context.Background()
 	input := newRepositoryMediaTask("task_versioned_system_transition")
@@ -548,23 +548,21 @@ func TestMediaTaskRepositoryTransitionVersionedFencesFreshSystemState(t *testing
 	task, err := repo.Create(ctx, input)
 	require.NoError(t, err)
 
-	stale, err := repo.TransitionVersioned(
+	stale, err := repo.TransitionSyncTimeout(
 		ctx,
 		task.ID,
 		task.Version+1,
 		service.MediaTaskStatusInProgress,
-		service.MediaTaskStatusFailed,
 		map[string]any{"stage": service.MediaTaskStageFailed, "error_code": "sync_timeout"},
 	)
 	require.NoError(t, err)
 	require.False(t, stale)
 
-	transitioned, err := repo.TransitionVersioned(
+	transitioned, err := repo.TransitionSyncTimeout(
 		ctx,
 		task.ID,
 		task.Version,
 		service.MediaTaskStatusInProgress,
-		service.MediaTaskStatusFailed,
 		map[string]any{"stage": service.MediaTaskStageFailed, "error_code": "sync_timeout"},
 	)
 	require.NoError(t, err)
@@ -575,6 +573,40 @@ func TestMediaTaskRepositoryTransitionVersionedFencesFreshSystemState(t *testing
 	require.Equal(t, service.MediaTaskStageFailed, stored.Stage)
 	require.Equal(t, "sync_timeout", stored.ErrorCode)
 	require.Equal(t, task.Version+1, stored.Version)
+}
+
+func TestMediaTaskRepositoryTransitionSyncTimeoutRejectsPersistedFallbackWithoutChangingMarkVersion(t *testing.T) {
+	repo, _ := newMediaTaskRepositoryTestHarness(t)
+	ctx := context.Background()
+	input := newRepositoryMediaTask("task_timeout_after_fallback")
+	input.Status = service.MediaTaskStatusInProgress
+	input.Stage = service.MediaTaskStageGenerating
+	task, err := repo.Create(ctx, input)
+	require.NoError(t, err)
+
+	marked, err := repo.MarkSyncFallback(ctx, task.ID, time.Now().UTC())
+	require.NoError(t, err)
+	require.True(t, marked)
+	afterMark, err := repo.GetByID(ctx, task.ID)
+	require.NoError(t, err)
+	require.True(t, afterMark.SyncFallback)
+	require.Equal(t, task.Version, afterMark.Version)
+
+	transitioned, err := repo.TransitionSyncTimeout(
+		ctx,
+		task.ID,
+		task.Version,
+		service.MediaTaskStatusInProgress,
+		map[string]any{"stage": service.MediaTaskStageFailed, "error_code": "sync_timeout"},
+	)
+	require.NoError(t, err)
+	require.False(t, transitioned)
+	stored, err := repo.GetByID(ctx, task.ID)
+	require.NoError(t, err)
+	require.Equal(t, service.MediaTaskStatusInProgress, stored.Status)
+	require.Equal(t, service.MediaTaskStageGenerating, stored.Stage)
+	require.True(t, stored.SyncFallback)
+	require.Equal(t, task.Version, stored.Version)
 }
 
 func TestMediaTaskRepositoryTransitionQueuedFencesInitializationOwnerAndPersistsRefundIntent(t *testing.T) {

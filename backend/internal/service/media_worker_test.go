@@ -2253,15 +2253,15 @@ func (r *workerTaskRepository) TransitionQueued(_ context.Context, id, expectedV
 	task.Version++
 	return true, nil
 }
-func (r *workerTaskRepository) TransitionVersioned(_ context.Context, id, expectedVersion int64, from, to MediaTaskStatus, updates map[string]any) (bool, error) {
+func (r *workerTaskRepository) TransitionSyncTimeout(_ context.Context, id, expectedVersion int64, from MediaTaskStatus, updates map[string]any) (bool, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	task := r.tasks[id]
-	if task == nil || task.Status != from || task.Version != expectedVersion || !from.CanTransitionTo(to) {
+	if task == nil || task.Status != from || task.Version != expectedVersion || task.SyncFallback || !from.CanTransitionTo(MediaTaskStatusFailed) {
 		return false, nil
 	}
 	applyWorkerTaskUpdates(task, updates)
-	task.Status = to
+	task.Status = MediaTaskStatusFailed
 	task.Version++
 	return true, nil
 }

@@ -690,3 +690,96 @@ GREEN：
 - 低级假通过排除：不仅看 diff，也追了 DB 实现、Worker terminal consumer、恢复扫描与 error/enum 消费面；覆盖 applied/unapplied、nonterminal/terminal、不同 settings、CAS conflict、残留消息，不只测 happy path；静态工具仅作为辅助证据。
 - Minor：ready 第二次 Enqueue error 仍无专用 log/metric；`media_orchestrator.go` 仍较大。两者不影响本轮资金/并发正确性，按要求不扩大接口或重构。
 - 结论：第四轮修复通过；未发现新的阻断或非阻断代码风险。唯一保留验证缺口是既有 OpenAI stub 限制导致未跑完整 service 测试体套件。
+
+## 13. 第五轮复审修复（2026-07-17）
+
+### 13.1 范围、协议与文件
+
+- 第五轮唯一 Important 已按 RED→GREEN 修复；修复起点为 `a6fde3420df98fe70b9ef8dc9181fc77e99c77c9`。
+- `MarkSyncFallback` 保持 version 不变，避免让活跃 Worker 的本地 version 永久落后；timeout 终态竞争改由专用 `TransitionSyncTimeout` 在同一个 DB WHERE 中原子匹配 id+status+version+`sync_fallback=false`。
+- 删除接口中的通用 `TransitionVersioned`，改为明确的 timeout-only 方法，避免 fallback predicate 隐式影响未来其他 system transition。
+- transition error 后重读若发现 fresh 非终态且 `SyncFallback=true`，同样返回 fallback_async；applied timeout、其他 terminal winner、真正未应用 DB error 的第四轮语义保持不变。
+- 修改文件：
+  - `backend/internal/service/media_task.go`
+  - `backend/internal/repository/media_task_repo.go`
+  - `backend/internal/repository/media_task_repo_test.go`
+  - `backend/internal/service/media_orchestrator.go`
+  - `backend/internal/service/media_orchestrator_test.go`
+  - `backend/internal/service/media_worker_test.go`
+- 未修改 progress ledger、Task 16、schema/migration、Worker 生产逻辑、Handler/DTO、Provider Adapter、UI、依赖、cache key 或 queue topic。
+
+### 13.2 真实 Repository fallback fence
+
+RED：
+
+- `go test ./internal/repository -run '^TestMediaTaskRepositoryTransitionSyncTimeout' -count=1`
+  - build FAIL：`MediaTaskRepository` 不存在 `TransitionSyncTimeout`；原通用 `TransitionVersioned` 无 `sync_fallback=false` predicate。
+
+GREEN：
+
+- 新增 timeout-only `TransitionSyncTimeout(ctx,id,expectedVersion,from,updates)`；目标固定为 failed，复用 system transition 字段白名单，WHERE 原子检查 id、from status、expected version 与 `sync_fallback=false`，成功时递增 version。
+- 真实 Ent repo 测试创建 in-progress task 后先 `MarkSyncFallback`：Mark 成功且 version 保持原值；再以原 version 调 timeout CAS，结果 false，任务保持 in-progress/generating+fallback=true+原 version。
+- 相邻 flag=false 路径仍以正确 version 成功写 failed 并将 version+1；错误 version 仍被拒绝。
+- `go test ./internal/repository -run '^TestMediaTaskRepositoryTransitionSyncTimeout' -count=1`：PASS，1.012s。
+
+### 13.3 Orchestrator 真实 Mark 竞态与 fake 对齐
+
+RED：
+
+- 修正 `TestMediaOrchestratorTimeoutVersionConflictReloadsPersistedFallback`，hook 只写 `SyncFallback=true/SyncFallbackAt`，不再手工 `Version++`。
+- 仅同步新方法名、暂未给 Orchestrator fake 加 fallback predicate 时运行：
+  - `go test ./internal/service -run '^TestMediaOrchestratorTimeoutVersionConflictReloadsPersistedFallback$' -count=1`
+  - FAIL，0.848s；同 version 的旧 waiter 成功写 sync_timeout，错误返回 gateway_timeout，证明此前测试依赖虚假 version conflict 而假绿。
+
+GREEN：
+
+- Orchestrator fake 的专用 timeout CAS 与真实 repo 对齐：status+version 满足但 `SyncFallback=true` 时返回 false，不通过 hook 强制制造 version mismatch。
+- Orchestrator 读取 CAS loss 后的 fresh persisted fallback 并返回 fallback_async；任务保持非终态、0 Stop、0 settlement。
+- 新竞态与正反向 fresh penalty/refund 合并执行 PASS，0.839s。
+
+### 13.4 Transition error 重读发现 persisted fallback
+
+RED：
+
+- `go test ./internal/service -run '^TestMediaOrchestratorTimeoutTransitionErrorReloadsPersistedFallback$' -count=1`
+  - FAIL，0.817s；专用 timeout CAS 返回 DB error，fresh 已为 nonterminal+fallback=true，但 Orchestrator 仍返回原 transition error。
+
+GREEN：
+
+- transition error 重读顺序为：matching failed/sync_timeout recovery → 其他 terminal → persisted SyncFallback → 原 DB error。这样已持久化 fallback 胜出，真正未应用且 fresh 无状态变化时仍保留原 error。
+- 新测试返回 fallback_async，任务保持非终态+fallback=true，0 Stop/settlement。
+- 与 applied-error 继续 Stop/即时结算、completed winner、unapplied error 三条对照合并执行 PASS，0.855s。
+
+### 13.5 扩大回归、race 与最终门禁
+
+最终代码的扩大回归：
+
+- `go test ./internal/service -run '^(TestMediaOrchestrator|TestMediaBilling|TestMediaWorker)' -count=1`：PASS，1.625s。
+- `go test ./internal/repository -run '^TestMediaTaskRepository' -count=1`：PASS，0.922s。
+
+最终代码的精确 race：
+
+- `go test -race ./internal/service -run '^(TestMediaOrchestrator|TestMediaBilling|TestMediaWorker)' -count=1`：PASS，4.087s。
+- `go test -race ./internal/repository -run '^TestMediaTaskRepository' -count=1`：PASS，8.232s。
+
+最终门禁：
+
+- `gofmt`：已执行。
+- `git diff --check`：PASS，exit 0。
+- `go vet ./...`：PASS，exit 0。
+- `go build ./...`：PASS，exit 0。
+- `go test ./... -run '^$' -count=1`：PASS，单独轮询确认 exit 0。
+- `go mod verify`：PASS，`all modules verified`。
+- 仍不执行完整 `go test ./internal/service` 测试体套件：既有 OpenAI stub concurrent map fatal 不属于 Task 15；继续使用精确 service/repository tests、精确 race 和全仓无测试编译替代该门禁。
+
+### 13.6 第五轮高风险代码审计
+
+- 审计深度：高；涉及 DB CAS、Worker owner version、跨 waiter fallback 决策、timeout 终态与结算副作用。
+- 需求对账：唯一 Important 的真实 repo predicate、无 Version++ 竞态、fake 对齐和 transition-error reconciliation 均有直接 RED→GREEN。
+- 并发证明：Mark 不改 version，因此不会破坏 Worker 后续 `TransitionClaimed(expectedVersion)`；旧 timeout waiter 即使持相同 version，也因同一 SQL WHERE 的 `sync_fallback=false` 失败；重读后所有 nonterminal persisted fallback 路径均返回 fallback_async。
+- 接口边界：`TransitionVersioned` 已从接口、真实 repo、Orchestrator 与全部 fake 中清除；`TransitionSyncTimeout` 全局搜索只命中一个生产调用、真实实现、直接 repository tests 与两个接口 fake，不隐含改变未来 system transition。
+- 数据/契约：无新字段、schema、迁移、错误码、HTTP DTO、OpenAPI/SDK 或队列消息结构变化；只在既有 `sync_fallback` 上增加 timeout CAS predicate。编辑/删除链路不涉及。
+- 测试证据质量：核心缺陷先由真实 Ent repo 直接测试证明，再由 Orchestrator 行为测试证明；扩大与 race 均 `-count=1`，diff 未新增 skip/only。完整 service 测试体限制仍明确列为证据缺口。
+- 低级假通过排除：明确修掉了手工 `Version++` 导致的 fake 假绿，并用真实 SQL predicate 测试替代；覆盖 flag=true/false、正常 CAS/CAS loss/transition error、applied/terminal/unapplied 对照，不只测 happy path；静态工具仅作辅助证据。
+- Minor：ready wakeup error 仍无专用 log/metric；`media_orchestrator.go` 仍较大。按要求继续记录，不扩大接口或重构。
+- 结论：第五轮唯一 Important 通过；未发现新的阻断或非阻断代码风险。唯一保留验证缺口是既有 OpenAI stub 限制导致未跑完整 service 测试体套件。
