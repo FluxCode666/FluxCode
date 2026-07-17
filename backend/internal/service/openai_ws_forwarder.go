@@ -2825,7 +2825,13 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 	}
 
 	readClientMessage := func() ([]byte, error) {
-		msgType, payload, readErr := clientConn.Read(ctx)
+		msgType, payload, readErr := ReadOpenAIWSClientMessage(
+			ctx,
+			clientConn,
+			0,
+			coderws.StatusNormalClosure,
+			"websocket idle timeout",
+		)
 		if readErr != nil {
 			return nil, readErr
 		}

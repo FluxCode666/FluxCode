@@ -117,6 +117,9 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 	fallbackUsed := false
 
 	for {
+		if failoverClientGone(c) {
+			return
+		}
 		c.Set("openai_chat_completions_fallback_model", "")
 		platform := resolveOpenAICompatibleGroupPlatform(currentAPIKey)
 		reqLog.Debug("openai_chat_completions.account_selecting", zap.Int("excluded_account_count", len(failedAccountIDs)))
@@ -131,6 +134,10 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 			service.OpenAIUpstreamTransportAny,
 		)
 		if err != nil {
+			if failoverClientGone(c) {
+				reqLog.Info("openai_chat_completions.account_select_aborted_client_disconnected", zap.Error(err))
+				return
+			}
 			reqLog.Warn("openai_chat_completions.account_select_failed",
 				zap.Error(err),
 				zap.Int("excluded_account_count", len(failedAccountIDs)),
@@ -159,6 +166,10 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 					}
 				}
 				if err != nil {
+					if failoverClientGone(c) {
+						reqLog.Info("openai_chat_completions.default_model_select_aborted_client_disconnected", zap.Error(err))
+						return
+					}
 					if !fallbackUsed {
 						fallbackAPIKey, fallbackResult := h.trySwitchToOpenAIFallbackGroup(c, reqLog, currentAPIKey, streamStarted)
 						if fallbackResult == openAIFallbackHandled {
@@ -247,6 +258,13 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 			var failoverErr *service.UpstreamFailoverError
 			if errors.As(err, &failoverErr) {
 				h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, false, nil)
+				if failoverClientGone(c) {
+					reqLog.Info("openai_chat_completions.failover_aborted_client_disconnected",
+						zap.Int64("account_id", account.ID),
+						zap.Int("upstream_status", failoverErr.StatusCode),
+					)
+					return
+				}
 				// Pool mode: retry on the same account
 				if failoverErr.RetryableOnSameAccount {
 					retryLimit := account.GetPoolModeRetryCount()
