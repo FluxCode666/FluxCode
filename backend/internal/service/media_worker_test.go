@@ -553,6 +553,53 @@ func TestMediaWorkerRecoverOnceTerminatesDeterministicPrechargeRejectionWithoutR
 	require.Empty(t, fixture.queue.enqueuedTaskIDs())
 }
 
+func TestMediaWorkerRecoverOnceTerminatesInvalidLegacyPricingAndContinuesBatch(t *testing.T) {
+	fixture := newMediaWorkerFixture(t, true, NativeAsyncOptional)
+	invalidSnapshot, err := json.Marshal(MediaBillingSnapshot{RequestedModel: "fake-image", EstimatedAmount: -1})
+	require.NoError(t, err)
+	settlementPlan := json.RawMessage(`{"type":"success","usage":{"image_count":1}}`)
+
+	fixture.repo.mu.Lock()
+	invalid := fixture.repo.tasks[fixture.task.ID]
+	invalid.BillingStatus = MediaBillingStatusPending
+	invalid.PrechargedAmount = 0
+	invalid.BillingSnapshot = invalidSnapshot
+	invalid.LeaseUntil = mediaTimePointer(time.Now().Add(-time.Minute))
+	execution := cloneWorkerTask(fixture.task)
+	execution.ID = 2
+	execution.PublicID = "valid-execution-recovery"
+	execution.Status = MediaTaskStatusInProgress
+	execution.Stage = MediaTaskStagePolling
+	execution.BillingStatus = MediaBillingStatusPrecharged
+	execution.LeaseUntil = mediaTimePointer(time.Now().Add(-time.Minute))
+	settlement := workerCompletedTask(3, "valid-settlement-recovery")
+	settlement.BillingStatus = MediaBillingStatusRetry
+	settlement.SettlementPlan = settlementPlan
+	fixture.repo.tasks[execution.ID] = execution
+	fixture.repo.tasks[settlement.ID] = settlement
+	fixture.repo.mu.Unlock()
+
+	port := newWorkerInitializationBillingPort()
+	fixture.worker.deps.Precharger = port
+	fixture.worker.deps.Billing = NewMediaBillingCoordinator(fixture.repo, port)
+
+	require.NoError(t, fixture.worker.RecoverOnce(context.Background()))
+	failed := fixture.repo.mustGet(fixture.task.ID)
+	require.Equal(t, MediaTaskStatusFailed, failed.Status)
+	require.Equal(t, MediaTaskStageFailed, failed.Stage)
+	require.Equal(t, "billing_precharge", failed.ErrorCode)
+	require.Equal(t, MediaBillingStatusSettled, failed.BillingStatus)
+	require.Zero(t, failed.PrechargedAmount)
+	require.Nil(t, failed.LeaseUntil)
+	require.Empty(t, failed.SettlementRecovery)
+	require.Empty(t, failed.SettlementPlan)
+	require.Zero(t, port.prechargeCallsCount())
+	require.Zero(t, port.prechargeMutationCalls())
+	require.Zero(t, port.settleFailureCallsCount())
+	require.Zero(t, port.balanceAmount())
+	require.ElementsMatch(t, []int64{execution.ID, settlement.ID}, fixture.queue.enqueuedTaskIDs())
+}
+
 func TestMediaWorkerAcksResidualMessageForDeterministicPrechargeRejectionWithoutSettlement(t *testing.T) {
 	fixture := newMediaWorkerFixture(t, true, NativeAsyncOptional)
 	snapshot := MediaBillingSnapshot{RequestedModel: "fake-image", EstimatedAmount: 2}
@@ -2303,6 +2350,8 @@ type workerInitializationBillingPort struct {
 	mu                              sync.Mutex
 	seen                            map[string]struct{}
 	prechargeMutations              int
+	prechargeCalls                  int
+	settleFailureCalls              int
 	balance                         float64
 	failAfterFirstPrechargeMutation bool
 	prechargeErr                    error
@@ -2315,6 +2364,7 @@ func newWorkerInitializationBillingPort() *workerInitializationBillingPort {
 func (p *workerInitializationBillingPort) Precharge(_ context.Context, task *MediaTask, snapshot MediaBillingSnapshot) (MediaPrechargeResult, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	p.prechargeCalls++
 	if p.prechargeErr != nil {
 		return MediaPrechargeResult{}, p.prechargeErr
 	}
@@ -2341,6 +2391,7 @@ func (p *workerInitializationBillingPort) SettleSuccess(_ context.Context, task 
 func (p *workerInitializationBillingPort) SettleFailure(_ context.Context, task *MediaTask, settlement MediaFailureSettlement) (MediaSettlementResult, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	p.settleFailureCalls++
 	key, err := MediaBillingIdempotencyKey(task, MediaBillingOperationFailure)
 	if err != nil {
 		return MediaSettlementResult{}, err
@@ -2359,6 +2410,18 @@ func (p *workerInitializationBillingPort) prechargeMutationCalls() int {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.prechargeMutations
+}
+
+func (p *workerInitializationBillingPort) prechargeCallsCount() int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.prechargeCalls
+}
+
+func (p *workerInitializationBillingPort) settleFailureCallsCount() int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.settleFailureCalls
 }
 
 func (p *workerInitializationBillingPort) balanceAmount() float64 {

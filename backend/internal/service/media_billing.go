@@ -32,6 +32,7 @@ var (
 	ErrMediaSettlementCASConflict      = errors.New("media settlement CAS conflict")
 	ErrMediaSettlementPlanNotPersisted = errors.New("media settlement plan was not persisted")
 	ErrInvalidMediaFailureSettlement   = errors.New("invalid media failure settlement")
+	ErrInvalidMediaBillingSnapshot     = errors.New("invalid media billing snapshot")
 	ErrInvalidMediaBillingResult       = errors.New("invalid media billing result")
 )
 
@@ -349,7 +350,7 @@ func validateMediaSettlementResult(prechargedAmount float64, result MediaSettlem
 func normalizeMediaBillingSnapshot(snapshot MediaBillingSnapshot) (MediaBillingSnapshot, error) {
 	estimated, err := normalizeMediaAmount(snapshot.EstimatedAmount)
 	if err != nil {
-		return MediaBillingSnapshot{}, fmt.Errorf("normalize estimated media amount: %w", err)
+		return MediaBillingSnapshot{}, fmt.Errorf("%w: estimated_amount=%v", ErrInvalidMediaBillingSnapshot, snapshot.EstimatedAmount)
 	}
 	snapshot.EstimatedAmount = estimated.InexactFloat64()
 	return snapshot, nil

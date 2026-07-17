@@ -1150,7 +1150,7 @@ func (w *MediaWorker) cleanupExpiredInitializer(ctx context.Context, task *Media
 
 	var snapshot MediaBillingSnapshot
 	if err := json.Unmarshal(task.BillingSnapshot, &snapshot); err != nil {
-		return false, fmt.Errorf("decode expired media initializer %d billing snapshot: %w", task.ID, err)
+		return w.failExpiredInitializerPrecharge(ctx, task)
 	}
 	snapshot, err := normalizeMediaBillingSnapshot(snapshot)
 	var prechargeResult MediaPrechargeResult

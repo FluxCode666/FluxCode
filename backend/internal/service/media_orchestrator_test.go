@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 	"sync"
 	"testing"
@@ -12,6 +13,46 @@ import (
 
 	"github.com/stretchr/testify/require"
 )
+
+func TestMediaOrchestratorRejectsInvalidPricingSnapshotBeforeTaskCreation(t *testing.T) {
+	for _, tt := range []struct {
+		name   string
+		amount float64
+	}{
+		{name: "negative", amount: -0.00000001},
+		{name: "nan", amount: math.NaN()},
+		{name: "positive infinity", amount: math.Inf(1)},
+		{name: "negative infinity", amount: math.Inf(-1)},
+		{name: "numeric overflow", amount: 1_000_000_000_000},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			fixture := newMediaOrchestratorFixture(t)
+			fixture.pricing.snapshot.EstimatedAmount = tt.amount
+
+			result, err := fixture.orchestrator.Create(context.Background(), validAsyncMediaCreateRequest())
+			require.Nil(t, result)
+			require.ErrorIs(t, err, ErrInvalidMediaBillingSnapshot)
+			require.Zero(t, fixture.repo.createCalls())
+			require.Zero(t, fixture.billing.prechargeCalls())
+			require.Zero(t, fixture.queue.enqueueCalls())
+		})
+	}
+}
+
+func TestMediaOrchestratorNormalizesPricingSnapshotBeforeTaskCreation(t *testing.T) {
+	fixture := newMediaOrchestratorFixture(t)
+	fixture.pricing.snapshot.EstimatedAmount = 1.234567894
+
+	result, err := fixture.orchestrator.Create(context.Background(), validAsyncMediaCreateRequest())
+	require.NoError(t, err)
+	require.Equal(t, 1, fixture.repo.createCalls())
+	require.Equal(t, 1, fixture.billing.prechargeCalls())
+	stored := fixture.repo.mustGet(result.Task.ID)
+	var snapshot MediaBillingSnapshot
+	require.NoError(t, json.Unmarshal(stored.BillingSnapshot, &snapshot))
+	require.Equal(t, 1.23456789, snapshot.EstimatedAmount)
+	require.Equal(t, 1.23456789, stored.PrechargedAmount)
+}
 
 func TestMediaOrchestratorAsyncReturnsAfterDurableEnqueue(t *testing.T) {
 	fixture := newMediaOrchestratorFixture(t)
@@ -989,6 +1030,7 @@ func TestMediaOrchestratorInvalidSuccessfulPrechargeResultLeavesFencedPendingFor
 	require.Equal(t, MediaBillingStatusPending, stored.BillingStatus)
 	require.NotNil(t, stored.LeaseUntil)
 	require.Empty(t, stored.ErrorCode)
+	require.Equal(t, 1, fixture.billing.prechargeCalls())
 	require.Equal(t, 0, fixture.queue.enqueueCalls())
 	require.Equal(t, 0, fixture.billing.settleFailureCalls())
 }

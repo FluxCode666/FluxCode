@@ -211,6 +211,10 @@ func (o *MediaOrchestrator) Create(ctx context.Context, req MediaCreateRequest) 
 	if err != nil {
 		return nil, fmt.Errorf("snapshot media pricing: %w", err)
 	}
+	billingSnapshot, err = normalizeMediaBillingSnapshot(billingSnapshot)
+	if err != nil {
+		return nil, fmt.Errorf("validate media pricing snapshot: %w", err)
+	}
 	billingJSON, err := json.Marshal(billingSnapshot)
 	if err != nil {
 		return nil, fmt.Errorf("encode media billing snapshot: %w", err)
