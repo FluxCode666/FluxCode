@@ -918,6 +918,24 @@ func TestMediaTaskHandlerJSONAsyncThreeStates(t *testing.T) {
 	}
 }
 
+func TestMediaTaskHandlerVideoDurationAndFPSMayBeOmitted(t *testing.T) {
+	t.Run("json", func(t *testing.T) {
+		router, app := newStandaloneMediaRouter(t)
+		rec := performAPIKeyRequest(router, http.MethodPost, "/v1/videos", `{"model":"fake-video","prompt":"sunset"}`, 42)
+		require.Equal(t, http.StatusAccepted, rec.Code)
+		require.Zero(t, app.lastCreate.Spec.Video.DurationSeconds)
+		require.Zero(t, app.lastCreate.Spec.Video.FPS)
+	})
+
+	t.Run("multipart", func(t *testing.T) {
+		router, app := newStandaloneMediaRouter(t)
+		rec := performRequest(router, videoUploadRequest(t), 42, true)
+		require.Equal(t, http.StatusAccepted, rec.Code)
+		require.Zero(t, app.lastCreate.Spec.Video.DurationSeconds)
+		require.Zero(t, app.lastCreate.Spec.Video.FPS)
+	})
+}
+
 func TestMediaTaskHandlerMultipartAsyncThreeStates(t *testing.T) {
 	for _, tt := range []struct {
 		name, value string
@@ -1118,7 +1136,7 @@ func TestMediaTaskHandlerCompletedImageQueryReturnsTaskWithOpenAIDataResult(t *t
 func TestMediaTaskHandlerInvalidRangeReturns416WithoutOpeningContent(t *testing.T) {
 	router, app := newStandaloneMediaRouter(t)
 	req := newAPIKeyRequest(http.MethodGet, "/v1/videos/task_public/content", nil, 42)
-	req.Header.Set("Range", "bytes=0-1,4-5")
+	req.Header.Set("Range", "bytes=+0-+1")
 	rec := performRequest(router, req, 42, false)
 	require.Equal(t, http.StatusRequestedRangeNotSatisfiable, rec.Code)
 	require.Zero(t, app.contentCalls)

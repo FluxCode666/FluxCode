@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -99,6 +100,26 @@ func TestMediaWorkerIntegrationFixtureQueueRoundTrip(t *testing.T) {
 	require.Equal(t, task.ID, message.TaskID)
 	require.Equal(t, service.MediaQueuePriorityAsync, message.Priority)
 	require.NoError(t, fixture.queue.Ack(context.Background(), message))
+}
+
+func TestMediaBillingNumeric20Scale8PostgreSQLRoundTrip(t *testing.T) {
+	fixture := newIntegrationMediaWorker(t)
+	task := fixture.createQueuedTask(t, false)
+	_, err := testEntClient(t).MediaTask.UpdateOneID(task.ID).
+		SetPrechargedAmount(3.00000000).
+		Save(context.Background())
+	require.NoError(t, err)
+	task, err = fixture.taskRepo.GetByID(context.Background(), task.ID)
+	require.NoError(t, err)
+
+	coordinator := service.NewMediaBillingCoordinator(fixture.taskRepo, integrationPrecisionBillingPort{})
+	require.NoError(t, coordinator.SettleSuccess(context.Background(), task, service.MediaUsage{ImageCount: 1}))
+	stored, err := fixture.taskRepo.GetByID(context.Background(), task.ID)
+	require.NoError(t, err)
+	require.Equal(t, service.MediaBillingStatusSettled, stored.BillingStatus)
+	require.Equal(t, 1.23456789, stored.FinalAmount)
+	require.Equal(t, 1.76543211, stored.RefundedAmount)
+	require.Zero(t, stored.AdditionalChargedAmount)
 }
 
 type integrationMediaWorkerFixture struct {
@@ -268,6 +289,18 @@ type integrationWorkerBillingPort struct {
 	mu       sync.Mutex
 	settled  map[string]struct{}
 	attempts atomic.Int64
+}
+
+type integrationPrecisionBillingPort struct{}
+
+func (integrationPrecisionBillingPort) Precharge(_ context.Context, _ *service.MediaTask, snapshot service.MediaBillingSnapshot) (service.MediaPrechargeResult, error) {
+	return service.MediaPrechargeResult{PrechargedAmount: snapshot.EstimatedAmount}, nil
+}
+func (integrationPrecisionBillingPort) SettleSuccess(context.Context, *service.MediaTask, service.MediaUsage) (service.MediaSettlementResult, error) {
+	return service.MediaSettlementResult{FinalAmount: 1.234567894, RefundedAmount: 1.765432106}, nil
+}
+func (integrationPrecisionBillingPort) SettleFailure(context.Context, *service.MediaTask, service.MediaFailureSettlement) (service.MediaSettlementResult, error) {
+	return service.MediaSettlementResult{}, errors.New("unexpected failure settlement")
 }
 
 func (*integrationWorkerBillingPort) Precharge(_ context.Context, _ *service.MediaTask, snapshot service.MediaBillingSnapshot) (service.MediaPrechargeResult, error) {

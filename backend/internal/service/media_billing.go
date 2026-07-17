@@ -7,6 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"math"
+
+	"github.com/shopspring/decimal"
 )
 
 const (
@@ -16,6 +18,10 @@ const (
 	MediaBillingStatusRetry      = "retry"
 	MediaBillingStatusSettled    = "settled"
 )
+
+const mediaBillingAmountScale int32 = 8
+
+var mediaBillingMaximumAmount = decimal.RequireFromString("999999999999.99999999")
 
 var (
 	// ErrMediaPrechargeResultUnknown marks a precharge error for which the
@@ -273,6 +279,11 @@ func (c *MediaBillingCoordinator) executePersisted(ctx context.Context, task *Me
 
 	var result MediaSettlementResult
 	var portErr error
+	precharged, normalizeErr := normalizeMediaAmount(task.PrechargedAmount)
+	if normalizeErr != nil {
+		return normalizeErr
+	}
+	task.PrechargedAmount = precharged.InexactFloat64()
 	switch plan.Type {
 	case MediaSettlementTypeSuccess:
 		if plan.Usage == nil || plan.Failure != nil {
@@ -288,7 +299,7 @@ func (c *MediaBillingCoordinator) executePersisted(ctx context.Context, task *Me
 		return fmt.Errorf("unknown media settlement type %q", plan.Type)
 	}
 	if portErr == nil {
-		portErr = validateMediaSettlementResult(task.PrechargedAmount, result)
+		result, portErr = normalizeMediaSettlementResult(task.PrechargedAmount, result)
 	}
 	if portErr != nil {
 		updated, updateErr := c.repo.UpdateBilling(ctx, task.ID, MediaBillingStatusSettling, map[string]any{
@@ -326,42 +337,86 @@ func (c *MediaBillingCoordinator) executePersisted(ctx context.Context, task *Me
 	return nil
 }
 
-func validateMediaPrechargeResult(result MediaPrechargeResult) error {
-	if invalidMediaAmount(result.PrechargedAmount) {
-		return fmt.Errorf("%w: precharged_amount=%v", ErrInvalidMediaBillingResult, result.PrechargedAmount)
-	}
-	return nil
-}
-
 func mediaPrechargeNeedsReconciliation(err error) bool {
 	return errors.Is(err, ErrMediaPrechargeResultUnknown) || errors.Is(err, ErrInvalidMediaBillingResult)
 }
 
 func validateMediaSettlementResult(prechargedAmount float64, result MediaSettlementResult) error {
-	if invalidMediaAmount(prechargedAmount) ||
-		invalidMediaAmount(result.FinalAmount) ||
-		invalidMediaAmount(result.RefundedAmount) ||
-		invalidMediaAmount(result.AdditionalChargedAmount) {
-		return fmt.Errorf("%w: precharged=%v final=%v refunded=%v additional=%v", ErrInvalidMediaBillingResult,
-			prechargedAmount, result.FinalAmount, result.RefundedAmount, result.AdditionalChargedAmount)
-	}
-	left := prechargedAmount + result.AdditionalChargedAmount
-	right := result.FinalAmount + result.RefundedAmount
-	if math.Abs(left-right) > 1e-8 {
-		return fmt.Errorf("%w: accounting mismatch precharged+additional=%v final+refunded=%v", ErrInvalidMediaBillingResult, left, right)
-	}
-	return nil
+	_, err := normalizeMediaSettlementResult(prechargedAmount, result)
+	return err
 }
 
-func invalidMediaAmount(value float64) bool {
-	return value < 0 || math.IsNaN(value) || math.IsInf(value, 0)
+func normalizeMediaBillingSnapshot(snapshot MediaBillingSnapshot) (MediaBillingSnapshot, error) {
+	estimated, err := normalizeMediaAmount(snapshot.EstimatedAmount)
+	if err != nil {
+		return MediaBillingSnapshot{}, fmt.Errorf("normalize estimated media amount: %w", err)
+	}
+	snapshot.EstimatedAmount = estimated.InexactFloat64()
+	return snapshot, nil
+}
+
+func normalizeMediaPrechargeResult(result MediaPrechargeResult) (MediaPrechargeResult, error) {
+	amount, err := normalizeMediaAmount(result.PrechargedAmount)
+	if err != nil {
+		return MediaPrechargeResult{}, fmt.Errorf("%w: precharged_amount=%v", ErrInvalidMediaBillingResult, result.PrechargedAmount)
+	}
+	result.PrechargedAmount = amount.InexactFloat64()
+	return result, nil
+}
+
+func normalizeMediaSettlementResult(prechargedAmount float64, result MediaSettlementResult) (MediaSettlementResult, error) {
+	precharged, prechargedErr := normalizeMediaAmount(prechargedAmount)
+	final, finalErr := normalizeMediaAmount(result.FinalAmount)
+	refunded, refundedErr := normalizeMediaAmount(result.RefundedAmount)
+	additional, additionalErr := normalizeMediaAmount(result.AdditionalChargedAmount)
+	if errors.Join(prechargedErr, finalErr, refundedErr, additionalErr) != nil {
+		return MediaSettlementResult{}, fmt.Errorf("%w: precharged=%v final=%v refunded=%v additional=%v", ErrInvalidMediaBillingResult,
+			prechargedAmount, result.FinalAmount, result.RefundedAmount, result.AdditionalChargedAmount)
+	}
+	left := precharged.Add(additional)
+	right := final.Add(refunded)
+	if !left.Equal(right) {
+		return MediaSettlementResult{}, fmt.Errorf("%w: accounting mismatch precharged+additional=%s final+refunded=%s",
+			ErrInvalidMediaBillingResult, left.StringFixed(mediaBillingAmountScale), right.StringFixed(mediaBillingAmountScale))
+	}
+	result.FinalAmount = final.InexactFloat64()
+	result.RefundedAmount = refunded.InexactFloat64()
+	result.AdditionalChargedAmount = additional.InexactFloat64()
+	return result, nil
+}
+
+func normalizeMediaAmount(value float64) (decimal.Decimal, error) {
+	if value < 0 || math.IsNaN(value) || math.IsInf(value, 0) {
+		return decimal.Zero, fmt.Errorf("%w: amount=%v", ErrInvalidMediaBillingResult, value)
+	}
+	return normalizeMediaDecimalAmount(decimal.NewFromFloat(value))
+}
+
+func normalizeMediaDecimalAmount(value decimal.Decimal) (decimal.Decimal, error) {
+	if value.IsNegative() {
+		return decimal.Zero, fmt.Errorf("%w: amount=%s", ErrInvalidMediaBillingResult, value.String())
+	}
+	normalized := value.Round(mediaBillingAmountScale)
+	if normalized.GreaterThan(mediaBillingMaximumAmount) {
+		return decimal.Zero, fmt.Errorf("%w: amount=%s exceeds NUMERIC(20,8)", ErrInvalidMediaBillingResult, normalized.String())
+	}
+	return normalized, nil
 }
 
 func mediaSettlementResultMatchesTask(result MediaSettlementResult, task *MediaTask) bool {
-	return task != nil &&
-		math.Abs(task.FinalAmount-result.FinalAmount) <= 1e-8 &&
-		math.Abs(task.RefundedAmount-result.RefundedAmount) <= 1e-8 &&
-		math.Abs(task.AdditionalChargedAmount-result.AdditionalChargedAmount) <= 1e-8
+	if task == nil {
+		return false
+	}
+	resultFinal, resultFinalErr := normalizeMediaAmount(result.FinalAmount)
+	resultRefunded, resultRefundedErr := normalizeMediaAmount(result.RefundedAmount)
+	resultAdditional, resultAdditionalErr := normalizeMediaAmount(result.AdditionalChargedAmount)
+	taskFinal, taskFinalErr := normalizeMediaAmount(task.FinalAmount)
+	taskRefunded, taskRefundedErr := normalizeMediaAmount(task.RefundedAmount)
+	taskAdditional, taskAdditionalErr := normalizeMediaAmount(task.AdditionalChargedAmount)
+	return errors.Join(
+		resultFinalErr, resultRefundedErr, resultAdditionalErr,
+		taskFinalErr, taskRefundedErr, taskAdditionalErr,
+	) == nil && resultFinal.Equal(taskFinal) && resultRefunded.Equal(taskRefunded) && resultAdditional.Equal(taskAdditional)
 }
 
 func (c *MediaBillingCoordinator) validate() error {

@@ -720,6 +720,26 @@ func TestMediaWorkerStorageFailureAlwaysRefunds(t *testing.T) {
 	require.Equal(t, int64(1), fixture.metrics.StorageFailures())
 }
 
+func TestMediaWorkerPrivateImageObjectWithoutDeliveryPathFailsAndRefunds(t *testing.T) {
+	fixture := newMediaWorkerFixture(t, false, NativeAsyncUnsupported)
+	artifacts := &mediaContentArtifactRepoStub{}
+	fixture.worker.deps.Artifacts = NewMediaContentService(
+		nil, artifacts, mediaContentSettingsStub{settings: &SystemSettings{}}, nil, nil,
+		mediaContentHTTPReaderStub{}, mediaContentObjectStoreStub{put: func(context.Context, MediaArtifactInput) (*MediaArtifact, error) {
+			return &MediaArtifact{ObjectKey: "private/images/output.png"}, nil
+		}},
+	)
+
+	require.NoError(t, fixture.worker.ProcessOne(context.Background(), fixture.task.ID))
+	stored := fixture.repo.mustGet(fixture.task.ID)
+	require.Equal(t, MediaTaskStatusFailed, stored.Status)
+	require.Equal(t, "system_storage", stored.ErrorCode)
+	require.Equal(t, MediaFailureSettlement{
+		Kind: MediaFailureKindSystem, RefundRatio: 1, ErrorCode: "system_storage",
+	}, fixture.billing.lastFailure())
+	require.Empty(t, artifacts.items)
+}
+
 func TestMediaWorkerUpstreamCanceledAlwaysRefunds(t *testing.T) {
 	fixture := newMediaWorkerFixture(t, true, NativeAsyncRequired)
 	fixture.adapter.setPollResult(MediaPollResult{State: MediaPollStateCanceled})
@@ -1083,6 +1103,54 @@ func TestMediaWorkerSameWorkerIDReclaimFencesOldExecutionStageWrites(t *testing.
 	releasePoll.Do(func() { close(pollRelease) })
 	require.ErrorIs(t, <-oldDone, ErrMediaWorkerLeaseLost)
 	require.NoError(t, <-newDone)
+	require.Equal(t, MediaTaskStatusCompleted, fixture.repo.mustGet(fixture.task.ID).Status)
+	require.Equal(t, int64(1), fixture.artifactWriter.calls.Load())
+	require.Equal(t, 1, fixture.billing.settlementCalls())
+}
+
+func TestMediaWorkerSameInstanceReclaimReplacesActiveGeneration(t *testing.T) {
+	fixture := newMediaWorkerFixture(t, true, NativeAsyncRequired)
+	prepareRecoverableExistingUpstream(fixture, "existing-upstream")
+	pollRelease := make(chan struct{})
+	var releasePoll sync.Once
+	t.Cleanup(func() { releasePoll.Do(func() { close(pollRelease) }) })
+	fixture.adapter.blockPollUntil(pollRelease)
+	fixture.worker.cfg.LeaseRenewInterval = time.Hour
+
+	oldDone := make(chan error, 1)
+	go func() { oldDone <- fixture.worker.ProcessOne(context.Background(), fixture.task.ID) }()
+	require.Eventually(t, func() bool { return fixture.adapter.pollCalls.Load() >= 1 }, time.Second, time.Millisecond)
+	oldActive := fixture.worker.activeForTask(fixture.task.ID)
+	require.NotNil(t, oldActive)
+	oldClaim := fixture.repo.mustGet(fixture.task.ID).ClaimToken
+	require.NotEmpty(t, oldClaim)
+
+	fixture.repo.mu.Lock()
+	fixture.repo.tasks[fixture.task.ID].LeaseUntil = workerTimePtr(time.Now().Add(-time.Minute))
+	fixture.repo.mu.Unlock()
+
+	newDone := make(chan error, 1)
+	go func() {
+		newDone <- fixture.worker.processMessage(context.Background(), &MediaQueueMessage{
+			ID: "same-instance-reclaim", TaskID: fixture.task.ID, Priority: MediaQueuePriorityAsync,
+		})
+	}()
+	require.Eventually(t, func() bool {
+		return fixture.repo.mustGet(fixture.task.ID).ClaimToken != oldClaim
+	}, time.Second, time.Millisecond)
+	require.Eventually(t, func() bool { return fixture.adapter.pollCalls.Load() >= 2 }, time.Second, time.Millisecond)
+
+	newActive := fixture.worker.activeForTask(fixture.task.ID)
+	require.NotNil(t, newActive)
+	require.NotSame(t, oldActive, newActive)
+	require.Zero(t, fixture.queue.ackCalls.Load(), "newly claimed message must remain pending while its execution is active")
+	require.ErrorIs(t, <-oldDone, ErrMediaWorkerLeaseLost)
+	require.Same(t, newActive, fixture.worker.activeForTask(fixture.task.ID), "old defer must not unregister the new generation")
+
+	releasePoll.Do(func() { close(pollRelease) })
+	require.NoError(t, <-newDone)
+	require.Equal(t, int64(1), fixture.queue.ackCalls.Load())
+	require.Nil(t, fixture.worker.activeForTask(fixture.task.ID))
 	require.Equal(t, MediaTaskStatusCompleted, fixture.repo.mustGet(fixture.task.ID).Status)
 	require.Equal(t, int64(1), fixture.artifactWriter.calls.Load())
 	require.Equal(t, 1, fixture.billing.settlementCalls())

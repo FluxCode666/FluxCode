@@ -198,6 +198,14 @@ func (s *MediaContentService) PersistOutputs(ctx context.Context, task *MediaTas
 	if s == nil || task == nil || s.artifacts == nil || s.settings == nil {
 		return nil, ErrMediaContentUnavailable
 	}
+	if len(inputs) == 0 || (task.MediaType != MediaTypeImage && task.MediaType != MediaTypeVideo) {
+		return nil, ErrInvalidMediaInput
+	}
+	for i := range inputs {
+		if inputs[i].MediaType != task.MediaType {
+			return nil, ErrInvalidMediaInput
+		}
+	}
 	settings, err := s.settings.GetAllSettings(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("load media content settings: %w", err)
@@ -217,6 +225,14 @@ func (s *MediaContentService) PersistOutputs(ctx context.Context, task *MediaTas
 			artifact, putErr := s.objectStore.Put(ctx, input)
 			if putErr == nil && artifact != nil && artifact.ObjectKey != "" {
 				mergeStoredArtifactMetadata(artifact, input)
+				if artifact.MediaType != task.MediaType {
+					return nil, ErrInvalidMediaInput
+				}
+				if artifact.MediaType == MediaTypeImage {
+					if deliveryErr := validateStoredImageDelivery(artifact); deliveryErr != nil {
+						return nil, deliveryErr
+					}
+				}
 				artifact.TaskID = task.ID
 				artifact.Direction = "output"
 				artifact.Position = i
@@ -284,6 +300,30 @@ func (s *MediaContentService) PersistOutputs(ctx context.Context, task *MediaTas
 		stored = append(stored, *created)
 	}
 	return stored, nil
+}
+
+func validateStoredImageDelivery(artifact *MediaArtifact) error {
+	if artifact == nil || artifact.MediaType != MediaTypeImage {
+		return ErrMediaContentUnavailable
+	}
+	if artifact.PublicURL != "" {
+		artifact.PublicURL = strings.TrimSpace(artifact.PublicURL)
+		if IsSafePublicMediaURL(artifact.PublicURL) {
+			return nil
+		}
+		return ErrMediaContentUnavailable
+	}
+	_, contentType, inline, err := decodeMediaDataReferenceBounded(
+		artifact.UpstreamReference, artifact.ContentType, maxInlineMediaDecodedBytes, MediaTypeImage,
+	)
+	if err != nil {
+		return err
+	}
+	if !inline {
+		return ErrMediaContentUnavailable
+	}
+	artifact.ContentType = contentType
+	return nil
 }
 
 func (s *MediaContentService) OpenVideo(ctx context.Context, publicID string, userID int64, byteRange string) (*MediaContent, error) {
@@ -423,6 +463,9 @@ func parseMediaByteRange(value string) (mediaByteRange, error) {
 		return mediaByteRange{}, ErrInvalidMediaRange
 	}
 	parsed := mediaByteRange{hasStart: parts[0] != "", hasEnd: parts[1] != ""}
+	if (parsed.hasStart && !isASCIIDigits(parts[0])) || (parsed.hasEnd && !isASCIIDigits(parts[1])) {
+		return mediaByteRange{}, ErrInvalidMediaRange
+	}
 	var err error
 	if parsed.hasStart {
 		parsed.start, err = strconv.ParseInt(parts[0], 10, 64)
@@ -443,6 +486,18 @@ func parseMediaByteRange(value string) (mediaByteRange, error) {
 		return mediaByteRange{}, ErrInvalidMediaRange
 	}
 	return parsed, nil
+}
+
+func isASCIIDigits(value string) bool {
+	if value == "" {
+		return false
+	}
+	for i := 0; i < len(value); i++ {
+		if value[i] < '0' || value[i] > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 func sliceMediaContent(data []byte, contentType, byteRange string) (*MediaContent, error) {

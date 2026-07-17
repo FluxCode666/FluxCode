@@ -1538,6 +1538,8 @@ func TestMediaOrchestratorGetForUserSanitizesInternalTaskFields(t *testing.T) {
 		task.PrechargedAmount = 12
 		task.FinalAmount = 10
 		task.RefundedAmount = 2
+		task.AdditionalChargedAmount = 3
+		task.ClaimToken = "claim-secret"
 		task.Stage = MediaTaskStageGenerating
 		now := time.Unix(1784112001, 0)
 		task.SubmittedAt = &now
@@ -1565,6 +1567,8 @@ func TestMediaOrchestratorGetForUserSanitizesInternalTaskFields(t *testing.T) {
 	require.Zero(t, task.PrechargedAmount)
 	require.Zero(t, task.FinalAmount)
 	require.Zero(t, task.RefundedAmount)
+	require.Zero(t, task.AdditionalChargedAmount)
+	require.Empty(t, task.ClaimToken)
 	require.Empty(t, task.Stage)
 	require.Nil(t, task.SubmittedAt)
 	require.Nil(t, task.StartedAt)

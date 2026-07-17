@@ -4,11 +4,69 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"math"
 	"sync"
 	"testing"
 
+	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/require"
 )
+
+func TestMediaBillingNumeric20Scale8Normalization(t *testing.T) {
+	tests := []struct {
+		name  string
+		value float64
+		want  string
+	}{
+		{name: "round down beyond scale", value: 1.234567894, want: "1.23456789"},
+		{name: "round up beyond scale", value: 1.234567895, want: "1.23456790"},
+		{name: "smallest unit", value: 0.00000001, want: "0.00000001"},
+		{name: "largest representable float below numeric max", value: math.Nextafter(1_000_000_000_000, 0), want: "999999999999.99990000"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			amount, err := normalizeMediaAmount(tt.value)
+			require.NoError(t, err)
+			require.Equal(t, tt.want, amount.StringFixed(8))
+		})
+	}
+
+	maximum, err := normalizeMediaDecimalAmount(decimal.RequireFromString("999999999999.99999999"))
+	require.NoError(t, err)
+	require.Equal(t, "999999999999.99999999", maximum.StringFixed(8))
+
+	for _, invalid := range []float64{-0.00000001, math.NaN(), math.Inf(1), math.Inf(-1), 1_000_000_000_000} {
+		_, err := normalizeMediaAmount(invalid)
+		require.ErrorIs(t, err, ErrInvalidMediaBillingResult)
+	}
+	_, err = normalizeMediaDecimalAmount(decimal.RequireFromString("1000000000000.00000000"))
+	require.ErrorIs(t, err, ErrInvalidMediaBillingResult)
+}
+
+func TestMediaBillingRejectsOneNumericUnitAccountingMismatch(t *testing.T) {
+	err := validateMediaSettlementResult(0.00000001, MediaSettlementResult{})
+	require.ErrorIs(t, err, ErrInvalidMediaBillingResult)
+}
+
+func TestMediaBillingCoordinatorNormalizesPortAmountsBeforePersistence(t *testing.T) {
+	task := workerCompletedTask(114, "billing-normalized-port-amounts")
+	task.PrechargedAmount = 3.000000004
+	repo := newWorkerTaskRepository(task)
+	port := &recordingMediaBillingPort{
+		inspect: func(portTask *MediaTask) {
+			require.Equal(t, 3.0, portTask.PrechargedAmount)
+		},
+		settlementResult: MediaSettlementResult{
+			FinalAmount:    1.234567894,
+			RefundedAmount: 1.765432106,
+		},
+	}
+
+	require.NoError(t, NewMediaBillingCoordinator(repo, port).SettleSuccess(context.Background(), task, MediaUsage{ImageCount: 1}))
+	stored := repo.mustGet(task.ID)
+	require.Equal(t, 1.23456789, stored.FinalAmount)
+	require.Equal(t, 1.76543211, stored.RefundedAmount)
+}
 
 func TestMediaBillingCoordinatorRetriesPersistedSettlementIdempotently(t *testing.T) {
 	repo := newWorkerTaskRepository(workerCompletedTask(101, "billing-retry"))

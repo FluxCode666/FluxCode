@@ -758,9 +758,13 @@ func (o *MediaOrchestrator) initializeAndEnqueue(
 		inputsDurable = true
 	}
 
-	prechargeResult, err := o.deps.Billing.Precharge(ctx, task, billingSnapshot)
+	billingSnapshot, err := normalizeMediaBillingSnapshot(billingSnapshot)
+	var prechargeResult MediaPrechargeResult
 	if err == nil {
-		err = validateMediaPrechargeResult(prechargeResult)
+		prechargeResult, err = o.deps.Billing.Precharge(ctx, task, billingSnapshot)
+	}
+	if err == nil {
+		prechargeResult, err = normalizeMediaPrechargeResult(prechargeResult)
 	}
 	if err != nil {
 		prechargeErr := fmt.Errorf("precharge media task: %w", err)
@@ -1000,9 +1004,13 @@ func (o *MediaOrchestrator) failWithReconciledPrecharge(
 ) error {
 	compensationCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), mediaOrchestratorDetachedTimeout)
 	defer cancel()
-	prechargeResult, err := o.deps.Billing.Precharge(compensationCtx, task, billingSnapshot)
+	billingSnapshot, err := normalizeMediaBillingSnapshot(billingSnapshot)
+	var prechargeResult MediaPrechargeResult
 	if err == nil {
-		err = validateMediaPrechargeResult(prechargeResult)
+		prechargeResult, err = o.deps.Billing.Precharge(compensationCtx, task, billingSnapshot)
+	}
+	if err == nil {
+		prechargeResult, err = normalizeMediaPrechargeResult(prechargeResult)
 	}
 	if err != nil {
 		prechargeErr := fmt.Errorf("reconcile media task precharge before failure: %w", err)
@@ -1148,9 +1156,11 @@ func sanitizeMediaTaskForUser(task *MediaTask) *MediaTask {
 	copy.PrechargedAmount = 0
 	copy.FinalAmount = 0
 	copy.RefundedAmount = 0
+	copy.AdditionalChargedAmount = 0
 	copy.RetryCount = 0
 	copy.ErrorMessage = ""
 	copy.WorkerID = ""
+	copy.ClaimToken = ""
 	copy.LeaseUntil = nil
 	copy.Version = 0
 	copy.SubmittedAt = nil

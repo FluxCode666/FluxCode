@@ -181,6 +181,19 @@ func TestMediaHTTPContentReaderRejectsMultipleRanges(t *testing.T) {
 	require.ErrorIs(t, err, service.ErrInvalidMediaRange)
 }
 
+func TestMediaHTTPContentReaderRejectsNonASCIIRangeWithoutUpstream(t *testing.T) {
+	upstream := &mediaHTTPUpstreamStub{do: func(*http.Request) (*http.Response, error) {
+		t.Fatal("HTTP upstream must not be called for a non-ASCII range")
+		return nil, nil
+	}}
+	reader := NewMediaHTTPContentReader(upstream, mediaContentTestConfig())
+
+	_, err := reader.Open(context.Background(), service.MediaHTTPContentRequest{
+		URL: "http://media.example/video.mp4", Account: &service.Account{ID: 1, Concurrency: 1}, ByteRange: "bytes=+0-+1",
+	})
+	require.ErrorIs(t, err, service.ErrInvalidMediaRange)
+}
+
 func TestSafeMediaContentTypeAllowsOnlyVideo(t *testing.T) {
 	require.Equal(t, "video/mp4", safeMediaContentType("video/mp4; charset=binary"))
 	for _, unsafe := range []string{"", "text/html", "application/javascript", "image/svg+xml"} {

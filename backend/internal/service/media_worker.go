@@ -93,6 +93,7 @@ type MediaWorker struct {
 type mediaActiveExecution struct {
 	ctx           context.Context
 	cancel        context.CancelCauseFunc
+	claimToken    string
 	terminalizing atomic.Bool
 	abortOnce     sync.Once
 
@@ -405,10 +406,9 @@ func (w *MediaWorker) ProcessOne(ctx context.Context, taskID int64) error {
 	task.Version++
 
 	executionCtx, executionCancel := context.WithCancelCause(ctx)
-	active := &mediaActiveExecution{ctx: executionCtx, cancel: executionCancel}
-	if !w.registerActive(task.ID, active) {
-		executionCancel(ErrMediaTaskNotClaimed)
-		return fmt.Errorf("%w: task %d already active", ErrMediaTaskNotClaimed, task.ID)
+	active := &mediaActiveExecution{ctx: executionCtx, cancel: executionCancel, claimToken: task.ClaimToken}
+	if replaced := w.replaceActive(task.ID, active); replaced != nil {
+		replaced.cancel(fmt.Errorf("%w: task %d reclaimed by a newer execution", ErrMediaWorkerLeaseLost, task.ID))
 	}
 	leaseCtx, leaseCancel := context.WithCancel(executionCtx)
 	renewerDone := w.startLeaseRenewer(leaseCtx, active, task.ID, task.ClaimToken)
@@ -423,7 +423,7 @@ func (w *MediaWorker) ProcessOne(ctx context.Context, taskID int64) error {
 		active.closeAccountSlot()
 		stopLeaseRenewer()
 		executionCancel(context.Canceled)
-		w.unregisterActive(task.ID, active)
+		w.unregisterActive(task.ID, task.ClaimToken, active)
 	}()
 
 	startedAt := now
@@ -1152,9 +1152,13 @@ func (w *MediaWorker) cleanupExpiredInitializer(ctx context.Context, task *Media
 	if err := json.Unmarshal(task.BillingSnapshot, &snapshot); err != nil {
 		return false, fmt.Errorf("decode expired media initializer %d billing snapshot: %w", task.ID, err)
 	}
-	prechargeResult, err := w.deps.Precharger.Precharge(ctx, task, snapshot)
+	snapshot, err := normalizeMediaBillingSnapshot(snapshot)
+	var prechargeResult MediaPrechargeResult
 	if err == nil {
-		err = validateMediaPrechargeResult(prechargeResult)
+		prechargeResult, err = w.deps.Precharger.Precharge(ctx, task, snapshot)
+	}
+	if err == nil {
+		prechargeResult, err = normalizeMediaPrechargeResult(prechargeResult)
 	}
 	if err != nil {
 		if mediaPrechargeNeedsReconciliation(err) {
@@ -1565,20 +1569,19 @@ func (g *mediaAccountSlotGuard) Close() {
 	})
 }
 
-func (w *MediaWorker) registerActive(taskID int64, active *mediaActiveExecution) bool {
+func (w *MediaWorker) replaceActive(taskID int64, active *mediaActiveExecution) *mediaActiveExecution {
 	w.activeMu.Lock()
 	defer w.activeMu.Unlock()
-	if _, exists := w.active[taskID]; exists {
-		return false
-	}
+	replaced := w.active[taskID]
 	w.active[taskID] = active
-	return true
+	return replaced
 }
 
-func (w *MediaWorker) unregisterActive(taskID int64, active *mediaActiveExecution) {
+func (w *MediaWorker) unregisterActive(taskID int64, claimToken string, active *mediaActiveExecution) {
 	w.activeMu.Lock()
 	defer w.activeMu.Unlock()
-	if w.active[taskID] == active {
+	current := w.active[taskID]
+	if current == active && current.claimToken == claimToken {
 		delete(w.active, taskID)
 	}
 }

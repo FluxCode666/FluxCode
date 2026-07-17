@@ -157,8 +157,8 @@ func (s MediaSpec) Validate(mediaType MediaType) error {
 			referenceCount++
 		}
 		if strings.TrimSpace(s.Video.Prompt) == "" || utf8.RuneCountInString(s.Video.Prompt) > MaxMediaPromptRunes ||
-			s.Video.DurationSeconds < 1 || s.Video.DurationSeconds > MaxMediaVideoDurationSeconds ||
-			s.Video.FPS < 1 || s.Video.FPS > MaxMediaVideoFPS || referenceCount > MaxMediaReferenceInputs {
+			s.Video.DurationSeconds < 0 || s.Video.DurationSeconds > MaxMediaVideoDurationSeconds ||
+			s.Video.FPS < 0 || s.Video.FPS > MaxMediaVideoFPS || referenceCount > MaxMediaReferenceInputs {
 			return ErrInvalidMediaSpec
 		}
 	}
