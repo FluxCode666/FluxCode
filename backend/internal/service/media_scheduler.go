@@ -46,14 +46,19 @@ type MediaSchedulerAccountRepository interface {
 	UpdateLastUsed(ctx context.Context, id int64) error
 }
 
+type MediaSchedulerGroupRepository interface {
+	GetByID(ctx context.Context, id int64) (*Group, error)
+}
+
 type MediaScheduler struct {
 	accountRepo MediaSchedulerAccountRepository
+	groupRepo   MediaSchedulerGroupRepository
 	selector    AccountCandidateSelector
 	adapters    *MediaAdapterRegistry
 }
 
-func NewMediaScheduler(accountRepo MediaSchedulerAccountRepository, selector AccountCandidateSelector, adapters *MediaAdapterRegistry) *MediaScheduler {
-	return &MediaScheduler{accountRepo: accountRepo, selector: selector, adapters: adapters}
+func NewMediaScheduler(accountRepo MediaSchedulerAccountRepository, selector AccountCandidateSelector, adapters *MediaAdapterRegistry, groupRepo MediaSchedulerGroupRepository) *MediaScheduler {
+	return &MediaScheduler{accountRepo: accountRepo, groupRepo: groupRepo, selector: selector, adapters: adapters}
 }
 
 func (s *MediaScheduler) SnapshotCandidates(ctx context.Context, groupID int64, requestedModel string) ([]MediaAccountCandidateSnapshot, error) {
@@ -61,8 +66,15 @@ func (s *MediaScheduler) SnapshotCandidates(ctx context.Context, groupID int64, 
 		return nil, err
 	}
 	requestedModel = strings.TrimSpace(requestedModel)
-	if s == nil || s.accountRepo == nil || s.adapters == nil || requestedModel == "" {
+	if s == nil || s.accountRepo == nil || s.groupRepo == nil || s.adapters == nil || requestedModel == "" {
 		return nil, ErrNoAvailableAccounts
+	}
+	group, err := s.groupRepo.GetByID(ctx, groupID)
+	if err != nil {
+		return nil, fmt.Errorf("get current media scheduling group: %w", err)
+	}
+	if group == nil {
+		return nil, fmt.Errorf("get current media scheduling group: %w", ErrNoAvailableAccounts)
 	}
 	accounts, err := s.accountRepo.ListSchedulableByGroupID(ctx, groupID)
 	if err != nil {
@@ -80,6 +92,9 @@ func (s *MediaScheduler) SnapshotCandidates(ctx context.Context, groupID int64, 
 			return nil, fmt.Errorf("%w: duplicate media candidate account id %d", ErrNoAvailableAccounts, account.ID)
 		}
 		seen[account.ID] = struct{}{}
+		if !group.MediaCrossPlatformEnabled && account.Platform != group.Platform {
+			continue
+		}
 		if !account.IsSchedulable() || !account.IsModelSupported(requestedModel) {
 			continue
 		}
@@ -234,11 +249,15 @@ func (s *MediaScheduler) SelectFixed(ctx context.Context, req MediaFixedAccountR
 	if err != nil {
 		return nil, err
 	}
-	if account == nil || account.ID != req.AccountID || !account.IsSchedulable() {
+	if account == nil || account.ID != req.AccountID {
 		return nil, ErrNoAvailableAccounts
 	}
 	canonical := *account
-	selected, err := s.selector.Select(ctx, AccountCandidateSelectionRequest{
+	fixedSelector, ok := s.selector.(fixedAccountCandidateSelector)
+	if !ok {
+		return nil, ErrStableAccountSlotUnsupported
+	}
+	selected, err := fixedSelector.SelectFixed(ctx, AccountCandidateSelectionRequest{
 		GroupID: req.GroupID, SessionHash: req.SessionHash, SlotID: req.SlotID, Candidates: []*Account{&canonical},
 	})
 	if err != nil {

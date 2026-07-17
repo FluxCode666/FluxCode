@@ -13,7 +13,6 @@ import (
 	"net/http"
 	"net/url"
 	"path"
-	"regexp"
 	"strconv"
 	"strings"
 )
@@ -23,14 +22,13 @@ var (
 	ErrInvalidMediaRange                = errors.New("invalid media range")
 	ErrMediaRangeNotSatisfiable         = errors.New("media range not satisfiable")
 	ErrMediaArtifactNotFound            = errors.New("media artifact not found")
+	ErrMediaArtifactConflict            = errors.New("media artifact content identity conflict")
 	ErrMediaContentUnavailable          = errors.New("media content unavailable")
 	ErrMediaContentAccountRequired      = errors.New("media content account required")
 	ErrMediaContentTooLarge             = errors.New("media content too large")
 	ErrMediaArtifactObjectStoreDisabled = errors.New("media artifact object store disabled")
 	ErrMediaVideoObjectStorageRequired  = errors.New("media video object storage required")
 )
-
-var singleMediaByteRangePattern = regexp.MustCompile(`^bytes=(?:[0-9]+-[0-9]*|-[0-9]+)$`)
 
 const maxInlineMediaDecodedBytes = 1 << 20
 
@@ -233,12 +231,37 @@ func (s *MediaContentService) PersistOutputs(ctx context.Context, task *MediaTas
 		}
 
 		if strings.HasPrefix(strings.ToLower(input.UpstreamReference), "data:") {
-			_, _, _, inlineErr := decodeMediaDataReferenceBounded(
-				input.UpstreamReference, input.ContentType, maxInlineMediaDecodedBytes,
+			_, contentType, _, inlineErr := decodeMediaDataReferenceBounded(
+				input.UpstreamReference, input.ContentType, maxInlineMediaDecodedBytes, input.MediaType,
 			)
 			if inlineErr != nil {
 				return nil, inlineErr
 			}
+			input.ContentType = contentType
+		}
+		if input.MediaType == MediaTypeImage {
+			var artifact *MediaArtifact
+			switch {
+			case strings.HasPrefix(strings.ToLower(input.UpstreamReference), "data:"):
+				artifact = artifactFromProxyInput(task.ID, input)
+			case input.ExternalURL != "":
+				if s.httpReader == nil {
+					return nil, ErrMediaContentUnavailable
+				}
+				normalized, validateErr := s.httpReader.ValidateURL(input.ExternalURL)
+				if validateErr != nil || !IsSafePublicMediaURL(normalized) {
+					return nil, ErrMediaContentUnavailable
+				}
+				artifact = artifactFromPublicImageInput(task.ID, input, normalized)
+			default:
+				return nil, ErrMediaContentUnavailable
+			}
+			created, createErr := s.artifacts.Create(ctx, artifact)
+			if createErr != nil {
+				return nil, fmt.Errorf("persist deliverable image output: %w", createErr)
+			}
+			stored = append(stored, *created)
+			continue
 		}
 		proxyAllowed := input.MediaType == MediaTypeImage || settings.MediaVideoProxyFallbackEnabled
 		if !proxyAllowed || (input.UpstreamReference == "" && input.ExternalURL == "") {
@@ -293,7 +316,7 @@ func (s *MediaContentService) OpenVideo(ctx context.Context, publicID string, us
 	var fallbackCauses []error
 	if artifact.ObjectKey != "" && s.objectStore != nil {
 		content, openErr := s.objectStore.Open(ctx, artifact, byteRange)
-		if openErr == nil && content != nil {
+		if openErr == nil && content != nil && content.Body != nil {
 			return content, nil
 		}
 		if errors.Is(openErr, ErrInvalidMediaRange) || errors.Is(openErr, ErrMediaRangeNotSatisfiable) {
@@ -301,12 +324,14 @@ func (s *MediaContentService) OpenVideo(ctx context.Context, publicID string, us
 		}
 		if openErr != nil {
 			fallbackCauses = append(fallbackCauses, fmt.Errorf("open stored media content: %w", openErr))
-		} else {
+		} else if content == nil {
 			fallbackCauses = append(fallbackCauses, errors.New("object store returned nil media content"))
+		} else {
+			fallbackCauses = append(fallbackCauses, errors.New("object store returned media content with nil body"))
 		}
 	}
 	if data, contentType, inline, decodeErr := decodeMediaDataReferenceBounded(
-		artifact.UpstreamReference, artifact.ContentType, maxInlineMediaDecodedBytes,
+		artifact.UpstreamReference, artifact.ContentType, maxInlineMediaDecodedBytes, MediaTypeVideo,
 	); inline {
 		if decodeErr != nil {
 			return nil, mediaContentFallbackError(append(fallbackCauses, decodeErr)...)
@@ -374,46 +399,77 @@ func mediaContentFallbackError(causes ...error) error {
 }
 
 func ValidateMediaRange(value string) error {
-	if !singleMediaByteRangePattern.MatchString(value) || strings.Contains(value, ",") {
-		return ErrInvalidMediaRange
+	_, err := parseMediaByteRange(value)
+	return err
+}
+
+type mediaByteRange struct {
+	start    int64
+	end      int64
+	hasStart bool
+	hasEnd   bool
+}
+
+func parseMediaByteRange(value string) (mediaByteRange, error) {
+	if !strings.HasPrefix(value, "bytes=") || strings.Contains(value, ",") {
+		return mediaByteRange{}, ErrInvalidMediaRange
 	}
-	return nil
+	spec := strings.TrimPrefix(value, "bytes=")
+	if strings.Count(spec, "-") != 1 {
+		return mediaByteRange{}, ErrInvalidMediaRange
+	}
+	parts := strings.SplitN(spec, "-", 2)
+	if parts[0] == "" && parts[1] == "" {
+		return mediaByteRange{}, ErrInvalidMediaRange
+	}
+	parsed := mediaByteRange{hasStart: parts[0] != "", hasEnd: parts[1] != ""}
+	var err error
+	if parsed.hasStart {
+		parsed.start, err = strconv.ParseInt(parts[0], 10, 64)
+		if err != nil || parsed.start < 0 {
+			return mediaByteRange{}, ErrInvalidMediaRange
+		}
+	}
+	if parsed.hasEnd {
+		parsed.end, err = strconv.ParseInt(parts[1], 10, 64)
+		if err != nil || parsed.end < 0 {
+			return mediaByteRange{}, ErrInvalidMediaRange
+		}
+	}
+	if !parsed.hasStart && parsed.end == 0 {
+		return mediaByteRange{}, ErrInvalidMediaRange
+	}
+	if parsed.hasStart && parsed.hasEnd && parsed.end < parsed.start {
+		return mediaByteRange{}, ErrInvalidMediaRange
+	}
+	return parsed, nil
 }
 
 func sliceMediaContent(data []byte, contentType, byteRange string) (*MediaContent, error) {
-	if err := ValidateMediaRange(byteRange); err != nil {
+	parsed, err := parseMediaByteRange(byteRange)
+	if err != nil {
 		return nil, err
 	}
-	spec := strings.TrimPrefix(byteRange, "bytes=")
-	parts := strings.SplitN(spec, "-", 2)
 	total := int64(len(data))
 	if total == 0 {
 		return nil, ErrMediaRangeNotSatisfiable
 	}
 	var start, end int64
-	var err error
-	if parts[0] == "" {
-		var suffix int64
-		suffix, err = strconv.ParseInt(parts[1], 10, 64)
-		if err != nil || suffix <= 0 {
-			return nil, ErrInvalidMediaRange
-		}
+	if !parsed.hasStart {
+		suffix := parsed.end
 		if suffix > total {
 			suffix = total
 		}
 		start, end = total-suffix, total-1
 	} else {
-		start, err = strconv.ParseInt(parts[0], 10, 64)
-		if err != nil || start < 0 || start >= total {
+		start = parsed.start
+		if start >= total {
 			return nil, ErrMediaRangeNotSatisfiable
 		}
-		if parts[1] == "" {
+		if !parsed.hasEnd {
 			end = total - 1
 		} else {
-			end, err = strconv.ParseInt(parts[1], 10, 64)
-			if err != nil || end < start {
-				return nil, ErrMediaRangeNotSatisfiable
-			}
+			end = parsed.end
 			if end >= total {
 				end = total - 1
 			}
@@ -503,6 +559,42 @@ func artifactFromProxyInput(taskID int64, input MediaArtifactInput) *MediaArtifa
 	return artifact
 }
 
+func artifactFromPublicImageInput(taskID int64, input MediaArtifactInput, publicURL string) *MediaArtifact {
+	artifact := artifactFromProxyInput(taskID, input)
+	artifact.PublicURL = publicURL
+	artifact.UpstreamReference = ""
+	return artifact
+}
+
+func IsSafePublicMediaURL(raw string) bool {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	return err == nil && parsed != nil && parsed.Scheme == "https" && parsed.Hostname() != "" &&
+		parsed.User == nil && parsed.RawQuery == "" && parsed.Fragment == ""
+}
+
+func NormalizeVideoContentType(value string) (string, bool) {
+	value = strings.TrimSpace(strings.SplitN(value, "\r", 2)[0])
+	value = strings.TrimSpace(strings.SplitN(value, "\n", 2)[0])
+	parsed, _, err := mime.ParseMediaType(value)
+	if err != nil || !strings.HasPrefix(strings.ToLower(parsed), "video/") {
+		return "application/octet-stream", false
+	}
+	return strings.ToLower(parsed), true
+}
+
+func MediaImageB64JSON(artifact MediaArtifact) (string, bool) {
+	if artifact.MediaType != MediaTypeImage {
+		return "", false
+	}
+	data, _, inline, err := decodeMediaDataReferenceBounded(
+		artifact.UpstreamReference, artifact.ContentType, maxInlineMediaDecodedBytes, MediaTypeImage,
+	)
+	if err != nil || !inline {
+		return "", false
+	}
+	return base64.StdEncoding.EncodeToString(data), true
+}
+
 func firstOutputVideo(artifacts []MediaArtifact) *MediaArtifact {
 	for i := range artifacts {
 		if artifacts[i].Direction == "output" && artifacts[i].MediaType == MediaTypeVideo {
@@ -515,7 +607,7 @@ func firstOutputVideo(artifacts []MediaArtifact) *MediaArtifact {
 
 func decodeMediaDataReference(reference, fallbackContentType string) ([]byte, string, bool) {
 	data, contentType, inline, err := decodeMediaDataReferenceBounded(
-		reference, fallbackContentType, maxInlineMediaDecodedBytes,
+		reference, fallbackContentType, maxInlineMediaDecodedBytes, MediaTypeVideo,
 	)
 	if err != nil {
 		return nil, "", false
@@ -523,7 +615,7 @@ func decodeMediaDataReference(reference, fallbackContentType string) ([]byte, st
 	return data, contentType, inline
 }
 
-func decodeMediaDataReferenceBounded(reference, fallbackContentType string, maxBytes int64) ([]byte, string, bool, error) {
+func decodeMediaDataReferenceBounded(reference, fallbackContentType string, maxBytes int64, expectedMediaType MediaType) ([]byte, string, bool, error) {
 	if !strings.HasPrefix(strings.ToLower(reference), "data:") {
 		return nil, "", false, nil
 	}
@@ -537,7 +629,10 @@ func decodeMediaDataReferenceBounded(reference, fallbackContentType string, maxB
 	} else {
 		return nil, "", true, ErrMediaContentUnavailable
 	}
-	if !strings.HasPrefix(strings.ToLower(contentType), "video/") {
+	if expectedMediaType != MediaTypeImage && expectedMediaType != MediaTypeVideo {
+		return nil, "", true, ErrMediaContentUnavailable
+	}
+	if !strings.HasPrefix(strings.ToLower(contentType), string(expectedMediaType)+"/") {
 		return nil, "", true, ErrMediaContentUnavailable
 	}
 	if maxBytes <= 0 {

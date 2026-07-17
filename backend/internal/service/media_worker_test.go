@@ -42,6 +42,24 @@ func TestMediaWorkerExecutionMatrix(t *testing.T) {
 	}
 }
 
+func TestMediaWorkerPersistsSubmittedAtBeforeSynchronousGenerate(t *testing.T) {
+	fixture := newMediaWorkerFixture(t, false, NativeAsyncUnsupported)
+	var requestTask *MediaTask
+	var storedAtGenerate *MediaTask
+	fixture.adapter.generateHook = func(req MediaExecutionRequest) {
+		requestTask = cloneWorkerTask(req.Task)
+		storedAtGenerate = fixture.repo.mustGet(fixture.task.ID)
+	}
+
+	require.NoError(t, fixture.worker.ProcessOne(context.Background(), fixture.task.ID))
+	require.NotNil(t, requestTask)
+	require.NotNil(t, requestTask.SubmittedAt)
+	require.Equal(t, MediaTaskStageGenerating, requestTask.Stage)
+	require.NotNil(t, storedAtGenerate)
+	require.NotNil(t, storedAtGenerate.SubmittedAt)
+	require.Equal(t, MediaTaskStageGenerating, storedAtGenerate.Stage)
+}
+
 func TestMediaWorkerDoesNotExecuteQueuedTaskBeforeReady(t *testing.T) {
 	fixture := newMediaWorkerFixture(t, true, NativeAsyncOptional)
 	fixture.repo.mu.Lock()
@@ -304,13 +322,6 @@ func TestMediaWorkerSchedulingExhaustionStillFailsAndRefunds(t *testing.T) {
 		assertFailed(t, fixture)
 	})
 
-	t.Run("fixed no accounts", func(t *testing.T) {
-		fixture := newMediaWorkerFixture(t, true, NativeAsyncRequired)
-		prepareRecoverableExistingUpstream(fixture, "existing-upstream")
-		fixture.account.Schedulable = false
-		assertFailed(t, fixture)
-	})
-
 	t.Run("fixed saturated", func(t *testing.T) {
 		fixture := newMediaWorkerFixture(t, true, NativeAsyncRequired)
 		prepareRecoverableExistingUpstream(fixture, "existing-upstream")
@@ -447,7 +458,8 @@ func TestMediaWorkerRecoverOnceCleansExpiredPendingInitializerWithoutIdempotency
 			fixture.worker.deps.Precharger = port
 			fixture.worker.deps.Billing = NewMediaBillingCoordinator(fixture.repo, port)
 			if tt.prechargeBeforeRun {
-				require.NoError(t, port.Precharge(context.Background(), fixture.repo.mustGet(fixture.task.ID), snapshot))
+				_, err := port.Precharge(context.Background(), fixture.repo.mustGet(fixture.task.ID), snapshot)
+				require.NoError(t, err)
 			}
 
 			require.NoError(t, fixture.worker.RecoverOnce(context.Background()))
@@ -988,6 +1000,92 @@ func TestMediaWorkerResumesExistingUpstreamTaskWithoutSubmit(t *testing.T) {
 	require.Zero(t, fixture.adapter.submitCalls.Load())
 	require.GreaterOrEqual(t, fixture.adapter.pollCalls.Load(), int64(1))
 	require.Equal(t, MediaTaskStatusCompleted, fixture.repo.mustGet(fixture.task.ID).Status)
+}
+
+func TestMediaWorkerFixedRecoveryIgnoresRealtimeEligibilityAndPollsOriginalAccount(t *testing.T) {
+	for _, tt := range []struct {
+		name   string
+		mutate func(*Account)
+	}{
+		{name: "unschedulable", mutate: func(account *Account) { account.Schedulable = false }},
+		{name: "disabled", mutate: func(account *Account) { account.Status = StatusDisabled }},
+		{name: "cooling", mutate: func(account *Account) {
+			until := time.Now().Add(time.Minute)
+			account.TempUnschedulableUntil = &until
+		}},
+		{name: "rate limited", mutate: func(account *Account) {
+			until := time.Now().Add(time.Minute)
+			account.RateLimitResetAt = &until
+		}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			fixture := newMediaWorkerFixture(t, true, NativeAsyncRequired)
+			prepareRecoverableExistingUpstream(fixture, "existing-upstream")
+			tt.mutate(fixture.account)
+			concurrency := &accountCandidateConcurrencyStub{}
+			fixture.worker.deps.Scheduler.selector = NewAccountCandidateSelector(
+				concurrency, nil, task12SchedulingConfig(),
+			)
+
+			require.NoError(t, fixture.worker.ProcessOne(context.Background(), fixture.task.ID))
+			stored := fixture.repo.mustGet(fixture.task.ID)
+			require.Equal(t, MediaTaskStatusCompleted, stored.Status)
+			require.Equal(t, fixture.account.ID, *stored.AccountID)
+			require.Zero(t, fixture.adapter.submitCalls.Load())
+			require.GreaterOrEqual(t, fixture.adapter.pollCalls.Load(), int64(1))
+			acquired, _, _, _ := concurrency.snapshot()
+			require.Equal(t, []int64{fixture.account.ID}, acquired)
+		})
+	}
+}
+
+func TestMediaWorkerSameWorkerIDReclaimFencesOldExecutionStageWrites(t *testing.T) {
+	fixture := newMediaWorkerFixture(t, true, NativeAsyncRequired)
+	prepareRecoverableExistingUpstream(fixture, "existing-upstream")
+	pollRelease := make(chan struct{})
+	var releasePoll sync.Once
+	t.Cleanup(func() { releasePoll.Do(func() { close(pollRelease) }) })
+	fixture.adapter.blockPollUntil(pollRelease)
+	fixture.worker.cfg.LeaseRenewInterval = time.Hour
+
+	oldDone := make(chan error, 1)
+	go func() { oldDone <- fixture.worker.ProcessOne(context.Background(), fixture.task.ID) }()
+	require.Eventually(t, func() bool {
+		return fixture.adapter.pollCalls.Load() >= 1
+	}, time.Second, time.Millisecond)
+	oldClaim := fixture.repo.mustGet(fixture.task.ID)
+	require.NotEmpty(t, oldClaim.ClaimToken)
+
+	fixture.repo.mu.Lock()
+	fixture.repo.tasks[fixture.task.ID].LeaseUntil = workerTimePtr(time.Now().Add(-time.Minute))
+	fixture.repo.mu.Unlock()
+
+	replacement := NewMediaWorker(fixture.worker.cfg, fixture.worker.deps)
+	replacement.workerID = fixture.worker.workerID
+	replacement.cfg.LeaseRenewInterval = time.Hour
+	newDone := make(chan error, 1)
+	go func() { newDone <- replacement.ProcessOne(context.Background(), fixture.task.ID) }()
+	require.Eventually(t, func() bool {
+		return fixture.adapter.pollCalls.Load() >= 2
+	}, time.Second, time.Millisecond)
+	newClaim := fixture.repo.mustGet(fixture.task.ID)
+	require.Equal(t, oldClaim.WorkerID, newClaim.WorkerID)
+	require.NotEqual(t, oldClaim.ClaimToken, newClaim.ClaimToken)
+
+	staleWrite, err := fixture.repo.UpdateClaimed(
+		context.Background(), fixture.task.ID, oldClaim.ClaimToken,
+		newClaim.Version, newClaim.Stage, map[string]any{"stage": MediaTaskStageStoring},
+	)
+	require.NoError(t, err)
+	require.False(t, staleWrite)
+	require.Equal(t, MediaTaskStagePolling, fixture.repo.mustGet(fixture.task.ID).Stage)
+
+	releasePoll.Do(func() { close(pollRelease) })
+	require.ErrorIs(t, <-oldDone, ErrMediaWorkerLeaseLost)
+	require.NoError(t, <-newDone)
+	require.Equal(t, MediaTaskStatusCompleted, fixture.repo.mustGet(fixture.task.ID).Status)
+	require.Equal(t, int64(1), fixture.artifactWriter.calls.Load())
+	require.Equal(t, 1, fixture.billing.settlementCalls())
 }
 
 func TestMediaWorkerRecoveryDoesNotDependOnCurrentModelOrHistoricalRequestSpec(t *testing.T) {
@@ -2003,7 +2101,7 @@ func newMediaWorkerFixture(t *testing.T, clientAsync bool, mode NativeAsyncMode)
 	account := &Account{ID: 7, Platform: PlatformOpenAI, Status: StatusActive, Schedulable: true, Concurrency: 1}
 	accountRepo := &workerAccountRepository{account: account}
 	selector := &workerSelector{refreshOwned: true}
-	scheduler := NewMediaScheduler(accountRepo, selector, registry)
+	scheduler := NewMediaScheduler(accountRepo, selector, registry, workerGroupRepository{})
 	modelRegistry := NewMediaModelRegistry(&workerModelRepository{definition: MediaModelDefinition{
 		ModelID: "fake-image", MediaType: MediaTypeImage, Operations: []MediaOperation{MediaOperationTextToImage}, Enabled: true,
 	}})
@@ -2146,15 +2244,15 @@ func newWorkerInitializationBillingPort() *workerInitializationBillingPort {
 	return &workerInitializationBillingPort{seen: make(map[string]struct{})}
 }
 
-func (p *workerInitializationBillingPort) Precharge(_ context.Context, task *MediaTask, snapshot MediaBillingSnapshot) error {
+func (p *workerInitializationBillingPort) Precharge(_ context.Context, task *MediaTask, snapshot MediaBillingSnapshot) (MediaPrechargeResult, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.prechargeErr != nil {
-		return p.prechargeErr
+		return MediaPrechargeResult{}, p.prechargeErr
 	}
 	key, err := MediaBillingIdempotencyKey(task, MediaBillingOperationPrecharge)
 	if err != nil {
-		return err
+		return MediaPrechargeResult{}, err
 	}
 	if _, exists := p.seen[key]; !exists {
 		p.seen[key] = struct{}{}
@@ -2162,28 +2260,31 @@ func (p *workerInitializationBillingPort) Precharge(_ context.Context, task *Med
 		p.balance -= snapshot.EstimatedAmount
 		if p.failAfterFirstPrechargeMutation {
 			p.failAfterFirstPrechargeMutation = false
-			return fmt.Errorf("precharge result unavailable: %w", ErrMediaPrechargeResultUnknown)
+			return MediaPrechargeResult{}, fmt.Errorf("precharge result unavailable: %w", ErrMediaPrechargeResultUnknown)
 		}
 	}
-	return nil
+	return MediaPrechargeResult{PrechargedAmount: snapshot.EstimatedAmount}, nil
 }
 
-func (p *workerInitializationBillingPort) SettleSuccess(context.Context, *MediaTask, MediaUsage) error {
-	return nil
+func (p *workerInitializationBillingPort) SettleSuccess(_ context.Context, task *MediaTask, _ MediaUsage) (MediaSettlementResult, error) {
+	return MediaSettlementResult{FinalAmount: task.PrechargedAmount}, nil
 }
 
-func (p *workerInitializationBillingPort) SettleFailure(_ context.Context, task *MediaTask, settlement MediaFailureSettlement) error {
+func (p *workerInitializationBillingPort) SettleFailure(_ context.Context, task *MediaTask, settlement MediaFailureSettlement) (MediaSettlementResult, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	key, err := MediaBillingIdempotencyKey(task, MediaBillingOperationFailure)
 	if err != nil {
-		return err
+		return MediaSettlementResult{}, err
 	}
 	if _, exists := p.seen[key]; !exists {
 		p.seen[key] = struct{}{}
 		p.balance += task.PrechargedAmount * settlement.RefundRatio
 	}
-	return nil
+	return MediaSettlementResult{
+		FinalAmount:    task.PrechargedAmount * (1 - settlement.RefundRatio),
+		RefundedAmount: task.PrechargedAmount * settlement.RefundRatio,
+	}, nil
 }
 
 func (p *workerInitializationBillingPort) prechargeMutationCalls() int {
@@ -2253,11 +2354,11 @@ func (r *workerTaskRepository) TransitionQueued(_ context.Context, id, expectedV
 	task.Version++
 	return true, nil
 }
-func (r *workerTaskRepository) TransitionSyncTimeout(_ context.Context, id, expectedVersion int64, from MediaTaskStatus, updates map[string]any) (bool, error) {
+func (r *workerTaskRepository) TransitionSyncTimeout(_ context.Context, id, expectedVersion int64, expectedStage MediaTaskStage, from MediaTaskStatus, updates map[string]any) (bool, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	task := r.tasks[id]
-	if task == nil || task.Status != from || task.Version != expectedVersion || task.SyncFallback || !from.CanTransitionTo(MediaTaskStatusFailed) {
+	if task == nil || task.Status != from || task.Stage != expectedStage || task.Version != expectedVersion || task.SyncFallback || !from.CanTransitionTo(MediaTaskStatusFailed) {
 		return false, nil
 	}
 	applyWorkerTaskUpdates(task, updates)
@@ -2265,7 +2366,7 @@ func (r *workerTaskRepository) TransitionSyncTimeout(_ context.Context, id, expe
 	task.Version++
 	return true, nil
 }
-func (r *workerTaskRepository) Claim(_ context.Context, id int64, workerID string, leaseUntil time.Time, version int64) (bool, error) {
+func (r *workerTaskRepository) Claim(_ context.Context, id int64, workerID, claimToken string, leaseUntil time.Time, version int64) (bool, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	task := r.tasks[id]
@@ -2279,11 +2380,11 @@ func (r *workerTaskRepository) Claim(_ context.Context, id int64, workerID strin
 	if task.Status == MediaTaskStatusInProgress && task.LeaseUntil != nil && task.LeaseUntil.After(time.Now()) {
 		return false, nil
 	}
-	task.Status, task.WorkerID, task.LeaseUntil = MediaTaskStatusInProgress, workerID, workerTimePtr(leaseUntil)
+	task.Status, task.WorkerID, task.ClaimToken, task.LeaseUntil = MediaTaskStatusInProgress, workerID, claimToken, workerTimePtr(leaseUntil)
 	task.Version++
 	return true, nil
 }
-func (r *workerTaskRepository) RenewLease(_ context.Context, id int64, workerID string, leaseUntil time.Time) (bool, error) {
+func (r *workerTaskRepository) RenewLease(_ context.Context, id int64, claimToken string, leaseUntil time.Time) (bool, error) {
 	r.renewLeaseCalls.Add(1)
 	if r.panicRenewLease.Load() {
 		panic("lease renew panic")
@@ -2294,17 +2395,20 @@ func (r *workerTaskRepository) RenewLease(_ context.Context, id int64, workerID 
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	task := r.tasks[id]
-	if task == nil || task.Status != MediaTaskStatusInProgress || task.WorkerID != workerID || task.LeaseUntil == nil || !task.LeaseUntil.After(time.Now()) {
+	if task == nil || task.Status != MediaTaskStatusInProgress || task.ClaimToken != claimToken || task.LeaseUntil == nil || !task.LeaseUntil.After(time.Now()) {
 		return false, nil
 	}
 	task.LeaseUntil = workerTimePtr(leaseUntil)
 	return true, nil
 }
-func (r *workerTaskRepository) UpdateClaimed(_ context.Context, id int64, workerID string, updates map[string]any) (bool, error) {
+func (r *workerTaskRepository) UpdateClaimed(_ context.Context, id int64, claimToken string, expectedVersion int64, expectedStage MediaTaskStage, updates map[string]any) (bool, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	task := r.tasks[id]
-	if task == nil || task.Status != MediaTaskStatusInProgress || task.WorkerID != workerID || task.LeaseUntil == nil || !task.LeaseUntil.After(time.Now()) {
+	if task == nil || task.Status != MediaTaskStatusInProgress || task.ClaimToken != claimToken || task.Version != expectedVersion || task.Stage != expectedStage || task.LeaseUntil == nil || !task.LeaseUntil.After(time.Now()) {
+		return false, nil
+	}
+	if next, ok := updates["stage"].(MediaTaskStage); ok && next != expectedStage && !expectedStage.CanTransitionTo(next) {
 		return false, nil
 	}
 	if _, persistsUpstreamID := updates["upstream_task_id"]; persistsUpstreamID {
@@ -2336,10 +2440,10 @@ func (r *workerTaskRepository) Transition(_ context.Context, id int64, from, to 
 	task.Status = to
 	return true, nil
 }
-func (r *workerTaskRepository) TransitionClaimed(_ context.Context, id int64, workerID string, expectedVersion int64, from, to MediaTaskStatus, updates map[string]any) (bool, error) {
+func (r *workerTaskRepository) TransitionClaimed(_ context.Context, id int64, claimToken string, expectedVersion int64, expectedStage MediaTaskStage, from, to MediaTaskStatus, updates map[string]any) (bool, error) {
 	r.mu.Lock()
 	task := r.tasks[id]
-	if task == nil || task.Status != from || task.WorkerID != workerID || task.Version != expectedVersion || task.LeaseUntil == nil || !task.LeaseUntil.After(time.Now()) || !from.CanTransitionTo(to) {
+	if task == nil || task.Status != from || task.ClaimToken != claimToken || task.Version != expectedVersion || task.Stage != expectedStage || task.LeaseUntil == nil || !task.LeaseUntil.After(time.Now()) || !from.CanTransitionTo(to) {
 		r.mu.Unlock()
 		return false, nil
 	}
@@ -2424,7 +2528,7 @@ func (r *workerTaskRepository) setExpiredLease(id int64, workerID string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	task := r.tasks[id]
-	task.Status, task.WorkerID, task.LeaseUntil = MediaTaskStatusInProgress, workerID, workerTimePtr(time.Now().Add(-time.Minute))
+	task.Status, task.WorkerID, task.ClaimToken, task.LeaseUntil = MediaTaskStatusInProgress, workerID, "expired-claim", workerTimePtr(time.Now().Add(-time.Minute))
 	task.Version++
 }
 
@@ -2477,6 +2581,8 @@ func applyWorkerTaskUpdates(task *MediaTask, updates map[string]any) {
 			task.FinalAmount = value.(float64)
 		case "refunded_amount":
 			task.RefundedAmount = value.(float64)
+		case "additional_charged_amount":
+			task.AdditionalChargedAmount = value.(float64)
 		case "lease_until":
 			if value == nil {
 				task.LeaseUntil = nil
@@ -2612,6 +2718,15 @@ type workerAccountRepository struct {
 	getEnteredOnce sync.Once
 }
 
+type workerGroupRepository struct{}
+
+func (workerGroupRepository) GetByID(ctx context.Context, id int64) (*Group, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return &Group{ID: id, Platform: PlatformOpenAI, MediaCrossPlatformEnabled: true}, nil
+}
+
 func (r *workerAccountRepository) ListSchedulableByGroupID(ctx context.Context, _ int64) ([]Account, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -2717,6 +2832,9 @@ func (s *workerSelector) Select(_ context.Context, req AccountCandidateSelection
 		Account: req.Candidates[0], Acquired: true,
 		ReleaseFunc: s.release, RefreshFunc: s.refresh,
 	}, nil
+}
+func (s *workerSelector) SelectFixed(ctx context.Context, req AccountCandidateSelectionRequest) (*AccountSelectionResult, error) {
+	return s.Select(ctx, req)
 }
 func (s *workerSelector) Wait(ctx context.Context, _ *AccountWaitPlan) (func(), error) {
 	s.waitCalls.Add(1)
@@ -2828,6 +2946,7 @@ type workerAdapter struct {
 	allowed             map[string]struct{}
 	request             MediaExecutionRequest
 	requests            []MediaExecutionRequest
+	generateHook        func(MediaExecutionRequest)
 }
 
 type nonAbortableWorkerAdapter struct {
@@ -2858,7 +2977,11 @@ func (a *workerAdapter) Generate(ctx context.Context, req MediaExecutionRequest)
 	a.mu.Lock()
 	a.request = req
 	result := a.pollResult.Result
+	hook := a.generateHook
 	a.mu.Unlock()
+	if hook != nil {
+		hook(req)
+	}
 	return result, nil
 }
 func (a *workerAdapter) Submit(ctx context.Context, req MediaExecutionRequest) (*MediaAsyncSubmission, error) {

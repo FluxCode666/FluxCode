@@ -45,6 +45,8 @@ func TestMediaTaskFoundationMigrationCatalogContract(t *testing.T) {
 			{table: "media_tasks", name: "request_spec", dataType: "jsonb", defaultPresent: true, defaultContains: "'{}'::jsonb"},
 			{table: "media_tasks", name: "candidate_snapshot", dataType: "jsonb", defaultPresent: true, defaultContains: "'[]'::jsonb"},
 			{table: "media_tasks", name: "precharged_amount", dataType: "numeric", defaultPresent: true, defaultContains: "0"},
+			{table: "media_tasks", name: "additional_charged_amount", dataType: "numeric", defaultPresent: true, defaultContains: "0"},
+			{table: "media_tasks", name: "claim_token", dataType: "character varying", maxLen: 64, defaultPresent: true, defaultContains: "''::character varying"},
 			{table: "media_tasks", name: "lease_until", dataType: "timestamp with time zone", nullable: true},
 			{table: "media_artifacts", name: "position", dataType: "integer", defaultPresent: true, defaultContains: "0"},
 			{table: "media_artifacts", name: "width", dataType: "integer", nullable: true},
@@ -116,7 +118,6 @@ WHERE table_schema = 'public'
 		requireIndexDefinitionContains(t, tx, "media_tasks", "idx_media_tasks_status_lease", "status", "lease_until")
 		requireIndexDefinitionContains(t, tx, "media_tasks", "idx_media_tasks_account", "account_id", "WHERE", "account_id IS NOT NULL")
 		requireIndexDefinitionContains(t, tx, "media_tasks", "idx_media_tasks_idempotency", "CREATE UNIQUE INDEX", "user_id", "api_key_id", "idempotency_key", "WHERE", "<>")
-		requireIndexDefinitionContains(t, tx, "media_artifacts", "idx_media_artifacts_task", "task_id", "direction", "position")
 		requireIndexDefinitionContains(t, tx, "media_model_definitions", "idx_media_model_definitions_enabled", "enabled", "media_type")
 	})
 
@@ -156,6 +157,42 @@ WHERE table_schema = 'public'
 		require.NoError(t, err)
 		require.Zero(t, binaryColumns, "media_artifacts must not store media binary content")
 	})
+}
+
+func TestMediaTaskFencingAndBillingResultsMigrationUpgradeContract(t *testing.T) {
+	ctx := context.Background()
+	body, err := migrations.FS.ReadFile("130_media_task_fencing_and_billing_results.sql")
+	require.NoError(t, err)
+	tx := testTx(t)
+
+	_, err = tx.ExecContext(ctx, `
+ALTER TABLE media_tasks
+    DROP COLUMN claim_token,
+    DROP COLUMN additional_charged_amount;
+CREATE INDEX IF NOT EXISTS idx_media_artifacts_task ON media_artifacts(task_id, direction, position);
+`)
+	require.NoError(t, err)
+
+	for attempt := 1; attempt <= 2; attempt++ {
+		_, err = tx.ExecContext(ctx, string(body))
+		require.NoError(t, err, "upgrade migration re-application %d", attempt)
+	}
+
+	requireColumn(t, tx, "media_tasks", "claim_token", "character varying", 64, false)
+	requireCatalogColumnDefault(t, tx, "media_tasks", "claim_token", true, "''::character varying")
+	requireColumn(t, tx, "media_tasks", "additional_charged_amount", "numeric", 0, false)
+	requireCatalogColumnDefault(t, tx, "media_tasks", "additional_charged_amount", true, "0")
+
+	var redundantIndexes int
+	err = tx.QueryRowContext(ctx, `
+SELECT COUNT(*)
+FROM pg_indexes
+WHERE schemaname = 'public'
+  AND tablename = 'media_artifacts'
+  AND indexname = 'idx_media_artifacts_task'
+`).Scan(&redundantIndexes)
+	require.NoError(t, err)
+	require.Zero(t, redundantIndexes)
 }
 
 func requireCatalogColumnDefault(t *testing.T, tx *sql.Tx, table, column string, present bool, contains string) {

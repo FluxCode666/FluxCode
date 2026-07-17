@@ -82,6 +82,8 @@ type MediaTask struct {
 	FinalAmount float64 `json:"final_amount,omitempty"`
 	// RefundedAmount holds the value of the "refunded_amount" field.
 	RefundedAmount float64 `json:"refunded_amount,omitempty"`
+	// AdditionalChargedAmount holds the value of the "additional_charged_amount" field.
+	AdditionalChargedAmount float64 `json:"additional_charged_amount,omitempty"`
 	// RetryCount holds the value of the "retry_count" field.
 	RetryCount int `json:"retry_count,omitempty"`
 	// ErrorCode holds the value of the "error_code" field.
@@ -90,6 +92,8 @@ type MediaTask struct {
 	ErrorMessage string `json:"error_message,omitempty"`
 	// WorkerID holds the value of the "worker_id" field.
 	WorkerID string `json:"worker_id,omitempty"`
+	// ClaimToken holds the value of the "claim_token" field.
+	ClaimToken string `json:"claim_token,omitempty"`
 	// LeaseUntil holds the value of the "lease_until" field.
 	LeaseUntil *time.Time `json:"lease_until,omitempty"`
 	// Version holds the value of the "version" field.
@@ -114,11 +118,11 @@ func (*MediaTask) scanValues(columns []string) ([]any, error) {
 			values[i] = new([]byte)
 		case mediatask.FieldClientAsync, mediatask.FieldSyncFallback:
 			values[i] = new(sql.NullBool)
-		case mediatask.FieldPrechargedAmount, mediatask.FieldFinalAmount, mediatask.FieldRefundedAmount:
+		case mediatask.FieldPrechargedAmount, mediatask.FieldFinalAmount, mediatask.FieldRefundedAmount, mediatask.FieldAdditionalChargedAmount:
 			values[i] = new(sql.NullFloat64)
 		case mediatask.FieldID, mediatask.FieldUserID, mediatask.FieldAPIKeyID, mediatask.FieldGroupID, mediatask.FieldChannelID, mediatask.FieldAccountID, mediatask.FieldProgress, mediatask.FieldRetryCount, mediatask.FieldVersion:
 			values[i] = new(sql.NullInt64)
-		case mediatask.FieldPublicID, mediatask.FieldMediaType, mediatask.FieldOperation, mediatask.FieldRequestedModel, mediatask.FieldUpstreamModel, mediatask.FieldAdapter, mediatask.FieldNativeAsyncMode, mediatask.FieldStatus, mediatask.FieldStage, mediatask.FieldRequestFingerprint, mediatask.FieldIdempotencyKey, mediatask.FieldUpstreamTaskID, mediatask.FieldBillingStatus, mediatask.FieldErrorCode, mediatask.FieldErrorMessage, mediatask.FieldWorkerID:
+		case mediatask.FieldPublicID, mediatask.FieldMediaType, mediatask.FieldOperation, mediatask.FieldRequestedModel, mediatask.FieldUpstreamModel, mediatask.FieldAdapter, mediatask.FieldNativeAsyncMode, mediatask.FieldStatus, mediatask.FieldStage, mediatask.FieldRequestFingerprint, mediatask.FieldIdempotencyKey, mediatask.FieldUpstreamTaskID, mediatask.FieldBillingStatus, mediatask.FieldErrorCode, mediatask.FieldErrorMessage, mediatask.FieldWorkerID, mediatask.FieldClaimToken:
 			values[i] = new(sql.NullString)
 		case mediatask.FieldCreatedAt, mediatask.FieldUpdatedAt, mediatask.FieldLeaseUntil, mediatask.FieldSubmittedAt, mediatask.FieldStartedAt, mediatask.FieldFinishedAt, mediatask.FieldSyncFallbackAt:
 			values[i] = new(sql.NullTime)
@@ -350,6 +354,12 @@ func (_m *MediaTask) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.RefundedAmount = value.Float64
 			}
+		case mediatask.FieldAdditionalChargedAmount:
+			if value, ok := values[i].(*sql.NullFloat64); !ok {
+				return fmt.Errorf("unexpected type %T for field additional_charged_amount", values[i])
+			} else if value.Valid {
+				_m.AdditionalChargedAmount = value.Float64
+			}
 		case mediatask.FieldRetryCount:
 			if value, ok := values[i].(*sql.NullInt64); !ok {
 				return fmt.Errorf("unexpected type %T for field retry_count", values[i])
@@ -373,6 +383,12 @@ func (_m *MediaTask) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field worker_id", values[i])
 			} else if value.Valid {
 				_m.WorkerID = value.String
+			}
+		case mediatask.FieldClaimToken:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field claim_token", values[i])
+			} else if value.Valid {
+				_m.ClaimToken = value.String
 			}
 		case mediatask.FieldLeaseUntil:
 			if value, ok := values[i].(*sql.NullTime); !ok {
@@ -553,6 +569,9 @@ func (_m *MediaTask) String() string {
 	builder.WriteString("refunded_amount=")
 	builder.WriteString(fmt.Sprintf("%v", _m.RefundedAmount))
 	builder.WriteString(", ")
+	builder.WriteString("additional_charged_amount=")
+	builder.WriteString(fmt.Sprintf("%v", _m.AdditionalChargedAmount))
+	builder.WriteString(", ")
 	builder.WriteString("retry_count=")
 	builder.WriteString(fmt.Sprintf("%v", _m.RetryCount))
 	builder.WriteString(", ")
@@ -564,6 +583,9 @@ func (_m *MediaTask) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("worker_id=")
 	builder.WriteString(_m.WorkerID)
+	builder.WriteString(", ")
+	builder.WriteString("claim_token=")
+	builder.WriteString(_m.ClaimToken)
 	builder.WriteString(", ")
 	if v := _m.LeaseUntil; v != nil {
 		builder.WriteString("lease_until=")

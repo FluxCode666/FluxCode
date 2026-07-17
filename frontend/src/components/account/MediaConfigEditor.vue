@@ -24,9 +24,20 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useI18n()
+
+function cloneModelOverrides(
+  source: Record<string, MediaAccountModelOverride> | undefined
+): Record<string, MediaAccountModelOverride> {
+  const result = Object.create(null) as Record<string, MediaAccountModelOverride>
+  for (const [model, override] of Object.entries(source || {})) {
+    result[model] = override
+  }
+  return result
+}
+
 const local = ref<MediaAccountConfig>({
   ...props.modelValue,
-  model_overrides: { ...props.modelValue.model_overrides }
+  model_overrides: cloneModelOverrides(props.modelValue.model_overrides)
 })
 const rows = ref<OverrideRow[]>([])
 const duplicateModel = ref('')
@@ -77,7 +88,7 @@ function refreshValidity(): boolean {
 function hydrate(value: MediaAccountConfig) {
   local.value = {
     ...value,
-    model_overrides: { ...(value.model_overrides || {}) }
+    model_overrides: cloneModelOverrides(value.model_overrides)
   }
   rows.value = Object.entries(value.model_overrides || {}).map(([model, override]) =>
     createRow(model, override)
@@ -103,7 +114,7 @@ function buildModelOverrides(): Record<string, MediaAccountModelOverride> | null
     return null
   }
 
-  const result: Record<string, MediaAccountModelOverride> = {}
+  const result = cloneModelOverrides(undefined)
 
   for (const row of rows.value) {
     const model = row.model.trim()
@@ -140,7 +151,7 @@ function publish(patch: Partial<MediaAccountConfig> = {}) {
   }
   const emittedValue: MediaAccountConfig = {
     ...next,
-    model_overrides: { ...next.model_overrides }
+    model_overrides: cloneModelOverrides(next.model_overrides)
   }
   local.value = emittedValue
   lastEmittedObject = emittedValue

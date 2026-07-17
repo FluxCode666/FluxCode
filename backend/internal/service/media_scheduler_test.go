@@ -23,6 +23,37 @@ type mediaSchedulerAccountRepoStub struct {
 	updateLastUsed []int64
 }
 
+type mediaSchedulerGroupRepoStub struct {
+	group *Group
+	err   error
+	calls atomic.Int64
+}
+
+func (s *mediaSchedulerGroupRepoStub) GetByID(ctx context.Context, _ int64) (*Group, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	s.calls.Add(1)
+	if s.err != nil {
+		return nil, s.err
+	}
+	if s.group == nil {
+		return nil, ErrGroupNotFound
+	}
+	copy := *s.group
+	return &copy, nil
+}
+
+func newTestMediaScheduler(accountRepo MediaSchedulerAccountRepository, selector AccountCandidateSelector, adapters *MediaAdapterRegistry, groups ...MediaSchedulerGroupRepository) *MediaScheduler {
+	groupRepo := MediaSchedulerGroupRepository(&mediaSchedulerGroupRepoStub{group: &Group{
+		Platform: PlatformOpenAI, MediaCrossPlatformEnabled: true,
+	}})
+	if len(groups) > 0 {
+		groupRepo = groups[0]
+	}
+	return NewMediaScheduler(accountRepo, selector, adapters, groupRepo)
+}
+
 func (s *mediaSchedulerAccountRepoStub) ListSchedulableByGroupID(ctx context.Context, _ int64) ([]Account, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -121,6 +152,10 @@ func (s *mediaSchedulerSelectorStub) Select(_ context.Context, req AccountCandid
 	return nil, ErrNoAvailableAccounts
 }
 
+func (s *mediaSchedulerSelectorStub) SelectFixed(ctx context.Context, req AccountCandidateSelectionRequest) (*AccountSelectionResult, error) {
+	return s.Select(ctx, req)
+}
+
 func (s *mediaSchedulerSelectorStub) Wait(context.Context, *AccountWaitPlan) (func(), error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -160,7 +195,7 @@ func TestMediaSchedulerSelectsAcrossPlatformsForSameModel(t *testing.T) {
 	registry := NewMediaAdapterRegistry()
 	registry.Register("gemini", NewFakeMediaAdapter(FakeMediaAdapterOptions{Name: "gemini", NativeAsyncMode: NativeAsyncOptional}))
 	registry.Register("xai", NewFakeMediaAdapter(FakeMediaAdapterOptions{Name: "xai", NativeAsyncMode: NativeAsyncRequired}))
-	scheduler := NewMediaScheduler(repo, selector, registry)
+	scheduler := newTestMediaScheduler(repo, selector, registry)
 
 	snapshot, err := scheduler.SnapshotCandidates(context.Background(), 7, "veo-3.1")
 	require.NoError(t, err)
@@ -178,6 +213,36 @@ func TestMediaSchedulerSelectsAcrossPlatformsForSameModel(t *testing.T) {
 	owned, refreshErr := selection.RefreshFunc(context.Background())
 	require.NoError(t, refreshErr)
 	require.True(t, owned)
+}
+
+func TestMediaSchedulerSnapshotRechecksCurrentGroupPlatformPolicy(t *testing.T) {
+	repo := &mediaSchedulerAccountRepoStub{accounts: []Account{
+		task12Account(1, PlatformOpenAI, "image", "openai-image", "sync", NativeAsyncUnsupported),
+		task12Account(2, PlatformGemini, "image", "gemini-image", "sync", NativeAsyncUnsupported),
+	}}
+	group := &Group{ID: 7, Platform: PlatformOpenAI, MediaCrossPlatformEnabled: false}
+	groups := &mediaSchedulerGroupRepoStub{group: group}
+	registry := NewMediaAdapterRegistry()
+	registry.Register("sync", NewFakeMediaAdapter(FakeMediaAdapterOptions{Name: "sync", NativeAsyncMode: NativeAsyncUnsupported}))
+	scheduler := newTestMediaScheduler(repo, &mediaSchedulerSelectorStub{selectedID: 1}, registry, groups)
+
+	snapshot, err := scheduler.SnapshotCandidates(context.Background(), group.ID, "image")
+	require.NoError(t, err)
+	require.Equal(t, []int64{1}, mediaSchedulerSnapshotAccountIDs(snapshot))
+
+	groups.group.MediaCrossPlatformEnabled = true
+	snapshot, err = scheduler.SnapshotCandidates(context.Background(), group.ID, "image")
+	require.NoError(t, err)
+	require.Equal(t, []int64{1, 2}, mediaSchedulerSnapshotAccountIDs(snapshot))
+	require.Equal(t, int64(2), groups.calls.Load())
+}
+
+func mediaSchedulerSnapshotAccountIDs(snapshot []MediaAccountCandidateSnapshot) []int64 {
+	ids := make([]int64, 0, len(snapshot))
+	for _, candidate := range snapshot {
+		ids = append(ids, candidate.AccountID)
+	}
+	return ids
 }
 
 func TestMediaSchedulerSnapshotFiltersAvailabilityModelAndAdapterMethodSets(t *testing.T) {
@@ -198,7 +263,7 @@ func TestMediaSchedulerSnapshotFiltersAvailabilityModelAndAdapterMethodSets(t *t
 	registry.Register("sync", NewFakeMediaAdapter(FakeMediaAdapterOptions{Name: "sync", NativeAsyncMode: NativeAsyncUnsupported}))
 	registry.Register("async", NewFakeMediaAdapter(FakeMediaAdapterOptions{Name: "async", NativeAsyncMode: NativeAsyncRequired}))
 	repo := &mediaSchedulerAccountRepoStub{accounts: []Account{validSync, missingAdapter, wrongRequired, wrongOptional, disabled, cooling, unsupportedModel, noConfig}}
-	scheduler := NewMediaScheduler(repo, &mediaSchedulerSelectorStub{selectedID: 1}, registry)
+	scheduler := newTestMediaScheduler(repo, &mediaSchedulerSelectorStub{selectedID: 1}, registry)
 
 	snapshot, err := scheduler.SnapshotCandidates(context.Background(), 1, "image")
 	require.NoError(t, err)
@@ -209,7 +274,7 @@ func TestMediaSchedulerSnapshotFiltersAvailabilityModelAndAdapterMethodSets(t *t
 }
 
 func TestMediaSchedulerSnapshotReturnsStableNoAvailableError(t *testing.T) {
-	scheduler := NewMediaScheduler(&mediaSchedulerAccountRepoStub{}, &mediaSchedulerSelectorStub{}, NewMediaAdapterRegistry())
+	scheduler := newTestMediaScheduler(&mediaSchedulerAccountRepoStub{}, &mediaSchedulerSelectorStub{}, NewMediaAdapterRegistry())
 	snapshot, err := scheduler.SnapshotCandidates(context.Background(), 1, "image")
 	require.Nil(t, snapshot)
 	require.ErrorIs(t, err, ErrNoAvailableAccounts)
@@ -223,7 +288,7 @@ func TestMediaSchedulerSelectExcludesAndUsesFrozenResolvedModel(t *testing.T) {
 	registry := NewMediaAdapterRegistry()
 	registry.Register("xai", NewFakeMediaAdapter(FakeMediaAdapterOptions{Name: "xai", NativeAsyncMode: NativeAsyncRequired}))
 	registry.Register("gemini", NewFakeMediaAdapter(FakeMediaAdapterOptions{Name: "gemini", NativeAsyncMode: NativeAsyncOptional}))
-	scheduler := NewMediaScheduler(repo, selector, registry)
+	scheduler := newTestMediaScheduler(repo, selector, registry)
 	snapshot, err := scheduler.SnapshotCandidates(context.Background(), 1, "image")
 	require.NoError(t, err)
 
@@ -249,7 +314,7 @@ func TestMediaSchedulerSelectRechecksRealtimeAvailabilityAndAdapter(t *testing.T
 	selector := &mediaSchedulerSelectorStub{selectedID: 3}
 	registry := NewMediaAdapterRegistry()
 	registry.Register("sync", NewFakeMediaAdapter(FakeMediaAdapterOptions{Name: "sync", NativeAsyncMode: NativeAsyncUnsupported}))
-	scheduler := NewMediaScheduler(repo, selector, registry)
+	scheduler := newTestMediaScheduler(repo, selector, registry)
 	snapshot, err := scheduler.SnapshotCandidates(context.Background(), 1, "image")
 	require.NoError(t, err)
 
@@ -261,7 +326,7 @@ func TestMediaSchedulerSelectRechecksRealtimeAvailabilityAndAdapter(t *testing.T
 	require.Equal(t, int64(3), selection.Account.ID)
 	require.Len(t, selector.candidates, 1)
 
-	missingRegistryScheduler := NewMediaScheduler(repo, selector, NewMediaAdapterRegistry())
+	missingRegistryScheduler := newTestMediaScheduler(repo, selector, NewMediaAdapterRegistry())
 	selection, err = missingRegistryScheduler.Select(context.Background(), MediaScheduleRequest{GroupID: 1, CandidateSnapshot: snapshot})
 	require.Nil(t, selection)
 	require.ErrorIs(t, err, ErrNoAvailableAccounts)
@@ -274,7 +339,7 @@ func TestMediaSchedulerSelectRejectsDuplicateMalformedAndSelectorEscape(t *testi
 	registry.Register("sync", NewFakeMediaAdapter(FakeMediaAdapterOptions{Name: "sync", NativeAsyncMode: NativeAsyncUnsupported}))
 
 	t.Run("duplicate snapshot id", func(t *testing.T) {
-		scheduler := NewMediaScheduler(repo, &mediaSchedulerSelectorStub{selectedID: 1}, registry)
+		scheduler := newTestMediaScheduler(repo, &mediaSchedulerSelectorStub{selectedID: 1}, registry)
 		duplicate := []MediaAccountCandidateSnapshot{
 			{AccountID: 1, Platform: PlatformOpenAI, ResolvedModel: ResolvedMediaAccountModel{Adapter: "sync", UpstreamModel: "one", NativeAsyncMode: NativeAsyncUnsupported}},
 			{AccountID: 1, Platform: PlatformOpenAI, ResolvedModel: ResolvedMediaAccountModel{Adapter: "sync", UpstreamModel: "two", NativeAsyncMode: NativeAsyncUnsupported}},
@@ -285,7 +350,7 @@ func TestMediaSchedulerSelectRejectsDuplicateMalformedAndSelectorEscape(t *testi
 	})
 
 	t.Run("empty resolved model", func(t *testing.T) {
-		scheduler := NewMediaScheduler(repo, &mediaSchedulerSelectorStub{selectedID: 1}, registry)
+		scheduler := newTestMediaScheduler(repo, &mediaSchedulerSelectorStub{selectedID: 1}, registry)
 		selection, err := scheduler.Select(context.Background(), MediaScheduleRequest{GroupID: 1, CandidateSnapshot: []MediaAccountCandidateSnapshot{{AccountID: 1, Platform: PlatformOpenAI}}})
 		require.Nil(t, selection)
 		require.ErrorIs(t, err, ErrNoAvailableAccounts)
@@ -296,7 +361,7 @@ func TestMediaSchedulerSelectRejectsDuplicateMalformedAndSelectorEscape(t *testi
 		selector := &mediaSchedulerSelectorStub{result: &AccountSelectionResult{
 			Account: &Account{ID: 99}, Acquired: true, ReleaseFunc: func() { releases.Add(1) },
 		}}
-		scheduler := NewMediaScheduler(repo, selector, registry)
+		scheduler := newTestMediaScheduler(repo, selector, registry)
 		snapshot, err := scheduler.SnapshotCandidates(context.Background(), 1, "image")
 		require.NoError(t, err)
 		selection, err := scheduler.Select(context.Background(), MediaScheduleRequest{GroupID: 1, CandidateSnapshot: snapshot})
@@ -307,7 +372,7 @@ func TestMediaSchedulerSelectRejectsDuplicateMalformedAndSelectorEscape(t *testi
 
 	t.Run("nil selector result", func(t *testing.T) {
 		selector := &mediaSchedulerSelectorStub{returnNil: true}
-		scheduler := NewMediaScheduler(repo, selector, registry)
+		scheduler := newTestMediaScheduler(repo, selector, registry)
 		snapshot, err := scheduler.SnapshotCandidates(context.Background(), 1, "image")
 		require.NoError(t, err)
 		selection, err := scheduler.Select(context.Background(), MediaScheduleRequest{GroupID: 1, CandidateSnapshot: snapshot})
@@ -329,7 +394,7 @@ func TestMediaSchedulerReleasesSelectorResultReturnedWithError(t *testing.T) {
 	}
 	registry := NewMediaAdapterRegistry()
 	registry.Register("sync", NewFakeMediaAdapter(FakeMediaAdapterOptions{Name: "sync", NativeAsyncMode: NativeAsyncUnsupported}))
-	scheduler := NewMediaScheduler(repo, selector, registry)
+	scheduler := newTestMediaScheduler(repo, selector, registry)
 	snapshot, err := scheduler.SnapshotCandidates(context.Background(), 1, "image")
 	require.NoError(t, err)
 
@@ -349,7 +414,7 @@ func TestMediaSchedulerRejectsStableAcquiredSelectionWithoutRefresh(t *testing.T
 	}}
 	registry := NewMediaAdapterRegistry()
 	registry.Register("sync", NewFakeMediaAdapter(FakeMediaAdapterOptions{Name: "sync", NativeAsyncMode: NativeAsyncUnsupported}))
-	scheduler := NewMediaScheduler(repo, selector, registry)
+	scheduler := newTestMediaScheduler(repo, selector, registry)
 	snapshot, err := scheduler.SnapshotCandidates(context.Background(), 1, "image")
 	require.NoError(t, err)
 
@@ -366,7 +431,7 @@ func TestMediaSchedulerRejectsMalformedSelectorWaitPlans(t *testing.T) {
 	repo := &mediaSchedulerAccountRepoStub{accounts: []Account{account}}
 	registry := NewMediaAdapterRegistry()
 	registry.Register("sync", NewFakeMediaAdapter(FakeMediaAdapterOptions{Name: "sync", NativeAsyncMode: NativeAsyncUnsupported}))
-	snapshotScheduler := NewMediaScheduler(repo, &mediaSchedulerSelectorStub{selectedID: 1}, registry)
+	snapshotScheduler := newTestMediaScheduler(repo, &mediaSchedulerSelectorStub{selectedID: 1}, registry)
 	snapshot, err := snapshotScheduler.SnapshotCandidates(context.Background(), 1, "image")
 	require.NoError(t, err)
 
@@ -391,7 +456,7 @@ func TestMediaSchedulerRejectsMalformedSelectorWaitPlans(t *testing.T) {
 			result := validWait()
 			tt.mutate(result)
 			selector := &mediaSchedulerSelectorStub{result: result}
-			scheduler := NewMediaScheduler(repo, selector, registry)
+			scheduler := newTestMediaScheduler(repo, selector, registry)
 			selection, err := scheduler.Select(context.Background(), MediaScheduleRequest{GroupID: 1, CandidateSnapshot: snapshot})
 			require.Nil(t, selection)
 			require.ErrorIs(t, err, ErrNoAvailableAccounts)
@@ -403,7 +468,7 @@ func TestMediaSchedulerRejectsMalformedSelectorWaitPlans(t *testing.T) {
 		result := validWait()
 		result.ReleaseFunc = func() { releases.Add(1) }
 		selector := &mediaSchedulerSelectorStub{result: result}
-		scheduler := NewMediaScheduler(repo, selector, registry)
+		scheduler := newTestMediaScheduler(repo, selector, registry)
 		selection, err := scheduler.Select(context.Background(), MediaScheduleRequest{GroupID: 1, CandidateSnapshot: snapshot})
 		require.Nil(t, selection)
 		require.ErrorIs(t, err, ErrNoAvailableAccounts)
@@ -416,7 +481,7 @@ func TestMediaSchedulerRejectsMalformedSelectorWaitPlans(t *testing.T) {
 			ReleaseFunc: func() { releases.Add(1) },
 			WaitPlan:    &AccountWaitPlan{AccountID: 1, MaxConcurrency: 2, Timeout: time.Second, MaxWaiting: 1},
 		}}
-		scheduler := NewMediaScheduler(repo, selector, registry)
+		scheduler := newTestMediaScheduler(repo, selector, registry)
 		selection, err := scheduler.Select(context.Background(), MediaScheduleRequest{GroupID: 1, CandidateSnapshot: snapshot})
 		require.Nil(t, selection)
 		require.ErrorIs(t, err, ErrNoAvailableAccounts)
@@ -427,14 +492,14 @@ func TestMediaSchedulerRejectsMalformedSelectorWaitPlans(t *testing.T) {
 		zero := task12Account(1, PlatformOpenAI, "image", "up", "sync", NativeAsyncUnsupported)
 		zero.Concurrency = 0
 		zeroRepo := &mediaSchedulerAccountRepoStub{accounts: []Account{zero}}
-		zeroSnapshotScheduler := NewMediaScheduler(zeroRepo, &mediaSchedulerSelectorStub{selectedID: 1}, registry)
+		zeroSnapshotScheduler := newTestMediaScheduler(zeroRepo, &mediaSchedulerSelectorStub{selectedID: 1}, registry)
 		zeroSnapshot, snapshotErr := zeroSnapshotScheduler.SnapshotCandidates(context.Background(), 1, "image")
 		require.NoError(t, snapshotErr)
 		selector := &mediaSchedulerSelectorStub{result: &AccountSelectionResult{
 			Account:  &Account{ID: 1},
 			WaitPlan: &AccountWaitPlan{AccountID: 1, MaxConcurrency: 0, Timeout: time.Second, MaxWaiting: 1},
 		}}
-		scheduler := NewMediaScheduler(zeroRepo, selector, registry)
+		scheduler := newTestMediaScheduler(zeroRepo, selector, registry)
 		selection, selectErr := scheduler.Select(context.Background(), MediaScheduleRequest{GroupID: 1, CandidateSnapshot: zeroSnapshot})
 		require.Nil(t, selection)
 		require.ErrorIs(t, selectErr, ErrNoAvailableAccounts)
@@ -446,7 +511,7 @@ func TestMediaSchedulerWaitMarkUsedAndFixedAccountBoundaries(t *testing.T) {
 	repo := &mediaSchedulerAccountRepoStub{accounts: []Account{{ID: 7, Status: StatusDisabled, Schedulable: false}}}
 	waitRelease := func() {}
 	selector := &mediaSchedulerSelectorStub{waitFunc: waitRelease}
-	scheduler := NewMediaScheduler(repo, selector, NewMediaAdapterRegistry())
+	scheduler := newTestMediaScheduler(repo, selector, NewMediaAdapterRegistry())
 
 	release, err := scheduler.WaitForSlot(context.Background(), &MediaAccountSelection{
 		Account:  &Account{ID: 7, Concurrency: 2},
@@ -478,7 +543,7 @@ func TestMediaSchedulerDeletedFixedAccountIsUnavailableAndPreservesNotFound(t *t
 		getErr: fmt.Errorf("soft-deleted account: %w", ErrAccountNotFound),
 	}
 	selector := &mediaSchedulerSelectorStub{selectedID: accountID}
-	scheduler := NewMediaScheduler(repo, selector, NewMediaAdapterRegistry())
+	scheduler := newTestMediaScheduler(repo, selector, NewMediaAdapterRegistry())
 
 	selection, err := scheduler.SelectFixed(context.Background(), MediaFixedAccountRequest{AccountID: accountID})
 	require.Nil(t, selection)
@@ -502,7 +567,7 @@ func TestMediaSchedulerSelectFixedUsesSingleRealtimeAccountAndStableKey(t *testi
 		Account: &Account{ID: account.ID}, Acquired: true, ReleaseFunc: func() { releases.Add(1) },
 		RefreshFunc: func(context.Context) (bool, error) { return true, nil },
 	}}
-	scheduler := NewMediaScheduler(repo, selector, NewMediaAdapterRegistry())
+	scheduler := newTestMediaScheduler(repo, selector, NewMediaAdapterRegistry())
 
 	selection, err := scheduler.SelectFixed(context.Background(), MediaFixedAccountRequest{
 		AccountID: account.ID, GroupID: 3, SessionHash: "task_public_id", SlotID: "media-task:task_public_id",
@@ -537,7 +602,7 @@ func TestMediaSchedulerSelectFixedReturnsTrustedWaitPlan(t *testing.T) {
 		},
 		waitFunc: func() { waitReleaseCalls.Add(1) },
 	}
-	scheduler := NewMediaScheduler(repo, selector, NewMediaAdapterRegistry())
+	scheduler := newTestMediaScheduler(repo, selector, NewMediaAdapterRegistry())
 
 	selection, err := scheduler.SelectFixed(context.Background(), MediaFixedAccountRequest{
 		AccountID: account.ID, GroupID: 3, SessionHash: "task_public_id", SlotID: "media-task:task_public_id",
@@ -558,7 +623,7 @@ func TestMediaSchedulerSelectFixedReturnsTrustedWaitPlan(t *testing.T) {
 	require.Equal(t, 1, selector.waitCalls)
 }
 
-func TestMediaSchedulerSelectFixedRejectsUnschedulableAndSelectorDrift(t *testing.T) {
+func TestMediaSchedulerSelectFixedIgnoresRealtimeEligibilityAndRejectsSelectorDrift(t *testing.T) {
 	for _, tt := range []struct {
 		name   string
 		mutate func(*Account)
@@ -568,18 +633,24 @@ func TestMediaSchedulerSelectFixedRejectsUnschedulableAndSelectorDrift(t *testin
 			until := time.Now().Add(time.Minute)
 			account.TempUnschedulableUntil = &until
 		}},
+		{name: "rate limited account", mutate: func(account *Account) {
+			until := time.Now().Add(time.Minute)
+			account.RateLimitResetAt = &until
+		}},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			account := task12Account(7, PlatformOpenAI, "image", "upstream", "adapter", NativeAsyncRequired)
 			tt.mutate(&account)
 			repo := &mediaSchedulerAccountRepoStub{accounts: []Account{account}}
-			selector := &mediaSchedulerSelectorStub{selectedID: account.ID}
-			scheduler := NewMediaScheduler(repo, selector, NewMediaAdapterRegistry())
+			account.Concurrency = 0
+			selector := NewAccountCandidateSelector(nil, nil, task12SchedulingConfig())
+			scheduler := newTestMediaScheduler(repo, selector, NewMediaAdapterRegistry())
 
 			selection, err := scheduler.SelectFixed(context.Background(), MediaFixedAccountRequest{AccountID: account.ID})
-			require.Nil(t, selection)
-			require.ErrorIs(t, err, ErrNoAvailableAccounts)
-			require.Zero(t, selector.requests)
+			require.NoError(t, err)
+			require.NotNil(t, selection)
+			require.Equal(t, account.ID, selection.Account.ID)
+			require.True(t, selection.Acquired)
 		})
 	}
 
@@ -589,7 +660,7 @@ func TestMediaSchedulerSelectFixedRejectsUnschedulableAndSelectorDrift(t *testin
 			account.Concurrency = concurrency
 			repo := &mediaSchedulerAccountRepoStub{accounts: []Account{account}}
 			selector := &mediaSchedulerSelectorStub{selectedID: account.ID}
-			scheduler := NewMediaScheduler(repo, selector, NewMediaAdapterRegistry())
+			scheduler := newTestMediaScheduler(repo, selector, NewMediaAdapterRegistry())
 
 			selection, err := scheduler.SelectFixed(context.Background(), MediaFixedAccountRequest{AccountID: account.ID})
 			require.NoError(t, err)
@@ -607,7 +678,7 @@ func TestMediaSchedulerSelectFixedRejectsUnschedulableAndSelectorDrift(t *testin
 		selector := &mediaSchedulerSelectorStub{result: &AccountSelectionResult{
 			Account: &Account{ID: 99}, Acquired: true, ReleaseFunc: func() { releases.Add(1) },
 		}}
-		scheduler := NewMediaScheduler(repo, selector, NewMediaAdapterRegistry())
+		scheduler := newTestMediaScheduler(repo, selector, NewMediaAdapterRegistry())
 
 		selection, err := scheduler.SelectFixed(context.Background(), MediaFixedAccountRequest{AccountID: account.ID})
 		require.Nil(t, selection)
@@ -632,7 +703,7 @@ func TestMediaSchedulerWaitForSlotRejectsUntrustedSelections(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			selector := &mediaSchedulerSelectorStub{waitFunc: func() {}}
-			scheduler := NewMediaScheduler(&mediaSchedulerAccountRepoStub{}, selector, NewMediaAdapterRegistry())
+			scheduler := newTestMediaScheduler(&mediaSchedulerAccountRepoStub{}, selector, NewMediaAdapterRegistry())
 			release, err := scheduler.WaitForSlot(context.Background(), tt.selection)
 			require.Nil(t, release)
 			require.ErrorIs(t, err, ErrAccountConcurrencySaturated)
@@ -643,7 +714,7 @@ func TestMediaSchedulerWaitForSlotRejectsUntrustedSelections(t *testing.T) {
 	t.Run("invalid selection release is idempotent", func(t *testing.T) {
 		var releases atomic.Int64
 		selector := &mediaSchedulerSelectorStub{}
-		scheduler := NewMediaScheduler(&mediaSchedulerAccountRepoStub{}, selector, NewMediaAdapterRegistry())
+		scheduler := newTestMediaScheduler(&mediaSchedulerAccountRepoStub{}, selector, NewMediaAdapterRegistry())
 		selection := &MediaAccountSelection{
 			Account: &Account{ID: 1, Concurrency: 0}, ReleaseFunc: func() { releases.Add(1) },
 			WaitPlan: &AccountWaitPlan{AccountID: 1, MaxConcurrency: 0, Timeout: time.Second, MaxWaiting: 1},

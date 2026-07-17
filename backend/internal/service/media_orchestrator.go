@@ -394,6 +394,7 @@ func (o *MediaOrchestrator) handleSyncTimeout(ctx context.Context, task *MediaTa
 			ctx,
 			current.ID,
 			current.Version,
+			current.Stage,
 			current.Status,
 			map[string]any{
 				"stage": MediaTaskStageFailed, "error_code": "sync_timeout",
@@ -533,6 +534,9 @@ func (o *MediaOrchestrator) validateRequest(ctx context.Context, req MediaCreate
 }
 
 func normalizeMediaInputs(inputs []MediaArtifactInput, operation MediaOperation) ([]MediaArtifactInput, error) {
+	if len(inputs) > MaxMediaReferenceInputs {
+		return nil, fmt.Errorf("%w: input count exceeds %d", ErrMediaInputNotRecoverable, MaxMediaReferenceInputs)
+	}
 	var sourceMediaType MediaType
 	switch operation {
 	case MediaOperationTextToImage, MediaOperationTextToVideo:
@@ -754,9 +758,13 @@ func (o *MediaOrchestrator) initializeAndEnqueue(
 		inputsDurable = true
 	}
 
-	if err := o.deps.Billing.Precharge(ctx, task, billingSnapshot); err != nil {
+	prechargeResult, err := o.deps.Billing.Precharge(ctx, task, billingSnapshot)
+	if err == nil {
+		err = validateMediaPrechargeResult(prechargeResult)
+	}
+	if err != nil {
 		prechargeErr := fmt.Errorf("precharge media task: %w", err)
-		if errors.Is(err, ErrMediaPrechargeResultUnknown) {
+		if mediaPrechargeNeedsReconciliation(err) {
 			return &MediaCreateResult{Task: task, InputsAdopted: inputsDurable}, prechargeErr
 		}
 		failureCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), mediaOrchestratorDetachedTimeout)
@@ -769,16 +777,17 @@ func (o *MediaOrchestrator) initializeAndEnqueue(
 		priority = MediaQueuePriorityAsync
 	}
 	if err := o.deps.Queue.Enqueue(ctx, task.ID, priority); err != nil {
-		return &MediaCreateResult{Task: task}, o.failAfterPrecharge(ctx, task, billingSnapshot.EstimatedAmount, "system_queue", fmt.Errorf("enqueue media task: %w", err))
+		return &MediaCreateResult{Task: task}, o.failAfterPrecharge(ctx, task, prechargeResult.PrechargedAmount, "system_queue", fmt.Errorf("enqueue media task: %w", err))
 	}
 	updated, updateErr := o.deps.Tasks.UpdateQueued(ctx, task.ID, task.Version, map[string]any{
-		"billing_status": MediaBillingStatusPrecharged, "precharged_amount": billingSnapshot.EstimatedAmount,
+		"billing_status": MediaBillingStatusPrecharged, "precharged_amount": prechargeResult.PrechargedAmount,
 		"lease_until": nil,
 	})
 	readyReconciled := false
 	if updateErr != nil || !updated {
 		fresh, readErr := o.deps.Tasks.GetByID(ctx, task.ID)
-		readyObserved := readErr == nil && fresh != nil && fresh.BillingStatus == MediaBillingStatusPrecharged && fresh.LeaseUntil == nil
+		readyObserved := readErr == nil && fresh != nil && fresh.BillingStatus == MediaBillingStatusPrecharged &&
+			fresh.PrechargedAmount == prechargeResult.PrechargedAmount && fresh.LeaseUntil == nil
 		if readyObserved {
 			task = fresh
 			readyReconciled = true
@@ -788,11 +797,11 @@ func (o *MediaOrchestrator) initializeAndEnqueue(
 			updateErr = ErrMediaOrchestratorStateConflict
 		}
 		if !readyObserved {
-			return &MediaCreateResult{Task: task, InputsAdopted: true}, o.failAfterPrecharge(ctx, task, billingSnapshot.EstimatedAmount, "system_billing_state", fmt.Errorf("persist media precharge state: %w", updateErr))
+			return &MediaCreateResult{Task: task, InputsAdopted: true}, o.failAfterPrecharge(ctx, task, prechargeResult.PrechargedAmount, "system_billing_state", fmt.Errorf("persist media precharge state: %w", updateErr))
 		}
 	} else {
 		task.BillingStatus = MediaBillingStatusPrecharged
-		task.PrechargedAmount = billingSnapshot.EstimatedAmount
+		task.PrechargedAmount = prechargeResult.PrechargedAmount
 		task.LeaseUntil = nil
 		task.Version++
 	}
@@ -991,15 +1000,19 @@ func (o *MediaOrchestrator) failWithReconciledPrecharge(
 ) error {
 	compensationCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), mediaOrchestratorDetachedTimeout)
 	defer cancel()
-	if err := o.deps.Billing.Precharge(compensationCtx, task, billingSnapshot); err != nil {
+	prechargeResult, err := o.deps.Billing.Precharge(compensationCtx, task, billingSnapshot)
+	if err == nil {
+		err = validateMediaPrechargeResult(prechargeResult)
+	}
+	if err != nil {
 		prechargeErr := fmt.Errorf("reconcile media task precharge before failure: %w", err)
-		if errors.Is(err, ErrMediaPrechargeResultUnknown) {
+		if mediaPrechargeNeedsReconciliation(err) {
 			return errors.Join(cause, prechargeErr)
 		}
 		_, transitionErr := o.transitionInitializationFailed(compensationCtx, task, "billing_precharge", nil, 0)
 		return errors.Join(cause, prechargeErr, transitionErr)
 	}
-	return o.failAfterPrecharge(compensationCtx, task, billingSnapshot.EstimatedAmount, code, cause)
+	return o.failAfterPrecharge(compensationCtx, task, prechargeResult.PrechargedAmount, code, cause)
 }
 
 func (o *MediaOrchestrator) failAfterPrecharge(ctx context.Context, task *MediaTask, prechargedAmount float64, code string, cause error) error {

@@ -7,49 +7,51 @@ import (
 )
 
 type MediaTask struct {
-	ID                 int64
-	PublicID           string
-	UserID             int64
-	APIKeyID           int64
-	GroupID            int64
-	ChannelID          *int64
-	AccountID          *int64
-	MediaType          MediaType
-	Operation          MediaOperation
-	RequestedModel     string
-	UpstreamModel      string
-	Adapter            string
-	NativeAsyncMode    NativeAsyncMode
-	ClientAsync        bool
-	SyncFallback       bool
-	Status             MediaTaskStatus
-	Stage              MediaTaskStage
-	Progress           int
-	RequestSpec        json.RawMessage
-	CandidateSnapshot  json.RawMessage
-	RequestFingerprint string
-	IdempotencyKey     string
-	UpstreamTaskID     string
-	PollMetadata       json.RawMessage
-	BillingSnapshot    json.RawMessage
-	SettlementPlan     json.RawMessage
-	SettlementRecovery json.RawMessage
-	BillingStatus      string
-	PrechargedAmount   float64
-	FinalAmount        float64
-	RefundedAmount     float64
-	RetryCount         int
-	ErrorCode          string
-	ErrorMessage       string
-	WorkerID           string
-	LeaseUntil         *time.Time
-	Version            int64
-	SubmittedAt        *time.Time
-	StartedAt          *time.Time
-	FinishedAt         *time.Time
-	SyncFallbackAt     *time.Time
-	CreatedAt          time.Time
-	UpdatedAt          time.Time
+	ID                      int64
+	PublicID                string
+	UserID                  int64
+	APIKeyID                int64
+	GroupID                 int64
+	ChannelID               *int64
+	AccountID               *int64
+	MediaType               MediaType
+	Operation               MediaOperation
+	RequestedModel          string
+	UpstreamModel           string
+	Adapter                 string
+	NativeAsyncMode         NativeAsyncMode
+	ClientAsync             bool
+	SyncFallback            bool
+	Status                  MediaTaskStatus
+	Stage                   MediaTaskStage
+	Progress                int
+	RequestSpec             json.RawMessage
+	CandidateSnapshot       json.RawMessage
+	RequestFingerprint      string
+	IdempotencyKey          string
+	UpstreamTaskID          string
+	PollMetadata            json.RawMessage
+	BillingSnapshot         json.RawMessage
+	SettlementPlan          json.RawMessage
+	SettlementRecovery      json.RawMessage
+	BillingStatus           string
+	PrechargedAmount        float64
+	FinalAmount             float64
+	RefundedAmount          float64
+	AdditionalChargedAmount float64
+	RetryCount              int
+	ErrorCode               string
+	ErrorMessage            string
+	WorkerID                string
+	ClaimToken              string
+	LeaseUntil              *time.Time
+	Version                 int64
+	SubmittedAt             *time.Time
+	StartedAt               *time.Time
+	FinishedAt              *time.Time
+	SyncFallbackAt          *time.Time
+	CreatedAt               time.Time
+	UpdatedAt               time.Time
 }
 
 type MediaArtifact struct {
@@ -84,18 +86,18 @@ type MediaTaskRepository interface {
 	// TransitionQueued is the initialization-owner terminal path. It requires
 	// the queued state and expected version in the same CAS update.
 	TransitionQueued(ctx context.Context, id, expectedVersion int64, to MediaTaskStatus, updates map[string]any) (bool, error)
-	Claim(ctx context.Context, id int64, workerID string, leaseUntil time.Time, version int64) (bool, error)
-	RenewLease(ctx context.Context, id int64, workerID string, leaseUntil time.Time) (bool, error)
-	UpdateClaimed(ctx context.Context, id int64, workerID string, updates map[string]any) (bool, error)
+	Claim(ctx context.Context, id int64, workerID, claimToken string, leaseUntil time.Time, version int64) (bool, error)
+	RenewLease(ctx context.Context, id int64, claimToken string, leaseUntil time.Time) (bool, error)
+	UpdateClaimed(ctx context.Context, id int64, claimToken string, expectedVersion int64, expectedStage MediaTaskStage, updates map[string]any) (bool, error)
 	// Transition is reserved for orchestrator/system state changes. It enforces the
 	// domain state machine and status CAS, but intentionally does not assert Worker ownership.
 	Transition(ctx context.Context, id int64, from, to MediaTaskStatus, updates map[string]any) (bool, error)
 	// TransitionSyncTimeout is the fresh-snapshot timeout failure path. It requires
 	// the expected version and sync_fallback=false without weakening Worker ownership transitions.
-	TransitionSyncTimeout(ctx context.Context, id, expectedVersion int64, from MediaTaskStatus, updates map[string]any) (bool, error)
+	TransitionSyncTimeout(ctx context.Context, id, expectedVersion int64, expectedStage MediaTaskStage, from MediaTaskStatus, updates map[string]any) (bool, error)
 	// TransitionClaimed is the Worker completion/failure path. It additionally
 	// requires the current Worker, expected version, and a live lease in one CAS update.
-	TransitionClaimed(ctx context.Context, id int64, workerID string, expectedVersion int64, from, to MediaTaskStatus, updates map[string]any) (bool, error)
+	TransitionClaimed(ctx context.Context, id int64, claimToken string, expectedVersion int64, expectedStage MediaTaskStage, from, to MediaTaskStatus, updates map[string]any) (bool, error)
 	MarkSyncFallback(ctx context.Context, id int64, at time.Time) (bool, error)
 	ListRecoverable(ctx context.Context, now time.Time, limit int) ([]MediaTask, error)
 	ListSettlementPending(ctx context.Context, limit int) ([]MediaTask, error)

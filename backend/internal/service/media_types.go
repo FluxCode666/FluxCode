@@ -4,9 +4,18 @@ import (
 	"errors"
 	"slices"
 	"strings"
+	"unicode/utf8"
 )
 
 var ErrInvalidMediaSpec = errors.New("invalid media spec")
+
+const (
+	MaxMediaPromptRunes          = 32_000
+	MaxMediaImageCount           = 16
+	MaxMediaVideoDurationSeconds = 600
+	MaxMediaVideoFPS             = 120
+	MaxMediaReferenceInputs      = 16
+)
 
 type MediaType string
 
@@ -32,9 +41,9 @@ const (
 func (s MediaTaskStage) CanTransitionTo(next MediaTaskStage) bool {
 	allowed := map[MediaTaskStage][]MediaTaskStage{
 		MediaTaskStageQueued:     {MediaTaskStageScheduling, MediaTaskStageFailed},
-		MediaTaskStageScheduling: {MediaTaskStageSubmitting, MediaTaskStageFailed},
-		MediaTaskStageSubmitting: {MediaTaskStageGenerating, MediaTaskStagePolling, MediaTaskStageFailed},
-		MediaTaskStageGenerating: {MediaTaskStageStoring, MediaTaskStageFailed},
+		MediaTaskStageScheduling: {MediaTaskStageSubmitting, MediaTaskStageGenerating, MediaTaskStageFailed},
+		MediaTaskStageSubmitting: {MediaTaskStageScheduling, MediaTaskStageGenerating, MediaTaskStagePolling, MediaTaskStageFailed},
+		MediaTaskStageGenerating: {MediaTaskStageScheduling, MediaTaskStageStoring, MediaTaskStageFailed},
 		MediaTaskStagePolling:    {MediaTaskStageStoring, MediaTaskStageFailed},
 		MediaTaskStageStoring:    {MediaTaskStageSettling, MediaTaskStageFailed},
 		MediaTaskStageSettling:   {MediaTaskStageCompleted, MediaTaskStageFailed},
@@ -135,11 +144,23 @@ func (s MediaSpec) Validate(mediaType MediaType) error {
 	if mediaType == MediaTypeVideo && s.Video == nil {
 		return ErrInvalidMediaSpec
 	}
-	if s.Image != nil && (strings.TrimSpace(s.Image.Prompt) == "" || s.Image.Count < 1) {
-		return ErrInvalidMediaSpec
+	if s.Image != nil {
+		if strings.TrimSpace(s.Image.Prompt) == "" || utf8.RuneCountInString(s.Image.Prompt) > MaxMediaPromptRunes ||
+			s.Image.Count < 1 || s.Image.Count > MaxMediaImageCount ||
+			len(s.Image.InputArtifactIDs) > MaxMediaReferenceInputs {
+			return ErrInvalidMediaSpec
+		}
 	}
-	if s.Video != nil && strings.TrimSpace(s.Video.Prompt) == "" {
-		return ErrInvalidMediaSpec
+	if s.Video != nil {
+		referenceCount := len(s.Video.ReferenceArtifactIDs)
+		if s.Video.SourceArtifactID != nil {
+			referenceCount++
+		}
+		if strings.TrimSpace(s.Video.Prompt) == "" || utf8.RuneCountInString(s.Video.Prompt) > MaxMediaPromptRunes ||
+			s.Video.DurationSeconds < 1 || s.Video.DurationSeconds > MaxMediaVideoDurationSeconds ||
+			s.Video.FPS < 1 || s.Video.FPS > MaxMediaVideoFPS || referenceCount > MaxMediaReferenceInputs {
+			return ErrInvalidMediaSpec
+		}
 	}
 	return nil
 }

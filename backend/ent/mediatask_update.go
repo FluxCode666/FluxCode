@@ -549,6 +549,27 @@ func (_u *MediaTaskUpdate) AddRefundedAmount(v float64) *MediaTaskUpdate {
 	return _u
 }
 
+// SetAdditionalChargedAmount sets the "additional_charged_amount" field.
+func (_u *MediaTaskUpdate) SetAdditionalChargedAmount(v float64) *MediaTaskUpdate {
+	_u.mutation.ResetAdditionalChargedAmount()
+	_u.mutation.SetAdditionalChargedAmount(v)
+	return _u
+}
+
+// SetNillableAdditionalChargedAmount sets the "additional_charged_amount" field if the given value is not nil.
+func (_u *MediaTaskUpdate) SetNillableAdditionalChargedAmount(v *float64) *MediaTaskUpdate {
+	if v != nil {
+		_u.SetAdditionalChargedAmount(*v)
+	}
+	return _u
+}
+
+// AddAdditionalChargedAmount adds value to the "additional_charged_amount" field.
+func (_u *MediaTaskUpdate) AddAdditionalChargedAmount(v float64) *MediaTaskUpdate {
+	_u.mutation.AddAdditionalChargedAmount(v)
+	return _u
+}
+
 // SetRetryCount sets the "retry_count" field.
 func (_u *MediaTaskUpdate) SetRetryCount(v int) *MediaTaskUpdate {
 	_u.mutation.ResetRetryCount()
@@ -608,6 +629,20 @@ func (_u *MediaTaskUpdate) SetWorkerID(v string) *MediaTaskUpdate {
 func (_u *MediaTaskUpdate) SetNillableWorkerID(v *string) *MediaTaskUpdate {
 	if v != nil {
 		_u.SetWorkerID(*v)
+	}
+	return _u
+}
+
+// SetClaimToken sets the "claim_token" field.
+func (_u *MediaTaskUpdate) SetClaimToken(v string) *MediaTaskUpdate {
+	_u.mutation.SetClaimToken(v)
+	return _u
+}
+
+// SetNillableClaimToken sets the "claim_token" field if the given value is not nil.
+func (_u *MediaTaskUpdate) SetNillableClaimToken(v *string) *MediaTaskUpdate {
+	if v != nil {
+		_u.SetClaimToken(*v)
 	}
 	return _u
 }
@@ -846,6 +881,11 @@ func (_u *MediaTaskUpdate) check() error {
 			return &ValidationError{Name: "worker_id", err: fmt.Errorf(`ent: validator failed for field "MediaTask.worker_id": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.ClaimToken(); ok {
+		if err := mediatask.ClaimTokenValidator(v); err != nil {
+			return &ValidationError{Name: "claim_token", err: fmt.Errorf(`ent: validator failed for field "MediaTask.claim_token": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -1032,6 +1072,12 @@ func (_u *MediaTaskUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.AddedRefundedAmount(); ok {
 		_spec.AddField(mediatask.FieldRefundedAmount, field.TypeFloat64, value)
 	}
+	if value, ok := _u.mutation.AdditionalChargedAmount(); ok {
+		_spec.SetField(mediatask.FieldAdditionalChargedAmount, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedAdditionalChargedAmount(); ok {
+		_spec.AddField(mediatask.FieldAdditionalChargedAmount, field.TypeFloat64, value)
+	}
 	if value, ok := _u.mutation.RetryCount(); ok {
 		_spec.SetField(mediatask.FieldRetryCount, field.TypeInt, value)
 	}
@@ -1046,6 +1092,9 @@ func (_u *MediaTaskUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.WorkerID(); ok {
 		_spec.SetField(mediatask.FieldWorkerID, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.ClaimToken(); ok {
+		_spec.SetField(mediatask.FieldClaimToken, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.LeaseUntil(); ok {
 		_spec.SetField(mediatask.FieldLeaseUntil, field.TypeTime, value)
@@ -1622,6 +1671,27 @@ func (_u *MediaTaskUpdateOne) AddRefundedAmount(v float64) *MediaTaskUpdateOne {
 	return _u
 }
 
+// SetAdditionalChargedAmount sets the "additional_charged_amount" field.
+func (_u *MediaTaskUpdateOne) SetAdditionalChargedAmount(v float64) *MediaTaskUpdateOne {
+	_u.mutation.ResetAdditionalChargedAmount()
+	_u.mutation.SetAdditionalChargedAmount(v)
+	return _u
+}
+
+// SetNillableAdditionalChargedAmount sets the "additional_charged_amount" field if the given value is not nil.
+func (_u *MediaTaskUpdateOne) SetNillableAdditionalChargedAmount(v *float64) *MediaTaskUpdateOne {
+	if v != nil {
+		_u.SetAdditionalChargedAmount(*v)
+	}
+	return _u
+}
+
+// AddAdditionalChargedAmount adds value to the "additional_charged_amount" field.
+func (_u *MediaTaskUpdateOne) AddAdditionalChargedAmount(v float64) *MediaTaskUpdateOne {
+	_u.mutation.AddAdditionalChargedAmount(v)
+	return _u
+}
+
 // SetRetryCount sets the "retry_count" field.
 func (_u *MediaTaskUpdateOne) SetRetryCount(v int) *MediaTaskUpdateOne {
 	_u.mutation.ResetRetryCount()
@@ -1681,6 +1751,20 @@ func (_u *MediaTaskUpdateOne) SetWorkerID(v string) *MediaTaskUpdateOne {
 func (_u *MediaTaskUpdateOne) SetNillableWorkerID(v *string) *MediaTaskUpdateOne {
 	if v != nil {
 		_u.SetWorkerID(*v)
+	}
+	return _u
+}
+
+// SetClaimToken sets the "claim_token" field.
+func (_u *MediaTaskUpdateOne) SetClaimToken(v string) *MediaTaskUpdateOne {
+	_u.mutation.SetClaimToken(v)
+	return _u
+}
+
+// SetNillableClaimToken sets the "claim_token" field if the given value is not nil.
+func (_u *MediaTaskUpdateOne) SetNillableClaimToken(v *string) *MediaTaskUpdateOne {
+	if v != nil {
+		_u.SetClaimToken(*v)
 	}
 	return _u
 }
@@ -1932,6 +2016,11 @@ func (_u *MediaTaskUpdateOne) check() error {
 			return &ValidationError{Name: "worker_id", err: fmt.Errorf(`ent: validator failed for field "MediaTask.worker_id": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.ClaimToken(); ok {
+		if err := mediatask.ClaimTokenValidator(v); err != nil {
+			return &ValidationError{Name: "claim_token", err: fmt.Errorf(`ent: validator failed for field "MediaTask.claim_token": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -2135,6 +2224,12 @@ func (_u *MediaTaskUpdateOne) sqlSave(ctx context.Context) (_node *MediaTask, er
 	if value, ok := _u.mutation.AddedRefundedAmount(); ok {
 		_spec.AddField(mediatask.FieldRefundedAmount, field.TypeFloat64, value)
 	}
+	if value, ok := _u.mutation.AdditionalChargedAmount(); ok {
+		_spec.SetField(mediatask.FieldAdditionalChargedAmount, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedAdditionalChargedAmount(); ok {
+		_spec.AddField(mediatask.FieldAdditionalChargedAmount, field.TypeFloat64, value)
+	}
 	if value, ok := _u.mutation.RetryCount(); ok {
 		_spec.SetField(mediatask.FieldRetryCount, field.TypeInt, value)
 	}
@@ -2149,6 +2244,9 @@ func (_u *MediaTaskUpdateOne) sqlSave(ctx context.Context) (_node *MediaTask, er
 	}
 	if value, ok := _u.mutation.WorkerID(); ok {
 		_spec.SetField(mediatask.FieldWorkerID, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.ClaimToken(); ok {
+		_spec.SetField(mediatask.FieldClaimToken, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.LeaseUntil(); ok {
 		_spec.SetField(mediatask.FieldLeaseUntil, field.TypeTime, value)

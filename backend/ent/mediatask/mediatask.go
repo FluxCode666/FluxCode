@@ -77,6 +77,8 @@ const (
 	FieldFinalAmount = "final_amount"
 	// FieldRefundedAmount holds the string denoting the refunded_amount field in the database.
 	FieldRefundedAmount = "refunded_amount"
+	// FieldAdditionalChargedAmount holds the string denoting the additional_charged_amount field in the database.
+	FieldAdditionalChargedAmount = "additional_charged_amount"
 	// FieldRetryCount holds the string denoting the retry_count field in the database.
 	FieldRetryCount = "retry_count"
 	// FieldErrorCode holds the string denoting the error_code field in the database.
@@ -85,6 +87,8 @@ const (
 	FieldErrorMessage = "error_message"
 	// FieldWorkerID holds the string denoting the worker_id field in the database.
 	FieldWorkerID = "worker_id"
+	// FieldClaimToken holds the string denoting the claim_token field in the database.
+	FieldClaimToken = "claim_token"
 	// FieldLeaseUntil holds the string denoting the lease_until field in the database.
 	FieldLeaseUntil = "lease_until"
 	// FieldVersion holds the string denoting the version field in the database.
@@ -136,10 +140,12 @@ var Columns = []string{
 	FieldPrechargedAmount,
 	FieldFinalAmount,
 	FieldRefundedAmount,
+	FieldAdditionalChargedAmount,
 	FieldRetryCount,
 	FieldErrorCode,
 	FieldErrorMessage,
 	FieldWorkerID,
+	FieldClaimToken,
 	FieldLeaseUntil,
 	FieldVersion,
 	FieldSubmittedAt,
@@ -215,6 +221,8 @@ var (
 	DefaultFinalAmount float64
 	// DefaultRefundedAmount holds the default value on creation for the "refunded_amount" field.
 	DefaultRefundedAmount float64
+	// DefaultAdditionalChargedAmount holds the default value on creation for the "additional_charged_amount" field.
+	DefaultAdditionalChargedAmount float64
 	// DefaultRetryCount holds the default value on creation for the "retry_count" field.
 	DefaultRetryCount int
 	// DefaultErrorCode holds the default value on creation for the "error_code" field.
@@ -227,6 +235,10 @@ var (
 	DefaultWorkerID string
 	// WorkerIDValidator is a validator for the "worker_id" field. It is called by the builders before save.
 	WorkerIDValidator func(string) error
+	// DefaultClaimToken holds the default value on creation for the "claim_token" field.
+	DefaultClaimToken string
+	// ClaimTokenValidator is a validator for the "claim_token" field. It is called by the builders before save.
+	ClaimTokenValidator func(string) error
 	// DefaultVersion holds the default value on creation for the "version" field.
 	DefaultVersion int64
 )
@@ -369,6 +381,11 @@ func ByRefundedAmount(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldRefundedAmount, opts...).ToFunc()
 }
 
+// ByAdditionalChargedAmount orders the results by the additional_charged_amount field.
+func ByAdditionalChargedAmount(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldAdditionalChargedAmount, opts...).ToFunc()
+}
+
 // ByRetryCount orders the results by the retry_count field.
 func ByRetryCount(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldRetryCount, opts...).ToFunc()
@@ -387,6 +404,11 @@ func ByErrorMessage(opts ...sql.OrderTermOption) OrderOption {
 // ByWorkerID orders the results by the worker_id field.
 func ByWorkerID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldWorkerID, opts...).ToFunc()
+}
+
+// ByClaimToken orders the results by the claim_token field.
+func ByClaimToken(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldClaimToken, opts...).ToFunc()
 }
 
 // ByLeaseUntil orders the results by the lease_until field.

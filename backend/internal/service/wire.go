@@ -698,13 +698,14 @@ func ProvideMediaTaskMetrics() MediaTaskMetrics {
 
 func ProvideMediaScheduler(
 	accounts AccountRepository,
+	groups GroupRepository,
 	concurrency *ConcurrencyService,
 	cache GatewayCache,
 	adapters *MediaAdapterRegistry,
 	cfg *config.Config,
 ) *MediaScheduler {
 	selector := NewAccountCandidateSelector(concurrency, cache, cfg.Gateway.Scheduling)
-	return NewMediaScheduler(accounts, selector, adapters)
+	return NewMediaScheduler(accounts, selector, adapters, groups)
 }
 
 func ProvideMediaContentService(

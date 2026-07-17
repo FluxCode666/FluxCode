@@ -862,10 +862,12 @@ var (
 		{Name: "precharged_amount", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "numeric(20,8)"}},
 		{Name: "final_amount", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "numeric(20,8)"}},
 		{Name: "refunded_amount", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "numeric(20,8)"}},
+		{Name: "additional_charged_amount", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "numeric(20,8)"}},
 		{Name: "retry_count", Type: field.TypeInt, Default: 0, SchemaType: map[string]string{"postgres": "integer"}},
 		{Name: "error_code", Type: field.TypeString, Size: 64, Default: ""},
 		{Name: "error_message", Type: field.TypeString, Default: "", SchemaType: map[string]string{"postgres": "text"}},
 		{Name: "worker_id", Type: field.TypeString, Size: 128, Default: ""},
+		{Name: "claim_token", Type: field.TypeString, Size: 64, Default: ""},
 		{Name: "lease_until", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
 		{Name: "version", Type: field.TypeInt64, Default: 1},
 		{Name: "submitted_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
@@ -892,7 +894,7 @@ var (
 			{
 				Name:    "mediatask_status_lease_until",
 				Unique:  false,
-				Columns: []*schema.Column{MediaTasksColumns[17], MediaTasksColumns[37]},
+				Columns: []*schema.Column{MediaTasksColumns[17], MediaTasksColumns[39]},
 			},
 			{
 				Name:    "mediatask_account_id",

@@ -875,6 +875,24 @@ func TestMediaTaskHandlerVideoContentForwardsRangeWithoutLeakingUpstream(t *test
 	require.NotContains(t, rec.Header().Get("Location"), "upstream")
 }
 
+func TestMediaTaskHandlerVideoContentDowngradesUnsafeContentType(t *testing.T) {
+	for _, contentType := range []string{"", "text/html", "application/javascript"} {
+		t.Run(contentType, func(t *testing.T) {
+			router, app := newStandaloneMediaRouter(t)
+			app.content = &service.MediaContent{
+				Body: io.NopCloser(strings.NewReader("payload")), StatusCode: http.StatusOK,
+				ContentType: contentType, ContentLength: 7, AcceptRanges: "bytes",
+			}
+			rec := performAPIKeyRequest(router, http.MethodGet, "/v1/videos/task_public/content", "", 42)
+			require.Equal(t, http.StatusOK, rec.Code)
+			require.Equal(t, "application/octet-stream", rec.Header().Get("Content-Type"))
+			require.Equal(t, "attachment", rec.Header().Get("Content-Disposition"))
+			require.Equal(t, "nosniff", rec.Header().Get("X-Content-Type-Options"))
+			require.Equal(t, "payload", rec.Body.String())
+		})
+	}
+}
+
 func TestMediaRouterDoesNotExposeCancel(t *testing.T) {
 	router, _ := newStandaloneMediaRouter(t)
 	rec := performAuthenticatedRequest(router, http.MethodDelete, "/v1/videos/task_public", "", 42)
@@ -1061,6 +1079,25 @@ func TestMediaTaskHandlerImageDTOOmitsSignedAndInternalURLs(t *testing.T) {
 	for _, secret := range []string{"token", "secret", "upstream.example"} {
 		require.NotContains(t, rec.Body.String(), secret)
 	}
+}
+
+func TestMediaTaskHandlerImageDTOConvertsBoundedImageDataToB64JSON(t *testing.T) {
+	router, app := newStandaloneMediaRouter(t)
+	app.createResult = &service.MediaCreateResult{
+		Task: &service.MediaTask{
+			PublicID: "task_public", MediaType: service.MediaTypeImage, Operation: service.MediaOperationTextToImage,
+			RequestedModel: "fake-image", Status: service.MediaTaskStatusCompleted, CreatedAt: time.Unix(1784112000, 0),
+		},
+		Artifacts: []service.MediaArtifact{{
+			Direction: "output", MediaType: service.MediaTypeImage, ContentType: "image/png",
+			UpstreamReference: "data:image/png;base64,aW1hZ2U=",
+		}},
+		Disposition: service.MediaCreateDispositionCompleted,
+	}
+	rec := performAPIKeyRequest(router, http.MethodPost, "/v1/images/generations", `{"model":"fake-image","prompt":"cat"}`, 42)
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Contains(t, rec.Body.String(), `"b64_json":"aW1hZ2U="`)
+	require.NotContains(t, rec.Body.String(), "data:image")
 }
 
 func TestMediaTaskHandlerCompletedImageQueryReturnsTaskWithOpenAIDataResult(t *testing.T) {

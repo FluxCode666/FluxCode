@@ -184,6 +184,11 @@ func RefundedAmount(v float64) predicate.MediaTask {
 	return predicate.MediaTask(sql.FieldEQ(FieldRefundedAmount, v))
 }
 
+// AdditionalChargedAmount applies equality check predicate on the "additional_charged_amount" field. It's identical to AdditionalChargedAmountEQ.
+func AdditionalChargedAmount(v float64) predicate.MediaTask {
+	return predicate.MediaTask(sql.FieldEQ(FieldAdditionalChargedAmount, v))
+}
+
 // RetryCount applies equality check predicate on the "retry_count" field. It's identical to RetryCountEQ.
 func RetryCount(v int) predicate.MediaTask {
 	return predicate.MediaTask(sql.FieldEQ(FieldRetryCount, v))
@@ -202,6 +207,11 @@ func ErrorMessage(v string) predicate.MediaTask {
 // WorkerID applies equality check predicate on the "worker_id" field. It's identical to WorkerIDEQ.
 func WorkerID(v string) predicate.MediaTask {
 	return predicate.MediaTask(sql.FieldEQ(FieldWorkerID, v))
+}
+
+// ClaimToken applies equality check predicate on the "claim_token" field. It's identical to ClaimTokenEQ.
+func ClaimToken(v string) predicate.MediaTask {
+	return predicate.MediaTask(sql.FieldEQ(FieldClaimToken, v))
 }
 
 // LeaseUntil applies equality check predicate on the "lease_until" field. It's identical to LeaseUntilEQ.
@@ -1609,6 +1619,46 @@ func RefundedAmountLTE(v float64) predicate.MediaTask {
 	return predicate.MediaTask(sql.FieldLTE(FieldRefundedAmount, v))
 }
 
+// AdditionalChargedAmountEQ applies the EQ predicate on the "additional_charged_amount" field.
+func AdditionalChargedAmountEQ(v float64) predicate.MediaTask {
+	return predicate.MediaTask(sql.FieldEQ(FieldAdditionalChargedAmount, v))
+}
+
+// AdditionalChargedAmountNEQ applies the NEQ predicate on the "additional_charged_amount" field.
+func AdditionalChargedAmountNEQ(v float64) predicate.MediaTask {
+	return predicate.MediaTask(sql.FieldNEQ(FieldAdditionalChargedAmount, v))
+}
+
+// AdditionalChargedAmountIn applies the In predicate on the "additional_charged_amount" field.
+func AdditionalChargedAmountIn(vs ...float64) predicate.MediaTask {
+	return predicate.MediaTask(sql.FieldIn(FieldAdditionalChargedAmount, vs...))
+}
+
+// AdditionalChargedAmountNotIn applies the NotIn predicate on the "additional_charged_amount" field.
+func AdditionalChargedAmountNotIn(vs ...float64) predicate.MediaTask {
+	return predicate.MediaTask(sql.FieldNotIn(FieldAdditionalChargedAmount, vs...))
+}
+
+// AdditionalChargedAmountGT applies the GT predicate on the "additional_charged_amount" field.
+func AdditionalChargedAmountGT(v float64) predicate.MediaTask {
+	return predicate.MediaTask(sql.FieldGT(FieldAdditionalChargedAmount, v))
+}
+
+// AdditionalChargedAmountGTE applies the GTE predicate on the "additional_charged_amount" field.
+func AdditionalChargedAmountGTE(v float64) predicate.MediaTask {
+	return predicate.MediaTask(sql.FieldGTE(FieldAdditionalChargedAmount, v))
+}
+
+// AdditionalChargedAmountLT applies the LT predicate on the "additional_charged_amount" field.
+func AdditionalChargedAmountLT(v float64) predicate.MediaTask {
+	return predicate.MediaTask(sql.FieldLT(FieldAdditionalChargedAmount, v))
+}
+
+// AdditionalChargedAmountLTE applies the LTE predicate on the "additional_charged_amount" field.
+func AdditionalChargedAmountLTE(v float64) predicate.MediaTask {
+	return predicate.MediaTask(sql.FieldLTE(FieldAdditionalChargedAmount, v))
+}
+
 // RetryCountEQ applies the EQ predicate on the "retry_count" field.
 func RetryCountEQ(v int) predicate.MediaTask {
 	return predicate.MediaTask(sql.FieldEQ(FieldRetryCount, v))
@@ -1842,6 +1892,71 @@ func WorkerIDEqualFold(v string) predicate.MediaTask {
 // WorkerIDContainsFold applies the ContainsFold predicate on the "worker_id" field.
 func WorkerIDContainsFold(v string) predicate.MediaTask {
 	return predicate.MediaTask(sql.FieldContainsFold(FieldWorkerID, v))
+}
+
+// ClaimTokenEQ applies the EQ predicate on the "claim_token" field.
+func ClaimTokenEQ(v string) predicate.MediaTask {
+	return predicate.MediaTask(sql.FieldEQ(FieldClaimToken, v))
+}
+
+// ClaimTokenNEQ applies the NEQ predicate on the "claim_token" field.
+func ClaimTokenNEQ(v string) predicate.MediaTask {
+	return predicate.MediaTask(sql.FieldNEQ(FieldClaimToken, v))
+}
+
+// ClaimTokenIn applies the In predicate on the "claim_token" field.
+func ClaimTokenIn(vs ...string) predicate.MediaTask {
+	return predicate.MediaTask(sql.FieldIn(FieldClaimToken, vs...))
+}
+
+// ClaimTokenNotIn applies the NotIn predicate on the "claim_token" field.
+func ClaimTokenNotIn(vs ...string) predicate.MediaTask {
+	return predicate.MediaTask(sql.FieldNotIn(FieldClaimToken, vs...))
+}
+
+// ClaimTokenGT applies the GT predicate on the "claim_token" field.
+func ClaimTokenGT(v string) predicate.MediaTask {
+	return predicate.MediaTask(sql.FieldGT(FieldClaimToken, v))
+}
+
+// ClaimTokenGTE applies the GTE predicate on the "claim_token" field.
+func ClaimTokenGTE(v string) predicate.MediaTask {
+	return predicate.MediaTask(sql.FieldGTE(FieldClaimToken, v))
+}
+
+// ClaimTokenLT applies the LT predicate on the "claim_token" field.
+func ClaimTokenLT(v string) predicate.MediaTask {
+	return predicate.MediaTask(sql.FieldLT(FieldClaimToken, v))
+}
+
+// ClaimTokenLTE applies the LTE predicate on the "claim_token" field.
+func ClaimTokenLTE(v string) predicate.MediaTask {
+	return predicate.MediaTask(sql.FieldLTE(FieldClaimToken, v))
+}
+
+// ClaimTokenContains applies the Contains predicate on the "claim_token" field.
+func ClaimTokenContains(v string) predicate.MediaTask {
+	return predicate.MediaTask(sql.FieldContains(FieldClaimToken, v))
+}
+
+// ClaimTokenHasPrefix applies the HasPrefix predicate on the "claim_token" field.
+func ClaimTokenHasPrefix(v string) predicate.MediaTask {
+	return predicate.MediaTask(sql.FieldHasPrefix(FieldClaimToken, v))
+}
+
+// ClaimTokenHasSuffix applies the HasSuffix predicate on the "claim_token" field.
+func ClaimTokenHasSuffix(v string) predicate.MediaTask {
+	return predicate.MediaTask(sql.FieldHasSuffix(FieldClaimToken, v))
+}
+
+// ClaimTokenEqualFold applies the EqualFold predicate on the "claim_token" field.
+func ClaimTokenEqualFold(v string) predicate.MediaTask {
+	return predicate.MediaTask(sql.FieldEqualFold(FieldClaimToken, v))
+}
+
+// ClaimTokenContainsFold applies the ContainsFold predicate on the "claim_token" field.
+func ClaimTokenContainsFold(v string) predicate.MediaTask {
+	return predicate.MediaTask(sql.FieldContainsFold(FieldClaimToken, v))
 }
 
 // LeaseUntilEQ applies the EQ predicate on the "lease_until" field.

@@ -346,9 +346,10 @@ func (h *MediaTaskHandler) GetVideoContent(c *gin.Context) {
 	if content.AcceptRanges != "" {
 		headers["Accept-Ranges"] = content.AcceptRanges
 	}
-	contentType := content.ContentType
-	if contentType == "" {
-		contentType = "application/octet-stream"
+	contentType, safeVideoType := service.NormalizeVideoContentType(content.ContentType)
+	headers["X-Content-Type-Options"] = "nosniff"
+	if !safeVideoType {
+		headers["Content-Disposition"] = "attachment"
 	}
 	c.DataFromReader(content.StatusCode, content.ContentLength, contentType, content.Body, headers)
 }
@@ -675,20 +676,22 @@ func imageResponse(task *service.MediaTask, artifacts []service.MediaArtifact) m
 func imageData(artifacts []service.MediaArtifact) []mediaImageDataItem {
 	data := make([]mediaImageDataItem, 0, len(artifacts))
 	for _, artifact := range artifacts {
-		if artifact.Direction != "output" || artifact.MediaType != service.MediaTypeImage || !safePublicMediaURL(artifact.PublicURL) {
+		if artifact.Direction != "output" || artifact.MediaType != service.MediaTypeImage {
 			continue
 		}
-		data = append(data, mediaImageDataItem{URL: artifact.PublicURL})
+		if service.IsSafePublicMediaURL(artifact.PublicURL) {
+			data = append(data, mediaImageDataItem{URL: artifact.PublicURL})
+			continue
+		}
+		if b64JSON, ok := service.MediaImageB64JSON(artifact); ok {
+			data = append(data, mediaImageDataItem{B64JSON: b64JSON})
+		}
 	}
 	return data
 }
 
 func safePublicMediaURL(raw string) bool {
-	parsed, err := url.Parse(strings.TrimSpace(raw))
-	if err != nil || parsed == nil || parsed.Scheme != "https" || parsed.Hostname() == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
-		return false
-	}
-	return true
+	return service.IsSafePublicMediaURL(raw)
 }
 
 func publicMediaStatus(status service.MediaTaskStatus) string {

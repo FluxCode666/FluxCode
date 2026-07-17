@@ -14,6 +14,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 var (
@@ -380,7 +382,8 @@ func (w *MediaWorker) ProcessOne(ctx context.Context, taskID int64) error {
 	recoveryMode := classifyMediaTaskRecovery(task)
 
 	now := time.Now().UTC()
-	claimed, err := w.deps.Tasks.Claim(ctx, task.ID, w.workerID, now.Add(w.cfg.LeaseTTL), task.Version)
+	claimToken := uuid.NewString()
+	claimed, err := w.deps.Tasks.Claim(ctx, task.ID, w.workerID, claimToken, now.Add(w.cfg.LeaseTTL), task.Version)
 	if err != nil {
 		return fmt.Errorf("claim media task %d: %w", task.ID, err)
 	}
@@ -397,6 +400,7 @@ func (w *MediaWorker) ProcessOne(ctx context.Context, taskID int64) error {
 	}
 	task.Status = MediaTaskStatusInProgress
 	task.WorkerID = w.workerID
+	task.ClaimToken = claimToken
 	task.LeaseUntil = mediaTimePointer(now.Add(w.cfg.LeaseTTL))
 	task.Version++
 
@@ -407,7 +411,7 @@ func (w *MediaWorker) ProcessOne(ctx context.Context, taskID int64) error {
 		return fmt.Errorf("%w: task %d already active", ErrMediaTaskNotClaimed, task.ID)
 	}
 	leaseCtx, leaseCancel := context.WithCancel(executionCtx)
-	renewerDone := w.startLeaseRenewer(leaseCtx, active, task.ID)
+	renewerDone := w.startLeaseRenewer(leaseCtx, active, task.ID, task.ClaimToken)
 	var stopLeaseRenewerOnce sync.Once
 	stopLeaseRenewer := func() {
 		stopLeaseRenewerOnce.Do(func() {
@@ -683,13 +687,17 @@ func (w *MediaWorker) executeSelected(
 	if path == MediaExecutionPathNativeAsync {
 		stage = MediaTaskStageSubmitting
 	}
-	if err := w.updateClaimed(ctx, task, map[string]any{
+	stageUpdates := map[string]any{
 		"account_id":        selection.Account.ID,
 		"adapter":           selection.ResolvedModel.Adapter,
 		"upstream_model":    selection.ResolvedModel.UpstreamModel,
 		"native_async_mode": selection.ResolvedModel.NativeAsyncMode,
 		"stage":             stage,
-	}); err != nil {
+	}
+	if path == MediaExecutionPathSync {
+		stageUpdates["submitted_at"] = time.Now().UTC()
+	}
+	if err := w.updateClaimed(ctx, task, stageUpdates); err != nil {
 		return nil, nil, false, err
 	}
 	task.AccountID = mediaInt64Pointer(selection.Account.ID)
@@ -697,6 +705,9 @@ func (w *MediaWorker) executeSelected(
 	task.UpstreamModel = selection.ResolvedModel.UpstreamModel
 	task.NativeAsyncMode = selection.ResolvedModel.NativeAsyncMode
 	task.Stage = stage
+	if submittedAt, ok := stageUpdates["submitted_at"].(time.Time); ok {
+		task.SubmittedAt = mediaTimePointer(submittedAt)
+	}
 	request := MediaExecutionRequest{
 		Task: task, Account: selection.Account, Definition: definition, Spec: spec,
 		UpstreamModel: selection.ResolvedModel.UpstreamModel, IdempotencyKey: task.PublicID,
@@ -990,7 +1001,7 @@ func (w *MediaWorker) completeSuccess(
 	}
 	finishedAt := time.Now().UTC()
 	active.terminalizing.Store(true)
-	transitioned, err := w.deps.Tasks.TransitionClaimed(ctx, task.ID, w.workerID, task.Version,
+	transitioned, err := w.deps.Tasks.TransitionClaimed(ctx, task.ID, task.ClaimToken, task.Version, task.Stage,
 		MediaTaskStatusInProgress, MediaTaskStatusCompleted,
 		map[string]any{
 			"stage": MediaTaskStageCompleted, "progress": 100, "finished_at": finishedAt,
@@ -1037,7 +1048,7 @@ func (w *MediaWorker) completeFailure(
 	}
 	finishedAt := time.Now().UTC()
 	active.terminalizing.Store(true)
-	transitioned, err := w.deps.Tasks.TransitionClaimed(ctx, task.ID, w.workerID, task.Version,
+	transitioned, err := w.deps.Tasks.TransitionClaimed(ctx, task.ID, task.ClaimToken, task.Version, task.Stage,
 		MediaTaskStatusInProgress, MediaTaskStatusFailed,
 		map[string]any{
 			"stage": MediaTaskStageFailed, "finished_at": finishedAt,
@@ -1141,8 +1152,12 @@ func (w *MediaWorker) cleanupExpiredInitializer(ctx context.Context, task *Media
 	if err := json.Unmarshal(task.BillingSnapshot, &snapshot); err != nil {
 		return false, fmt.Errorf("decode expired media initializer %d billing snapshot: %w", task.ID, err)
 	}
-	if err := w.deps.Precharger.Precharge(ctx, task, snapshot); err != nil {
-		if errors.Is(err, ErrMediaPrechargeResultUnknown) {
+	prechargeResult, err := w.deps.Precharger.Precharge(ctx, task, snapshot)
+	if err == nil {
+		err = validateMediaPrechargeResult(prechargeResult)
+	}
+	if err != nil {
+		if mediaPrechargeNeedsReconciliation(err) {
 			return false, fmt.Errorf("reconcile expired media initializer %d precharge: %w", task.ID, err)
 		}
 		return w.failExpiredInitializerPrecharge(ctx, task)
@@ -1167,7 +1182,7 @@ func (w *MediaWorker) cleanupExpiredInitializer(ctx context.Context, task *Media
 			"error_message":       settlement.ErrorCode,
 			"finished_at":         finishedAt,
 			"billing_status":      MediaBillingStatusPrecharged,
-			"precharged_amount":   snapshot.EstimatedAmount,
+			"precharged_amount":   prechargeResult.PrechargedAmount,
 			"settlement_recovery": json.RawMessage(recovery),
 			"lease_until":         nil,
 		},
@@ -1181,7 +1196,7 @@ func (w *MediaWorker) cleanupExpiredInitializer(ctx context.Context, task *Media
 			)
 		}
 		matchingFailure := fresh.Status == MediaTaskStatusFailed && fresh.ErrorCode == settlement.ErrorCode &&
-			fresh.BillingStatus == MediaBillingStatusPrecharged && fresh.PrechargedAmount == snapshot.EstimatedAmount &&
+			fresh.BillingStatus == MediaBillingStatusPrecharged && fresh.PrechargedAmount == prechargeResult.PrechargedAmount &&
 			mediaSettlementPlansEqual(fresh.SettlementRecovery, recovery)
 		if !matchingFailure {
 			if transitionErr != nil && fresh.Status == MediaTaskStatusQueued && fresh.Version == task.Version {
@@ -1197,7 +1212,7 @@ func (w *MediaWorker) cleanupExpiredInitializer(ctx context.Context, task *Media
 		task.ErrorMessage = settlement.ErrorCode
 		task.FinishedAt = mediaTimePointer(finishedAt)
 		task.BillingStatus = MediaBillingStatusPrecharged
-		task.PrechargedAmount = snapshot.EstimatedAmount
+		task.PrechargedAmount = prechargeResult.PrechargedAmount
 		task.SettlementRecovery = append(json.RawMessage(nil), recovery...)
 		task.LeaseUntil = nil
 		task.Version++
@@ -1383,7 +1398,7 @@ func (w *MediaWorker) acquireSelection(ctx context.Context, task *MediaTask, act
 }
 
 func (w *MediaWorker) updateClaimed(ctx context.Context, task *MediaTask, updates map[string]any) error {
-	updated, err := w.deps.Tasks.UpdateClaimed(ctx, task.ID, w.workerID, updates)
+	updated, err := w.deps.Tasks.UpdateClaimed(ctx, task.ID, task.ClaimToken, task.Version, task.Stage, updates)
 	if err != nil {
 		return fmt.Errorf("update claimed media task %d: %w", task.ID, err)
 	}
@@ -1394,7 +1409,7 @@ func (w *MediaWorker) updateClaimed(ctx context.Context, task *MediaTask, update
 	return nil
 }
 
-func (w *MediaWorker) startLeaseRenewer(ctx context.Context, active *mediaActiveExecution, taskID int64) <-chan struct{} {
+func (w *MediaWorker) startLeaseRenewer(ctx context.Context, active *mediaActiveExecution, taskID int64, claimToken string) <-chan struct{} {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
@@ -1415,7 +1430,7 @@ func (w *MediaWorker) startLeaseRenewer(ctx context.Context, active *mediaActive
 				return
 			case <-ticker.C:
 				callCtx, cancel := context.WithTimeout(ctx, w.cfg.LeaseRenewInterval)
-				renewed, err := w.deps.Tasks.RenewLease(callCtx, taskID, w.workerID, time.Now().UTC().Add(w.cfg.LeaseTTL))
+				renewed, err := w.deps.Tasks.RenewLease(callCtx, taskID, claimToken, time.Now().UTC().Add(w.cfg.LeaseTTL))
 				cancel()
 				if ctx.Err() != nil || active.terminalizing.Load() {
 					return

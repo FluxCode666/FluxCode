@@ -181,6 +181,13 @@ func TestMediaHTTPContentReaderRejectsMultipleRanges(t *testing.T) {
 	require.ErrorIs(t, err, service.ErrInvalidMediaRange)
 }
 
+func TestSafeMediaContentTypeAllowsOnlyVideo(t *testing.T) {
+	require.Equal(t, "video/mp4", safeMediaContentType("video/mp4; charset=binary"))
+	for _, unsafe := range []string{"", "text/html", "application/javascript", "image/svg+xml"} {
+		require.Equal(t, "application/octet-stream", safeMediaContentType(unsafe))
+	}
+}
+
 func TestMediaHTTPContentReaderLimitsBodyWithoutContentLengthAndCancelsOnClose(t *testing.T) {
 	requestCanceled := make(chan struct{})
 	bodyClosed := make(chan struct{})

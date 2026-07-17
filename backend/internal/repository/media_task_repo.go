@@ -86,6 +86,7 @@ var (
 		"precharged_amount",
 		"final_amount",
 		"refunded_amount",
+		"additional_charged_amount",
 	)
 )
 
@@ -113,6 +114,7 @@ func (r *mediaTaskRepository) Create(ctx context.Context, task *service.MediaTas
 		SetPrechargedAmount(task.PrechargedAmount).
 		SetFinalAmount(task.FinalAmount).
 		SetRefundedAmount(task.RefundedAmount).
+		SetAdditionalChargedAmount(task.AdditionalChargedAmount).
 		SetRetryCount(task.RetryCount).
 		SetNillableLeaseUntil(utcTimePointer(task.LeaseUntil)).
 		SetNillableSubmittedAt(utcTimePointer(task.SubmittedAt)).
@@ -163,6 +165,9 @@ func (r *mediaTaskRepository) Create(ctx context.Context, task *service.MediaTas
 	}
 	if task.WorkerID != "" {
 		create.SetWorkerID(task.WorkerID)
+	}
+	if task.ClaimToken != "" {
+		create.SetClaimToken(task.ClaimToken)
 	}
 	if task.Version != 0 {
 		create.SetVersion(task.Version)
@@ -248,10 +253,14 @@ func (r *mediaTaskRepository) TransitionQueued(
 	if err := validateMediaTaskUpdateFields("TransitionQueued", updates, transitionQueuedFields); err != nil {
 		return false, err
 	}
+	if valid, err := validateTerminalStageUpdate(service.MediaTaskStageQueued, to, updates, "TransitionQueued"); err != nil || !valid {
+		return false, err
+	}
 	update := r.client.MediaTask.Update().
 		Where(
 			mediatask.IDEQ(id),
 			mediatask.StatusEQ(string(service.MediaTaskStatusQueued)),
+			mediatask.StageEQ(string(service.MediaTaskStageQueued)),
 			mediatask.VersionEQ(expectedVersion),
 		)
 	if err := applyMediaTaskUpdates(update, updates); err != nil {
@@ -264,7 +273,10 @@ func (r *mediaTaskRepository) TransitionQueued(
 	return updated == 1, err
 }
 
-func (r *mediaTaskRepository) Claim(ctx context.Context, id int64, workerID string, leaseUntil time.Time, version int64) (bool, error) {
+func (r *mediaTaskRepository) Claim(ctx context.Context, id int64, workerID, claimToken string, leaseUntil time.Time, version int64) (bool, error) {
+	if workerID == "" || claimToken == "" {
+		return false, errors.New("media task claim requires worker id and claim token")
+	}
 	now := time.Now().UTC()
 	leaseAvailable := mediatask.Or(mediatask.LeaseUntilIsNil(), mediatask.LeaseUntilLTE(now))
 	claimable := mediatask.Or(
@@ -282,18 +294,22 @@ func (r *mediaTaskRepository) Claim(ctx context.Context, id int64, workerID stri
 		Where(mediatask.IDEQ(id), mediatask.VersionEQ(version), claimable).
 		SetStatus(string(service.MediaTaskStatusInProgress)).
 		SetWorkerID(workerID).
+		SetClaimToken(claimToken).
 		SetLeaseUntil(leaseUntil.UTC()).
 		AddVersion(1).
 		Save(ctx)
 	return updated == 1, err
 }
 
-func (r *mediaTaskRepository) RenewLease(ctx context.Context, id int64, workerID string, leaseUntil time.Time) (bool, error) {
+func (r *mediaTaskRepository) RenewLease(ctx context.Context, id int64, claimToken string, leaseUntil time.Time) (bool, error) {
+	if claimToken == "" {
+		return false, errors.New("media task lease renewal requires claim token")
+	}
 	updated, err := r.client.MediaTask.Update().
 		Where(
 			mediatask.IDEQ(id),
 			mediatask.StatusEQ(string(service.MediaTaskStatusInProgress)),
-			mediatask.WorkerIDEQ(workerID),
+			mediatask.ClaimTokenEQ(claimToken),
 			mediatask.LeaseUntilNotNil(),
 			mediatask.LeaseUntilGT(time.Now().UTC()),
 		).
@@ -302,15 +318,30 @@ func (r *mediaTaskRepository) RenewLease(ctx context.Context, id int64, workerID
 	return updated == 1, err
 }
 
-func (r *mediaTaskRepository) UpdateClaimed(ctx context.Context, id int64, workerID string, updates map[string]any) (bool, error) {
+func (r *mediaTaskRepository) UpdateClaimed(
+	ctx context.Context,
+	id int64,
+	claimToken string,
+	expectedVersion int64,
+	expectedStage service.MediaTaskStage,
+	updates map[string]any,
+) (bool, error) {
+	if claimToken == "" {
+		return false, errors.New("media task claimed update requires claim token")
+	}
 	if err := validateMediaTaskUpdateFields("UpdateClaimed", updates, updateClaimedFields); err != nil {
+		return false, err
+	}
+	if valid, err := validateMediaTaskStageUpdate(expectedStage, updates, "UpdateClaimed"); err != nil || !valid {
 		return false, err
 	}
 	update := r.client.MediaTask.Update().
 		Where(
 			mediatask.IDEQ(id),
 			mediatask.StatusEQ(string(service.MediaTaskStatusInProgress)),
-			mediatask.WorkerIDEQ(workerID),
+			mediatask.ClaimTokenEQ(claimToken),
+			mediatask.VersionEQ(expectedVersion),
+			mediatask.StageEQ(string(expectedStage)),
 			mediatask.LeaseUntilNotNil(),
 			mediatask.LeaseUntilGT(time.Now().UTC()),
 		)
@@ -340,6 +371,7 @@ func (r *mediaTaskRepository) Transition(ctx context.Context, id int64, from, to
 func (r *mediaTaskRepository) TransitionSyncTimeout(
 	ctx context.Context,
 	id, expectedVersion int64,
+	expectedStage service.MediaTaskStage,
 	from service.MediaTaskStatus,
 	updates map[string]any,
 ) (bool, error) {
@@ -349,11 +381,15 @@ func (r *mediaTaskRepository) TransitionSyncTimeout(
 	if err := validateMediaTaskUpdateFields("TransitionSyncTimeout", updates, transitionFields); err != nil {
 		return false, err
 	}
+	if valid, err := validateTerminalStageUpdate(expectedStage, service.MediaTaskStatusFailed, updates, "TransitionSyncTimeout"); err != nil || !valid {
+		return false, err
+	}
 	update := r.client.MediaTask.Update().
 		Where(
 			mediatask.IDEQ(id),
 			mediatask.StatusEQ(string(from)),
 			mediatask.VersionEQ(expectedVersion),
+			mediatask.StageEQ(string(expectedStage)),
 			mediatask.SyncFallbackEQ(false),
 		)
 	if err := applyMediaTaskUpdates(update, updates); err != nil {
@@ -369,8 +405,9 @@ func (r *mediaTaskRepository) TransitionSyncTimeout(
 func (r *mediaTaskRepository) TransitionClaimed(
 	ctx context.Context,
 	id int64,
-	workerID string,
+	claimToken string,
 	expectedVersion int64,
+	expectedStage service.MediaTaskStage,
 	from, to service.MediaTaskStatus,
 	updates map[string]any,
 ) (bool, error) {
@@ -380,12 +417,19 @@ func (r *mediaTaskRepository) TransitionClaimed(
 	if err := validateMediaTaskUpdateFields("TransitionClaimed", updates, transitionClaimedFields); err != nil {
 		return false, err
 	}
+	if claimToken == "" {
+		return false, errors.New("media task claimed transition requires claim token")
+	}
+	if valid, err := validateTerminalStageUpdate(expectedStage, to, updates, "TransitionClaimed"); err != nil || !valid {
+		return false, err
+	}
 	update := r.client.MediaTask.Update().
 		Where(
 			mediatask.IDEQ(id),
 			mediatask.StatusEQ(string(from)),
-			mediatask.WorkerIDEQ(workerID),
+			mediatask.ClaimTokenEQ(claimToken),
 			mediatask.VersionEQ(expectedVersion),
+			mediatask.StageEQ(string(expectedStage)),
 			mediatask.LeaseUntilNotNil(),
 			mediatask.LeaseUntilGT(time.Now().UTC()),
 		)
@@ -533,7 +577,53 @@ func (r *mediaArtifactRepository) Create(ctx context.Context, artifact *service.
 	if queryErr != nil {
 		return nil, err
 	}
-	return mediaArtifactFromEnt(existing), nil
+	stored := mediaArtifactFromEnt(existing)
+	if !mediaArtifactContentIdentityEqual(stored, artifact) {
+		return nil, fmt.Errorf("%w for task %d %s position %d: %w", service.ErrMediaArtifactConflict, artifact.TaskID, artifact.Direction, artifact.Position, err)
+	}
+	return stored, nil
+}
+
+func mediaArtifactContentIdentityEqual(left, right *service.MediaArtifact) bool {
+	return left != nil && right != nil &&
+		left.TaskID == right.TaskID &&
+		left.Direction == right.Direction &&
+		left.Position == right.Position &&
+		left.MediaType == right.MediaType &&
+		left.ContentType == right.ContentType &&
+		left.SizeBytes == right.SizeBytes &&
+		left.ChecksumSHA256 == right.ChecksumSHA256 &&
+		optionalComparableEqual(left.Width, right.Width) &&
+		optionalComparableEqual(left.Height, right.Height) &&
+		optionalComparableEqual(left.DurationSeconds, right.DurationSeconds) &&
+		left.Resolution == right.Resolution &&
+		optionalComparableEqual(left.FPS, right.FPS) &&
+		left.StorageStatus == normalizedMediaArtifactStorageStatus(right.StorageStatus) &&
+		left.ObjectKey == right.ObjectKey &&
+		left.PublicURL == right.PublicURL &&
+		left.UpstreamReference == right.UpstreamReference &&
+		optionalTimeEqual(left.ExpiresAt, right.ExpiresAt)
+}
+
+func normalizedMediaArtifactStorageStatus(status string) string {
+	if status == "" {
+		return "pending"
+	}
+	return status
+}
+
+func optionalComparableEqual[T comparable](left, right *T) bool {
+	if left == nil || right == nil {
+		return left == nil && right == nil
+	}
+	return *left == *right
+}
+
+func optionalTimeEqual(left, right *time.Time) bool {
+	if left == nil || right == nil {
+		return left == nil && right == nil
+	}
+	return left.Equal(*right)
 }
 
 func (r *mediaArtifactRepository) ListByTaskID(ctx context.Context, taskID int64) ([]service.MediaArtifact, error) {
@@ -556,49 +646,51 @@ func mediaTaskFromEnt(task *dbent.MediaTask) *service.MediaTask {
 		return nil
 	}
 	return &service.MediaTask{
-		ID:                 task.ID,
-		PublicID:           task.PublicID,
-		UserID:             task.UserID,
-		APIKeyID:           task.APIKeyID,
-		GroupID:            task.GroupID,
-		ChannelID:          cloneInt64Pointer(task.ChannelID),
-		AccountID:          cloneInt64Pointer(task.AccountID),
-		MediaType:          service.MediaType(task.MediaType),
-		Operation:          service.MediaOperation(task.Operation),
-		RequestedModel:     task.RequestedModel,
-		UpstreamModel:      task.UpstreamModel,
-		Adapter:            task.Adapter,
-		NativeAsyncMode:    service.NativeAsyncMode(task.NativeAsyncMode),
-		ClientAsync:        task.ClientAsync,
-		SyncFallback:       task.SyncFallback,
-		Status:             service.MediaTaskStatus(task.Status),
-		Stage:              service.MediaTaskStage(task.Stage),
-		Progress:           task.Progress,
-		RequestSpec:        cloneRawMessage(task.RequestSpec),
-		CandidateSnapshot:  cloneRawMessage(task.CandidateSnapshot),
-		RequestFingerprint: task.RequestFingerprint,
-		IdempotencyKey:     task.IdempotencyKey,
-		UpstreamTaskID:     stringFromPointer(task.UpstreamTaskID),
-		PollMetadata:       cloneRawMessage(task.PollMetadata),
-		BillingSnapshot:    cloneRawMessage(task.BillingSnapshot),
-		SettlementPlan:     cloneRawMessage(task.SettlementPlan),
-		SettlementRecovery: cloneRawMessage(task.SettlementRecovery),
-		BillingStatus:      task.BillingStatus,
-		PrechargedAmount:   task.PrechargedAmount,
-		FinalAmount:        task.FinalAmount,
-		RefundedAmount:     task.RefundedAmount,
-		RetryCount:         task.RetryCount,
-		ErrorCode:          task.ErrorCode,
-		ErrorMessage:       task.ErrorMessage,
-		WorkerID:           task.WorkerID,
-		LeaseUntil:         cloneTimePointer(task.LeaseUntil),
-		Version:            task.Version,
-		SubmittedAt:        cloneTimePointer(task.SubmittedAt),
-		StartedAt:          cloneTimePointer(task.StartedAt),
-		FinishedAt:         cloneTimePointer(task.FinishedAt),
-		SyncFallbackAt:     cloneTimePointer(task.SyncFallbackAt),
-		CreatedAt:          task.CreatedAt,
-		UpdatedAt:          task.UpdatedAt,
+		ID:                      task.ID,
+		PublicID:                task.PublicID,
+		UserID:                  task.UserID,
+		APIKeyID:                task.APIKeyID,
+		GroupID:                 task.GroupID,
+		ChannelID:               cloneInt64Pointer(task.ChannelID),
+		AccountID:               cloneInt64Pointer(task.AccountID),
+		MediaType:               service.MediaType(task.MediaType),
+		Operation:               service.MediaOperation(task.Operation),
+		RequestedModel:          task.RequestedModel,
+		UpstreamModel:           task.UpstreamModel,
+		Adapter:                 task.Adapter,
+		NativeAsyncMode:         service.NativeAsyncMode(task.NativeAsyncMode),
+		ClientAsync:             task.ClientAsync,
+		SyncFallback:            task.SyncFallback,
+		Status:                  service.MediaTaskStatus(task.Status),
+		Stage:                   service.MediaTaskStage(task.Stage),
+		Progress:                task.Progress,
+		RequestSpec:             cloneRawMessage(task.RequestSpec),
+		CandidateSnapshot:       cloneRawMessage(task.CandidateSnapshot),
+		RequestFingerprint:      task.RequestFingerprint,
+		IdempotencyKey:          task.IdempotencyKey,
+		UpstreamTaskID:          stringFromPointer(task.UpstreamTaskID),
+		PollMetadata:            cloneRawMessage(task.PollMetadata),
+		BillingSnapshot:         cloneRawMessage(task.BillingSnapshot),
+		SettlementPlan:          cloneRawMessage(task.SettlementPlan),
+		SettlementRecovery:      cloneRawMessage(task.SettlementRecovery),
+		BillingStatus:           task.BillingStatus,
+		PrechargedAmount:        task.PrechargedAmount,
+		FinalAmount:             task.FinalAmount,
+		RefundedAmount:          task.RefundedAmount,
+		AdditionalChargedAmount: task.AdditionalChargedAmount,
+		RetryCount:              task.RetryCount,
+		ErrorCode:               task.ErrorCode,
+		ErrorMessage:            task.ErrorMessage,
+		WorkerID:                task.WorkerID,
+		ClaimToken:              task.ClaimToken,
+		LeaseUntil:              cloneTimePointer(task.LeaseUntil),
+		Version:                 task.Version,
+		SubmittedAt:             cloneTimePointer(task.SubmittedAt),
+		StartedAt:               cloneTimePointer(task.StartedAt),
+		FinishedAt:              cloneTimePointer(task.FinishedAt),
+		SyncFallbackAt:          cloneTimePointer(task.SyncFallbackAt),
+		CreatedAt:               task.CreatedAt,
+		UpdatedAt:               task.UpdatedAt,
 	}
 }
 
@@ -780,6 +872,12 @@ func applyMediaTaskUpdates(update *dbent.MediaTaskUpdate, updates map[string]any
 				return updateTypeError(field, err)
 			}
 			update.SetRefundedAmount(v)
+		case "additional_charged_amount":
+			v, err := floatUpdateValue(value)
+			if err != nil {
+				return updateTypeError(field, err)
+			}
+			update.SetAdditionalChargedAmount(v)
 		case "retry_count":
 			v, err := intUpdateValue(value)
 			if err != nil {
@@ -836,6 +934,43 @@ func validateMediaTaskUpdateFields(operation string, updates map[string]any, all
 		}
 	}
 	return nil
+}
+
+func validateMediaTaskStageUpdate(expected service.MediaTaskStage, updates map[string]any, operation string) (bool, error) {
+	raw, changesStage := updates["stage"]
+	if !changesStage {
+		return true, nil
+	}
+	encoded, err := mediaTaskStageUpdateValue(raw)
+	if err != nil {
+		return false, fmt.Errorf("media task %s stage: %w", operation, err)
+	}
+	next := service.MediaTaskStage(encoded)
+	if next == expected {
+		return true, nil
+	}
+	return expected.CanTransitionTo(next), nil
+}
+
+func validateTerminalStageUpdate(expected service.MediaTaskStage, to service.MediaTaskStatus, updates map[string]any, operation string) (bool, error) {
+	if valid, err := validateMediaTaskStageUpdate(expected, updates, operation); err != nil || !valid {
+		return false, err
+	}
+	raw, ok := updates["stage"]
+	if !ok {
+		return false, nil
+	}
+	encoded, err := mediaTaskStageUpdateValue(raw)
+	if err != nil {
+		return false, fmt.Errorf("media task %s terminal stage: %w", operation, err)
+	}
+	want := service.MediaTaskStageFailed
+	if to == service.MediaTaskStatusCompleted {
+		want = service.MediaTaskStageCompleted
+	} else if to != service.MediaTaskStatusFailed {
+		return false, nil
+	}
+	return service.MediaTaskStage(encoded) == want, nil
 }
 
 func stringUpdateValue(value any) (string, error) {

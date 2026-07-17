@@ -164,12 +164,8 @@ func copyAllowedMediaHeaders(dst, src http.Header) {
 }
 
 func safeMediaContentType(value string) string {
-	value = strings.TrimSpace(strings.SplitN(value, "\r", 2)[0])
-	value = strings.TrimSpace(strings.SplitN(value, "\n", 2)[0])
-	if value == "" {
-		return "application/octet-stream"
-	}
-	return value
+	contentType, _ := service.NormalizeVideoContentType(value)
+	return contentType
 }
 
 type boundedCancelReadCloser struct {

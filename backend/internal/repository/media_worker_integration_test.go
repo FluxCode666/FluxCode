@@ -40,22 +40,36 @@ func TestMediaWorkerIntegrationDuplicateDeliverySettlesOnce(t *testing.T) {
 func TestMediaWorkerIntegrationResumesPollWithoutResubmit(t *testing.T) {
 	fixture := newIntegrationMediaWorker(t)
 	task := fixture.createQueuedTask(t, true)
-	claimed, err := fixture.taskRepo.Claim(context.Background(), task.ID, "dead-worker", time.Now().Add(time.Minute), task.Version)
+	const claimToken = "dead-worker-claim"
+	claimed, err := fixture.taskRepo.Claim(context.Background(), task.ID, "dead-worker", claimToken, time.Now().Add(time.Minute), task.Version)
 	require.NoError(t, err)
 	require.True(t, claimed)
 	claimedTask, err := fixture.taskRepo.GetByID(context.Background(), task.ID)
 	require.NoError(t, err)
-	updated, err := fixture.taskRepo.UpdateClaimed(context.Background(), task.ID, "dead-worker", map[string]any{
+	updated, err := fixture.taskRepo.UpdateClaimed(context.Background(), task.ID, claimToken, claimedTask.Version, claimedTask.Stage, map[string]any{
+		"stage": service.MediaTaskStageScheduling,
+	})
+	require.NoError(t, err)
+	require.True(t, updated)
+	claimedTask, err = fixture.taskRepo.GetByID(context.Background(), task.ID)
+	require.NoError(t, err)
+	updated, err = fixture.taskRepo.UpdateClaimed(context.Background(), task.ID, claimToken, claimedTask.Version, claimedTask.Stage, map[string]any{
 		"account_id": fixture.account.ID, "adapter": fixture.adapter.Name(), "upstream_model": "upstream-image",
-		"native_async_mode": service.NativeAsyncRequired, "upstream_task_id": "upstream-existing",
-		"poll_metadata": json.RawMessage(`{"cursor":1}`), "stage": service.MediaTaskStagePolling,
+		"native_async_mode": service.NativeAsyncRequired, "stage": service.MediaTaskStageSubmitting,
+	})
+	require.NoError(t, err)
+	require.True(t, updated)
+	claimedTask, err = fixture.taskRepo.GetByID(context.Background(), task.ID)
+	require.NoError(t, err)
+	updated, err = fixture.taskRepo.UpdateClaimed(context.Background(), task.ID, claimToken, claimedTask.Version, claimedTask.Stage, map[string]any{
+		"upstream_task_id": "upstream-existing", "poll_metadata": json.RawMessage(`{"cursor":1}`),
+		"stage": service.MediaTaskStagePolling,
 	})
 	require.NoError(t, err)
 	require.True(t, updated)
 	fixture.adapter.allow("upstream-existing")
 	_, err = testEntClient(t).MediaTask.UpdateOneID(task.ID).SetLeaseUntil(time.Now().Add(-time.Minute)).Save(context.Background())
 	require.NoError(t, err)
-	_ = claimedTask
 
 	require.NoError(t, fixture.worker.RecoverOnce(context.Background()))
 	require.NoError(t, fixture.worker.Start())
@@ -111,7 +125,7 @@ func newIntegrationMediaWorker(t *testing.T) *integrationMediaWorkerFixture {
 	adapters := service.NewMediaAdapterRegistry()
 	adapters.Register(adapter.Name(), adapter)
 	account := &service.Account{ID: 707, Platform: service.PlatformOpenAI, Status: service.StatusActive, Schedulable: true, Concurrency: 1}
-	scheduler := service.NewMediaScheduler(&integrationWorkerAccounts{account: account}, &integrationWorkerSelector{}, adapters)
+	scheduler := service.NewMediaScheduler(&integrationWorkerAccounts{account: account}, &integrationWorkerSelector{}, adapters, integrationWorkerGroups{})
 	models := service.NewMediaModelRegistry(&integrationWorkerModels{})
 	require.NoError(t, models.Refresh(context.Background()))
 	candidates, err := json.Marshal([]service.MediaAccountCandidateSnapshot{{AccountID: account.ID, Platform: account.Platform, ResolvedModel: service.ResolvedMediaAccountModel{Adapter: adapter.Name(), UpstreamModel: "upstream-image", NativeAsyncMode: service.NativeAsyncRequired}}})
@@ -191,6 +205,12 @@ func (a *integrationWorkerAdapter) allow(id string) {
 
 type integrationWorkerAccounts struct{ account *service.Account }
 
+type integrationWorkerGroups struct{}
+
+func (integrationWorkerGroups) GetByID(_ context.Context, id int64) (*service.Group, error) {
+	return &service.Group{ID: id, Platform: service.PlatformOpenAI, MediaCrossPlatformEnabled: true}, nil
+}
+
 func (r *integrationWorkerAccounts) ListSchedulableByGroupID(context.Context, int64) ([]service.Account, error) {
 	return []service.Account{*r.account}, nil
 }
@@ -207,6 +227,9 @@ func (*integrationWorkerSelector) Select(_ context.Context, req service.AccountC
 		Account: req.Candidates[0], Acquired: true, ReleaseFunc: func() {},
 		RefreshFunc: func(context.Context) (bool, error) { return true, nil },
 	}, nil
+}
+func (s *integrationWorkerSelector) SelectFixed(ctx context.Context, req service.AccountCandidateSelectionRequest) (*service.AccountSelectionResult, error) {
+	return s.Select(ctx, req)
 }
 func (*integrationWorkerSelector) Wait(context.Context, *service.AccountWaitPlan) (func(), error) {
 	return func() {}, nil
@@ -247,18 +270,21 @@ type integrationWorkerBillingPort struct {
 	attempts atomic.Int64
 }
 
-func (*integrationWorkerBillingPort) Precharge(context.Context, *service.MediaTask, service.MediaBillingSnapshot) error {
-	return nil
+func (*integrationWorkerBillingPort) Precharge(_ context.Context, _ *service.MediaTask, snapshot service.MediaBillingSnapshot) (service.MediaPrechargeResult, error) {
+	return service.MediaPrechargeResult{PrechargedAmount: snapshot.EstimatedAmount}, nil
 }
-func (b *integrationWorkerBillingPort) SettleSuccess(_ context.Context, task *service.MediaTask, _ service.MediaUsage) error {
+func (b *integrationWorkerBillingPort) SettleSuccess(_ context.Context, task *service.MediaTask, _ service.MediaUsage) (service.MediaSettlementResult, error) {
 	b.attempts.Add(1)
 	b.settle(task, service.MediaSettlementTypeSuccess)
-	return nil
+	return service.MediaSettlementResult{FinalAmount: task.PrechargedAmount}, nil
 }
-func (b *integrationWorkerBillingPort) SettleFailure(_ context.Context, task *service.MediaTask, _ service.MediaFailureSettlement) error {
+func (b *integrationWorkerBillingPort) SettleFailure(_ context.Context, task *service.MediaTask, failure service.MediaFailureSettlement) (service.MediaSettlementResult, error) {
 	b.attempts.Add(1)
 	b.settle(task, service.MediaSettlementTypeFailure)
-	return nil
+	return service.MediaSettlementResult{
+		FinalAmount:    task.PrechargedAmount * (1 - failure.RefundRatio),
+		RefundedAmount: task.PrechargedAmount * failure.RefundRatio,
+	}, nil
 }
 func (b *integrationWorkerBillingPort) settle(task *service.MediaTask, planType service.MediaSettlementType) {
 	b.mu.Lock()

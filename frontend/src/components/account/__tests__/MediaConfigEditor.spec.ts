@@ -122,6 +122,19 @@ describe('MediaConfigEditor', () => {
     })
   })
 
+  it('把 __proto__ 模型名作为普通 own key 发布且不改变原型', async () => {
+    const wrapper = mountHarness()
+
+    await wrapper.get('[data-test="media-add-model-override"]').trigger('click')
+    await wrapper.get('[data-test="media-override-model-0"]').setValue('__proto__')
+    await wrapper.get('[data-test="media-override-upstream-0"]').setValue('safe-upstream')
+
+    const overrides = wrapper.getComponent(MediaConfigEditor).props('modelValue').model_overrides
+    expect(Object.hasOwn(overrides, '__proto__')).toBe(true)
+    expect(overrides.__proto__).toEqual({ upstream_model: 'safe-upstream' })
+    expect(Object.getPrototypeOf(overrides)).toBeNull()
+  })
+
   it('重复 key 期间保留标量草稿，恢复唯一后一次发布最新值', async () => {
     const wrapper = mountHarness({
       adapter: 'gemini',

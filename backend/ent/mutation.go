@@ -22142,72 +22142,75 @@ func (m *MediaModelDefinitionMutation) ResetEdge(name string) error {
 // MediaTaskMutation represents an operation that mutates the MediaTask nodes in the graph.
 type MediaTaskMutation struct {
 	config
-	op                        Op
-	typ                       string
-	id                        *int64
-	created_at                *time.Time
-	updated_at                *time.Time
-	public_id                 *string
-	user_id                   *int64
-	adduser_id                *int64
-	api_key_id                *int64
-	addapi_key_id             *int64
-	group_id                  *int64
-	addgroup_id               *int64
-	channel_id                *int64
-	addchannel_id             *int64
-	account_id                *int64
-	addaccount_id             *int64
-	media_type                *string
-	operation                 *string
-	requested_model           *string
-	upstream_model            *string
-	adapter                   *string
-	native_async_mode         *string
-	client_async              *bool
-	sync_fallback             *bool
-	status                    *string
-	stage                     *string
-	progress                  *int
-	addprogress               *int
-	request_spec              *json.RawMessage
-	appendrequest_spec        json.RawMessage
-	candidate_snapshot        *json.RawMessage
-	appendcandidate_snapshot  json.RawMessage
-	request_fingerprint       *string
-	idempotency_key           *string
-	upstream_task_id          *string
-	poll_metadata             *json.RawMessage
-	appendpoll_metadata       json.RawMessage
-	billing_snapshot          *json.RawMessage
-	appendbilling_snapshot    json.RawMessage
-	settlement_plan           *json.RawMessage
-	appendsettlement_plan     json.RawMessage
-	settlement_recovery       *json.RawMessage
-	appendsettlement_recovery json.RawMessage
-	billing_status            *string
-	precharged_amount         *float64
-	addprecharged_amount      *float64
-	final_amount              *float64
-	addfinal_amount           *float64
-	refunded_amount           *float64
-	addrefunded_amount        *float64
-	retry_count               *int
-	addretry_count            *int
-	error_code                *string
-	error_message             *string
-	worker_id                 *string
-	lease_until               *time.Time
-	version                   *int64
-	addversion                *int64
-	submitted_at              *time.Time
-	started_at                *time.Time
-	finished_at               *time.Time
-	sync_fallback_at          *time.Time
-	clearedFields             map[string]struct{}
-	done                      bool
-	oldValue                  func(context.Context) (*MediaTask, error)
-	predicates                []predicate.MediaTask
+	op                           Op
+	typ                          string
+	id                           *int64
+	created_at                   *time.Time
+	updated_at                   *time.Time
+	public_id                    *string
+	user_id                      *int64
+	adduser_id                   *int64
+	api_key_id                   *int64
+	addapi_key_id                *int64
+	group_id                     *int64
+	addgroup_id                  *int64
+	channel_id                   *int64
+	addchannel_id                *int64
+	account_id                   *int64
+	addaccount_id                *int64
+	media_type                   *string
+	operation                    *string
+	requested_model              *string
+	upstream_model               *string
+	adapter                      *string
+	native_async_mode            *string
+	client_async                 *bool
+	sync_fallback                *bool
+	status                       *string
+	stage                        *string
+	progress                     *int
+	addprogress                  *int
+	request_spec                 *json.RawMessage
+	appendrequest_spec           json.RawMessage
+	candidate_snapshot           *json.RawMessage
+	appendcandidate_snapshot     json.RawMessage
+	request_fingerprint          *string
+	idempotency_key              *string
+	upstream_task_id             *string
+	poll_metadata                *json.RawMessage
+	appendpoll_metadata          json.RawMessage
+	billing_snapshot             *json.RawMessage
+	appendbilling_snapshot       json.RawMessage
+	settlement_plan              *json.RawMessage
+	appendsettlement_plan        json.RawMessage
+	settlement_recovery          *json.RawMessage
+	appendsettlement_recovery    json.RawMessage
+	billing_status               *string
+	precharged_amount            *float64
+	addprecharged_amount         *float64
+	final_amount                 *float64
+	addfinal_amount              *float64
+	refunded_amount              *float64
+	addrefunded_amount           *float64
+	additional_charged_amount    *float64
+	addadditional_charged_amount *float64
+	retry_count                  *int
+	addretry_count               *int
+	error_code                   *string
+	error_message                *string
+	worker_id                    *string
+	claim_token                  *string
+	lease_until                  *time.Time
+	version                      *int64
+	addversion                   *int64
+	submitted_at                 *time.Time
+	started_at                   *time.Time
+	finished_at                  *time.Time
+	sync_fallback_at             *time.Time
+	clearedFields                map[string]struct{}
+	done                         bool
+	oldValue                     func(context.Context) (*MediaTask, error)
+	predicates                   []predicate.MediaTask
 }
 
 var _ ent.Mutation = (*MediaTaskMutation)(nil)
@@ -23827,6 +23830,62 @@ func (m *MediaTaskMutation) ResetRefundedAmount() {
 	m.addrefunded_amount = nil
 }
 
+// SetAdditionalChargedAmount sets the "additional_charged_amount" field.
+func (m *MediaTaskMutation) SetAdditionalChargedAmount(f float64) {
+	m.additional_charged_amount = &f
+	m.addadditional_charged_amount = nil
+}
+
+// AdditionalChargedAmount returns the value of the "additional_charged_amount" field in the mutation.
+func (m *MediaTaskMutation) AdditionalChargedAmount() (r float64, exists bool) {
+	v := m.additional_charged_amount
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAdditionalChargedAmount returns the old "additional_charged_amount" field's value of the MediaTask entity.
+// If the MediaTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *MediaTaskMutation) OldAdditionalChargedAmount(ctx context.Context) (v float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAdditionalChargedAmount is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAdditionalChargedAmount requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAdditionalChargedAmount: %w", err)
+	}
+	return oldValue.AdditionalChargedAmount, nil
+}
+
+// AddAdditionalChargedAmount adds f to the "additional_charged_amount" field.
+func (m *MediaTaskMutation) AddAdditionalChargedAmount(f float64) {
+	if m.addadditional_charged_amount != nil {
+		*m.addadditional_charged_amount += f
+	} else {
+		m.addadditional_charged_amount = &f
+	}
+}
+
+// AddedAdditionalChargedAmount returns the value that was added to the "additional_charged_amount" field in this mutation.
+func (m *MediaTaskMutation) AddedAdditionalChargedAmount() (r float64, exists bool) {
+	v := m.addadditional_charged_amount
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetAdditionalChargedAmount resets all changes to the "additional_charged_amount" field.
+func (m *MediaTaskMutation) ResetAdditionalChargedAmount() {
+	m.additional_charged_amount = nil
+	m.addadditional_charged_amount = nil
+}
+
 // SetRetryCount sets the "retry_count" field.
 func (m *MediaTaskMutation) SetRetryCount(i int) {
 	m.retry_count = &i
@@ -23989,6 +24048,42 @@ func (m *MediaTaskMutation) OldWorkerID(ctx context.Context) (v string, err erro
 // ResetWorkerID resets all changes to the "worker_id" field.
 func (m *MediaTaskMutation) ResetWorkerID() {
 	m.worker_id = nil
+}
+
+// SetClaimToken sets the "claim_token" field.
+func (m *MediaTaskMutation) SetClaimToken(s string) {
+	m.claim_token = &s
+}
+
+// ClaimToken returns the value of the "claim_token" field in the mutation.
+func (m *MediaTaskMutation) ClaimToken() (r string, exists bool) {
+	v := m.claim_token
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldClaimToken returns the old "claim_token" field's value of the MediaTask entity.
+// If the MediaTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *MediaTaskMutation) OldClaimToken(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldClaimToken is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldClaimToken requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldClaimToken: %w", err)
+	}
+	return oldValue.ClaimToken, nil
+}
+
+// ResetClaimToken resets all changes to the "claim_token" field.
+func (m *MediaTaskMutation) ResetClaimToken() {
+	m.claim_token = nil
 }
 
 // SetLeaseUntil sets the "lease_until" field.
@@ -24326,7 +24421,7 @@ func (m *MediaTaskMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *MediaTaskMutation) Fields() []string {
-	fields := make([]string, 0, 42)
+	fields := make([]string, 0, 44)
 	if m.created_at != nil {
 		fields = append(fields, mediatask.FieldCreatedAt)
 	}
@@ -24423,6 +24518,9 @@ func (m *MediaTaskMutation) Fields() []string {
 	if m.refunded_amount != nil {
 		fields = append(fields, mediatask.FieldRefundedAmount)
 	}
+	if m.additional_charged_amount != nil {
+		fields = append(fields, mediatask.FieldAdditionalChargedAmount)
+	}
 	if m.retry_count != nil {
 		fields = append(fields, mediatask.FieldRetryCount)
 	}
@@ -24434,6 +24532,9 @@ func (m *MediaTaskMutation) Fields() []string {
 	}
 	if m.worker_id != nil {
 		fields = append(fields, mediatask.FieldWorkerID)
+	}
+	if m.claim_token != nil {
+		fields = append(fields, mediatask.FieldClaimToken)
 	}
 	if m.lease_until != nil {
 		fields = append(fields, mediatask.FieldLeaseUntil)
@@ -24525,6 +24626,8 @@ func (m *MediaTaskMutation) Field(name string) (ent.Value, bool) {
 		return m.FinalAmount()
 	case mediatask.FieldRefundedAmount:
 		return m.RefundedAmount()
+	case mediatask.FieldAdditionalChargedAmount:
+		return m.AdditionalChargedAmount()
 	case mediatask.FieldRetryCount:
 		return m.RetryCount()
 	case mediatask.FieldErrorCode:
@@ -24533,6 +24636,8 @@ func (m *MediaTaskMutation) Field(name string) (ent.Value, bool) {
 		return m.ErrorMessage()
 	case mediatask.FieldWorkerID:
 		return m.WorkerID()
+	case mediatask.FieldClaimToken:
+		return m.ClaimToken()
 	case mediatask.FieldLeaseUntil:
 		return m.LeaseUntil()
 	case mediatask.FieldVersion:
@@ -24618,6 +24723,8 @@ func (m *MediaTaskMutation) OldField(ctx context.Context, name string) (ent.Valu
 		return m.OldFinalAmount(ctx)
 	case mediatask.FieldRefundedAmount:
 		return m.OldRefundedAmount(ctx)
+	case mediatask.FieldAdditionalChargedAmount:
+		return m.OldAdditionalChargedAmount(ctx)
 	case mediatask.FieldRetryCount:
 		return m.OldRetryCount(ctx)
 	case mediatask.FieldErrorCode:
@@ -24626,6 +24733,8 @@ func (m *MediaTaskMutation) OldField(ctx context.Context, name string) (ent.Valu
 		return m.OldErrorMessage(ctx)
 	case mediatask.FieldWorkerID:
 		return m.OldWorkerID(ctx)
+	case mediatask.FieldClaimToken:
+		return m.OldClaimToken(ctx)
 	case mediatask.FieldLeaseUntil:
 		return m.OldLeaseUntil(ctx)
 	case mediatask.FieldVersion:
@@ -24871,6 +24980,13 @@ func (m *MediaTaskMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetRefundedAmount(v)
 		return nil
+	case mediatask.FieldAdditionalChargedAmount:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAdditionalChargedAmount(v)
+		return nil
 	case mediatask.FieldRetryCount:
 		v, ok := value.(int)
 		if !ok {
@@ -24898,6 +25014,13 @@ func (m *MediaTaskMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetWorkerID(v)
+		return nil
+	case mediatask.FieldClaimToken:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetClaimToken(v)
 		return nil
 	case mediatask.FieldLeaseUntil:
 		v, ok := value.(time.Time)
@@ -24976,6 +25099,9 @@ func (m *MediaTaskMutation) AddedFields() []string {
 	if m.addrefunded_amount != nil {
 		fields = append(fields, mediatask.FieldRefundedAmount)
 	}
+	if m.addadditional_charged_amount != nil {
+		fields = append(fields, mediatask.FieldAdditionalChargedAmount)
+	}
 	if m.addretry_count != nil {
 		fields = append(fields, mediatask.FieldRetryCount)
 	}
@@ -25008,6 +25134,8 @@ func (m *MediaTaskMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedFinalAmount()
 	case mediatask.FieldRefundedAmount:
 		return m.AddedRefundedAmount()
+	case mediatask.FieldAdditionalChargedAmount:
+		return m.AddedAdditionalChargedAmount()
 	case mediatask.FieldRetryCount:
 		return m.AddedRetryCount()
 	case mediatask.FieldVersion:
@@ -25083,6 +25211,13 @@ func (m *MediaTaskMutation) AddField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.AddRefundedAmount(v)
+		return nil
+	case mediatask.FieldAdditionalChargedAmount:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddAdditionalChargedAmount(v)
 		return nil
 	case mediatask.FieldRetryCount:
 		v, ok := value.(int)
@@ -25296,6 +25431,9 @@ func (m *MediaTaskMutation) ResetField(name string) error {
 	case mediatask.FieldRefundedAmount:
 		m.ResetRefundedAmount()
 		return nil
+	case mediatask.FieldAdditionalChargedAmount:
+		m.ResetAdditionalChargedAmount()
+		return nil
 	case mediatask.FieldRetryCount:
 		m.ResetRetryCount()
 		return nil
@@ -25307,6 +25445,9 @@ func (m *MediaTaskMutation) ResetField(name string) error {
 		return nil
 	case mediatask.FieldWorkerID:
 		m.ResetWorkerID()
+		return nil
+	case mediatask.FieldClaimToken:
+		m.ResetClaimToken()
 		return nil
 	case mediatask.FieldLeaseUntil:
 		m.ResetLeaseUntil()

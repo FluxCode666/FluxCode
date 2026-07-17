@@ -49,6 +49,10 @@ type stableAccountCandidateWaiter interface {
 	WaitStable(ctx context.Context, plan *AccountWaitPlan) (*AcquireResult, error)
 }
 
+type fixedAccountCandidateSelector interface {
+	SelectFixed(ctx context.Context, req AccountCandidateSelectionRequest) (*AccountSelectionResult, error)
+}
+
 type accountCandidateSelector struct {
 	concurrency AccountCandidateConcurrency
 	cache       GatewayCache
@@ -139,6 +143,31 @@ func (s *accountCandidateSelector) Select(ctx context.Context, req AccountCandid
 			Timeout:        s.config.FallbackWaitTimeout,
 			MaxWaiting:     s.config.FallbackMaxWaiting,
 			SlotID:         req.SlotID,
+		},
+	}, nil
+}
+
+// SelectFixed acquires concurrency only for an already-submitted upstream task.
+// Realtime scheduling eligibility is deliberately ignored because the upstream
+// task is bound to this account and cannot be moved safely.
+func (s *accountCandidateSelector) SelectFixed(ctx context.Context, req AccountCandidateSelectionRequest) (*AccountSelectionResult, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if len(req.Candidates) != 1 || req.Candidates[0] == nil || req.Candidates[0].ID <= 0 {
+		return nil, ErrNoAvailableAccounts
+	}
+	account := req.Candidates[0]
+	result, err := s.acquire(ctx, account, req.SlotID)
+	if err != nil || result == nil || result.Acquired {
+		return result, err
+	}
+	return &AccountSelectionResult{
+		Account: account,
+		WaitPlan: &AccountWaitPlan{
+			AccountID: account.ID, MaxConcurrency: account.Concurrency,
+			Timeout: s.config.FallbackWaitTimeout, MaxWaiting: s.config.FallbackMaxWaiting,
+			SlotID: req.SlotID,
 		},
 	}, nil
 }

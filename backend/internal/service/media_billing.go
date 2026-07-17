@@ -26,6 +26,7 @@ var (
 	ErrMediaSettlementCASConflict      = errors.New("media settlement CAS conflict")
 	ErrMediaSettlementPlanNotPersisted = errors.New("media settlement plan was not persisted")
 	ErrInvalidMediaFailureSettlement   = errors.New("invalid media failure settlement")
+	ErrInvalidMediaBillingResult       = errors.New("invalid media billing result")
 )
 
 type MediaBillingSnapshot struct {
@@ -51,30 +52,40 @@ type MediaFailureSettlement struct {
 	ErrorCode    string
 }
 
+type MediaPrechargeResult struct {
+	PrechargedAmount float64
+}
+
+type MediaSettlementResult struct {
+	FinalAmount             float64
+	RefundedAmount          float64
+	AdditionalChargedAmount float64
+}
+
 type MediaBillingPort interface {
 	// Implementations must use MediaBillingIdempotencyKey with the matching
 	// operation before applying any external balance mutation. Precharge must
 	// wrap ErrMediaPrechargeResultUnknown only when it cannot determine whether
 	// that mutation happened; deterministic rejections must return ordinary errors.
-	Precharge(ctx context.Context, task *MediaTask, snapshot MediaBillingSnapshot) error
-	SettleSuccess(ctx context.Context, task *MediaTask, usage MediaUsage) error
-	SettleFailure(ctx context.Context, task *MediaTask, settlement MediaFailureSettlement) error
+	Precharge(ctx context.Context, task *MediaTask, snapshot MediaBillingSnapshot) (MediaPrechargeResult, error)
+	SettleSuccess(ctx context.Context, task *MediaTask, usage MediaUsage) (MediaSettlementResult, error)
+	SettleFailure(ctx context.Context, task *MediaTask, settlement MediaFailureSettlement) (MediaSettlementResult, error)
 }
 
 // DisabledMediaBilling is the phase-one safe default. It never changes a
 // balance, while still satisfying the complete billing lifecycle contract.
 type DisabledMediaBilling struct{}
 
-func (DisabledMediaBilling) Precharge(context.Context, *MediaTask, MediaBillingSnapshot) error {
-	return nil
+func (DisabledMediaBilling) Precharge(context.Context, *MediaTask, MediaBillingSnapshot) (MediaPrechargeResult, error) {
+	return MediaPrechargeResult{}, nil
 }
 
-func (DisabledMediaBilling) SettleSuccess(context.Context, *MediaTask, MediaUsage) error {
-	return nil
+func (DisabledMediaBilling) SettleSuccess(context.Context, *MediaTask, MediaUsage) (MediaSettlementResult, error) {
+	return MediaSettlementResult{}, nil
 }
 
-func (DisabledMediaBilling) SettleFailure(context.Context, *MediaTask, MediaFailureSettlement) error {
-	return nil
+func (DisabledMediaBilling) SettleFailure(context.Context, *MediaTask, MediaFailureSettlement) (MediaSettlementResult, error) {
+	return MediaSettlementResult{}, nil
 }
 
 type MediaBillingOperation string
@@ -260,20 +271,24 @@ func (c *MediaBillingCoordinator) executePersisted(ctx context.Context, task *Me
 		task.BillingStatus = MediaBillingStatusSettling
 	}
 
+	var result MediaSettlementResult
 	var portErr error
 	switch plan.Type {
 	case MediaSettlementTypeSuccess:
 		if plan.Usage == nil || plan.Failure != nil {
 			return errors.New("invalid successful media settlement plan")
 		}
-		portErr = c.port.SettleSuccess(ctx, task, *plan.Usage)
+		result, portErr = c.port.SettleSuccess(ctx, task, *plan.Usage)
 	case MediaSettlementTypeFailure:
 		if plan.Failure == nil || plan.Usage != nil {
 			return errors.New("invalid failed media settlement plan")
 		}
-		portErr = c.port.SettleFailure(ctx, task, *plan.Failure)
+		result, portErr = c.port.SettleFailure(ctx, task, *plan.Failure)
 	default:
 		return fmt.Errorf("unknown media settlement type %q", plan.Type)
+	}
+	if portErr == nil {
+		portErr = validateMediaSettlementResult(task.PrechargedAmount, result)
 	}
 	if portErr != nil {
 		updated, updateErr := c.repo.UpdateBilling(ctx, task.ID, MediaBillingStatusSettling, map[string]any{
@@ -288,15 +303,11 @@ func (c *MediaBillingCoordinator) executePersisted(ctx context.Context, task *Me
 		return fmt.Errorf("settle media task %d: %w", task.ID, portErr)
 	}
 
-	updates := map[string]any{"billing_status": MediaBillingStatusSettled}
-	switch plan.Type {
-	case MediaSettlementTypeSuccess:
-		updates["final_amount"] = task.PrechargedAmount
-		updates["refunded_amount"] = float64(0)
-	case MediaSettlementTypeFailure:
-		refundRatio := clampMediaRatio(plan.Failure.RefundRatio)
-		updates["refunded_amount"] = task.PrechargedAmount * refundRatio
-		updates["final_amount"] = task.PrechargedAmount * (1 - refundRatio)
+	updates := map[string]any{
+		"billing_status":            MediaBillingStatusSettled,
+		"final_amount":              result.FinalAmount,
+		"refunded_amount":           result.RefundedAmount,
+		"additional_charged_amount": result.AdditionalChargedAmount,
 	}
 	updated, err := c.repo.UpdateBilling(ctx, task.ID, MediaBillingStatusSettling, updates)
 	if err != nil {
@@ -304,7 +315,7 @@ func (c *MediaBillingCoordinator) executePersisted(ctx context.Context, task *Me
 	}
 	if !updated {
 		fresh, loadErr := c.repo.GetByID(ctx, task.ID)
-		if loadErr == nil && fresh.BillingStatus == MediaBillingStatusSettled {
+		if loadErr == nil && fresh.BillingStatus == MediaBillingStatusSettled && mediaSettlementResultMatchesTask(result, fresh) {
 			return nil
 		}
 		if loadErr != nil {
@@ -313,6 +324,44 @@ func (c *MediaBillingCoordinator) executePersisted(ctx context.Context, task *Me
 		return fmt.Errorf("%w: complete task %d settlement", ErrMediaSettlementCASConflict, task.ID)
 	}
 	return nil
+}
+
+func validateMediaPrechargeResult(result MediaPrechargeResult) error {
+	if invalidMediaAmount(result.PrechargedAmount) {
+		return fmt.Errorf("%w: precharged_amount=%v", ErrInvalidMediaBillingResult, result.PrechargedAmount)
+	}
+	return nil
+}
+
+func mediaPrechargeNeedsReconciliation(err error) bool {
+	return errors.Is(err, ErrMediaPrechargeResultUnknown) || errors.Is(err, ErrInvalidMediaBillingResult)
+}
+
+func validateMediaSettlementResult(prechargedAmount float64, result MediaSettlementResult) error {
+	if invalidMediaAmount(prechargedAmount) ||
+		invalidMediaAmount(result.FinalAmount) ||
+		invalidMediaAmount(result.RefundedAmount) ||
+		invalidMediaAmount(result.AdditionalChargedAmount) {
+		return fmt.Errorf("%w: precharged=%v final=%v refunded=%v additional=%v", ErrInvalidMediaBillingResult,
+			prechargedAmount, result.FinalAmount, result.RefundedAmount, result.AdditionalChargedAmount)
+	}
+	left := prechargedAmount + result.AdditionalChargedAmount
+	right := result.FinalAmount + result.RefundedAmount
+	if math.Abs(left-right) > 1e-8 {
+		return fmt.Errorf("%w: accounting mismatch precharged+additional=%v final+refunded=%v", ErrInvalidMediaBillingResult, left, right)
+	}
+	return nil
+}
+
+func invalidMediaAmount(value float64) bool {
+	return value < 0 || math.IsNaN(value) || math.IsInf(value, 0)
+}
+
+func mediaSettlementResultMatchesTask(result MediaSettlementResult, task *MediaTask) bool {
+	return task != nil &&
+		math.Abs(task.FinalAmount-result.FinalAmount) <= 1e-8 &&
+		math.Abs(task.RefundedAmount-result.RefundedAmount) <= 1e-8 &&
+		math.Abs(task.AdditionalChargedAmount-result.AdditionalChargedAmount) <= 1e-8
 }
 
 func (c *MediaBillingCoordinator) validate() error {

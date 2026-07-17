@@ -359,6 +359,20 @@ func (_c *MediaTaskCreate) SetNillableRefundedAmount(v *float64) *MediaTaskCreat
 	return _c
 }
 
+// SetAdditionalChargedAmount sets the "additional_charged_amount" field.
+func (_c *MediaTaskCreate) SetAdditionalChargedAmount(v float64) *MediaTaskCreate {
+	_c.mutation.SetAdditionalChargedAmount(v)
+	return _c
+}
+
+// SetNillableAdditionalChargedAmount sets the "additional_charged_amount" field if the given value is not nil.
+func (_c *MediaTaskCreate) SetNillableAdditionalChargedAmount(v *float64) *MediaTaskCreate {
+	if v != nil {
+		_c.SetAdditionalChargedAmount(*v)
+	}
+	return _c
+}
+
 // SetRetryCount sets the "retry_count" field.
 func (_c *MediaTaskCreate) SetRetryCount(v int) *MediaTaskCreate {
 	_c.mutation.SetRetryCount(v)
@@ -411,6 +425,20 @@ func (_c *MediaTaskCreate) SetWorkerID(v string) *MediaTaskCreate {
 func (_c *MediaTaskCreate) SetNillableWorkerID(v *string) *MediaTaskCreate {
 	if v != nil {
 		_c.SetWorkerID(*v)
+	}
+	return _c
+}
+
+// SetClaimToken sets the "claim_token" field.
+func (_c *MediaTaskCreate) SetClaimToken(v string) *MediaTaskCreate {
+	_c.mutation.SetClaimToken(v)
+	return _c
+}
+
+// SetNillableClaimToken sets the "claim_token" field if the given value is not nil.
+func (_c *MediaTaskCreate) SetNillableClaimToken(v *string) *MediaTaskCreate {
+	if v != nil {
+		_c.SetClaimToken(*v)
 	}
 	return _c
 }
@@ -594,6 +622,10 @@ func (_c *MediaTaskCreate) defaults() {
 		v := mediatask.DefaultRefundedAmount
 		_c.mutation.SetRefundedAmount(v)
 	}
+	if _, ok := _c.mutation.AdditionalChargedAmount(); !ok {
+		v := mediatask.DefaultAdditionalChargedAmount
+		_c.mutation.SetAdditionalChargedAmount(v)
+	}
 	if _, ok := _c.mutation.RetryCount(); !ok {
 		v := mediatask.DefaultRetryCount
 		_c.mutation.SetRetryCount(v)
@@ -609,6 +641,10 @@ func (_c *MediaTaskCreate) defaults() {
 	if _, ok := _c.mutation.WorkerID(); !ok {
 		v := mediatask.DefaultWorkerID
 		_c.mutation.SetWorkerID(v)
+	}
+	if _, ok := _c.mutation.ClaimToken(); !ok {
+		v := mediatask.DefaultClaimToken
+		_c.mutation.SetClaimToken(v)
 	}
 	if _, ok := _c.mutation.Version(); !ok {
 		v := mediatask.DefaultVersion
@@ -753,6 +789,9 @@ func (_c *MediaTaskCreate) check() error {
 	if _, ok := _c.mutation.RefundedAmount(); !ok {
 		return &ValidationError{Name: "refunded_amount", err: errors.New(`ent: missing required field "MediaTask.refunded_amount"`)}
 	}
+	if _, ok := _c.mutation.AdditionalChargedAmount(); !ok {
+		return &ValidationError{Name: "additional_charged_amount", err: errors.New(`ent: missing required field "MediaTask.additional_charged_amount"`)}
+	}
 	if _, ok := _c.mutation.RetryCount(); !ok {
 		return &ValidationError{Name: "retry_count", err: errors.New(`ent: missing required field "MediaTask.retry_count"`)}
 	}
@@ -773,6 +812,14 @@ func (_c *MediaTaskCreate) check() error {
 	if v, ok := _c.mutation.WorkerID(); ok {
 		if err := mediatask.WorkerIDValidator(v); err != nil {
 			return &ValidationError{Name: "worker_id", err: fmt.Errorf(`ent: validator failed for field "MediaTask.worker_id": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.ClaimToken(); !ok {
+		return &ValidationError{Name: "claim_token", err: errors.New(`ent: missing required field "MediaTask.claim_token"`)}
+	}
+	if v, ok := _c.mutation.ClaimToken(); ok {
+		if err := mediatask.ClaimTokenValidator(v); err != nil {
+			return &ValidationError{Name: "claim_token", err: fmt.Errorf(`ent: validator failed for field "MediaTask.claim_token": %w`, err)}
 		}
 	}
 	if _, ok := _c.mutation.Version(); !ok {
@@ -933,6 +980,10 @@ func (_c *MediaTaskCreate) createSpec() (*MediaTask, *sqlgraph.CreateSpec) {
 		_spec.SetField(mediatask.FieldRefundedAmount, field.TypeFloat64, value)
 		_node.RefundedAmount = value
 	}
+	if value, ok := _c.mutation.AdditionalChargedAmount(); ok {
+		_spec.SetField(mediatask.FieldAdditionalChargedAmount, field.TypeFloat64, value)
+		_node.AdditionalChargedAmount = value
+	}
 	if value, ok := _c.mutation.RetryCount(); ok {
 		_spec.SetField(mediatask.FieldRetryCount, field.TypeInt, value)
 		_node.RetryCount = value
@@ -948,6 +999,10 @@ func (_c *MediaTaskCreate) createSpec() (*MediaTask, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.WorkerID(); ok {
 		_spec.SetField(mediatask.FieldWorkerID, field.TypeString, value)
 		_node.WorkerID = value
+	}
+	if value, ok := _c.mutation.ClaimToken(); ok {
+		_spec.SetField(mediatask.FieldClaimToken, field.TypeString, value)
+		_node.ClaimToken = value
 	}
 	if value, ok := _c.mutation.LeaseUntil(); ok {
 		_spec.SetField(mediatask.FieldLeaseUntil, field.TypeTime, value)
@@ -1493,6 +1548,24 @@ func (u *MediaTaskUpsert) AddRefundedAmount(v float64) *MediaTaskUpsert {
 	return u
 }
 
+// SetAdditionalChargedAmount sets the "additional_charged_amount" field.
+func (u *MediaTaskUpsert) SetAdditionalChargedAmount(v float64) *MediaTaskUpsert {
+	u.Set(mediatask.FieldAdditionalChargedAmount, v)
+	return u
+}
+
+// UpdateAdditionalChargedAmount sets the "additional_charged_amount" field to the value that was provided on create.
+func (u *MediaTaskUpsert) UpdateAdditionalChargedAmount() *MediaTaskUpsert {
+	u.SetExcluded(mediatask.FieldAdditionalChargedAmount)
+	return u
+}
+
+// AddAdditionalChargedAmount adds v to the "additional_charged_amount" field.
+func (u *MediaTaskUpsert) AddAdditionalChargedAmount(v float64) *MediaTaskUpsert {
+	u.Add(mediatask.FieldAdditionalChargedAmount, v)
+	return u
+}
+
 // SetRetryCount sets the "retry_count" field.
 func (u *MediaTaskUpsert) SetRetryCount(v int) *MediaTaskUpsert {
 	u.Set(mediatask.FieldRetryCount, v)
@@ -1544,6 +1617,18 @@ func (u *MediaTaskUpsert) SetWorkerID(v string) *MediaTaskUpsert {
 // UpdateWorkerID sets the "worker_id" field to the value that was provided on create.
 func (u *MediaTaskUpsert) UpdateWorkerID() *MediaTaskUpsert {
 	u.SetExcluded(mediatask.FieldWorkerID)
+	return u
+}
+
+// SetClaimToken sets the "claim_token" field.
+func (u *MediaTaskUpsert) SetClaimToken(v string) *MediaTaskUpsert {
+	u.Set(mediatask.FieldClaimToken, v)
+	return u
+}
+
+// UpdateClaimToken sets the "claim_token" field to the value that was provided on create.
+func (u *MediaTaskUpsert) UpdateClaimToken() *MediaTaskUpsert {
+	u.SetExcluded(mediatask.FieldClaimToken)
 	return u
 }
 
@@ -2246,6 +2331,27 @@ func (u *MediaTaskUpsertOne) UpdateRefundedAmount() *MediaTaskUpsertOne {
 	})
 }
 
+// SetAdditionalChargedAmount sets the "additional_charged_amount" field.
+func (u *MediaTaskUpsertOne) SetAdditionalChargedAmount(v float64) *MediaTaskUpsertOne {
+	return u.Update(func(s *MediaTaskUpsert) {
+		s.SetAdditionalChargedAmount(v)
+	})
+}
+
+// AddAdditionalChargedAmount adds v to the "additional_charged_amount" field.
+func (u *MediaTaskUpsertOne) AddAdditionalChargedAmount(v float64) *MediaTaskUpsertOne {
+	return u.Update(func(s *MediaTaskUpsert) {
+		s.AddAdditionalChargedAmount(v)
+	})
+}
+
+// UpdateAdditionalChargedAmount sets the "additional_charged_amount" field to the value that was provided on create.
+func (u *MediaTaskUpsertOne) UpdateAdditionalChargedAmount() *MediaTaskUpsertOne {
+	return u.Update(func(s *MediaTaskUpsert) {
+		s.UpdateAdditionalChargedAmount()
+	})
+}
+
 // SetRetryCount sets the "retry_count" field.
 func (u *MediaTaskUpsertOne) SetRetryCount(v int) *MediaTaskUpsertOne {
 	return u.Update(func(s *MediaTaskUpsert) {
@@ -2306,6 +2412,20 @@ func (u *MediaTaskUpsertOne) SetWorkerID(v string) *MediaTaskUpsertOne {
 func (u *MediaTaskUpsertOne) UpdateWorkerID() *MediaTaskUpsertOne {
 	return u.Update(func(s *MediaTaskUpsert) {
 		s.UpdateWorkerID()
+	})
+}
+
+// SetClaimToken sets the "claim_token" field.
+func (u *MediaTaskUpsertOne) SetClaimToken(v string) *MediaTaskUpsertOne {
+	return u.Update(func(s *MediaTaskUpsert) {
+		s.SetClaimToken(v)
+	})
+}
+
+// UpdateClaimToken sets the "claim_token" field to the value that was provided on create.
+func (u *MediaTaskUpsertOne) UpdateClaimToken() *MediaTaskUpsertOne {
+	return u.Update(func(s *MediaTaskUpsert) {
+		s.UpdateClaimToken()
 	})
 }
 
@@ -3192,6 +3312,27 @@ func (u *MediaTaskUpsertBulk) UpdateRefundedAmount() *MediaTaskUpsertBulk {
 	})
 }
 
+// SetAdditionalChargedAmount sets the "additional_charged_amount" field.
+func (u *MediaTaskUpsertBulk) SetAdditionalChargedAmount(v float64) *MediaTaskUpsertBulk {
+	return u.Update(func(s *MediaTaskUpsert) {
+		s.SetAdditionalChargedAmount(v)
+	})
+}
+
+// AddAdditionalChargedAmount adds v to the "additional_charged_amount" field.
+func (u *MediaTaskUpsertBulk) AddAdditionalChargedAmount(v float64) *MediaTaskUpsertBulk {
+	return u.Update(func(s *MediaTaskUpsert) {
+		s.AddAdditionalChargedAmount(v)
+	})
+}
+
+// UpdateAdditionalChargedAmount sets the "additional_charged_amount" field to the value that was provided on create.
+func (u *MediaTaskUpsertBulk) UpdateAdditionalChargedAmount() *MediaTaskUpsertBulk {
+	return u.Update(func(s *MediaTaskUpsert) {
+		s.UpdateAdditionalChargedAmount()
+	})
+}
+
 // SetRetryCount sets the "retry_count" field.
 func (u *MediaTaskUpsertBulk) SetRetryCount(v int) *MediaTaskUpsertBulk {
 	return u.Update(func(s *MediaTaskUpsert) {
@@ -3252,6 +3393,20 @@ func (u *MediaTaskUpsertBulk) SetWorkerID(v string) *MediaTaskUpsertBulk {
 func (u *MediaTaskUpsertBulk) UpdateWorkerID() *MediaTaskUpsertBulk {
 	return u.Update(func(s *MediaTaskUpsert) {
 		s.UpdateWorkerID()
+	})
+}
+
+// SetClaimToken sets the "claim_token" field.
+func (u *MediaTaskUpsertBulk) SetClaimToken(v string) *MediaTaskUpsertBulk {
+	return u.Update(func(s *MediaTaskUpsert) {
+		s.SetClaimToken(v)
+	})
+}
+
+// UpdateClaimToken sets the "claim_token" field to the value that was provided on create.
+func (u *MediaTaskUpsertBulk) UpdateClaimToken() *MediaTaskUpsertBulk {
+	return u.Update(func(s *MediaTaskUpsert) {
+		s.UpdateClaimToken()
 	})
 }
 
