@@ -224,8 +224,17 @@ export default {
     copyModelId: '复制模型 ID',
     modelIdCopied: '模型 ID 已复制',
     performance: {
+      timeRange: '性能时间范围',
+      last24Hours: '最近 24 小时',
+      last7Days: '最近 7 天',
+      overall: '全模型性能',
+      groupPerformance: '分组性能',
+      latency: '延迟',
+      throughput: '吞吐',
+      status: '状态',
       availability: '可用率',
       averageFirstToken: '平均首字时长',
+      averageRequestTime: '平均请求时长',
       hourly: '小时趋势',
       noTrendData: '暂无趋势数据'
     },

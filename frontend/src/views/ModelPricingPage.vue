@@ -11,6 +11,28 @@
           <p class="mt-3 max-w-2xl text-sm leading-6 text-gray-600 dark:text-dark-300">
             {{ t('modelPricing.description', '按模型查看不同分组的调用价格') }}
           </p>
+          <div class="mt-4 inline-flex rounded-xl bg-black/[0.04] p-1 text-sm dark:bg-white/[0.08]" role="group" :aria-label="t('modelPricing.performance.timeRange', '性能时间范围')">
+            <button
+              data-testid="model-pricing-range-24h"
+              type="button"
+              class="rounded-lg px-3 py-1.5 font-medium transition"
+              :class="performanceRange === '24h' ? 'bg-white text-gray-950 shadow-sm dark:bg-dark-700 dark:text-white' : 'text-gray-500 hover:text-gray-950 dark:text-dark-300 dark:hover:text-white'"
+              :aria-pressed="performanceRange === '24h'"
+              @click="setPerformanceRange('24h')"
+            >
+              {{ t('modelPricing.performance.last24Hours', '最近 24 小时') }}
+            </button>
+            <button
+              data-testid="model-pricing-range-7d"
+              type="button"
+              class="rounded-lg px-3 py-1.5 font-medium transition"
+              :class="performanceRange === '7d' ? 'bg-white text-gray-950 shadow-sm dark:bg-dark-700 dark:text-white' : 'text-gray-500 hover:text-gray-950 dark:text-dark-300 dark:hover:text-white'"
+              :aria-pressed="performanceRange === '7d'"
+              @click="setPerformanceRange('7d')"
+            >
+              {{ t('modelPricing.performance.last7Days', '最近 7 天') }}
+            </button>
+          </div>
         </div>
 
         <div class="grid w-full gap-2 sm:grid-cols-[minmax(220px,1fr)_minmax(140px,160px)_minmax(150px,180px)_minmax(170px,200px)] lg:max-w-4xl">
@@ -71,7 +93,7 @@
             :data-testid="`model-card-${model.id}`"
             role="button"
             tabindex="0"
-            class="group relative flex min-h-[220px] w-full cursor-pointer flex-col overflow-hidden rounded-2xl border border-black/5 bg-white/75 p-5 text-left shadow-sm transition duration-300 hover:-translate-y-1 hover:border-primary-300 hover:bg-white hover:shadow-xl hover:shadow-black/5 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 dark:border-white/10 dark:bg-dark-900/45 dark:hover:bg-dark-900/70"
+            class="group relative flex min-h-[290px] w-full cursor-pointer flex-col overflow-hidden rounded-2xl border border-black/5 bg-white/75 p-5 text-left shadow-sm transition duration-300 hover:-translate-y-1 hover:border-primary-300 hover:bg-white hover:shadow-xl hover:shadow-black/5 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 dark:border-white/10 dark:bg-dark-900/45 dark:hover:bg-dark-900/70"
             @click="selectModel(model.id)"
             @keydown.enter="selectModel(model.id)"
             @keydown.space.prevent="selectModel(model.id)"
@@ -111,17 +133,39 @@
               </span>
             </div>
 
-            <div class="relative mt-auto grid grid-cols-2 gap-3 pt-6 text-xs">
-              <div class="rounded-xl bg-black/[0.03] p-3 dark:bg-white/[0.06]">
-                <div class="text-gray-500 dark:text-dark-400">{{ t('modelPricing.input', '输入') }}</div>
-                <div class="mt-1 font-semibold text-gray-950 dark:text-white">
-                  {{ formatTokenPrice(summaryDisplayPrice(model).input_price) }}
+            <div class="relative mt-auto space-y-3 pt-6">
+              <div class="grid grid-cols-3 gap-2 text-xs">
+                <div class="rounded-xl bg-primary-50 p-3 dark:bg-primary-500/10">
+                  <div class="text-gray-500 dark:text-dark-400">{{ t('modelPricing.performance.latency', '延迟') }}</div>
+                  <div :data-testid="`model-card-latency-${model.id}`" class="mt-1 font-semibold text-gray-950 dark:text-white">
+                    {{ formatMilliseconds(model.performance?.average_first_token_ms) }}
+                  </div>
+                </div>
+                <div class="rounded-xl bg-primary-50 p-3 dark:bg-primary-500/10">
+                  <div class="text-gray-500 dark:text-dark-400">{{ t('modelPricing.performance.throughput', '吞吐') }}</div>
+                  <div :data-testid="`model-card-tps-${model.id}`" class="mt-1 font-semibold text-gray-950 dark:text-white">
+                    {{ formatTps(model.performance?.tps) }}
+                  </div>
+                </div>
+                <div class="rounded-xl bg-primary-50 p-3 dark:bg-primary-500/10">
+                  <div class="text-gray-500 dark:text-dark-400">{{ t('modelPricing.performance.status', '状态') }}</div>
+                  <div :data-testid="`model-card-availability-${model.id}`" class="mt-1 font-semibold text-gray-950 dark:text-white">
+                    {{ formatPercentage(model.performance?.availability) }}
+                  </div>
                 </div>
               </div>
-              <div class="rounded-xl bg-black/[0.03] p-3 dark:bg-white/[0.06]">
-                <div class="text-gray-500 dark:text-dark-400">{{ t('modelPricing.output', '输出') }}</div>
-                <div class="mt-1 font-semibold text-gray-950 dark:text-white">
-                  {{ formatTokenPrice(summaryDisplayPrice(model).output_price) }}
+              <div class="grid grid-cols-2 gap-3 text-xs">
+                <div class="rounded-xl bg-black/[0.03] p-3 dark:bg-white/[0.06]">
+                  <div class="text-gray-500 dark:text-dark-400">{{ t('modelPricing.input', '输入') }}</div>
+                  <div class="mt-1 font-semibold text-gray-950 dark:text-white">
+                    {{ formatTokenPrice(summaryDisplayPrice(model).input_price) }}
+                  </div>
+                </div>
+                <div class="rounded-xl bg-black/[0.03] p-3 dark:bg-white/[0.06]">
+                  <div class="text-gray-500 dark:text-dark-400">{{ t('modelPricing.output', '输出') }}</div>
+                  <div class="mt-1 font-semibold text-gray-950 dark:text-white">
+                    {{ formatTokenPrice(summaryDisplayPrice(model).output_price) }}
+                  </div>
                 </div>
               </div>
             </div>
@@ -203,7 +247,49 @@
             </div>
           </div>
 
+          <section data-testid="model-detail-overall-performance" class="mb-5 rounded-2xl border border-primary-100 bg-primary-50/60 p-4 dark:border-primary-900/50 dark:bg-primary-950/20">
+            <div class="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+              <h3 class="font-semibold text-gray-950 dark:text-white">{{ t('modelPricing.performance.overall', '全模型性能') }}</h3>
+              <span class="text-xs text-gray-500 dark:text-dark-400">{{ performanceRangeLabel }}</span>
+            </div>
+            <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <div class="rounded-xl bg-white/80 p-3 text-sm dark:bg-dark-800/70">
+                <div class="text-xs text-gray-500 dark:text-dark-400">{{ t('modelPricing.performance.throughput', '吞吐') }}</div>
+                <div class="mt-1 font-semibold text-gray-950 dark:text-white">{{ formatTps(detail.performance?.tps) }}</div>
+              </div>
+              <div class="rounded-xl bg-white/80 p-3 text-sm dark:bg-dark-800/70">
+                <div class="text-xs text-gray-500 dark:text-dark-400">{{ t('modelPricing.performance.availability', '可用率') }}</div>
+                <div class="mt-1 font-semibold text-gray-950 dark:text-white">{{ formatPercentage(detail.performance?.availability) }}</div>
+              </div>
+              <div class="rounded-xl bg-white/80 p-3 text-sm dark:bg-dark-800/70">
+                <div class="text-xs text-gray-500 dark:text-dark-400">{{ t('modelPricing.performance.averageFirstToken', '平均首字时长') }}</div>
+                <div class="mt-1 font-semibold text-gray-950 dark:text-white">{{ formatMilliseconds(detail.performance?.average_first_token_ms) }}</div>
+              </div>
+              <div class="rounded-xl bg-white/80 p-3 text-sm dark:bg-dark-800/70">
+                <div class="text-xs text-gray-500 dark:text-dark-400">{{ t('modelPricing.performance.averageRequestTime', '平均请求时长') }}</div>
+                <div class="mt-1 font-semibold text-gray-950 dark:text-white">{{ formatMilliseconds(detail.performance?.average_request_time_ms) }}</div>
+              </div>
+            </div>
+          </section>
+
+          <section class="mb-5 grid gap-4 lg:grid-cols-2">
+            <ModelPerformanceTrendChart
+              :points="detail.performance_trend || []"
+              metric="average_first_token_ms"
+              :range="performanceRange"
+            />
+            <ModelPerformanceTrendChart
+              :points="detail.performance_trend || []"
+              metric="availability"
+              :range="performanceRange"
+            />
+          </section>
+
           <div class="overflow-x-auto">
+            <div class="mb-3 flex items-baseline justify-between gap-3">
+              <h3 class="font-semibold text-gray-950 dark:text-white">{{ t('modelPricing.performance.groupPerformance', '分组性能') }}</h3>
+              <span class="text-xs text-gray-500 dark:text-dark-400">{{ performanceRangeLabel }}</span>
+            </div>
             <table class="min-w-full text-sm">
               <thead>
                 <tr class="border-b border-black/5 text-left text-xs text-gray-500 dark:border-white/10 dark:text-dark-400">
@@ -214,6 +300,10 @@
                   <th class="py-2 pr-4">{{ t('modelPricing.cacheWrite', '缓存写入') }}</th>
                   <th class="py-2 pr-4">{{ t('modelPricing.cacheRead', '缓存读取') }}</th>
                   <th class="py-2 pr-4">{{ t('modelPricing.requestOrImage', '按次/图片') }}</th>
+                  <th class="py-2 pr-4">{{ t('modelPricing.performance.throughput', '吞吐') }}</th>
+                  <th class="py-2 pr-4">{{ t('modelPricing.performance.availability', '可用率') }}</th>
+                  <th class="py-2 pr-4">{{ t('modelPricing.performance.averageFirstToken', '平均首字时长') }}</th>
+                  <th class="py-2 pr-4">{{ t('modelPricing.performance.averageRequestTime', '平均请求时长') }}</th>
                 </tr>
               </thead>
               <tbody>
@@ -237,6 +327,12 @@
                       formatPrice(group.price.per_request_price || group.price.image_output_price)
                     }}
                   </td>
+                  <td class="py-3 pr-4" :data-testid="`model-detail-group-performance-${group.group_id}`">
+                    {{ formatTps(group.performance?.tps) }}
+                  </td>
+                  <td class="py-3 pr-4">{{ formatPercentage(group.performance?.availability) }}</td>
+                  <td class="py-3 pr-4">{{ formatMilliseconds(group.performance?.average_first_token_ms) }}</td>
+                  <td class="py-3 pr-4">{{ formatMilliseconds(group.performance?.average_request_time_ms) }}</td>
                 </tr>
               </tbody>
             </table>
@@ -254,8 +350,16 @@ import PublicHeader from '@/components/layout/PublicHeader.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Select from '@/components/common/Select.vue'
 import Icon from '@/components/icons/Icon.vue'
+import ModelPerformanceTrendChart from '@/components/charts/ModelPerformanceTrendChart.vue'
 import { useClipboard } from '@/composables/useClipboard'
-import { modelPricingAPI, type ModelCapability, type ModelPricingDetail, type ModelPricingGroupOption, type ModelPricingSummary } from '@/api/modelPricing'
+import {
+  modelPricingAPI,
+  type ModelCapability,
+  type ModelPerformanceRange,
+  type ModelPricingDetail,
+  type ModelPricingGroupOption,
+  type ModelPricingSummary
+} from '@/api/modelPricing'
 import { useAppStore } from '@/stores'
 
 const { t } = useI18n()
@@ -274,6 +378,7 @@ const debouncedSearch = ref('')
 const platformFilter = ref('')
 const capabilityFilter = ref<ModelCapability | ''>('')
 const groupFilter = ref<number | ''>('')
+const performanceRange = ref<ModelPerformanceRange>('24h')
 const loading = ref(false)
 const detailLoading = ref(false)
 const error = ref(false)
@@ -318,6 +423,9 @@ const groupOptions = computed(() => [
 ])
 
 const detailTitle = computed(() => detail.value?.display_name || selectedModelId.value || t('modelPricing.title', '模型定价'))
+const performanceRangeLabel = computed(() => performanceRange.value === '7d'
+  ? t('modelPricing.performance.last7Days', '最近 7 天')
+  : t('modelPricing.performance.last24Hours', '最近 24 小时'))
 
 watch(searchInput, (value) => {
   if (searchTimer) {
@@ -328,8 +436,14 @@ watch(searchInput, (value) => {
   }, 300)
 })
 
-watch([debouncedSearch, platformFilter, capabilityFilter, groupFilter], () => {
+watch([debouncedSearch, platformFilter, capabilityFilter, groupFilter, performanceRange], () => {
   loadModels()
+})
+
+watch(performanceRange, () => {
+  if (detailModalOpen.value && selectedModelId.value) {
+    void selectModel(selectedModelId.value)
+  }
 })
 
 function isCanceledError(error: unknown): boolean {
@@ -360,6 +474,10 @@ function setGroupFilter(value: string | number | boolean | null) {
     return
   }
   groupFilter.value = ''
+}
+
+function setPerformanceRange(value: ModelPerformanceRange) {
+  performanceRange.value = value
 }
 
 function isModelCapability(value: unknown): value is ModelCapability {
@@ -398,6 +516,7 @@ async function loadModels() {
       q: debouncedSearch.value,
       platform: platformFilter.value,
       capability: capabilityFilter.value,
+      range: performanceRange.value,
       ...(groupFilter.value !== '' ? { group_id: groupFilter.value } : {})
     }
     const nextModels = await modelPricingAPI.listModels(
@@ -441,7 +560,7 @@ async function selectModel(modelId: string) {
   detail.value = null
 
   try {
-    const nextDetail = await modelPricingAPI.getModel(modelId, { signal: controller.signal })
+    const nextDetail = await modelPricingAPI.getModel(modelId, performanceRange.value, { signal: controller.signal })
     if (detailAbortController !== controller) {
       return
     }
@@ -500,6 +619,26 @@ function summaryDisplayPrice(model: ModelPricingSummary) {
 function formatPrice(price: number): string {
   if (!price) return '-'
   return price < 0.001 ? formatTokenPrice(price) : `$${price.toFixed(6)}`
+}
+
+function formatMetricNumber(value: number | null | undefined, fractionDigits = 1): string | null {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null
+  return value.toFixed(fractionDigits)
+}
+
+function formatMilliseconds(value: number | null | undefined): string {
+  const formatted = formatMetricNumber(value)
+  return formatted === null ? '-' : `${formatted} ms`
+}
+
+function formatTps(value: number | null | undefined): string {
+  const formatted = formatMetricNumber(value)
+  return formatted === null ? '-' : `${formatted} TPS`
+}
+
+function formatPercentage(value: number | null | undefined): string {
+  const formatted = formatMetricNumber(value)
+  return formatted === null ? '-' : `${formatted}%`
 }
 
 onMounted(() => {

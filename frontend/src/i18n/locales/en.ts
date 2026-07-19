@@ -226,8 +226,17 @@ export default {
     copyModelId: 'Copy Model ID',
     modelIdCopied: 'Model ID copied',
     performance: {
+      timeRange: 'Performance time range',
+      last24Hours: 'Last 24 Hours',
+      last7Days: 'Last 7 Days',
+      overall: 'Overall Model Performance',
+      groupPerformance: 'Group Performance',
+      latency: 'Latency',
+      throughput: 'Throughput',
+      status: 'Status',
       availability: 'Availability',
       averageFirstToken: 'Average First Token Time',
+      averageRequestTime: 'Average Request Time',
       hourly: 'Hourly Trend',
       noTrendData: 'No trend data'
     },
