@@ -134,6 +134,20 @@
             </div>
 
             <div class="relative mt-auto space-y-3 pt-6">
+              <div :data-testid="`model-card-price-${model.id}`" class="grid grid-cols-2 gap-3 text-xs">
+                <div class="rounded-xl bg-black/[0.03] p-3 dark:bg-white/[0.06]">
+                  <div class="text-gray-500 dark:text-dark-400">{{ t('modelPricing.input', '输入') }}</div>
+                  <div class="mt-1 font-semibold text-gray-950 dark:text-white">
+                    {{ formatTokenPrice(summaryDisplayPrice(model).input_price) }}
+                  </div>
+                </div>
+                <div class="rounded-xl bg-black/[0.03] p-3 dark:bg-white/[0.06]">
+                  <div class="text-gray-500 dark:text-dark-400">{{ t('modelPricing.output', '输出') }}</div>
+                  <div class="mt-1 font-semibold text-gray-950 dark:text-white">
+                    {{ formatTokenPrice(summaryDisplayPrice(model).output_price) }}
+                  </div>
+                </div>
+              </div>
               <div class="grid grid-cols-3 gap-2 text-xs">
                 <div class="rounded-xl bg-primary-50 p-3 dark:bg-primary-500/10">
                   <div class="text-gray-500 dark:text-dark-400">{{ t('modelPricing.performance.latency', '延迟') }}</div>
@@ -151,20 +165,6 @@
                   <div class="text-gray-500 dark:text-dark-400">{{ t('modelPricing.performance.status', '状态') }}</div>
                   <div :data-testid="`model-card-availability-${model.id}`" class="mt-1 font-semibold text-gray-950 dark:text-white">
                     {{ formatPercentage(model.performance?.availability) }}
-                  </div>
-                </div>
-              </div>
-              <div class="grid grid-cols-2 gap-3 text-xs">
-                <div class="rounded-xl bg-black/[0.03] p-3 dark:bg-white/[0.06]">
-                  <div class="text-gray-500 dark:text-dark-400">{{ t('modelPricing.input', '输入') }}</div>
-                  <div class="mt-1 font-semibold text-gray-950 dark:text-white">
-                    {{ formatTokenPrice(summaryDisplayPrice(model).input_price) }}
-                  </div>
-                </div>
-                <div class="rounded-xl bg-black/[0.03] p-3 dark:bg-white/[0.06]">
-                  <div class="text-gray-500 dark:text-dark-400">{{ t('modelPricing.output', '输出') }}</div>
-                  <div class="mt-1 font-semibold text-gray-950 dark:text-white">
-                    {{ formatTokenPrice(summaryDisplayPrice(model).output_price) }}
                   </div>
                 </div>
               </div>
@@ -279,6 +279,7 @@
               :range="performanceRange"
             />
             <ModelPerformanceTrendChart
+              v-if="hasTrendValues(detail.performance_trend, 'availability')"
               :points="detail.performance_trend || []"
               metric="availability"
               :range="performanceRange"
@@ -478,6 +479,13 @@ function setGroupFilter(value: string | number | boolean | null) {
 
 function setPerformanceRange(value: ModelPerformanceRange) {
   performanceRange.value = value
+}
+
+function hasTrendValues(
+  points: ModelPricingDetail['performance_trend'] | undefined,
+  metric: 'average_first_token_ms' | 'availability'
+): boolean {
+  return points?.some((point) => point[metric] !== null && point[metric] !== undefined) ?? false
 }
 
 function isModelCapability(value: unknown): value is ModelCapability {
