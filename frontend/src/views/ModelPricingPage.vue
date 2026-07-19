@@ -11,28 +11,6 @@
           <p class="mt-3 max-w-2xl text-sm leading-6 text-gray-600 dark:text-dark-300">
             {{ t('modelPricing.description', '按模型查看不同分组的调用价格') }}
           </p>
-          <div class="mt-4 inline-flex rounded-xl bg-black/[0.04] p-1 text-sm dark:bg-white/[0.08]" role="group" :aria-label="t('modelPricing.performance.timeRange', '性能时间范围')">
-            <button
-              data-testid="model-pricing-range-24h"
-              type="button"
-              class="rounded-lg px-3 py-1.5 font-medium transition"
-              :class="performanceRange === '24h' ? 'bg-white text-gray-950 shadow-sm dark:bg-dark-700 dark:text-white' : 'text-gray-500 hover:text-gray-950 dark:text-dark-300 dark:hover:text-white'"
-              :aria-pressed="performanceRange === '24h'"
-              @click="setPerformanceRange('24h')"
-            >
-              {{ t('modelPricing.performance.last24Hours', '最近 24 小时') }}
-            </button>
-            <button
-              data-testid="model-pricing-range-7d"
-              type="button"
-              class="rounded-lg px-3 py-1.5 font-medium transition"
-              :class="performanceRange === '7d' ? 'bg-white text-gray-950 shadow-sm dark:bg-dark-700 dark:text-white' : 'text-gray-500 hover:text-gray-950 dark:text-dark-300 dark:hover:text-white'"
-              :aria-pressed="performanceRange === '7d'"
-              @click="setPerformanceRange('7d')"
-            >
-              {{ t('modelPricing.performance.last7Days', '最近 7 天') }}
-            </button>
-          </div>
         </div>
 
         <div class="grid w-full gap-2 sm:grid-cols-[minmax(220px,1fr)_minmax(140px,160px)_minmax(150px,180px)_minmax(170px,200px)] lg:max-w-4xl">
@@ -205,7 +183,7 @@
           {{ t('modelPricing.selectHint', '选择模型查看分组价格') }}
         </div>
         <div v-else>
-          <div class="mb-5 flex flex-col gap-3 border-b border-black/5 pb-5 dark:border-white/10 md:flex-row md:items-end md:justify-between">
+          <div class="mb-5 border-b border-black/5 pb-5 dark:border-white/10">
             <div>
               <div class="flex items-center gap-2">
                 <h2 class="min-w-0 truncate text-2xl font-semibold text-gray-950 dark:text-white">{{ detail.display_name || detail.id }}</h2>
@@ -231,113 +209,104 @@
                 </span>
               </div>
             </div>
-            <div class="grid grid-cols-2 gap-2 text-xs">
-              <div class="rounded-xl bg-black/[0.03] px-3 py-2 dark:bg-white/[0.06]">
-                <div class="text-gray-500 dark:text-dark-400">{{ t('modelPricing.input', '输入') }}</div>
-                <div class="mt-1 font-semibold text-gray-950 dark:text-white">
-                  {{ formatTokenPrice(detail.official_price.input_price) }}
-                </div>
-              </div>
-              <div class="rounded-xl bg-black/[0.03] px-3 py-2 dark:bg-white/[0.06]">
-                <div class="text-gray-500 dark:text-dark-400">{{ t('modelPricing.output', '输出') }}</div>
-                <div class="mt-1 font-semibold text-gray-950 dark:text-white">
-                  {{ formatTokenPrice(detail.official_price.output_price) }}
-                </div>
-              </div>
-            </div>
           </div>
 
-          <section data-testid="model-detail-overall-performance" class="mb-5 rounded-2xl border border-primary-100 bg-primary-50/60 p-4 dark:border-primary-900/50 dark:bg-primary-950/20">
-            <div class="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-              <h3 class="font-semibold text-gray-950 dark:text-white">{{ t('modelPricing.performance.overall', '全模型性能') }}</h3>
-              <span class="text-xs text-gray-500 dark:text-dark-400">{{ performanceRangeLabel }}</span>
-            </div>
-            <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              <div class="rounded-xl bg-white/80 p-3 text-sm dark:bg-dark-800/70">
-                <div class="text-xs text-gray-500 dark:text-dark-400">{{ t('modelPricing.performance.throughput', '吞吐') }}</div>
-                <div class="mt-1 font-semibold text-gray-950 dark:text-white">{{ formatTps(detail.performance?.tps) }}</div>
+          <div class="mb-5 flex gap-1 border-b border-black/5 dark:border-white/10" role="tablist" :aria-label="t('modelPricing.detailTabs', '模型详情')">
+            <button
+              data-testid="model-detail-tab-price"
+              type="button"
+              role="tab"
+              class="border-b-2 px-4 py-2 text-sm font-medium transition"
+              :class="detailTab === 'price' ? 'border-primary-500 text-primary-700 dark:text-primary-300' : 'border-transparent text-gray-500 hover:text-gray-950 dark:text-dark-300 dark:hover:text-white'"
+              :aria-selected="detailTab === 'price'"
+              @click="detailTab = 'price'"
+            >
+              {{ t('modelPricing.price', '价格') }}
+            </button>
+            <button
+              data-testid="model-detail-tab-performance"
+              type="button"
+              role="tab"
+              class="border-b-2 px-4 py-2 text-sm font-medium transition"
+              :class="detailTab === 'performance' ? 'border-primary-500 text-primary-700 dark:text-primary-300' : 'border-transparent text-gray-500 hover:text-gray-950 dark:text-dark-300 dark:hover:text-white'"
+              :aria-selected="detailTab === 'performance'"
+              @click="detailTab = 'performance'"
+            >
+              {{ t('modelPricing.performance.data', '性能数据') }}
+            </button>
+          </div>
+
+          <section v-if="detailTab === 'price'" data-testid="model-detail-price-panel" role="tabpanel">
+            <section class="mb-5 rounded-2xl border border-black/5 bg-white/70 p-4 dark:border-white/10 dark:bg-dark-900/40">
+              <h3 class="mb-3 font-semibold text-gray-950 dark:text-white">{{ t('modelPricing.officialPrice', '官方价格') }}</h3>
+              <div class="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
+                <div class="rounded-xl bg-black/[0.03] p-3 dark:bg-white/[0.06]"><div class="text-xs text-gray-500 dark:text-dark-400">{{ t('modelPricing.input', '输入') }}</div><div class="mt-1 font-semibold text-gray-950 dark:text-white">{{ formatPrice(detail.official_price.input_price) }}</div></div>
+                <div class="rounded-xl bg-black/[0.03] p-3 dark:bg-white/[0.06]"><div class="text-xs text-gray-500 dark:text-dark-400">{{ t('modelPricing.output', '输出') }}</div><div class="mt-1 font-semibold text-gray-950 dark:text-white">{{ formatPrice(detail.official_price.output_price) }}</div></div>
+                <div class="rounded-xl bg-black/[0.03] p-3 dark:bg-white/[0.06]"><div class="text-xs text-gray-500 dark:text-dark-400">{{ t('modelPricing.cacheWrite', '缓存写入') }}</div><div class="mt-1 font-semibold text-gray-950 dark:text-white">{{ formatPrice(detail.official_price.cache_write_price) }}</div></div>
+                <div class="rounded-xl bg-black/[0.03] p-3 dark:bg-white/[0.06]"><div class="text-xs text-gray-500 dark:text-dark-400">{{ t('modelPricing.cacheRead', '缓存读取') }}</div><div class="mt-1 font-semibold text-gray-950 dark:text-white">{{ formatPrice(detail.official_price.cache_read_price) }}</div></div>
+                <div class="rounded-xl bg-black/[0.03] p-3 dark:bg-white/[0.06]"><div class="text-xs text-gray-500 dark:text-dark-400">{{ t('modelPricing.requestOrImage', '按次/图片') }}</div><div class="mt-1 font-semibold text-gray-950 dark:text-white">{{ formatPrice(detail.official_price.per_request_price || detail.official_price.image_output_price) }}</div></div>
               </div>
-              <div class="rounded-xl bg-white/80 p-3 text-sm dark:bg-dark-800/70">
-                <div class="text-xs text-gray-500 dark:text-dark-400">{{ t('modelPricing.performance.availability', '可用率') }}</div>
-                <div class="mt-1 font-semibold text-gray-950 dark:text-white">{{ formatPercentage(detail.performance?.availability) }}</div>
-              </div>
-              <div class="rounded-xl bg-white/80 p-3 text-sm dark:bg-dark-800/70">
-                <div class="text-xs text-gray-500 dark:text-dark-400">{{ t('modelPricing.performance.averageFirstToken', '平均首字时长') }}</div>
-                <div class="mt-1 font-semibold text-gray-950 dark:text-white">{{ formatMilliseconds(detail.performance?.average_first_token_ms) }}</div>
-              </div>
-              <div class="rounded-xl bg-white/80 p-3 text-sm dark:bg-dark-800/70">
-                <div class="text-xs text-gray-500 dark:text-dark-400">{{ t('modelPricing.performance.averageRequestTime', '平均请求时长') }}</div>
-                <div class="mt-1 font-semibold text-gray-950 dark:text-white">{{ formatMilliseconds(detail.performance?.average_request_time_ms) }}</div>
-              </div>
+            </section>
+
+            <div class="overflow-x-auto">
+              <h3 class="mb-3 font-semibold text-gray-950 dark:text-white">{{ t('modelPricing.groupPrices', '分组价格') }}</h3>
+              <table class="min-w-full text-sm">
+                <thead><tr class="border-b border-black/5 text-left text-xs text-gray-500 dark:border-white/10 dark:text-dark-400"><th class="py-2 pr-4">{{ t('modelPricing.group', '分组') }}</th><th class="py-2 pr-4">{{ t('modelPricing.rate', '倍率') }}</th><th class="py-2 pr-4">{{ t('modelPricing.input', '输入') }}</th><th class="py-2 pr-4">{{ t('modelPricing.output', '输出') }}</th><th class="py-2 pr-4">{{ t('modelPricing.cacheWrite', '缓存写入') }}</th><th class="py-2 pr-4">{{ t('modelPricing.cacheRead', '缓存读取') }}</th><th class="py-2 pr-4">{{ t('modelPricing.requestOrImage', '按次/图片') }}</th></tr></thead>
+                <tbody>
+                  <tr v-for="group in detail.groups" :key="group.group_id" class="border-b border-black/5 dark:border-white/10">
+                    <td class="py-3 pr-4 font-medium text-gray-950 dark:text-white">{{ group.group_name }}</td>
+                    <td class="py-3 pr-4">{{ group.rate_multiplier.toFixed(2) }}x</td>
+                    <td class="py-3 pr-4">{{ formatPrice(group.price.input_price) }}</td>
+                    <td class="py-3 pr-4">{{ formatPrice(group.price.output_price) }}</td>
+                    <td class="py-3 pr-4">{{ formatPrice(group.price.cache_write_price) }}</td>
+                    <td class="py-3 pr-4">{{ formatPrice(group.price.cache_read_price) }}</td>
+                    <td class="py-3 pr-4">{{ formatPrice(group.price.per_request_price || group.price.image_output_price) }}</td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
           </section>
 
-          <section class="mb-5 grid gap-4 lg:grid-cols-2">
-            <ModelPerformanceTrendChart
-              :points="detail.performance_trend || []"
-              metric="average_first_token_ms"
-              :range="performanceRange"
-            />
-            <ModelPerformanceTrendChart
-              v-if="hasTrendValues(detail.performance_trend, 'availability')"
-              :points="detail.performance_trend || []"
-              metric="availability"
-              :range="performanceRange"
-            />
-          </section>
-
-          <div class="overflow-x-auto">
-            <div class="mb-3 flex items-baseline justify-between gap-3">
-              <h3 class="font-semibold text-gray-950 dark:text-white">{{ t('modelPricing.performance.groupPerformance', '分组性能') }}</h3>
-              <span class="text-xs text-gray-500 dark:text-dark-400">{{ performanceRangeLabel }}</span>
+          <section v-else data-testid="model-detail-performance-panel" role="tabpanel">
+            <div class="mb-5 flex flex-wrap items-center justify-between gap-3">
+              <h3 class="font-semibold text-gray-950 dark:text-white">{{ t('modelPricing.performance.data', '性能数据') }}</h3>
+              <div class="inline-flex rounded-xl bg-black/[0.04] p-1 text-sm dark:bg-white/[0.08]" role="group" :aria-label="t('modelPricing.performance.timeRange', '性能时间范围')">
+                <button data-testid="model-detail-range-24h" type="button" class="rounded-lg px-3 py-1.5 font-medium transition" :class="detailPerformanceRange === '24h' ? 'bg-white text-gray-950 shadow-sm dark:bg-dark-700 dark:text-white' : 'text-gray-500 hover:text-gray-950 dark:text-dark-300 dark:hover:text-white'" :aria-pressed="detailPerformanceRange === '24h'" @click="setDetailPerformanceRange('24h')">{{ t('modelPricing.performance.last24Hours', '最近 24 小时') }}</button>
+                <button data-testid="model-detail-range-7d" type="button" class="rounded-lg px-3 py-1.5 font-medium transition" :class="detailPerformanceRange === '7d' ? 'bg-white text-gray-950 shadow-sm dark:bg-dark-700 dark:text-white' : 'text-gray-500 hover:text-gray-950 dark:text-dark-300 dark:hover:text-white'" :aria-pressed="detailPerformanceRange === '7d'" @click="setDetailPerformanceRange('7d')">{{ t('modelPricing.performance.last7Days', '最近 7 天') }}</button>
+              </div>
             </div>
-            <table class="min-w-full text-sm">
-              <thead>
-                <tr class="border-b border-black/5 text-left text-xs text-gray-500 dark:border-white/10 dark:text-dark-400">
-                  <th class="py-2 pr-4">{{ t('modelPricing.group', '分组') }}</th>
-                  <th class="py-2 pr-4">{{ t('modelPricing.rate', '倍率') }}</th>
-                  <th class="py-2 pr-4">{{ t('modelPricing.input', '输入') }}</th>
-                  <th class="py-2 pr-4">{{ t('modelPricing.output', '输出') }}</th>
-                  <th class="py-2 pr-4">{{ t('modelPricing.cacheWrite', '缓存写入') }}</th>
-                  <th class="py-2 pr-4">{{ t('modelPricing.cacheRead', '缓存读取') }}</th>
-                  <th class="py-2 pr-4">{{ t('modelPricing.requestOrImage', '按次/图片') }}</th>
-                  <th class="py-2 pr-4">{{ t('modelPricing.performance.throughput', '吞吐') }}</th>
-                  <th class="py-2 pr-4">{{ t('modelPricing.performance.availability', '可用率') }}</th>
-                  <th class="py-2 pr-4">{{ t('modelPricing.performance.averageFirstToken', '平均首字时长') }}</th>
-                  <th class="py-2 pr-4">{{ t('modelPricing.performance.averageRequestTime', '平均请求时长') }}</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr
-                  v-for="group in detail.groups"
-                  :key="group.group_id"
-                  class="border-b border-black/5 dark:border-white/10"
-                >
-                  <td class="py-3 pr-4 font-medium text-gray-950 dark:text-white">{{ group.group_name }}</td>
-                  <td class="py-3 pr-4">{{ group.rate_multiplier.toFixed(2) }}x</td>
-                  <td class="py-3 pr-4">{{ formatPrice(group.price.input_price) }}</td>
-                  <td class="py-3 pr-4">{{ formatPrice(group.price.output_price) }}</td>
-                  <td class="py-3 pr-4">
-                    {{ formatPrice(group.price.cache_write_price) }}
-                  </td>
-                  <td class="py-3 pr-4">
-                    {{ formatPrice(group.price.cache_read_price) }}
-                  </td>
-                  <td class="py-3 pr-4">
-                    {{
-                      formatPrice(group.price.per_request_price || group.price.image_output_price)
-                    }}
-                  </td>
-                  <td class="py-3 pr-4" :data-testid="`model-detail-group-performance-${group.group_id}`">
-                    {{ formatTps(group.performance?.tps) }}
-                  </td>
-                  <td class="py-3 pr-4">{{ formatPercentage(group.performance?.availability) }}</td>
-                  <td class="py-3 pr-4">{{ formatMilliseconds(group.performance?.average_first_token_ms) }}</td>
-                  <td class="py-3 pr-4">{{ formatMilliseconds(group.performance?.average_request_time_ms) }}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
+
+            <section data-testid="model-detail-overall-performance" class="mb-5 rounded-2xl border border-primary-100 bg-primary-50/60 p-4 dark:border-primary-900/50 dark:bg-primary-950/20">
+              <div class="mb-3 flex flex-wrap items-baseline justify-between gap-2"><h3 class="font-semibold text-gray-950 dark:text-white">{{ t('modelPricing.performance.overall', '全模型性能') }}</h3><span class="text-xs text-gray-500 dark:text-dark-400">{{ performanceRangeLabel }}</span></div>
+              <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <div class="rounded-xl bg-white/80 p-3 text-sm dark:bg-dark-800/70"><div class="text-xs text-gray-500 dark:text-dark-400">{{ t('modelPricing.performance.throughput', '吞吐') }}</div><div class="mt-1 font-semibold text-gray-950 dark:text-white">{{ formatTps(detail.performance?.tps) }}</div></div>
+                <div class="rounded-xl bg-white/80 p-3 text-sm dark:bg-dark-800/70"><div class="text-xs text-gray-500 dark:text-dark-400">{{ t('modelPricing.performance.availability', '可用率') }}</div><div class="mt-1 font-semibold text-gray-950 dark:text-white">{{ formatPercentage(detail.performance?.availability) }}</div></div>
+                <div class="rounded-xl bg-white/80 p-3 text-sm dark:bg-dark-800/70"><div class="text-xs text-gray-500 dark:text-dark-400">{{ t('modelPricing.performance.averageFirstToken', '平均首字时长') }}</div><div class="mt-1 font-semibold text-gray-950 dark:text-white">{{ formatMilliseconds(detail.performance?.average_first_token_ms) }}</div></div>
+                <div class="rounded-xl bg-white/80 p-3 text-sm dark:bg-dark-800/70"><div class="text-xs text-gray-500 dark:text-dark-400">{{ t('modelPricing.performance.averageRequestTime', '平均请求时长') }}</div><div class="mt-1 font-semibold text-gray-950 dark:text-white">{{ formatMilliseconds(detail.performance?.average_request_time_ms) }}</div></div>
+              </div>
+            </section>
+
+            <section class="mb-5 grid gap-4 lg:grid-cols-2">
+              <ModelPerformanceTrendChart :points="detail.performance_trend || []" metric="average_first_token_ms" :range="detailPerformanceRange" />
+              <ModelPerformanceTrendChart v-if="hasTrendValues(detail.performance_trend, 'availability')" :points="detail.performance_trend || []" metric="availability" :range="detailPerformanceRange" />
+            </section>
+
+            <div class="overflow-x-auto">
+              <div class="mb-3 flex items-baseline justify-between gap-3"><h3 class="font-semibold text-gray-950 dark:text-white">{{ t('modelPricing.performance.groupPerformance', '分组性能') }}</h3><span class="text-xs text-gray-500 dark:text-dark-400">{{ performanceRangeLabel }}</span></div>
+              <table class="min-w-full text-sm">
+                <thead><tr class="border-b border-black/5 text-left text-xs text-gray-500 dark:border-white/10 dark:text-dark-400"><th class="py-2 pr-4">{{ t('modelPricing.group', '分组') }}</th><th class="py-2 pr-4">{{ t('modelPricing.performance.throughput', '吞吐') }}</th><th class="py-2 pr-4">{{ t('modelPricing.performance.availability', '可用率') }}</th><th class="py-2 pr-4">{{ t('modelPricing.performance.averageFirstToken', '平均首字时长') }}</th><th class="py-2 pr-4">{{ t('modelPricing.performance.averageRequestTime', '平均请求时长') }}</th></tr></thead>
+                <tbody>
+                  <tr v-for="group in detail.groups" :key="group.group_id" class="border-b border-black/5 dark:border-white/10">
+                    <td class="py-3 pr-4 font-medium text-gray-950 dark:text-white">{{ group.group_name }}</td>
+                    <td class="py-3 pr-4" :data-testid="`model-detail-group-performance-${group.group_id}`">{{ formatTps(group.performance?.tps) }}</td>
+                    <td class="py-3 pr-4">{{ formatPercentage(group.performance?.availability) }}</td>
+                    <td class="py-3 pr-4">{{ formatMilliseconds(group.performance?.average_first_token_ms) }}</td>
+                    <td class="py-3 pr-4">{{ formatMilliseconds(group.performance?.average_request_time_ms) }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
         </div>
       </div>
     </BaseDialog>
@@ -379,7 +348,9 @@ const debouncedSearch = ref('')
 const platformFilter = ref('')
 const capabilityFilter = ref<ModelCapability | ''>('')
 const groupFilter = ref<number | ''>('')
-const performanceRange = ref<ModelPerformanceRange>('24h')
+const detailTab = ref<'price' | 'performance'>('price')
+const detailPerformanceRange = ref<ModelPerformanceRange>('24h')
+const LIST_PERFORMANCE_RANGE: ModelPerformanceRange = '24h'
 const loading = ref(false)
 const detailLoading = ref(false)
 const error = ref(false)
@@ -424,7 +395,7 @@ const groupOptions = computed(() => [
 ])
 
 const detailTitle = computed(() => detail.value?.display_name || selectedModelId.value || t('modelPricing.title', '模型定价'))
-const performanceRangeLabel = computed(() => performanceRange.value === '7d'
+const performanceRangeLabel = computed(() => detailPerformanceRange.value === '7d'
   ? t('modelPricing.performance.last7Days', '最近 7 天')
   : t('modelPricing.performance.last24Hours', '最近 24 小时'))
 
@@ -437,13 +408,13 @@ watch(searchInput, (value) => {
   }, 300)
 })
 
-watch([debouncedSearch, platformFilter, capabilityFilter, groupFilter, performanceRange], () => {
+watch([debouncedSearch, platformFilter, capabilityFilter, groupFilter], () => {
   loadModels()
 })
 
-watch(performanceRange, () => {
+watch(detailPerformanceRange, () => {
   if (detailModalOpen.value && selectedModelId.value) {
-    void selectModel(selectedModelId.value)
+    void selectModel(selectedModelId.value, { resetTab: false })
   }
 })
 
@@ -477,8 +448,8 @@ function setGroupFilter(value: string | number | boolean | null) {
   groupFilter.value = ''
 }
 
-function setPerformanceRange(value: ModelPerformanceRange) {
-  performanceRange.value = value
+function setDetailPerformanceRange(value: ModelPerformanceRange) {
+  detailPerformanceRange.value = value
 }
 
 function hasTrendValues(
@@ -524,7 +495,7 @@ async function loadModels() {
       q: debouncedSearch.value,
       platform: platformFilter.value,
       capability: capabilityFilter.value,
-      range: performanceRange.value,
+      range: LIST_PERFORMANCE_RANGE,
       ...(groupFilter.value !== '' ? { group_id: groupFilter.value } : {})
     }
     const nextModels = await modelPricingAPI.listModels(
@@ -556,11 +527,14 @@ async function loadModels() {
   }
 }
 
-async function selectModel(modelId: string) {
+async function selectModel(modelId: string, { resetTab = true }: { resetTab?: boolean } = {}) {
   detailAbortController?.abort()
   const controller = new AbortController()
   detailAbortController = controller
 
+  if (resetTab) {
+    detailTab.value = 'price'
+  }
   selectedModelId.value = modelId
   detailModalOpen.value = true
   detailLoading.value = true
@@ -568,7 +542,7 @@ async function selectModel(modelId: string) {
   detail.value = null
 
   try {
-    const nextDetail = await modelPricingAPI.getModel(modelId, performanceRange.value, { signal: controller.signal })
+    const nextDetail = await modelPricingAPI.getModel(modelId, detailPerformanceRange.value, { signal: controller.signal })
     if (detailAbortController !== controller) {
       return
     }
@@ -592,7 +566,7 @@ function closeDetailModal() {
 
 function retrySelectedModel() {
   if (!selectedModelId.value) return
-  selectModel(selectedModelId.value)
+  selectModel(selectedModelId.value, { resetTab: false })
 }
 
 function copyModelId(modelId: string) {

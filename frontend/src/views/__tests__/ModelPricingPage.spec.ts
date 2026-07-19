@@ -312,7 +312,7 @@ describe('ModelPricingPage', () => {
     )
   })
 
-  it('uses the selected range for cards and detail, with overall and group performance displayed separately', async () => {
+  it('keeps cards at 24 hours and loads only the performance detail when its range changes', async () => {
     const wrapper = mount(ModelPricingPage, {
       global: {
         stubs: {
@@ -333,65 +333,34 @@ describe('ModelPricingPage', () => {
     expect(card.get('[data-testid="model-card-latency-claude-sonnet-4"]').text()).toBe('125.5 ms')
     expect(card.get('[data-testid="model-card-tps-claude-sonnet-4"]').text()).toBe('42.7 TPS')
     expect(card.get('[data-testid="model-card-availability-claude-sonnet-4"]').text()).toBe('99.6%')
+    expect(wrapper.find('[data-testid="model-pricing-range-24h"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="model-pricing-range-7d"]').exists()).toBe(false)
 
-    await wrapper.get('[data-testid="model-pricing-range-7d"]').trigger('click')
-    await flushPromises()
-
-    expect(listModels).toHaveBeenLastCalledWith(
-      { q: '', platform: '', capability: '', range: '7d' },
-      expect.any(Object)
-    )
-
-    listModels.mockResolvedValueOnce([
-      {
-        id: 'claude-sonnet-4',
-        display_name: 'claude-sonnet-4',
-        platform: 'anthropic',
-        platforms: ['anthropic'],
-        capabilities: ['streaming'],
-        supported_group_count: 2,
-        official_price: {
-          input_price: 0.000003,
-          output_price: 0.000015,
-          cache_write_price: 0,
-          cache_read_price: 0,
-          image_output_price: 0,
-          per_request_price: 0,
-          intervals: []
-        },
-        lowest_group_price: {
-          input_price: 0.000006,
-          output_price: 0.00003,
-          cache_write_price: 0,
-          cache_read_price: 0,
-          image_output_price: 0,
-          per_request_price: 0,
-          intervals: []
-        },
-        performance: {
-          tps: 11,
-          availability: 97.2,
-          average_first_token_ms: null,
-          average_request_time_ms: 1100
-        }
-      }
-    ])
-    await wrapper.get('[data-testid="model-pricing-group-filter"]').trigger('click')
-    await flushPromises()
-    expect(listModels).toHaveBeenLastCalledWith(
-      { q: '', platform: '', capability: '', group_id: 1, range: '7d' },
-      expect.any(Object)
-    )
-    expect(wrapper.get('[data-testid="model-card-latency-claude-sonnet-4"]').text()).toBe('-')
-    expect(wrapper.get('[data-testid="model-card-tps-claude-sonnet-4"]').text()).toBe('11.0 TPS')
-    expect(wrapper.get('[data-testid="model-card-availability-claude-sonnet-4"]').text()).toBe('97.2%')
-
+    const listRequestCount = listModels.mock.calls.length
     await wrapper.get('[data-testid="model-card-claude-sonnet-4"]').trigger('click')
     await flushPromises()
 
-    expect(getModel).toHaveBeenLastCalledWith('claude-sonnet-4', '7d', expect.any(Object))
+    expect(wrapper.get('[data-testid="model-detail-tab-price"]').attributes('aria-selected')).toBe('true')
+    expect(wrapper.get('[data-testid="model-detail-price-panel"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="model-detail-performance-panel"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="model-detail-range-24h"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="trend-average_first_token_ms"]').exists()).toBe(false)
+
+    await wrapper.get('[data-testid="model-detail-tab-performance"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="model-detail-tab-performance"]').attributes('aria-selected')).toBe('true')
     expect(wrapper.get('[data-testid="model-detail-overall-performance"]').text()).toContain('42.7 TPS')
     expect(wrapper.get('[data-testid="model-detail-group-performance-1"]').text()).toContain('33.3 TPS')
+    expect(wrapper.get('[data-testid="trend-average_first_token_ms"]').text()).toBe('24h 1')
+    expect(wrapper.get('[data-testid="trend-availability"]').text()).toBe('24h 1')
+
+    await wrapper.get('[data-testid="model-detail-range-7d"]').trigger('click')
+    await flushPromises()
+
+    expect(getModel).toHaveBeenLastCalledWith('claude-sonnet-4', '7d', expect.any(Object))
+    expect(getModel).toHaveBeenCalledTimes(2)
+    expect(listModels).toHaveBeenCalledTimes(listRequestCount)
     expect(wrapper.get('[data-testid="trend-average_first_token_ms"]').text()).toBe('7d 1')
     expect(wrapper.get('[data-testid="trend-availability"]').text()).toBe('7d 1')
   })
