@@ -116,6 +116,24 @@ func TestModelPricingHandlerListModelsReturnsQueryError(t *testing.T) {
 	require.Contains(t, rec.Body.String(), "模型定价查询失败")
 }
 
+func TestModelPricingHandlerRejectsInvalidPerformanceRange(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	h := NewModelPricingHandler(service.NewModelPricingPageServiceForTest(
+		&singleModelPricingChannels{},
+		&singleModelPricingGroups{},
+		&singleModelPricingBilling{},
+	))
+	router := gin.New()
+	router.GET("/api/v1/model-pricing/models", h.ListModels)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/model-pricing/models?range=30d", nil)
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	require.Contains(t, rec.Body.String(), "MODEL_PERFORMANCE_RANGE_INVALID")
+}
+
 func TestModelPricingHandlerGetModelReturnsDetail(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	h := NewModelPricingHandler(service.NewModelPricingPageServiceForTest(
@@ -179,4 +197,21 @@ func TestModelPricingHandlerGetModelSupportsQueryParamSlashIDs(t *testing.T) {
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
 	require.Equal(t, "openai/gpt-4.1", body.Data.ID)
 	require.Equal(t, "openrouter", body.Data.Platform)
+}
+
+func TestModelPricingHandlerGetModelAcceptsSevenDayPerformanceRange(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	h := NewModelPricingHandler(service.NewModelPricingPageServiceForTest(
+		&slashModelPricingChannels{},
+		&slashModelPricingGroups{},
+		&singleModelPricingBilling{},
+	))
+	router := gin.New()
+	router.GET("/api/v1/model-pricing/model", h.GetModel)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/model-pricing/model?model=openai%2Fgpt-4.1&range=7d", nil)
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
 }
