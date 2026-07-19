@@ -63,6 +63,13 @@ type OpsRepository interface {
 	UpsertDailyMetrics(ctx context.Context, startTime, endTime time.Time) error
 	GetLatestHourlyBucketStart(ctx context.Context) (time.Time, bool, error)
 	GetLatestDailyBucketDate(ctx context.Context) (time.Time, bool, error)
+
+	// Model performance aggregation is independent from the global Ops rollups so
+	// public model metrics can retain a seven-day backfill watermark even when a
+	// time window has no request samples.
+	UpsertModelPerformanceHourlyMetrics(ctx context.Context, startTime, endTime time.Time) error
+	GetModelPerformanceMetricsAggregationWatermark(ctx context.Context) (*time.Time, error)
+	UpdateModelPerformanceMetricsAggregationWatermark(ctx context.Context, lastAggregatedAt time.Time) error
 }
 
 type OpsInsertErrorLogInput struct {

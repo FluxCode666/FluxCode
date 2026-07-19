@@ -7,12 +7,16 @@ import (
 
 // opsRepoMock is a test-only OpsRepository implementation with optional function hooks.
 type opsRepoMock struct {
-	InsertErrorLogFn              func(ctx context.Context, input *OpsInsertErrorLogInput) (int64, error)
-	BatchInsertErrorLogsFn        func(ctx context.Context, inputs []*OpsInsertErrorLogInput) (int64, error)
-	BatchInsertSystemLogsFn       func(ctx context.Context, inputs []*OpsInsertSystemLogInput) (int64, error)
-	ListSystemLogsFn              func(ctx context.Context, filter *OpsSystemLogFilter) (*OpsSystemLogList, error)
-	DeleteSystemLogsFn            func(ctx context.Context, filter *OpsSystemLogCleanupFilter) (int64, error)
-	InsertSystemLogCleanupAuditFn func(ctx context.Context, input *OpsSystemLogCleanupAudit) error
+	InsertErrorLogFn                                    func(ctx context.Context, input *OpsInsertErrorLogInput) (int64, error)
+	BatchInsertErrorLogsFn                              func(ctx context.Context, inputs []*OpsInsertErrorLogInput) (int64, error)
+	BatchInsertSystemLogsFn                             func(ctx context.Context, inputs []*OpsInsertSystemLogInput) (int64, error)
+	ListSystemLogsFn                                    func(ctx context.Context, filter *OpsSystemLogFilter) (*OpsSystemLogList, error)
+	DeleteSystemLogsFn                                  func(ctx context.Context, filter *OpsSystemLogCleanupFilter) (int64, error)
+	InsertSystemLogCleanupAuditFn                       func(ctx context.Context, input *OpsSystemLogCleanupAudit) error
+	UpsertJobHeartbeatFn                                func(ctx context.Context, input *OpsUpsertJobHeartbeatInput) error
+	UpsertModelPerformanceHourlyMetricsFn               func(ctx context.Context, startTime, endTime time.Time) error
+	GetModelPerformanceMetricsAggregationWatermarkFn    func(ctx context.Context) (*time.Time, error)
+	UpdateModelPerformanceMetricsAggregationWatermarkFn func(ctx context.Context, lastAggregatedAt time.Time) error
 }
 
 func (m *opsRepoMock) InsertErrorLog(ctx context.Context, input *OpsInsertErrorLogInput) (int64, error) {
@@ -130,6 +134,9 @@ func (m *opsRepoMock) GetLatestSystemMetrics(ctx context.Context, windowMinutes 
 }
 
 func (m *opsRepoMock) UpsertJobHeartbeat(ctx context.Context, input *OpsUpsertJobHeartbeatInput) error {
+	if m.UpsertJobHeartbeatFn != nil {
+		return m.UpsertJobHeartbeatFn(ctx, input)
+	}
 	return nil
 }
 
@@ -203,6 +210,27 @@ func (m *opsRepoMock) GetLatestHourlyBucketStart(ctx context.Context) (time.Time
 
 func (m *opsRepoMock) GetLatestDailyBucketDate(ctx context.Context) (time.Time, bool, error) {
 	return time.Time{}, false, nil
+}
+
+func (m *opsRepoMock) UpsertModelPerformanceHourlyMetrics(ctx context.Context, startTime, endTime time.Time) error {
+	if m.UpsertModelPerformanceHourlyMetricsFn != nil {
+		return m.UpsertModelPerformanceHourlyMetricsFn(ctx, startTime, endTime)
+	}
+	return nil
+}
+
+func (m *opsRepoMock) GetModelPerformanceMetricsAggregationWatermark(ctx context.Context) (*time.Time, error) {
+	if m.GetModelPerformanceMetricsAggregationWatermarkFn != nil {
+		return m.GetModelPerformanceMetricsAggregationWatermarkFn(ctx)
+	}
+	return nil, nil
+}
+
+func (m *opsRepoMock) UpdateModelPerformanceMetricsAggregationWatermark(ctx context.Context, lastAggregatedAt time.Time) error {
+	if m.UpdateModelPerformanceMetricsAggregationWatermarkFn != nil {
+		return m.UpdateModelPerformanceMetricsAggregationWatermarkFn(ctx, lastAggregatedAt)
+	}
+	return nil
 }
 
 var _ OpsRepository = (*opsRepoMock)(nil)
