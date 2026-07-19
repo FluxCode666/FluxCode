@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -139,6 +140,46 @@ func TestMigrationsRunner_IsIdempotent_AndSchemaIsUpToDate(t *testing.T) {
 	requireColumn(t, tx, "proxy_usage_metrics_hourly", "proxy_id", "bigint", 0, false)
 	requireIndex(t, tx, "proxy_usage_metrics_hourly", "idx_proxy_usage_metrics_hourly_platform_bucket")
 	requireIndex(t, tx, "proxy_usage_metrics_hourly", "idx_proxy_usage_metrics_hourly_platform_proxy_bucket")
+
+	// model_performance_metrics_hourly: public model performance rollups and independent progress.
+	var modelPerformanceRegclass sql.NullString
+	require.NoError(t, tx.QueryRowContext(context.Background(), "SELECT to_regclass('public.model_performance_metrics_hourly')").Scan(&modelPerformanceRegclass))
+	require.True(t, modelPerformanceRegclass.Valid, "expected model_performance_metrics_hourly table to exist")
+	requireColumn(t, tx, "model_performance_metrics_hourly", "bucket_start", "timestamp with time zone", 0, false)
+	requireColumn(t, tx, "model_performance_metrics_hourly", "model", "character varying", 100, false)
+	requireColumn(t, tx, "model_performance_metrics_hourly", "group_id", "bigint", 0, true)
+	requireColumn(t, tx, "model_performance_metrics_hourly", "success_count", "bigint", 0, false)
+	requireColumn(t, tx, "model_performance_metrics_hourly", "valid_failure_count", "bigint", 0, false)
+	requireColumn(t, tx, "model_performance_metrics_hourly", "output_tokens", "bigint", 0, false)
+	requireColumn(t, tx, "model_performance_metrics_hourly", "total_duration_ms", "bigint", 0, false)
+	requireColumn(t, tx, "model_performance_metrics_hourly", "total_first_token_ms", "bigint", 0, false)
+	requireColumn(t, tx, "model_performance_metrics_hourly", "first_token_count", "bigint", 0, false)
+	requireIndex(t, tx, "model_performance_metrics_hourly", "idx_model_performance_metrics_hourly_unique_dim")
+	requireIndex(t, tx, "model_performance_metrics_hourly", "idx_model_performance_metrics_hourly_model_bucket")
+	requireIndex(t, tx, "model_performance_metrics_hourly", "idx_model_performance_metrics_hourly_model_group_bucket")
+	requireIndex(t, tx, "model_performance_metrics_hourly", "idx_model_performance_metrics_hourly_bucket")
+
+	bucketStart := time.Date(2026, time.July, 19, 12, 0, 0, 0, time.UTC)
+	_, err := tx.ExecContext(context.Background(), `
+INSERT INTO model_performance_metrics_hourly (bucket_start, model, group_id)
+VALUES ($1, 'model-performance-schema-test', NULL), ($1, 'model-performance-schema-test', 101), ($1, 'model-performance-schema-test', 102)
+	`, bucketStart)
+	require.NoError(t, err, "overall and per-group rows for one model-hour should coexist")
+	_, err = tx.ExecContext(context.Background(), "SAVEPOINT model_performance_uniqueness")
+	require.NoError(t, err)
+	_, err = tx.ExecContext(context.Background(), `
+INSERT INTO model_performance_metrics_hourly (bucket_start, model, group_id)
+VALUES ($1, 'model-performance-schema-test', NULL)
+`, bucketStart)
+	require.Error(t, err, "a duplicate all-groups row must be rejected")
+	_, err = tx.ExecContext(context.Background(), "ROLLBACK TO SAVEPOINT model_performance_uniqueness")
+	require.NoError(t, err)
+
+	var modelPerformanceWatermarkRegclass sql.NullString
+	require.NoError(t, tx.QueryRowContext(context.Background(), "SELECT to_regclass('public.model_performance_metrics_aggregation_watermark')").Scan(&modelPerformanceWatermarkRegclass))
+	require.True(t, modelPerformanceWatermarkRegclass.Valid, "expected model_performance_metrics_aggregation_watermark table to exist")
+	requireColumn(t, tx, "model_performance_metrics_aggregation_watermark", "last_aggregated_at", "timestamp with time zone", 0, true)
+	requireCheckConstraint(t, tx, "model_performance_metrics_aggregation_watermark", "model_performance_metrics_aggregation_watermark_singleton")
 
 	// subscription_grants: stacked subscription foundation (081)
 	var subscriptionGrantsRegclass sql.NullString
