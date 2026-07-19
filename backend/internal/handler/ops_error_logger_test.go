@@ -275,6 +275,85 @@ func TestNormalizeOpsErrorType(t *testing.T) {
 	}
 }
 
+func TestClassifyOpsIsBusinessLimited(t *testing.T) {
+	tests := []struct {
+		name    string
+		errType string
+		phase   string
+		code    string
+		status  int
+		message string
+		want    bool
+	}{
+		{
+			name:    "expired API key 403 is business limited",
+			errType: "api_error",
+			phase:   "internal",
+			code:    "API_KEY_EXPIRED",
+			status:  http.StatusForbidden,
+			message: "API key 已过期",
+			want:    true,
+		},
+		{
+			name:    "insufficient balance remains business limited",
+			errType: "billing_error",
+			phase:   "request",
+			code:    opsCodeInsufficientBalance,
+			status:  http.StatusForbidden,
+			want:    true,
+		},
+		{
+			name:    "subscription limit remains business limited",
+			errType: "subscription_error",
+			phase:   "request",
+			code:    opsCodeSubscriptionNotFound,
+			status:  http.StatusForbidden,
+			want:    true,
+		},
+		{
+			name:    "usage limit remains business limited",
+			errType: "subscription_error",
+			phase:   "request",
+			code:    opsCodeUsageLimitExceeded,
+			status:  http.StatusTooManyRequests,
+			want:    true,
+		},
+		{
+			name:    "upstream rate limit remains service failure",
+			errType: "rate_limit_error",
+			phase:   "upstream",
+			code:    "RATE_LIMIT_EXCEEDED",
+			status:  http.StatusTooManyRequests,
+			message: "upstream rate limited",
+			want:    false,
+		},
+		{
+			name:    "upstream server failure remains service failure",
+			errType: "upstream_error",
+			phase:   "upstream",
+			code:    "SERVER_ERROR",
+			status:  http.StatusBadGateway,
+			want:    false,
+		},
+		{
+			name:    "generic authentication 403 is not treated as an expired API key",
+			errType: "authentication_error",
+			phase:   "auth",
+			code:    "",
+			status:  http.StatusForbidden,
+			message: "forbidden",
+			want:    false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := classifyOpsIsBusinessLimited(tt.errType, tt.phase, tt.code, tt.status, tt.message)
+			require.Equal(t, tt.want, got)
+		})
+	}
+}
+
 func TestSetOpsEndpointContext_SetsContextKeys(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	rec := httptest.NewRecorder()
