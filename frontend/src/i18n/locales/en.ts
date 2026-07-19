@@ -225,6 +225,12 @@ export default {
     requestOrImage: 'Request/Image',
     copyModelId: 'Copy Model ID',
     modelIdCopied: 'Model ID copied',
+    performance: {
+      availability: 'Availability',
+      averageFirstToken: 'Average First Token Time',
+      hourly: 'Hourly Trend',
+      noTrendData: 'No trend data'
+    },
     capabilities: {
       streaming: 'Streaming',
       system_prompt: 'System Prompt',

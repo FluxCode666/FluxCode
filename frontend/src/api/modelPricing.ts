@@ -14,6 +14,27 @@ export type ModelCapability =
   | 'audio_input'
   | 'audio_output'
 
+/** 公开模型性能数据支持的固定观察范围。 */
+export type ModelPerformanceRange = '24h' | '7d'
+
+/**
+ * 公开模型性能的范围汇总。`null` 表示没有可用于该指标的有效样本，
+ * 调用方必须保持为空值而不是将其显示为零。
+ */
+export interface ModelPerformanceMetrics {
+  tps: number | null
+  availability: number | null
+  average_first_token_ms: number | null
+  average_request_time_ms: number | null
+}
+
+/** 全模型性能的小时趋势点，时间为 ISO 8601 UTC。 */
+export interface ModelPerformanceTrendPoint {
+  bucket_start: string
+  availability: number | null
+  average_first_token_ms: number | null
+}
+
 export interface ModelPricingInterval {
   min_tokens: number
   max_tokens: number | null
@@ -53,6 +74,7 @@ export interface ModelPricingSummary {
   supported_group_count: number
   official_price: ModelPricingAmount
   lowest_group_price: ModelPricingAmount
+  performance: ModelPerformanceMetrics
 }
 
 export interface ModelPricingGroupOption {
@@ -68,10 +90,12 @@ export interface ModelPricingGroupPrice {
   billing_mode: 'token' | 'per_request' | 'image'
   price: ModelPricingAmount
   multipliers: ModelPricingMultipliers
+  performance: ModelPerformanceMetrics
 }
 
 export interface ModelPricingDetail extends ModelPricingSummary {
   groups: ModelPricingGroupPrice[]
+  performance_trend: ModelPerformanceTrendPoint[]
 }
 
 export interface ListModelPricingParams {
@@ -79,6 +103,7 @@ export interface ListModelPricingParams {
   platform?: string
   capability?: ModelCapability | ''
   group_id?: number
+  range?: ModelPerformanceRange
 }
 
 export async function listModels(
@@ -101,13 +126,18 @@ export async function listGroups(
   return response.data
 }
 
+export function getModel(model: string, range: ModelPerformanceRange, options?: { signal?: AbortSignal }): Promise<ModelPricingDetail>
+export function getModel(model: string, options?: { signal?: AbortSignal }): Promise<ModelPricingDetail>
 export async function getModel(
   model: string,
+  rangeOrOptions: ModelPerformanceRange | { signal?: AbortSignal } = '24h',
   options?: { signal?: AbortSignal }
 ): Promise<ModelPricingDetail> {
+  const range = typeof rangeOrOptions === 'string' ? rangeOrOptions : '24h'
+  const requestOptions = typeof rangeOrOptions === 'string' ? options : rangeOrOptions
   const response = await apiClient.get<ModelPricingDetail>('/model-pricing/model', {
-    params: { model },
-    signal: options?.signal
+    params: { model, range },
+    signal: requestOptions?.signal
   })
   return response.data
 }

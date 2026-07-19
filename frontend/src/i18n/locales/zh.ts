@@ -223,6 +223,12 @@ export default {
     requestOrImage: '按次/图片',
     copyModelId: '复制模型 ID',
     modelIdCopied: '模型 ID 已复制',
+    performance: {
+      availability: '可用率',
+      averageFirstToken: '平均首字时长',
+      hourly: '小时趋势',
+      noTrendData: '暂无趋势数据'
+    },
     capabilities: {
       streaming: '流式输出',
       system_prompt: '系统提示词',
