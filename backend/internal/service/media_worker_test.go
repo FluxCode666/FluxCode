@@ -60,6 +60,23 @@ func TestMediaWorkerPersistsSubmittedAtBeforeSynchronousGenerate(t *testing.T) {
 	require.Equal(t, MediaTaskStageGenerating, storedAtGenerate.Stage)
 }
 
+func TestMediaWorkerPassesMappedResolvedRequestToAdapterWithoutMediaSpecDecode(t *testing.T) {
+	fixture := newMediaWorkerFixture(t, false, NativeAsyncUnsupported)
+	var resolved json.RawMessage
+	fixture.repo.mu.Lock()
+	var candidates []MediaAccountCandidateSnapshot
+	require.NoError(t, json.Unmarshal(fixture.repo.tasks[fixture.task.ID].CandidateSnapshot, &candidates))
+	candidates[0].ResolvedRequest = json.RawMessage(`{"image":{"prompt":"cat","chicun":"1024x1024"}}`)
+	fixture.repo.tasks[fixture.task.ID].CandidateSnapshot, _ = json.Marshal(candidates)
+	fixture.repo.mu.Unlock()
+	fixture.adapter.generateHook = func(req MediaExecutionRequest) {
+		resolved = append(json.RawMessage(nil), req.ResolvedRequest...)
+	}
+
+	require.NoError(t, fixture.worker.ProcessOne(context.Background(), fixture.task.ID))
+	require.JSONEq(t, `{"image":{"prompt":"cat","chicun":"1024x1024"}}`, string(resolved))
+}
+
 func TestMediaWorkerDoesNotExecuteQueuedTaskBeforeReady(t *testing.T) {
 	fixture := newMediaWorkerFixture(t, true, NativeAsyncOptional)
 	fixture.repo.mu.Lock()
@@ -2218,7 +2235,7 @@ func newMediaWorkerFixture(t *testing.T, clientAsync bool, mode NativeAsyncMode)
 	selector := &workerSelector{refreshOwned: true}
 	scheduler := NewMediaScheduler(accountRepo, selector, registry, workerGroupRepository{})
 	modelRegistry := NewMediaModelRegistry(&workerModelRepository{definition: MediaModelDefinition{
-		ModelID: "fake-image", MediaType: MediaTypeImage, Operations: []MediaOperation{MediaOperationTextToImage}, Enabled: true,
+		ModelID: "fake-image", Vendor: "fake-vendor", DefaultAdapter: adapter.Name(), DefaultAsyncMode: mode, MediaType: MediaTypeImage, Operations: []MediaOperation{MediaOperationTextToImage}, Enabled: true,
 	}})
 	require.NoError(t, modelRegistry.Refresh(context.Background()))
 	candidates, err := json.Marshal([]MediaAccountCandidateSnapshot{{

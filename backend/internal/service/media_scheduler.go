@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -26,18 +27,20 @@ type MediaFixedAccountRequest struct {
 }
 
 type MediaAccountCandidateSnapshot struct {
-	AccountID     int64                     `json:"account_id"`
-	Platform      string                    `json:"platform"`
-	ResolvedModel ResolvedMediaAccountModel `json:"resolved_model"`
+	AccountID       int64                     `json:"account_id"`
+	Platform        string                    `json:"platform"`
+	ResolvedModel   ResolvedMediaAccountModel `json:"resolved_model"`
+	ResolvedRequest json.RawMessage           `json:"resolved_request,omitempty"`
 }
 
 type MediaAccountSelection struct {
-	Account       *Account
-	ResolvedModel ResolvedMediaAccountModel
-	Acquired      bool
-	ReleaseFunc   func()
-	RefreshFunc   func(context.Context) (bool, error)
-	WaitPlan      *AccountWaitPlan
+	Account         *Account
+	ResolvedModel   ResolvedMediaAccountModel
+	ResolvedRequest json.RawMessage
+	Acquired        bool
+	ReleaseFunc     func()
+	RefreshFunc     func(context.Context) (bool, error)
+	WaitPlan        *AccountWaitPlan
 }
 
 type MediaSchedulerAccountRepository interface {
@@ -113,6 +116,7 @@ func (s *MediaScheduler) SnapshotCandidates(ctx context.Context, groupID int64, 
 				Adapter:         resolved.Adapter,
 				UpstreamModel:   resolved.UpstreamModel,
 				NativeAsyncMode: resolved.NativeAsyncMode,
+				RequestMapping:  resolved.RequestMapping,
 			},
 		})
 	}
@@ -229,12 +233,13 @@ func (s *MediaScheduler) Select(ctx context.Context, req MediaScheduleRequest) (
 	}
 
 	return &MediaAccountSelection{
-		Account:       canonical,
-		ResolvedModel: snapshots[canonical.ID].ResolvedModel,
-		Acquired:      selected.Acquired,
-		ReleaseFunc:   wrapOptionalIdempotentRelease(selected.ReleaseFunc),
-		RefreshFunc:   selected.RefreshFunc,
-		WaitPlan:      cloneAccountWaitPlan(selected.WaitPlan),
+		Account:         canonical,
+		ResolvedModel:   snapshots[canonical.ID].ResolvedModel,
+		ResolvedRequest: append(json.RawMessage(nil), snapshots[canonical.ID].ResolvedRequest...),
+		Acquired:        selected.Acquired,
+		ReleaseFunc:     wrapOptionalIdempotentRelease(selected.ReleaseFunc),
+		RefreshFunc:     selected.RefreshFunc,
+		WaitPlan:        cloneAccountWaitPlan(selected.WaitPlan),
 	}, nil
 }
 
@@ -312,6 +317,12 @@ func validateMediaCandidateSnapshot(input []MediaAccountCandidateSnapshot) (map[
 	for _, candidate := range input {
 		if candidate.AccountID <= 0 || candidate.Platform == "" || !validResolvedMediaAccountModel(candidate.ResolvedModel) {
 			return nil, fmt.Errorf("%w: invalid media candidate snapshot", ErrNoAvailableAccounts)
+		}
+		if err := candidate.ResolvedModel.RequestMapping.Validate(); err != nil {
+			return nil, fmt.Errorf("%w: invalid media request mapping snapshot: %w", ErrNoAvailableAccounts, err)
+		}
+		if len(candidate.ResolvedRequest) > 0 && !json.Valid(candidate.ResolvedRequest) {
+			return nil, fmt.Errorf("%w: invalid resolved media request snapshot", ErrNoAvailableAccounts)
 		}
 		if _, duplicate := result[candidate.AccountID]; duplicate {
 			return nil, fmt.Errorf("%w: duplicate media candidate account id %d", ErrNoAvailableAccounts, candidate.AccountID)

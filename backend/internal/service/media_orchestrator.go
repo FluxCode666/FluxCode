@@ -203,6 +203,13 @@ func (o *MediaOrchestrator) Create(ctx context.Context, req MediaCreateRequest) 
 	if err != nil {
 		return nil, fmt.Errorf("snapshot media candidates: %w", err)
 	}
+	initialSpec, err := json.Marshal(req.Spec)
+	if err != nil {
+		return nil, fmt.Errorf("encode media request spec: %w", err)
+	}
+	if err := freezeMediaCandidateRequests(candidates, initialSpec, req.MediaType); err != nil {
+		return nil, fmt.Errorf("freeze media candidate requests: %w", err)
+	}
 	candidateJSON, err := json.Marshal(candidates)
 	if err != nil {
 		return nil, fmt.Errorf("encode media candidate snapshot: %w", err)
@@ -225,10 +232,6 @@ func (o *MediaOrchestrator) Create(ctx context.Context, req MediaCreateRequest) 
 	}
 	if !strings.HasPrefix(publicID, "task_") || len(publicID) <= len("task_") {
 		return nil, errors.New("generated media task public id is invalid")
-	}
-	initialSpec, err := json.Marshal(req.Spec)
-	if err != nil {
-		return nil, fmt.Errorf("encode media request spec: %w", err)
 	}
 	now := o.deps.Clock.Now().UTC()
 	initializationLease := now.Add(mediaTaskInitializationLease)
@@ -260,6 +263,70 @@ func (o *MediaOrchestrator) Create(ctx context.Context, req MediaCreateRequest) 
 	}
 	task = created
 	return o.initializeAndEnqueue(ctx, task, req, inputs, billingSnapshot, settings)
+}
+
+func freezeMediaCandidateRequests(candidates []MediaAccountCandidateSnapshot, requestSpec json.RawMessage, mediaType MediaType) error {
+	var request map[string]any
+	if err := json.Unmarshal(requestSpec, &request); err != nil {
+		return err
+	}
+	for index := range candidates {
+		mapping := candidates[index].ResolvedModel.RequestMapping
+		if err := validateMediaMappingMediaType(mapping, mediaType); err != nil {
+			return fmt.Errorf("candidate %d: %w", candidates[index].AccountID, err)
+		}
+		resolved := request
+		var err error
+		if mediaMappingUsesEnvelopePaths(mapping) {
+			resolved, err = mapping.Apply(request)
+		} else {
+			key := string(mediaType)
+			body, ok := request[key].(map[string]any)
+			if !ok {
+				return fmt.Errorf("candidate %d: media request body is invalid", candidates[index].AccountID)
+			}
+			body, err = mapping.Apply(body)
+			if err == nil {
+				resolved = cloneMediaMappingObject(request)
+				resolved[key] = body
+			}
+		}
+		if err != nil {
+			return fmt.Errorf("candidate %d: %w", candidates[index].AccountID, err)
+		}
+		encoded, err := json.Marshal(resolved)
+		if err != nil {
+			return fmt.Errorf("candidate %d: encode resolved request: %w", candidates[index].AccountID, err)
+		}
+		candidates[index].ResolvedRequest = encoded
+	}
+	return nil
+}
+
+func validateMediaMappingMediaType(mapping MediaRequestMapping, mediaType MediaType) error {
+	allowedRoot := string(mediaType)
+	for _, rule := range mapping.Rules {
+		for _, path := range []string{rule.Source, rule.Target} {
+			root := strings.SplitN(path, ".", 2)[0]
+			if root == "image" || root == "video" {
+				if root != allowedRoot {
+					return fmt.Errorf("%w: %s mapping cannot target %s requests", ErrInvalidMediaRequestMapping, root, allowedRoot)
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func mediaMappingUsesEnvelopePaths(mapping MediaRequestMapping) bool {
+	for _, rule := range mapping.Rules {
+		for _, path := range []string{rule.Source, rule.Target} {
+			if strings.HasPrefix(path, "image.") || strings.HasPrefix(path, "video.") {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func (o *MediaOrchestrator) GetForUser(ctx context.Context, publicID string, userID int64) (*MediaTask, []MediaArtifact, error) {
@@ -750,7 +817,21 @@ func (o *MediaOrchestrator) initializeAndEnqueue(
 		if encodeErr != nil {
 			return &MediaCreateResult{Task: task}, o.failWithReconciledPrecharge(ctx, task, billingSnapshot, "system_input", fmt.Errorf("encode durable media request spec: %w", encodeErr))
 		}
-		updated, updateErr := o.deps.Tasks.UpdateQueued(ctx, task.ID, task.Version, map[string]any{"request_spec": json.RawMessage(encoded)})
+		var candidates []MediaAccountCandidateSnapshot
+		if err := json.Unmarshal(task.CandidateSnapshot, &candidates); err != nil {
+			return &MediaCreateResult{Task: task}, o.failWithReconciledPrecharge(ctx, task, billingSnapshot, "system_input", fmt.Errorf("decode media candidate snapshot: %w", err))
+		}
+		if err := freezeMediaCandidateRequests(candidates, encoded, req.MediaType); err != nil {
+			return &MediaCreateResult{Task: task}, o.failWithReconciledPrecharge(ctx, task, billingSnapshot, "system_input", fmt.Errorf("refresh media candidate requests: %w", err))
+		}
+		candidateJSON, candidateErr := json.Marshal(candidates)
+		if candidateErr != nil {
+			return &MediaCreateResult{Task: task}, o.failWithReconciledPrecharge(ctx, task, billingSnapshot, "system_input", fmt.Errorf("encode durable media candidate snapshot: %w", candidateErr))
+		}
+		updated, updateErr := o.deps.Tasks.UpdateQueued(ctx, task.ID, task.Version, map[string]any{
+			"request_spec":       json.RawMessage(encoded),
+			"candidate_snapshot": json.RawMessage(candidateJSON),
+		})
 		if updateErr != nil {
 			return &MediaCreateResult{Task: task}, o.failWithReconciledPrecharge(ctx, task, billingSnapshot, "system_input", fmt.Errorf("persist durable media request spec: %w", updateErr))
 		}
@@ -758,6 +839,7 @@ func (o *MediaOrchestrator) initializeAndEnqueue(
 			return &MediaCreateResult{Task: task}, fmt.Errorf("%w: persist durable media request spec", ErrMediaOrchestratorStateConflict)
 		}
 		task.RequestSpec = encoded
+		task.CandidateSnapshot = candidateJSON
 		task.Version++
 		inputsDurable = true
 	}

@@ -62,6 +62,7 @@ type ResolvedMediaAccountModel struct {
 	Adapter         string
 	UpstreamModel   string
 	NativeAsyncMode NativeAsyncMode
+	RequestMapping  MediaRequestMapping
 }
 
 type mediaAccountConfigJSON struct {
@@ -109,6 +110,9 @@ func NormalizeMediaAccountConfig(config MediaAccountConfig) (MediaAccountConfig,
 				return MediaAccountConfig{}, err
 			}
 			binding.NativeAsyncMode = mode
+			if err := binding.RequestMapping.Validate(); err != nil {
+				return MediaAccountConfig{}, err
+			}
 			normalized[model] = binding
 		}
 		config.Models = normalized

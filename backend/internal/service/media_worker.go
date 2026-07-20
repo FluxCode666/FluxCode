@@ -525,7 +525,7 @@ func (w *MediaWorker) execute(ctx context.Context, task *MediaTask, active *medi
 		}
 		return result, failure, err
 	}
-	spec, err := decodeWorkerMediaSpec(task.RequestSpec, task.MediaType)
+	spec, err := decodeWorkerOriginalMediaSpec(task.RequestSpec, task.MediaType)
 	if err != nil {
 		w.observeStage(task, trace, MediaTaskStageScheduling, stageStarted)
 		return nil, systemMediaFailure("system_request", "stored media request is invalid"), nil
@@ -574,6 +574,10 @@ func (w *MediaWorker) execute(ctx context.Context, task *MediaTask, active *medi
 			return nil, systemMediaFailure("system_scheduler", "media account concurrency is unavailable"), nil
 		}
 		w.observeStage(task, trace, MediaTaskStageScheduling, stageStarted)
+		// Keep the canonical domain spec for validation and input handling. The
+		// account-specific mapped JSON is passed separately to the adapter so a
+		// provider field (for example chicun or payload.text) is not rejected by
+		// MediaSpec's strict schema.
 		result, failure, retry, executeErr := w.executeSelected(ctx, task, active, trace, spec, definition, selection)
 		if executeErr != nil {
 			return nil, nil, executeErr
@@ -649,7 +653,11 @@ func (w *MediaWorker) resumeUnknownSubmission(
 	if chooseMediaExecutionPath(task.ClientAsync, task.NativeAsyncMode) != MediaExecutionPathNativeAsync {
 		return nil, systemMediaFailure("system_recovery", "stored submitting task has invalid native async mode"), nil
 	}
-	spec, err := decodeWorkerMediaSpec(task.RequestSpec, task.MediaType)
+	originalRequest, resolvedRequest, requestMapping, err := decodeSelectedMediaRequestEnvelope(task.RequestSpec)
+	if err != nil {
+		return nil, systemMediaFailure("system_request", "stored media request is invalid"), nil
+	}
+	spec, err := decodeWorkerMediaSpec(originalRequest, task.MediaType)
 	if err != nil {
 		return nil, systemMediaFailure("system_request", "stored media request is invalid"), nil
 	}
@@ -661,6 +669,8 @@ func (w *MediaWorker) resumeUnknownSubmission(
 	if err != nil {
 		return nil, nil, err
 	}
+	selection.ResolvedRequest = append(json.RawMessage(nil), resolvedRequest...)
+	selection.ResolvedModel.RequestMapping = requestMapping
 	result, failure, _, executeErr := w.executeSelected(ctx, task, active, trace, spec, definition, selection)
 	return result, failure, executeErr
 }
@@ -694,6 +704,13 @@ func (w *MediaWorker) executeSelected(
 		"native_async_mode": selection.ResolvedModel.NativeAsyncMode,
 		"stage":             stage,
 	}
+	if len(selection.ResolvedRequest) > 0 {
+		requestSpec, requestErr := encodeSelectedMediaRequest(task.RequestSpec, selection)
+		if requestErr != nil {
+			return nil, systemMediaFailure("system_request", "resolved media request cannot be persisted"), false, nil
+		}
+		stageUpdates["request_spec"] = requestSpec
+	}
 	if path == MediaExecutionPathSync {
 		stageUpdates["submitted_at"] = time.Now().UTC()
 	}
@@ -705,12 +722,16 @@ func (w *MediaWorker) executeSelected(
 	task.UpstreamModel = selection.ResolvedModel.UpstreamModel
 	task.NativeAsyncMode = selection.ResolvedModel.NativeAsyncMode
 	task.Stage = stage
+	if requestSpec, ok := stageUpdates["request_spec"].(json.RawMessage); ok {
+		task.RequestSpec = append(json.RawMessage(nil), requestSpec...)
+	}
 	if submittedAt, ok := stageUpdates["submitted_at"].(time.Time); ok {
 		task.SubmittedAt = mediaTimePointer(submittedAt)
 	}
 	request := MediaExecutionRequest{
 		Task: task, Account: selection.Account, Definition: definition, Spec: spec,
-		UpstreamModel: selection.ResolvedModel.UpstreamModel, IdempotencyKey: task.PublicID,
+		ResolvedRequest: append(json.RawMessage(nil), selection.ResolvedRequest...),
+		UpstreamModel:   selection.ResolvedModel.UpstreamModel, IdempotencyKey: task.PublicID,
 	}
 
 	stageStarted := time.Now()
@@ -1890,6 +1911,54 @@ func decodeWorkerMediaSpec(raw json.RawMessage, mediaType MediaType) (MediaSpec,
 		return MediaSpec{}, err
 	}
 	return spec, nil
+}
+
+type mediaSelectedRequestEnvelope struct {
+	OriginalRequest json.RawMessage     `json:"original_request"`
+	ResolvedRequest json.RawMessage     `json:"resolved_request"`
+	RequestMapping  MediaRequestMapping `json:"request_mapping"`
+}
+
+func decodeWorkerOriginalMediaSpec(raw json.RawMessage, mediaType MediaType) (MediaSpec, error) {
+	original, _, _, err := decodeSelectedMediaRequestEnvelope(raw)
+	if err != nil {
+		return MediaSpec{}, err
+	}
+	return decodeWorkerMediaSpec(original, mediaType)
+}
+
+func decodeSelectedMediaRequestEnvelope(raw json.RawMessage) (json.RawMessage, json.RawMessage, MediaRequestMapping, error) {
+	var probe struct {
+		OriginalRequest json.RawMessage `json:"original_request"`
+	}
+	if err := json.Unmarshal(raw, &probe); err != nil {
+		return nil, nil, MediaRequestMapping{}, err
+	}
+	if len(probe.OriginalRequest) == 0 {
+		return append(json.RawMessage(nil), raw...), append(json.RawMessage(nil), raw...), MediaRequestMapping{}, nil
+	}
+	var envelope mediaSelectedRequestEnvelope
+	if err := decodeWorkerJSON(raw, &envelope); err != nil {
+		return nil, nil, MediaRequestMapping{}, err
+	}
+	if !json.Valid(envelope.OriginalRequest) || !json.Valid(envelope.ResolvedRequest) {
+		return nil, nil, MediaRequestMapping{}, errors.New("selected media request envelope is invalid")
+	}
+	return envelope.OriginalRequest, envelope.ResolvedRequest, envelope.RequestMapping, nil
+}
+
+func encodeSelectedMediaRequest(raw json.RawMessage, selection *MediaAccountSelection) (json.RawMessage, error) {
+	original, _, _, err := decodeSelectedMediaRequestEnvelope(raw)
+	if err != nil {
+		return nil, err
+	}
+	if selection == nil || !json.Valid(selection.ResolvedRequest) {
+		return nil, errors.New("resolved request is invalid")
+	}
+	return json.Marshal(mediaSelectedRequestEnvelope{
+		OriginalRequest: original, ResolvedRequest: selection.ResolvedRequest,
+		RequestMapping: selection.ResolvedModel.RequestMapping,
+	})
 }
 
 func decodeWorkerCandidateSnapshot(raw json.RawMessage) ([]MediaAccountCandidateSnapshot, error) {

@@ -263,6 +263,27 @@ func TestMediaAccountConfigVersionOneBindings(t *testing.T) {
 	require.JSONEq(t, `{"rules":[]}`, string(mustMarshalMediaRequestMapping(t, roundTripBinding.RequestMapping)))
 }
 
+func TestMediaAccountConfigPreservesNonEmptyRequestMappingOnRoundTrip(t *testing.T) {
+	extra := map[string]any{"media_config": map[string]any{
+		"version": 1, "provider": "volcengine", "models": map[string]any{
+			"seedance": map[string]any{
+				"enabled": true, "upstream_model_id": "seedance-up", "async_mode": "native",
+				"request_mapping": map[string]any{"rules": []any{map[string]any{
+					"source": "size", "target": "chicun", "operation": "rename",
+				}}},
+			},
+		},
+	}}
+	require.NoError(t, normalizeMediaAccountConfigInExtra(extra))
+	encoded, err := json.Marshal(extra[mediaAccountConfigExtraKey])
+	require.NoError(t, err)
+	roundTrip := map[string]any{mediaAccountConfigExtraKey: mustDecodeMediaAccountExtra(t, string(encoded))}
+	require.NoError(t, normalizeMediaAccountConfigInExtra(roundTrip))
+	binding, ok := (&Account{Extra: roundTrip}).ResolveMediaModelBinding("seedance")
+	require.True(t, ok)
+	require.Equal(t, []MediaMappingRule{{Source: "size", Target: "chicun", Operation: "rename"}}, binding.RequestMapping.Rules)
+}
+
 func TestMediaAccountConfigVersionOneRejectsInvalidBindings(t *testing.T) {
 	validBinding := func() map[string]any {
 		return map[string]any{"enabled": true, "upstream_model_id": "upstream", "async_mode": "native"}

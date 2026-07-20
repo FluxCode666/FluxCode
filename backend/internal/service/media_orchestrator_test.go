@@ -410,7 +410,10 @@ func TestMediaOrchestratorPersistsResolvedCandidateAndDurableInputSnapshot(t *te
 	stored := fixture.repo.mustGet(result.Task.ID)
 	var candidates []MediaAccountCandidateSnapshot
 	require.NoError(t, json.Unmarshal(stored.CandidateSnapshot, &candidates))
-	require.Equal(t, fixture.scheduler.candidates, candidates)
+	require.Len(t, candidates, 1)
+	require.Equal(t, fixture.scheduler.candidates[0].AccountID, candidates[0].AccountID)
+	require.Equal(t, fixture.scheduler.candidates[0].ResolvedModel, candidates[0].ResolvedModel)
+	require.JSONEq(t, `{"image":{"input_artifact_ids":[1],"n":1,"prompt":"cat"}}`, string(candidates[0].ResolvedRequest))
 	var spec MediaSpec
 	require.NoError(t, json.Unmarshal(stored.RequestSpec, &spec))
 	require.Len(t, spec.Image.InputArtifactIDs, 1)
@@ -423,6 +426,22 @@ func TestMediaOrchestratorPersistsResolvedCandidateAndDurableInputSnapshot(t *te
 	require.Equal(t, int64(128), artifacts[0].SizeBytes)
 	require.Equal(t, strings.Repeat("d", 64), artifacts[0].ChecksumSHA256)
 	require.Equal(t, 2, fixture.queue.enqueueCalls())
+}
+
+func TestMediaOrchestratorRejectsMappingForOppositeMediaEnvelope(t *testing.T) {
+	fixture := newMediaOrchestratorFixture(t)
+	fixture.scheduler.candidates = []MediaAccountCandidateSnapshot{{
+		AccountID: 7, Platform: PlatformGemini,
+		ResolvedModel: ResolvedMediaAccountModel{Adapter: "gemini", UpstreamModel: "veo-up", NativeAsyncMode: NativeAsyncRequired,
+			RequestMapping: MediaRequestMapping{Rules: []MediaMappingRule{{Source: "video.prompt", Target: "video.text", Operation: "rename"}}}},
+	}}
+	req := validAsyncMediaCreateRequest()
+	req.MediaType = MediaTypeImage
+	req.Operation = MediaOperationTextToImage
+
+	_, err := fixture.orchestrator.Create(context.Background(), req)
+	require.ErrorIs(t, err, ErrInvalidMediaRequestMapping)
+	require.Zero(t, fixture.repo.createCalls())
 }
 
 func TestMediaOrchestratorRejectsRawOrNonRecoverableInputsBeforeTaskAndCharge(t *testing.T) {
@@ -2136,6 +2155,8 @@ func applyOrchestratorTaskUpdates(task *MediaTask, updates map[string]any) {
 		switch field {
 		case "request_spec":
 			task.RequestSpec = append(json.RawMessage(nil), value.(json.RawMessage)...)
+		case "candidate_snapshot":
+			task.CandidateSnapshot = append(json.RawMessage(nil), value.(json.RawMessage)...)
 		case "billing_status":
 			task.BillingStatus = value.(string)
 		case "billing_snapshot":

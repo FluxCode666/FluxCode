@@ -14,12 +14,16 @@ import (
 var ErrMediaAdapterNotFound = errors.New("media adapter not found")
 
 type MediaExecutionRequest struct {
-	Task           *MediaTask
-	Account        *Account
-	Definition     *MediaModelDefinition
-	Spec           MediaSpec
-	UpstreamModel  string
-	IdempotencyKey string
+	Task       *MediaTask
+	Account    *Account
+	Definition *MediaModelDefinition
+	Spec       MediaSpec
+	// ResolvedRequest is the immutable, account-specific JSON request after
+	// declarative mapping. Spec remains the validated canonical domain request;
+	// adapters that need provider-specific fields must consume this snapshot.
+	ResolvedRequest json.RawMessage
+	UpstreamModel   string
+	IdempotencyKey  string
 }
 
 type MediaArtifactInput struct {

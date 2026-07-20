@@ -96,6 +96,7 @@ func (a *Account) ResolveMediaModel(model string) ResolvedMediaAccountModel {
 			Provider:        config.Provider,
 			UpstreamModel:   binding.UpstreamModel,
 			NativeAsyncMode: binding.NativeAsyncMode,
+			RequestMapping:  binding.RequestMapping,
 		}
 	}
 	resolved := ResolvedMediaAccountModel{
