@@ -61,7 +61,7 @@ Files: 修改 backend/internal/service/media_model_registry.go、backend/interna
         RequestMapping MediaRequestMapping
     }
 
-- [ ] Registry 原子刷新模型和 alias，刷新失败保留旧快照；验证并提交。
+- [ ] Registry 原子刷新模型和 alias，刷新失败保留旧快照；刷新阶段只校验 Adapter 名称格式，实际 Adapter 是否已注册在路由启用时校验，避免生产 Adapter 注册任务之前阻塞 Registry 启动。
 
     cd backend
     go test ./internal/service ./internal/repository -run 'MediaModel|MediaRoute' -count=1
