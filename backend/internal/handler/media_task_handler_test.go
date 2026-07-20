@@ -99,6 +99,12 @@ func (s *mediaTaskApplicationStub) OpenVideo(_ context.Context, _ string, _ int6
 	return s.content, s.contentErr
 }
 
+func (s *mediaTaskApplicationStub) OpenImage(_ context.Context, _ string, _ int64, byteRange string) (*service.MediaContent, error) {
+	s.contentCalls++
+	s.lastRange = byteRange
+	return s.content, s.contentErr
+}
+
 func (s *mediaTaskApplicationStub) Stage(_ context.Context, _ int64, input service.MediaArtifactInput) (service.MediaArtifactInput, error) {
 	s.stageCalls++
 	if s.stageErr != nil && (s.stageErrAt == 0 || s.stageCalls == s.stageErrAt) {
@@ -288,6 +294,7 @@ func newStandaloneMediaRouterWithStagerAndCleanupObserver(
 	})
 	router.POST("/v1/images/generations", h.CreateImageGeneration)
 	router.POST("/v1/images/edits", h.CreateImageEdit)
+	router.GET("/v1/images/:id/content", h.GetImageContent)
 	router.GET("/v1/images/:id", h.GetImageTask)
 	router.POST("/v1/videos", h.CreateVideo)
 	router.GET("/v1/videos/:id", h.GetVideoTask)
@@ -1118,6 +1125,24 @@ func TestMediaTaskHandlerImageDTOConvertsBoundedImageDataToB64JSON(t *testing.T)
 	require.NotContains(t, rec.Body.String(), "data:image")
 }
 
+func TestMediaTaskHandlerImageDTOUsesAuthenticatedContentURLForStoredOutput(t *testing.T) {
+	router, app := newStandaloneMediaRouter(t)
+	app.createResult = &service.MediaCreateResult{
+		Task: &service.MediaTask{
+			PublicID: "task_public", MediaType: service.MediaTypeImage, Operation: service.MediaOperationTextToImage,
+			RequestedModel: "fake-image", Status: service.MediaTaskStatusCompleted, CreatedAt: time.Unix(1784112000, 0),
+		},
+		Artifacts: []service.MediaArtifact{{
+			Direction: "output", MediaType: service.MediaTypeImage, ObjectKey: "private/image.png", ContentType: "image/png",
+		}},
+		Disposition: service.MediaCreateDispositionCompleted,
+	}
+	rec := performAPIKeyRequest(router, http.MethodPost, "/v1/images/generations", `{"model":"fake-image","prompt":"cat"}`, 42)
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Contains(t, rec.Body.String(), `"url":"/v1/images/task_public/content"`)
+	require.NotContains(t, rec.Body.String(), "private/image.png")
+}
+
 func TestMediaTaskHandlerCompletedImageQueryReturnsTaskWithOpenAIDataResult(t *testing.T) {
 	router, app := newStandaloneMediaRouter(t)
 	app.getTask = &service.MediaTask{
@@ -1153,6 +1178,22 @@ func TestMediaTaskHandlerContentOpenerRangeErrorReturns416(t *testing.T) {
 	require.Equal(t, 1, app.contentCalls)
 	require.Contains(t, rec.Body.String(), `"code":"invalid_range"`)
 	require.NotContains(t, rec.Body.String(), "object store")
+}
+
+func TestMediaTaskHandlerImageContentReturnsImageWithRange(t *testing.T) {
+	router, app := newStandaloneMediaRouter(t)
+	app.content = &service.MediaContent{
+		Body: io.NopCloser(strings.NewReader("123")), StatusCode: http.StatusPartialContent,
+		ContentType: "image/png", ContentLength: 3, ContentRange: "bytes 1-3/6", AcceptRanges: "bytes",
+	}
+	req := newAPIKeyRequest(http.MethodGet, "/v1/images/task_public/content", nil, 42)
+	req.Header.Set("Range", "bytes=1-3")
+	rec := performRequest(router, req, 42, false)
+	require.Equal(t, http.StatusPartialContent, rec.Code)
+	require.Equal(t, "image/png", rec.Header().Get("Content-Type"))
+	require.Equal(t, "bytes", rec.Header().Get("Accept-Ranges"))
+	require.Equal(t, "bytes 1-3/6", rec.Header().Get("Content-Range"))
+	require.Equal(t, "123", rec.Body.String())
 }
 
 func TestMediaTaskHandlerContentOpenerFailuresReturn502WithoutCauseLeak(t *testing.T) {

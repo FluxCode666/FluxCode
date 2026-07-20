@@ -326,7 +326,15 @@ func validateStoredImageDelivery(artifact *MediaArtifact) error {
 	return nil
 }
 
+func (s *MediaContentService) OpenImage(ctx context.Context, publicID string, userID int64, byteRange string) (*MediaContent, error) {
+	return s.openMediaContent(ctx, publicID, userID, byteRange, MediaTypeImage)
+}
+
 func (s *MediaContentService) OpenVideo(ctx context.Context, publicID string, userID int64, byteRange string) (*MediaContent, error) {
+	return s.openMediaContent(ctx, publicID, userID, byteRange, MediaTypeVideo)
+}
+
+func (s *MediaContentService) openMediaContent(ctx context.Context, publicID string, userID int64, byteRange string, mediaType MediaType) (*MediaContent, error) {
 	if s == nil || s.tasks == nil || s.artifacts == nil {
 		return nil, ErrMediaContentUnavailable
 	}
@@ -340,16 +348,16 @@ func (s *MediaContentService) OpenVideo(ctx context.Context, publicID string, us
 		if errors.Is(err, ErrMediaTaskNotFound) {
 			return nil, ErrMediaTaskNotFound
 		}
-		return nil, errors.Join(ErrMediaContentUnavailable, fmt.Errorf("load video task: %w", err))
+		return nil, errors.Join(ErrMediaContentUnavailable, fmt.Errorf("load media task: %w", err))
 	}
-	if task == nil || task.MediaType != MediaTypeVideo || task.Status != MediaTaskStatusCompleted {
+	if task == nil || task.MediaType != mediaType || task.Status != MediaTaskStatusCompleted {
 		return nil, ErrMediaTaskNotFound
 	}
 	artifacts, err := s.artifacts.ListByTaskID(ctx, task.ID)
 	if err != nil {
-		return nil, fmt.Errorf("list video artifacts: %w", err)
+		return nil, fmt.Errorf("list media artifacts: %w", err)
 	}
-	artifact := firstOutputVideo(artifacts)
+	artifact := firstOutputMedia(artifacts, mediaType)
 	if artifact == nil {
 		return nil, ErrMediaArtifactNotFound
 	}
@@ -371,7 +379,7 @@ func (s *MediaContentService) OpenVideo(ctx context.Context, publicID string, us
 		}
 	}
 	if data, contentType, inline, decodeErr := decodeMediaDataReferenceBounded(
-		artifact.UpstreamReference, artifact.ContentType, maxInlineMediaDecodedBytes, MediaTypeVideo,
+		artifact.UpstreamReference, artifact.ContentType, maxInlineMediaDecodedBytes, mediaType,
 	); inline {
 		if decodeErr != nil {
 			return nil, mediaContentFallbackError(append(fallbackCauses, decodeErr)...)
@@ -392,7 +400,7 @@ func (s *MediaContentService) OpenVideo(ctx context.Context, publicID string, us
 		fallbackCauses = append(fallbackCauses, fmt.Errorf("load media proxy settings: %w", err))
 		return nil, mediaContentFallbackError(fallbackCauses...)
 	}
-	if settings == nil || !settings.MediaVideoProxyFallbackEnabled || artifact.UpstreamReference == "" {
+	if settings == nil || (mediaType == MediaTypeVideo && !settings.MediaVideoProxyFallbackEnabled) || artifact.UpstreamReference == "" {
 		return nil, mediaContentFallbackError(fallbackCauses...)
 	}
 	if task.AccountID == nil || s.accounts == nil || s.adapters == nil {
@@ -637,6 +645,20 @@ func NormalizeVideoContentType(value string) (string, bool) {
 	return strings.ToLower(parsed), true
 }
 
+// NormalizeImageContentType returns a safe image content type for downstream
+// delivery. Invalid or non-image values are downgraded to an attachment-safe
+// octet-stream response.
+func NormalizeImageContentType(value string) (string, bool) {
+	value = strings.TrimSpace(strings.SplitN(value, "\r", 2)[0])
+	value = strings.TrimSpace(strings.SplitN(value, "\n", 2)[0])
+	parsed, _, err := mime.ParseMediaType(value)
+	parsed = strings.ToLower(parsed)
+	if err != nil || !strings.HasPrefix(parsed, "image/") || parsed == "image/svg+xml" {
+		return "application/octet-stream", false
+	}
+	return parsed, true
+}
+
 func MediaImageB64JSON(artifact MediaArtifact) (string, bool) {
 	if artifact.MediaType != MediaTypeImage {
 		return "", false
@@ -650,9 +672,9 @@ func MediaImageB64JSON(artifact MediaArtifact) (string, bool) {
 	return base64.StdEncoding.EncodeToString(data), true
 }
 
-func firstOutputVideo(artifacts []MediaArtifact) *MediaArtifact {
+func firstOutputMedia(artifacts []MediaArtifact, mediaType MediaType) *MediaArtifact {
 	for i := range artifacts {
-		if artifacts[i].Direction == "output" && artifacts[i].MediaType == MediaTypeVideo {
+		if artifacts[i].Direction == "output" && artifacts[i].MediaType == mediaType {
 			copy := artifacts[i]
 			return &copy
 		}

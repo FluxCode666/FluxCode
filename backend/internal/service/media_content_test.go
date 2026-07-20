@@ -159,6 +159,33 @@ func TestMediaContentServiceDecodesDataURLAndAppliesRange(t *testing.T) {
 	require.Equal(t, []byte("2345"), body)
 }
 
+func TestMediaContentServiceDecodesImageDataURLAndAppliesRange(t *testing.T) {
+	tasks := &mediaContentTaskRepoStub{task: &MediaTask{
+		ID: 1, PublicID: "task_public", UserID: 42,
+		MediaType: MediaTypeImage, Status: MediaTaskStatusCompleted, CreatedAt: time.Unix(1784112000, 0),
+	}}
+	artifacts := &mediaContentArtifactRepoStub{items: []MediaArtifact{{
+		ID: 2, TaskID: 1, Direction: "output", Position: 0, MediaType: MediaTypeImage,
+		ContentType: "image/png", UpstreamReference: "data:image/png;base64,MDEyMzQ1Njc4OQ==",
+	}}}
+	svc := NewMediaContentService(
+		tasks, artifacts,
+		mediaContentSettingsStub{settings: &SystemSettings{}},
+		mediaContentAccountRepoStub{}, NewMediaAdapterRegistry(), mediaContentHTTPReaderStub{},
+		NewDisabledMediaArtifactObjectStore(),
+	)
+
+	content, err := svc.OpenImage(context.Background(), "task_public", 42, "bytes=2-5")
+	require.NoError(t, err)
+	defer content.Body.Close()
+	body, err := io.ReadAll(content.Body)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusPartialContent, content.StatusCode)
+	require.Equal(t, "image/png", content.ContentType)
+	require.Equal(t, "bytes 2-5/10", content.ContentRange)
+	require.Equal(t, []byte("2345"), body)
+}
+
 func TestMediaContentServiceHidesTaskOwnedByAnotherUser(t *testing.T) {
 	tasks := &mediaContentTaskRepoStub{task: &MediaTask{
 		ID: 1, PublicID: "task_public", UserID: 42, MediaType: MediaTypeVideo, Status: MediaTaskStatusCompleted,

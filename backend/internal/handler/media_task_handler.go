@@ -42,6 +42,10 @@ type MediaVideoContentOpener interface {
 	OpenVideo(ctx context.Context, publicID string, userID int64, byteRange string) (*service.MediaContent, error)
 }
 
+type MediaImageContentOpener interface {
+	OpenImage(ctx context.Context, publicID string, userID int64, byteRange string) (*service.MediaContent, error)
+}
+
 type MediaInputCleanupObserver interface {
 	ObserveMediaInputCleanupFailure(ctx context.Context, operation service.MediaOperation, inputCount int, classification string)
 }
@@ -313,6 +317,14 @@ func (h *MediaTaskHandler) GetVideoTask(c *gin.Context) {
 }
 
 func (h *MediaTaskHandler) GetVideoContent(c *gin.Context) {
+	h.getMediaContent(c, service.MediaTypeVideo)
+}
+
+func (h *MediaTaskHandler) GetImageContent(c *gin.Context) {
+	h.getMediaContent(c, service.MediaTypeImage)
+}
+
+func (h *MediaTaskHandler) getMediaContent(c *gin.Context, mediaType service.MediaType) {
 	subject, ok := middleware2.GetAuthSubjectFromContext(c)
 	if !ok {
 		writeMediaError(c, http.StatusUnauthorized, "invalid_api_key", "Invalid API key")
@@ -329,7 +341,22 @@ func (h *MediaTaskHandler) GetVideoContent(c *gin.Context) {
 		writeMediaError(c, http.StatusBadGateway, "media_content_unavailable", "Media content is temporarily unavailable")
 		return
 	}
-	content, err := h.content.OpenVideo(c.Request.Context(), c.Param("id"), subject.UserID, byteRange)
+	var content *service.MediaContent
+	var err error
+	switch mediaType {
+	case service.MediaTypeImage:
+		imageOpener, ok := h.content.(MediaImageContentOpener)
+		if !ok {
+			writeMediaError(c, http.StatusBadGateway, "media_content_unavailable", "Media content is temporarily unavailable")
+			return
+		}
+		content, err = imageOpener.OpenImage(c.Request.Context(), c.Param("id"), subject.UserID, byteRange)
+	case service.MediaTypeVideo:
+		content, err = h.content.OpenVideo(c.Request.Context(), c.Param("id"), subject.UserID, byteRange)
+	default:
+		writeMediaError(c, http.StatusBadGateway, "media_content_unavailable", "Media content is temporarily unavailable")
+		return
+	}
 	if err != nil {
 		h.writeContentError(c, err)
 		return
@@ -346,9 +373,15 @@ func (h *MediaTaskHandler) GetVideoContent(c *gin.Context) {
 	if content.AcceptRanges != "" {
 		headers["Accept-Ranges"] = content.AcceptRanges
 	}
-	contentType, safeVideoType := service.NormalizeVideoContentType(content.ContentType)
+	var contentType string
+	var safeContentType bool
+	if mediaType == service.MediaTypeImage {
+		contentType, safeContentType = service.NormalizeImageContentType(content.ContentType)
+	} else {
+		contentType, safeContentType = service.NormalizeVideoContentType(content.ContentType)
+	}
 	headers["X-Content-Type-Options"] = "nosniff"
-	if !safeVideoType {
+	if !safeContentType {
 		headers["Content-Disposition"] = "attachment"
 	}
 	c.DataFromReader(content.StatusCode, content.ContentLength, contentType, content.Body, headers)
@@ -655,7 +688,7 @@ func taskResponse(task *service.MediaTask, artifacts []service.MediaArtifact) me
 			result, _ := json.Marshal(map[string]string{"content_url": "/v1/videos/" + url.PathEscape(task.PublicID) + "/content"})
 			response.Result = result
 		} else {
-			result, _ := json.Marshal(map[string]any{"data": imageData(artifacts)})
+			result, _ := json.Marshal(map[string]any{"data": imageData(task, artifacts)})
 			response.Result = result
 		}
 	}
@@ -670,10 +703,10 @@ func imageResponse(task *service.MediaTask, artifacts []service.MediaArtifact) m
 	if task != nil && !task.CreatedAt.IsZero() {
 		created = task.CreatedAt.Unix()
 	}
-	return mediaImageResponse{Created: created, Data: imageData(artifacts)}
+	return mediaImageResponse{Created: created, Data: imageData(task, artifacts)}
 }
 
-func imageData(artifacts []service.MediaArtifact) []mediaImageDataItem {
+func imageData(task *service.MediaTask, artifacts []service.MediaArtifact) []mediaImageDataItem {
 	data := make([]mediaImageDataItem, 0, len(artifacts))
 	for _, artifact := range artifacts {
 		if artifact.Direction != "output" || artifact.MediaType != service.MediaTypeImage {
@@ -685,6 +718,14 @@ func imageData(artifacts []service.MediaArtifact) []mediaImageDataItem {
 		}
 		if b64JSON, ok := service.MediaImageB64JSON(artifact); ok {
 			data = append(data, mediaImageDataItem{B64JSON: b64JSON})
+			continue
+		}
+		// Local/MinIO-backed outputs intentionally do not expose object keys.
+		// Return the authenticated task content endpoint as the delivery URL.
+		if task != nil && task.PublicID != "" && artifact.ObjectKey != "" {
+			data = append(data, mediaImageDataItem{
+				URL: "/v1/images/" + url.PathEscape(task.PublicID) + "/content",
+			})
 		}
 	}
 	return data
@@ -891,6 +932,7 @@ func writeMediaError(c *gin.Context, status int, code, message string) {
 
 var (
 	_ MediaTaskApplication        = (*service.MediaOrchestrator)(nil)
+	_ MediaImageContentOpener     = (*service.MediaContentService)(nil)
 	_ MediaVideoContentOpener     = (*service.MediaContentService)(nil)
 	_ service.MediaInputLifecycle = (*service.MediaContentService)(nil)
 )

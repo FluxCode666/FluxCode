@@ -83,8 +83,19 @@ func RegisterGatewayRoutes(
 			}
 			h.Gateway.Responses(c)
 		})
+		// 独立媒体任务 API。静态 content 必须先于 :id 注册，且不依赖
+		// OpenAI 分组兼容判断；MediaTaskHandler 自行按媒体模型路由。
+		gateway.GET("/videos/:id/content", h.MediaTask.GetVideoContent)
+		gateway.GET("/videos/:id", h.MediaTask.GetVideoTask)
+		gateway.POST("/videos", h.MediaTask.CreateVideo)
+		gateway.GET("/images/:id/content", h.MediaTask.GetImageContent)
+		gateway.GET("/images/:id", h.MediaTask.GetImageTask)
 		// OpenAI Images API
 		gateway.POST("/images/generations", func(c *gin.Context) {
+			if getGroupPlatform(c) == service.PlatformMedia {
+				h.MediaTask.CreateImageGeneration(c)
+				return
+			}
 			if !isOpenAICompatibleGroup(c) {
 				c.JSON(http.StatusNotFound, gin.H{
 					"type": "error",
@@ -98,6 +109,10 @@ func RegisterGatewayRoutes(
 			h.OpenAIGateway.Images(c)
 		})
 		gateway.POST("/images/edits", func(c *gin.Context) {
+			if getGroupPlatform(c) == service.PlatformMedia {
+				h.MediaTask.CreateImageEdit(c)
+				return
+			}
 			if !isOpenAICompatibleGroup(c) {
 				c.JSON(http.StatusNotFound, gin.H{
 					"type": "error",
@@ -158,6 +173,10 @@ func RegisterGatewayRoutes(
 
 	// OpenAI Images API（不带v1前缀的别名）
 	r.POST("/images/generations", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, func(c *gin.Context) {
+		if getGroupPlatform(c) == service.PlatformMedia {
+			h.MediaTask.CreateImageGeneration(c)
+			return
+		}
 		if !isOpenAICompatibleGroup(c) {
 			c.JSON(http.StatusNotFound, gin.H{
 				"type": "error",
@@ -171,6 +190,10 @@ func RegisterGatewayRoutes(
 		h.OpenAIGateway.Images(c)
 	})
 	r.POST("/images/edits", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, func(c *gin.Context) {
+		if getGroupPlatform(c) == service.PlatformMedia {
+			h.MediaTask.CreateImageEdit(c)
+			return
+		}
 		if !isOpenAICompatibleGroup(c) {
 			c.JSON(http.StatusNotFound, gin.H{
 				"type": "error",
