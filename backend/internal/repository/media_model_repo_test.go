@@ -11,6 +11,7 @@ import (
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/enttest"
+	"github.com/Wei-Shaw/sub2api/ent/mediamodelalias"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/stretchr/testify/require"
 
@@ -167,4 +168,139 @@ func TestMediaModelRepositorySingleArgumentRegistryLoadsAliases(t *testing.T) {
 	resolved, err := registry.Resolve("image-alias", service.MediaOperationTextToImage)
 	require.NoError(t, err)
 	require.Equal(t, "canonical-image", resolved.ModelID)
+}
+
+func validMediaModelAdminRecord(modelID string, aliases ...string) service.MediaModelAdminRecord {
+	return service.MediaModelAdminRecord{
+		Definition: service.MediaModelDefinition{
+			ModelID:          modelID,
+			Vendor:           "openai",
+			MediaType:        service.MediaTypeImage,
+			Operations:       []service.MediaOperation{service.MediaOperationTextToImage},
+			Constraints:      json.RawMessage(`{"image_sizes":["1024x1024"]}`),
+			BillingUnit:      "image",
+			DefaultAdapter:   "openai-images",
+			DefaultAsyncMode: service.NativeAsyncOptional,
+			Enabled:          true,
+		},
+		Aliases: aliases,
+	}
+}
+
+func TestMediaModelRepositoryAdminCreatePersistsDefinitionAndAliasesAtomically(t *testing.T) {
+	client := newMediaModelRepositoryTestClient(t)
+	repo := NewMediaModelRepository(client)
+
+	created, err := repo.CreateAdmin(context.Background(), validMediaModelAdminRecord("gpt-image-2", "gpt-image-latest", "image-current"))
+	require.NoError(t, err)
+	require.NotZero(t, created.Definition.ID)
+	require.Equal(t, []string{"gpt-image-latest", "image-current"}, created.Aliases)
+
+	stored, err := repo.GetAdminByID(context.Background(), created.Definition.ID)
+	require.NoError(t, err)
+	require.Equal(t, "gpt-image-2", stored.Definition.ModelID)
+	require.Equal(t, []string{"gpt-image-latest", "image-current"}, stored.Aliases)
+	require.JSONEq(t, `{"image_sizes":["1024x1024"]}`, string(stored.Definition.Constraints))
+
+	items, err := repo.ListAdmin(context.Background())
+	require.NoError(t, err)
+	require.Len(t, items, 1)
+	require.Equal(t, stored.Aliases, items[0].Aliases)
+}
+
+func TestMediaModelRepositoryAdminRejectsCrossNamespaceConflictsAndRollsBack(t *testing.T) {
+	client := newMediaModelRepositoryTestClient(t)
+	repo := NewMediaModelRepository(client)
+	first, err := repo.CreateAdmin(context.Background(), validMediaModelAdminRecord("image-one", "image-one-alias"))
+	require.NoError(t, err)
+	_, err = repo.CreateAdmin(context.Background(), validMediaModelAdminRecord("image-two", "image-two-alias"))
+	require.NoError(t, err)
+
+	conflicting := validMediaModelAdminRecord("image-one", "image-two")
+	_, err = repo.UpdateAdmin(context.Background(), first.Definition.ID, conflicting)
+	require.ErrorIs(t, err, service.ErrMediaModelAliasConflict)
+
+	stored, err := repo.GetAdminByID(context.Background(), first.Definition.ID)
+	require.NoError(t, err)
+	require.Equal(t, "image-one", stored.Definition.ModelID)
+	require.Equal(t, []string{"image-one-alias"}, stored.Aliases)
+
+	_, err = repo.CreateAdmin(context.Background(), validMediaModelAdminRecord("IMAGE-ONE-ALIAS"))
+	require.ErrorIs(t, err, service.ErrMediaModelIDConflict)
+}
+
+func TestMediaModelRepositoryAdminUpdateReplacesAliasesInSameTransaction(t *testing.T) {
+	client := newMediaModelRepositoryTestClient(t)
+	repo := NewMediaModelRepository(client)
+	created, err := repo.CreateAdmin(context.Background(), validMediaModelAdminRecord("image-one", "old-alias"))
+	require.NoError(t, err)
+
+	updatedInput := validMediaModelAdminRecord("image-one", "new-alias")
+	updatedInput.Definition.Enabled = false
+	updated, err := repo.UpdateAdmin(context.Background(), created.Definition.ID, updatedInput)
+	require.NoError(t, err)
+	require.Equal(t, "image-one", updated.Definition.ModelID)
+	require.False(t, updated.Definition.Enabled)
+	require.Equal(t, []string{"new-alias"}, updated.Aliases)
+
+	oldAliasExists, err := client.MediaModelAlias.Query().Where(mediamodelalias.RequestedModelIDEQ("old-alias")).Exist(context.Background())
+	require.NoError(t, err)
+	require.False(t, oldAliasExists)
+}
+
+func TestMediaModelRepositoryAdminRejectsCanonicalModelIDRename(t *testing.T) {
+	client := newMediaModelRepositoryTestClient(t)
+	repo := NewMediaModelRepository(client)
+	created, err := repo.CreateAdmin(context.Background(), validMediaModelAdminRecord("image-one", "image-alias"))
+	require.NoError(t, err)
+
+	_, err = repo.UpdateAdmin(context.Background(), created.Definition.ID, validMediaModelAdminRecord("image-two", "image-alias"))
+	require.ErrorIs(t, err, service.ErrMediaModelIDImmutable)
+
+	stored, err := repo.GetAdminByID(context.Background(), created.Definition.ID)
+	require.NoError(t, err)
+	require.Equal(t, "image-one", stored.Definition.ModelID)
+	require.Equal(t, []string{"image-alias"}, stored.Aliases)
+}
+
+func TestMediaModelRepositoryAdminDeleteCascadesAliasesAndScopes(t *testing.T) {
+	client := newMediaModelRepositoryTestClient(t)
+	repo := NewMediaModelRepository(client)
+	created, err := repo.CreateAdmin(context.Background(), validMediaModelAdminRecord("image-one", "image-alias"))
+	require.NoError(t, err)
+	mediaGroup, err := client.Group.Create().SetName("media-group").SetPlatform(service.PlatformMedia).Save(context.Background())
+	require.NoError(t, err)
+	_, err = client.GroupMediaModelScope.Create().
+		SetGroupID(mediaGroup.ID).
+		SetModelDefinitionID(created.Definition.ID).
+		Save(context.Background())
+	require.NoError(t, err)
+
+	require.NoError(t, repo.DeleteAdmin(context.Background(), created.Definition.ID))
+	aliasCount, err := client.MediaModelAlias.Query().Count(context.Background())
+	require.NoError(t, err)
+	require.Zero(t, aliasCount)
+	scopeCount, err := client.GroupMediaModelScope.Query().Count(context.Background())
+	require.NoError(t, err)
+	require.Zero(t, scopeCount)
+	require.ErrorIs(t, repo.DeleteAdmin(context.Background(), created.Definition.ID), service.ErrMediaModelDefinitionNotFound)
+}
+
+func TestMediaModelRepositoryRegistryAliasesExcludeDisabledDefinitions(t *testing.T) {
+	client := newMediaModelRepositoryTestClient(t)
+	repo := NewMediaModelRepository(client)
+	created, err := repo.CreateAdmin(context.Background(), validMediaModelAdminRecord("image-one", "image-alias"))
+	require.NoError(t, err)
+	disabled := validMediaModelAdminRecord("image-one", "image-alias")
+	disabled.Definition.Enabled = false
+	_, err = repo.UpdateAdmin(context.Background(), created.Definition.ID, disabled)
+	require.NoError(t, err)
+
+	aliases, err := repo.ListAll(context.Background())
+	require.NoError(t, err)
+	require.Empty(t, aliases)
+	registry := service.NewMediaModelRegistry(repo)
+	require.NoError(t, registry.Refresh(context.Background()))
+	_, err = registry.Resolve("image-alias", service.MediaOperationTextToImage)
+	require.ErrorIs(t, err, service.ErrMediaModelNotFound)
 }

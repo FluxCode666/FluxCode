@@ -414,6 +414,18 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/admin/media-models',
+    name: 'AdminMediaModels',
+    component: () => import('@/views/admin/MediaModelsView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Media Model Registry',
+      titleKey: 'admin.mediaModels.title',
+      descriptionKey: 'admin.mediaModels.description'
+    }
+  },
+  {
     path: '/admin/channels',
     name: 'AdminChannels',
     component: () => import('@/views/admin/ChannelsView.vue'),
@@ -806,6 +818,7 @@ router.beforeEach((to, _from, next) => {
   if (authStore.isSimpleMode) {
     const restrictedPaths = [
       '/admin/groups',
+      '/admin/media-models',
       '/admin/subscriptions',
       '/admin/redeem',
       '/subscriptions',

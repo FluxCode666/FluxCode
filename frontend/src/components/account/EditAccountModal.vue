@@ -43,6 +43,8 @@
                     ? 'https://generativelanguage.googleapis.com'
                     : account.platform === 'antigravity'
                       ? 'https://cloudcode-pa.googleapis.com'
+                      : account.platform === 'media'
+                        ? 'https://api.provider.example'
                       : 'https://api.anthropic.com'
             "
           />
@@ -63,6 +65,8 @@
                     ? 'AIza...'
                     : account.platform === 'antigravity'
                       ? 'sk-...'
+                      : account.platform === 'media'
+                        ? 'sk-media-...'
                       : 'sk-ant-...'
             "
           />
@@ -70,7 +74,7 @@
         </div>
 
         <!-- Model Restriction Section (不适用于 Antigravity) -->
-        <div v-if="account.platform !== 'antigravity'" class="border-t border-gray-200 pt-4 dark:border-dark-600">
+        <div v-if="account.platform !== 'antigravity' && account.platform !== 'media'" class="border-t border-gray-200 pt-4 dark:border-dark-600">
           <label class="input-label">{{ t('admin.accounts.modelRestriction') }}</label>
 
           <div
@@ -1067,7 +1071,11 @@
         </div>
       </div>
 
-      <MediaConfigEditor v-model="mediaConfig" @update:valid="mediaConfigValid = $event" />
+      <MediaConfigEditor
+        v-if="account?.platform === 'media'"
+        v-model="mediaConfig"
+        @update:valid="mediaConfigValid = $event"
+      />
 
       <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
         <label class="input-label">{{ t('admin.accounts.expiresAt') }}</label>
@@ -1933,8 +1941,11 @@ import type {
   MediaAccountConfig,
   MediaAccountConfigPayload,
   MediaAccountConfigWire,
+  MediaAccountModelBinding,
   MediaAccountModelOverride,
-  NativeAsyncMode
+  MediaRequestMapping,
+  NativeAsyncMode,
+  AccountPlatform
 } from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
@@ -1987,6 +1998,7 @@ const baseUrlHint = computed(() => {
   if (props.account.platform === 'openai') return t('admin.accounts.openai.baseUrlHint')
   if (props.account.platform === 'codex2api') return t('admin.accounts.codex2api.baseUrlHint')
   if (props.account.platform === 'gemini') return t('admin.accounts.gemini.baseUrlHint')
+  if (props.account.platform === 'media') return t('admin.accounts.mediaConfig.baseUrlHint')
   return t('admin.accounts.baseUrlHint')
 })
 
@@ -2036,9 +2048,9 @@ const autoPauseOnExpired = ref(false)
 const mixedScheduling = ref(false) // For antigravity accounts: enable mixed scheduling
 const allowOverages = ref(false) // For antigravity accounts: enable AI Credits overages
 const createDefaultMediaConfig = (): MediaAccountConfig => ({
-  adapter: '',
-  native_async_mode: 'unsupported',
-  model_overrides: {}
+  version: 1,
+  provider: '',
+  models: {}
 })
 const mediaConfig = ref<MediaAccountConfig>(createDefaultMediaConfig())
 const mediaConfigValid = ref(true)
@@ -2098,11 +2110,41 @@ function normalizeMediaConfigWire(value: MediaAccountConfigWire | null | undefin
     return createDefaultMediaConfig()
   }
 
-  const modelOverrides: Record<string, MediaAccountModelOverride> = {}
+  if (value.version === 1) {
+    const models = Object.create(null) as Record<string, MediaAccountModelBinding>
+    if (isRecord(value.models)) {
+      for (const [rawModel, rawBinding] of Object.entries(value.models)) {
+        const model = rawModel.trim()
+        if (!model || models[model] || !isRecord(rawBinding)) continue
+        const upstreamModel = typeof rawBinding.upstream_model_id === 'string'
+          ? rawBinding.upstream_model_id.trim()
+          : ''
+        const asyncMode = rawBinding.async_mode === 'native' ? 'native' : 'unsupported'
+        const requestMapping = isRecord(rawBinding.request_mapping)
+          ? rawBinding.request_mapping as MediaRequestMapping
+          : {}
+        models[model] = {
+          enabled: rawBinding.enabled !== false,
+          upstream_model_id: upstreamModel,
+          async_mode: asyncMode,
+          request_mapping: requestMapping
+        }
+      }
+    }
+    return {
+      version: 1,
+      provider: typeof value.provider === 'string' ? value.provider.trim() : '',
+      models
+    }
+  }
+
+  // Read-only compatibility: saving a legacy config upgrades it to v1 and
+  // intentionally does not expose the old account-level Adapter field.
+  const models = Object.create(null) as Record<string, MediaAccountModelBinding>
   if (isRecord(value.model_overrides)) {
     for (const [rawModel, rawOverride] of Object.entries(value.model_overrides)) {
       const model = rawModel.trim()
-      if (!model || modelOverrides[model] || !isRecord(rawOverride)) {
+      if (!model || models[model] || !isRecord(rawOverride)) {
         continue
       }
       const override: MediaAccountModelOverride = {}
@@ -2112,27 +2154,30 @@ function normalizeMediaConfigWire(value: MediaAccountConfigWire | null | undefin
       if (isNativeAsyncMode(rawOverride.native_async_mode)) {
         override.native_async_mode = rawOverride.native_async_mode
       }
-      modelOverrides[model] = override
+      const effectiveMode = override.native_async_mode || value.native_async_mode
+      models[model] = {
+        enabled: true,
+        upstream_model_id: override.upstream_model || model,
+        async_mode: effectiveMode === 'unsupported' ? 'unsupported' : 'native',
+        request_mapping: {}
+      }
     }
   }
 
   return {
-    adapter: typeof value.adapter === 'string' ? value.adapter.trim() : '',
-    native_async_mode: isNativeAsyncMode(value.native_async_mode)
-      ? value.native_async_mode
-      : 'unsupported',
-    model_overrides: modelOverrides
+    version: 1,
+    provider: typeof value.adapter === 'string' ? value.adapter.trim() : '',
+    models
   }
 }
 
 function withMediaConfig(extra: Record<string, unknown> | undefined): Record<string, unknown> {
   const next = { ...(extra || {}) }
-  const adapter = mediaConfig.value.adapter.trim()
-  if (adapter) {
+  if (props.account?.platform === 'media') {
     const payload: MediaAccountConfigPayload = {
-      adapter,
-      native_async_mode: mediaConfig.value.native_async_mode,
-      model_overrides: mediaConfig.value.model_overrides
+      version: 1,
+      provider: mediaConfig.value.provider.trim(),
+      models: mediaConfig.value.models
     }
     next.media_config = payload
   } else {
@@ -2142,10 +2187,10 @@ function withMediaConfig(extra: Record<string, unknown> | undefined): Record<str
 }
 
 function ensureMediaConfigValid(): boolean {
-  if (mediaConfigValid.value) {
+  if (props.account?.platform !== 'media' || mediaConfigValid.value) {
     return true
   }
-  appStore.showError(t('admin.accounts.mediaConfig.fixDuplicateModels'))
+  appStore.showError(t('admin.accounts.mediaConfig.fixConfiguration'))
   return false
 }
 
@@ -2272,12 +2317,14 @@ const tempUnschedPresets = computed(() => [
 ])
 
 // Computed: default base URL based on platform
-const defaultBaseUrl = computed(() => {
-  if (props.account?.platform === 'openai') return 'https://api.openai.com'
-  if (props.account?.platform === 'codex2api') return ''
-  if (props.account?.platform === 'gemini') return 'https://generativelanguage.googleapis.com'
+const defaultBaseUrlForPlatform = (platform: AccountPlatform | undefined): string => {
+  if (platform === 'openai') return 'https://api.openai.com'
+  if (platform === 'codex2api' || platform === 'media') return ''
+  if (platform === 'gemini') return 'https://generativelanguage.googleapis.com'
   return 'https://api.anthropic.com'
-})
+}
+
+const defaultBaseUrl = computed(() => defaultBaseUrlForPlatform(props.account?.platform))
 
 const mixedChannelWarningMessageText = computed(() => {
   if (mixedChannelWarningDetails.value) {
@@ -2482,14 +2529,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   // Initialize API Key fields for apikey type
   if (newAccount.type === 'apikey' && newAccount.credentials) {
     const credentials = newAccount.credentials as Record<string, unknown>
-    const platformDefaultUrl =
-      newAccount.platform === 'openai'
-        ? 'https://api.openai.com'
-        : newAccount.platform === 'codex2api'
-          ? ''
-          : newAccount.platform === 'gemini'
-            ? 'https://generativelanguage.googleapis.com'
-            : 'https://api.anthropic.com'
+    const platformDefaultUrl = defaultBaseUrlForPlatform(newAccount.platform)
     editBaseUrl.value = (credentials.base_url as string) || platformDefaultUrl
 
     // Load model mappings and detect mode
@@ -3088,12 +3128,17 @@ const handleSubmit = async () => {
     // For apikey type, handle credentials update
     if (props.account.type === 'apikey') {
       const currentCredentials = (props.account.credentials as Record<string, unknown>) || {}
-      if (props.account.platform === 'codex2api' && !editBaseUrl.value.trim()) {
-        appStore.showError(t('admin.accounts.codex2api.pleaseEnterBaseUrl'))
+      if ((props.account.platform === 'codex2api' || props.account.platform === 'media') && !editBaseUrl.value.trim()) {
+        appStore.showError(
+          props.account.platform === 'media'
+            ? t('admin.accounts.mediaConfig.baseUrlRequired')
+            : t('admin.accounts.codex2api.pleaseEnterBaseUrl')
+        )
         return
       }
       const newBaseUrl = editBaseUrl.value.trim() || defaultBaseUrl.value
-      const shouldApplyModelMapping = !(props.account.platform === 'openai' && openaiPassthroughEnabled.value)
+      const shouldApplyModelMapping = props.account.platform !== 'media' &&
+        !(props.account.platform === 'openai' && openaiPassthroughEnabled.value)
 
       // Always update credentials for apikey type to handle model mapping changes
       const newCredentials: Record<string, unknown> = {
@@ -3121,8 +3166,10 @@ const handleSubmit = async () => {
         } else {
           delete newCredentials.model_mapping
         }
-      } else if (currentCredentials.model_mapping) {
+      } else if (props.account.platform === 'openai' && currentCredentials.model_mapping) {
         newCredentials.model_mapping = currentCredentials.model_mapping
+      } else {
+        delete newCredentials.model_mapping
       }
 
       // Add pool mode if enabled

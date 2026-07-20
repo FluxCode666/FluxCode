@@ -793,6 +793,7 @@ const adminNavItems = computed((): NavItem[] => {
       : []),
     { path: '/admin/users', label: t('nav.users'), icon: UsersIcon, hideInSimpleMode: true },
     { path: '/admin/groups', label: t('nav.groups'), icon: FolderIcon, hideInSimpleMode: true },
+    { path: '/admin/media-models', label: t('nav.mediaModels'), icon: GeneratedImagesIcon, hideInSimpleMode: true },
     {
       path: '/admin/channels',
       label: t('nav.channels', '渠道管理'),

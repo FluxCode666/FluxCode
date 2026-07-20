@@ -182,15 +182,15 @@ func (s *GeminiMessagesCompatService) SelectAccountForModelWithExclusions(ctx co
 // resolvePlatformAndSchedulingMode resolves target platform and scheduling mode.
 // Returns: platform name, whether to use mixed scheduling, whether force platform, error.
 func (s *GeminiMessagesCompatService) resolvePlatformAndSchedulingMode(ctx context.Context, groupID *int64) (platform string, useMixedScheduling bool, hasForcePlatform bool, err error) {
-	// 优先检查 context 中的强制平台（/antigravity 路由）
+	// 优先检查 context 中的强制平台（/antigravity 路由）。强制平台
+	// 始终使用显式文本平台，不会把媒体账号加入候选池。
 	forcePlatform, hasForcePlatform := ctx.Value(ctxkey.ForcePlatform).(string)
 	if hasForcePlatform && forcePlatform != "" {
 		return forcePlatform, false, true, nil
 	}
 
+	var group *Group
 	if groupID != nil {
-		// 根据分组 platform 决定查询哪种账号
-		var group *Group
 		if ctxGroup, ok := ctx.Value(ctxkey.Group).(*Group); ok && IsGroupContextValid(ctxGroup) && ctxGroup.ID == *groupID {
 			group = ctxGroup
 		} else {
@@ -199,6 +199,11 @@ func (s *GeminiMessagesCompatService) resolvePlatformAndSchedulingMode(ctx conte
 				return "", false, false, fmt.Errorf("get group failed: %w", err)
 			}
 		}
+		if err := rejectMediaGroupForTextGateway(group); err != nil {
+			return "", false, false, err
+		}
+	}
+	if groupID != nil {
 		// gemini 分组支持混合调度（包含启用了 mixed_scheduling 的 antigravity 账户）
 		return group.Platform, group.Platform == PlatformGemini, false, nil
 	}

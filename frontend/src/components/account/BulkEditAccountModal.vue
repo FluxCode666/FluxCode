@@ -116,7 +116,7 @@
       </div>
 
       <!-- Model restriction -->
-      <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
+      <div v-if="!hasMediaAccounts" class="border-t border-gray-200 pt-4 dark:border-dark-600">
         <div class="mb-3 flex items-center justify-between">
           <label
             id="bulk-edit-model-restriction-label"
@@ -825,7 +825,7 @@
       </div>
 
       <!-- Groups -->
-      <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
+      <div v-if="!isMixedMediaAndText" class="border-t border-gray-200 pt-4 dark:border-dark-600">
         <div class="mb-3 flex items-center justify-between">
           <label
             id="bulk-edit-groups-label"
@@ -846,9 +846,13 @@
           <GroupSelector
             v-model="groupIds"
             :groups="groups"
+            :platform="singleSelectedPlatform"
             aria-labelledby="bulk-edit-groups-label"
           />
         </div>
+      </div>
+      <div v-else class="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/20 dark:text-amber-300">
+        {{ t('admin.accounts.bulkEdit.mixedMediaGroupsDisabled') }}
       </div>
     </form>
 
@@ -948,6 +952,11 @@ const appStore = useAppStore()
 
 // Platform awareness
 const isMixedPlatform = computed(() => props.selectedPlatforms.length > 1)
+const hasMediaAccounts = computed(() => props.selectedPlatforms.includes('media'))
+const isMixedMediaAndText = computed(() => hasMediaAccounts.value && props.selectedPlatforms.length > 1)
+const singleSelectedPlatform = computed(() =>
+  props.selectedPlatforms.length === 1 ? props.selectedPlatforms[0] : undefined,
+)
 
 const allOpenAIPassthroughCapable = computed(() => {
   return (
@@ -1192,7 +1201,7 @@ const buildUpdatePayload = (): Record<string, unknown> | null => {
     updates.status = status.value
   }
 
-  if (enableGroups.value) {
+  if (enableGroups.value && !isMixedMediaAndText.value) {
     updates.group_ids = groupIds.value
   }
 
@@ -1212,7 +1221,7 @@ const buildUpdatePayload = (): Record<string, unknown> | null => {
     }
   }
 
-  if (enableModelRestriction.value && !isOpenAIModelRestrictionDisabled.value) {
+  if (enableModelRestriction.value && !hasMediaAccounts.value && !isOpenAIModelRestrictionDisabled.value) {
     // 统一使用 model_mapping 字段
     if (modelRestrictionMode.value === 'whitelist') {
       // 白名单模式：将模型转换为 model_mapping 格式（key=value）
@@ -1333,7 +1342,7 @@ const handleSubmit = async () => {
   const hasAnyFieldEnabled =
     enableBaseUrl.value ||
     enableOpenAIPassthrough.value ||
-    enableModelRestriction.value ||
+    (enableModelRestriction.value && !hasMediaAccounts.value) ||
     enableCustomErrorCodes.value ||
     enableInterceptWarmup.value ||
     enableProxy.value ||
@@ -1342,7 +1351,7 @@ const handleSubmit = async () => {
     enablePriority.value ||
     enableRateMultiplier.value ||
     enableStatus.value ||
-    enableGroups.value ||
+    (enableGroups.value && !isMixedMediaAndText.value) ||
     enableOpenAIWSMode.value ||
     enableRpmLimit.value ||
     userMsgQueueMode.value !== null

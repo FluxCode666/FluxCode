@@ -70,7 +70,7 @@
       <!-- Platform Selection - Segmented Control Style -->
       <div>
         <label class="input-label">{{ t('admin.accounts.platform') }}</label>
-        <div class="mt-2 grid grid-cols-2 gap-1 rounded-lg bg-gray-100 p-1 dark:bg-dark-700 sm:grid-cols-5" data-tour="account-form-platform">
+        <div class="mt-2 grid grid-cols-2 gap-1 rounded-lg bg-gray-100 p-1 dark:bg-dark-700 sm:grid-cols-3 lg:grid-cols-6" data-tour="account-form-platform">
           <button
             type="button"
             @click="form.platform = 'anthropic'"
@@ -171,6 +171,21 @@
           >
             <Icon name="cloud" size="sm" />
             Antigravity
+          </button>
+          <button
+            v-if="!authStore.isSimpleMode"
+            type="button"
+            data-test="platform-media"
+            @click="form.platform = 'media'"
+            :class="[
+              'flex flex-1 items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-medium transition-all',
+              form.platform === 'media'
+                ? 'bg-white text-rose-600 shadow-sm dark:bg-dark-600 dark:text-rose-400'
+                : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
+            ]"
+          >
+            <Icon name="play" size="sm" />
+            {{ t('admin.accounts.platforms.media') }}
           </button>
         </div>
       </div>
@@ -887,6 +902,8 @@
                   ? 'https://xxx'
                   : form.platform === 'gemini'
                     ? 'https://generativelanguage.googleapis.com'
+                    : form.platform === 'media'
+                      ? 'https://api.provider.example'
                     : 'https://api.anthropic.com'
             "
           />
@@ -906,6 +923,8 @@
                   ? '<token>'
                   : form.platform === 'gemini'
                     ? 'AIza...'
+                    : form.platform === 'media'
+                      ? 'sk-media-...'
                     : 'sk-ant-...'
             "
           />
@@ -923,7 +942,7 @@
         </div>
 
         <!-- Model Restriction Section (Antigravity 已在上层条件排除) -->
-        <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
+        <div v-if="form.platform !== 'media'" class="border-t border-gray-200 pt-4 dark:border-dark-600">
           <label class="input-label">{{ t('admin.accounts.modelRestriction') }}</label>
 
           <div
@@ -2342,7 +2361,11 @@
         </div>
       </div>
 
-      <MediaConfigEditor v-model="mediaConfig" @update:valid="mediaConfigValid = $event" />
+      <MediaConfigEditor
+        v-if="form.platform === 'media'"
+        v-model="mediaConfig"
+        @update:valid="mediaConfigValid = $event"
+      />
 
       <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
         <label class="input-label">{{ t('admin.accounts.expiresAt') }}</label>
@@ -3072,6 +3095,7 @@ const baseUrlHint = computed(() => {
   if (form.platform === 'openai') return t('admin.accounts.openai.baseUrlHint')
   if (form.platform === 'codex2api') return t('admin.accounts.codex2api.baseUrlHint')
   if (form.platform === 'gemini') return t('admin.accounts.gemini.baseUrlHint')
+  if (form.platform === 'media') return t('admin.accounts.mediaConfig.baseUrlHint')
   return t('admin.accounts.baseUrlHint')
 })
 
@@ -3079,6 +3103,7 @@ const apiKeyHint = computed(() => {
   if (form.platform === 'openai') return t('admin.accounts.openai.apiKeyHint')
   if (form.platform === 'codex2api') return t('admin.accounts.codex2api.apiKeyHint')
   if (form.platform === 'gemini') return t('admin.accounts.gemini.apiKeyHint')
+  if (form.platform === 'media') return t('admin.accounts.mediaConfig.apiKeyHint')
   return t('admin.accounts.apiKeyHint')
 })
 
@@ -3203,9 +3228,9 @@ loadQuotaNotifyGlobal()
 const mixedScheduling = ref(false) // For antigravity accounts: enable mixed scheduling
 const allowOverages = ref(false) // For antigravity accounts: enable AI Credits overages
 const createDefaultMediaConfig = (): MediaAccountConfig => ({
-  adapter: '',
-  native_async_mode: 'unsupported',
-  model_overrides: {}
+  version: 1,
+  provider: '',
+  models: {}
 })
 const mediaConfig = ref<MediaAccountConfig>(createDefaultMediaConfig())
 const mediaConfigValid = ref(true)
@@ -3243,12 +3268,11 @@ function buildAntigravityExtra(): Record<string, unknown> | undefined {
 
 function withMediaConfig(extra: Record<string, unknown> | undefined): Record<string, unknown> {
   const next = { ...(extra || {}) }
-  const adapter = mediaConfig.value.adapter.trim()
-  if (adapter) {
+  if (form.platform === 'media') {
     const payload: MediaAccountConfigPayload = {
-      adapter,
-      native_async_mode: mediaConfig.value.native_async_mode,
-      model_overrides: mediaConfig.value.model_overrides
+      version: 1,
+      provider: mediaConfig.value.provider.trim(),
+      models: mediaConfig.value.models
     }
     next.media_config = payload
   } else {
@@ -3258,10 +3282,10 @@ function withMediaConfig(extra: Record<string, unknown> | undefined): Record<str
 }
 
 function ensureMediaConfigValid(): boolean {
-  if (mediaConfigValid.value) {
+  if (form.platform !== 'media' || mediaConfigValid.value) {
     return true
   }
-  appStore.showError(t('admin.accounts.mediaConfig.fixDuplicateModels'))
+  appStore.showError(t('admin.accounts.mediaConfig.fixConfiguration'))
   return false
 }
 
@@ -3536,10 +3560,14 @@ watch(
           ? ''
         : newPlatform === 'gemini'
           ? 'https://generativelanguage.googleapis.com'
+          : newPlatform === 'media'
+            ? ''
           : 'https://api.anthropic.com'
     // Clear model-related settings
     allowedModels.value = []
     modelMappings.value = []
+    // 分组选项按平台过滤；切换平台时清空旧选择，避免提交不可见的不兼容分组。
+    form.group_ids = []
     // Antigravity: 默认使用映射模式并填充默认映射
     if (newPlatform === 'antigravity') {
       antigravityModelRestrictionMode.value = 'mapping'
@@ -3558,6 +3586,13 @@ watch(
     if (newPlatform === 'codex2api') {
       accountCategory.value = 'apikey'
       form.type = 'apikey'
+    }
+    if (newPlatform === 'media') {
+      accountCategory.value = 'apikey'
+      form.type = 'apikey'
+    } else {
+      mediaConfig.value = createDefaultMediaConfig()
+      mediaConfigValid.value = true
     }
     // Reset Bedrock fields when switching platforms
     bedrockAccessKeyId.value = ''
@@ -4267,8 +4302,12 @@ const handleSubmit = async () => {
     appStore.showError(t('admin.accounts.pleaseEnterApiKey'))
     return
   }
-  if (form.platform === 'codex2api' && !apiKeyBaseUrl.value.trim()) {
-    appStore.showError(t('admin.accounts.codex2api.pleaseEnterBaseUrl'))
+  if ((form.platform === 'codex2api' || form.platform === 'media') && !apiKeyBaseUrl.value.trim()) {
+    appStore.showError(
+      form.platform === 'media'
+        ? t('admin.accounts.mediaConfig.baseUrlRequired')
+        : t('admin.accounts.codex2api.pleaseEnterBaseUrl')
+    )
     return
   }
 
@@ -4280,6 +4319,8 @@ const handleSubmit = async () => {
         ? ''
         : form.platform === 'gemini'
           ? 'https://generativelanguage.googleapis.com'
+          : form.platform === 'media'
+            ? ''
           : 'https://api.anthropic.com'
 
   // Build credentials with optional model mapping
@@ -4292,7 +4333,7 @@ const handleSubmit = async () => {
   }
 
   // Add model mapping if configured（OpenAI 开启自动透传时不应用）
-  if (!isOpenAIModelRestrictionDisabled.value) {
+  if (form.platform !== 'media' && !isOpenAIModelRestrictionDisabled.value) {
     const modelMapping = buildModelMappingObject(modelRestrictionMode.value, allowedModels.value, modelMappings.value)
     if (modelMapping) {
       credentials.model_mapping = modelMapping

@@ -2,8 +2,10 @@ package service
 
 import (
 	"context"
+	"net/http"
 	"testing"
 
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/stretchr/testify/require"
 )
 
@@ -44,7 +46,8 @@ func newAdminServiceMediaConfigFixture(t *testing.T) (*adminServiceImpl, *adminS
 func TestAdminServiceCreateAccountNormalizesMediaConfig(t *testing.T) {
 	svc, repo := newAdminServiceMediaConfigFixture(t)
 	_, err := svc.CreateAccount(context.Background(), &CreateAccountInput{
-		Name: "media", Platform: PlatformGemini, Type: AccountTypeAPIKey,
+		Name: "media", Platform: PlatformMedia, Type: AccountTypeAPIKey,
+		Credentials:          map[string]any{"api_key": "media-key", "base_url": "https://media.example.com"},
 		SkipDefaultGroupBind: true,
 		Extra: map[string]any{
 			"preserved": "value",
@@ -86,6 +89,53 @@ func TestAdminServiceCreateAccountAllowsExtraWithoutMediaConfig(t *testing.T) {
 	require.Equal(t, map[string]any{"legacy": true}, repo.LastCreated().Extra)
 }
 
+func TestAdminServiceCreateAccountRejectsMediaConfigOnTextPlatform(t *testing.T) {
+	svc, repo := newAdminServiceMediaConfigFixture(t)
+	_, err := svc.CreateAccount(context.Background(), &CreateAccountInput{
+		Name: "text", Platform: PlatformGemini, Type: AccountTypeAPIKey,
+		SkipDefaultGroupBind: true,
+		Extra: map[string]any{"media_config": map[string]any{
+			"version": 1, "provider": "xai", "models": map[string]any{
+				"image": map[string]any{"enabled": true, "upstream_model_id": "image-up", "async_mode": "unsupported"},
+			},
+		}},
+	})
+	require.ErrorIs(t, err, ErrInvalidMediaAccountConfig)
+	require.Zero(t, repo.createCalls)
+}
+
+func TestAdminServiceCreateAccountRequiresCompleteMediaIdentity(t *testing.T) {
+	tests := []struct {
+		name        string
+		credentials map[string]any
+		extra       map[string]any
+	}{
+		{name: "api key", credentials: map[string]any{"base_url": "https://media.example.com"}, extra: validMediaAccountExtra()},
+		{name: "base url", credentials: map[string]any{"api_key": "media-key"}, extra: validMediaAccountExtra()},
+		{name: "config", credentials: map[string]any{"api_key": "media-key", "base_url": "https://media.example.com"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc, repo := newAdminServiceMediaConfigFixture(t)
+			_, err := svc.CreateAccount(context.Background(), &CreateAccountInput{
+				Name: "media", Platform: PlatformMedia, Type: AccountTypeAPIKey,
+				Credentials: tt.credentials, Extra: tt.extra, SkipDefaultGroupBind: true,
+			})
+			require.Error(t, err)
+			require.Equal(t, http.StatusBadRequest, infraerrors.Code(err))
+			require.Zero(t, repo.createCalls)
+		})
+	}
+}
+
+func validMediaAccountExtra() map[string]any {
+	return map[string]any{"media_config": map[string]any{
+		"version": 1, "provider": "xai", "models": map[string]any{
+			"image": map[string]any{"enabled": true, "upstream_model_id": "image-up", "async_mode": "unsupported"},
+		},
+	}}
+}
+
 func TestAdminServiceCreateAccountRejectsMalformedMediaConfigBeforePersist(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -103,7 +153,8 @@ func TestAdminServiceCreateAccountRejectsMalformedMediaConfigBeforePersist(t *te
 		t.Run(tt.name, func(t *testing.T) {
 			svc, repo := newAdminServiceMediaConfigFixture(t)
 			_, err := svc.CreateAccount(context.Background(), &CreateAccountInput{
-				Name: "media", Platform: PlatformGemini, Type: AccountTypeAPIKey,
+				Name: "media", Platform: PlatformMedia, Type: AccountTypeAPIKey,
+				Credentials:          map[string]any{"api_key": "media-key", "base_url": "https://media.example.com"},
 				SkipDefaultGroupBind: true,
 				Extra:                map[string]any{"media_config": tt.raw, "preserved": true},
 			})
@@ -116,14 +167,16 @@ func TestAdminServiceCreateAccountRejectsMalformedMediaConfigBeforePersist(t *te
 func TestAdminServiceUpdateAccountNormalizesMediaConfigAndKeepsPayloadExtra(t *testing.T) {
 	svc, repo := newAdminServiceMediaConfigFixture(t)
 	repo.account = &Account{
-		ID: 7, Platform: PlatformAntigravity, Type: AccountTypeAPIKey, Status: StatusActive,
-		Extra: map[string]any{"old_key": "must-not-be-merged"},
+		ID: 7, Platform: PlatformMedia, Type: AccountTypeAPIKey, Status: StatusActive,
+		Credentials: map[string]any{"api_key": "media-key", "base_url": "https://media.example.com"},
+		Extra:       map[string]any{"old_key": "must-not-be-merged"},
 	}
 
 	updated, err := svc.UpdateAccount(context.Background(), 7, &UpdateAccountInput{Extra: map[string]any{
 		"preserved": true,
 		"media_config": map[string]any{
-			"adapter": " Gemini ",
+			"adapter":         " Gemini ",
+			"model_overrides": map[string]any{"veo": map[string]any{"upstream_model": "veo-up"}},
 		},
 	}})
 	require.NoError(t, err)
@@ -133,7 +186,7 @@ func TestAdminServiceUpdateAccountNormalizesMediaConfigAndKeepsPayloadExtra(t *t
 	stored := updated.Extra["media_config"].(map[string]any)
 	require.Equal(t, 1, stored["version"])
 	require.Equal(t, "gemini", stored["provider"])
-	require.Empty(t, stored["models"])
+	require.Contains(t, stored["models"].(map[string]any), "veo")
 }
 
 func TestAdminServiceUpdateAccountRejectsInvalidMediaConfigBeforePersist(t *testing.T) {
@@ -157,8 +210,9 @@ func TestAdminServiceUpdateAccountRejectsInvalidMediaConfigBeforePersist(t *test
 		t.Run(tt.name, func(t *testing.T) {
 			svc, repo := newAdminServiceMediaConfigFixture(t)
 			repo.account = &Account{
-				ID: 8, Platform: PlatformGemini, Type: AccountTypeAPIKey, Status: StatusActive,
-				Extra: map[string]any{"preserved": true},
+				ID: 8, Platform: PlatformMedia, Type: AccountTypeAPIKey, Status: StatusActive,
+				Credentials: map[string]any{"api_key": "media-key", "base_url": "https://media.example.com"},
+				Extra:       map[string]any{"preserved": true},
 			}
 
 			_, err := svc.UpdateAccount(context.Background(), 8, &UpdateAccountInput{Extra: map[string]any{
@@ -173,8 +227,9 @@ func TestAdminServiceUpdateAccountRejectsInvalidMediaConfigBeforePersist(t *test
 
 func TestAccountServiceUpdateRejectsInvalidMediaConfigBeforeMutatingLoadedAccount(t *testing.T) {
 	repo := &adminServiceMediaConfigRepo{account: &Account{
-		ID: 9, Name: "before", Platform: PlatformGemini, Type: AccountTypeAPIKey,
-		Extra: map[string]any{"preserved": true},
+		ID: 9, Name: "before", Platform: PlatformMedia, Type: AccountTypeAPIKey,
+		Credentials: map[string]any{"api_key": "media-key", "base_url": "https://media.example.com"},
+		Extra:       map[string]any{"preserved": true},
 	}}
 	svc := NewAccountService(repo, nil)
 	after := "after"
@@ -196,7 +251,8 @@ func TestAccountServiceCreateNormalizesVersionOneMediaConfig(t *testing.T) {
 	svc := NewAccountService(repo, nil)
 
 	created, err := svc.Create(context.Background(), CreateAccountRequest{
-		Name: "media", Platform: PlatformGemini, Type: AccountTypeAPIKey,
+		Name: "media", Platform: PlatformMedia, Type: AccountTypeAPIKey,
+		Credentials: map[string]any{"api_key": "media-key", "base_url": "https://media.example.com"},
 		Extra: map[string]any{"media_config": map[string]any{
 			"version": 1, "provider": " xai ", "models": map[string]any{
 				" image ": map[string]any{"enabled": true, "upstream_model_id": " image-up ", "async_mode": "native"},
@@ -212,7 +268,8 @@ func TestAccountServiceCreateNormalizesVersionOneMediaConfig(t *testing.T) {
 
 func TestAccountServiceUpdateUpgradesLegacyMediaConfigOnOrdinarySave(t *testing.T) {
 	repo := &adminServiceMediaConfigRepo{account: &Account{
-		ID: 10, Name: "before", Platform: PlatformGemini, Type: AccountTypeAPIKey,
+		ID: 10, Name: "before", Platform: PlatformMedia, Type: AccountTypeAPIKey,
+		Credentials: map[string]any{"api_key": "media-key", "base_url": "https://media.example.com"},
 		Extra: map[string]any{"media_config": map[string]any{
 			"adapter": "gemini", "native_async_mode": "optional",
 			"model_overrides": map[string]any{"veo": map[string]any{"upstream_model": "veo-up"}},

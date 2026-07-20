@@ -393,20 +393,22 @@ type AccountTableParams = {
 const proxies = ref<AccountProxy[]>([])
 const groups = ref<AdminGroup[]>([])
 const accountTableRef = ref<HTMLElement | null>(null)
+type SelectedAccountMetadata = Pick<Account, 'platform' | 'type'>
+const selectedAccountMetadata = ref<Map<number, SelectedAccountMetadata>>(new Map())
 const selPlatforms = computed<AccountPlatform[]>(() => {
-  const platforms = new Set(
-    accounts.value
-      .filter(a => isSelected(a.id))
-      .map(a => a.platform)
-  )
+  const platforms = new Set<AccountPlatform>()
+  for (const accountID of selIds.value) {
+    const metadata = selectedAccountMetadata.value.get(accountID)
+    if (metadata) platforms.add(metadata.platform)
+  }
   return [...platforms]
 })
 const selTypes = computed<AccountType[]>(() => {
-  const types = new Set(
-    accounts.value
-      .filter(a => isSelected(a.id))
-      .map(a => a.type)
-  )
+  const types = new Set<AccountType>()
+  for (const accountID of selIds.value) {
+    const metadata = selectedAccountMetadata.value.get(accountID)
+    if (metadata) types.add(metadata.type)
+  }
   return [...types]
 })
 const showCreate = ref(false)
@@ -671,6 +673,23 @@ const {
   rows: accounts,
   getId: (account) => account.id
 })
+
+// Selection is intentionally retained across pages. Keep the platform/type
+// metadata with each selected ID as well, otherwise the bulk editor would only
+// see the current page and could misclassify a mixed media/text selection.
+watch([accounts, selIds], ([currentAccounts, selectedIDs]) => {
+  const selected = new Set(selectedIDs)
+  const next = new Map<number, SelectedAccountMetadata>()
+  for (const [accountID, metadata] of selectedAccountMetadata.value) {
+    if (selected.has(accountID)) next.set(accountID, metadata)
+  }
+  for (const account of currentAccounts) {
+    if (selected.has(account.id)) {
+      next.set(account.id, { platform: account.platform, type: account.type })
+    }
+  }
+  selectedAccountMetadata.value = next
+}, { immediate: true })
 
 useSwipeSelect(accountTableRef, {
   isSelected,

@@ -124,6 +124,8 @@ var ProviderSet = wire.NewSet(
 	NewMediaTaskRepository,
 	NewMediaArtifactRepository,
 	NewQiniuGeneratedImageObjectStore,
+	wire.Bind(new(service.MediaModelDefinitionRepository), new(*mediaModelRepository)),
+	wire.Bind(new(service.MediaModelAdminRepository), new(*mediaModelRepository)),
 
 	// Cache implementations
 	NewGatewayCache,

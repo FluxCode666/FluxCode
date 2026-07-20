@@ -263,6 +263,49 @@ func TestMediaSchedulerRoutesVersionOneMediaAccountByRegistryAndGroupScope(t *te
 	require.Equal(t, "volcengine", candidates[0].ResolvedModel.Provider)
 }
 
+func TestMediaSchedulerUsesProvidedFrozenDefinitionAcrossRegistryRefresh(t *testing.T) {
+	account := Account{
+		ID: 22, Platform: PlatformMedia, Priority: 1, Concurrency: 1,
+		Status: StatusActive, Schedulable: true,
+		Extra: map[string]any{"media_config": map[string]any{
+			"version": 1, "provider": "volcengine", "models": map[string]any{
+				"seedance": map[string]any{"enabled": true, "upstream_model_id": "seedance-upstream", "async_mode": "unsupported"},
+			},
+		}},
+	}
+	frozen := MediaModelDefinition{
+		ID: 51, ModelID: "seedance", Vendor: "bytedance", MediaType: MediaTypeImage,
+		Operations: []MediaOperation{MediaOperationTextToImage}, DefaultAdapter: "adapter-v1",
+		DefaultAsyncMode: NativeAsyncUnsupported, Enabled: true,
+	}
+	refreshed := cloneMediaModelDefinition(frozen)
+	refreshed.DefaultAdapter = "adapter-v2"
+	registry := NewMediaModelRegistry(&mediaModelRepoStub{items: []MediaModelDefinition{refreshed}})
+	require.NoError(t, registry.Refresh(context.Background()))
+	adapters := NewMediaAdapterRegistry()
+	adapters.Register("adapter-v1", NewFakeMediaAdapter(FakeMediaAdapterOptions{Name: "adapter-v1", NativeAsyncMode: NativeAsyncUnsupported}))
+	adapters.Register("adapter-v2", NewFakeMediaAdapter(FakeMediaAdapterOptions{Name: "adapter-v2", NativeAsyncMode: NativeAsyncUnsupported}))
+	scheduler := NewMediaScheduler(
+		&mediaSchedulerAccountRepoStub{accounts: []Account{account}},
+		&mediaSchedulerSelectorStub{selectedID: account.ID}, adapters,
+		&mediaSchedulerGroupRepoStub{group: &Group{ID: 9, Platform: PlatformMedia}},
+		registry, &mediaSchedulerScopeRepoStub{modelIDs: []string{"seedance"}},
+	)
+
+	candidates, err := scheduler.SnapshotCandidatesForDefinition(
+		context.Background(), 9, frozen, MediaOperationTextToImage,
+	)
+
+	require.NoError(t, err)
+	require.Len(t, candidates, 1)
+	require.Equal(t, "adapter-v1", candidates[0].ResolvedModel.Adapter)
+	currentCandidates, err := scheduler.SnapshotCandidatesForOperation(
+		context.Background(), 9, "seedance", MediaOperationTextToImage,
+	)
+	require.NoError(t, err)
+	require.Equal(t, "adapter-v2", currentCandidates[0].ResolvedModel.Adapter)
+}
+
 func TestMediaSchedulerRejectsMediaModelOutsideGroupScope(t *testing.T) {
 	definition := MediaModelDefinition{ID: 32, ModelID: "image", Vendor: "openai", MediaType: MediaTypeImage,
 		Operations: []MediaOperation{MediaOperationTextToImage}, DefaultAdapter: "sync", DefaultAsyncMode: NativeAsyncUnsupported, Enabled: true}
@@ -364,6 +407,27 @@ func TestMediaSchedulerSelectExcludesAndUsesFrozenResolvedModel(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, int64(11), selection.Account.ID)
 	require.Equal(t, ResolvedMediaAccountModel{Adapter: "xai", UpstreamModel: "upstream-v1", NativeAsyncMode: NativeAsyncRequired}, selection.ResolvedModel)
+}
+
+func TestMediaSchedulerSelectDoesNotReResolveCurrentModelRegistry(t *testing.T) {
+	account := task12Account(11, PlatformMedia, "image", "upstream-v1", "sync", NativeAsyncUnsupported)
+	repo := &mediaSchedulerAccountRepoStub{accounts: []Account{account}}
+	selector := &mediaSchedulerSelectorStub{selectedID: account.ID}
+	adapters := NewMediaAdapterRegistry()
+	adapters.Register("sync", NewFakeMediaAdapter(FakeMediaAdapterOptions{Name: "sync", NativeAsyncMode: NativeAsyncUnsupported}))
+	models := NewMediaModelRegistry(&mediaModelRepoStub{})
+	require.NoError(t, models.Refresh(context.Background()))
+	scheduler := NewMediaScheduler(repo, selector, adapters, &mediaSchedulerGroupRepoStub{group: &Group{ID: 1, Platform: PlatformMedia}}, models)
+	snapshot := []MediaAccountCandidateSnapshot{{
+		AccountID: account.ID, Platform: PlatformMedia,
+		ResolvedModel: ResolvedMediaAccountModel{Adapter: "sync", UpstreamModel: "upstream-v1", NativeAsyncMode: NativeAsyncUnsupported},
+	}}
+
+	selection, err := scheduler.Select(context.Background(), MediaScheduleRequest{
+		GroupID: 1, RequestedModel: "deleted-image", Operation: MediaOperationTextToImage, CandidateSnapshot: snapshot,
+	})
+	require.NoError(t, err)
+	require.Equal(t, account.ID, selection.Account.ID)
 }
 
 func TestMediaSchedulerSelectRechecksRealtimeAvailabilityAndAdapter(t *testing.T) {

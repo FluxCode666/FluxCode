@@ -252,7 +252,15 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	salesCommissionHandler := admin.NewSalesCommissionHandler(salesCommissionService)
 	promotionService := service.NewPromotionService(promotionRepository)
 	promotionHandler := admin.NewPromotionHandler(promotionService)
-	adminHandlers := handler.ProvideAdminHandlers(dashboardHandler, adminUserHandler, groupHandler, accountHandler, adminAnnouncementHandler, dataManagementHandler, backupHandler, oAuthHandler, openAIOAuthHandler, geminiOAuthHandler, antigravityOAuthHandler, proxyHandler, adminRedeemHandler, promoHandler, settingHandler, opsHandler, systemHandler, adminSubscriptionHandler, adminUsageHandler, generatedImageHandler, userAttributeHandler, errorPassthroughHandler, tlsFingerprintProfileHandler, adminAPIKeyHandler, scheduledTestHandler, poolMonitorHandler, channelHandler, channelMonitorHandler, channelMonitorRequestTemplateHandler, paymentHandler, referralHandler, salesCommissionHandler, promotionHandler)
+	mediaModelRepository := repository.NewMediaModelRepository(client)
+	groupMediaModelScopeRepository := repository.NewGroupMediaModelScopeRepository(client)
+	mediaModelRegistry, err := service.ProvideMediaModelRegistry(mediaModelRepository)
+	if err != nil {
+		return nil, err
+	}
+	mediaModelAdminService := service.NewMediaModelAdminService(mediaModelRepository, groupMediaModelScopeRepository, groupRepository, mediaModelRegistry)
+	mediaModelAdminHandler := admin.NewMediaModelAdminHandler(mediaModelAdminService)
+	adminHandlers := handler.ProvideAdminHandlers(dashboardHandler, adminUserHandler, groupHandler, accountHandler, adminAnnouncementHandler, dataManagementHandler, backupHandler, oAuthHandler, openAIOAuthHandler, geminiOAuthHandler, antigravityOAuthHandler, proxyHandler, adminRedeemHandler, promoHandler, settingHandler, opsHandler, systemHandler, adminSubscriptionHandler, adminUsageHandler, generatedImageHandler, userAttributeHandler, errorPassthroughHandler, tlsFingerprintProfileHandler, adminAPIKeyHandler, scheduledTestHandler, poolMonitorHandler, channelHandler, channelMonitorHandler, channelMonitorRequestTemplateHandler, paymentHandler, referralHandler, salesCommissionHandler, promotionHandler, mediaModelAdminHandler)
 	usageRecordWorkerPool := service.NewUsageRecordWorkerPool(configConfig)
 	userMsgQueueCache := repository.NewUserMsgQueueCache(redisClient)
 	userMessageQueueService := service.ProvideUserMessageQueueService(userMsgQueueCache, rpmCache, configConfig)
@@ -268,13 +276,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	handlerReferralHandler := handler.NewReferralHandler(referralService)
 	handlerSalesCommissionHandler := handler.NewSalesCommissionHandler(salesCommissionService)
 	channelMonitorUserHandler := handler.NewChannelMonitorUserHandler(channelMonitorService, settingService)
-	mediaModelDefinitionRepository := repository.NewMediaModelRepository(client)
-	mediaModelRegistry, err := service.ProvideMediaModelRegistry(mediaModelDefinitionRepository)
-	if err != nil {
-		return nil, err
-	}
 	mediaAdapterRegistry := service.ProvideMediaAdapterRegistry()
-	groupMediaModelScopeRepository := repository.NewGroupMediaModelScopeRepository(client)
 	mediaScheduler := service.ProvideMediaScheduler(accountRepository, groupRepository, concurrencyService, gatewayCache, mediaAdapterRegistry, mediaModelRegistry, groupMediaModelScopeRepository, configConfig)
 	mediaContentPolicy := service.ProvideMediaContentPolicy()
 	mediaPricingPort := service.ProvideMediaPricing()

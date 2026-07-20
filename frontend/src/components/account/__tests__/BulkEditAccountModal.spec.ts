@@ -100,6 +100,26 @@ describe('BulkEditAccountModal', () => {
     expect(wrapper.text()).not.toContain('gpt-5.3-codex')
   })
 
+  it('媒体账号不暴露旧文本模型限制，并把分组选择限定为 media', () => {
+    const wrapper = mountModal({
+      selectedPlatforms: ['media'],
+      selectedTypes: ['apikey']
+    })
+
+    expect(wrapper.find('#bulk-edit-model-restriction-enabled').exists()).toBe(false)
+    expect(wrapper.findComponent({ name: 'GroupSelector' }).props('platform')).toBe('media')
+  })
+
+  it('媒体与文本账号混合选择时禁止批量修改分组', () => {
+    const wrapper = mountModal({
+      selectedPlatforms: ['media', 'openai'],
+      selectedTypes: ['apikey']
+    })
+
+    expect(wrapper.find('#bulk-edit-groups-enabled').exists()).toBe(false)
+    expect(wrapper.text()).toContain('admin.accounts.bulkEdit.mixedMediaGroupsDisabled')
+  })
+
   it('antigravity 映射预设包含图片映射并过滤 OpenAI 预设', async () => {
     const wrapper = mountModal()
 

@@ -29,6 +29,9 @@ func RegisterAdminRoutes(
 		// 账号管理
 		registerAccountRoutes(admin, h)
 
+		// 媒体模型 Registry 与分组模型白名单
+		registerMediaModelRoutes(admin, h)
+
 		// 公告管理
 		registerAnnouncementRoutes(admin, h)
 
@@ -105,6 +108,20 @@ func RegisterAdminRoutes(
 		// 销售佣金管理
 		registerSalesCommissionRoutes(admin, h)
 	}
+}
+
+func registerMediaModelRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	models := admin.Group("/media-models")
+	{
+		models.GET("", h.Admin.MediaModel.List)
+		models.POST("", h.Admin.MediaModel.Create)
+		models.GET("/:id", h.Admin.MediaModel.GetByID)
+		models.PUT("/:id", h.Admin.MediaModel.Update)
+		models.DELETE("/:id", h.Admin.MediaModel.Delete)
+	}
+
+	admin.GET("/groups/:id/media-model-scopes", h.Admin.MediaModel.GetGroupScopes)
+	admin.PUT("/groups/:id/media-model-scopes", h.Admin.MediaModel.ReplaceGroupScopes)
 }
 
 func registerGeneratedImageRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
@@ -613,7 +630,6 @@ func registerErrorPassthroughRoutes(admin *gin.RouterGroup, h *handler.Handlers)
 		rules.DELETE("/:id", h.Admin.ErrorPassthrough.Delete)
 	}
 }
-
 
 func registerPoolMonitorRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	if h == nil || h.Admin == nil || h.Admin.PoolMonitor == nil {

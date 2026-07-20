@@ -188,6 +188,10 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 		return s.routeAntigravityTest(c, account, modelID, prompt)
 	}
 
+	if account.Platform == PlatformMedia {
+		return s.sendErrorAndEnd(c, "Media account connection testing is not supported yet")
+	}
+
 	return s.testClaudeAccountConnection(c, account, modelID)
 }
 

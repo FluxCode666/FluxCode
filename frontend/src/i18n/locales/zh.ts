@@ -468,6 +468,7 @@ export default {
     saving: '保存中...',
     selectedCount: '（已选 {count} 个）',
     refresh: '刷新',
+    retry: '重试',
     autoRefresh: {
       title: '自动刷新',
       enable: '启用自动刷新',
@@ -532,6 +533,7 @@ export default {
     modelPricing: '模型广场',
     users: '用户管理',
     groups: '分组管理',
+    mediaModels: '媒体模型',
     channels: '渠道管理',
     subscriptions: '订阅管理',
     accounts: '账号管理',
@@ -2403,6 +2405,100 @@ export default {
       }
     },
 
+    mediaModels: {
+      title: '媒体模型注册表',
+      description: '统一管理图片与视频模型、厂商、Adapter 和下游模型别名',
+      registryLabel: 'Media Model Registry',
+      registryHint:
+        'Adapter 在这里按“模型厂商 + 公共模型”统一绑定；媒体账号只配置供应商凭证、上游模型和参数映射，不再重复选择 Adapter。',
+      create: '注册媒体模型',
+      edit: '编辑媒体模型',
+      search: '搜索模型、厂商、Adapter 或别名…',
+      emptyTitle: '尚未注册媒体模型',
+      emptyHint: '先注册公共模型，随后才能在媒体账号和媒体分组中选择它。',
+      deleteTitle: '删除媒体模型',
+      deleteHint: '确定删除模型“{model}”吗？相关别名和分组授权将同时移除。',
+      columns: {
+        model: '公共模型',
+        vendor: '模型厂商',
+        type: '媒体类型',
+        operations: '能力',
+        adapter: 'Adapter / 异步',
+        aliases: '下游别名',
+        status: '状态',
+        actions: '操作'
+      },
+      stats: {
+        total: '全部模型',
+        image: '启用的图片模型',
+        video: '启用的视频模型',
+        disabled: '已停用'
+      },
+      types: {
+        all: '全部',
+        image: '图片',
+        video: '视频'
+      },
+      operations: {
+        text_to_image: '文生图',
+        image_to_image: '图生图',
+        image_edit: '图片编辑',
+        text_to_video: '文生视频',
+        image_to_video: '图生视频',
+        reference_to_video: '参考图生视频',
+        video_extend: '视频延长',
+        video_remix: '视频重绘'
+      },
+      asyncModes: {
+        unsupported: '仅同步上游',
+        optional: '同步/异步均可',
+        required: '仅异步上游'
+      },
+      form: {
+        modelId: '公共模型 ID',
+        modelIdPlaceholder: '例如 seedance-1.5-pro',
+        vendor: '模型厂商',
+        vendorPlaceholder: '例如 bytedance、xai、google',
+        mediaType: '媒体类型',
+        operations: '支持的生成能力',
+        adapter: '默认 Adapter',
+        adapterPlaceholder: '例如 volcengine-seedance',
+        adapterHint: '这是全局模型适配规则。账号表单不会再出现 Adapter 输入项。',
+        asyncMode: '默认上游执行方式',
+        billingUnit: '计费单位',
+        enabled: '启用该模型并允许进入调度',
+        aliases: '下游请求模型别名',
+        aliasesPlaceholder: '每行或逗号分隔，例如 seedance, doubao-video',
+        aliasesHint: '别名全局生效；下游请求别名后会解析为此公共模型 ID。',
+        constraints: '模型约束',
+        imageSizes: '允许的图片尺寸',
+        maxImageCount: '单次最大图片数',
+        maxReferenceImages: '最大参考图片数',
+        videoDurations: '允许的视频时长（秒）',
+        videoResolutions: '允许的视频分辨率',
+        minFps: '最小 FPS',
+        maxFps: '最大 FPS'
+      },
+      validation: {
+        modelId: '公共模型 ID 只能包含小写字母、数字及 . _ : / -',
+        vendor: '请填写模型厂商',
+        adapter: 'Adapter 只能包含小写字母、数字、_ 或 -',
+        billingUnit: '请填写计费单位',
+        operations: '请至少选择一项生成能力',
+        nonNegativeInteger: '数量与 FPS 约束必须是非负整数',
+        fps: '最小 FPS 不能大于最大 FPS',
+        aliases: '别名不能重复，也不能与公共模型 ID 相同'
+      },
+      messages: {
+        loadFailed: '加载媒体模型失败',
+        created: '媒体模型已注册',
+        updated: '媒体模型已更新',
+        deleted: '媒体模型已删除',
+        saveFailed: '保存媒体模型失败',
+        deleteFailed: '删除媒体模型失败'
+      }
+    },
+
     // Groups Management
     groups: {
       title: '分组管理',
@@ -2489,6 +2585,7 @@ export default {
         codex2api: 'Codex2api',
         gemini: 'Gemini',
         antigravity: 'Antigravity',
+        media: '媒体',
         sora: 'Sora',
       },
       saving: '保存中...',
@@ -2518,6 +2615,15 @@ export default {
       mediaCrossPlatformEnabled: '允许跨平台媒体账号',
       mediaCrossPlatformHint:
         '仅扩大账号与分组管理中的媒体账号候选范围；文本请求仍严格按分组平台调度。',
+      mediaModelScopesTitle: '允许调用的媒体模型',
+      mediaModelScopesHint: '只有同时被该分组授权、且已绑定到媒体账号的公共模型才会进入调度。',
+      noMediaModels: '当前没有启用的媒体模型。',
+      manageMediaModels: '前往媒体模型注册表',
+      mediaModelsSelected: '已授权 {count} 个媒体模型',
+      mediaModelScopeRequired: '媒体分组至少需要授权一个媒体模型',
+      mediaModelScopeLoadFailed: '加载分组媒体模型授权失败',
+      mediaModelScopeSaveFailed: '分组基本信息已保存，但媒体模型授权保存失败；请重试。',
+      mediaModelScopeSaveFailedAfterCreate: '分组已创建，但媒体模型授权保存失败；请编辑该分组后重试。',
       systemPrompt: {
         title: '分组系统提示词',
         description: '对该分组内的 API Key 生效，优先级高于系统平台默认配置，低于 API Key 自定义配置。',
@@ -2761,6 +2867,7 @@ export default {
         defaultPerRequestPrice: '默认单次价格（未命中层级时使用）',
         defaultImagePrice: '默认图片价格（未命中层级时使用）',
         platformConfig: '平台配置',
+        capabilities: '能力',
         webSearchEmulation: 'Web Search 模拟',
         webSearchEmulationHint: '⚠️ 开启后该渠道下所有 Anthropic 分组的账号将自动拦截 web_search 请求，请谨慎操作',
         webSearchEmulationGlobalDisabled: '请先在系统设置 → 网关 → Web Search 模拟中启用全局开关',
@@ -3044,26 +3151,38 @@ export default {
       title: '账号管理',
       description: '管理 AI 平台账号和 Cookie',
       mediaConfig: {
-        title: '媒体 Adapter 与原生异步能力',
-        description: '为媒体请求声明上游协议适配能力，并按模型覆盖原生异步配置。',
-        adapter: '媒体 Adapter',
-        adapterPlaceholder: '例如 gemini、xai 或自定义协议类型',
-        adapterHint: 'Adapter 是自由文本的协议类型，不会创建新的供应商实体；保存时会去除首尾空格。',
-        nativeAsyncMode: '默认原生异步模式',
-        nativeAsyncModeHint: '描述上游的原生异步能力，可按模型覆盖；不会限制下游选择同步或异步调用。',
-        model: '请求模型',
-        upstreamModel: '上游模型',
-        overrideAsyncMode: '模型原生异步模式',
-        inherit: '继承账号默认值',
-        addOverride: '添加模型覆盖',
+        title: '媒体供应商与模型绑定',
+        description: '配置该媒体账号提供的公共模型及其上游模型。Adapter 由媒体模型注册表自动决定，无需在账号中填写。',
+        provider: '上游供应商',
+        providerPlaceholder: '例如 volcengine、xai、google',
+        providerHint: '标识该账号所属的上游服务商；模型厂商与 Adapter 由公共模型注册表维护。',
+        baseUrlHint: '填写媒体供应商兼容接口的基础地址，不会回退到任何文本平台地址。',
+        baseUrlRequired: '请输入媒体供应商 Base URL',
+        apiKeyHint: '填写媒体供应商用于图片或视频生成的 API Key。',
+        model: '公共模型 ID',
+        selectModel: '从注册表选择公共模型',
+        loadingModels: '正在加载媒体模型…',
+        legacyModel: '历史或已停用模型（保留）',
+        registryModelHint: '注册表 Adapter：{adapter}；默认执行方式：{mode}',
+        registryLoadFailed: '媒体模型注册表加载失败，暂时无法新增模型绑定。',
+        registryEmpty: '尚未注册任何可用的媒体模型。',
+        manageRegistry: '管理媒体模型',
+        upstreamModel: '上游模型 ID',
+        enabled: '启用此模型',
+        asyncMode: '上游异步能力',
+        requestMapping: '请求参数映射（JSON）',
+        requestMappingPlaceholder: '{\n  "rules": [{ "source": "size", "target": "chicun", "operation": "rename" }]\n}',
+        requestMappingHint: '可选。支持 rename、copy、default、enum、cast；这里只接受声明式 JSON，不执行脚本。',
+        invalidRequestMapping: '请求参数映射必须是合法的 JSON 对象，且只能包含 rules。',
+        addModel: '添加模型绑定',
         remove: '删除',
-        removeOverride: '删除模型覆盖',
+        removeModel: '删除模型绑定',
         duplicateModel: '模型名“{model}”去除首尾空格后重复，请修改后再保存。',
-        fixDuplicateModels: '请先修复重复的媒体模型覆盖名称。',
+        modelRequired: '至少添加一个模型，并填写公共模型 ID 和上游模型 ID。',
+        fixConfiguration: '请先补全媒体供应商、模型绑定和请求参数映射。',
         modes: {
           unsupported: '不支持原生异步',
-          optional: '可选使用原生异步',
-          required: '必须使用原生异步'
+          native: '支持上游原生异步'
         }
       },
       createAccount: '添加账号',
@@ -3296,6 +3415,7 @@ export default {
         codex2api: 'Codex2api',
         gemini: 'Gemini',
         antigravity: 'Antigravity',
+        media: '媒体',
         sora: 'Sora',
       },
       types: {
@@ -3485,7 +3605,8 @@ export default {
         failed: '批量更新失败',
         noSelection: '请选择要编辑的账号',
         noFieldsSelected: '请至少选择一个要更新的字段',
-        mixedPlatformWarning: '所选账号跨越多个平台（{platforms}）。显示的模型映射预设为合并结果——请确保映射对每个平台都适用。'
+        mixedPlatformWarning: '所选账号跨越多个平台（{platforms}）。显示的模型映射预设为合并结果——请确保映射对每个平台都适用。',
+        mixedMediaGroupsDisabled: '媒体账号与文本账号完全隔离，混合选择时不能批量修改分组。'
       },
       bulkDeleteTitle: '批量删除账号',
       bulkDeleteConfirm: '确定要删除选中的 {count} 个账号吗？此操作无法撤销。',

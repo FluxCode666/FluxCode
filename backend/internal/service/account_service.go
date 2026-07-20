@@ -23,13 +23,43 @@ func validateCodex2APIAccount(account *Account) error {
 		return nil
 	}
 	if account.Type != AccountTypeAPIKey {
-		return fmt.Errorf("codex2api accounts only support apikey type")
+		return infraerrors.BadRequest("INVALID_CODEX2API_ACCOUNT", "codex2api accounts only support apikey type")
 	}
 	if strings.TrimSpace(account.GetCredential("api_key")) == "" {
-		return fmt.Errorf("codex2api api_key is required")
+		return infraerrors.BadRequest("INVALID_CODEX2API_ACCOUNT", "codex2api api_key is required")
 	}
 	if strings.TrimSpace(account.GetCredential("base_url")) == "" {
-		return fmt.Errorf("codex2api base_url is required")
+		return infraerrors.BadRequest("INVALID_CODEX2API_ACCOUNT", "codex2api base_url is required")
+	}
+	return nil
+}
+
+func validateMediaPlatformAccount(account *Account) error {
+	if account == nil {
+		return nil
+	}
+	_, hasMediaConfig := account.Extra[mediaAccountConfigExtraKey]
+	if account.Platform != PlatformMedia {
+		if hasMediaConfig {
+			return fmt.Errorf("%w: media_config is only allowed for media accounts", ErrInvalidMediaAccountConfig)
+		}
+		return nil
+	}
+	if account.Type != AccountTypeAPIKey {
+		return infraerrors.BadRequest("INVALID_MEDIA_ACCOUNT", "media accounts only support apikey type")
+	}
+	if strings.TrimSpace(account.GetCredential("api_key")) == "" {
+		return infraerrors.BadRequest("INVALID_MEDIA_ACCOUNT", "media api_key is required")
+	}
+	if strings.TrimSpace(account.GetCredential("base_url")) == "" {
+		return infraerrors.BadRequest("INVALID_MEDIA_ACCOUNT", "media base_url is required")
+	}
+	config, configured, err := mediaAccountConfigFromExtra(account.Extra)
+	if err != nil {
+		return err
+	}
+	if !configured || strings.TrimSpace(config.Provider) == "" || len(config.Models) == 0 {
+		return fmt.Errorf("%w: media account requires provider and models", ErrInvalidMediaAccountConfig)
 	}
 	return nil
 }
@@ -48,7 +78,12 @@ func validateAccountGroupBinding(group *Group, accountPlatform, accountType stri
 		return fmt.Errorf("get group: %w", ErrGroupNotFound)
 	}
 	platformCompatible := AccountCanBelongToGroupPlatform(accountPlatform, group.Platform)
-	if !platformCompatible && !group.MediaCrossPlatformEnabled {
+	if accountPlatform == PlatformMedia || group.Platform == PlatformMedia {
+		if !platformCompatible {
+			return fmt.Errorf("账号平台 [%s] 只能加入 [%s] 分组，不能加入分组 [%s](%s)",
+				accountPlatform, AccountPlatformGroupPlatform(accountPlatform), group.Name, group.Platform)
+		}
+	} else if !platformCompatible && !group.MediaCrossPlatformEnabled {
 		return fmt.Errorf("账号平台 [%s] 只能加入 [%s] 分组，不能加入分组 [%s](%s)",
 			accountPlatform, AccountPlatformGroupPlatform(accountPlatform), group.Name, group.Platform)
 	}
@@ -231,6 +266,9 @@ func (s *AccountService) Create(ctx context.Context, req CreateAccountRequest) (
 	if err := validateCodex2APIAccount(account); err != nil {
 		return nil, err
 	}
+	if err := validateMediaPlatformAccount(account); err != nil {
+		return nil, err
+	}
 	if err := validateAccountGroupBindings(ctx, s.groupRepo, account.Platform, account.Type, req.GroupIDs); err != nil {
 		return nil, err
 	}
@@ -345,6 +383,9 @@ func (s *AccountService) Update(ctx context.Context, id int64, req UpdateAccount
 
 	// 执行更新
 	if err := validateCodex2APIAccount(account); err != nil {
+		return nil, err
+	}
+	if err := validateMediaPlatformAccount(account); err != nil {
 		return nil, err
 	}
 	if req.GroupIDs != nil {

@@ -7,7 +7,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -75,6 +77,8 @@ type MediaModelRegistry struct {
 	repo      MediaModelDefinitionRepository
 	aliasRepo MediaModelAliasRepository
 	snapshot  atomic.Value // mediaModelRegistrySnapshot
+	refreshMu sync.Mutex
+	startOnce sync.Once
 }
 
 func NewMediaModelRegistry(repo MediaModelDefinitionRepository, aliasRepos ...MediaModelAliasRepository) *MediaModelRegistry {
@@ -95,6 +99,8 @@ func NewMediaModelRegistry(repo MediaModelDefinitionRepository, aliasRepos ...Me
 }
 
 func (r *MediaModelRegistry) Refresh(ctx context.Context) error {
+	r.refreshMu.Lock()
+	defer r.refreshMu.Unlock()
 	if r.repo == nil {
 		return errors.New("media model repository is nil")
 	}
@@ -138,6 +144,9 @@ func (r *MediaModelRegistry) Refresh(ctx context.Context) error {
 		if _, exists := aliasItems[requestedModelID]; exists {
 			return fmt.Errorf("duplicate media model alias %q", requestedModelID)
 		}
+		if _, exists := items[requestedModelID]; exists {
+			return fmt.Errorf("media model alias %q conflicts with a canonical model id", requestedModelID)
+		}
 		canonicalModelID, exists := ids[alias.ModelDefinitionID]
 		if !exists {
 			return fmt.Errorf("media model alias %q references unavailable model definition %d", requestedModelID, alias.ModelDefinitionID)
@@ -146,6 +155,35 @@ func (r *MediaModelRegistry) Refresh(ctx context.Context) error {
 	}
 	r.snapshot.Store(mediaModelRegistrySnapshot{models: items, aliases: aliasItems})
 	return nil
+}
+
+// StartPeriodicRefresh keeps every instance eventually consistent after an
+// administrator changes the database-backed registry. Direct writes still
+// refresh the serving instance synchronously; this loop is the multi-instance
+// and transient-failure safety net.
+func (r *MediaModelRegistry) StartPeriodicRefresh(ctx context.Context, interval time.Duration) {
+	if r == nil || interval <= 0 {
+		return
+	}
+	r.startOnce.Do(func() {
+		go func() {
+			ticker := time.NewTicker(interval)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					refreshCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), interval)
+					err := r.Refresh(refreshCtx)
+					cancel()
+					if err != nil {
+						slog.Warn("media_model_registry_periodic_refresh_failed", "error", err)
+					}
+				}
+			}
+		}()
+	})
 }
 
 func (r *MediaModelRegistry) Resolve(model string, operation MediaOperation) (*MediaModelDefinition, error) {
@@ -218,6 +256,10 @@ func (r *MediaModelRegistry) ValidateSpec(model string, operation MediaOperation
 	if err != nil {
 		return err
 	}
+	return validateMediaSpecAgainstDefinition(*definition, spec)
+}
+
+func validateMediaSpecAgainstDefinition(definition MediaModelDefinition, spec MediaSpec) error {
 	constraints, err := decodeMediaModelConstraints(definition.Constraints)
 	if err != nil {
 		return err

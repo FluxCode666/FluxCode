@@ -665,6 +665,7 @@ func ProvideMediaModelRegistry(repo MediaModelDefinitionRepository) (*MediaModel
 	if err := registry.Refresh(context.Background()); err != nil {
 		return nil, err
 	}
+	registry.StartPeriodicRefresh(context.Background(), 5*time.Second)
 	return registry, nil
 }
 

@@ -505,7 +505,7 @@ export interface PaginationConfig {
 
 // ==================== API Key & Group Types ====================
 
-export type GroupPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity'
+export type GroupPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity' | 'media'
 
 export type SubscriptionType = 'standard' | 'subscription'
 
@@ -714,12 +714,87 @@ export interface UpdateGroupRequest {
 
 // ==================== Account & Proxy Types ====================
 
-export type AccountPlatform = 'anthropic' | 'openai' | 'codex2api' | 'gemini' | 'antigravity'
+export type AccountPlatform = 'anthropic' | 'openai' | 'codex2api' | 'gemini' | 'antigravity' | 'media'
 export type AccountType = 'oauth' | 'setup-token' | 'apikey' | 'upstream' | 'bedrock'
 export type OAuthAddMethod = 'oauth' | 'setup-token'
 export type ProxyProtocol = 'http' | 'https' | 'socks5' | 'socks5h'
 
 export type NativeAsyncMode = 'unsupported' | 'optional' | 'required'
+
+export type MediaBindingAsyncMode = 'unsupported' | 'native'
+
+export type MediaType = 'image' | 'video'
+
+export type MediaOperation =
+  | 'text_to_image'
+  | 'image_to_image'
+  | 'image_edit'
+  | 'text_to_video'
+  | 'image_to_video'
+  | 'reference_to_video'
+  | 'video_extend'
+  | 'video_remix'
+
+export interface MediaModelConstraints {
+  image_sizes?: string[]
+  max_image_count?: number
+  video_durations?: number[]
+  video_resolutions?: string[]
+  min_fps?: number
+  max_fps?: number
+  max_reference_images?: number
+}
+
+export interface MediaModelDefinition {
+  id: number
+  model_id: string
+  vendor: string
+  media_type: MediaType
+  operations: MediaOperation[]
+  constraints: MediaModelConstraints
+  billing_unit: string
+  default_adapter: string
+  default_async_mode: NativeAsyncMode
+  enabled: boolean
+  aliases: string[]
+  created_at?: string
+  updated_at?: string
+}
+
+export interface MediaModelDefinitionInput {
+  model_id: string
+  vendor: string
+  media_type: MediaType
+  operations: MediaOperation[]
+  constraints: MediaModelConstraints
+  billing_unit: string
+  default_adapter: string
+  default_async_mode: NativeAsyncMode
+  enabled: boolean
+  aliases: string[]
+}
+
+export type MediaMappingOperation = 'rename' | 'copy' | 'default' | 'enum' | 'cast'
+
+export interface MediaRequestMappingRule {
+  source?: string
+  target: string
+  operation: MediaMappingOperation
+  value?: unknown
+  values?: Record<string, string>
+  cast?: 'string' | 'number' | 'integer' | 'boolean'
+}
+
+export interface MediaRequestMapping {
+  rules?: MediaRequestMappingRule[]
+}
+
+export interface MediaAccountModelBinding {
+  enabled: boolean
+  upstream_model_id: string
+  async_mode: MediaBindingAsyncMode
+  request_mapping: MediaRequestMapping
+}
 
 export interface MediaAccountModelOverride {
   upstream_model?: string
@@ -727,21 +802,25 @@ export interface MediaAccountModelOverride {
 }
 
 export interface MediaAccountConfigWire {
-  adapter: string
+  version?: 1
+  provider?: string
+  models?: Record<string, MediaAccountModelBinding>
+  // Legacy fields are read-only compatibility for accounts saved before v1 bindings.
+  adapter?: string
   native_async_mode?: NativeAsyncMode
   model_overrides?: Record<string, MediaAccountModelOverride>
 }
 
 export interface MediaAccountConfig {
-  adapter: string
-  native_async_mode: NativeAsyncMode
-  model_overrides: Record<string, MediaAccountModelOverride>
+  version: 1
+  provider: string
+  models: Record<string, MediaAccountModelBinding>
 }
 
 export interface MediaAccountConfigPayload {
-  adapter: string
-  native_async_mode: NativeAsyncMode
-  model_overrides: Record<string, MediaAccountModelOverride>
+  version: 1
+  provider: string
+  models: Record<string, MediaAccountModelBinding>
 }
 
 // Claude Model type (returned by /v1/models and account models API)

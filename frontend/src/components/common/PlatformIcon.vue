@@ -19,6 +19,10 @@
   <svg v-else-if="platform === 'antigravity'" :class="sizeClass" viewBox="0 0 24 24" fill="currentColor">
     <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z" />
   </svg>
+  <!-- Media generation (image frame + play marker) -->
+  <svg v-else-if="platform === 'media'" :class="sizeClass" viewBox="0 0 24 24" fill="currentColor">
+    <path d="M4 3a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2H4Zm0 2h16v9.25l-2.8-2.8a1 1 0 0 0-1.4 0l-2.55 2.55-3.3-3.3a1 1 0 0 0-1.4 0L4 15.25V5Zm12.25 1.75a2 2 0 1 1 0 4 2 2 0 0 1 0-4ZM4 18.08l5.25-5.25 3.3 3.3a1 1 0 0 0 1.4 0l2.55-2.55L20 17.08V19H4v-.92Z" />
+  </svg>
   <!-- Fallback: generic platform icon -->
   <svg v-else :class="sizeClass" fill="currentColor" viewBox="0 0 24 24">
     <path

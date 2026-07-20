@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -14,8 +16,43 @@ type mediaModelRepoStub struct {
 	err   error
 }
 
+type periodicMediaModelRepoStub struct {
+	mu    sync.RWMutex
+	items []MediaModelDefinition
+}
+
+func (s *periodicMediaModelRepoStub) ListEnabled(context.Context) ([]MediaModelDefinition, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return append([]MediaModelDefinition(nil), s.items...), nil
+}
+
+func (s *periodicMediaModelRepoStub) set(items ...MediaModelDefinition) {
+	s.mu.Lock()
+	s.items = append([]MediaModelDefinition(nil), items...)
+	s.mu.Unlock()
+}
+
 func (s *mediaModelRepoStub) ListEnabled(context.Context) ([]MediaModelDefinition, error) {
 	return s.items, s.err
+}
+
+func TestMediaModelRegistryPeriodicRefreshLoadsExternalChanges(t *testing.T) {
+	first := validImageModelDefinition()
+	repo := &periodicMediaModelRepoStub{items: []MediaModelDefinition{first}}
+	registry := NewMediaModelRegistry(repo)
+	require.NoError(t, registry.Refresh(context.Background()))
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	registry.StartPeriodicRefresh(ctx, 5*time.Millisecond)
+
+	second := validImageModelDefinition()
+	second.ModelID = "external-image"
+	repo.set(second)
+	require.Eventually(t, func() bool {
+		resolved, err := registry.Resolve(second.ModelID, MediaOperationTextToImage)
+		return err == nil && resolved.ModelID == second.ModelID
+	}, time.Second, 5*time.Millisecond)
 }
 
 type mediaModelAliasRepoStub struct {
@@ -447,6 +484,17 @@ func TestMediaModelRegistryValidateImageConstraints(t *testing.T) {
 			require.ErrorIs(t, err, tt.err)
 		})
 	}
+}
+
+func TestValidateMediaSpecAgainstFrozenDefinition(t *testing.T) {
+	frozen := validImageModelDefinition()
+	frozen.Constraints = json.RawMessage(`{"image_sizes":["1024x1024"]}`)
+	refreshed := cloneMediaModelDefinition(frozen)
+	refreshed.Constraints = json.RawMessage(`{"image_sizes":["512x512"]}`)
+	spec := MediaSpec{Image: &ImageSpec{Prompt: "cat", Count: 1, Size: "1024x1024"}}
+
+	require.NoError(t, validateMediaSpecAgainstDefinition(frozen, spec))
+	require.ErrorIs(t, validateMediaSpecAgainstDefinition(refreshed, spec), ErrMediaSpecOutsideModelConstraints)
 }
 
 func TestMediaModelRegistryValidateVideoConstraints(t *testing.T) {

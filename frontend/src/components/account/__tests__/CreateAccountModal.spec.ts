@@ -10,14 +10,16 @@ const {
   generateAuthUrlMock,
   exchangeCodeMock,
   refreshOpenAITokenMock,
-  refreshAntigravityTokenMock
+  refreshAntigravityTokenMock,
+  authStoreState
 } = vi.hoisted(() => ({
   createAccountMock: vi.fn(),
   checkMixedChannelRiskMock: vi.fn(),
   generateAuthUrlMock: vi.fn(),
   exchangeCodeMock: vi.fn(),
   refreshOpenAITokenMock: vi.fn(),
-  refreshAntigravityTokenMock: vi.fn()
+  refreshAntigravityTokenMock: vi.fn(),
+  authStoreState: { isSimpleMode: false }
 }))
 
 vi.mock('@/stores/app', () => ({
@@ -29,9 +31,7 @@ vi.mock('@/stores/app', () => ({
 }))
 
 vi.mock('@/stores/auth', () => ({
-  useAuthStore: () => ({
-    isSimpleMode: true
-  })
+  useAuthStore: () => authStoreState
 }))
 
 vi.mock('@/api/admin', () => ({
@@ -52,6 +52,21 @@ vi.mock('@/api/admin', () => ({
     },
     antigravity: {
       refreshAntigravityToken: refreshAntigravityTokenMock
+    },
+    mediaModels: {
+      listEnabled: vi.fn().mockResolvedValue([{
+        id: 1,
+        model_id: 'duplicate',
+        vendor: 'test-vendor',
+        media_type: 'image',
+        operations: ['text_to_image'],
+        constraints: {},
+        billing_unit: 'image',
+        default_adapter: 'test-adapter',
+        default_async_mode: 'unsupported',
+        enabled: true,
+        aliases: []
+      }])
     }
   }
 }))
@@ -189,7 +204,7 @@ function mountModal() {
   })
 }
 
-async function selectPlatform(wrapper: ReturnType<typeof mountModal>, platform: 'OpenAI' | 'Antigravity') {
+async function selectPlatform(wrapper: ReturnType<typeof mountModal>, platform: 'OpenAI' | 'Antigravity' | 'Media') {
   await wrapper.findAll('button').find((button) => button.text().includes(platform))?.trigger('click')
 }
 
@@ -203,29 +218,38 @@ async function goToOAuthStep(wrapper: ReturnType<typeof mountModal>, name: strin
   await nextTick()
 }
 
-async function setMediaConfig(wrapper: ReturnType<typeof mountModal>, adapter = 'branch-adapter') {
+async function setMediaConfig(wrapper: ReturnType<typeof mountModal>, provider = 'volcengine') {
   wrapper.getComponent(MediaConfigEditor).vm.$emit('update:modelValue', {
-    adapter,
-    native_async_mode: 'required',
-    model_overrides: {
-      image: { upstream_model: 'image-upstream' }
+    version: 1,
+    provider,
+    models: {
+      image: {
+        enabled: true,
+        upstream_model_id: 'image-upstream',
+        async_mode: 'native',
+        request_mapping: {}
+      }
     }
   })
+  wrapper.getComponent(MediaConfigEditor).vm.$emit('update:valid', true)
   await nextTick()
 }
 
 async function makeMediaConfigInvalid(wrapper: ReturnType<typeof mountModal>) {
-  await wrapper.get('[data-test="media-add-model-override"]').trigger('click')
-  await wrapper.get('[data-test="media-override-model-0"]').setValue('duplicate')
-  await wrapper.get('[data-test="media-add-model-override"]').trigger('click')
-  await wrapper.get('[data-test="media-override-model-1"]').setValue(' duplicate ')
+  await flushPromises()
+  await wrapper.get('[data-test="media-add-model"]').trigger('click')
+  await wrapper.get('[data-test="media-model-id-0"]').setValue('duplicate')
+  await wrapper.get('[data-test="media-upstream-model-0"]').setValue('upstream-a')
+  await wrapper.get('[data-test="media-add-model"]').trigger('click')
+  await wrapper.get('[data-test="media-model-id-1"]').setValue('duplicate')
+  await wrapper.get('[data-test="media-upstream-model-1"]').setValue('upstream-b')
 }
 
 async function fillMinimalCreateAccountForm(wrapper: ReturnType<typeof mountModal>) {
-  await wrapper.findAll('button').find((button) => button.text().includes('OpenAI'))?.trigger('click')
-  await wrapper.findAll('button').find((button) => button.text().includes('API Key'))?.trigger('click')
+  await wrapper.get('[data-test="platform-media"]').trigger('click')
   const textInputs = wrapper.findAll<HTMLInputElement>('form#create-account-form input[type="text"]')
   await textInputs[0].setValue('Media Key')
+  await textInputs[1].setValue('https://media.example.com')
   await wrapper.get<HTMLInputElement>('form#create-account-form input[type="password"]').setValue('sk-test')
 }
 
@@ -237,6 +261,7 @@ describe('CreateAccountModal', () => {
     exchangeCodeMock.mockReset()
     refreshOpenAITokenMock.mockReset()
     refreshAntigravityTokenMock.mockReset()
+    authStoreState.isSimpleMode = false
 
     createAccountMock.mockResolvedValue({})
     checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
@@ -276,6 +301,14 @@ describe('CreateAccountModal', () => {
     })
   })
 
+  it('简易模式隐藏媒体平台入口', () => {
+    authStoreState.isSimpleMode = true
+
+    const wrapper = mountModal()
+
+    expect(wrapper.find('[data-test="platform-media"]').exists()).toBe(false)
+  })
+
   it('creates account with media_config while preserving other extra fields', async () => {
     createAccountMock.mockReset()
     checkMixedChannelRiskMock.mockReset()
@@ -283,33 +316,63 @@ describe('CreateAccountModal', () => {
     checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
     const wrapper = mountModal()
 
-    wrapper.getComponent(MediaConfigEditor).vm.$emit('update:modelValue', {
-      adapter: '  xai  ',
-      native_async_mode: 'required',
-      model_overrides: { 'grok-imagine': { upstream_model: 'grok-imagine-v1' } }
-    })
-    await nextTick()
     await fillMinimalCreateAccountForm(wrapper)
-    await wrapper.get('form#create-account-form').trigger('submit.prevent')
-
-    expect(createAccountMock.mock.calls[0]?.[0]?.extra).toMatchObject({
-      openai_image_response_url_mode: 'http_url',
-      media_config: {
-        adapter: 'xai',
-        native_async_mode: 'required',
-        model_overrides: { 'grok-imagine': { upstream_model: 'grok-imagine-v1' } }
+    wrapper.getComponent(MediaConfigEditor).vm.$emit('update:modelValue', {
+      version: 1,
+      provider: '  xai  ',
+      models: {
+        'grok-imagine': {
+          enabled: true,
+          upstream_model_id: 'grok-imagine-v1',
+          async_mode: 'native',
+          request_mapping: {}
+        }
       }
     })
+    wrapper.getComponent(MediaConfigEditor).vm.$emit('update:valid', true)
+    await nextTick()
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+
+    expect(createAccountMock.mock.calls[0]?.[0]).toMatchObject({
+      platform: 'media',
+      type: 'apikey',
+      extra: {
+        media_config: {
+          version: 1,
+          provider: 'xai'
+        }
+      }
+    })
+    expect(createAccountMock.mock.calls[0]?.[0]?.extra?.media_config?.models).toHaveProperty('grok-imagine')
   })
 
-  it('does not create media_config when adapter is empty', async () => {
+  it('切换平台时清空已选分组，避免提交不可见的不兼容分组', async () => {
+    authStoreState.isSimpleMode = false
+    const wrapper = mountModal()
+    const groupSelector = wrapper.getComponent({ name: 'GroupSelector' })
+
+    groupSelector.vm.$emit('update:modelValue', [42])
+    await nextTick()
+    expect(wrapper.getComponent({ name: 'GroupSelector' }).props('modelValue')).toEqual([42])
+
+    await wrapper.get('[data-test="platform-media"]').trigger('click')
+
+    expect(wrapper.getComponent({ name: 'GroupSelector' }).props('modelValue')).toEqual([])
+  })
+
+  it('does not expose or create media_config for text platform accounts', async () => {
     createAccountMock.mockReset()
     checkMixedChannelRiskMock.mockReset()
     createAccountMock.mockResolvedValue({})
     checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
     const wrapper = mountModal()
 
-    await fillMinimalCreateAccountForm(wrapper)
+    await wrapper.findAll('button').find((button) => button.text().includes('OpenAI'))?.trigger('click')
+    await wrapper.findAll('button').find((button) => button.text().includes('API Key'))?.trigger('click')
+    const textInputs = wrapper.findAll<HTMLInputElement>('form#create-account-form input[type="text"]')
+    await textInputs[0].setValue('OpenAI Key')
+    await wrapper.get<HTMLInputElement>('form#create-account-form input[type="password"]').setValue('sk-test')
+    expect(wrapper.findComponent(MediaConfigEditor).exists()).toBe(false)
     await wrapper.get('form#create-account-form').trigger('submit.prevent')
 
     expect(createAccountMock.mock.calls[0]?.[0]?.extra).not.toHaveProperty('media_config')
@@ -318,19 +381,16 @@ describe('CreateAccountModal', () => {
   it('resets media_config when the modal is reopened', async () => {
     const wrapper = mountModal()
 
-    wrapper.getComponent(MediaConfigEditor).vm.$emit('update:modelValue', {
-      adapter: 'xai',
-      native_async_mode: 'required',
-      model_overrides: {}
-    })
-    await nextTick()
+    await fillMinimalCreateAccountForm(wrapper)
+    await setMediaConfig(wrapper, 'xai')
     await wrapper.setProps({ show: false })
     await wrapper.setProps({ show: true })
+    await wrapper.get('[data-test="platform-media"]').trigger('click')
 
     expect(wrapper.getComponent(MediaConfigEditor).props('modelValue')).toEqual({
-      adapter: '',
-      native_async_mode: 'unsupported',
-      model_overrides: {}
+      version: 1,
+      provider: '',
+      models: {}
     })
   })
 
@@ -341,20 +401,22 @@ describe('CreateAccountModal', () => {
     await makeMediaConfigInvalid(wrapper)
     await wrapper.get('form#create-account-form').trigger('submit.prevent')
 
-    expect(wrapper.get('[data-test="media-override-duplicate-error"]').exists()).toBe(true)
+    expect(wrapper.get('[data-test="media-duplicate-model-error"]').exists()).toBe(true)
     expect(createAccountMock).not.toHaveBeenCalled()
   })
 
   it('resets invalid media state when reopened and allows a valid create', async () => {
     const wrapper = mountModal()
 
+    await wrapper.get('[data-test="platform-media"]').trigger('click')
     await makeMediaConfigInvalid(wrapper)
     await wrapper.setProps({ show: false })
     await wrapper.setProps({ show: true })
     await fillMinimalCreateAccountForm(wrapper)
+    await setMediaConfig(wrapper)
     await wrapper.get('form#create-account-form').trigger('submit.prevent')
 
-    expect(wrapper.find('[data-test="media-override-duplicate-error"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="media-duplicate-model-error"]').exists()).toBe(false)
     expect(createAccountMock).toHaveBeenCalledTimes(1)
   })
 
@@ -362,7 +424,6 @@ describe('CreateAccountModal', () => {
     const wrapper = mountModal()
 
     await selectPlatform(wrapper, 'OpenAI')
-    await setMediaConfig(wrapper)
     await goToOAuthStep(wrapper, 'OpenAI auth code')
     await wrapper.get('[data-test="oauth-generate"]').trigger('click')
     await flushPromises()
@@ -372,33 +433,27 @@ describe('CreateAccountModal', () => {
     await flushPromises()
 
     expect(createAccountMock).toHaveBeenCalledTimes(1)
-    expect(createAccountMock.mock.calls[0]?.[0]?.extra).toMatchObject({
-      email: 'openai@example.com',
-      media_config: { adapter: 'branch-adapter' }
-    })
+    expect(createAccountMock.mock.calls[0]?.[0]?.extra).toMatchObject({ email: 'openai@example.com' })
+    expect(createAccountMock.mock.calls[0]?.[0]?.extra).not.toHaveProperty('media_config')
   })
 
   it('merges media_config in the direct OpenAI refresh-token create path', async () => {
     const wrapper = mountModal()
 
     await selectPlatform(wrapper, 'OpenAI')
-    await setMediaConfig(wrapper)
     await goToOAuthStep(wrapper, 'OpenAI refresh token')
     await wrapper.get('[data-test="oauth-refresh"]').trigger('click')
     await flushPromises()
 
     expect(createAccountMock).toHaveBeenCalledTimes(1)
-    expect(createAccountMock.mock.calls[0]?.[0]?.extra).toMatchObject({
-      email: 'openai@example.com',
-      media_config: { adapter: 'branch-adapter' }
-    })
+    expect(createAccountMock.mock.calls[0]?.[0]?.extra).toMatchObject({ email: 'openai@example.com' })
+    expect(createAccountMock.mock.calls[0]?.[0]?.extra).not.toHaveProperty('media_config')
   })
 
   it('preserves Antigravity flags and media_config in the direct refresh-token path', async () => {
     const wrapper = mountModal()
 
     await selectPlatform(wrapper, 'Antigravity')
-    await setMediaConfig(wrapper)
     await wrapper.findAll('label').find((label) =>
       label.text().includes('admin.accounts.mixedScheduling')
     )?.get('input').setValue(true)
@@ -412,15 +467,14 @@ describe('CreateAccountModal', () => {
     expect(createAccountMock).toHaveBeenCalledTimes(1)
     expect(createAccountMock.mock.calls[0]?.[0]?.extra).toMatchObject({
       mixed_scheduling: true,
-      allow_overages: true,
-      media_config: { adapter: 'branch-adapter' }
+      allow_overages: true
     })
+    expect(createAccountMock.mock.calls[0]?.[0]?.extra).not.toHaveProperty('media_config')
   })
 
   it('merges media_config in the direct Anthropic cookie create path', async () => {
     const wrapper = mountModal()
 
-    await setMediaConfig(wrapper)
     await goToOAuthStep(wrapper, 'Anthropic cookie')
     await wrapper.get('[data-test="oauth-cookie"]').trigger('click')
     await flushPromises()
@@ -428,9 +482,9 @@ describe('CreateAccountModal', () => {
     expect(createAccountMock).toHaveBeenCalledTimes(1)
     expect(createAccountMock.mock.calls[0]?.[0]?.extra).toMatchObject({
       org_uuid: 'org-1',
-      account_uuid: 'account-1',
-      media_config: { adapter: 'branch-adapter' }
+      account_uuid: 'account-1'
     })
+    expect(createAccountMock.mock.calls[0]?.[0]?.extra).not.toHaveProperty('media_config')
   })
 
   it('creates OpenAI API Key accounts with HTTP image response URLs by default', async () => {

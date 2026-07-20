@@ -71,6 +71,10 @@ const filteredGroups = computed(() => {
   if (!groupPlatform.value) {
     return props.groups
   }
+  // 媒体账号与媒体分组完全隔离，不参与旧的跨平台文本账号绑定。
+  if (groupPlatform.value === 'media') {
+    return props.groups.filter((g) => g.platform === 'media')
+  }
   // antigravity 账户启用混合调度后，可选择 anthropic/gemini 分组
   if (groupPlatform.value === 'antigravity' && props.mixedScheduling) {
     return props.groups.filter(
@@ -84,7 +88,8 @@ const filteredGroups = computed(() => {
   // 账号管理绑定可额外选择媒体跨平台分组；文本 Gateway 的平台边界不在此处改变。
   return props.groups.filter(
     (g) =>
-      g.platform === groupPlatform.value || g.media_cross_platform_enabled === true
+      g.platform === groupPlatform.value ||
+      (g.platform !== 'media' && g.media_cross_platform_enabled === true)
   )
 })
 

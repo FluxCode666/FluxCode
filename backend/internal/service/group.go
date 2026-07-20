@@ -6,10 +6,24 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/domain"
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 )
+
+var ErrMediaGroupTextGatewayUnsupported = infraerrors.BadRequest(
+	"MEDIA_GROUP_TEXT_GATEWAY_UNSUPPORTED",
+	"media groups can only be used with media generation endpoints",
+)
+
+func rejectMediaGroupForTextGateway(group *Group) error {
+	if group != nil && group.Platform == PlatformMedia {
+		return ErrMediaGroupTextGatewayUnsupported
+	}
+	return nil
+}
 
 // GroupMediaModelScopeRepository stores the canonical media models a group may route.
 type GroupMediaModelScopeRepository interface {
+	ListMediaModelIDs(ctx context.Context, groupID int64) ([]string, error)
 	ListEnabledMediaModelIDs(ctx context.Context, groupID int64) ([]string, error)
 	ReplaceMediaModelScopes(ctx context.Context, groupID int64, modelIDs []string) error
 }

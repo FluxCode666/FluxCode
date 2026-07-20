@@ -120,6 +120,13 @@ type mediaOperationCandidateSnapshotter interface {
 	SnapshotCandidatesForOperation(ctx context.Context, groupID int64, requestedModel string, operation MediaOperation) ([]MediaAccountCandidateSnapshot, error)
 }
 
+// mediaDefinitionCandidateSnapshotter lets the orchestrator and scheduler use
+// one immutable registry definition. This prevents a concurrent registry
+// refresh from combining routing metadata from different model versions.
+type mediaDefinitionCandidateSnapshotter interface {
+	SnapshotCandidatesForDefinition(ctx context.Context, groupID int64, definition MediaModelDefinition, operation MediaOperation) ([]MediaAccountCandidateSnapshot, error)
+}
+
 type MediaGroupProvider interface {
 	GetByID(ctx context.Context, id int64) (*Group, error)
 }
@@ -172,12 +179,9 @@ func (o *MediaOrchestrator) Create(ctx context.Context, req MediaCreateRequest) 
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	definition, inputs, err := o.validateRequest(ctx, req)
+	inputs, err := validateMediaCreateRequestShape(req)
 	if err != nil {
 		return nil, err
-	}
-	if err := o.deps.ContentPolicy.Check(ctx, req.UserID, req.MediaType, req.Spec); err != nil {
-		return nil, fmt.Errorf("check media content policy: %w", err)
 	}
 
 	fingerprint, err := mediaCreateFingerprint(req)
@@ -195,58 +199,96 @@ func (o *MediaOrchestrator) Create(ctx context.Context, req MediaCreateRequest) 
 		}
 	}
 
+	// Existing idempotent tasks own immutable routing, model and billing
+	// snapshots. Only genuinely new tasks consult the current registry and
+	// group policy, so later alias removal or model disablement cannot strand a
+	// previously accepted request.
+	definition, err := o.validateNewRequest(ctx, req, inputs)
+	if err != nil {
+		return o.reuseConcurrentIdempotencyWinner(ctx, req, inputs, fingerprint, err)
+	}
+	if err := o.deps.ContentPolicy.Check(ctx, req.UserID, req.MediaType, req.Spec); err != nil {
+		return o.reuseConcurrentIdempotencyWinner(
+			ctx, req, inputs, fingerprint, fmt.Errorf("check media content policy: %w", err),
+		)
+	}
+
 	var settings *SystemSettings
 	if !req.ClientAsync {
 		settings, err = o.loadSettings(ctx)
 		if err != nil {
-			return nil, err
+			return o.reuseConcurrentIdempotencyWinner(ctx, req, inputs, fingerprint, err)
 		}
 	}
 
 	var candidates []MediaAccountCandidateSnapshot
-	if operationScheduler, ok := o.deps.Scheduler.(mediaOperationCandidateSnapshotter); ok {
+	if definitionScheduler, ok := o.deps.Scheduler.(mediaDefinitionCandidateSnapshotter); ok {
+		candidates, err = definitionScheduler.SnapshotCandidatesForDefinition(ctx, req.GroupID, *definition, req.Operation)
+	} else if operationScheduler, ok := o.deps.Scheduler.(mediaOperationCandidateSnapshotter); ok {
 		candidates, err = operationScheduler.SnapshotCandidatesForOperation(ctx, req.GroupID, strings.TrimSpace(req.RequestedModel), req.Operation)
 	} else {
 		candidates, err = o.deps.Scheduler.SnapshotCandidates(ctx, req.GroupID, strings.TrimSpace(req.RequestedModel))
 	}
 	if err != nil {
-		return nil, fmt.Errorf("snapshot media candidates: %w", err)
+		return o.reuseConcurrentIdempotencyWinner(
+			ctx, req, inputs, fingerprint, fmt.Errorf("snapshot media candidates: %w", err),
+		)
 	}
 	initialSpec, err := json.Marshal(req.Spec)
 	if err != nil {
-		return nil, fmt.Errorf("encode media request spec: %w", err)
+		return o.reuseConcurrentIdempotencyWinner(
+			ctx, req, inputs, fingerprint, fmt.Errorf("encode media request spec: %w", err),
+		)
 	}
 	if err := freezeMediaCandidateRequests(candidates, initialSpec, req.MediaType); err != nil {
-		return nil, fmt.Errorf("freeze media candidate requests: %w", err)
+		return o.reuseConcurrentIdempotencyWinner(
+			ctx, req, inputs, fingerprint, fmt.Errorf("freeze media candidate requests: %w", err),
+		)
+	}
+	for index := range candidates {
+		frozenDefinition := cloneMediaModelDefinition(*definition)
+		candidates[index].ModelDefinition = &frozenDefinition
 	}
 	candidateJSON, err := json.Marshal(candidates)
 	if err != nil {
-		return nil, fmt.Errorf("encode media candidate snapshot: %w", err)
+		return o.reuseConcurrentIdempotencyWinner(
+			ctx, req, inputs, fingerprint, fmt.Errorf("encode media candidate snapshot: %w", err),
+		)
 	}
 	billingSnapshot, err := o.deps.Pricing.Snapshot(ctx, req, definition, candidates)
 	if err != nil {
-		return nil, fmt.Errorf("snapshot media pricing: %w", err)
+		return o.reuseConcurrentIdempotencyWinner(
+			ctx, req, inputs, fingerprint, fmt.Errorf("snapshot media pricing: %w", err),
+		)
 	}
 	billingSnapshot, err = normalizeMediaBillingSnapshot(billingSnapshot)
 	if err != nil {
-		return nil, fmt.Errorf("validate media pricing snapshot: %w", err)
+		return o.reuseConcurrentIdempotencyWinner(
+			ctx, req, inputs, fingerprint, fmt.Errorf("validate media pricing snapshot: %w", err),
+		)
 	}
 	billingJSON, err := json.Marshal(billingSnapshot)
 	if err != nil {
-		return nil, fmt.Errorf("encode media billing snapshot: %w", err)
+		return o.reuseConcurrentIdempotencyWinner(
+			ctx, req, inputs, fingerprint, fmt.Errorf("encode media billing snapshot: %w", err),
+		)
 	}
 	publicID, err := o.deps.PublicIDGenerator()
 	if err != nil {
-		return nil, fmt.Errorf("generate media task public id: %w", err)
+		return o.reuseConcurrentIdempotencyWinner(
+			ctx, req, inputs, fingerprint, fmt.Errorf("generate media task public id: %w", err),
+		)
 	}
 	if !strings.HasPrefix(publicID, "task_") || len(publicID) <= len("task_") {
-		return nil, errors.New("generated media task public id is invalid")
+		return o.reuseConcurrentIdempotencyWinner(
+			ctx, req, inputs, fingerprint, errors.New("generated media task public id is invalid"),
+		)
 	}
 	now := o.deps.Clock.Now().UTC()
 	initializationLease := now.Add(mediaTaskInitializationLease)
 	task := &MediaTask{
 		PublicID: publicID, UserID: req.UserID, APIKeyID: req.APIKeyID, GroupID: req.GroupID,
-		MediaType: req.MediaType, Operation: req.Operation, RequestedModel: strings.TrimSpace(req.RequestedModel),
+		MediaType: req.MediaType, Operation: req.Operation, RequestedModel: definition.ModelID,
 		ClientAsync: req.ClientAsync, Status: MediaTaskStatusQueued, Stage: MediaTaskStageQueued,
 		RequestSpec: initialSpec, CandidateSnapshot: candidateJSON, RequestFingerprint: fingerprint,
 		IdempotencyKey: req.IdempotencyKey, BillingSnapshot: billingJSON, BillingStatus: MediaBillingStatusPending,
@@ -272,6 +314,27 @@ func (o *MediaOrchestrator) Create(ctx context.Context, req MediaCreateRequest) 
 	}
 	task = created
 	return o.initializeAndEnqueue(ctx, task, req, inputs, billingSnapshot, settings)
+}
+
+func (o *MediaOrchestrator) reuseConcurrentIdempotencyWinner(
+	ctx context.Context,
+	req MediaCreateRequest,
+	inputs []MediaArtifactInput,
+	fingerprint string,
+	newTaskErr error,
+) (*MediaCreateResult, error) {
+	if req.IdempotencyKey == "" || ctx.Err() != nil {
+		return nil, newTaskErr
+	}
+	winner, err := o.deps.Tasks.GetByIdempotencyKey(ctx, req.UserID, req.APIKeyID, req.IdempotencyKey)
+	switch {
+	case err == nil:
+		return o.reuseOrResumeTask(ctx, winner, req, inputs, fingerprint, nil)
+	case errors.Is(err, ErrMediaTaskNotFound):
+		return nil, newTaskErr
+	default:
+		return nil, errors.Join(newTaskErr, fmt.Errorf("recheck concurrent media idempotency winner: %w", err))
+	}
 }
 
 func freezeMediaCandidateRequests(candidates []MediaAccountCandidateSnapshot, requestSpec json.RawMessage, mediaType MediaType) error {
@@ -567,50 +630,58 @@ func mediaSyncTimeoutSettlement(task *MediaTask, settings *SystemSettings) Media
 	return settlement
 }
 
-func (o *MediaOrchestrator) validateRequest(ctx context.Context, req MediaCreateRequest) (*MediaModelDefinition, []MediaArtifactInput, error) {
+func validateMediaCreateRequestShape(req MediaCreateRequest) ([]MediaArtifactInput, error) {
 	if req.UserID <= 0 || req.APIKeyID <= 0 || req.GroupID <= 0 {
-		return nil, nil, ErrInvalidMediaSpec
+		return nil, ErrInvalidMediaSpec
 	}
 	if err := req.Spec.Validate(req.MediaType); err != nil {
-		return nil, nil, err
+		return nil, err
 	}
+	if mediaSpecHasPersistedArtifactReferences(req.Spec) {
+		return nil, fmt.Errorf("%w: request spec must not contain pre-existing artifact ids", ErrMediaInputNotRecoverable)
+	}
+	inputs, err := normalizeMediaInputs(req.Inputs, req.Operation)
+	if err != nil {
+		return nil, err
+	}
+	return inputs, nil
+}
+
+func (o *MediaOrchestrator) validateNewRequest(
+	ctx context.Context,
+	req MediaCreateRequest,
+	inputs []MediaArtifactInput,
+) (*MediaModelDefinition, error) {
 	definition, err := o.deps.Registry.Resolve(req.RequestedModel, req.Operation)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	if definition.MediaType != req.MediaType {
-		return nil, nil, ErrMediaSpecOutsideModelConstraints
+		return nil, ErrMediaSpecOutsideModelConstraints
 	}
-	placeholderIDs := make([]int64, len(req.Inputs))
+	placeholderIDs := make([]int64, len(inputs))
 	for i := range placeholderIDs {
 		placeholderIDs[i] = int64(i + 1)
 	}
 	validationSpec, err := mediaSpecWithInputArtifacts(req.Spec, req.Operation, placeholderIDs)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
-	if err := o.deps.Registry.ValidateSpec(req.RequestedModel, req.Operation, validationSpec); err != nil {
-		return nil, nil, err
+	if err := validateMediaSpecAgainstDefinition(*definition, validationSpec); err != nil {
+		return nil, err
 	}
 	group, err := o.deps.Groups.GetByID(ctx, req.GroupID)
 	if err != nil {
-		return nil, nil, fmt.Errorf("load media group: %w", err)
+		return nil, fmt.Errorf("load media group: %w", err)
 	}
 	if group == nil || group.ID != req.GroupID {
-		return nil, nil, ErrGroupNotFound
+		return nil, ErrGroupNotFound
 	}
 	if (req.MediaType == MediaTypeImage && !group.AllowImageGeneration) ||
 		(req.MediaType == MediaTypeVideo && !group.AllowVideoGeneration) {
-		return nil, nil, ErrMediaGenerationNotAllowed
+		return nil, ErrMediaGenerationNotAllowed
 	}
-	if mediaSpecHasPersistedArtifactReferences(req.Spec) {
-		return nil, nil, fmt.Errorf("%w: request spec must not contain pre-existing artifact ids", ErrMediaInputNotRecoverable)
-	}
-	inputs, err := normalizeMediaInputs(req.Inputs, req.Operation)
-	if err != nil {
-		return nil, nil, err
-	}
-	return definition, inputs, nil
+	return definition, nil
 }
 
 func normalizeMediaInputs(inputs []MediaArtifactInput, operation MediaOperation) ([]MediaArtifactInput, error) {

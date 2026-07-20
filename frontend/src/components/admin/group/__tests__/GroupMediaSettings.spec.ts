@@ -50,4 +50,68 @@ describe('GroupMediaSettings', () => {
     expect(en.admin.groups.mediaCrossPlatformHint).toContain('media account candidates')
     expect(en.admin.groups.mediaCrossPlatformHint).toContain('text requests')
   })
+
+  it('媒体分组隐藏旧跨平台开关', () => {
+    const wrapper = mount(GroupMediaSettings, {
+      props: {
+        platform: 'media',
+        modelValue: {
+          allow_image_generation: true,
+          allow_video_generation: true,
+          media_cross_platform_enabled: false,
+        },
+      },
+    })
+
+    expect(wrapper.find('[data-test="media-cross-platform-enabled"]').exists()).toBe(false)
+  })
+
+  it('媒体分组可从 Registry 多选公共模型', async () => {
+    const wrapper = mount(GroupMediaSettings, {
+      props: {
+        platform: 'media',
+        modelValue: {
+          allow_image_generation: true,
+          allow_video_generation: true,
+          media_cross_platform_enabled: false,
+        },
+        selectedModelIds: ['seedance'],
+        availableModels: [
+          {
+            id: 1,
+            model_id: 'seedance',
+            vendor: 'bytedance',
+            media_type: 'video',
+            operations: ['text_to_video'],
+            constraints: {},
+            billing_unit: 'second',
+            default_adapter: 'volcengine-seedance',
+            default_async_mode: 'required',
+            enabled: true,
+            aliases: [],
+          },
+          {
+            id: 2,
+            model_id: 'grok-image',
+            vendor: 'xai',
+            media_type: 'image',
+            operations: ['text_to_image'],
+            constraints: {},
+            billing_unit: 'image',
+            default_adapter: 'xai-image',
+            default_async_mode: 'unsupported',
+            enabled: true,
+            aliases: [],
+          },
+        ],
+      },
+    })
+
+    await wrapper.get('[data-test="media-model-scope-grok-image"]').setValue(true)
+
+    expect(wrapper.emitted('update:selectedModelIds')?.at(-1)?.[0]).toEqual([
+      'seedance',
+      'grok-image',
+    ])
+  })
 })

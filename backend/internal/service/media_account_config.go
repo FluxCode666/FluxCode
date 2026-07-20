@@ -6,12 +6,14 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 )
 
 const mediaAccountConfigExtraKey = "media_config"
 
 var (
-	ErrInvalidMediaAccountConfig = errors.New("invalid media account config")
+	ErrInvalidMediaAccountConfig = infraerrors.BadRequest("INVALID_MEDIA_ACCOUNT_CONFIG", "invalid media account config")
 	ErrInvalidNativeAsyncMode    = errors.New("invalid native async mode")
 )
 

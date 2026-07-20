@@ -1286,6 +1286,19 @@ func TestMediaWorkerUsesCandidateSnapshotInsteadOfCurrentModelMapping(t *testing
 	require.Equal(t, fixture.adapter.Name(), fixture.repo.mustGet(fixture.task.ID).Adapter)
 }
 
+func TestMediaWorkerQueuedTaskUsesFrozenDefinitionAfterRegistryRemoval(t *testing.T) {
+	fixture := newMediaWorkerFixture(t, false, NativeAsyncUnsupported)
+	fixture.worker.deps.Models = NewMediaModelRegistry(&mediaModelRepoStub{})
+	require.NoError(t, fixture.worker.deps.Models.Refresh(context.Background()))
+
+	require.NoError(t, fixture.worker.ProcessOne(context.Background(), fixture.task.ID))
+	stored := fixture.repo.mustGet(fixture.task.ID)
+	require.Equal(t, MediaTaskStatusCompleted, stored.Status)
+	request := fixture.adapter.lastRequest()
+	require.NotNil(t, request.Definition)
+	require.Equal(t, "fake-image", request.Definition.ModelID)
+}
+
 func TestMediaWorkerTaskTimeoutIsSystemFailure(t *testing.T) {
 	fixture := newMediaWorkerFixture(t, true, NativeAsyncRequired)
 	fixture.worker.cfg.TaskTimeout = 10 * time.Millisecond
@@ -2234,9 +2247,10 @@ func newMediaWorkerFixture(t *testing.T, clientAsync bool, mode NativeAsyncMode)
 	accountRepo := &workerAccountRepository{account: account}
 	selector := &workerSelector{refreshOwned: true}
 	scheduler := NewMediaScheduler(accountRepo, selector, registry, workerGroupRepository{})
-	modelRegistry := NewMediaModelRegistry(&workerModelRepository{definition: MediaModelDefinition{
+	definition := MediaModelDefinition{
 		ModelID: "fake-image", Vendor: "fake-vendor", DefaultAdapter: adapter.Name(), DefaultAsyncMode: mode, MediaType: MediaTypeImage, Operations: []MediaOperation{MediaOperationTextToImage}, Enabled: true,
-	}})
+	}
+	modelRegistry := NewMediaModelRegistry(&workerModelRepository{definition: definition})
 	require.NoError(t, modelRegistry.Refresh(context.Background()))
 	candidates, err := json.Marshal([]MediaAccountCandidateSnapshot{{
 		AccountID: account.ID,
@@ -2244,6 +2258,7 @@ func newMediaWorkerFixture(t *testing.T, clientAsync bool, mode NativeAsyncMode)
 		ResolvedModel: ResolvedMediaAccountModel{
 			Adapter: adapter.Name(), UpstreamModel: "upstream-image", NativeAsyncMode: mode,
 		},
+		ModelDefinition: &definition,
 	}})
 	require.NoError(t, err)
 	task := &MediaTask{

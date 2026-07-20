@@ -274,6 +274,7 @@ const platformOptions = computed(() => [
   { value: 'codex2api', label: t('admin.accounts.platforms.codex2api') },
   { value: 'gemini', label: t('admin.accounts.platforms.gemini') },
   { value: 'antigravity', label: t('admin.accounts.platforms.antigravity') },
+  { value: 'media', label: t('admin.accounts.platforms.media') },
   { value: 'sora', label: t('admin.accounts.platforms.sora') }
 ])
 

@@ -1,17 +1,25 @@
 <script setup lang="ts">
-import { ref, toRaw, watch } from 'vue'
+import { computed, onMounted, ref, toRaw, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { adminAPI } from '@/api/admin'
 import type {
   MediaAccountConfig,
-  MediaAccountModelOverride,
-  NativeAsyncMode
+  MediaAccountModelBinding,
+  MediaBindingAsyncMode,
+  MediaMappingOperation,
+  MediaModelDefinition,
+  MediaRequestMapping,
+  MediaRequestMappingRule
 } from '@/types'
 
-interface OverrideRow {
+interface ModelRow {
   id: string
   model: string
-  upstream_model: string
-  native_async_mode: NativeAsyncMode | ''
+  enabled: boolean
+  upstreamModelID: string
+  asyncMode: MediaBindingAsyncMode
+  requestMappingText: string
+  requestMappingError: boolean
 }
 
 const props = defineProps<{
@@ -24,74 +32,181 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useI18n()
-
-function cloneModelOverrides(
-  source: Record<string, MediaAccountModelOverride> | undefined
-): Record<string, MediaAccountModelOverride> {
-  const result = Object.create(null) as Record<string, MediaAccountModelOverride>
-  for (const [model, override] of Object.entries(source || {})) {
-    result[model] = override
-  }
-  return result
-}
-
-const local = ref<MediaAccountConfig>({
-  ...props.modelValue,
-  model_overrides: cloneModelOverrides(props.modelValue.model_overrides)
-})
-const rows = ref<OverrideRow[]>([])
+const provider = ref('')
+const rows = ref<ModelRow[]>([])
+const registryModels = ref<MediaModelDefinition[]>([])
+const registryLoading = ref(false)
+const registryLoadFailed = ref(false)
 const duplicateModel = ref('')
-let nextRowId = 0
+const missingModelFields = ref(false)
+let nextRowID = 0
 let currentValid = true
 let lastEmittedObject: MediaAccountConfig | null = null
 
-function createRow(model = '', override: MediaAccountModelOverride = {}): OverrideRow {
-  nextRowId += 1
+const registryModelsByID = computed(() => new Map(
+  registryModels.value.map((model) => [model.model_id, model]),
+))
+
+async function loadRegistryModels() {
+  const loader = adminAPI.mediaModels?.listEnabled
+  if (!loader) return
+  registryLoading.value = true
+  registryLoadFailed.value = false
+  try {
+    registryModels.value = await loader()
+  } catch {
+    registryLoadFailed.value = true
+  } finally {
+    registryLoading.value = false
+  }
+}
+
+function isSelectedByAnotherRow(modelID: string, current: ModelRow): boolean {
+  return rows.value.some((row) => row !== current && row.model.trim().toLowerCase() === modelID)
+}
+
+function modelOptionLabel(model: MediaModelDefinition): string {
+  return `${model.model_id} · ${model.vendor} · ${t(`admin.mediaModels.types.${model.media_type}`)}`
+}
+
+function selectedDefinition(row: ModelRow): MediaModelDefinition | undefined {
+  return registryModelsByID.value.get(row.model.trim().toLowerCase())
+}
+
+function mappingText(mapping: MediaRequestMapping | undefined): string {
+  if (!mapping?.rules?.length) {
+    return ''
+  }
+  return JSON.stringify(mapping, null, 2)
+}
+
+function createRow(model = '', binding?: MediaAccountModelBinding): ModelRow {
+  nextRowID += 1
   return {
-    id: `media-override-${nextRowId}`,
+    id: `media-model-${nextRowID}`,
     model,
-    upstream_model: override.upstream_model || '',
-    native_async_mode: override.native_async_mode || ''
+    enabled: binding?.enabled ?? true,
+    upstreamModelID: binding?.upstream_model_id || '',
+    asyncMode: binding?.async_mode || 'unsupported',
+    requestMappingText: mappingText(binding?.request_mapping),
+    requestMappingError: false
   }
 }
 
 function setValidity(value: boolean) {
-  if (currentValid === value) {
-    return
-  }
+  if (currentValid === value) return
   currentValid = value
   emit('update:valid', value)
 }
 
-function findDuplicateModel(): string {
-  const seen = new Set<string>()
-  for (const row of rows.value) {
-    const model = row.model.trim()
-    if (!model) {
-      continue
+const mappingOperations = new Set(['rename', 'copy', 'default', 'enum', 'cast'])
+const mappingCasts = new Set(['string', 'number', 'integer', 'boolean'])
+const mappingRuleKeys = new Set(['source', 'target', 'operation', 'value', 'values', 'cast'])
+const safeMappingPath = /^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$/
+
+function isValidMappingRules(value: unknown): boolean {
+  if (value === undefined) return true
+  if (!Array.isArray(value)) return false
+  const targets = new Set<string>()
+  for (const item of value) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return false
+    const rule = item as Record<string, unknown>
+    if (Object.keys(rule).some((key) => !mappingRuleKeys.has(key))) return false
+    const operation = typeof rule.operation === 'string' ? rule.operation.trim().toLowerCase() : ''
+    const target = typeof rule.target === 'string' ? rule.target.trim() : ''
+    if (!mappingOperations.has(operation) || !safeMappingPath.test(target) || targets.has(target)) return false
+    targets.add(target)
+    if (operation === 'rename' || operation === 'copy' || operation === 'enum' || operation === 'cast') {
+      const source = typeof rule.source === 'string' ? rule.source.trim() : ''
+      if (!safeMappingPath.test(source) || (operation === 'rename' && source === target)) return false
     }
-    if (seen.has(model)) {
-      return model
+    if (operation === 'enum') {
+      if (!rule.values || typeof rule.values !== 'object' || Array.isArray(rule.values) ||
+        Object.keys(rule.values as Record<string, unknown>).length === 0 ||
+        Object.values(rule.values as Record<string, unknown>).some((mapped) => typeof mapped !== 'string')) return false
     }
-    seen.add(model)
+    if (operation === 'cast' && (typeof rule.cast !== 'string' || !mappingCasts.has(rule.cast.trim().toLowerCase()))) {
+      return false
+    }
   }
-  return ''
+  return true
+}
+
+function parseRequestMapping(row: ModelRow): MediaRequestMapping | null {
+  const source = row.requestMappingText.trim()
+  if (!source) {
+    row.requestMappingError = false
+    return {}
+  }
+  try {
+    const parsed = JSON.parse(source) as unknown
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      row.requestMappingError = true
+      return null
+    }
+    const mapping = parsed as Record<string, unknown>
+    if (Object.keys(mapping).some((key) => key !== 'rules')) {
+      row.requestMappingError = true
+      return null
+    }
+    if (!isValidMappingRules(mapping.rules)) {
+      row.requestMappingError = true
+      return null
+    }
+    const rules = Array.isArray(mapping.rules)
+      ? mapping.rules.map((item): MediaRequestMappingRule => {
+          const rule = item as Record<string, unknown>
+          const normalized: MediaRequestMappingRule = {
+            operation: String(rule.operation).trim().toLowerCase() as MediaMappingOperation,
+            target: String(rule.target).trim()
+          }
+          if (typeof rule.source === 'string') normalized.source = rule.source.trim()
+          if (Object.prototype.hasOwnProperty.call(rule, 'value')) normalized.value = rule.value
+          if (rule.values && typeof rule.values === 'object' && !Array.isArray(rule.values)) {
+            normalized.values = rule.values as Record<string, string>
+          }
+          if (typeof rule.cast === 'string') {
+            normalized.cast = rule.cast.trim().toLowerCase() as MediaRequestMappingRule['cast']
+          }
+          return normalized
+        })
+      : undefined
+    row.requestMappingError = false
+    return rules ? { rules } : {}
+  } catch {
+    row.requestMappingError = true
+    return null
+  }
 }
 
 function refreshValidity(): boolean {
-  duplicateModel.value = findDuplicateModel()
-  const valid = !duplicateModel.value
+  const seen = new Set<string>()
+  duplicateModel.value = ''
+  missingModelFields.value = rows.value.length === 0
+  let mappingValid = true
+
+  for (const row of rows.value) {
+    const model = row.model.trim().toLowerCase()
+    if (!model || !row.upstreamModelID.trim()) {
+      missingModelFields.value = true
+    }
+    if (model && seen.has(model)) {
+      duplicateModel.value = model
+    }
+    if (model) seen.add(model)
+    if (!parseRequestMapping(row)) mappingValid = false
+  }
+
+  const valid = Boolean(provider.value.trim()) && !missingModelFields.value &&
+    !duplicateModel.value && mappingValid
   setValidity(valid)
   return valid
 }
 
 function hydrate(value: MediaAccountConfig) {
-  local.value = {
-    ...value,
-    model_overrides: cloneModelOverrides(value.model_overrides)
-  }
-  rows.value = Object.entries(value.model_overrides || {}).map(([model, override]) =>
-    createRow(model, override)
+  provider.value = value.provider || ''
+  rows.value = Object.entries(value.models || {}).map(([model, binding]) =>
+    createRow(model, binding)
   )
   refreshValidity()
 }
@@ -109,78 +224,46 @@ watch(
   { immediate: true, deep: true }
 )
 
-function buildModelOverrides(): Record<string, MediaAccountModelOverride> | null {
-  if (!refreshValidity()) {
-    return null
-  }
-
-  const result = cloneModelOverrides(undefined)
-
+function publish() {
+  const models = Object.create(null) as Record<string, MediaAccountModelBinding>
   for (const row of rows.value) {
-    const model = row.model.trim()
-    if (!model) {
-      continue
+    const model = row.model.trim().toLowerCase()
+    if (!model || models[model]) continue
+    models[model] = {
+      enabled: row.enabled,
+      upstream_model_id: row.upstreamModelID.trim(),
+      async_mode: row.asyncMode,
+      request_mapping: parseRequestMapping(row) || {}
     }
-    const override: MediaAccountModelOverride = {}
-    const upstreamModel = row.upstream_model.trim()
-    if (upstreamModel) {
-      override.upstream_model = upstreamModel
-    }
-    if (row.native_async_mode) {
-      override.native_async_mode = row.native_async_mode
-    }
-    result[model] = override
-  }
-
-  return result
-}
-
-function publish(patch: Partial<MediaAccountConfig> = {}) {
-  local.value = {
-    ...local.value,
-    ...patch
-  }
-  const modelOverrides = buildModelOverrides()
-  if (!modelOverrides) {
-    return
-  }
-
-  const next: MediaAccountConfig = {
-    ...local.value,
-    model_overrides: modelOverrides
   }
   const emittedValue: MediaAccountConfig = {
-    ...next,
-    model_overrides: cloneModelOverrides(next.model_overrides)
+    version: 1,
+    provider: provider.value,
+    models
   }
-  local.value = emittedValue
   lastEmittedObject = emittedValue
   emit('update:modelValue', emittedValue)
+  refreshValidity()
 }
 
-function updateAdapter(event: Event) {
-  publish({ adapter: (event.target as HTMLInputElement).value })
-}
-
-function updateDefaultMode(event: Event) {
-  publish({ native_async_mode: (event.target as HTMLSelectElement).value as NativeAsyncMode })
-}
-
-function addOverride() {
+function addModel() {
   rows.value.push(createRow())
+  publish()
 }
 
-function removeOverride(index: number) {
+function removeModel(index: number) {
   rows.value.splice(index, 1)
   publish()
 }
+
+onMounted(loadRegistryModels)
 </script>
 
 <template>
   <section
     data-test="media-config-editor"
     class="space-y-4 border-t border-gray-200 pt-4 dark:border-dark-600"
-    :aria-labelledby="'media-config-title'"
+    aria-labelledby="media-config-title"
   >
     <div>
       <h3 id="media-config-title" class="text-sm font-semibold text-gray-900 dark:text-gray-100">
@@ -192,122 +275,181 @@ function removeOverride(index: number) {
     </div>
 
     <div>
-      <label for="media-adapter" class="input-label">
-        {{ t('admin.accounts.mediaConfig.adapter') }}
+      <label for="media-provider" class="input-label">
+        {{ t('admin.accounts.mediaConfig.provider') }}
       </label>
       <input
-        id="media-adapter"
-        data-test="media-adapter"
+        id="media-provider"
+        v-model="provider"
+        data-test="media-provider"
         class="input"
         type="text"
-        :value="local.adapter"
-        :placeholder="t('admin.accounts.mediaConfig.adapterPlaceholder')"
-        aria-describedby="media-adapter-hint"
-        @input="updateAdapter"
+        :placeholder="t('admin.accounts.mediaConfig.providerPlaceholder')"
+        aria-describedby="media-provider-hint"
+        @input="publish"
       />
-      <p id="media-adapter-hint" class="input-hint">
-        {{ t('admin.accounts.mediaConfig.adapterHint') }}
+      <p id="media-provider-hint" class="input-hint">
+        {{ t('admin.accounts.mediaConfig.providerHint') }}
       </p>
     </div>
 
-    <div>
-      <label for="media-default-async-mode" class="input-label">
-        {{ t('admin.accounts.mediaConfig.nativeAsyncMode') }}
-      </label>
-      <select
-        id="media-default-async-mode"
-        data-test="media-default-async-mode"
-        class="input"
-        :value="local.native_async_mode"
-        aria-describedby="media-native-async-mode-hint"
-        @change="updateDefaultMode"
-      >
-        <option value="unsupported">{{ t('admin.accounts.mediaConfig.modes.unsupported') }}</option>
-        <option value="optional">{{ t('admin.accounts.mediaConfig.modes.optional') }}</option>
-        <option value="required">{{ t('admin.accounts.mediaConfig.modes.required') }}</option>
-      </select>
-      <p id="media-native-async-mode-hint" class="input-hint">
-        {{ t('admin.accounts.mediaConfig.nativeAsyncModeHint') }}
-      </p>
-    </div>
-
-    <div v-if="rows.length" class="space-y-3">
+    <div class="space-y-3">
       <div
         v-for="(row, index) in rows"
         :key="row.id"
-        class="grid gap-2 rounded-lg border border-gray-200 p-3 dark:border-dark-600 md:grid-cols-[1fr_1fr_1fr_auto]"
+        class="space-y-3 rounded-lg border border-gray-200 p-3 dark:border-dark-600"
       >
-        <div>
-          <label :for="`${row.id}-model`" class="input-label text-xs">
-            {{ t('admin.accounts.mediaConfig.model') }}
-          </label>
-          <input
-            :id="`${row.id}-model`"
-            v-model="row.model"
-            :data-test="`media-override-model-${index}`"
-            class="input"
-            type="text"
-            @input="publish()"
-          />
+        <div class="grid gap-3 md:grid-cols-2">
+          <div>
+            <label :for="`${row.id}-model`" class="input-label text-xs">
+              {{ t('admin.accounts.mediaConfig.model') }}
+            </label>
+            <select
+              :id="`${row.id}-model`"
+              v-model="row.model"
+              :data-test="`media-model-id-${index}`"
+              class="input"
+              :disabled="registryLoading"
+              @change="publish"
+            >
+              <option value="" disabled>
+                {{ registryLoading
+                  ? t('admin.accounts.mediaConfig.loadingModels')
+                  : t('admin.accounts.mediaConfig.selectModel') }}
+              </option>
+              <option
+                v-if="row.model && !registryModelsByID.has(row.model.trim().toLowerCase())"
+                :value="row.model"
+              >
+                {{ row.model }} · {{ t('admin.accounts.mediaConfig.legacyModel') }}
+              </option>
+              <option
+                v-for="model in registryModels"
+                :key="model.id"
+                :value="model.model_id"
+                :disabled="isSelectedByAnotherRow(model.model_id, row)"
+              >
+                {{ modelOptionLabel(model) }}
+              </option>
+            </select>
+            <p v-if="selectedDefinition(row)" class="input-hint">
+              {{ t('admin.accounts.mediaConfig.registryModelHint', {
+                adapter: selectedDefinition(row)?.default_adapter,
+                mode: t(`admin.mediaModels.asyncModes.${selectedDefinition(row)?.default_async_mode}`)
+              }) }}
+            </p>
+          </div>
+          <div>
+            <label :for="`${row.id}-upstream`" class="input-label text-xs">
+              {{ t('admin.accounts.mediaConfig.upstreamModel') }}
+            </label>
+            <input
+              :id="`${row.id}-upstream`"
+              v-model="row.upstreamModelID"
+              :data-test="`media-upstream-model-${index}`"
+              class="input"
+              type="text"
+              @input="publish"
+            />
+          </div>
         </div>
-        <div>
-          <label :for="`${row.id}-upstream`" class="input-label text-xs">
-            {{ t('admin.accounts.mediaConfig.upstreamModel') }}
+
+        <div class="grid items-end gap-3 md:grid-cols-[auto_1fr_auto]">
+          <label class="flex min-h-10 items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+            <input
+              v-model="row.enabled"
+              :data-test="`media-model-enabled-${index}`"
+              type="checkbox"
+              class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+              @change="publish"
+            />
+            {{ t('admin.accounts.mediaConfig.enabled') }}
           </label>
-          <input
-            :id="`${row.id}-upstream`"
-            v-model="row.upstream_model"
-            :data-test="`media-override-upstream-${index}`"
-            class="input"
-            type="text"
-            @input="publish()"
-          />
-        </div>
-        <div>
-          <label :for="`${row.id}-mode`" class="input-label text-xs">
-            {{ t('admin.accounts.mediaConfig.overrideAsyncMode') }}
-          </label>
-          <select
-            :id="`${row.id}-mode`"
-            v-model="row.native_async_mode"
-            :data-test="`media-override-mode-${index}`"
-            class="input"
-            @change="publish()"
+          <div>
+            <label :for="`${row.id}-mode`" class="input-label text-xs">
+              {{ t('admin.accounts.mediaConfig.asyncMode') }}
+            </label>
+            <select
+              :id="`${row.id}-mode`"
+              v-model="row.asyncMode"
+              :data-test="`media-async-mode-${index}`"
+              class="input"
+              @change="publish"
+            >
+              <option value="unsupported">{{ t('admin.accounts.mediaConfig.modes.unsupported') }}</option>
+              <option value="native">{{ t('admin.accounts.mediaConfig.modes.native') }}</option>
+            </select>
+          </div>
+          <button
+            type="button"
+            class="btn btn-secondary"
+            :data-test="`media-model-remove-${index}`"
+            :aria-label="t('admin.accounts.mediaConfig.removeModel')"
+            @click="removeModel(index)"
           >
-            <option value="">{{ t('admin.accounts.mediaConfig.inherit') }}</option>
-            <option value="unsupported">{{ t('admin.accounts.mediaConfig.modes.unsupported') }}</option>
-            <option value="optional">{{ t('admin.accounts.mediaConfig.modes.optional') }}</option>
-            <option value="required">{{ t('admin.accounts.mediaConfig.modes.required') }}</option>
-          </select>
+            {{ t('admin.accounts.mediaConfig.remove') }}
+          </button>
         </div>
-        <button
-          type="button"
-          class="btn btn-secondary self-end"
-          :data-test="`media-override-remove-${index}`"
-          :aria-label="t('admin.accounts.mediaConfig.removeOverride')"
-          @click="removeOverride(index)"
-        >
-          {{ t('admin.accounts.mediaConfig.remove') }}
-        </button>
+
+        <div>
+          <label :for="`${row.id}-mapping`" class="input-label text-xs">
+            {{ t('admin.accounts.mediaConfig.requestMapping') }}
+          </label>
+          <textarea
+            :id="`${row.id}-mapping`"
+            v-model="row.requestMappingText"
+            :data-test="`media-request-mapping-${index}`"
+            class="input min-h-24 font-mono text-xs"
+            :class="{ 'border-red-500 focus:border-red-500 focus:ring-red-500/30': row.requestMappingError }"
+            :placeholder="t('admin.accounts.mediaConfig.requestMappingPlaceholder')"
+            :aria-invalid="row.requestMappingError"
+            @input="publish"
+          />
+          <p class="input-hint">{{ t('admin.accounts.mediaConfig.requestMappingHint') }}</p>
+          <p v-if="row.requestMappingError" class="mt-1 text-xs text-red-600 dark:text-red-400" role="alert">
+            {{ t('admin.accounts.mediaConfig.invalidRequestMapping') }}
+          </p>
+        </div>
       </div>
     </div>
 
     <p
       v-if="duplicateModel"
-      data-test="media-override-duplicate-error"
+      data-test="media-duplicate-model-error"
       class="text-sm text-red-600 dark:text-red-400"
       role="alert"
     >
       {{ t('admin.accounts.mediaConfig.duplicateModel', { model: duplicateModel }) }}
     </p>
+    <p
+      v-else-if="missingModelFields"
+      data-test="media-model-required-error"
+      class="text-sm text-amber-700 dark:text-amber-400"
+      role="status"
+    >
+      {{ t('admin.accounts.mediaConfig.modelRequired') }}
+    </p>
+
+    <div
+      v-if="registryLoadFailed || (!registryLoading && registryModels.length === 0)"
+      data-test="media-registry-empty-warning"
+      class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/20 dark:text-amber-300"
+    >
+      {{ registryLoadFailed
+        ? t('admin.accounts.mediaConfig.registryLoadFailed')
+        : t('admin.accounts.mediaConfig.registryEmpty') }}
+      <a href="/admin/media-models" class="ml-1 font-medium underline underline-offset-2">
+        {{ t('admin.accounts.mediaConfig.manageRegistry') }}
+      </a>
+    </div>
 
     <button
-      data-test="media-add-model-override"
+      data-test="media-add-model"
       type="button"
       class="btn btn-secondary"
-      @click="addOverride"
+      @click="addModel"
     >
-      {{ t('admin.accounts.mediaConfig.addOverride') }}
+      {{ t('admin.accounts.mediaConfig.addModel') }}
     </button>
   </section>
 </template>

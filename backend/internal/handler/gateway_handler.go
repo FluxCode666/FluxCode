@@ -913,6 +913,11 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 	if forcedPlatform, ok := middleware2.GetForcePlatformFromContext(c); ok && strings.TrimSpace(forcedPlatform) != "" {
 		platform = forcedPlatform
 	}
+	if platform == service.PlatformMedia {
+		err := service.ErrMediaGroupTextGatewayUnsupported
+		h.errorResponse(c, pkgerrors.Code(err), pkgerrors.Reason(err), pkgerrors.Message(err))
+		return
+	}
 
 	// Get available models from account configurations (without platform filter)
 	availableModels := h.gatewayService.GetAvailableModels(c.Request.Context(), groupID, "")

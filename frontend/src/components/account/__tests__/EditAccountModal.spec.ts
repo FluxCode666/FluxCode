@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent, nextTick } from 'vue'
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 
 const { updateAccountMock, checkMixedChannelRiskMock } = vi.hoisted(() => ({
   updateAccountMock: vi.fn(),
@@ -33,6 +33,21 @@ vi.mock('@/api/admin', () => ({
     },
     tlsFingerprintProfiles: {
       list: vi.fn().mockResolvedValue([])
+    },
+    mediaModels: {
+      listEnabled: vi.fn().mockResolvedValue([{
+        id: 1,
+        model_id: 'duplicate',
+        vendor: 'test-vendor',
+        media_type: 'image',
+        operations: ['text_to_image'],
+        constraints: {},
+        billing_unit: 'image',
+        default_adapter: 'test-adapter',
+        default_async_mode: 'unsupported',
+        enabled: true,
+        aliases: []
+      }])
     }
   }
 }))
@@ -193,10 +208,37 @@ function mountModal(account = buildAccount()) {
 }
 
 async function makeMediaConfigInvalid(wrapper: ReturnType<typeof mountModal>) {
-  await wrapper.get('[data-test="media-add-model-override"]').trigger('click')
-  await wrapper.get('[data-test="media-override-model-0"]').setValue('duplicate')
-  await wrapper.get('[data-test="media-add-model-override"]').trigger('click')
-  await wrapper.get('[data-test="media-override-model-1"]').setValue(' duplicate ')
+  await flushPromises()
+  await wrapper.get('[data-test="media-add-model"]').trigger('click')
+  await wrapper.get('[data-test="media-model-id-0"]').setValue('duplicate')
+  await wrapper.get('[data-test="media-upstream-model-0"]').setValue('upstream-a')
+  await wrapper.get('[data-test="media-add-model"]').trigger('click')
+  await wrapper.get('[data-test="media-model-id-1"]').setValue('duplicate')
+  await wrapper.get('[data-test="media-upstream-model-1"]').setValue('upstream-b')
+}
+
+function buildMediaAccount(overrides: Partial<Account> = {}): Account {
+  return buildAccount({
+    name: 'Media Provider',
+    platform: 'media',
+    type: 'apikey',
+    credentials: { api_key: 'media-key', base_url: 'https://media.example.com' },
+    extra: {
+      media_config: {
+        version: 1,
+        provider: 'volcengine',
+        models: {
+          seedance: {
+            enabled: true,
+            upstream_model_id: 'doubao-seedance',
+            async_mode: 'native',
+            request_mapping: {}
+          }
+        }
+      }
+    },
+    ...overrides
+  })
 }
 
 const editExtraCases: Array<{ name: string; account: Partial<Account> }> = [
@@ -253,13 +295,20 @@ describe('EditAccountModal', () => {
     checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
   })
   it('hydrates and updates media_config without deleting existing extra keys', async () => {
-    const account = buildAccount()
+    const account = buildMediaAccount()
     account.extra = {
       allow_overages: true,
       media_config: {
-        adapter: 'gemini',
-        native_async_mode: 'optional',
-        model_overrides: {}
+        version: 1,
+        provider: 'volcengine',
+        models: {
+          seedance: {
+            enabled: true,
+            upstream_model_id: 'doubao-seedance',
+            async_mode: 'native',
+            request_mapping: {}
+          }
+        }
       }
     }
     updateAccountMock.mockReset()
@@ -269,37 +318,55 @@ describe('EditAccountModal', () => {
     const wrapper = mountModal(account)
 
     expect(wrapper.getComponent(MediaConfigEditor).props('modelValue')).toEqual({
-      adapter: 'gemini',
-      native_async_mode: 'optional',
-      model_overrides: {}
+      version: 1,
+      provider: 'volcengine',
+      models: {
+        seedance: {
+          enabled: true,
+          upstream_model_id: 'doubao-seedance',
+          async_mode: 'native',
+          request_mapping: {}
+        }
+      }
     })
     wrapper.getComponent(MediaConfigEditor).vm.$emit('update:modelValue', {
-      adapter: 'gemini',
-      native_async_mode: 'unsupported',
-      model_overrides: {}
+      version: 1,
+      provider: 'xai',
+      models: {
+        grok: {
+          enabled: true,
+          upstream_model_id: 'grok-imagine',
+          async_mode: 'unsupported',
+          request_mapping: {}
+        }
+      }
     })
+    wrapper.getComponent(MediaConfigEditor).vm.$emit('update:valid', true)
     await nextTick()
     await wrapper.get('form#edit-account-form').trigger('submit.prevent')
 
     expect(updateAccountMock.mock.calls[0]?.[1]?.extra).toMatchObject({
       allow_overages: true,
       media_config: {
-        adapter: 'gemini',
-        native_async_mode: 'unsupported',
-        model_overrides: {}
+        version: 1,
+        provider: 'xai',
+        models: {
+          grok: {
+            enabled: true,
+            upstream_model_id: 'grok-imagine',
+            async_mode: 'unsupported',
+            request_mapping: {}
+          }
+        }
       }
     })
   })
 
-  it('removes media_config when adapter is cleared while preserving other extra keys', async () => {
-    const account = buildAccount()
+  it('blocks media account updates when provider is cleared', async () => {
+    const account = buildMediaAccount()
     account.extra = {
       allow_overages: true,
-      media_config: {
-        adapter: 'gemini',
-        native_async_mode: 'optional',
-        model_overrides: {}
-      }
+      ...account.extra
     }
     updateAccountMock.mockReset()
     checkMixedChannelRiskMock.mockReset()
@@ -308,19 +375,32 @@ describe('EditAccountModal', () => {
     const wrapper = mountModal(account)
 
     wrapper.getComponent(MediaConfigEditor).vm.$emit('update:modelValue', {
-      adapter: '   ',
-      native_async_mode: 'optional',
-      model_overrides: {}
+      version: 1,
+      provider: '   ',
+      models: {}
     })
+    wrapper.getComponent(MediaConfigEditor).vm.$emit('update:valid', false)
     await nextTick()
     await wrapper.get('form#edit-account-form').trigger('submit.prevent')
 
-    expect(updateAccountMock.mock.calls[0]?.[1]?.extra).toMatchObject({ allow_overages: true })
-    expect(updateAccountMock.mock.calls[0]?.[1]?.extra).not.toHaveProperty('media_config')
+    expect(updateAccountMock).not.toHaveBeenCalled()
+  })
+
+  it('does not fall back to the Anthropic Base URL when a media account has none', async () => {
+    const account = buildMediaAccount()
+    delete (account.credentials as Record<string, unknown>).base_url
+    updateAccountMock.mockResolvedValue(account)
+    const wrapper = mountModal(account)
+
+    const baseUrl = wrapper.get<HTMLInputElement>('input[placeholder="https://api.provider.example"]')
+    expect(baseUrl.element.value).toBe('')
+
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    expect(updateAccountMock).not.toHaveBeenCalled()
   })
 
   it('rehydrates media_config when the same account modal is reopened', async () => {
-    const account = buildAccount()
+    const account = buildMediaAccount()
     account.extra = {
       media_config: {
         adapter: 'gemini',
@@ -331,35 +411,42 @@ describe('EditAccountModal', () => {
     const wrapper = mountModal(account)
 
     wrapper.getComponent(MediaConfigEditor).vm.$emit('update:modelValue', {
-      adapter: 'xai',
-      native_async_mode: 'required',
-      model_overrides: {}
+      version: 1,
+      provider: 'xai',
+      models: {}
     })
     await nextTick()
     await wrapper.setProps({ show: false })
     await wrapper.setProps({ show: true })
 
     expect(wrapper.getComponent(MediaConfigEditor).props('modelValue')).toEqual({
-      adapter: 'gemini',
-      native_async_mode: 'optional',
-      model_overrides: { veo: { upstream_model: 'veo-upstream' } }
+      version: 1,
+      provider: 'gemini',
+      models: {
+        veo: {
+          enabled: true,
+          upstream_model_id: 'veo-upstream',
+          async_mode: 'native',
+          request_mapping: {}
+        }
+      }
     })
   })
 
   it('blocks update while media overrides are invalid', async () => {
-    const account = buildAccount()
+    const account = buildMediaAccount({ extra: { media_config: { version: 1, provider: 'xai', models: {} } } })
     updateAccountMock.mockResolvedValue(account)
     const wrapper = mountModal(account)
 
     await makeMediaConfigInvalid(wrapper)
     await wrapper.get('form#edit-account-form').trigger('submit.prevent')
 
-    expect(wrapper.get('[data-test="media-override-duplicate-error"]').exists()).toBe(true)
+    expect(wrapper.get('[data-test="media-duplicate-model-error"]').exists()).toBe(true)
     expect(updateAccountMock).not.toHaveBeenCalled()
   })
 
   it('resets invalid media state when reopened before updating', async () => {
-    const account = buildAccount()
+    const account = buildMediaAccount()
     updateAccountMock.mockResolvedValue(account)
     const wrapper = mountModal(account)
 
@@ -368,11 +455,11 @@ describe('EditAccountModal', () => {
     await wrapper.setProps({ show: true })
     await wrapper.get('form#edit-account-form').trigger('submit.prevent')
 
-    expect(wrapper.find('[data-test="media-override-duplicate-error"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="media-duplicate-model-error"]').exists()).toBe(false)
     expect(updateAccountMock).toHaveBeenCalledTimes(1)
   })
 
-  it.each(editExtraCases)('merges existing Extra and media_config for $name', async ({ account: overrides }) => {
+  it.each(editExtraCases)('does not expose account-level media configuration for $name', async ({ account: overrides }) => {
     const wire: MediaAccountConfigWire = { adapter: 'legacy-adapter' }
     const account = buildAccount({
       ...overrides,
@@ -384,23 +471,12 @@ describe('EditAccountModal', () => {
     updateAccountMock.mockResolvedValue(account)
     const wrapper = mountModal(account)
 
-    wrapper.getComponent(MediaConfigEditor).vm.$emit('update:modelValue', {
-      adapter: 'updated-adapter',
-      native_async_mode: 'required',
-      model_overrides: { image: { upstream_model: 'image-upstream' } }
-    })
-    await nextTick()
+    expect(wrapper.findComponent(MediaConfigEditor).exists()).toBe(false)
     await wrapper.get('form#edit-account-form').trigger('submit.prevent')
 
     expect(updateAccountMock).toHaveBeenCalledTimes(1)
-    expect(updateAccountMock.mock.calls[0]?.[1]?.extra).toMatchObject({
-      preserved_extra: 'keep-me',
-      media_config: {
-        adapter: 'updated-adapter',
-        native_async_mode: 'required',
-        model_overrides: { image: { upstream_model: 'image-upstream' } }
-      }
-    })
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra).toMatchObject({ preserved_extra: 'keep-me' })
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra).not.toHaveProperty('media_config')
   })
 
   it.each([
@@ -408,33 +484,33 @@ describe('EditAccountModal', () => {
     { name: 'explicit null', wire: null },
     { name: 'malformed object', wire: { adapter: 42, native_async_mode: 'sometimes', model_overrides: [] } }
   ])('normalizes $name media_config to editor defaults', ({ wire }) => {
-    const account = buildAccount({ extra: { preserved_extra: 'keep-me' } })
+    const account = buildMediaAccount({ extra: { preserved_extra: 'keep-me' } })
     ;(account.extra as Record<string, unknown>).media_config = wire
 
     const wrapper = mountModal(account)
 
     expect(wrapper.getComponent(MediaConfigEditor).props('modelValue')).toEqual({
-      adapter: '',
-      native_async_mode: 'unsupported',
-      model_overrides: {}
+      version: 1,
+      provider: '',
+      models: {}
     })
   })
 
   it('normalizes legacy wire media_config with omitted mode and overrides', () => {
     const wire: MediaAccountConfigWire = { adapter: ' gemini ' }
-    const account = buildAccount({ extra: { media_config: wire } })
+    const account = buildMediaAccount({ extra: { media_config: wire } })
 
     const wrapper = mountModal(account)
 
     expect(wrapper.getComponent(MediaConfigEditor).props('modelValue')).toEqual({
-      adapter: 'gemini',
-      native_async_mode: 'unsupported',
-      model_overrides: {}
+      version: 1,
+      provider: 'gemini',
+      models: {}
     })
   })
 
   it('hydrates media_config when switching to a different account', async () => {
-    const first = buildAccount({
+    const first = buildMediaAccount({
       id: 1,
       extra: {
         media_config: {
@@ -443,7 +519,7 @@ describe('EditAccountModal', () => {
         }
       }
     })
-    const second = buildAccount({
+    const second = buildMediaAccount({
       id: 2,
       name: 'Second account',
       extra: {
@@ -459,9 +535,16 @@ describe('EditAccountModal', () => {
     await wrapper.setProps({ account: second })
 
     expect(wrapper.getComponent(MediaConfigEditor).props('modelValue')).toEqual({
-      adapter: 'xai',
-      native_async_mode: 'required',
-      model_overrides: { image: { upstream_model: 'image-upstream' } }
+      version: 1,
+      provider: 'xai',
+      models: {
+        image: {
+          enabled: true,
+          upstream_model_id: 'image-upstream',
+          async_mode: 'native',
+          request_mapping: {}
+        }
+      }
     })
   })
 

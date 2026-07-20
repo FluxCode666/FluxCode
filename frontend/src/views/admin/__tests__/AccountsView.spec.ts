@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
-import { defineComponent } from 'vue'
+import { defineComponent, nextTick } from 'vue'
 
 import AccountsView from '../AccountsView.vue'
 
@@ -115,6 +115,21 @@ const DataTableStub = defineComponent({
       <button data-test="sort" @click="$emit('sort', 'created_at', 'desc')">sort</button>
     </div>
   `
+})
+
+const BulkEditAccountModalProbe = defineComponent({
+  name: 'BulkEditAccountModal',
+  props: {
+    selectedPlatforms: {
+      type: Array,
+      default: () => []
+    },
+    selectedTypes: {
+      type: Array,
+      default: () => []
+    }
+  },
+  template: '<div data-test="bulk-edit-probe" />'
 })
 
 describe('admin AccountsView', () => {
@@ -329,5 +344,71 @@ describe('admin AccountsView', () => {
     expect(wrapper.get('[data-test="main-actions"]').text()).not.toContain('admin.accounts.dataExport')
     expect(wrapper.get('[data-test="more-actions"]').text()).toContain('admin.accounts.dataImport')
     expect(wrapper.get('[data-test="more-actions"]').text()).toContain('admin.accounts.dataExport')
+  })
+
+  it('retains media and text platform metadata for cross-page bulk selection', async () => {
+    listAccounts.mockReset()
+    listAccounts
+      .mockResolvedValueOnce({
+        items: [{ id: 1, platform: 'media', type: 'apikey' }],
+        total: 2,
+        pages: 2
+      })
+      .mockResolvedValueOnce({
+        items: [{ id: 2, platform: 'openai', type: 'apikey' }],
+        total: 2,
+        pages: 2
+      })
+
+    const wrapper = mount(AccountsView, {
+      global: {
+        stubs: {
+          AppLayout: { template: '<div><slot /></div>' },
+          TablePageLayout: {
+            template: '<div><slot name="filters" /><slot name="table" /><slot name="pagination" /></div>'
+          },
+          AccountTableFilters: AccountTableFiltersStub,
+          AccountTableActions: {
+            template: '<div><slot name="beforeCreate" /><slot name="after" /></div>'
+          },
+          AccountBulkActionsBar: true,
+          DataTable: DataTableStub,
+          Pagination: true,
+          CreateAccountModal: true,
+          EditAccountModal: true,
+          ReAuthAccountModal: true,
+          AccountTestModal: true,
+          AccountStatsModal: true,
+          ScheduledTestsPanel: true,
+          AccountActionMenu: true,
+          SyncFromCrsModal: true,
+          ImportDataModal: true,
+          BulkEditAccountModal: BulkEditAccountModalProbe,
+          TempUnschedStatusModal: true,
+          ConfirmDialog: true,
+          ErrorPassthroughRulesModal: true,
+          TLSFingerprintProfilesModal: true,
+          AccountStatusIndicator: true,
+          AccountUsageCell: true,
+          AccountTodayStatsCell: true,
+          AccountGroupsCell: true,
+          AccountCapacityCell: true,
+          PlatformTypeBadge: true,
+          Icon: true
+        }
+      }
+    })
+
+    await flushPromises()
+    ;(wrapper.vm as any).toggleSel(1)
+    await nextTick()
+    ;(wrapper.vm as any).handlePageChange(2)
+    await flushPromises()
+    ;(wrapper.vm as any).toggleSel(2)
+    await nextTick()
+
+    const modal = wrapper.findComponent(BulkEditAccountModalProbe)
+    expect(modal.props('selectedPlatforms')).toEqual(['media', 'openai'])
+    expect(modal.props('selectedTypes')).toEqual(['apikey'])
   })
 })

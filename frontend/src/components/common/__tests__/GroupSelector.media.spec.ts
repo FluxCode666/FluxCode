@@ -44,7 +44,7 @@ const group = (overrides: Partial<AdminGroup> = {}): AdminGroup => ({
 })
 
 const mountSelector = (props: {
-  platform: 'gemini' | 'codex2api' | 'antigravity'
+  platform: 'gemini' | 'codex2api' | 'antigravity' | 'media'
   groups: AdminGroup[]
   mixedScheduling?: boolean
 }) =>
@@ -64,6 +64,22 @@ const mountSelector = (props: {
   })
 
 describe('GroupSelector media account candidates', () => {
+  it('媒体账号只显示媒体分组，文本账号也不会误选媒体分组', () => {
+    const groups = [
+      group({ id: 1, name: 'media-only', platform: 'media' }),
+      group({ id: 2, name: 'openai-text', platform: 'openai' }),
+      group({ id: 3, name: 'legacy-cross', platform: 'gemini', media_cross_platform_enabled: true }),
+    ]
+
+    const mediaWrapper = mountSelector({ platform: 'media', groups })
+    expect(mediaWrapper.text()).toContain('media-only')
+    expect(mediaWrapper.text()).not.toContain('openai-text')
+    expect(mediaWrapper.text()).not.toContain('legacy-cross')
+
+    const textWrapper = mountSelector({ platform: 'gemini', groups })
+    expect(textWrapper.text()).not.toContain('media-only')
+  })
+
   it('为账号管理显示同平台和显式开启的跨平台媒体分组', () => {
     const wrapper = mountSelector({
       platform: 'gemini',

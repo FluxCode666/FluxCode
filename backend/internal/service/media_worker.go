@@ -9,6 +9,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"reflect"
 	"runtime/debug"
 	"strings"
 	"sync"
@@ -530,15 +531,15 @@ func (w *MediaWorker) execute(ctx context.Context, task *MediaTask, active *medi
 		w.observeStage(task, trace, MediaTaskStageScheduling, stageStarted)
 		return nil, systemMediaFailure("system_request", "stored media request is invalid"), nil
 	}
-	definition, err := w.deps.Models.Resolve(task.RequestedModel, task.Operation)
-	if err != nil {
-		w.observeStage(task, trace, MediaTaskStageScheduling, stageStarted)
-		return nil, systemMediaFailure("system_model", "stored media model is unavailable"), nil
-	}
 	candidates, err := decodeWorkerCandidateSnapshot(task.CandidateSnapshot)
 	if err != nil {
 		w.observeStage(task, trace, MediaTaskStageScheduling, stageStarted)
 		return nil, systemMediaFailure("system_scheduler", "media candidate snapshot is invalid"), nil
+	}
+	definition, err := resolveWorkerMediaModelDefinition(task, candidates, w.deps.Models)
+	if err != nil {
+		w.observeStage(task, trace, MediaTaskStageScheduling, stageStarted)
+		return nil, systemMediaFailure("system_model", "stored media model is unavailable"), nil
 	}
 
 	excluded := make(map[int64]struct{})
@@ -661,7 +662,11 @@ func (w *MediaWorker) resumeUnknownSubmission(
 	if err != nil {
 		return nil, systemMediaFailure("system_request", "stored media request is invalid"), nil
 	}
-	definition, err := w.deps.Models.Resolve(task.RequestedModel, task.Operation)
+	candidates, err := decodeWorkerCandidateSnapshot(task.CandidateSnapshot)
+	if err != nil {
+		return nil, systemMediaFailure("system_scheduler", "media candidate snapshot is invalid"), nil
+	}
+	definition, err := resolveWorkerMediaModelDefinition(task, candidates, w.deps.Models)
 	if err != nil {
 		return nil, systemMediaFailure("system_model", "stored media model is unavailable"), nil
 	}
@@ -673,6 +678,46 @@ func (w *MediaWorker) resumeUnknownSubmission(
 	selection.ResolvedModel.RequestMapping = requestMapping
 	result, failure, _, executeErr := w.executeSelected(ctx, task, active, trace, spec, definition, selection)
 	return result, failure, executeErr
+}
+
+func resolveWorkerMediaModelDefinition(
+	task *MediaTask,
+	candidates []MediaAccountCandidateSnapshot,
+	registry *MediaModelRegistry,
+) (*MediaModelDefinition, error) {
+	if task == nil {
+		return nil, ErrMediaModelNotFound
+	}
+	var frozen *MediaModelDefinition
+	for _, candidate := range candidates {
+		if candidate.ModelDefinition == nil {
+			continue
+		}
+		definition := cloneMediaModelDefinition(*candidate.ModelDefinition)
+		if err := validateMediaModelDefinition(definition); err != nil {
+			return nil, err
+		}
+		if definition.ModelID != normalizeMediaModelID(task.RequestedModel) ||
+			definition.MediaType != task.MediaType || !definition.Supports(task.Operation) {
+			return nil, ErrMediaModelNotFound
+		}
+		if frozen == nil {
+			frozen = &definition
+			continue
+		}
+		if !reflect.DeepEqual(*frozen, definition) {
+			return nil, errors.New("media candidate model definitions do not match")
+		}
+	}
+	if frozen != nil {
+		return frozen, nil
+	}
+	// Backward compatibility for tasks created before model definitions were
+	// embedded in the candidate snapshot.
+	if registry == nil {
+		return nil, ErrMediaModelNotFound
+	}
+	return registry.Resolve(task.RequestedModel, task.Operation)
 }
 
 func (w *MediaWorker) executeSelected(

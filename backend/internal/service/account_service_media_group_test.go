@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/stretchr/testify/require"
 )
 
@@ -17,6 +18,57 @@ func TestValidateAccountGroupBindingAllowsCrossPlatformOnlyForMediaGroups(t *tes
 
 	plainGroup := &Group{Name: "plain", Platform: PlatformOpenAI}
 	require.Error(t, validateAccountGroupBinding(plainGroup, PlatformGemini, AccountTypeAPIKey))
+}
+
+func TestValidateAccountGroupBindingKeepsMediaPlatformFullyIsolated(t *testing.T) {
+	legacyCrossPlatformTextGroup := &Group{
+		Name:                      "legacy-cross-platform",
+		Platform:                  PlatformOpenAI,
+		MediaCrossPlatformEnabled: true,
+	}
+	require.Error(t, validateAccountGroupBinding(legacyCrossPlatformTextGroup, PlatformMedia, AccountTypeAPIKey))
+
+	mediaGroup := &Group{
+		Name:                      "media",
+		Platform:                  PlatformMedia,
+		MediaCrossPlatformEnabled: true,
+	}
+	require.Error(t, validateAccountGroupBinding(mediaGroup, PlatformOpenAI, AccountTypeAPIKey))
+	require.NoError(t, validateAccountGroupBinding(mediaGroup, PlatformMedia, AccountTypeAPIKey))
+}
+
+func TestTextGatewaySchedulersRejectMediaGroupsBeforeAccountSelection(t *testing.T) {
+	groupID := int64(7)
+	groupRepo := &mediaGroupRepoStub{group: &Group{
+		ID: groupID, Platform: PlatformMedia, Status: StatusActive,
+	}}
+
+	t.Run("generic selector", func(t *testing.T) {
+		svc := &GatewayService{groupRepo: groupRepo}
+		account, err := svc.SelectAccountForModelWithExclusions(
+			context.Background(), &groupID, "", "gpt-4", nil,
+		)
+		require.Nil(t, account)
+		require.ErrorIs(t, err, ErrMediaGroupTextGatewayUnsupported)
+	})
+
+	t.Run("load aware selector", func(t *testing.T) {
+		svc := &GatewayService{groupRepo: groupRepo}
+		selection, err := svc.SelectAccountWithLoadAwareness(
+			context.Background(), &groupID, "", "claude-sonnet", nil, "", 0,
+		)
+		require.Nil(t, selection)
+		require.ErrorIs(t, err, ErrMediaGroupTextGatewayUnsupported)
+	})
+
+	t.Run("gemini compatibility selector", func(t *testing.T) {
+		svc := &GeminiMessagesCompatService{groupRepo: groupRepo}
+		account, err := svc.SelectAccountForModelWithExclusions(
+			context.Background(), &groupID, "", "gemini-2.5-pro", nil,
+		)
+		require.Nil(t, account)
+		require.ErrorIs(t, err, ErrMediaGroupTextGatewayUnsupported)
+	})
 }
 
 func TestValidateAccountGroupBindingKeepsCompatiblePlatformRules(t *testing.T) {
@@ -141,6 +193,32 @@ func TestAdminServiceUpdateGroupPersistsExplicitFalseMediaFlags(t *testing.T) {
 	require.False(t, repo.updated.AllowImageGeneration)
 	require.False(t, repo.updated.AllowVideoGeneration)
 	require.False(t, repo.updated.MediaCrossPlatformEnabled)
+}
+
+func TestAdminServiceUpdateGroupRejectsMediaPlatformBoundaryChange(t *testing.T) {
+	tests := []struct {
+		name string
+		from string
+		to   string
+	}{
+		{name: "text to media", from: PlatformOpenAI, to: PlatformMedia},
+		{name: "media to text", from: PlatformMedia, to: PlatformOpenAI},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			group := &Group{ID: 7, Name: "group", Platform: tt.from, Status: StatusActive}
+			repo := &mediaGroupRepoStub{group: group}
+			svc := &adminServiceImpl{groupRepo: repo}
+
+			updated, err := svc.UpdateGroup(context.Background(), group.ID, &UpdateGroupInput{Platform: tt.to})
+
+			require.Nil(t, updated)
+			require.Equal(t, "MEDIA_GROUP_PLATFORM_IMMUTABLE", infraerrors.Reason(err))
+			require.Nil(t, repo.updated)
+			require.Equal(t, tt.from, group.Platform)
+		})
+	}
 }
 
 func TestAdminServiceCreateGroupCopyKeepsCrossPlatformAPIKeyAndFiltersCompatibleAPIKey(t *testing.T) {

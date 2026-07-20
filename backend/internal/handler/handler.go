@@ -39,6 +39,7 @@ type AdminHandlers struct {
 	Referral               *admin.ReferralHandler
 	SalesCommission        *admin.SalesCommissionHandler
 	Promotion              *admin.PromotionHandler
+	MediaModel             *admin.MediaModelAdminHandler
 }
 
 // Handlers contains all HTTP handlers

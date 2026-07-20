@@ -413,6 +413,8 @@ func TestMediaOrchestratorPersistsResolvedCandidateAndDurableInputSnapshot(t *te
 	require.Len(t, candidates, 1)
 	require.Equal(t, fixture.scheduler.candidates[0].AccountID, candidates[0].AccountID)
 	require.Equal(t, fixture.scheduler.candidates[0].ResolvedModel, candidates[0].ResolvedModel)
+	require.NotNil(t, candidates[0].ModelDefinition)
+	require.Equal(t, "fake-image", candidates[0].ModelDefinition.ModelID)
 	require.JSONEq(t, `{"image":{"input_artifact_ids":[1],"n":1,"prompt":"cat"}}`, string(candidates[0].ResolvedRequest))
 	var spec MediaSpec
 	require.NoError(t, json.Unmarshal(stored.RequestSpec, &spec))
@@ -426,6 +428,133 @@ func TestMediaOrchestratorPersistsResolvedCandidateAndDurableInputSnapshot(t *te
 	require.Equal(t, int64(128), artifacts[0].SizeBytes)
 	require.Equal(t, strings.Repeat("d", 64), artifacts[0].ChecksumSHA256)
 	require.Equal(t, 2, fixture.queue.enqueueCalls())
+}
+
+func TestMediaOrchestratorPersistsCanonicalModelAndFrozenDefinitionForAlias(t *testing.T) {
+	fixture := newMediaOrchestratorFixture(t)
+	definition := validImageModelDefinition()
+	definition.ID = 41
+	registry := NewMediaModelRegistry(&mediaModelRepositoryWithAliasesStub{
+		mediaModelRepoStub: mediaModelRepoStub{items: []MediaModelDefinition{definition}},
+		mediaModelAliasRepoStub: mediaModelAliasRepoStub{items: []MediaModelAlias{{
+			RequestedModelID: "image-alias", ModelDefinitionID: definition.ID,
+		}}},
+	})
+	require.NoError(t, registry.Refresh(context.Background()))
+	fixture.orchestrator.deps.Registry = registry
+	req := validAsyncMediaCreateRequest()
+	req.RequestedModel = "image-alias"
+
+	result, err := fixture.orchestrator.Create(context.Background(), req)
+	require.NoError(t, err)
+	stored := fixture.repo.mustGet(result.Task.ID)
+	require.Equal(t, "fake-image", stored.RequestedModel)
+	var candidates []MediaAccountCandidateSnapshot
+	require.NoError(t, json.Unmarshal(stored.CandidateSnapshot, &candidates))
+	require.Len(t, candidates, 1)
+	require.NotNil(t, candidates[0].ModelDefinition)
+	require.Equal(t, definition.ModelID, candidates[0].ModelDefinition.ModelID)
+}
+
+func TestMediaOrchestratorIdempotentRetryUsesFrozenTaskAfterAliasRemoval(t *testing.T) {
+	fixture := newMediaOrchestratorFixture(t)
+	definition := validImageModelDefinition()
+	definition.ID = 42
+	registry := NewMediaModelRegistry(&mediaModelRepositoryWithAliasesStub{
+		mediaModelRepoStub: mediaModelRepoStub{items: []MediaModelDefinition{definition}},
+		mediaModelAliasRepoStub: mediaModelAliasRepoStub{items: []MediaModelAlias{{
+			RequestedModelID: "removed-image-alias", ModelDefinitionID: definition.ID,
+		}}},
+	})
+	require.NoError(t, registry.Refresh(context.Background()))
+	fixture.orchestrator.deps.Registry = registry
+	req := validAsyncMediaCreateRequest()
+	req.RequestedModel = "removed-image-alias"
+	req.IdempotencyKey = "idem-removed-image-alias"
+
+	first, err := fixture.orchestrator.Create(context.Background(), req)
+	require.NoError(t, err)
+
+	emptyRegistry := NewMediaModelRegistry(&mediaModelRepoStub{})
+	require.NoError(t, emptyRegistry.Refresh(context.Background()))
+	fixture.orchestrator.deps.Registry = emptyRegistry
+
+	second, err := fixture.orchestrator.Create(context.Background(), req)
+	require.NoError(t, err)
+	require.Equal(t, first.Task.PublicID, second.Task.PublicID)
+	require.Equal(t, 1, fixture.billing.prechargeCalls())
+	require.Equal(t, 1, fixture.contentPolicy.calls)
+
+	newRequest := req
+	newRequest.IdempotencyKey = "idem-new-after-alias-removal"
+	_, err = fixture.orchestrator.Create(context.Background(), newRequest)
+	require.ErrorIs(t, err, ErrMediaModelNotFound)
+}
+
+func TestMediaOrchestratorRechecksConcurrentIdempotencyWinnerAfterRegistryMiss(t *testing.T) {
+	fixture := newMediaOrchestratorFixture(t)
+	req := validAsyncMediaCreateRequest()
+	req.IdempotencyKey = "idem-concurrent-registry-miss"
+	fingerprint, err := mediaCreateFingerprint(req)
+	require.NoError(t, err)
+	winner := &MediaTask{
+		ID: 99, PublicID: "task_concurrent_registry_winner",
+		UserID: req.UserID, APIKeyID: req.APIKeyID, GroupID: req.GroupID,
+		MediaType: req.MediaType, Operation: req.Operation, RequestedModel: "fake-image",
+		ClientAsync: true, Status: MediaTaskStatusInProgress, Stage: MediaTaskStageGenerating,
+		RequestFingerprint: fingerprint, IdempotencyKey: req.IdempotencyKey,
+		BillingStatus: MediaBillingStatusPrecharged,
+	}
+	fixture.repo.idempotencyGetHook = func(call int, _, _ int64, _ string) (*MediaTask, error, bool) {
+		if call == 1 {
+			return nil, ErrMediaTaskNotFound, true
+		}
+		return cloneOrchestratorTask(winner), nil, true
+	}
+	emptyRegistry := NewMediaModelRegistry(&mediaModelRepoStub{})
+	require.NoError(t, emptyRegistry.Refresh(context.Background()))
+	fixture.orchestrator.deps.Registry = emptyRegistry
+
+	result, err := fixture.orchestrator.Create(context.Background(), req)
+
+	require.NoError(t, err)
+	require.Equal(t, winner.PublicID, result.Task.PublicID)
+	require.Equal(t, MediaCreateDispositionAccepted, result.Disposition)
+	require.Equal(t, 2, fixture.repo.idempotencyLookupCalls())
+	require.Equal(t, 0, fixture.repo.createCalls())
+	require.Equal(t, 0, fixture.billing.prechargeCalls())
+}
+
+func TestMediaOrchestratorRechecksConcurrentIdempotencyWinnerAfterSchedulerFailure(t *testing.T) {
+	fixture := newMediaOrchestratorFixture(t)
+	req := validAsyncMediaCreateRequest()
+	req.IdempotencyKey = "idem-concurrent-scheduler-failure"
+	fingerprint, err := mediaCreateFingerprint(req)
+	require.NoError(t, err)
+	winner := &MediaTask{
+		ID: 100, PublicID: "task_concurrent_scheduler_winner",
+		UserID: req.UserID, APIKeyID: req.APIKeyID, GroupID: req.GroupID,
+		MediaType: req.MediaType, Operation: req.Operation, RequestedModel: "fake-image",
+		ClientAsync: true, Status: MediaTaskStatusInProgress, Stage: MediaTaskStageGenerating,
+		RequestFingerprint: fingerprint, IdempotencyKey: req.IdempotencyKey,
+		BillingStatus: MediaBillingStatusPrecharged,
+	}
+	fixture.repo.idempotencyGetHook = func(call int, _, _ int64, _ string) (*MediaTask, error, bool) {
+		if call == 1 {
+			return nil, ErrMediaTaskNotFound, true
+		}
+		return cloneOrchestratorTask(winner), nil, true
+	}
+	fixture.scheduler.err = ErrNoAvailableAccounts
+
+	result, err := fixture.orchestrator.Create(context.Background(), req)
+
+	require.NoError(t, err)
+	require.Equal(t, winner.PublicID, result.Task.PublicID)
+	require.Equal(t, MediaCreateDispositionAccepted, result.Disposition)
+	require.Equal(t, 2, fixture.repo.idempotencyLookupCalls())
+	require.Equal(t, 0, fixture.repo.createCalls())
+	require.Equal(t, 0, fixture.billing.prechargeCalls())
 }
 
 func TestMediaOrchestratorRejectsMappingForOppositeMediaEnvelope(t *testing.T) {
@@ -1802,6 +1931,8 @@ type orchestratorTaskRepository struct {
 	readyPublishedHook              func(*MediaTask)
 	events                          *orchestratorEvents
 	getHook                         func(int, *MediaTask)
+	idempotencyGets                 int
+	idempotencyGetHook              func(call int, userID, apiKeyID int64, key string) (*MediaTask, error, bool)
 }
 
 func newOrchestratorTaskRepository() *orchestratorTaskRepository {
@@ -1877,12 +2008,24 @@ func (r *orchestratorTaskRepository) GetByIdempotencyKey(ctx context.Context, us
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	r.idempotencyGets++
+	if r.idempotencyGetHook != nil {
+		if task, err, handled := r.idempotencyGetHook(r.idempotencyGets, userID, apiKeyID, key); handled {
+			return cloneOrchestratorTask(task), err
+		}
+	}
 	for _, task := range r.tasks {
 		if task.UserID == userID && task.APIKeyID == apiKeyID && task.IdempotencyKey == key {
 			return cloneOrchestratorTask(task), nil
 		}
 	}
 	return nil, ErrMediaTaskNotFound
+}
+
+func (r *orchestratorTaskRepository) idempotencyLookupCalls() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.idempotencyGets
 }
 
 func (r *orchestratorTaskRepository) UpdateQueued(ctx context.Context, id, version int64, updates map[string]any) (bool, error) {

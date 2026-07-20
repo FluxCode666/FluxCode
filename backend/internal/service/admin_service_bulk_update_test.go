@@ -5,8 +5,10 @@ package service
 import (
 	"context"
 	"errors"
+	"net/http"
 	"testing"
 
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/stretchr/testify/require"
 )
 
@@ -154,7 +156,9 @@ func TestAdminService_BulkUpdateAccounts_MixedChannelPreCheckBlocksOnExistingCon
 	}
 	svc := &adminServiceImpl{
 		accountRepo: repo,
-		groupRepo:   &groupRepoStubForAdmin{getByID: &Group{ID: 10, Name: "target-group"}},
+		groupRepo: &groupRepoStubForAdmin{getByID: &Group{
+			ID: 10, Name: "target-group", Platform: PlatformAntigravity,
+		}},
 	}
 
 	groupIDs := []int64{10}
@@ -169,4 +173,73 @@ func TestAdminService_BulkUpdateAccounts_MixedChannelPreCheckBlocksOnExistingCon
 	require.Contains(t, err.Error(), "mixed channel")
 	// No BindGroups should have been called since the check runs before any write.
 	require.Empty(t, repo.bindGroupsCalls)
+}
+
+func TestAdminService_BulkUpdateAccounts_RejectsMediaConfigPatch(t *testing.T) {
+	repo := &accountRepoStubForBulkUpdate{}
+	svc := &adminServiceImpl{accountRepo: repo}
+
+	result, err := svc.BulkUpdateAccounts(context.Background(), &BulkUpdateAccountsInput{
+		AccountIDs: []int64{1},
+		Extra: map[string]any{
+			mediaAccountConfigExtraKey: map[string]any{"version": 1},
+		},
+	})
+
+	require.Nil(t, result)
+	require.Equal(t, http.StatusBadRequest, infraerrors.Code(err))
+	require.Equal(t, "MEDIA_CONFIG_BULK_UPDATE_UNSUPPORTED", infraerrors.Reason(err))
+	require.False(t, repo.getByIDsCalled)
+	require.Empty(t, repo.bulkUpdateIDs)
+}
+
+func TestAdminService_BulkUpdateAccounts_ValidatesCredentialPatchWithoutMutatingLoadedAccount(t *testing.T) {
+	tests := []struct {
+		name       string
+		account    *Account
+		wantReason string
+	}{
+		{
+			name: "media account",
+			account: &Account{
+				ID: 1, Platform: PlatformMedia, Type: AccountTypeAPIKey,
+				Credentials: map[string]any{"api_key": "media-key", "base_url": "https://media.example.com"},
+				Extra: map[string]any{mediaAccountConfigExtraKey: map[string]any{
+					"version": 1, "provider": "xai", "models": map[string]any{
+						"grok-image": map[string]any{
+							"enabled": true, "upstream_model_id": "grok-image-upstream", "async_mode": "unsupported",
+						},
+					},
+				}},
+			},
+			wantReason: "INVALID_MEDIA_ACCOUNT",
+		},
+		{
+			name: "codex2api account",
+			account: &Account{
+				ID: 2, Platform: PlatformCodex2API, Type: AccountTypeAPIKey,
+				Credentials: map[string]any{"api_key": "codex-key", "base_url": "https://codex.example.com"},
+			},
+			wantReason: "INVALID_CODEX2API_ACCOUNT",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			repo := &accountRepoStubForBulkUpdate{getByIDsAccounts: []*Account{tt.account}}
+			svc := &adminServiceImpl{accountRepo: repo}
+
+			result, err := svc.BulkUpdateAccounts(context.Background(), &BulkUpdateAccountsInput{
+				AccountIDs:  []int64{tt.account.ID},
+				Credentials: map[string]any{"api_key": nil},
+			})
+
+			require.Nil(t, result)
+			require.Equal(t, http.StatusBadRequest, infraerrors.Code(err))
+			require.Equal(t, tt.wantReason, infraerrors.Reason(err))
+			require.True(t, repo.getByIDsCalled)
+			require.Empty(t, repo.bulkUpdateIDs)
+			require.NotNil(t, tt.account.Credentials["api_key"])
+		})
+	}
 }

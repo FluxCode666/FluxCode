@@ -1214,6 +1214,9 @@ func (s *GatewayService) SelectAccountForModelWithExclusions(ctx context.Context
 		if err != nil {
 			return nil, err
 		}
+		if err := rejectMediaGroupForTextGateway(group); err != nil {
+			return nil, err
+		}
 		groupID = resolvedGroupID
 		ctx = s.withGroupContext(ctx, group)
 		platform = group.Platform
@@ -2010,14 +2013,17 @@ func (s *GatewayService) resolvePlatform(ctx context.Context, groupID *int64, gr
 	if hasForcePlatform && forcePlatform != "" {
 		return forcePlatform, true, nil
 	}
-	if group != nil {
-		return group.Platform, false, nil
-	}
-	if groupID != nil {
-		group, err := s.resolveGroupByID(ctx, *groupID)
+	if group == nil && groupID != nil {
+		var err error
+		group, err = s.resolveGroupByID(ctx, *groupID)
 		if err != nil {
 			return "", false, err
 		}
+	}
+	if err := rejectMediaGroupForTextGateway(group); err != nil {
+		return "", false, err
+	}
+	if group != nil {
 		return group.Platform, false, nil
 	}
 	return PlatformAnthropic, false, nil

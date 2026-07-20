@@ -1,4 +1,4 @@
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import { defineComponent, ref } from 'vue'
 import { describe, expect, it, vi } from 'vitest'
 import MediaConfigEditor from '../MediaConfigEditor.vue'
@@ -8,10 +8,45 @@ vi.mock('vue-i18n', () => ({
   useI18n: () => ({ t: (key: string) => key })
 }))
 
+const registryModelIDs = vi.hoisted(() => [
+  'seedance',
+  'seedance-lite',
+  'grok-image',
+  'grok_image',
+  '__proto__'
+])
+
+vi.mock('@/api/admin', () => ({
+  adminAPI: {
+    mediaModels: {
+      listEnabled: vi.fn().mockResolvedValue(registryModelIDs.map((model_id, index) => ({
+        id: index + 1,
+        model_id,
+        vendor: 'test-vendor',
+        media_type: 'image',
+        operations: ['text_to_image'],
+        constraints: {},
+        billing_unit: 'image',
+        default_adapter: 'test-adapter',
+        default_async_mode: 'unsupported',
+        enabled: true,
+        aliases: []
+      })))
+    }
+  }
+}))
+
 const initialConfig = (): MediaAccountConfig => ({
-  adapter: 'gemini',
-  native_async_mode: 'optional',
-  model_overrides: {}
+  version: 1,
+  provider: 'volcengine',
+  models: {
+    seedance: {
+      enabled: true,
+      upstream_model_id: 'doubao-seedance',
+      async_mode: 'native',
+      request_mapping: {}
+    }
+  }
 })
 
 function mountHarness(value: MediaAccountConfig = initialConfig()) {
@@ -22,10 +57,15 @@ function mountHarness(value: MediaAccountConfig = initialConfig()) {
       const valid = ref(true)
       const reset = () => {
         config.value = {
-          adapter: 'xai',
-          native_async_mode: 'unsupported',
-          model_overrides: {
-            reset_model: { upstream_model: 'reset-upstream' }
+          version: 1,
+          provider: 'xai',
+          models: {
+            grok_image: {
+              enabled: true,
+              upstream_model_id: 'grok-imagine-image',
+              async_mode: 'unsupported',
+              request_mapping: {}
+            }
           }
         }
       }
@@ -39,196 +79,97 @@ function mountHarness(value: MediaAccountConfig = initialConfig()) {
   }))
 }
 
-function mountCloningHarness() {
-  return mount(defineComponent({
-    components: { MediaConfigEditor },
-    setup() {
-      const config = ref<MediaAccountConfig>(initialConfig())
-      const cloneNextUpdate = ref(false)
-      const handleUpdate = (value: MediaAccountConfig) => {
-        config.value = cloneNextUpdate.value
-          ? { ...value, model_overrides: { ...value.model_overrides } }
-          : value
-        cloneNextUpdate.value = false
-      }
-      return { config, cloneNextUpdate, handleUpdate }
-    },
-    template: `
-      <MediaConfigEditor :model-value="config" @update:model-value="handleUpdate" />
-      <button data-test="clone-next" type="button" @click="cloneNextUpdate = true">clone</button>
-    `
-  }))
-}
-
 describe('MediaConfigEditor', () => {
-  it('通过真实父级 v-model 连续编辑默认模式和模型覆盖', async () => {
-    const wrapper = mountHarness()
+  it('按 v1 契约发布 provider 与模型绑定，且不暴露 Adapter 字段', async () => {
+    const wrapper = mountHarness({ version: 1, provider: '', models: {} })
+    await flushPromises()
 
-    await wrapper.get('[data-test="media-default-async-mode"]').setValue('required')
-    await wrapper.get('[data-test="media-add-model-override"]').trigger('click')
-    await wrapper.get('[data-test="media-override-model-0"]').setValue('veo-3.1')
-    await wrapper.get('[data-test="media-override-upstream-0"]').setValue('veo-3.1-generate')
-
-    expect(wrapper.getComponent(MediaConfigEditor).props('modelValue')).toEqual({
-      adapter: 'gemini',
-      native_async_mode: 'required',
-      model_overrides: {
-        'veo-3.1': { upstream_model: 'veo-3.1-generate' }
-      }
-    })
-  })
-
-  it('重命名和删除覆盖时保留其它行，并省略继承字段', async () => {
-    const wrapper = mountHarness({
-      adapter: 'gemini',
-      native_async_mode: 'optional',
-      model_overrides: {
-        alpha: { upstream_model: 'alpha-upstream' },
-        beta: { native_async_mode: 'required' }
-      }
-    })
-
-    await wrapper.get('[data-test="media-override-model-0"]').setValue('alpha-renamed')
-    await wrapper.get('[data-test="media-override-remove-0"]').trigger('click')
-
-    expect(wrapper.get<HTMLInputElement>('[data-test="media-override-model-0"]').element.value).toBe('beta')
-    expect(wrapper.getComponent(MediaConfigEditor).props('modelValue').model_overrides).toEqual({
-      beta: { native_async_mode: 'required' }
-    })
-  })
-
-  it('过滤空模型名，并阻止 trim 后重复的模型名静默覆盖', async () => {
-    const wrapper = mountHarness({
-      adapter: 'gemini',
-      native_async_mode: 'optional',
-      model_overrides: {
-        alpha: { upstream_model: 'alpha-upstream' },
-        beta: { upstream_model: 'beta-upstream' }
-      }
-    })
-
-    await wrapper.get('[data-test="media-override-model-1"]').setValue(' alpha ')
-
-    expect(wrapper.get('[data-test="media-override-duplicate-error"]').text()).toBe(
-      'admin.accounts.mediaConfig.duplicateModel'
-    )
-    expect(wrapper.getComponent(MediaConfigEditor).props('modelValue').model_overrides).toHaveProperty('beta')
-
-    await wrapper.get('[data-test="media-override-model-1"]').setValue('   ')
-
-    expect(wrapper.find('[data-test="media-override-duplicate-error"]').exists()).toBe(false)
-    expect(wrapper.getComponent(MediaConfigEditor).props('modelValue').model_overrides).toEqual({
-      alpha: { upstream_model: 'alpha-upstream' }
-    })
-  })
-
-  it('把 __proto__ 模型名作为普通 own key 发布且不改变原型', async () => {
-    const wrapper = mountHarness()
-
-    await wrapper.get('[data-test="media-add-model-override"]').trigger('click')
-    await wrapper.get('[data-test="media-override-model-0"]').setValue('__proto__')
-    await wrapper.get('[data-test="media-override-upstream-0"]').setValue('safe-upstream')
-
-    const overrides = wrapper.getComponent(MediaConfigEditor).props('modelValue').model_overrides
-    expect(Object.hasOwn(overrides, '__proto__')).toBe(true)
-    expect(overrides.__proto__).toEqual({ upstream_model: 'safe-upstream' })
-    expect(Object.getPrototypeOf(overrides)).toBeNull()
-  })
-
-  it('重复 key 期间保留标量草稿，恢复唯一后一次发布最新值', async () => {
-    const wrapper = mountHarness({
-      adapter: 'gemini',
-      native_async_mode: 'optional',
-      model_overrides: {
-        alpha: {},
-        beta: {}
-      }
-    })
-
-    await wrapper.get('[data-test="media-override-model-1"]').setValue(' alpha ')
-    await wrapper.get('[data-test="media-adapter"]').setValue('xai-draft')
-    await wrapper.get('[data-test="media-default-async-mode"]').setValue('required')
-    await wrapper.get('[data-test="media-override-model-1"]').setValue('gamma')
+    expect(wrapper.find('[data-test="media-adapter"]').exists()).toBe(false)
+    await wrapper.get('[data-test="media-provider"]').setValue('xai')
+    await wrapper.get('[data-test="media-add-model"]').trigger('click')
+    await wrapper.get('[data-test="media-model-id-0"]').setValue('grok-image')
+    await wrapper.get('[data-test="media-upstream-model-0"]').setValue('grok-imagine-image')
 
     expect(wrapper.getComponent(MediaConfigEditor).props('modelValue')).toEqual({
-      adapter: 'xai-draft',
-      native_async_mode: 'required',
-      model_overrides: {
-        alpha: {},
-        gamma: {}
+      version: 1,
+      provider: 'xai',
+      models: {
+        'grok-image': {
+          enabled: true,
+          upstream_model_id: 'grok-imagine-image',
+          async_mode: 'unsupported',
+          request_mapping: {}
+        }
+      }
+    })
+    expect(wrapper.get('[data-test="valid"]').text()).toBe('true')
+  })
+
+  it('保存原生异步能力与声明式请求映射', async () => {
+    const wrapper = mountHarness()
+    await flushPromises()
+    await wrapper.get('[data-test="media-async-mode-0"]').setValue('unsupported')
+    await wrapper.get('[data-test="media-request-mapping-0"]').setValue(JSON.stringify({
+      rules: [{ source: 'size', target: 'chicun', operation: 'rename' }]
+    }))
+
+    expect(wrapper.getComponent(MediaConfigEditor).props('modelValue').models.seedance).toEqual({
+      enabled: true,
+      upstream_model_id: 'doubao-seedance',
+      async_mode: 'unsupported',
+      request_mapping: {
+        rules: [{ source: 'size', target: 'chicun', operation: 'rename' }]
       }
     })
   })
 
-  it('发布重复 key validity=false，恢复唯一或外部重置后 validity=true', async () => {
-    const wrapper = mountHarness({
-      adapter: 'gemini',
-      native_async_mode: 'optional',
-      model_overrides: {
-        alpha: {},
-        beta: {}
-      }
-    })
+  it('阻止公共模型 ID 重复或模型字段缺失', async () => {
+    const wrapper = mountHarness()
+    await flushPromises()
+    await wrapper.get('[data-test="media-add-model"]').trigger('click')
+    await wrapper.get('[data-test="media-model-id-1"]').setValue('seedance')
+    await wrapper.get('[data-test="media-upstream-model-1"]').setValue('another-seedance')
 
-    await wrapper.get('[data-test="media-override-model-1"]').setValue('alpha')
+    expect(wrapper.get('[data-test="media-duplicate-model-error"]').exists()).toBe(true)
     expect(wrapper.get('[data-test="valid"]').text()).toBe('false')
 
-    await wrapper.get('[data-test="media-override-model-1"]').setValue('gamma')
-    expect(wrapper.get('[data-test="valid"]').text()).toBe('true')
-
-    await wrapper.get('[data-test="media-override-model-1"]').setValue('alpha')
-    await wrapper.get('[data-test="reset"]').trigger('click')
+    await wrapper.get('[data-test="media-model-id-1"]').setValue('seedance-lite')
     expect(wrapper.get('[data-test="valid"]').text()).toBe('true')
   })
 
-  it('标准 v-model 的 reactive Proxy 自身连续回流保留空行和 DOM identity', async () => {
+  it('拒绝非法请求映射 JSON，并在修复后恢复有效状态', async () => {
     const wrapper = mountHarness()
+    await flushPromises()
+    await wrapper.get('[data-test="media-request-mapping-0"]').setValue('{invalid')
 
-    await wrapper.get('[data-test="media-add-model-override"]').trigger('click')
-    const draftInput = wrapper.get<HTMLInputElement>('[data-test="media-override-model-0"]').element
-    const stableRowId = draftInput.id
+    expect(wrapper.get('[data-test="valid"]').text()).toBe('false')
+    expect(wrapper.get('[data-test="media-request-mapping-0"]').attributes('aria-invalid')).toBe('true')
 
-    await wrapper.get('[data-test="media-adapter"]').setValue('xai')
-
-    expect(wrapper.get<HTMLInputElement>('[data-test="media-override-model-0"]').element).toBe(draftInput)
-    expect(wrapper.get<HTMLInputElement>('[data-test="media-override-model-0"]').element.id).toBe(stableRowId)
-    expect(wrapper.getComponent(MediaConfigEditor).props('modelValue').adapter).toBe('xai')
-
-    await wrapper.get('[data-test="media-default-async-mode"]').setValue('required')
-
-    expect(wrapper.get<HTMLInputElement>('[data-test="media-override-model-0"]').element).toBe(draftInput)
-    expect(wrapper.get<HTMLInputElement>('[data-test="media-override-model-0"]').element.id).toBe(stableRowId)
-    expect(wrapper.getComponent(MediaConfigEditor).props('modelValue').native_async_mode).toBe('required')
+    await wrapper.get('[data-test="media-request-mapping-0"]').setValue('{}')
+    expect(wrapper.get('[data-test="valid"]').text()).toBe('true')
   })
 
-  it('仅按对象引用识别自身回流，同值外部新对象仍会清除空草稿行', async () => {
-    const wrapper = mountCloningHarness()
+  it('把 __proto__ 作为普通模型键发布且不改变映射原型', async () => {
+    const wrapper = mountHarness({ version: 1, provider: 'xai', models: {} })
+    await flushPromises()
+    await wrapper.get('[data-test="media-add-model"]').trigger('click')
+    await wrapper.get('[data-test="media-model-id-0"]').setValue('__proto__')
+    await wrapper.get('[data-test="media-upstream-model-0"]').setValue('safe-upstream')
 
-    await wrapper.get('[data-test="media-add-model-override"]').trigger('click')
-    await wrapper.get('[data-test="clone-next"]').trigger('click')
-    await wrapper.get('[data-test="media-default-async-mode"]').setValue('required')
-
-    expect(wrapper.find('[data-test="media-override-model-0"]').exists()).toBe(false)
+    const models = wrapper.getComponent(MediaConfigEditor).props('modelValue').models
+    expect(Object.hasOwn(models, '__proto__')).toBe(true)
+    expect(models.__proto__.upstream_model_id).toBe('safe-upstream')
+    expect(Object.getPrototypeOf(models)).toBeNull()
   })
 
-  it('外部重置时重新水合标量和覆盖行', async () => {
+  it('外部重置会重新水合 provider、模型和表单关联标签', async () => {
     const wrapper = mountHarness()
-
-    await wrapper.get('[data-test="media-add-model-override"]').trigger('click')
-    await wrapper.get('[data-test="media-override-model-0"]').setValue('draft-model')
+    await flushPromises()
     await wrapper.get('[data-test="reset"]').trigger('click')
 
-    expect(wrapper.get<HTMLInputElement>('[data-test="media-adapter"]').element.value).toBe('xai')
-    expect(wrapper.get<HTMLSelectElement>('[data-test="media-default-async-mode"]').element.value).toBe('unsupported')
-    expect(wrapper.get<HTMLInputElement>('[data-test="media-override-model-0"]').element.value).toBe('reset_model')
-    expect(wrapper.get<HTMLInputElement>('[data-test="media-override-upstream-0"]').element.value).toBe('reset-upstream')
-  })
-
-  it('为原生表单控件提供关联 label 和键盘可用按钮', () => {
-    const wrapper = mountHarness()
-
-    expect(wrapper.get('label[for="media-adapter"]').exists()).toBe(true)
-    expect(wrapper.get('label[for="media-default-async-mode"]').exists()).toBe(true)
-    expect(wrapper.get('[data-test="media-add-model-override"]').attributes('type')).toBe('button')
+    expect(wrapper.get<HTMLInputElement>('[data-test="media-provider"]').element.value).toBe('xai')
+    expect(wrapper.get<HTMLInputElement>('[data-test="media-model-id-0"]').element.value).toBe('grok_image')
+    expect(wrapper.get('label[for="media-provider"]').exists()).toBe(true)
+    expect(wrapper.get('[data-test="media-add-model"]').attributes('type')).toBe('button')
   })
 })

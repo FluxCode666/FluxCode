@@ -470,6 +470,7 @@ export default {
     saving: 'Saving...',
     selectedCount: '({count} selected)',
     refresh: 'Refresh',
+    retry: 'Retry',
     autoRefresh: {
       title: 'Auto Refresh',
       enable: 'Enable auto refresh',
@@ -534,6 +535,7 @@ export default {
     modelPricing: 'Model Square',
     users: 'Users',
     groups: 'Groups',
+    mediaModels: 'Media Models',
     channels: 'Channels',
     subscriptions: 'Subscriptions',
     accounts: 'Accounts',
@@ -2357,6 +2359,100 @@ export default {
       }
     },
 
+    mediaModels: {
+      title: 'Media Model Registry',
+      description: 'Manage image/video models, vendors, adapters, and downstream aliases',
+      registryLabel: 'Media Model Registry',
+      registryHint:
+        'Bind adapters here by model vendor and canonical model. Media accounts only hold provider credentials, upstream model IDs, and parameter mappings.',
+      create: 'Register Media Model',
+      edit: 'Edit Media Model',
+      search: 'Search models, vendors, adapters, or aliases…',
+      emptyTitle: 'No media models registered',
+      emptyHint: 'Register a canonical model before selecting it in media accounts or groups.',
+      deleteTitle: 'Delete Media Model',
+      deleteHint: 'Delete “{model}”? Its aliases and group grants will also be removed.',
+      columns: {
+        model: 'Canonical Model',
+        vendor: 'Vendor',
+        type: 'Media Type',
+        operations: 'Capabilities',
+        adapter: 'Adapter / Async',
+        aliases: 'Downstream Aliases',
+        status: 'Status',
+        actions: 'Actions'
+      },
+      stats: {
+        total: 'All Models',
+        image: 'Enabled Image Models',
+        video: 'Enabled Video Models',
+        disabled: 'Disabled'
+      },
+      types: {
+        all: 'All',
+        image: 'Image',
+        video: 'Video'
+      },
+      operations: {
+        text_to_image: 'Text to Image',
+        image_to_image: 'Image to Image',
+        image_edit: 'Image Edit',
+        text_to_video: 'Text to Video',
+        image_to_video: 'Image to Video',
+        reference_to_video: 'Reference to Video',
+        video_extend: 'Video Extend',
+        video_remix: 'Video Remix'
+      },
+      asyncModes: {
+        unsupported: 'Synchronous upstream only',
+        optional: 'Sync or async upstream',
+        required: 'Asynchronous upstream only'
+      },
+      form: {
+        modelId: 'Canonical Model ID',
+        modelIdPlaceholder: 'e.g. seedance-1.5-pro',
+        vendor: 'Model Vendor',
+        vendorPlaceholder: 'e.g. bytedance, xai, google',
+        mediaType: 'Media Type',
+        operations: 'Supported Operations',
+        adapter: 'Default Adapter',
+        adapterPlaceholder: 'e.g. volcengine-seedance',
+        adapterHint: 'This is the global model adapter rule. Account forms no longer expose an Adapter field.',
+        asyncMode: 'Default Upstream Mode',
+        billingUnit: 'Billing Unit',
+        enabled: 'Enable this model for scheduling',
+        aliases: 'Downstream Model Aliases',
+        aliasesPlaceholder: 'One per line or comma-separated, e.g. seedance, doubao-video',
+        aliasesHint: 'Aliases are global and resolve downstream requests to this canonical model.',
+        constraints: 'Model Constraints',
+        imageSizes: 'Allowed Image Sizes',
+        maxImageCount: 'Maximum Images per Request',
+        maxReferenceImages: 'Maximum Reference Images',
+        videoDurations: 'Allowed Video Durations (seconds)',
+        videoResolutions: 'Allowed Video Resolutions',
+        minFps: 'Minimum FPS',
+        maxFps: 'Maximum FPS'
+      },
+      validation: {
+        modelId: 'Model ID may only contain lowercase letters, numbers, and . _ : / -',
+        vendor: 'Model vendor is required',
+        adapter: 'Adapter may only contain lowercase letters, numbers, _ or -',
+        billingUnit: 'Billing unit is required',
+        operations: 'Select at least one supported operation',
+        nonNegativeInteger: 'Count and FPS constraints must be non-negative integers',
+        fps: 'Minimum FPS cannot exceed maximum FPS',
+        aliases: 'Aliases must be unique and cannot equal the canonical model ID'
+      },
+      messages: {
+        loadFailed: 'Failed to load media models',
+        created: 'Media model registered',
+        updated: 'Media model updated',
+        deleted: 'Media model deleted',
+        saveFailed: 'Failed to save media model',
+        deleteFailed: 'Failed to delete media model'
+      }
+    },
+
     // Groups
     groups: {
       title: 'Group Management',
@@ -2417,6 +2513,15 @@ export default {
       mediaCrossPlatformEnabled: 'Allow cross-platform media accounts',
       mediaCrossPlatformHint:
         'Only expands media account candidates in account-group management; text requests still follow the group platform boundary.',
+      mediaModelScopesTitle: 'Allowed Media Models',
+      mediaModelScopesHint: 'Only canonical models granted to this group and bound to a media account enter scheduling.',
+      noMediaModels: 'No enabled media models are available.',
+      manageMediaModels: 'Open the Media Model Registry',
+      mediaModelsSelected: '{count} media model(s) granted',
+      mediaModelScopeRequired: 'A media group must grant at least one media model',
+      mediaModelScopeLoadFailed: 'Failed to load group media model grants',
+      mediaModelScopeSaveFailed: 'Group fields were saved, but media model grants failed. Please retry.',
+      mediaModelScopeSaveFailedAfterCreate: 'The group was created, but media model grants failed. Edit the group and retry.',
       systemPrompt: {
         title: 'Group System Prompt',
         description:
@@ -2476,6 +2581,7 @@ export default {
         codex2api: 'Codex2api',
         gemini: 'Gemini',
         antigravity: 'Antigravity',
+        media: 'Media',
         sora: 'Sora',
       },
       deleteConfirm:
@@ -2693,6 +2799,7 @@ export default {
         defaultPerRequestPrice: 'Default per-request price (fallback when no tier matches)',
         defaultImagePrice: 'Default image price (fallback when no tier matches)',
         platformConfig: 'Platform Configuration',
+        capabilities: 'Capabilities',
         webSearchEmulation: 'Web Search Emulation',
         webSearchEmulationHint: '⚠️ When enabled, all accounts in this channel\'s Anthropic groups will intercept web_search requests. Use with caution.',
         webSearchEmulationGlobalDisabled: 'Please enable the global switch first in Settings → Gateway → Web Search Emulation',
@@ -2978,26 +3085,38 @@ export default {
       title: 'Account Management',
       description: 'Manage AI platform accounts and credentials',
       mediaConfig: {
-        title: 'Media Adapter and Native Async Capability',
-        description: 'Declare upstream protocol adapter capabilities for media requests and override native async behavior per model.',
-        adapter: 'Media Adapter',
-        adapterPlaceholder: 'For example, gemini, xai, or a custom protocol type',
-        adapterHint: 'The adapter is a free-text protocol type, not a new provider entity. Surrounding whitespace is removed when saved.',
-        nativeAsyncMode: 'Default Native Async Mode',
-        nativeAsyncModeHint: 'Describes upstream native async capability and can be overridden per model. It does not restrict downstream sync or async requests.',
-        model: 'Request Model',
-        upstreamModel: 'Upstream Model',
-        overrideAsyncMode: 'Model Native Async Mode',
-        inherit: 'Inherit account default',
-        addOverride: 'Add Model Override',
+        title: 'Media Provider and Model Bindings',
+        description: 'Configure the public models supplied by this media account. The adapter is resolved from the media model registry and is not entered here.',
+        provider: 'Upstream Provider',
+        providerPlaceholder: 'For example, volcengine, xai, or google',
+        providerHint: 'Identifies the upstream service account. Model vendors and adapters are maintained in the canonical model registry.',
+        baseUrlHint: 'Enter the media provider API base URL. It never falls back to a text-platform endpoint.',
+        baseUrlRequired: 'Enter the media provider Base URL',
+        apiKeyHint: 'Enter the API key used by the media provider for image or video generation.',
+        model: 'Public Model ID',
+        selectModel: 'Select a canonical model from the registry',
+        loadingModels: 'Loading media models…',
+        legacyModel: 'Legacy or disabled model (preserved)',
+        registryModelHint: 'Registry adapter: {adapter}; default execution: {mode}',
+        registryLoadFailed: 'The media model registry could not be loaded, so new bindings are unavailable.',
+        registryEmpty: 'No enabled media models have been registered.',
+        manageRegistry: 'Manage media models',
+        upstreamModel: 'Upstream Model ID',
+        enabled: 'Enable this model',
+        asyncMode: 'Upstream Async Capability',
+        requestMapping: 'Request Parameter Mapping (JSON)',
+        requestMappingPlaceholder: '{\n  "rules": [{ "source": "size", "target": "chicun", "operation": "rename" }]\n}',
+        requestMappingHint: 'Optional. Supports rename, copy, default, enum, and cast. Only declarative JSON is accepted; scripts are never executed.',
+        invalidRequestMapping: 'The request mapping must be a valid JSON object containing only rules.',
+        addModel: 'Add Model Binding',
         remove: 'Remove',
-        removeOverride: 'Remove model override',
+        removeModel: 'Remove model binding',
         duplicateModel: 'Model "{model}" is duplicated after trimming. Rename it before saving.',
-        fixDuplicateModels: 'Fix duplicate media model override names before saving.',
+        modelRequired: 'Add at least one model and enter both its public and upstream model IDs.',
+        fixConfiguration: 'Complete the media provider, model bindings, and request mappings before saving.',
         modes: {
           unsupported: 'Native async unsupported',
-          optional: 'Native async optional',
-          required: 'Native async required'
+          native: 'Upstream native async supported'
         }
       },
       createAccount: 'Create Account',
@@ -3120,6 +3239,7 @@ export default {
         codex2api: 'Codex2api',
         gemini: 'Gemini',
         antigravity: 'Antigravity',
+        media: 'Media',
         sora: 'Sora',
       },
       types: {
@@ -3336,7 +3456,8 @@ export default {
         failed: 'Bulk update failed',
         noSelection: 'Please select accounts to edit',
         noFieldsSelected: 'Select at least one field to update',
-        mixedPlatformWarning: 'Selected accounts span multiple platforms ({platforms}). Model mapping presets shown are combined — ensure mappings are appropriate for each platform.'
+        mixedPlatformWarning: 'Selected accounts span multiple platforms ({platforms}). Model mapping presets shown are combined — ensure mappings are appropriate for each platform.',
+        mixedMediaGroupsDisabled: 'Media and text accounts are isolated; group bindings cannot be bulk-edited for a mixed selection.'
       },
       bulkDeleteTitle: 'Bulk Delete Accounts',
       bulkDeleteConfirm: 'Delete the selected {count} account(s)? This action cannot be undone.',

@@ -24,6 +24,7 @@ func (s *mediaGroupAdminService) CreateGroup(_ context.Context, input *service.C
 	return &service.Group{
 		ID:                        10,
 		Name:                      input.Name,
+		Platform:                  input.Platform,
 		AllowImageGeneration:      input.AllowImageGeneration,
 		AllowVideoGeneration:      input.AllowVideoGeneration,
 		MediaCrossPlatformEnabled: input.MediaCrossPlatformEnabled,
@@ -67,7 +68,7 @@ func TestGroupHandlerCreateForwardsMediaFlags(t *testing.T) {
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/groups", bytes.NewBufferString(`{
 		"name":"media",
-		"platform":"openai",
+		"platform":"media",
 		"allow_image_generation":true,
 		"allow_video_generation":true,
 		"media_cross_platform_enabled":true
@@ -77,6 +78,7 @@ func TestGroupHandlerCreateForwardsMediaFlags(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 	require.NotNil(t, adminSvc.created)
+	require.Equal(t, service.PlatformMedia, adminSvc.created.Platform)
 	require.True(t, adminSvc.created.AllowImageGeneration)
 	require.True(t, adminSvc.created.AllowVideoGeneration)
 	require.True(t, adminSvc.created.MediaCrossPlatformEnabled)

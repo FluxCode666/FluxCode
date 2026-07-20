@@ -1,5 +1,5 @@
 import { flushPromises, mount } from '@vue/test-utils'
-import { defineComponent, type PropType } from 'vue'
+import { defineComponent, nextTick, type PropType } from 'vue'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { AdminGroup } from '@/types'
@@ -10,6 +10,9 @@ const {
   getCapacitySummary,
   getUsageSummary,
   listGroups,
+  listMediaModels,
+  getMediaScopes,
+  replaceMediaScopes,
   showError,
   showSuccess,
   updateGroup,
@@ -18,6 +21,9 @@ const {
   getCapacitySummary: vi.fn(),
   getUsageSummary: vi.fn(),
   listGroups: vi.fn(),
+  listMediaModels: vi.fn(),
+  getMediaScopes: vi.fn(),
+  replaceMediaScopes: vi.fn(),
   showError: vi.fn(),
   showSuccess: vi.fn(),
   updateGroup: vi.fn(),
@@ -34,6 +40,11 @@ vi.mock('@/api/admin', () => ({
       getUsageSummary,
       list: listGroups,
       update: updateGroup,
+    },
+    mediaModels: {
+      listEnabled: listMediaModels,
+      getGroupScopes: getMediaScopes,
+      replaceGroupScopes: replaceMediaScopes,
     },
   },
 }))
@@ -162,6 +173,9 @@ describe('GroupsView media permissions', () => {
     getCapacitySummary.mockReset()
     getUsageSummary.mockReset()
     listGroups.mockReset()
+    listMediaModels.mockReset()
+    getMediaScopes.mockReset()
+    replaceMediaScopes.mockReset()
     showError.mockReset()
     showSuccess.mockReset()
     updateGroup.mockReset()
@@ -170,6 +184,9 @@ describe('GroupsView media permissions', () => {
     getCapacitySummary.mockResolvedValue([])
     getUsageSummary.mockResolvedValue([])
     listGroups.mockResolvedValue({ items: [], total: 0, pages: 0 })
+    listMediaModels.mockResolvedValue([])
+    getMediaScopes.mockResolvedValue([])
+    replaceMediaScopes.mockResolvedValue([])
     updateGroup.mockResolvedValue(undefined)
   })
 
@@ -263,5 +280,41 @@ describe('GroupsView media permissions', () => {
         media_cross_platform_enabled: true,
       }),
     )
+  })
+
+  it('媒体分组创建后保存独立的模型 scope', async () => {
+    listMediaModels.mockResolvedValue([{
+      id: 1,
+      model_id: 'seedance',
+      vendor: 'bytedance',
+      media_type: 'video',
+      operations: ['text_to_video'],
+      constraints: {},
+      billing_unit: 'second',
+      default_adapter: 'volcengine-seedance',
+      default_async_mode: 'required',
+      enabled: true,
+      aliases: [],
+    }])
+    const created = legacyGroup({ id: 21, name: 'media-group', platform: 'media' }) as AdminGroup
+    createGroup.mockResolvedValue(created)
+    replaceMediaScopes.mockResolvedValue(['seedance'])
+
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.get('[data-tour="groups-create-btn"]').trigger('click')
+    ;(wrapper.vm as any).createForm.platform = 'media'
+    await nextTick()
+
+    await wrapper.get('#create-group-form [data-tour="group-form-name"]').setValue('media-group')
+    await wrapper.get('[data-test="media-model-scope-seedance"]').setValue(true)
+    await wrapper.get('#create-group-form').trigger('submit')
+    await flushPromises()
+
+    expect(createGroup).toHaveBeenCalledWith(expect.objectContaining({
+      platform: 'media',
+      media_cross_platform_enabled: false,
+    }))
+    expect(replaceMediaScopes).toHaveBeenCalledWith(21, ['seedance'])
   })
 })

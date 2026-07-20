@@ -1281,6 +1281,13 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	if err != nil {
 		return nil, err
 	}
+	if input.Platform != "" && input.Platform != group.Platform &&
+		(input.Platform == PlatformMedia || group.Platform == PlatformMedia) {
+		return nil, infraerrors.BadRequest(
+			"MEDIA_GROUP_PLATFORM_IMMUTABLE",
+			"groups cannot switch between media and non-media platforms",
+		)
+	}
 	previousIsFallbackGroup := group.IsFallbackGroup
 
 	if input.Name != "" {
@@ -1842,6 +1849,9 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 	if err := validateCodex2APIAccount(account); err != nil {
 		return nil, err
 	}
+	if err := validateMediaPlatformAccount(account); err != nil {
+		return nil, err
+	}
 	if err := s.accountRepo.Create(ctx, account); err != nil {
 		return nil, err
 	}
@@ -1980,6 +1990,9 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 	if err := validateCodex2APIAccount(account); err != nil {
 		return nil, err
 	}
+	if err := validateMediaPlatformAccount(account); err != nil {
+		return nil, err
+	}
 
 	// 先验证分组是否存在（在任何写操作之前）
 	if input.GroupIDs != nil {
@@ -2026,6 +2039,12 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 	if len(input.AccountIDs) == 0 {
 		return result, nil
 	}
+	if _, updatesMediaConfig := input.Extra[mediaAccountConfigExtraKey]; updatesMediaConfig {
+		return nil, infraerrors.BadRequest(
+			"MEDIA_CONFIG_BULK_UPDATE_UNSUPPORTED",
+			"media_config cannot be changed through bulk account updates",
+		)
+	}
 	if input.GroupIDs != nil {
 		if err := s.validateGroupIDsExist(ctx, *input.GroupIDs); err != nil {
 			return nil, err
@@ -2034,16 +2053,31 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 
 	needMixedChannelCheck := input.GroupIDs != nil && !input.SkipMixedChannelCheck
 
-	// 预加载账号平台信息（分组平台校验和混合渠道检查需要）。
+	// 预加载账号平台信息（分组平台校验、混合渠道检查和账号不变量校验需要）。
 	platformByID := map[int64]string{}
-	if input.GroupIDs != nil {
+	validateAccountInvariants := len(input.Credentials) > 0 || len(input.Extra) > 0
+	if input.GroupIDs != nil || validateAccountInvariants {
 		accounts, err := s.accountRepo.GetByIDs(ctx, input.AccountIDs)
 		if err != nil {
 			return nil, err
 		}
 		for _, account := range accounts {
-			if account != nil {
-				platformByID[account.ID] = account.Platform
+			if account == nil {
+				continue
+			}
+			platformByID[account.ID] = account.Platform
+			if validateAccountInvariants {
+				candidate := *account
+				candidate.Credentials = mergeMap(account.Credentials, input.Credentials)
+				candidate.Extra = mergeMap(account.Extra, input.Extra)
+				if err := validateCodex2APIAccount(&candidate); err != nil {
+					return nil, err
+				}
+				if err := validateMediaPlatformAccount(&candidate); err != nil {
+					return nil, err
+				}
+			}
+			if input.GroupIDs != nil {
 				if err := validateAccountGroupBindings(ctx, s.groupRepo, account.Platform, account.Type, *input.GroupIDs); err != nil {
 					return nil, err
 				}

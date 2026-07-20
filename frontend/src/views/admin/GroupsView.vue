@@ -945,7 +945,13 @@
         </div>
 
         <div class="border-t border-gray-200 pt-4 dark:border-dark-400">
-          <GroupMediaSettings v-model="createMediaConfig" />
+          <GroupMediaSettings
+            v-model="createMediaConfig"
+            v-model:selected-model-ids="createMediaModelIds"
+            :platform="createForm.platform"
+            :available-models="mediaModels"
+            :models-loading="mediaModelsLoading"
+          />
         </div>
 
         <!-- OpenAI Messages 调度配置（仅 openai 平台） -->
@@ -2094,7 +2100,13 @@
         </div>
 
         <div class="border-t border-gray-200 pt-4 dark:border-dark-400">
-          <GroupMediaSettings v-model="editMediaConfig" />
+          <GroupMediaSettings
+            v-model="editMediaConfig"
+            v-model:selected-model-ids="editMediaModelIds"
+            :platform="editForm.platform"
+            :available-models="mediaModels"
+            :models-loading="mediaModelsLoading || editMediaScopesLoading"
+          />
         </div>
 
         <!-- OpenAI Messages 调度配置（仅 openai 平台） -->
@@ -2770,6 +2782,7 @@ import type {
   AdminGroup,
   GroupMediaConfig,
   GroupPlatform,
+  MediaModelDefinition,
   SubscriptionType,
   SystemPromptMode,
 } from "@/types";
@@ -2864,6 +2877,7 @@ const platformOptions = computed(() => [
   { value: 'openai', label: t('admin.groups.platforms.openai') },
   { value: 'gemini', label: t('admin.groups.platforms.gemini') },
   { value: 'antigravity', label: t('admin.groups.platforms.antigravity') },
+  { value: 'media', label: t('admin.groups.platforms.media') },
   { value: 'sora', label: t('admin.groups.platforms.sora') }
 ])
 
@@ -2873,6 +2887,7 @@ const platformFilterOptions = computed(() => [
   { value: 'openai', label: t('admin.groups.platforms.openai') },
   { value: 'gemini', label: t('admin.groups.platforms.gemini') },
   { value: 'antigravity', label: t('admin.groups.platforms.antigravity') },
+  { value: 'media', label: t('admin.groups.platforms.media') },
   { value: 'sora', label: t('admin.groups.platforms.sora') }
 ])
 
@@ -2988,6 +3003,11 @@ const deletingGroup = ref<AdminGroup | null>(null);
 const showRateMultipliersModal = ref(false);
 const rateMultipliersGroup = ref<AdminGroup | null>(null);
 const sortableGroups = ref<AdminGroup[]>([]);
+const mediaModels = ref<MediaModelDefinition[]>([]);
+const mediaModelsLoading = ref(false);
+const editMediaScopesLoading = ref(false);
+const createMediaModelIds = ref<string[]>([]);
+const editMediaModelIds = ref<string[]>([]);
 const createMessagesDispatchDefaults = createDefaultMessagesDispatchFormState();
 const editMessagesDispatchDefaults = createDefaultMessagesDispatchFormState();
 
@@ -3519,6 +3539,7 @@ const closeCreateModal = () => {
   createForm.supported_model_scopes = ["claude", "gemini_text", "gemini_image"];
   createForm.mcp_xml_inject = true;
   createForm.copy_accounts_from_group_ids = [];
+  createMediaModelIds.value = [];
   createModelRoutingRules.value = [];
 };
 
@@ -3546,14 +3567,21 @@ const handleCreateGroup = async () => {
     appStore.showError(t("admin.groups.nameRequired"));
     return;
   }
+  if (createForm.platform === 'media' && createMediaModelIds.value.length === 0) {
+    appStore.showError(t('admin.groups.mediaModelScopeRequired'));
+    return;
+  }
   submitting.value = true;
+  let createdGroup: AdminGroup | null = null;
   try {
     // 构建请求数据，包含模型路由配置
     const requestData = {
       ...createForm,
       allow_image_generation: createForm.allow_image_generation,
       allow_video_generation: createForm.allow_video_generation,
-      media_cross_platform_enabled: createForm.media_cross_platform_enabled,
+      media_cross_platform_enabled: createForm.platform === 'media'
+        ? false
+        : createForm.media_cross_platform_enabled,
       fallback_group_id: createForm.is_fallback_group
         ? null
         : createForm.fallback_group_id,
@@ -3586,7 +3614,10 @@ const handleCreateGroup = async () => {
     requestData.daily_limit_usd = emptyToNull(requestData.daily_limit_usd);
     requestData.weekly_limit_usd = emptyToNull(requestData.weekly_limit_usd);
     requestData.monthly_limit_usd = emptyToNull(requestData.monthly_limit_usd);
-    await adminAPI.groups.create(requestData);
+    createdGroup = await adminAPI.groups.create(requestData);
+    if (createForm.platform === 'media') {
+      await adminAPI.mediaModels.replaceGroupScopes(createdGroup.id, createMediaModelIds.value);
+    }
     appStore.showSuccess(t("admin.groups.groupCreated"));
     closeCreateModal();
     loadGroups();
@@ -3595,6 +3626,12 @@ const handleCreateGroup = async () => {
       onboardingStore.nextStep(500);
     }
   } catch (error: any) {
+    if (createdGroup) {
+      appStore.showError(t('admin.groups.mediaModelScopeSaveFailedAfterCreate'));
+      closeCreateModal();
+      loadGroups();
+      return;
+    }
     appStore.showError(
       error.response?.data?.detail || t("admin.groups.failedToCreate"),
     );
@@ -3656,6 +3693,18 @@ const handleEdit = async (group: AdminGroup) => {
   editModelRoutingRules.value = await convertApiFormatToRoutingRules(
     group.model_routing,
   );
+  editMediaModelIds.value = [];
+  if (group.platform === 'media') {
+    editMediaScopesLoading.value = true;
+    try {
+      editMediaModelIds.value = await adminAPI.mediaModels.getGroupScopes(group.id);
+    } catch (error) {
+      appStore.showError(t('admin.groups.mediaModelScopeLoadFailed'));
+      console.error('Error loading media model scopes:', error);
+    } finally {
+      editMediaScopesLoading.value = false;
+    }
+  }
   showEditModal.value = true;
 };
 
@@ -3671,6 +3720,7 @@ const closeEditModal = () => {
   editForm.allow_image_generation = false;
   editForm.allow_video_generation = false;
   editForm.media_cross_platform_enabled = false;
+  editMediaModelIds.value = [];
   resetMessagesDispatchFormState(editForm);
 };
 
@@ -3680,15 +3730,22 @@ const handleUpdateGroup = async () => {
     appStore.showError(t("admin.groups.nameRequired"));
     return;
   }
+  if (editForm.platform === 'media' && editMediaModelIds.value.length === 0) {
+    appStore.showError(t('admin.groups.mediaModelScopeRequired'));
+    return;
+  }
 
   submitting.value = true;
+  let groupFieldsUpdated = false;
   try {
     // 转换 fallback_group_id: null -> 0 (后端使用 0 表示清除)
     const payload = {
       ...editForm,
       allow_image_generation: editForm.allow_image_generation,
       allow_video_generation: editForm.allow_video_generation,
-      media_cross_platform_enabled: editForm.media_cross_platform_enabled,
+      media_cross_platform_enabled: editForm.platform === 'media'
+        ? false
+        : editForm.media_cross_platform_enabled,
       daily_limit_usd: normalizeOptionalLimit(
         editForm.daily_limit_usd as number | string | null,
       ),
@@ -3725,10 +3782,18 @@ const handleUpdateGroup = async () => {
     payload.weekly_limit_usd = emptyToNull(payload.weekly_limit_usd);
     payload.monthly_limit_usd = emptyToNull(payload.monthly_limit_usd);
     await adminAPI.groups.update(editingGroup.value.id, payload);
+    groupFieldsUpdated = true;
+    if (editForm.platform === 'media') {
+      await adminAPI.mediaModels.replaceGroupScopes(editingGroup.value.id, editMediaModelIds.value);
+    }
     appStore.showSuccess(t("admin.groups.groupUpdated"));
     closeEditModal();
     loadGroups();
   } catch (error: any) {
+    if (groupFieldsUpdated && editForm.platform === 'media') {
+      appStore.showError(t('admin.groups.mediaModelScopeSaveFailed'));
+      return;
+    }
     appStore.showError(
       error.response?.data?.detail || t("admin.groups.failedToUpdate"),
     );
@@ -3813,6 +3878,9 @@ watch(
     if (!canEnableFallbackGroup(createForm)) {
       createForm.is_fallback_group = false;
       createForm.fallback_group_id = null;
+    }
+    if (newVal !== 'media') {
+      createMediaModelIds.value = [];
     }
   },
 );
@@ -3940,8 +4008,21 @@ const saveSortOrder = async () => {
   }
 };
 
+const loadMediaModels = async () => {
+  mediaModelsLoading.value = true;
+  try {
+    mediaModels.value = await adminAPI.mediaModels.listEnabled();
+  } catch (error) {
+    mediaModels.value = [];
+    console.error("Error loading media models:", error);
+  } finally {
+    mediaModelsLoading.value = false;
+  }
+};
+
 onMounted(() => {
   loadGroups();
+  loadMediaModels();
   document.addEventListener("click", handleClickOutside);
 });
 
