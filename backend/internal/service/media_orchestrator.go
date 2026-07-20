@@ -116,6 +116,10 @@ type MediaCandidateSnapshotter interface {
 	SnapshotCandidates(ctx context.Context, groupID int64, requestedModel string) ([]MediaAccountCandidateSnapshot, error)
 }
 
+type mediaOperationCandidateSnapshotter interface {
+	SnapshotCandidatesForOperation(ctx context.Context, groupID int64, requestedModel string, operation MediaOperation) ([]MediaAccountCandidateSnapshot, error)
+}
+
 type MediaGroupProvider interface {
 	GetByID(ctx context.Context, id int64) (*Group, error)
 }
@@ -199,7 +203,12 @@ func (o *MediaOrchestrator) Create(ctx context.Context, req MediaCreateRequest) 
 		}
 	}
 
-	candidates, err := o.deps.Scheduler.SnapshotCandidates(ctx, req.GroupID, strings.TrimSpace(req.RequestedModel))
+	var candidates []MediaAccountCandidateSnapshot
+	if operationScheduler, ok := o.deps.Scheduler.(mediaOperationCandidateSnapshotter); ok {
+		candidates, err = operationScheduler.SnapshotCandidatesForOperation(ctx, req.GroupID, strings.TrimSpace(req.RequestedModel), req.Operation)
+	} else {
+		candidates, err = o.deps.Scheduler.SnapshotCandidates(ctx, req.GroupID, strings.TrimSpace(req.RequestedModel))
+	}
 	if err != nil {
 		return nil, fmt.Errorf("snapshot media candidates: %w", err)
 	}

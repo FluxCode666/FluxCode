@@ -29,6 +29,18 @@ type mediaSchedulerGroupRepoStub struct {
 	calls atomic.Int64
 }
 
+type mediaSchedulerScopeRepoStub struct {
+	modelIDs []string
+	err      error
+}
+
+func (s *mediaSchedulerScopeRepoStub) ListEnabledMediaModelIDs(context.Context, int64) ([]string, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	return append([]string(nil), s.modelIDs...), nil
+}
+
 func (s *mediaSchedulerGroupRepoStub) GetByID(ctx context.Context, _ int64) (*Group, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -213,6 +225,57 @@ func TestMediaSchedulerSelectsAcrossPlatformsForSameModel(t *testing.T) {
 	owned, refreshErr := selection.RefreshFunc(context.Background())
 	require.NoError(t, refreshErr)
 	require.True(t, owned)
+}
+
+func TestMediaSchedulerRoutesVersionOneMediaAccountByRegistryAndGroupScope(t *testing.T) {
+	account := Account{
+		ID: 21, Platform: PlatformMedia, Priority: 1, Concurrency: 1,
+		Status: StatusActive, Schedulable: true,
+		Extra: map[string]any{"media_config": map[string]any{
+			"version": 1, "provider": "volcengine", "models": map[string]any{
+				"seedance": map[string]any{"enabled": true, "upstream_model_id": "doubao-seedance", "async_mode": "unsupported"},
+			},
+		}},
+	}
+	definition := MediaModelDefinition{
+		ID: 31, ModelID: "seedance", Vendor: "bytedance", MediaType: MediaTypeImage,
+		Operations: []MediaOperation{MediaOperationTextToImage}, DefaultAdapter: "openai-images",
+		DefaultAsyncMode: NativeAsyncUnsupported, Enabled: true,
+	}
+	models := &mediaModelRepoStub{items: []MediaModelDefinition{definition}}
+	registry := NewMediaModelRegistry(models)
+	require.NoError(t, registry.Refresh(context.Background()))
+	adapters := NewMediaAdapterRegistry()
+	adapters.Register("openai-images", NewFakeMediaAdapter(FakeMediaAdapterOptions{Name: "openai-images", NativeAsyncMode: NativeAsyncUnsupported}))
+	groupRepo := &mediaSchedulerGroupRepoStub{group: &Group{ID: 9, Platform: PlatformMedia}}
+	scheduler := NewMediaScheduler(
+		&mediaSchedulerAccountRepoStub{accounts: []Account{account}},
+		&mediaSchedulerSelectorStub{selectedID: account.ID}, adapters, groupRepo,
+		registry, &mediaSchedulerScopeRepoStub{modelIDs: []string{"seedance"}},
+	)
+
+	candidates, err := scheduler.SnapshotCandidates(context.Background(), 9, "seedance")
+	require.NoError(t, err)
+	require.Len(t, candidates, 1)
+	require.Equal(t, PlatformMedia, candidates[0].Platform)
+	require.Equal(t, "openai-images", candidates[0].ResolvedModel.Adapter)
+	require.Equal(t, "doubao-seedance", candidates[0].ResolvedModel.UpstreamModel)
+	require.Equal(t, "volcengine", candidates[0].ResolvedModel.Provider)
+}
+
+func TestMediaSchedulerRejectsMediaModelOutsideGroupScope(t *testing.T) {
+	definition := MediaModelDefinition{ID: 32, ModelID: "image", Vendor: "openai", MediaType: MediaTypeImage,
+		Operations: []MediaOperation{MediaOperationTextToImage}, DefaultAdapter: "sync", DefaultAsyncMode: NativeAsyncUnsupported, Enabled: true}
+	registry := NewMediaModelRegistry(&mediaModelRepoStub{items: []MediaModelDefinition{definition}})
+	require.NoError(t, registry.Refresh(context.Background()))
+	adapters := NewMediaAdapterRegistry()
+	adapters.Register("sync", NewFakeMediaAdapter(FakeMediaAdapterOptions{Name: "sync", NativeAsyncMode: NativeAsyncUnsupported}))
+	scheduler := NewMediaScheduler(&mediaSchedulerAccountRepoStub{}, &mediaSchedulerSelectorStub{}, adapters,
+		&mediaSchedulerGroupRepoStub{group: &Group{ID: 10, Platform: PlatformMedia}}, registry,
+		&mediaSchedulerScopeRepoStub{modelIDs: []string{"other"}})
+
+	_, err := scheduler.SnapshotCandidates(context.Background(), 10, "image")
+	require.ErrorIs(t, err, ErrNoAvailableAccounts)
 }
 
 func TestMediaSchedulerSnapshotRechecksCurrentGroupPlatformPolicy(t *testing.T) {

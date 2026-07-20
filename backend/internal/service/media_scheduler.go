@@ -53,18 +53,41 @@ type MediaSchedulerGroupRepository interface {
 	GetByID(ctx context.Context, id int64) (*Group, error)
 }
 
+type mediaSchedulerModelScopeRepository interface {
+	ListEnabledMediaModelIDs(ctx context.Context, groupID int64) ([]string, error)
+}
+
 type MediaScheduler struct {
 	accountRepo MediaSchedulerAccountRepository
 	groupRepo   MediaSchedulerGroupRepository
 	selector    AccountCandidateSelector
 	adapters    *MediaAdapterRegistry
+	registry    *MediaModelRegistry
+	scopes      mediaSchedulerModelScopeRepository
 }
 
-func NewMediaScheduler(accountRepo MediaSchedulerAccountRepository, selector AccountCandidateSelector, adapters *MediaAdapterRegistry, groupRepo MediaSchedulerGroupRepository) *MediaScheduler {
-	return &MediaScheduler{accountRepo: accountRepo, groupRepo: groupRepo, selector: selector, adapters: adapters}
+func NewMediaScheduler(accountRepo MediaSchedulerAccountRepository, selector AccountCandidateSelector, adapters *MediaAdapterRegistry, groupRepo MediaSchedulerGroupRepository, dependencies ...any) *MediaScheduler {
+	scheduler := &MediaScheduler{accountRepo: accountRepo, groupRepo: groupRepo, selector: selector, adapters: adapters}
+	for _, dependency := range dependencies {
+		switch value := dependency.(type) {
+		case *MediaModelRegistry:
+			scheduler.registry = value
+		case mediaSchedulerModelScopeRepository:
+			scheduler.scopes = value
+		}
+	}
+	return scheduler
 }
 
 func (s *MediaScheduler) SnapshotCandidates(ctx context.Context, groupID int64, requestedModel string) ([]MediaAccountCandidateSnapshot, error) {
+	return s.snapshotCandidates(ctx, groupID, requestedModel, "")
+}
+
+func (s *MediaScheduler) SnapshotCandidatesForOperation(ctx context.Context, groupID int64, requestedModel string, operation MediaOperation) ([]MediaAccountCandidateSnapshot, error) {
+	return s.snapshotCandidates(ctx, groupID, requestedModel, operation)
+}
+
+func (s *MediaScheduler) snapshotCandidates(ctx context.Context, groupID int64, requestedModel string, operation MediaOperation) ([]MediaAccountCandidateSnapshot, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -78,6 +101,41 @@ func (s *MediaScheduler) SnapshotCandidates(ctx context.Context, groupID int64, 
 	}
 	if group == nil {
 		return nil, fmt.Errorf("get current media scheduling group: %w", ErrNoAvailableAccounts)
+	}
+	canonicalModel := requestedModel
+	var registryDefinition *MediaModelDefinition
+	if s.registry != nil {
+		resolvedModel, resolveErr := s.registry.CanonicalModelID(requestedModel)
+		if resolveErr != nil {
+			return nil, ErrNoAvailableAccounts
+		}
+		canonicalModel = resolvedModel
+		if s.scopes == nil {
+			return nil, fmt.Errorf("%w: media model scopes are not configured", ErrNoAvailableAccounts)
+		}
+		allowedModels, scopeErr := s.scopes.ListEnabledMediaModelIDs(ctx, groupID)
+		if scopeErr != nil {
+			return nil, fmt.Errorf("list group media model scopes: %w", scopeErr)
+		}
+		allowed := make(map[string]struct{}, len(allowedModels))
+		for _, modelID := range allowedModels {
+			allowed[normalizeMediaModelID(modelID)] = struct{}{}
+		}
+		if _, ok := allowed[canonicalModel]; !ok {
+			return nil, ErrNoAvailableAccounts
+		}
+		if group.Platform != PlatformMedia {
+			return nil, ErrNoAvailableAccounts
+		}
+		var definitionErr error
+		if operation != "" {
+			registryDefinition, definitionErr = s.registry.Resolve(requestedModel, operation)
+		} else {
+			registryDefinition, definitionErr = s.registry.definitionByID(canonicalModel)
+		}
+		if definitionErr != nil {
+			return nil, definitionErr
+		}
 	}
 	accounts, err := s.accountRepo.ListSchedulableByGroupID(ctx, groupID)
 	if err != nil {
@@ -95,13 +153,23 @@ func (s *MediaScheduler) SnapshotCandidates(ctx context.Context, groupID int64, 
 			return nil, fmt.Errorf("%w: duplicate media candidate account id %d", ErrNoAvailableAccounts, account.ID)
 		}
 		seen[account.ID] = struct{}{}
+		if s.registry != nil && account.Platform != PlatformMedia {
+			continue
+		}
 		if !group.MediaCrossPlatformEnabled && account.Platform != group.Platform {
 			continue
 		}
-		if !account.IsSchedulable() || !account.HasMediaModel(requestedModel) {
+		modelForAccount := requestedModel
+		if s.registry != nil {
+			modelForAccount = canonicalModel
+		}
+		if !account.IsSchedulable() || !account.HasMediaModel(modelForAccount) {
 			continue
 		}
-		resolved := account.ResolveMediaModel(requestedModel)
+		resolved := account.ResolveMediaModel(modelForAccount)
+		if registryDefinition != nil {
+			resolved.Adapter = registryDefinition.DefaultAdapter
+		}
 		if !validResolvedMediaAccountModel(resolved) {
 			continue
 		}
@@ -113,6 +181,7 @@ func (s *MediaScheduler) SnapshotCandidates(ctx context.Context, groupID int64, 
 			AccountID: account.ID,
 			Platform:  account.Platform,
 			ResolvedModel: ResolvedMediaAccountModel{
+				Provider:        resolved.Provider,
 				Adapter:         resolved.Adapter,
 				UpstreamModel:   resolved.UpstreamModel,
 				NativeAsyncMode: resolved.NativeAsyncMode,
@@ -168,6 +237,11 @@ func (s *MediaScheduler) Select(ctx context.Context, req MediaScheduleRequest) (
 	if err != nil {
 		return nil, err
 	}
+	if s.registry != nil {
+		if _, resolveErr := s.registry.Resolve(req.RequestedModel, req.Operation); resolveErr != nil {
+			return nil, resolveErr
+		}
+	}
 	accounts, err := s.accountRepo.ListSchedulableByGroupID(ctx, req.GroupID)
 	if err != nil {
 		return nil, fmt.Errorf("list current media candidate accounts: %w", err)
@@ -185,6 +259,9 @@ func (s *MediaScheduler) Select(ctx context.Context, req MediaScheduleRequest) (
 			return nil, fmt.Errorf("%w: duplicate current media account id %d", ErrNoAvailableAccounts, account.ID)
 		}
 		if _, excluded := req.ExcludedAccountIDs[account.ID]; excluded || !account.IsSchedulable() {
+			continue
+		}
+		if s.registry != nil && account.Platform != PlatformMedia {
 			continue
 		}
 		if snapshot.Platform == "" || account.Platform != snapshot.Platform {

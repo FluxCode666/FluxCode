@@ -39,6 +39,18 @@ func TestAccountCanBelongToGroupPlatform(t *testing.T) {
 			groupPlatform:   PlatformAnthropic,
 			want:            false,
 		},
+		{
+			name:            "media account binds only media group",
+			accountPlatform: PlatformMedia,
+			groupPlatform:   PlatformMedia,
+			want:            true,
+		},
+		{
+			name:            "media account does not bind text group",
+			accountPlatform: PlatformMedia,
+			groupPlatform:   PlatformOpenAI,
+			want:            false,
+		},
 	}
 
 	for _, tt := range tests {

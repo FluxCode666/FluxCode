@@ -1,11 +1,18 @@
 package service
 
 import (
+	"context"
 	"strings"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/domain"
 )
+
+// GroupMediaModelScopeRepository stores the canonical media models a group may route.
+type GroupMediaModelScopeRepository interface {
+	ListEnabledMediaModelIDs(ctx context.Context, groupID int64) ([]string, error)
+	ReplaceMediaModelScopes(ctx context.Context, groupID int64, modelIDs []string) error
+}
 
 type OpenAIMessagesDispatchModelConfig = domain.OpenAIMessagesDispatchModelConfig
 

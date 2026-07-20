@@ -274,7 +274,8 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 		return nil, err
 	}
 	mediaAdapterRegistry := service.ProvideMediaAdapterRegistry()
-	mediaScheduler := service.ProvideMediaScheduler(accountRepository, groupRepository, concurrencyService, gatewayCache, mediaAdapterRegistry, configConfig)
+	groupMediaModelScopeRepository := repository.NewGroupMediaModelScopeRepository(client)
+	mediaScheduler := service.ProvideMediaScheduler(accountRepository, groupRepository, concurrencyService, gatewayCache, mediaAdapterRegistry, mediaModelRegistry, groupMediaModelScopeRepository, configConfig)
 	mediaContentPolicy := service.ProvideMediaContentPolicy()
 	mediaPricingPort := service.ProvideMediaPricing()
 	mediaTaskRepository := repository.NewMediaTaskRepository(client)

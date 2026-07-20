@@ -702,10 +702,12 @@ func ProvideMediaScheduler(
 	concurrency *ConcurrencyService,
 	cache GatewayCache,
 	adapters *MediaAdapterRegistry,
+	models *MediaModelRegistry,
+	scopes GroupMediaModelScopeRepository,
 	cfg *config.Config,
 ) *MediaScheduler {
 	selector := NewAccountCandidateSelector(concurrency, cache, cfg.Gateway.Scheduling)
-	return NewMediaScheduler(accounts, selector, adapters, groups)
+	return NewMediaScheduler(accounts, selector, adapters, groups, models, scopes)
 }
 
 func ProvideMediaContentService(

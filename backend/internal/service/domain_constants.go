@@ -26,6 +26,7 @@ const (
 	PlatformCodex2API   = domain.PlatformCodex2API
 	PlatformGemini      = domain.PlatformGemini
 	PlatformAntigravity = domain.PlatformAntigravity
+	PlatformMedia       = domain.PlatformMedia
 )
 
 const (
@@ -63,6 +64,9 @@ func AccountPlatformGroupPlatform(platform string) string {
 }
 
 func AccountCanBelongToGroupPlatform(accountPlatform, groupPlatform string) bool {
+	if accountPlatform == PlatformMedia || groupPlatform == PlatformMedia {
+		return accountPlatform == PlatformMedia && groupPlatform == PlatformMedia
+	}
 	if accountPlatform == PlatformAntigravity && (groupPlatform == PlatformAnthropic || groupPlatform == PlatformGemini) {
 		return true
 	}

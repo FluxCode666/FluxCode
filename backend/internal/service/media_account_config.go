@@ -97,7 +97,7 @@ func NormalizeMediaAccountConfig(config MediaAccountConfig) (MediaAccountConfig,
 		}
 		normalized := make(map[string]MediaModelBinding, len(config.Models))
 		for model, binding := range config.Models {
-			model = strings.TrimSpace(model)
+			model = normalizeMediaModelID(model)
 			if model == "" || normalized[model].UpstreamModel != "" {
 				return MediaAccountConfig{}, fmt.Errorf("%w: invalid or duplicate model", ErrInvalidMediaAccountConfig)
 			}

@@ -165,6 +165,32 @@ func (r *MediaModelRegistry) Resolve(model string, operation MediaOperation) (*M
 	return &copy, nil
 }
 
+// CanonicalModelID resolves a public model or global alias without requiring
+// an operation. Schedulers use this to apply group model scopes before the
+// operation-specific capability check performed during selection.
+func (r *MediaModelRegistry) CanonicalModelID(model string) (string, error) {
+	snapshot := r.snapshot.Load().(mediaModelRegistrySnapshot)
+	modelID := normalizeMediaModelID(model)
+	if alias, ok := snapshot.aliases[modelID]; ok {
+		modelID = alias
+	}
+	definition, ok := snapshot.models[modelID]
+	if !ok || !definition.Enabled {
+		return "", ErrMediaModelNotFound
+	}
+	return definition.ModelID, nil
+}
+
+func (r *MediaModelRegistry) definitionByID(modelID string) (*MediaModelDefinition, error) {
+	snapshot := r.snapshot.Load().(mediaModelRegistrySnapshot)
+	definition, ok := snapshot.models[normalizeMediaModelID(modelID)]
+	if !ok || !definition.Enabled {
+		return nil, ErrMediaModelNotFound
+	}
+	copy := cloneMediaModelDefinition(definition)
+	return &copy, nil
+}
+
 func (r *MediaModelRegistry) ResolveRouteRequest(request MediaRouteRequest) (*MediaModelDefinition, error) {
 	definition, err := r.Resolve(request.RequestedModel, request.Operation)
 	if err != nil {
