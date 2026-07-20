@@ -15,19 +15,23 @@ import (
 var (
 	ErrMediaModelNotFound               = errors.New("media model not found")
 	ErrMediaOperationUnsupported        = errors.New("media operation unsupported")
+	ErrMediaCapabilityUnsupported       = errors.New("media capability unsupported")
 	ErrMediaSpecOutsideModelConstraints = errors.New("media spec outside model constraints")
 )
 
 type MediaModelDefinition struct {
-	ID          int64
-	ModelID     string
-	MediaType   MediaType
-	Operations  []MediaOperation
-	Constraints json.RawMessage
-	BillingUnit string
-	Enabled     bool
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	ID               int64
+	ModelID          string
+	Vendor           string
+	MediaType        MediaType
+	Operations       []MediaOperation
+	Constraints      json.RawMessage
+	BillingUnit      string
+	DefaultAdapter   string
+	DefaultAsyncMode NativeAsyncMode
+	Enabled          bool
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
 }
 
 type MediaModelConstraints struct {
@@ -53,14 +57,35 @@ type MediaModelDefinitionRepository interface {
 	ListEnabled(ctx context.Context) ([]MediaModelDefinition, error)
 }
 
-type MediaModelRegistry struct {
-	repo     MediaModelDefinitionRepository
-	snapshot atomic.Value // map[string]MediaModelDefinition
+type MediaModelAlias struct {
+	RequestedModelID  string
+	ModelDefinitionID int64
 }
 
-func NewMediaModelRegistry(repo MediaModelDefinitionRepository) *MediaModelRegistry {
+type MediaModelAliasRepository interface {
+	ListAll(ctx context.Context) ([]MediaModelAlias, error)
+}
+
+type mediaModelRegistrySnapshot struct {
+	models  map[string]MediaModelDefinition
+	aliases map[string]string
+}
+
+type MediaModelRegistry struct {
+	repo      MediaModelDefinitionRepository
+	aliasRepo MediaModelAliasRepository
+	snapshot  atomic.Value // mediaModelRegistrySnapshot
+}
+
+func NewMediaModelRegistry(repo MediaModelDefinitionRepository, aliasRepos ...MediaModelAliasRepository) *MediaModelRegistry {
 	registry := &MediaModelRegistry{repo: repo}
-	registry.snapshot.Store(map[string]MediaModelDefinition{})
+	if len(aliasRepos) > 0 {
+		registry.aliasRepo = aliasRepos[0]
+	}
+	registry.snapshot.Store(mediaModelRegistrySnapshot{
+		models:  map[string]MediaModelDefinition{},
+		aliases: map[string]string{},
+	})
 	return registry
 }
 
@@ -72,9 +97,17 @@ func (r *MediaModelRegistry) Refresh(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	aliases, err := r.listAliases(ctx)
+	if err != nil {
+		return err
+	}
 	items := make(map[string]MediaModelDefinition, len(definitions))
+	ids := make(map[int64]string, len(definitions))
 	for index, definition := range definitions {
 		definition.ModelID = normalizeMediaModelID(definition.ModelID)
+		definition.Vendor = strings.TrimSpace(definition.Vendor)
+		definition.DefaultAdapter = normalizeMediaAdapterName(definition.DefaultAdapter)
+		definition.DefaultAsyncMode = NativeAsyncMode(strings.ToLower(strings.TrimSpace(string(definition.DefaultAsyncMode))))
 		definition.Operations = append([]MediaOperation(nil), definition.Operations...)
 		definition.Constraints = append(json.RawMessage(nil), definition.Constraints...)
 		if err := validateMediaModelDefinition(definition); err != nil {
@@ -84,14 +117,39 @@ func (r *MediaModelRegistry) Refresh(ctx context.Context) error {
 			return fmt.Errorf("duplicate media model id %q", definition.ModelID)
 		}
 		items[definition.ModelID] = definition
+		if definition.ID > 0 {
+			if _, exists := ids[definition.ID]; exists {
+				return fmt.Errorf("duplicate media model definition id %d", definition.ID)
+			}
+			ids[definition.ID] = definition.ModelID
+		}
 	}
-	r.snapshot.Store(items)
+	aliasItems := make(map[string]string, len(aliases))
+	for index, alias := range aliases {
+		requestedModelID := normalizeMediaModelID(alias.RequestedModelID)
+		if requestedModelID == "" {
+			return fmt.Errorf("media model alias at index %d has empty requested model id", index)
+		}
+		if _, exists := aliasItems[requestedModelID]; exists {
+			return fmt.Errorf("duplicate media model alias %q", requestedModelID)
+		}
+		canonicalModelID, exists := ids[alias.ModelDefinitionID]
+		if !exists {
+			return fmt.Errorf("media model alias %q references unavailable model definition %d", requestedModelID, alias.ModelDefinitionID)
+		}
+		aliasItems[requestedModelID] = canonicalModelID
+	}
+	r.snapshot.Store(mediaModelRegistrySnapshot{models: items, aliases: aliasItems})
 	return nil
 }
 
 func (r *MediaModelRegistry) Resolve(model string, operation MediaOperation) (*MediaModelDefinition, error) {
-	items := r.snapshot.Load().(map[string]MediaModelDefinition)
-	definition, ok := items[normalizeMediaModelID(model)]
+	snapshot := r.snapshot.Load().(mediaModelRegistrySnapshot)
+	modelID := normalizeMediaModelID(model)
+	if alias, ok := snapshot.aliases[modelID]; ok {
+		modelID = alias
+	}
+	definition, ok := snapshot.models[modelID]
 	if !ok || !definition.Enabled {
 		return nil, ErrMediaModelNotFound
 	}
@@ -100,6 +158,28 @@ func (r *MediaModelRegistry) Resolve(model string, operation MediaOperation) (*M
 	}
 	copy := cloneMediaModelDefinition(definition)
 	return &copy, nil
+}
+
+func (r *MediaModelRegistry) ResolveRouteRequest(request MediaRouteRequest) (*MediaModelDefinition, error) {
+	definition, err := r.Resolve(request.RequestedModel, request.Operation)
+	if err != nil {
+		return nil, err
+	}
+	if request.Capability != definition.MediaType {
+		return nil, ErrMediaCapabilityUnsupported
+	}
+	return definition, nil
+}
+
+func (r *MediaModelRegistry) listAliases(ctx context.Context) ([]MediaModelAlias, error) {
+	if r.aliasRepo == nil {
+		return nil, nil
+	}
+	aliases, err := r.aliasRepo.ListAll(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list media model aliases: %w", err)
+	}
+	return aliases, nil
 }
 
 func (r *MediaModelRegistry) ValidateSpec(model string, operation MediaOperation, spec MediaSpec) error {
@@ -156,6 +236,17 @@ func validateMediaModelDefinition(definition MediaModelDefinition) error {
 	}
 	if !definition.Enabled {
 		return errors.New("disabled model returned by enabled model repository")
+	}
+	if definition.Vendor == "" {
+		return errors.New("media model vendor is empty")
+	}
+	if !isValidMediaAdapterName(definition.DefaultAdapter) {
+		return errors.New("media model default adapter has invalid format")
+	}
+	switch definition.DefaultAsyncMode {
+	case NativeAsyncUnsupported, NativeAsyncOptional, NativeAsyncRequired:
+	default:
+		return fmt.Errorf("unsupported default async mode %q", definition.DefaultAsyncMode)
 	}
 	if definition.MediaType != MediaTypeImage && definition.MediaType != MediaTypeVideo {
 		return fmt.Errorf("unsupported media type %q", definition.MediaType)
@@ -287,6 +378,18 @@ func cloneMediaModelDefinition(definition MediaModelDefinition) MediaModelDefini
 
 func normalizeMediaModelID(model string) string {
 	return strings.ToLower(strings.TrimSpace(model))
+}
+
+func isValidMediaAdapterName(name string) bool {
+	if name == "" {
+		return false
+	}
+	for _, r := range name {
+		if (r < 'a' || r > 'z') && (r < '0' || r > '9') && r != '-' && r != '_' {
+			return false
+		}
+	}
+	return true
 }
 
 func containsString(items []string, target string) bool {

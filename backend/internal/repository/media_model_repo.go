@@ -32,15 +32,18 @@ func (r *mediaModelRepository) ListEnabled(ctx context.Context) ([]service.Media
 			operations[i] = service.MediaOperation(operation)
 		}
 		definitions = append(definitions, service.MediaModelDefinition{
-			ID:          entity.ID,
-			ModelID:     entity.ModelID,
-			MediaType:   service.MediaType(entity.MediaType),
-			Operations:  operations,
-			Constraints: append(json.RawMessage(nil), entity.Constraints...),
-			BillingUnit: entity.BillingUnit,
-			Enabled:     entity.Enabled,
-			CreatedAt:   entity.CreatedAt,
-			UpdatedAt:   entity.UpdatedAt,
+			ID:               entity.ID,
+			ModelID:          entity.ModelID,
+			Vendor:           entity.Vendor,
+			MediaType:        service.MediaType(entity.MediaType),
+			Operations:       operations,
+			Constraints:      append(json.RawMessage(nil), entity.Constraints...),
+			BillingUnit:      entity.BillingUnit,
+			DefaultAdapter:   entity.DefaultAdapter,
+			DefaultAsyncMode: service.NativeAsyncMode(entity.DefaultAsyncMode),
+			Enabled:          entity.Enabled,
+			CreatedAt:        entity.CreatedAt,
+			UpdatedAt:        entity.UpdatedAt,
 		})
 	}
 	return definitions, nil

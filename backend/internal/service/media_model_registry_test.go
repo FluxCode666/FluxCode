@@ -18,19 +18,32 @@ func (s *mediaModelRepoStub) ListEnabled(context.Context) ([]MediaModelDefinitio
 	return s.items, s.err
 }
 
+type mediaModelAliasRepoStub struct {
+	items []MediaModelAlias
+	err   error
+}
+
+func (s *mediaModelAliasRepoStub) ListAll(context.Context) ([]MediaModelAlias, error) {
+	return s.items, s.err
+}
+
 func validImageModelDefinition() MediaModelDefinition {
 	return MediaModelDefinition{
-		ModelID:     "fake-image",
-		MediaType:   MediaTypeImage,
-		Operations:  []MediaOperation{MediaOperationTextToImage, MediaOperationImageToImage, MediaOperationImageEdit},
-		Constraints: json.RawMessage(`{}`),
-		Enabled:     true,
+		ModelID:          "fake-image",
+		Vendor:           "fake-vendor",
+		MediaType:        MediaTypeImage,
+		Operations:       []MediaOperation{MediaOperationTextToImage, MediaOperationImageToImage, MediaOperationImageEdit},
+		Constraints:      json.RawMessage(`{}`),
+		DefaultAdapter:   "fake-adapter",
+		DefaultAsyncMode: NativeAsyncOptional,
+		Enabled:          true,
 	}
 }
 
 func validVideoModelDefinition() MediaModelDefinition {
 	return MediaModelDefinition{
 		ModelID:   "fake-video",
+		Vendor:    "fake-vendor",
 		MediaType: MediaTypeVideo,
 		Operations: []MediaOperation{
 			MediaOperationTextToVideo,
@@ -39,18 +52,106 @@ func validVideoModelDefinition() MediaModelDefinition {
 			MediaOperationVideoExtend,
 			MediaOperationVideoRemix,
 		},
-		Constraints: json.RawMessage(`{}`),
-		Enabled:     true,
+		Constraints:      json.RawMessage(`{}`),
+		DefaultAdapter:   "fake-adapter",
+		DefaultAsyncMode: NativeAsyncOptional,
+		Enabled:          true,
 	}
+}
+
+func TestMediaModelRegistryRefreshResolvesAliases(t *testing.T) {
+	definition := validImageModelDefinition()
+	definition.ID = 10
+	aliases := &mediaModelAliasRepoStub{items: []MediaModelAlias{{
+		RequestedModelID:  "  IMAGE-ALIAS  ",
+		ModelDefinitionID: definition.ID,
+	}}}
+	registry := NewMediaModelRegistry(&mediaModelRepoStub{items: []MediaModelDefinition{definition}}, aliases)
+
+	require.NoError(t, registry.Refresh(context.Background()))
+	resolved, err := registry.Resolve("image-alias", MediaOperationTextToImage)
+	require.NoError(t, err)
+	require.Equal(t, "fake-image", resolved.ModelID)
+}
+
+func TestMediaModelRegistryRefreshRejectsInvalidAliasesAndPreservesSnapshot(t *testing.T) {
+	definition := validImageModelDefinition()
+	definition.ID = 10
+	modelRepo := &mediaModelRepoStub{items: []MediaModelDefinition{definition}}
+	aliasRepo := &mediaModelAliasRepoStub{items: []MediaModelAlias{{RequestedModelID: "image-alias", ModelDefinitionID: definition.ID}}}
+	registry := NewMediaModelRegistry(modelRepo, aliasRepo)
+	require.NoError(t, registry.Refresh(context.Background()))
+
+	aliasRepo.err = errors.New("database unavailable")
+	require.Error(t, registry.Refresh(context.Background()))
+	_, err := registry.Resolve("image-alias", MediaOperationTextToImage)
+	require.NoError(t, err)
+	aliasRepo.err = nil
+
+	for _, aliases := range [][]MediaModelAlias{
+		{{RequestedModelID: "missing-target", ModelDefinitionID: 99}},
+		{{RequestedModelID: "duplicate"}, {RequestedModelID: " DUPLICATE ", ModelDefinitionID: definition.ID}},
+	} {
+		aliasRepo.items = aliases
+		require.Error(t, registry.Refresh(context.Background()))
+		_, err := registry.Resolve("image-alias", MediaOperationTextToImage)
+		require.NoError(t, err)
+	}
+
+	modelRepo.items = []MediaModelDefinition{func() MediaModelDefinition {
+		disabled := definition
+		disabled.Enabled = false
+		return disabled
+	}()}
+	aliasRepo.items = []MediaModelAlias{{RequestedModelID: "image-alias", ModelDefinitionID: definition.ID}}
+	require.Error(t, registry.Refresh(context.Background()))
+	_, err = registry.Resolve("image-alias", MediaOperationTextToImage)
+	require.NoError(t, err)
+}
+
+func TestMediaModelRegistryRefreshValidatesRoutingMetadata(t *testing.T) {
+	tests := []struct {
+		name       string
+		definition MediaModelDefinition
+	}{
+		{name: "missing vendor", definition: func() MediaModelDefinition { d := validImageModelDefinition(); d.Vendor = " "; return d }()},
+		{name: "missing adapter", definition: func() MediaModelDefinition { d := validImageModelDefinition(); d.DefaultAdapter = " "; return d }()},
+		{name: "illegal async mode", definition: func() MediaModelDefinition {
+			d := validImageModelDefinition()
+			d.DefaultAsyncMode = NativeAsyncMode("native")
+			return d
+		}()},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			registry := NewMediaModelRegistry(&mediaModelRepoStub{items: []MediaModelDefinition{tt.definition}})
+			require.Error(t, registry.Refresh(context.Background()))
+		})
+	}
+}
+
+func TestMediaModelRegistryResolveRouteRequestChecksCapability(t *testing.T) {
+	registry := NewMediaModelRegistry(&mediaModelRepoStub{items: []MediaModelDefinition{validImageModelDefinition()}})
+	require.NoError(t, registry.Refresh(context.Background()))
+
+	_, err := registry.ResolveRouteRequest(MediaRouteRequest{
+		RequestedModel: "fake-image",
+		Operation:      MediaOperationTextToImage,
+		Capability:     MediaTypeVideo,
+	})
+	require.ErrorIs(t, err, ErrMediaCapabilityUnsupported)
 }
 
 func TestMediaModelRegistryValidateOperation(t *testing.T) {
 	repo := &mediaModelRepoStub{items: []MediaModelDefinition{{
-		ModelID:     "fake-image",
-		MediaType:   MediaTypeImage,
-		Operations:  []MediaOperation{MediaOperationTextToImage},
-		Constraints: json.RawMessage(`{"image_sizes":["1024x1024"],"max_image_count":2}`),
-		Enabled:     true,
+		ModelID:          "fake-image",
+		Vendor:           "fake-vendor",
+		MediaType:        MediaTypeImage,
+		Operations:       []MediaOperation{MediaOperationTextToImage},
+		Constraints:      json.RawMessage(`{"image_sizes":["1024x1024"],"max_image_count":2}`),
+		DefaultAdapter:   "fake-adapter",
+		DefaultAsyncMode: NativeAsyncOptional,
+		Enabled:          true,
 	}}}
 	registry := NewMediaModelRegistry(repo)
 	require.NoError(t, registry.Refresh(context.Background()))

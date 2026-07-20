@@ -77,6 +77,9 @@ func TestMediaModelRepositoryListEnabledMapsDefinitionFields(t *testing.T) {
 		SetOperations([]string{string(service.MediaOperationTextToVideo), string(service.MediaOperationImageToVideo)}).
 		SetConstraints(constraints).
 		SetBillingUnit("second").
+		SetVendor("fake-vendor").
+		SetDefaultAdapter("fake-adapter").
+		SetDefaultAsyncMode(string(service.NativeAsyncOptional)).
 		SetEnabled(true).
 		SetCreatedAt(createdAt).
 		SetUpdatedAt(updatedAt).
@@ -90,11 +93,51 @@ func TestMediaModelRepositoryListEnabledMapsDefinitionFields(t *testing.T) {
 	item := items[0]
 	require.Equal(t, entity.ID, item.ID)
 	require.Equal(t, "video-model", item.ModelID)
+	require.Equal(t, "fake-vendor", item.Vendor)
 	require.Equal(t, service.MediaTypeVideo, item.MediaType)
 	require.Equal(t, []service.MediaOperation{service.MediaOperationTextToVideo, service.MediaOperationImageToVideo}, item.Operations)
 	require.JSONEq(t, string(constraints), string(item.Constraints))
 	require.Equal(t, "second", item.BillingUnit)
+	require.Equal(t, "fake-adapter", item.DefaultAdapter)
+	require.Equal(t, service.NativeAsyncOptional, item.DefaultAsyncMode)
 	require.True(t, item.Enabled)
 	require.Equal(t, createdAt, item.CreatedAt)
 	require.Equal(t, updatedAt, item.UpdatedAt)
+}
+
+func TestMediaModelAliasRepositoryListAllMapsAliasesInIDOrder(t *testing.T) {
+	client := newMediaModelRepositoryTestClient(t)
+	first, err := client.MediaModelDefinition.Create().
+		SetModelID("first-model").
+		SetMediaType(string(service.MediaTypeImage)).
+		SetOperations([]string{string(service.MediaOperationTextToImage)}).
+		SetConstraints([]byte(`{}`)).
+		SetBillingUnit("image").
+		Save(context.Background())
+	require.NoError(t, err)
+	second, err := client.MediaModelDefinition.Create().
+		SetModelID("second-model").
+		SetMediaType(string(service.MediaTypeImage)).
+		SetOperations([]string{string(service.MediaOperationTextToImage)}).
+		SetConstraints([]byte(`{}`)).
+		SetBillingUnit("image").
+		Save(context.Background())
+	require.NoError(t, err)
+	_, err = client.MediaModelAlias.Create().
+		SetRequestedModelID("second-alias").
+		SetModelDefinitionID(second.ID).
+		Save(context.Background())
+	require.NoError(t, err)
+	_, err = client.MediaModelAlias.Create().
+		SetRequestedModelID("first-alias").
+		SetModelDefinitionID(first.ID).
+		Save(context.Background())
+	require.NoError(t, err)
+
+	aliases, err := NewMediaModelAliasRepository(client).ListAll(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, []service.MediaModelAlias{
+		{RequestedModelID: "second-alias", ModelDefinitionID: second.ID},
+		{RequestedModelID: "first-alias", ModelDefinitionID: first.ID},
+	}, aliases)
 }
