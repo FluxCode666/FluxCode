@@ -227,9 +227,84 @@ func TestNormalizeMediaAccountConfigExtraRejectsWrongJSONTypes(t *testing.T) {
 	}
 }
 
+func TestMediaAccountConfigVersionOneBindings(t *testing.T) {
+	extra := map[string]any{"media_config": map[string]any{
+		"version": 1, "provider": " xai ",
+		"models": map[string]any{
+			" image-one ": map[string]any{
+				"enabled": true, "upstream_model_id": " upstream-image ", "async_mode": "native",
+				"request_mapping": map[string]any{"rules": []any{}},
+			},
+			"disabled": map[string]any{"enabled": false, "upstream_model_id": "up-disabled", "async_mode": "unsupported"},
+		},
+	}}
+
+	require.NoError(t, normalizeMediaAccountConfigInExtra(extra))
+	stored := extra["media_config"].(map[string]any)
+	require.Equal(t, 1, stored["version"])
+	require.Equal(t, "xai", stored["provider"])
+	account := &Account{Extra: extra}
+	binding, ok := account.ResolveMediaModelBinding("image-one")
+	require.True(t, ok)
+	require.Equal(t, "upstream-image", binding.UpstreamModel)
+	require.Equal(t, NativeAsyncRequired, binding.NativeAsyncMode)
+	require.True(t, account.HasMediaModel("image-one"))
+	require.False(t, account.HasMediaModel("disabled"))
+	require.False(t, account.HasMediaModel("missing"))
+
+	encoded, err := json.Marshal(stored)
+	require.NoError(t, err)
+	var roundTrip map[string]any
+	require.NoError(t, json.Unmarshal(encoded, &roundTrip))
+	roundTripExtra := map[string]any{mediaAccountConfigExtraKey: roundTrip}
+	require.NoError(t, normalizeMediaAccountConfigInExtra(roundTripExtra))
+	roundTripBinding, ok := (&Account{Extra: roundTripExtra}).ResolveMediaModelBinding("image-one")
+	require.True(t, ok)
+	require.JSONEq(t, `{"rules":[]}`, string(mustMarshalMediaRequestMapping(t, roundTripBinding.RequestMapping)))
+}
+
+func TestMediaAccountConfigVersionOneRejectsInvalidBindings(t *testing.T) {
+	validBinding := func() map[string]any {
+		return map[string]any{"enabled": true, "upstream_model_id": "upstream", "async_mode": "native"}
+	}
+	tests := []struct {
+		name   string
+		models map[string]any
+	}{
+		{name: "empty model", models: map[string]any{" ": validBinding()}},
+		{name: "empty upstream", models: map[string]any{"model": map[string]any{"enabled": true, "upstream_model_id": " ", "async_mode": "native"}}},
+		{name: "invalid async mode", models: map[string]any{"model": map[string]any{"enabled": true, "upstream_model_id": "up", "async_mode": "optional"}}},
+		{name: "duplicate normalized model", models: map[string]any{"model": validBinding(), " model ": validBinding()}},
+		{name: "unknown binding field", models: map[string]any{"model": map[string]any{"enabled": true, "upstream_model_id": "up", "async_mode": "native", "unexpected": true}}},
+		{name: "request mapping must be object", models: map[string]any{"model": map[string]any{"enabled": true, "upstream_model_id": "up", "async_mode": "native", "request_mapping": []any{}}}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := normalizeMediaAccountConfigInExtra(map[string]any{"media_config": map[string]any{
+				"version": 1, "provider": "xai", "models": tt.models,
+			}})
+			require.Error(t, err)
+		})
+	}
+}
+
+func TestMediaAccountConfigVersionOneRejectsUnknownTopLevelField(t *testing.T) {
+	err := normalizeMediaAccountConfigInExtra(map[string]any{"media_config": map[string]any{
+		"version": 1, "provider": "xai", "models": map[string]any{}, "unexpected": true,
+	}})
+	require.ErrorIs(t, err, ErrInvalidMediaAccountConfig)
+}
+
 func mustDecodeMediaAccountExtra(t *testing.T, raw string) map[string]any {
 	t.Helper()
 	var extra map[string]any
 	require.NoError(t, json.Unmarshal([]byte(raw), &extra))
 	return extra
+}
+
+func mustMarshalMediaRequestMapping(t *testing.T, mapping MediaRequestMapping) []byte {
+	t.Helper()
+	encoded, err := json.Marshal(mapping)
+	require.NoError(t, err)
+	return encoded
 }

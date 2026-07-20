@@ -16,9 +16,40 @@ var (
 )
 
 type MediaAccountConfig struct {
-	Adapter         string                               `json:"adapter"`
-	NativeAsyncMode NativeAsyncMode                      `json:"native_async_mode"`
+	Version  int                          `json:"version,omitempty"`
+	Provider string                       `json:"provider,omitempty"`
+	Models   map[string]MediaModelBinding `json:"models,omitempty"`
+	// Legacy fields are retained for read compatibility only.
+	Adapter         string                               `json:"adapter,omitempty"`
+	NativeAsyncMode NativeAsyncMode                      `json:"native_async_mode,omitempty"`
 	ModelOverrides  map[string]MediaAccountModelOverride `json:"model_overrides,omitempty"`
+}
+
+type MediaModelBinding struct {
+	Enabled         bool                `json:"enabled"`
+	UpstreamModel   string              `json:"upstream_model_id"`
+	NativeAsyncMode NativeAsyncMode     `json:"async_mode"`
+	RequestMapping  MediaRequestMapping `json:"request_mapping"`
+}
+
+// MediaAccountModelBinding names the account-scoped form explicitly while
+// retaining MediaModelBinding for source compatibility with the foundation
+// implementation.
+type MediaAccountModelBinding = MediaModelBinding
+
+func (binding MediaModelBinding) MarshalJSON() ([]byte, error) {
+	type wireBinding struct {
+		Enabled        bool                `json:"enabled"`
+		UpstreamModel  string              `json:"upstream_model_id"`
+		AsyncMode      string              `json:"async_mode"`
+		RequestMapping MediaRequestMapping `json:"request_mapping"`
+	}
+	return json.Marshal(wireBinding{
+		Enabled:        binding.Enabled,
+		UpstreamModel:  binding.UpstreamModel,
+		AsyncMode:      mediaBindingAsyncMode(binding.NativeAsyncMode),
+		RequestMapping: binding.RequestMapping,
+	})
 }
 
 type MediaAccountModelOverride struct {
@@ -27,15 +58,26 @@ type MediaAccountModelOverride struct {
 }
 
 type ResolvedMediaAccountModel struct {
+	Provider        string
 	Adapter         string
 	UpstreamModel   string
 	NativeAsyncMode NativeAsyncMode
 }
 
 type mediaAccountConfigJSON struct {
+	Version         json.RawMessage `json:"version"`
+	Provider        json.RawMessage `json:"provider"`
+	Models          json.RawMessage `json:"models"`
 	Adapter         json.RawMessage `json:"adapter"`
 	NativeAsyncMode json.RawMessage `json:"native_async_mode"`
 	ModelOverrides  json.RawMessage `json:"model_overrides"`
+}
+
+type mediaModelBindingJSON struct {
+	Enabled         json.RawMessage `json:"enabled"`
+	UpstreamModel   json.RawMessage `json:"upstream_model_id"`
+	NativeAsyncMode json.RawMessage `json:"async_mode"`
+	RequestMapping  json.RawMessage `json:"request_mapping"`
 }
 
 type mediaAccountModelOverrideJSON struct {
@@ -44,6 +86,36 @@ type mediaAccountModelOverrideJSON struct {
 }
 
 func NormalizeMediaAccountConfig(config MediaAccountConfig) (MediaAccountConfig, error) {
+	if config.Version > 0 {
+		if config.Version != 1 {
+			return MediaAccountConfig{}, fmt.Errorf("%w: unsupported version", ErrInvalidMediaAccountConfig)
+		}
+		config.Provider = strings.TrimSpace(config.Provider)
+		if config.Provider == "" {
+			return MediaAccountConfig{}, fmt.Errorf("%w: provider is empty", ErrInvalidMediaAccountConfig)
+		}
+		normalized := make(map[string]MediaModelBinding, len(config.Models))
+		for model, binding := range config.Models {
+			model = strings.TrimSpace(model)
+			if model == "" || normalized[model].UpstreamModel != "" {
+				return MediaAccountConfig{}, fmt.Errorf("%w: invalid or duplicate model", ErrInvalidMediaAccountConfig)
+			}
+			binding.UpstreamModel = strings.TrimSpace(binding.UpstreamModel)
+			if binding.UpstreamModel == "" {
+				return MediaAccountConfig{}, fmt.Errorf("%w: upstream model is empty", ErrInvalidMediaAccountConfig)
+			}
+			mode, err := normalizeMediaAccountNativeAsyncMode(binding.NativeAsyncMode, true)
+			if err != nil {
+				return MediaAccountConfig{}, err
+			}
+			binding.NativeAsyncMode = mode
+			normalized[model] = binding
+		}
+		config.Models = normalized
+		return config, nil
+	}
+	// Legacy configuration is normalized but remains marked as legacy in memory;
+	// persistence converts it to version 1 in mediaAccountConfigMap.
 	config.Adapter = strings.ToLower(strings.TrimSpace(config.Adapter))
 	if config.Adapter == "" {
 		return MediaAccountConfig{}, fmt.Errorf("%w: adapter is empty", ErrInvalidMediaAccountConfig)
@@ -95,6 +167,27 @@ func normalizeMediaAccountNativeAsyncMode(mode NativeAsyncMode, defaultUnsupport
 	}
 }
 
+// New account bindings intentionally expose only whether the provider uses a
+// native asynchronous protocol. The legacy optional/required distinction stays
+// available only while reading old adapter configurations.
+func normalizeMediaBindingAsyncMode(mode string) (NativeAsyncMode, error) {
+	switch strings.ToLower(strings.TrimSpace(mode)) {
+	case "native":
+		return NativeAsyncRequired, nil
+	case "unsupported":
+		return NativeAsyncUnsupported, nil
+	default:
+		return "", ErrInvalidNativeAsyncMode
+	}
+}
+
+func mediaBindingAsyncMode(mode NativeAsyncMode) string {
+	if mode == NativeAsyncUnsupported {
+		return "unsupported"
+	}
+	return "native"
+}
+
 func mediaAccountConfigFromExtra(extra map[string]any) (MediaAccountConfig, bool, error) {
 	if extra == nil {
 		return MediaAccountConfig{}, false, nil
@@ -110,6 +203,9 @@ func mediaAccountConfigFromExtra(extra map[string]any) (MediaAccountConfig, bool
 	}
 	config, err := decodeMediaAccountConfig(encoded)
 	if err != nil {
+		if errors.Is(err, ErrInvalidNativeAsyncMode) {
+			return MediaAccountConfig{}, true, fmt.Errorf("%w: %w", ErrInvalidMediaAccountConfig, err)
+		}
 		return MediaAccountConfig{}, true, fmt.Errorf("%w: invalid media_config shape", ErrInvalidMediaAccountConfig)
 	}
 	config, err = NormalizeMediaAccountConfig(config)
@@ -128,6 +224,63 @@ func decodeMediaAccountConfig(encoded []byte) (MediaAccountConfig, error) {
 		return MediaAccountConfig{}, err
 	}
 
+	if len(raw.Version) > 0 {
+		var version int
+		if err := json.Unmarshal(raw.Version, &version); err != nil || version != 1 {
+			return MediaAccountConfig{}, ErrInvalidMediaAccountConfig
+		}
+		provider, err := decodeMediaAccountString(raw.Provider, false)
+		if err != nil {
+			return MediaAccountConfig{}, err
+		}
+		if len(raw.Models) == 0 || isJSONNull(raw.Models) || !isJSONObject(raw.Models) {
+			return MediaAccountConfig{}, ErrInvalidMediaAccountConfig
+		}
+		var models map[string]json.RawMessage
+		if err := json.Unmarshal(raw.Models, &models); err != nil {
+			return MediaAccountConfig{}, ErrInvalidMediaAccountConfig
+		}
+		config := MediaAccountConfig{Version: 1, Provider: provider, Models: make(map[string]MediaModelBinding, len(models))}
+		for model, encodedBinding := range models {
+			if !isJSONObject(encodedBinding) {
+				return MediaAccountConfig{}, ErrInvalidMediaAccountConfig
+			}
+			var rawBinding mediaModelBindingJSON
+			if err := decodeMediaAccountJSON(encodedBinding, &rawBinding); err != nil {
+				return MediaAccountConfig{}, err
+			}
+			upstream, err := decodeMediaAccountString(rawBinding.UpstreamModel, false)
+			if err != nil {
+				return MediaAccountConfig{}, err
+			}
+			mode, err := decodeMediaAccountString(rawBinding.NativeAsyncMode, false)
+			if err != nil {
+				return MediaAccountConfig{}, err
+			}
+			if len(rawBinding.Enabled) == 0 {
+				return MediaAccountConfig{}, ErrInvalidMediaAccountConfig
+			}
+			var enabled bool
+			if err := json.Unmarshal(rawBinding.Enabled, &enabled); err != nil {
+				return MediaAccountConfig{}, ErrInvalidMediaAccountConfig
+			}
+			if len(rawBinding.RequestMapping) > 0 && (isJSONNull(rawBinding.RequestMapping) || !isJSONObject(rawBinding.RequestMapping)) {
+				return MediaAccountConfig{}, ErrInvalidMediaAccountConfig
+			}
+			var mapping MediaRequestMapping
+			if len(rawBinding.RequestMapping) > 0 {
+				if err := json.Unmarshal(rawBinding.RequestMapping, &mapping); err != nil {
+					return MediaAccountConfig{}, ErrInvalidMediaAccountConfig
+				}
+			}
+			nativeMode, err := normalizeMediaBindingAsyncMode(mode)
+			if err != nil {
+				return MediaAccountConfig{}, err
+			}
+			config.Models[model] = MediaModelBinding{Enabled: enabled, UpstreamModel: upstream, NativeAsyncMode: nativeMode, RequestMapping: mapping}
+		}
+		return config, nil
+	}
 	adapter, err := decodeMediaAccountString(raw.Adapter, false)
 	if err != nil {
 		return MediaAccountConfig{}, err
@@ -223,25 +376,29 @@ func normalizeMediaAccountConfigInExtra(extra map[string]any) error {
 }
 
 func mediaAccountConfigMap(config MediaAccountConfig) map[string]any {
-	result := map[string]any{
-		"adapter":           config.Adapter,
-		"native_async_mode": string(config.NativeAsyncMode),
+	if config.Version == 1 || len(config.Models) > 0 {
+		models := make(map[string]any, len(config.Models))
+		for model, binding := range config.Models {
+			models[model] = map[string]any{"enabled": binding.Enabled, "upstream_model_id": binding.UpstreamModel, "async_mode": mediaBindingAsyncMode(binding.NativeAsyncMode), "request_mapping": binding.RequestMapping}
+		}
+		return map[string]any{"version": 1, "provider": config.Provider, "models": models}
 	}
-	if len(config.ModelOverrides) == 0 {
-		return result
-	}
-
-	overrides := make(map[string]any, len(config.ModelOverrides))
+	models := make(map[string]any, len(config.ModelOverrides))
 	for model, override := range config.ModelOverrides {
-		value := make(map[string]any, 2)
-		if override.UpstreamModel != "" {
-			value["upstream_model"] = override.UpstreamModel
+		upstream := override.UpstreamModel
+		if upstream == "" {
+			upstream = model
 		}
-		if override.NativeAsyncMode != "" {
-			value["native_async_mode"] = string(override.NativeAsyncMode)
+		mode := override.NativeAsyncMode
+		if mode == "" {
+			mode = config.NativeAsyncMode
 		}
-		overrides[model] = value
+		models[model] = map[string]any{
+			"enabled":           true,
+			"upstream_model_id": upstream,
+			"async_mode":        mediaBindingAsyncMode(mode),
+			"request_mapping":   MediaRequestMapping{},
+		}
 	}
-	result["model_overrides"] = overrides
-	return result
+	return map[string]any{"version": 1, "provider": config.Adapter, "models": models}
 }

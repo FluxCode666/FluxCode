@@ -87,6 +87,17 @@ func (a *Account) ResolveMediaModel(model string) ResolvedMediaAccountModel {
 	if err != nil || !configured {
 		return fallback
 	}
+	if config.Version == 1 {
+		binding, ok := config.Models[model]
+		if !ok || !binding.Enabled {
+			return fallback
+		}
+		return ResolvedMediaAccountModel{
+			Provider:        config.Provider,
+			UpstreamModel:   binding.UpstreamModel,
+			NativeAsyncMode: binding.NativeAsyncMode,
+		}
+	}
 	resolved := ResolvedMediaAccountModel{
 		Adapter:         config.Adapter,
 		UpstreamModel:   model,
@@ -101,6 +112,48 @@ func (a *Account) ResolveMediaModel(model string) ResolvedMediaAccountModel {
 		}
 	}
 	return resolved
+}
+
+// ResolveMediaModelBinding returns the explicit version-1 binding for a media
+// model. Legacy adapter/model_overrides configurations are converted on read so
+// callers can use one model-list contract while persisted legacy data remains
+// readable.
+func (a *Account) ResolveMediaModelBinding(model string) (MediaModelBinding, bool) {
+	if a == nil {
+		return MediaModelBinding{}, false
+	}
+	model = strings.TrimSpace(model)
+	if model == "" {
+		return MediaModelBinding{}, false
+	}
+	config, configured, err := mediaAccountConfigFromExtra(a.Extra)
+	if err != nil || !configured {
+		return MediaModelBinding{}, false
+	}
+	if config.Version == 1 {
+		binding, ok := config.Models[model]
+		return binding, ok && binding.Enabled
+	}
+	override, ok := config.ModelOverrides[model]
+	if !ok {
+		return MediaModelBinding{}, false
+	}
+	upstream := override.UpstreamModel
+	if upstream == "" {
+		upstream = model
+	}
+	mode := override.NativeAsyncMode
+	if mode == "" {
+		mode = config.NativeAsyncMode
+	}
+	return MediaModelBinding{Enabled: true, UpstreamModel: upstream, NativeAsyncMode: mode}, true
+}
+
+// HasMediaModel reports whether this account explicitly enables a media model.
+// It intentionally does not inspect text model_mapping or IsModelSupported.
+func (a *Account) HasMediaModel(model string) bool {
+	_, ok := a.ResolveMediaModelBinding(model)
+	return ok
 }
 
 func (a *Account) IsActive() bool {

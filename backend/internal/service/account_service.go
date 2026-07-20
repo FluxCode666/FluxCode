@@ -225,6 +225,9 @@ func (s *AccountService) Create(ctx context.Context, req CreateAccountRequest) (
 	} else {
 		account.AutoPauseOnExpired = true
 	}
+	if err := normalizeMediaAccountConfigInExtra(account.Extra); err != nil {
+		return nil, err
+	}
 	if err := validateCodex2APIAccount(account); err != nil {
 		return nil, err
 	}
@@ -288,6 +291,11 @@ func (s *AccountService) Update(ctx context.Context, id int64, req UpdateAccount
 	if err != nil {
 		return nil, fmt.Errorf("get account: %w", err)
 	}
+	if req.Extra != nil {
+		if err := normalizeMediaAccountConfigInExtra(*req.Extra); err != nil {
+			return nil, err
+		}
+	}
 
 	// 更新字段
 	if req.Name != nil {
@@ -325,6 +333,14 @@ func (s *AccountService) Update(ctx context.Context, id int64, req UpdateAccount
 	}
 	if req.AutoPauseOnExpired != nil {
 		account.AutoPauseOnExpired = *req.AutoPauseOnExpired
+	}
+	// Normalize an existing legacy configuration on any successful save, even
+	// when this request does not replace Extra. Requests that do replace Extra
+	// were validated before mutating the loaded account above.
+	if req.Extra == nil {
+		if err := normalizeMediaAccountConfigInExtra(account.Extra); err != nil {
+			return nil, err
+		}
 	}
 
 	// 执行更新

@@ -62,14 +62,16 @@ func TestAdminServiceCreateAccountNormalizesMediaConfig(t *testing.T) {
 	require.Equal(t, 1, repo.createCalls)
 	require.Equal(t, "value", repo.LastCreated().Extra["preserved"])
 	stored := repo.LastCreated().Extra["media_config"].(map[string]any)
-	require.Equal(t, "gemini", stored["adapter"])
-	require.Equal(t, "optional", stored["native_async_mode"])
-	overrides := stored["model_overrides"].(map[string]any)
-	require.NotContains(t, overrides, "  Veo-3.1  ")
+	require.Equal(t, 1, stored["version"])
+	require.Equal(t, "gemini", stored["provider"])
+	models := stored["models"].(map[string]any)
+	require.NotContains(t, models, "  Veo-3.1  ")
 	require.Equal(t, map[string]any{
-		"upstream_model":    "provider-model",
-		"native_async_mode": "required",
-	}, overrides["Veo-3.1"])
+		"enabled":           true,
+		"upstream_model_id": "provider-model",
+		"async_mode":        "native",
+		"request_mapping":   MediaRequestMapping{},
+	}, models["Veo-3.1"])
 }
 
 func TestAdminServiceCreateAccountAllowsExtraWithoutMediaConfig(t *testing.T) {
@@ -129,8 +131,9 @@ func TestAdminServiceUpdateAccountNormalizesMediaConfigAndKeepsPayloadExtra(t *t
 	require.NotContains(t, updated.Extra, "old_key")
 	require.Equal(t, true, updated.Extra["preserved"])
 	stored := updated.Extra["media_config"].(map[string]any)
-	require.Equal(t, "gemini", stored["adapter"])
-	require.Equal(t, "unsupported", stored["native_async_mode"])
+	require.Equal(t, 1, stored["version"])
+	require.Equal(t, "gemini", stored["provider"])
+	require.Empty(t, stored["models"])
 }
 
 func TestAdminServiceUpdateAccountRejectsInvalidMediaConfigBeforePersist(t *testing.T) {
@@ -166,4 +169,63 @@ func TestAdminServiceUpdateAccountRejectsInvalidMediaConfigBeforePersist(t *test
 			require.Equal(t, map[string]any{"preserved": true}, repo.account.Extra)
 		})
 	}
+}
+
+func TestAccountServiceUpdateRejectsInvalidMediaConfigBeforeMutatingLoadedAccount(t *testing.T) {
+	repo := &adminServiceMediaConfigRepo{account: &Account{
+		ID: 9, Name: "before", Platform: PlatformGemini, Type: AccountTypeAPIKey,
+		Extra: map[string]any{"preserved": true},
+	}}
+	svc := NewAccountService(repo, nil)
+	after := "after"
+	invalidExtra := map[string]any{"media_config": map[string]any{
+		"version": 1, "provider": "xai", "models": map[string]any{
+			"image": map[string]any{"enabled": true, "upstream_model_id": "up", "async_mode": "sometimes"},
+		},
+	}}
+
+	_, err := svc.Update(context.Background(), 9, UpdateAccountRequest{Name: &after, Extra: &invalidExtra})
+	require.ErrorIs(t, err, ErrInvalidMediaAccountConfig)
+	require.Equal(t, "before", repo.account.Name)
+	require.Equal(t, map[string]any{"preserved": true}, repo.account.Extra)
+	require.Zero(t, repo.updateCalls)
+}
+
+func TestAccountServiceCreateNormalizesVersionOneMediaConfig(t *testing.T) {
+	repo := &adminServiceMediaConfigRepo{}
+	svc := NewAccountService(repo, nil)
+
+	created, err := svc.Create(context.Background(), CreateAccountRequest{
+		Name: "media", Platform: PlatformGemini, Type: AccountTypeAPIKey,
+		Extra: map[string]any{"media_config": map[string]any{
+			"version": 1, "provider": " xai ", "models": map[string]any{
+				" image ": map[string]any{"enabled": true, "upstream_model_id": " image-up ", "async_mode": "native"},
+			},
+		}},
+	})
+	require.NoError(t, err)
+	require.Equal(t, 1, repo.createCalls)
+	stored := created.Extra[mediaAccountConfigExtraKey].(map[string]any)
+	require.Equal(t, "xai", stored["provider"])
+	require.Contains(t, stored["models"].(map[string]any), "image")
+}
+
+func TestAccountServiceUpdateUpgradesLegacyMediaConfigOnOrdinarySave(t *testing.T) {
+	repo := &adminServiceMediaConfigRepo{account: &Account{
+		ID: 10, Name: "before", Platform: PlatformGemini, Type: AccountTypeAPIKey,
+		Extra: map[string]any{"media_config": map[string]any{
+			"adapter": "gemini", "native_async_mode": "optional",
+			"model_overrides": map[string]any{"veo": map[string]any{"upstream_model": "veo-up"}},
+		}},
+	}}
+	svc := NewAccountService(repo, nil)
+	after := "after"
+
+	updated, err := svc.Update(context.Background(), 10, UpdateAccountRequest{Name: &after})
+	require.NoError(t, err)
+	require.Equal(t, 1, repo.updateCalls)
+	stored := updated.Extra[mediaAccountConfigExtraKey].(map[string]any)
+	require.Equal(t, 1, stored["version"])
+	require.Equal(t, "gemini", stored["provider"])
+	require.Contains(t, stored["models"].(map[string]any), "veo")
 }

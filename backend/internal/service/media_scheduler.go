@@ -95,7 +95,7 @@ func (s *MediaScheduler) SnapshotCandidates(ctx context.Context, groupID int64, 
 		if !group.MediaCrossPlatformEnabled && account.Platform != group.Platform {
 			continue
 		}
-		if !account.IsSchedulable() || !account.IsModelSupported(requestedModel) {
+		if !account.IsSchedulable() || !account.HasMediaModel(requestedModel) {
 			continue
 		}
 		resolved := account.ResolveMediaModel(requestedModel)
