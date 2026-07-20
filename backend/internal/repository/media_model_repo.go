@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
+	"github.com/Wei-Shaw/sub2api/ent/mediamodelalias"
 	"github.com/Wei-Shaw/sub2api/ent/mediamodeldefinition"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 )
@@ -47,4 +48,24 @@ func (r *mediaModelRepository) ListEnabled(ctx context.Context) ([]service.Media
 		})
 	}
 	return definitions, nil
+}
+
+// ListAll implements service.MediaModelAliasRepository in addition to the
+// model-definition repository. This allows the one-argument registry
+// constructor used by the production composition root to discover aliases.
+func (r *mediaModelRepository) ListAll(ctx context.Context) ([]service.MediaModelAlias, error) {
+	entities, err := r.client.MediaModelAlias.Query().
+		Order(dbent.Asc(mediamodelalias.FieldID)).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	aliases := make([]service.MediaModelAlias, 0, len(entities))
+	for _, entity := range entities {
+		aliases = append(aliases, service.MediaModelAlias{
+			RequestedModelID:  entity.RequestedModelID,
+			ModelDefinitionID: entity.ModelDefinitionID,
+		})
+	}
+	return aliases, nil
 }

@@ -141,3 +141,30 @@ func TestMediaModelAliasRepositoryListAllMapsAliasesInIDOrder(t *testing.T) {
 		{RequestedModelID: "first-alias", ModelDefinitionID: first.ID},
 	}, aliases)
 }
+
+func TestMediaModelRepositorySingleArgumentRegistryLoadsAliases(t *testing.T) {
+	client := newMediaModelRepositoryTestClient(t)
+	definition, err := client.MediaModelDefinition.Create().
+		SetModelID("canonical-image").
+		SetMediaType(string(service.MediaTypeImage)).
+		SetOperations([]string{string(service.MediaOperationTextToImage)}).
+		SetConstraints([]byte(`{}`)).
+		SetBillingUnit("image").
+		SetVendor("fake-vendor").
+		SetDefaultAdapter("fake-adapter").
+		SetDefaultAsyncMode(string(service.NativeAsyncOptional)).
+		SetEnabled(true).
+		Save(context.Background())
+	require.NoError(t, err)
+	_, err = client.MediaModelAlias.Create().
+		SetRequestedModelID("image-alias").
+		SetModelDefinitionID(definition.ID).
+		Save(context.Background())
+	require.NoError(t, err)
+
+	registry := service.NewMediaModelRegistry(NewMediaModelRepository(client))
+	require.NoError(t, registry.Refresh(context.Background()))
+	resolved, err := registry.Resolve("image-alias", service.MediaOperationTextToImage)
+	require.NoError(t, err)
+	require.Equal(t, "canonical-image", resolved.ModelID)
+}

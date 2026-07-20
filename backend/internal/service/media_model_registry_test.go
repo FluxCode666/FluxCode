@@ -27,6 +27,11 @@ func (s *mediaModelAliasRepoStub) ListAll(context.Context) ([]MediaModelAlias, e
 	return s.items, s.err
 }
 
+type mediaModelRepositoryWithAliasesStub struct {
+	mediaModelRepoStub
+	mediaModelAliasRepoStub
+}
+
 func validImageModelDefinition() MediaModelDefinition {
 	return MediaModelDefinition{
 		ModelID:          "fake-image",
@@ -72,6 +77,29 @@ func TestMediaModelRegistryRefreshResolvesAliases(t *testing.T) {
 	resolved, err := registry.Resolve("image-alias", MediaOperationTextToImage)
 	require.NoError(t, err)
 	require.Equal(t, "fake-image", resolved.ModelID)
+}
+
+func TestMediaModelRegistrySingleArgumentConstructorDiscoversAliases(t *testing.T) {
+	definition := validImageModelDefinition()
+	definition.ID = 10
+	repo := &mediaModelRepositoryWithAliasesStub{
+		mediaModelRepoStub: mediaModelRepoStub{items: []MediaModelDefinition{definition}},
+		mediaModelAliasRepoStub: mediaModelAliasRepoStub{items: []MediaModelAlias{{
+			RequestedModelID:  "image-alias",
+			ModelDefinitionID: definition.ID,
+		}}},
+	}
+	registry := NewMediaModelRegistry(repo)
+
+	require.NoError(t, registry.Refresh(context.Background()))
+	resolved, err := registry.Resolve("image-alias", MediaOperationTextToImage)
+	require.NoError(t, err)
+	require.Equal(t, "fake-image", resolved.ModelID)
+
+	repo.mediaModelAliasRepoStub.err = errors.New("database unavailable")
+	require.Error(t, registry.Refresh(context.Background()))
+	_, err = registry.Resolve("image-alias", MediaOperationTextToImage)
+	require.NoError(t, err)
 }
 
 func TestMediaModelRegistryRefreshRejectsInvalidAliasesAndPreservesSnapshot(t *testing.T) {

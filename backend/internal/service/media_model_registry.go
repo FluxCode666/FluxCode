@@ -81,6 +81,11 @@ func NewMediaModelRegistry(repo MediaModelDefinitionRepository, aliasRepos ...Me
 	registry := &MediaModelRegistry{repo: repo}
 	if len(aliasRepos) > 0 {
 		registry.aliasRepo = aliasRepos[0]
+	} else if aliasRepo, ok := repo.(MediaModelAliasRepository); ok {
+		// The production composition root supplies the model repository as the
+		// sole constructor argument. Reuse its alias capability when available so
+		// aliases cannot be silently skipped by that wiring path.
+		registry.aliasRepo = aliasRepo
 	}
 	registry.snapshot.Store(mediaModelRegistrySnapshot{
 		models:  map[string]MediaModelDefinition{},
