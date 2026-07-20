@@ -21,8 +21,10 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/generatedimage"
 	"github.com/Wei-Shaw/sub2api/ent/giftbalancerecord"
 	"github.com/Wei-Shaw/sub2api/ent/group"
+	"github.com/Wei-Shaw/sub2api/ent/groupmediamodelscope"
 	"github.com/Wei-Shaw/sub2api/ent/idempotencyrecord"
 	"github.com/Wei-Shaw/sub2api/ent/mediaartifact"
+	"github.com/Wei-Shaw/sub2api/ent/mediamodelalias"
 	"github.com/Wei-Shaw/sub2api/ent/mediamodeldefinition"
 	"github.com/Wei-Shaw/sub2api/ent/mediatask"
 	"github.com/Wei-Shaw/sub2api/ent/paymentauditlog"
@@ -464,6 +466,33 @@ func (f TraverseGroup) Traverse(ctx context.Context, q ent.Query) error {
 	return fmt.Errorf("unexpected query type %T. expect *ent.GroupQuery", q)
 }
 
+// The GroupMediaModelScopeFunc type is an adapter to allow the use of ordinary function as a Querier.
+type GroupMediaModelScopeFunc func(context.Context, *ent.GroupMediaModelScopeQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f GroupMediaModelScopeFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.GroupMediaModelScopeQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.GroupMediaModelScopeQuery", q)
+}
+
+// The TraverseGroupMediaModelScope type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseGroupMediaModelScope func(context.Context, *ent.GroupMediaModelScopeQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseGroupMediaModelScope) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseGroupMediaModelScope) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.GroupMediaModelScopeQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.GroupMediaModelScopeQuery", q)
+}
+
 // The IdempotencyRecordFunc type is an adapter to allow the use of ordinary function as a Querier.
 type IdempotencyRecordFunc func(context.Context, *ent.IdempotencyRecordQuery) (ent.Value, error)
 
@@ -516,6 +545,33 @@ func (f TraverseMediaArtifact) Traverse(ctx context.Context, q ent.Query) error 
 		return f(ctx, q)
 	}
 	return fmt.Errorf("unexpected query type %T. expect *ent.MediaArtifactQuery", q)
+}
+
+// The MediaModelAliasFunc type is an adapter to allow the use of ordinary function as a Querier.
+type MediaModelAliasFunc func(context.Context, *ent.MediaModelAliasQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f MediaModelAliasFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.MediaModelAliasQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.MediaModelAliasQuery", q)
+}
+
+// The TraverseMediaModelAlias type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseMediaModelAlias func(context.Context, *ent.MediaModelAliasQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseMediaModelAlias) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseMediaModelAlias) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.MediaModelAliasQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.MediaModelAliasQuery", q)
 }
 
 // The MediaModelDefinitionFunc type is an adapter to allow the use of ordinary function as a Querier.
@@ -1384,10 +1440,14 @@ func NewQuery(q ent.Query) (Query, error) {
 		return &query[*ent.GiftBalanceRecordQuery, predicate.GiftBalanceRecord, giftbalancerecord.OrderOption]{typ: ent.TypeGiftBalanceRecord, tq: q}, nil
 	case *ent.GroupQuery:
 		return &query[*ent.GroupQuery, predicate.Group, group.OrderOption]{typ: ent.TypeGroup, tq: q}, nil
+	case *ent.GroupMediaModelScopeQuery:
+		return &query[*ent.GroupMediaModelScopeQuery, predicate.GroupMediaModelScope, groupmediamodelscope.OrderOption]{typ: ent.TypeGroupMediaModelScope, tq: q}, nil
 	case *ent.IdempotencyRecordQuery:
 		return &query[*ent.IdempotencyRecordQuery, predicate.IdempotencyRecord, idempotencyrecord.OrderOption]{typ: ent.TypeIdempotencyRecord, tq: q}, nil
 	case *ent.MediaArtifactQuery:
 		return &query[*ent.MediaArtifactQuery, predicate.MediaArtifact, mediaartifact.OrderOption]{typ: ent.TypeMediaArtifact, tq: q}, nil
+	case *ent.MediaModelAliasQuery:
+		return &query[*ent.MediaModelAliasQuery, predicate.MediaModelAlias, mediamodelalias.OrderOption]{typ: ent.TypeMediaModelAlias, tq: q}, nil
 	case *ent.MediaModelDefinitionQuery:
 		return &query[*ent.MediaModelDefinitionQuery, predicate.MediaModelDefinition, mediamodeldefinition.OrderOption]{typ: ent.TypeMediaModelDefinition, tq: q}, nil
 	case *ent.MediaTaskQuery:

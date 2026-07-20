@@ -18,8 +18,10 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/generatedimage"
 	"github.com/Wei-Shaw/sub2api/ent/giftbalancerecord"
 	"github.com/Wei-Shaw/sub2api/ent/group"
+	"github.com/Wei-Shaw/sub2api/ent/groupmediamodelscope"
 	"github.com/Wei-Shaw/sub2api/ent/idempotencyrecord"
 	"github.com/Wei-Shaw/sub2api/ent/mediaartifact"
+	"github.com/Wei-Shaw/sub2api/ent/mediamodelalias"
 	"github.com/Wei-Shaw/sub2api/ent/mediamodeldefinition"
 	"github.com/Wei-Shaw/sub2api/ent/mediatask"
 	"github.com/Wei-Shaw/sub2api/ent/paymentauditlog"
@@ -873,6 +875,21 @@ func init() {
 	groupDescMessagesDispatchModelConfig := groupFields[32].Descriptor()
 	// group.DefaultMessagesDispatchModelConfig holds the default value on creation for the messages_dispatch_model_config field.
 	group.DefaultMessagesDispatchModelConfig = groupDescMessagesDispatchModelConfig.Default.(domain.OpenAIMessagesDispatchModelConfig)
+	groupmediamodelscopeMixin := schema.GroupMediaModelScope{}.Mixin()
+	groupmediamodelscopeMixinFields0 := groupmediamodelscopeMixin[0].Fields()
+	_ = groupmediamodelscopeMixinFields0
+	groupmediamodelscopeFields := schema.GroupMediaModelScope{}.Fields()
+	_ = groupmediamodelscopeFields
+	// groupmediamodelscopeDescCreatedAt is the schema descriptor for created_at field.
+	groupmediamodelscopeDescCreatedAt := groupmediamodelscopeMixinFields0[0].Descriptor()
+	// groupmediamodelscope.DefaultCreatedAt holds the default value on creation for the created_at field.
+	groupmediamodelscope.DefaultCreatedAt = groupmediamodelscopeDescCreatedAt.Default.(func() time.Time)
+	// groupmediamodelscopeDescUpdatedAt is the schema descriptor for updated_at field.
+	groupmediamodelscopeDescUpdatedAt := groupmediamodelscopeMixinFields0[1].Descriptor()
+	// groupmediamodelscope.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	groupmediamodelscope.DefaultUpdatedAt = groupmediamodelscopeDescUpdatedAt.Default.(func() time.Time)
+	// groupmediamodelscope.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	groupmediamodelscope.UpdateDefaultUpdatedAt = groupmediamodelscopeDescUpdatedAt.UpdateDefault.(func() time.Time)
 	idempotencyrecordMixin := schema.IdempotencyRecord{}.Mixin()
 	idempotencyrecordMixinFields0 := idempotencyrecordMixin[0].Fields()
 	_ = idempotencyrecordMixinFields0
@@ -961,6 +978,31 @@ func init() {
 	mediaartifact.DefaultStorageStatus = mediaartifactDescStorageStatus.Default.(string)
 	// mediaartifact.StorageStatusValidator is a validator for the "storage_status" field. It is called by the builders before save.
 	mediaartifact.StorageStatusValidator = mediaartifactDescStorageStatus.Validators[0].(func(string) error)
+	// mediaartifactDescStorageProvider is the schema descriptor for storage_provider field.
+	mediaartifactDescStorageProvider := mediaartifactFields[13].Descriptor()
+	// mediaartifact.DefaultStorageProvider holds the default value on creation for the storage_provider field.
+	mediaartifact.DefaultStorageProvider = mediaartifactDescStorageProvider.Default.(string)
+	// mediaartifact.StorageProviderValidator is a validator for the "storage_provider" field. It is called by the builders before save.
+	mediaartifact.StorageProviderValidator = mediaartifactDescStorageProvider.Validators[0].(func(string) error)
+	mediamodelaliasMixin := schema.MediaModelAlias{}.Mixin()
+	mediamodelaliasMixinFields0 := mediamodelaliasMixin[0].Fields()
+	_ = mediamodelaliasMixinFields0
+	mediamodelaliasFields := schema.MediaModelAlias{}.Fields()
+	_ = mediamodelaliasFields
+	// mediamodelaliasDescCreatedAt is the schema descriptor for created_at field.
+	mediamodelaliasDescCreatedAt := mediamodelaliasMixinFields0[0].Descriptor()
+	// mediamodelalias.DefaultCreatedAt holds the default value on creation for the created_at field.
+	mediamodelalias.DefaultCreatedAt = mediamodelaliasDescCreatedAt.Default.(func() time.Time)
+	// mediamodelaliasDescUpdatedAt is the schema descriptor for updated_at field.
+	mediamodelaliasDescUpdatedAt := mediamodelaliasMixinFields0[1].Descriptor()
+	// mediamodelalias.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	mediamodelalias.DefaultUpdatedAt = mediamodelaliasDescUpdatedAt.Default.(func() time.Time)
+	// mediamodelalias.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	mediamodelalias.UpdateDefaultUpdatedAt = mediamodelaliasDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// mediamodelaliasDescRequestedModelID is the schema descriptor for requested_model_id field.
+	mediamodelaliasDescRequestedModelID := mediamodelaliasFields[0].Descriptor()
+	// mediamodelalias.RequestedModelIDValidator is a validator for the "requested_model_id" field. It is called by the builders before save.
+	mediamodelalias.RequestedModelIDValidator = mediamodelaliasDescRequestedModelID.Validators[0].(func(string) error)
 	mediamodeldefinitionMixin := schema.MediaModelDefinition{}.Mixin()
 	mediamodeldefinitionMixinFields0 := mediamodeldefinitionMixin[0].Fields()
 	_ = mediamodeldefinitionMixinFields0
@@ -980,16 +1022,34 @@ func init() {
 	mediamodeldefinitionDescModelID := mediamodeldefinitionFields[0].Descriptor()
 	// mediamodeldefinition.ModelIDValidator is a validator for the "model_id" field. It is called by the builders before save.
 	mediamodeldefinition.ModelIDValidator = mediamodeldefinitionDescModelID.Validators[0].(func(string) error)
+	// mediamodeldefinitionDescVendor is the schema descriptor for vendor field.
+	mediamodeldefinitionDescVendor := mediamodeldefinitionFields[1].Descriptor()
+	// mediamodeldefinition.DefaultVendor holds the default value on creation for the vendor field.
+	mediamodeldefinition.DefaultVendor = mediamodeldefinitionDescVendor.Default.(string)
+	// mediamodeldefinition.VendorValidator is a validator for the "vendor" field. It is called by the builders before save.
+	mediamodeldefinition.VendorValidator = mediamodeldefinitionDescVendor.Validators[0].(func(string) error)
 	// mediamodeldefinitionDescMediaType is the schema descriptor for media_type field.
-	mediamodeldefinitionDescMediaType := mediamodeldefinitionFields[1].Descriptor()
+	mediamodeldefinitionDescMediaType := mediamodeldefinitionFields[2].Descriptor()
 	// mediamodeldefinition.MediaTypeValidator is a validator for the "media_type" field. It is called by the builders before save.
 	mediamodeldefinition.MediaTypeValidator = mediamodeldefinitionDescMediaType.Validators[0].(func(string) error)
 	// mediamodeldefinitionDescBillingUnit is the schema descriptor for billing_unit field.
-	mediamodeldefinitionDescBillingUnit := mediamodeldefinitionFields[4].Descriptor()
+	mediamodeldefinitionDescBillingUnit := mediamodeldefinitionFields[5].Descriptor()
 	// mediamodeldefinition.BillingUnitValidator is a validator for the "billing_unit" field. It is called by the builders before save.
 	mediamodeldefinition.BillingUnitValidator = mediamodeldefinitionDescBillingUnit.Validators[0].(func(string) error)
+	// mediamodeldefinitionDescDefaultAdapter is the schema descriptor for default_adapter field.
+	mediamodeldefinitionDescDefaultAdapter := mediamodeldefinitionFields[6].Descriptor()
+	// mediamodeldefinition.DefaultDefaultAdapter holds the default value on creation for the default_adapter field.
+	mediamodeldefinition.DefaultDefaultAdapter = mediamodeldefinitionDescDefaultAdapter.Default.(string)
+	// mediamodeldefinition.DefaultAdapterValidator is a validator for the "default_adapter" field. It is called by the builders before save.
+	mediamodeldefinition.DefaultAdapterValidator = mediamodeldefinitionDescDefaultAdapter.Validators[0].(func(string) error)
+	// mediamodeldefinitionDescDefaultAsyncMode is the schema descriptor for default_async_mode field.
+	mediamodeldefinitionDescDefaultAsyncMode := mediamodeldefinitionFields[7].Descriptor()
+	// mediamodeldefinition.DefaultDefaultAsyncMode holds the default value on creation for the default_async_mode field.
+	mediamodeldefinition.DefaultDefaultAsyncMode = mediamodeldefinitionDescDefaultAsyncMode.Default.(string)
+	// mediamodeldefinition.DefaultAsyncModeValidator is a validator for the "default_async_mode" field. It is called by the builders before save.
+	mediamodeldefinition.DefaultAsyncModeValidator = mediamodeldefinitionDescDefaultAsyncMode.Validators[0].(func(string) error)
 	// mediamodeldefinitionDescEnabled is the schema descriptor for enabled field.
-	mediamodeldefinitionDescEnabled := mediamodeldefinitionFields[5].Descriptor()
+	mediamodeldefinitionDescEnabled := mediamodeldefinitionFields[8].Descriptor()
 	// mediamodeldefinition.DefaultEnabled holds the default value on creation for the enabled field.
 	mediamodeldefinition.DefaultEnabled = mediamodeldefinitionDescEnabled.Default.(bool)
 	mediataskMixin := schema.MediaTask{}.Mixin()

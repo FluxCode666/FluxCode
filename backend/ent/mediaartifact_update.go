@@ -289,6 +289,20 @@ func (_u *MediaArtifactUpdate) SetNillableStorageStatus(v *string) *MediaArtifac
 	return _u
 }
 
+// SetStorageProvider sets the "storage_provider" field.
+func (_u *MediaArtifactUpdate) SetStorageProvider(v string) *MediaArtifactUpdate {
+	_u.mutation.SetStorageProvider(v)
+	return _u
+}
+
+// SetNillableStorageProvider sets the "storage_provider" field if the given value is not nil.
+func (_u *MediaArtifactUpdate) SetNillableStorageProvider(v *string) *MediaArtifactUpdate {
+	if v != nil {
+		_u.SetStorageProvider(*v)
+	}
+	return _u
+}
+
 // SetObjectKey sets the "object_key" field.
 func (_u *MediaArtifactUpdate) SetObjectKey(v string) *MediaArtifactUpdate {
 	_u.mutation.SetObjectKey(v)
@@ -442,6 +456,11 @@ func (_u *MediaArtifactUpdate) check() error {
 			return &ValidationError{Name: "storage_status", err: fmt.Errorf(`ent: validator failed for field "MediaArtifact.storage_status": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.StorageProvider(); ok {
+		if err := mediaartifact.StorageProviderValidator(v); err != nil {
+			return &ValidationError{Name: "storage_provider", err: fmt.Errorf(`ent: validator failed for field "MediaArtifact.storage_provider": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -531,6 +550,9 @@ func (_u *MediaArtifactUpdate) sqlSave(ctx context.Context) (_node int, err erro
 	}
 	if value, ok := _u.mutation.StorageStatus(); ok {
 		_spec.SetField(mediaartifact.FieldStorageStatus, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.StorageProvider(); ok {
+		_spec.SetField(mediaartifact.FieldStorageProvider, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.ObjectKey(); ok {
 		_spec.SetField(mediaartifact.FieldObjectKey, field.TypeString, value)
@@ -837,6 +859,20 @@ func (_u *MediaArtifactUpdateOne) SetNillableStorageStatus(v *string) *MediaArti
 	return _u
 }
 
+// SetStorageProvider sets the "storage_provider" field.
+func (_u *MediaArtifactUpdateOne) SetStorageProvider(v string) *MediaArtifactUpdateOne {
+	_u.mutation.SetStorageProvider(v)
+	return _u
+}
+
+// SetNillableStorageProvider sets the "storage_provider" field if the given value is not nil.
+func (_u *MediaArtifactUpdateOne) SetNillableStorageProvider(v *string) *MediaArtifactUpdateOne {
+	if v != nil {
+		_u.SetStorageProvider(*v)
+	}
+	return _u
+}
+
 // SetObjectKey sets the "object_key" field.
 func (_u *MediaArtifactUpdateOne) SetObjectKey(v string) *MediaArtifactUpdateOne {
 	_u.mutation.SetObjectKey(v)
@@ -1003,6 +1039,11 @@ func (_u *MediaArtifactUpdateOne) check() error {
 			return &ValidationError{Name: "storage_status", err: fmt.Errorf(`ent: validator failed for field "MediaArtifact.storage_status": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.StorageProvider(); ok {
+		if err := mediaartifact.StorageProviderValidator(v); err != nil {
+			return &ValidationError{Name: "storage_provider", err: fmt.Errorf(`ent: validator failed for field "MediaArtifact.storage_provider": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -1109,6 +1150,9 @@ func (_u *MediaArtifactUpdateOne) sqlSave(ctx context.Context) (_node *MediaArti
 	}
 	if value, ok := _u.mutation.StorageStatus(); ok {
 		_spec.SetField(mediaartifact.FieldStorageStatus, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.StorageProvider(); ok {
+		_spec.SetField(mediaartifact.FieldStorageProvider, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.ObjectKey(); ok {
 		_spec.SetField(mediaartifact.FieldObjectKey, field.TypeString, value)

@@ -45,11 +45,17 @@ type GiftBalanceRecord func(*sql.Selector)
 // Group is the predicate function for group builders.
 type Group func(*sql.Selector)
 
+// GroupMediaModelScope is the predicate function for groupmediamodelscope builders.
+type GroupMediaModelScope func(*sql.Selector)
+
 // IdempotencyRecord is the predicate function for idempotencyrecord builders.
 type IdempotencyRecord func(*sql.Selector)
 
 // MediaArtifact is the predicate function for mediaartifact builders.
 type MediaArtifact func(*sql.Selector)
+
+// MediaModelAlias is the predicate function for mediamodelalias builders.
+type MediaModelAlias func(*sql.Selector)
 
 // MediaModelDefinition is the predicate function for mediamodeldefinition builders.
 type MediaModelDefinition func(*sql.Selector)

@@ -50,6 +50,20 @@ func (_u *MediaModelDefinitionUpdate) SetNillableModelID(v *string) *MediaModelD
 	return _u
 }
 
+// SetVendor sets the "vendor" field.
+func (_u *MediaModelDefinitionUpdate) SetVendor(v string) *MediaModelDefinitionUpdate {
+	_u.mutation.SetVendor(v)
+	return _u
+}
+
+// SetNillableVendor sets the "vendor" field if the given value is not nil.
+func (_u *MediaModelDefinitionUpdate) SetNillableVendor(v *string) *MediaModelDefinitionUpdate {
+	if v != nil {
+		_u.SetVendor(*v)
+	}
+	return _u
+}
+
 // SetMediaType sets the "media_type" field.
 func (_u *MediaModelDefinitionUpdate) SetMediaType(v string) *MediaModelDefinitionUpdate {
 	_u.mutation.SetMediaType(v)
@@ -98,6 +112,34 @@ func (_u *MediaModelDefinitionUpdate) SetBillingUnit(v string) *MediaModelDefini
 func (_u *MediaModelDefinitionUpdate) SetNillableBillingUnit(v *string) *MediaModelDefinitionUpdate {
 	if v != nil {
 		_u.SetBillingUnit(*v)
+	}
+	return _u
+}
+
+// SetDefaultAdapter sets the "default_adapter" field.
+func (_u *MediaModelDefinitionUpdate) SetDefaultAdapter(v string) *MediaModelDefinitionUpdate {
+	_u.mutation.SetDefaultAdapter(v)
+	return _u
+}
+
+// SetNillableDefaultAdapter sets the "default_adapter" field if the given value is not nil.
+func (_u *MediaModelDefinitionUpdate) SetNillableDefaultAdapter(v *string) *MediaModelDefinitionUpdate {
+	if v != nil {
+		_u.SetDefaultAdapter(*v)
+	}
+	return _u
+}
+
+// SetDefaultAsyncMode sets the "default_async_mode" field.
+func (_u *MediaModelDefinitionUpdate) SetDefaultAsyncMode(v string) *MediaModelDefinitionUpdate {
+	_u.mutation.SetDefaultAsyncMode(v)
+	return _u
+}
+
+// SetNillableDefaultAsyncMode sets the "default_async_mode" field if the given value is not nil.
+func (_u *MediaModelDefinitionUpdate) SetNillableDefaultAsyncMode(v *string) *MediaModelDefinitionUpdate {
+	if v != nil {
+		_u.SetDefaultAsyncMode(*v)
 	}
 	return _u
 }
@@ -164,6 +206,11 @@ func (_u *MediaModelDefinitionUpdate) check() error {
 			return &ValidationError{Name: "model_id", err: fmt.Errorf(`ent: validator failed for field "MediaModelDefinition.model_id": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.Vendor(); ok {
+		if err := mediamodeldefinition.VendorValidator(v); err != nil {
+			return &ValidationError{Name: "vendor", err: fmt.Errorf(`ent: validator failed for field "MediaModelDefinition.vendor": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.MediaType(); ok {
 		if err := mediamodeldefinition.MediaTypeValidator(v); err != nil {
 			return &ValidationError{Name: "media_type", err: fmt.Errorf(`ent: validator failed for field "MediaModelDefinition.media_type": %w`, err)}
@@ -172,6 +219,16 @@ func (_u *MediaModelDefinitionUpdate) check() error {
 	if v, ok := _u.mutation.BillingUnit(); ok {
 		if err := mediamodeldefinition.BillingUnitValidator(v); err != nil {
 			return &ValidationError{Name: "billing_unit", err: fmt.Errorf(`ent: validator failed for field "MediaModelDefinition.billing_unit": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.DefaultAdapter(); ok {
+		if err := mediamodeldefinition.DefaultAdapterValidator(v); err != nil {
+			return &ValidationError{Name: "default_adapter", err: fmt.Errorf(`ent: validator failed for field "MediaModelDefinition.default_adapter": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.DefaultAsyncMode(); ok {
+		if err := mediamodeldefinition.DefaultAsyncModeValidator(v); err != nil {
+			return &ValidationError{Name: "default_async_mode", err: fmt.Errorf(`ent: validator failed for field "MediaModelDefinition.default_async_mode": %w`, err)}
 		}
 	}
 	return nil
@@ -195,6 +252,9 @@ func (_u *MediaModelDefinitionUpdate) sqlSave(ctx context.Context) (_node int, e
 	if value, ok := _u.mutation.ModelID(); ok {
 		_spec.SetField(mediamodeldefinition.FieldModelID, field.TypeString, value)
 	}
+	if value, ok := _u.mutation.Vendor(); ok {
+		_spec.SetField(mediamodeldefinition.FieldVendor, field.TypeString, value)
+	}
 	if value, ok := _u.mutation.MediaType(); ok {
 		_spec.SetField(mediamodeldefinition.FieldMediaType, field.TypeString, value)
 	}
@@ -216,6 +276,12 @@ func (_u *MediaModelDefinitionUpdate) sqlSave(ctx context.Context) (_node int, e
 	}
 	if value, ok := _u.mutation.BillingUnit(); ok {
 		_spec.SetField(mediamodeldefinition.FieldBillingUnit, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.DefaultAdapter(); ok {
+		_spec.SetField(mediamodeldefinition.FieldDefaultAdapter, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.DefaultAsyncMode(); ok {
+		_spec.SetField(mediamodeldefinition.FieldDefaultAsyncMode, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.Enabled(); ok {
 		_spec.SetField(mediamodeldefinition.FieldEnabled, field.TypeBool, value)
@@ -256,6 +322,20 @@ func (_u *MediaModelDefinitionUpdateOne) SetModelID(v string) *MediaModelDefinit
 func (_u *MediaModelDefinitionUpdateOne) SetNillableModelID(v *string) *MediaModelDefinitionUpdateOne {
 	if v != nil {
 		_u.SetModelID(*v)
+	}
+	return _u
+}
+
+// SetVendor sets the "vendor" field.
+func (_u *MediaModelDefinitionUpdateOne) SetVendor(v string) *MediaModelDefinitionUpdateOne {
+	_u.mutation.SetVendor(v)
+	return _u
+}
+
+// SetNillableVendor sets the "vendor" field if the given value is not nil.
+func (_u *MediaModelDefinitionUpdateOne) SetNillableVendor(v *string) *MediaModelDefinitionUpdateOne {
+	if v != nil {
+		_u.SetVendor(*v)
 	}
 	return _u
 }
@@ -308,6 +388,34 @@ func (_u *MediaModelDefinitionUpdateOne) SetBillingUnit(v string) *MediaModelDef
 func (_u *MediaModelDefinitionUpdateOne) SetNillableBillingUnit(v *string) *MediaModelDefinitionUpdateOne {
 	if v != nil {
 		_u.SetBillingUnit(*v)
+	}
+	return _u
+}
+
+// SetDefaultAdapter sets the "default_adapter" field.
+func (_u *MediaModelDefinitionUpdateOne) SetDefaultAdapter(v string) *MediaModelDefinitionUpdateOne {
+	_u.mutation.SetDefaultAdapter(v)
+	return _u
+}
+
+// SetNillableDefaultAdapter sets the "default_adapter" field if the given value is not nil.
+func (_u *MediaModelDefinitionUpdateOne) SetNillableDefaultAdapter(v *string) *MediaModelDefinitionUpdateOne {
+	if v != nil {
+		_u.SetDefaultAdapter(*v)
+	}
+	return _u
+}
+
+// SetDefaultAsyncMode sets the "default_async_mode" field.
+func (_u *MediaModelDefinitionUpdateOne) SetDefaultAsyncMode(v string) *MediaModelDefinitionUpdateOne {
+	_u.mutation.SetDefaultAsyncMode(v)
+	return _u
+}
+
+// SetNillableDefaultAsyncMode sets the "default_async_mode" field if the given value is not nil.
+func (_u *MediaModelDefinitionUpdateOne) SetNillableDefaultAsyncMode(v *string) *MediaModelDefinitionUpdateOne {
+	if v != nil {
+		_u.SetDefaultAsyncMode(*v)
 	}
 	return _u
 }
@@ -387,6 +495,11 @@ func (_u *MediaModelDefinitionUpdateOne) check() error {
 			return &ValidationError{Name: "model_id", err: fmt.Errorf(`ent: validator failed for field "MediaModelDefinition.model_id": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.Vendor(); ok {
+		if err := mediamodeldefinition.VendorValidator(v); err != nil {
+			return &ValidationError{Name: "vendor", err: fmt.Errorf(`ent: validator failed for field "MediaModelDefinition.vendor": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.MediaType(); ok {
 		if err := mediamodeldefinition.MediaTypeValidator(v); err != nil {
 			return &ValidationError{Name: "media_type", err: fmt.Errorf(`ent: validator failed for field "MediaModelDefinition.media_type": %w`, err)}
@@ -395,6 +508,16 @@ func (_u *MediaModelDefinitionUpdateOne) check() error {
 	if v, ok := _u.mutation.BillingUnit(); ok {
 		if err := mediamodeldefinition.BillingUnitValidator(v); err != nil {
 			return &ValidationError{Name: "billing_unit", err: fmt.Errorf(`ent: validator failed for field "MediaModelDefinition.billing_unit": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.DefaultAdapter(); ok {
+		if err := mediamodeldefinition.DefaultAdapterValidator(v); err != nil {
+			return &ValidationError{Name: "default_adapter", err: fmt.Errorf(`ent: validator failed for field "MediaModelDefinition.default_adapter": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.DefaultAsyncMode(); ok {
+		if err := mediamodeldefinition.DefaultAsyncModeValidator(v); err != nil {
+			return &ValidationError{Name: "default_async_mode", err: fmt.Errorf(`ent: validator failed for field "MediaModelDefinition.default_async_mode": %w`, err)}
 		}
 	}
 	return nil
@@ -435,6 +558,9 @@ func (_u *MediaModelDefinitionUpdateOne) sqlSave(ctx context.Context) (_node *Me
 	if value, ok := _u.mutation.ModelID(); ok {
 		_spec.SetField(mediamodeldefinition.FieldModelID, field.TypeString, value)
 	}
+	if value, ok := _u.mutation.Vendor(); ok {
+		_spec.SetField(mediamodeldefinition.FieldVendor, field.TypeString, value)
+	}
 	if value, ok := _u.mutation.MediaType(); ok {
 		_spec.SetField(mediamodeldefinition.FieldMediaType, field.TypeString, value)
 	}
@@ -456,6 +582,12 @@ func (_u *MediaModelDefinitionUpdateOne) sqlSave(ctx context.Context) (_node *Me
 	}
 	if value, ok := _u.mutation.BillingUnit(); ok {
 		_spec.SetField(mediamodeldefinition.FieldBillingUnit, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.DefaultAdapter(); ok {
+		_spec.SetField(mediamodeldefinition.FieldDefaultAdapter, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.DefaultAsyncMode(); ok {
+		_spec.SetField(mediamodeldefinition.FieldDefaultAsyncMode, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.Enabled(); ok {
 		_spec.SetField(mediamodeldefinition.FieldEnabled, field.TypeBool, value)

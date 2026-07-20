@@ -40,10 +40,14 @@ type Tx struct {
 	GiftBalanceRecord *GiftBalanceRecordClient
 	// Group is the client for interacting with the Group builders.
 	Group *GroupClient
+	// GroupMediaModelScope is the client for interacting with the GroupMediaModelScope builders.
+	GroupMediaModelScope *GroupMediaModelScopeClient
 	// IdempotencyRecord is the client for interacting with the IdempotencyRecord builders.
 	IdempotencyRecord *IdempotencyRecordClient
 	// MediaArtifact is the client for interacting with the MediaArtifact builders.
 	MediaArtifact *MediaArtifactClient
+	// MediaModelAlias is the client for interacting with the MediaModelAlias builders.
+	MediaModelAlias *MediaModelAliasClient
 	// MediaModelDefinition is the client for interacting with the MediaModelDefinition builders.
 	MediaModelDefinition *MediaModelDefinitionClient
 	// MediaTask is the client for interacting with the MediaTask builders.
@@ -250,8 +254,10 @@ func (tx *Tx) init() {
 	tx.GeneratedImage = NewGeneratedImageClient(tx.config)
 	tx.GiftBalanceRecord = NewGiftBalanceRecordClient(tx.config)
 	tx.Group = NewGroupClient(tx.config)
+	tx.GroupMediaModelScope = NewGroupMediaModelScopeClient(tx.config)
 	tx.IdempotencyRecord = NewIdempotencyRecordClient(tx.config)
 	tx.MediaArtifact = NewMediaArtifactClient(tx.config)
+	tx.MediaModelAlias = NewMediaModelAliasClient(tx.config)
 	tx.MediaModelDefinition = NewMediaModelDefinitionClient(tx.config)
 	tx.MediaTask = NewMediaTaskClient(tx.config)
 	tx.PaymentAuditLog = NewPaymentAuditLogClient(tx.config)

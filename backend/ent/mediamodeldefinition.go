@@ -24,6 +24,8 @@ type MediaModelDefinition struct {
 	UpdatedAt time.Time `json:"updated_at,omitempty"`
 	// ModelID holds the value of the "model_id" field.
 	ModelID string `json:"model_id,omitempty"`
+	// Vendor holds the value of the "vendor" field.
+	Vendor string `json:"vendor,omitempty"`
 	// MediaType holds the value of the "media_type" field.
 	MediaType string `json:"media_type,omitempty"`
 	// Operations holds the value of the "operations" field.
@@ -32,6 +34,10 @@ type MediaModelDefinition struct {
 	Constraints json.RawMessage `json:"constraints,omitempty"`
 	// BillingUnit holds the value of the "billing_unit" field.
 	BillingUnit string `json:"billing_unit,omitempty"`
+	// DefaultAdapter holds the value of the "default_adapter" field.
+	DefaultAdapter string `json:"default_adapter,omitempty"`
+	// DefaultAsyncMode holds the value of the "default_async_mode" field.
+	DefaultAsyncMode string `json:"default_async_mode,omitempty"`
 	// Enabled holds the value of the "enabled" field.
 	Enabled      bool `json:"enabled,omitempty"`
 	selectValues sql.SelectValues
@@ -48,7 +54,7 @@ func (*MediaModelDefinition) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullBool)
 		case mediamodeldefinition.FieldID:
 			values[i] = new(sql.NullInt64)
-		case mediamodeldefinition.FieldModelID, mediamodeldefinition.FieldMediaType, mediamodeldefinition.FieldBillingUnit:
+		case mediamodeldefinition.FieldModelID, mediamodeldefinition.FieldVendor, mediamodeldefinition.FieldMediaType, mediamodeldefinition.FieldBillingUnit, mediamodeldefinition.FieldDefaultAdapter, mediamodeldefinition.FieldDefaultAsyncMode:
 			values[i] = new(sql.NullString)
 		case mediamodeldefinition.FieldCreatedAt, mediamodeldefinition.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
@@ -91,6 +97,12 @@ func (_m *MediaModelDefinition) assignValues(columns []string, values []any) err
 			} else if value.Valid {
 				_m.ModelID = value.String
 			}
+		case mediamodeldefinition.FieldVendor:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field vendor", values[i])
+			} else if value.Valid {
+				_m.Vendor = value.String
+			}
 		case mediamodeldefinition.FieldMediaType:
 			if value, ok := values[i].(*sql.NullString); !ok {
 				return fmt.Errorf("unexpected type %T for field media_type", values[i])
@@ -118,6 +130,18 @@ func (_m *MediaModelDefinition) assignValues(columns []string, values []any) err
 				return fmt.Errorf("unexpected type %T for field billing_unit", values[i])
 			} else if value.Valid {
 				_m.BillingUnit = value.String
+			}
+		case mediamodeldefinition.FieldDefaultAdapter:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field default_adapter", values[i])
+			} else if value.Valid {
+				_m.DefaultAdapter = value.String
+			}
+		case mediamodeldefinition.FieldDefaultAsyncMode:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field default_async_mode", values[i])
+			} else if value.Valid {
+				_m.DefaultAsyncMode = value.String
 			}
 		case mediamodeldefinition.FieldEnabled:
 			if value, ok := values[i].(*sql.NullBool); !ok {
@@ -170,6 +194,9 @@ func (_m *MediaModelDefinition) String() string {
 	builder.WriteString("model_id=")
 	builder.WriteString(_m.ModelID)
 	builder.WriteString(", ")
+	builder.WriteString("vendor=")
+	builder.WriteString(_m.Vendor)
+	builder.WriteString(", ")
 	builder.WriteString("media_type=")
 	builder.WriteString(_m.MediaType)
 	builder.WriteString(", ")
@@ -181,6 +208,12 @@ func (_m *MediaModelDefinition) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("billing_unit=")
 	builder.WriteString(_m.BillingUnit)
+	builder.WriteString(", ")
+	builder.WriteString("default_adapter=")
+	builder.WriteString(_m.DefaultAdapter)
+	builder.WriteString(", ")
+	builder.WriteString("default_async_mode=")
+	builder.WriteString(_m.DefaultAsyncMode)
 	builder.WriteString(", ")
 	builder.WriteString("enabled=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Enabled))

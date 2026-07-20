@@ -57,6 +57,20 @@ func (_c *MediaModelDefinitionCreate) SetModelID(v string) *MediaModelDefinition
 	return _c
 }
 
+// SetVendor sets the "vendor" field.
+func (_c *MediaModelDefinitionCreate) SetVendor(v string) *MediaModelDefinitionCreate {
+	_c.mutation.SetVendor(v)
+	return _c
+}
+
+// SetNillableVendor sets the "vendor" field if the given value is not nil.
+func (_c *MediaModelDefinitionCreate) SetNillableVendor(v *string) *MediaModelDefinitionCreate {
+	if v != nil {
+		_c.SetVendor(*v)
+	}
+	return _c
+}
+
 // SetMediaType sets the "media_type" field.
 func (_c *MediaModelDefinitionCreate) SetMediaType(v string) *MediaModelDefinitionCreate {
 	_c.mutation.SetMediaType(v)
@@ -78,6 +92,34 @@ func (_c *MediaModelDefinitionCreate) SetConstraints(v json.RawMessage) *MediaMo
 // SetBillingUnit sets the "billing_unit" field.
 func (_c *MediaModelDefinitionCreate) SetBillingUnit(v string) *MediaModelDefinitionCreate {
 	_c.mutation.SetBillingUnit(v)
+	return _c
+}
+
+// SetDefaultAdapter sets the "default_adapter" field.
+func (_c *MediaModelDefinitionCreate) SetDefaultAdapter(v string) *MediaModelDefinitionCreate {
+	_c.mutation.SetDefaultAdapter(v)
+	return _c
+}
+
+// SetNillableDefaultAdapter sets the "default_adapter" field if the given value is not nil.
+func (_c *MediaModelDefinitionCreate) SetNillableDefaultAdapter(v *string) *MediaModelDefinitionCreate {
+	if v != nil {
+		_c.SetDefaultAdapter(*v)
+	}
+	return _c
+}
+
+// SetDefaultAsyncMode sets the "default_async_mode" field.
+func (_c *MediaModelDefinitionCreate) SetDefaultAsyncMode(v string) *MediaModelDefinitionCreate {
+	_c.mutation.SetDefaultAsyncMode(v)
+	return _c
+}
+
+// SetNillableDefaultAsyncMode sets the "default_async_mode" field if the given value is not nil.
+func (_c *MediaModelDefinitionCreate) SetNillableDefaultAsyncMode(v *string) *MediaModelDefinitionCreate {
+	if v != nil {
+		_c.SetDefaultAsyncMode(*v)
+	}
 	return _c
 }
 
@@ -138,6 +180,18 @@ func (_c *MediaModelDefinitionCreate) defaults() {
 		v := mediamodeldefinition.DefaultUpdatedAt()
 		_c.mutation.SetUpdatedAt(v)
 	}
+	if _, ok := _c.mutation.Vendor(); !ok {
+		v := mediamodeldefinition.DefaultVendor
+		_c.mutation.SetVendor(v)
+	}
+	if _, ok := _c.mutation.DefaultAdapter(); !ok {
+		v := mediamodeldefinition.DefaultDefaultAdapter
+		_c.mutation.SetDefaultAdapter(v)
+	}
+	if _, ok := _c.mutation.DefaultAsyncMode(); !ok {
+		v := mediamodeldefinition.DefaultDefaultAsyncMode
+		_c.mutation.SetDefaultAsyncMode(v)
+	}
 	if _, ok := _c.mutation.Enabled(); !ok {
 		v := mediamodeldefinition.DefaultEnabled
 		_c.mutation.SetEnabled(v)
@@ -160,6 +214,14 @@ func (_c *MediaModelDefinitionCreate) check() error {
 			return &ValidationError{Name: "model_id", err: fmt.Errorf(`ent: validator failed for field "MediaModelDefinition.model_id": %w`, err)}
 		}
 	}
+	if _, ok := _c.mutation.Vendor(); !ok {
+		return &ValidationError{Name: "vendor", err: errors.New(`ent: missing required field "MediaModelDefinition.vendor"`)}
+	}
+	if v, ok := _c.mutation.Vendor(); ok {
+		if err := mediamodeldefinition.VendorValidator(v); err != nil {
+			return &ValidationError{Name: "vendor", err: fmt.Errorf(`ent: validator failed for field "MediaModelDefinition.vendor": %w`, err)}
+		}
+	}
 	if _, ok := _c.mutation.MediaType(); !ok {
 		return &ValidationError{Name: "media_type", err: errors.New(`ent: missing required field "MediaModelDefinition.media_type"`)}
 	}
@@ -180,6 +242,22 @@ func (_c *MediaModelDefinitionCreate) check() error {
 	if v, ok := _c.mutation.BillingUnit(); ok {
 		if err := mediamodeldefinition.BillingUnitValidator(v); err != nil {
 			return &ValidationError{Name: "billing_unit", err: fmt.Errorf(`ent: validator failed for field "MediaModelDefinition.billing_unit": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.DefaultAdapter(); !ok {
+		return &ValidationError{Name: "default_adapter", err: errors.New(`ent: missing required field "MediaModelDefinition.default_adapter"`)}
+	}
+	if v, ok := _c.mutation.DefaultAdapter(); ok {
+		if err := mediamodeldefinition.DefaultAdapterValidator(v); err != nil {
+			return &ValidationError{Name: "default_adapter", err: fmt.Errorf(`ent: validator failed for field "MediaModelDefinition.default_adapter": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.DefaultAsyncMode(); !ok {
+		return &ValidationError{Name: "default_async_mode", err: errors.New(`ent: missing required field "MediaModelDefinition.default_async_mode"`)}
+	}
+	if v, ok := _c.mutation.DefaultAsyncMode(); ok {
+		if err := mediamodeldefinition.DefaultAsyncModeValidator(v); err != nil {
+			return &ValidationError{Name: "default_async_mode", err: fmt.Errorf(`ent: validator failed for field "MediaModelDefinition.default_async_mode": %w`, err)}
 		}
 	}
 	if _, ok := _c.mutation.Enabled(); !ok {
@@ -224,6 +302,10 @@ func (_c *MediaModelDefinitionCreate) createSpec() (*MediaModelDefinition, *sqlg
 		_spec.SetField(mediamodeldefinition.FieldModelID, field.TypeString, value)
 		_node.ModelID = value
 	}
+	if value, ok := _c.mutation.Vendor(); ok {
+		_spec.SetField(mediamodeldefinition.FieldVendor, field.TypeString, value)
+		_node.Vendor = value
+	}
 	if value, ok := _c.mutation.MediaType(); ok {
 		_spec.SetField(mediamodeldefinition.FieldMediaType, field.TypeString, value)
 		_node.MediaType = value
@@ -239,6 +321,14 @@ func (_c *MediaModelDefinitionCreate) createSpec() (*MediaModelDefinition, *sqlg
 	if value, ok := _c.mutation.BillingUnit(); ok {
 		_spec.SetField(mediamodeldefinition.FieldBillingUnit, field.TypeString, value)
 		_node.BillingUnit = value
+	}
+	if value, ok := _c.mutation.DefaultAdapter(); ok {
+		_spec.SetField(mediamodeldefinition.FieldDefaultAdapter, field.TypeString, value)
+		_node.DefaultAdapter = value
+	}
+	if value, ok := _c.mutation.DefaultAsyncMode(); ok {
+		_spec.SetField(mediamodeldefinition.FieldDefaultAsyncMode, field.TypeString, value)
+		_node.DefaultAsyncMode = value
 	}
 	if value, ok := _c.mutation.Enabled(); ok {
 		_spec.SetField(mediamodeldefinition.FieldEnabled, field.TypeBool, value)
@@ -320,6 +410,18 @@ func (u *MediaModelDefinitionUpsert) UpdateModelID() *MediaModelDefinitionUpsert
 	return u
 }
 
+// SetVendor sets the "vendor" field.
+func (u *MediaModelDefinitionUpsert) SetVendor(v string) *MediaModelDefinitionUpsert {
+	u.Set(mediamodeldefinition.FieldVendor, v)
+	return u
+}
+
+// UpdateVendor sets the "vendor" field to the value that was provided on create.
+func (u *MediaModelDefinitionUpsert) UpdateVendor() *MediaModelDefinitionUpsert {
+	u.SetExcluded(mediamodeldefinition.FieldVendor)
+	return u
+}
+
 // SetMediaType sets the "media_type" field.
 func (u *MediaModelDefinitionUpsert) SetMediaType(v string) *MediaModelDefinitionUpsert {
 	u.Set(mediamodeldefinition.FieldMediaType, v)
@@ -365,6 +467,30 @@ func (u *MediaModelDefinitionUpsert) SetBillingUnit(v string) *MediaModelDefinit
 // UpdateBillingUnit sets the "billing_unit" field to the value that was provided on create.
 func (u *MediaModelDefinitionUpsert) UpdateBillingUnit() *MediaModelDefinitionUpsert {
 	u.SetExcluded(mediamodeldefinition.FieldBillingUnit)
+	return u
+}
+
+// SetDefaultAdapter sets the "default_adapter" field.
+func (u *MediaModelDefinitionUpsert) SetDefaultAdapter(v string) *MediaModelDefinitionUpsert {
+	u.Set(mediamodeldefinition.FieldDefaultAdapter, v)
+	return u
+}
+
+// UpdateDefaultAdapter sets the "default_adapter" field to the value that was provided on create.
+func (u *MediaModelDefinitionUpsert) UpdateDefaultAdapter() *MediaModelDefinitionUpsert {
+	u.SetExcluded(mediamodeldefinition.FieldDefaultAdapter)
+	return u
+}
+
+// SetDefaultAsyncMode sets the "default_async_mode" field.
+func (u *MediaModelDefinitionUpsert) SetDefaultAsyncMode(v string) *MediaModelDefinitionUpsert {
+	u.Set(mediamodeldefinition.FieldDefaultAsyncMode, v)
+	return u
+}
+
+// UpdateDefaultAsyncMode sets the "default_async_mode" field to the value that was provided on create.
+func (u *MediaModelDefinitionUpsert) UpdateDefaultAsyncMode() *MediaModelDefinitionUpsert {
+	u.SetExcluded(mediamodeldefinition.FieldDefaultAsyncMode)
 	return u
 }
 
@@ -453,6 +579,20 @@ func (u *MediaModelDefinitionUpsertOne) UpdateModelID() *MediaModelDefinitionUps
 	})
 }
 
+// SetVendor sets the "vendor" field.
+func (u *MediaModelDefinitionUpsertOne) SetVendor(v string) *MediaModelDefinitionUpsertOne {
+	return u.Update(func(s *MediaModelDefinitionUpsert) {
+		s.SetVendor(v)
+	})
+}
+
+// UpdateVendor sets the "vendor" field to the value that was provided on create.
+func (u *MediaModelDefinitionUpsertOne) UpdateVendor() *MediaModelDefinitionUpsertOne {
+	return u.Update(func(s *MediaModelDefinitionUpsert) {
+		s.UpdateVendor()
+	})
+}
+
 // SetMediaType sets the "media_type" field.
 func (u *MediaModelDefinitionUpsertOne) SetMediaType(v string) *MediaModelDefinitionUpsertOne {
 	return u.Update(func(s *MediaModelDefinitionUpsert) {
@@ -506,6 +646,34 @@ func (u *MediaModelDefinitionUpsertOne) SetBillingUnit(v string) *MediaModelDefi
 func (u *MediaModelDefinitionUpsertOne) UpdateBillingUnit() *MediaModelDefinitionUpsertOne {
 	return u.Update(func(s *MediaModelDefinitionUpsert) {
 		s.UpdateBillingUnit()
+	})
+}
+
+// SetDefaultAdapter sets the "default_adapter" field.
+func (u *MediaModelDefinitionUpsertOne) SetDefaultAdapter(v string) *MediaModelDefinitionUpsertOne {
+	return u.Update(func(s *MediaModelDefinitionUpsert) {
+		s.SetDefaultAdapter(v)
+	})
+}
+
+// UpdateDefaultAdapter sets the "default_adapter" field to the value that was provided on create.
+func (u *MediaModelDefinitionUpsertOne) UpdateDefaultAdapter() *MediaModelDefinitionUpsertOne {
+	return u.Update(func(s *MediaModelDefinitionUpsert) {
+		s.UpdateDefaultAdapter()
+	})
+}
+
+// SetDefaultAsyncMode sets the "default_async_mode" field.
+func (u *MediaModelDefinitionUpsertOne) SetDefaultAsyncMode(v string) *MediaModelDefinitionUpsertOne {
+	return u.Update(func(s *MediaModelDefinitionUpsert) {
+		s.SetDefaultAsyncMode(v)
+	})
+}
+
+// UpdateDefaultAsyncMode sets the "default_async_mode" field to the value that was provided on create.
+func (u *MediaModelDefinitionUpsertOne) UpdateDefaultAsyncMode() *MediaModelDefinitionUpsertOne {
+	return u.Update(func(s *MediaModelDefinitionUpsert) {
+		s.UpdateDefaultAsyncMode()
 	})
 }
 
@@ -762,6 +930,20 @@ func (u *MediaModelDefinitionUpsertBulk) UpdateModelID() *MediaModelDefinitionUp
 	})
 }
 
+// SetVendor sets the "vendor" field.
+func (u *MediaModelDefinitionUpsertBulk) SetVendor(v string) *MediaModelDefinitionUpsertBulk {
+	return u.Update(func(s *MediaModelDefinitionUpsert) {
+		s.SetVendor(v)
+	})
+}
+
+// UpdateVendor sets the "vendor" field to the value that was provided on create.
+func (u *MediaModelDefinitionUpsertBulk) UpdateVendor() *MediaModelDefinitionUpsertBulk {
+	return u.Update(func(s *MediaModelDefinitionUpsert) {
+		s.UpdateVendor()
+	})
+}
+
 // SetMediaType sets the "media_type" field.
 func (u *MediaModelDefinitionUpsertBulk) SetMediaType(v string) *MediaModelDefinitionUpsertBulk {
 	return u.Update(func(s *MediaModelDefinitionUpsert) {
@@ -815,6 +997,34 @@ func (u *MediaModelDefinitionUpsertBulk) SetBillingUnit(v string) *MediaModelDef
 func (u *MediaModelDefinitionUpsertBulk) UpdateBillingUnit() *MediaModelDefinitionUpsertBulk {
 	return u.Update(func(s *MediaModelDefinitionUpsert) {
 		s.UpdateBillingUnit()
+	})
+}
+
+// SetDefaultAdapter sets the "default_adapter" field.
+func (u *MediaModelDefinitionUpsertBulk) SetDefaultAdapter(v string) *MediaModelDefinitionUpsertBulk {
+	return u.Update(func(s *MediaModelDefinitionUpsert) {
+		s.SetDefaultAdapter(v)
+	})
+}
+
+// UpdateDefaultAdapter sets the "default_adapter" field to the value that was provided on create.
+func (u *MediaModelDefinitionUpsertBulk) UpdateDefaultAdapter() *MediaModelDefinitionUpsertBulk {
+	return u.Update(func(s *MediaModelDefinitionUpsert) {
+		s.UpdateDefaultAdapter()
+	})
+}
+
+// SetDefaultAsyncMode sets the "default_async_mode" field.
+func (u *MediaModelDefinitionUpsertBulk) SetDefaultAsyncMode(v string) *MediaModelDefinitionUpsertBulk {
+	return u.Update(func(s *MediaModelDefinitionUpsert) {
+		s.SetDefaultAsyncMode(v)
+	})
+}
+
+// UpdateDefaultAsyncMode sets the "default_async_mode" field to the value that was provided on create.
+func (u *MediaModelDefinitionUpsertBulk) UpdateDefaultAsyncMode() *MediaModelDefinitionUpsertBulk {
+	return u.Update(func(s *MediaModelDefinitionUpsert) {
+		s.UpdateDefaultAsyncMode()
 	})
 }
 

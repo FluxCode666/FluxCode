@@ -24,10 +24,13 @@ func (MediaModelDefinition) Mixin() []ent.Mixin {
 func (MediaModelDefinition) Fields() []ent.Field {
 	return []ent.Field{
 		field.String("model_id").MaxLen(128).Unique(),
+		field.String("vendor").MaxLen(64).Default(""),
 		field.String("media_type").MaxLen(16),
 		field.JSON("operations", []string{}),
 		field.JSON("constraints", json.RawMessage{}),
 		field.String("billing_unit").MaxLen(32),
+		field.String("default_adapter").MaxLen(64).Default(""),
+		field.String("default_async_mode").MaxLen(16).Default("unsupported"),
 		field.Bool("enabled").Default(true),
 	}
 }

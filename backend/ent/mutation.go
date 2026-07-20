@@ -25,8 +25,10 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/generatedimage"
 	"github.com/Wei-Shaw/sub2api/ent/giftbalancerecord"
 	"github.com/Wei-Shaw/sub2api/ent/group"
+	"github.com/Wei-Shaw/sub2api/ent/groupmediamodelscope"
 	"github.com/Wei-Shaw/sub2api/ent/idempotencyrecord"
 	"github.com/Wei-Shaw/sub2api/ent/mediaartifact"
+	"github.com/Wei-Shaw/sub2api/ent/mediamodelalias"
 	"github.com/Wei-Shaw/sub2api/ent/mediamodeldefinition"
 	"github.com/Wei-Shaw/sub2api/ent/mediatask"
 	"github.com/Wei-Shaw/sub2api/ent/paymentauditlog"
@@ -84,8 +86,10 @@ const (
 	TypeGeneratedImage                 = "GeneratedImage"
 	TypeGiftBalanceRecord              = "GiftBalanceRecord"
 	TypeGroup                          = "Group"
+	TypeGroupMediaModelScope           = "GroupMediaModelScope"
 	TypeIdempotencyRecord              = "IdempotencyRecord"
 	TypeMediaArtifact                  = "MediaArtifact"
+	TypeMediaModelAlias                = "MediaModelAlias"
 	TypeMediaModelDefinition           = "MediaModelDefinition"
 	TypeMediaTask                      = "MediaTask"
 	TypePaymentAuditLog                = "PaymentAuditLog"
@@ -18730,6 +18734,597 @@ func (m *GroupMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown Group edge %s", name)
 }
 
+// GroupMediaModelScopeMutation represents an operation that mutates the GroupMediaModelScope nodes in the graph.
+type GroupMediaModelScopeMutation struct {
+	config
+	op                      Op
+	typ                     string
+	id                      *int64
+	created_at              *time.Time
+	updated_at              *time.Time
+	clearedFields           map[string]struct{}
+	group                   *int64
+	clearedgroup            bool
+	model_definition        *int64
+	clearedmodel_definition bool
+	done                    bool
+	oldValue                func(context.Context) (*GroupMediaModelScope, error)
+	predicates              []predicate.GroupMediaModelScope
+}
+
+var _ ent.Mutation = (*GroupMediaModelScopeMutation)(nil)
+
+// groupmediamodelscopeOption allows management of the mutation configuration using functional options.
+type groupmediamodelscopeOption func(*GroupMediaModelScopeMutation)
+
+// newGroupMediaModelScopeMutation creates new mutation for the GroupMediaModelScope entity.
+func newGroupMediaModelScopeMutation(c config, op Op, opts ...groupmediamodelscopeOption) *GroupMediaModelScopeMutation {
+	m := &GroupMediaModelScopeMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeGroupMediaModelScope,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withGroupMediaModelScopeID sets the ID field of the mutation.
+func withGroupMediaModelScopeID(id int64) groupmediamodelscopeOption {
+	return func(m *GroupMediaModelScopeMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *GroupMediaModelScope
+		)
+		m.oldValue = func(ctx context.Context) (*GroupMediaModelScope, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().GroupMediaModelScope.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withGroupMediaModelScope sets the old GroupMediaModelScope of the mutation.
+func withGroupMediaModelScope(node *GroupMediaModelScope) groupmediamodelscopeOption {
+	return func(m *GroupMediaModelScopeMutation) {
+		m.oldValue = func(context.Context) (*GroupMediaModelScope, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m GroupMediaModelScopeMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m GroupMediaModelScopeMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *GroupMediaModelScopeMutation) ID() (id int64, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *GroupMediaModelScopeMutation) IDs(ctx context.Context) ([]int64, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int64{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().GroupMediaModelScope.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *GroupMediaModelScopeMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *GroupMediaModelScopeMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the GroupMediaModelScope entity.
+// If the GroupMediaModelScope object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMediaModelScopeMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *GroupMediaModelScopeMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *GroupMediaModelScopeMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *GroupMediaModelScopeMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the GroupMediaModelScope entity.
+// If the GroupMediaModelScope object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMediaModelScopeMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *GroupMediaModelScopeMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// SetGroupID sets the "group_id" field.
+func (m *GroupMediaModelScopeMutation) SetGroupID(i int64) {
+	m.group = &i
+}
+
+// GroupID returns the value of the "group_id" field in the mutation.
+func (m *GroupMediaModelScopeMutation) GroupID() (r int64, exists bool) {
+	v := m.group
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldGroupID returns the old "group_id" field's value of the GroupMediaModelScope entity.
+// If the GroupMediaModelScope object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMediaModelScopeMutation) OldGroupID(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldGroupID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldGroupID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldGroupID: %w", err)
+	}
+	return oldValue.GroupID, nil
+}
+
+// ResetGroupID resets all changes to the "group_id" field.
+func (m *GroupMediaModelScopeMutation) ResetGroupID() {
+	m.group = nil
+}
+
+// SetModelDefinitionID sets the "model_definition_id" field.
+func (m *GroupMediaModelScopeMutation) SetModelDefinitionID(i int64) {
+	m.model_definition = &i
+}
+
+// ModelDefinitionID returns the value of the "model_definition_id" field in the mutation.
+func (m *GroupMediaModelScopeMutation) ModelDefinitionID() (r int64, exists bool) {
+	v := m.model_definition
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldModelDefinitionID returns the old "model_definition_id" field's value of the GroupMediaModelScope entity.
+// If the GroupMediaModelScope object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMediaModelScopeMutation) OldModelDefinitionID(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldModelDefinitionID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldModelDefinitionID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldModelDefinitionID: %w", err)
+	}
+	return oldValue.ModelDefinitionID, nil
+}
+
+// ResetModelDefinitionID resets all changes to the "model_definition_id" field.
+func (m *GroupMediaModelScopeMutation) ResetModelDefinitionID() {
+	m.model_definition = nil
+}
+
+// ClearGroup clears the "group" edge to the Group entity.
+func (m *GroupMediaModelScopeMutation) ClearGroup() {
+	m.clearedgroup = true
+	m.clearedFields[groupmediamodelscope.FieldGroupID] = struct{}{}
+}
+
+// GroupCleared reports if the "group" edge to the Group entity was cleared.
+func (m *GroupMediaModelScopeMutation) GroupCleared() bool {
+	return m.clearedgroup
+}
+
+// GroupIDs returns the "group" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// GroupID instead. It exists only for internal usage by the builders.
+func (m *GroupMediaModelScopeMutation) GroupIDs() (ids []int64) {
+	if id := m.group; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetGroup resets all changes to the "group" edge.
+func (m *GroupMediaModelScopeMutation) ResetGroup() {
+	m.group = nil
+	m.clearedgroup = false
+}
+
+// ClearModelDefinition clears the "model_definition" edge to the MediaModelDefinition entity.
+func (m *GroupMediaModelScopeMutation) ClearModelDefinition() {
+	m.clearedmodel_definition = true
+	m.clearedFields[groupmediamodelscope.FieldModelDefinitionID] = struct{}{}
+}
+
+// ModelDefinitionCleared reports if the "model_definition" edge to the MediaModelDefinition entity was cleared.
+func (m *GroupMediaModelScopeMutation) ModelDefinitionCleared() bool {
+	return m.clearedmodel_definition
+}
+
+// ModelDefinitionIDs returns the "model_definition" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// ModelDefinitionID instead. It exists only for internal usage by the builders.
+func (m *GroupMediaModelScopeMutation) ModelDefinitionIDs() (ids []int64) {
+	if id := m.model_definition; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetModelDefinition resets all changes to the "model_definition" edge.
+func (m *GroupMediaModelScopeMutation) ResetModelDefinition() {
+	m.model_definition = nil
+	m.clearedmodel_definition = false
+}
+
+// Where appends a list predicates to the GroupMediaModelScopeMutation builder.
+func (m *GroupMediaModelScopeMutation) Where(ps ...predicate.GroupMediaModelScope) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the GroupMediaModelScopeMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *GroupMediaModelScopeMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.GroupMediaModelScope, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *GroupMediaModelScopeMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *GroupMediaModelScopeMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (GroupMediaModelScope).
+func (m *GroupMediaModelScopeMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *GroupMediaModelScopeMutation) Fields() []string {
+	fields := make([]string, 0, 4)
+	if m.created_at != nil {
+		fields = append(fields, groupmediamodelscope.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, groupmediamodelscope.FieldUpdatedAt)
+	}
+	if m.group != nil {
+		fields = append(fields, groupmediamodelscope.FieldGroupID)
+	}
+	if m.model_definition != nil {
+		fields = append(fields, groupmediamodelscope.FieldModelDefinitionID)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *GroupMediaModelScopeMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case groupmediamodelscope.FieldCreatedAt:
+		return m.CreatedAt()
+	case groupmediamodelscope.FieldUpdatedAt:
+		return m.UpdatedAt()
+	case groupmediamodelscope.FieldGroupID:
+		return m.GroupID()
+	case groupmediamodelscope.FieldModelDefinitionID:
+		return m.ModelDefinitionID()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *GroupMediaModelScopeMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case groupmediamodelscope.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case groupmediamodelscope.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	case groupmediamodelscope.FieldGroupID:
+		return m.OldGroupID(ctx)
+	case groupmediamodelscope.FieldModelDefinitionID:
+		return m.OldModelDefinitionID(ctx)
+	}
+	return nil, fmt.Errorf("unknown GroupMediaModelScope field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *GroupMediaModelScopeMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case groupmediamodelscope.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case groupmediamodelscope.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	case groupmediamodelscope.FieldGroupID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetGroupID(v)
+		return nil
+	case groupmediamodelscope.FieldModelDefinitionID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetModelDefinitionID(v)
+		return nil
+	}
+	return fmt.Errorf("unknown GroupMediaModelScope field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *GroupMediaModelScopeMutation) AddedFields() []string {
+	var fields []string
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *GroupMediaModelScopeMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *GroupMediaModelScopeMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown GroupMediaModelScope numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *GroupMediaModelScopeMutation) ClearedFields() []string {
+	return nil
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *GroupMediaModelScopeMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *GroupMediaModelScopeMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown GroupMediaModelScope nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *GroupMediaModelScopeMutation) ResetField(name string) error {
+	switch name {
+	case groupmediamodelscope.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case groupmediamodelscope.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	case groupmediamodelscope.FieldGroupID:
+		m.ResetGroupID()
+		return nil
+	case groupmediamodelscope.FieldModelDefinitionID:
+		m.ResetModelDefinitionID()
+		return nil
+	}
+	return fmt.Errorf("unknown GroupMediaModelScope field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *GroupMediaModelScopeMutation) AddedEdges() []string {
+	edges := make([]string, 0, 2)
+	if m.group != nil {
+		edges = append(edges, groupmediamodelscope.EdgeGroup)
+	}
+	if m.model_definition != nil {
+		edges = append(edges, groupmediamodelscope.EdgeModelDefinition)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *GroupMediaModelScopeMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case groupmediamodelscope.EdgeGroup:
+		if id := m.group; id != nil {
+			return []ent.Value{*id}
+		}
+	case groupmediamodelscope.EdgeModelDefinition:
+		if id := m.model_definition; id != nil {
+			return []ent.Value{*id}
+		}
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *GroupMediaModelScopeMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 2)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *GroupMediaModelScopeMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *GroupMediaModelScopeMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 2)
+	if m.clearedgroup {
+		edges = append(edges, groupmediamodelscope.EdgeGroup)
+	}
+	if m.clearedmodel_definition {
+		edges = append(edges, groupmediamodelscope.EdgeModelDefinition)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *GroupMediaModelScopeMutation) EdgeCleared(name string) bool {
+	switch name {
+	case groupmediamodelscope.EdgeGroup:
+		return m.clearedgroup
+	case groupmediamodelscope.EdgeModelDefinition:
+		return m.clearedmodel_definition
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *GroupMediaModelScopeMutation) ClearEdge(name string) error {
+	switch name {
+	case groupmediamodelscope.EdgeGroup:
+		m.ClearGroup()
+		return nil
+	case groupmediamodelscope.EdgeModelDefinition:
+		m.ClearModelDefinition()
+		return nil
+	}
+	return fmt.Errorf("unknown GroupMediaModelScope unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *GroupMediaModelScopeMutation) ResetEdge(name string) error {
+	switch name {
+	case groupmediamodelscope.EdgeGroup:
+		m.ResetGroup()
+		return nil
+	case groupmediamodelscope.EdgeModelDefinition:
+		m.ResetModelDefinition()
+		return nil
+	}
+	return fmt.Errorf("unknown GroupMediaModelScope edge %s", name)
+}
+
 // IdempotencyRecordMutation represents an operation that mutates the IdempotencyRecord nodes in the graph.
 type IdempotencyRecordMutation struct {
 	config
@@ -19740,6 +20335,7 @@ type MediaArtifactMutation struct {
 	fps                 *float64
 	addfps              *float64
 	storage_status      *string
+	storage_provider    *string
 	object_key          *string
 	public_url          *string
 	upstream_reference  *string
@@ -20584,6 +21180,42 @@ func (m *MediaArtifactMutation) ResetStorageStatus() {
 	m.storage_status = nil
 }
 
+// SetStorageProvider sets the "storage_provider" field.
+func (m *MediaArtifactMutation) SetStorageProvider(s string) {
+	m.storage_provider = &s
+}
+
+// StorageProvider returns the value of the "storage_provider" field in the mutation.
+func (m *MediaArtifactMutation) StorageProvider() (r string, exists bool) {
+	v := m.storage_provider
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldStorageProvider returns the old "storage_provider" field's value of the MediaArtifact entity.
+// If the MediaArtifact object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *MediaArtifactMutation) OldStorageProvider(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldStorageProvider is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldStorageProvider requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldStorageProvider: %w", err)
+	}
+	return oldValue.StorageProvider, nil
+}
+
+// ResetStorageProvider resets all changes to the "storage_provider" field.
+func (m *MediaArtifactMutation) ResetStorageProvider() {
+	m.storage_provider = nil
+}
+
 // SetObjectKey sets the "object_key" field.
 func (m *MediaArtifactMutation) SetObjectKey(s string) {
 	m.object_key = &s
@@ -20814,7 +21446,7 @@ func (m *MediaArtifactMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *MediaArtifactMutation) Fields() []string {
-	fields := make([]string, 0, 19)
+	fields := make([]string, 0, 20)
 	if m.created_at != nil {
 		fields = append(fields, mediaartifact.FieldCreatedAt)
 	}
@@ -20859,6 +21491,9 @@ func (m *MediaArtifactMutation) Fields() []string {
 	}
 	if m.storage_status != nil {
 		fields = append(fields, mediaartifact.FieldStorageStatus)
+	}
+	if m.storage_provider != nil {
+		fields = append(fields, mediaartifact.FieldStorageProvider)
 	}
 	if m.object_key != nil {
 		fields = append(fields, mediaartifact.FieldObjectKey)
@@ -20910,6 +21545,8 @@ func (m *MediaArtifactMutation) Field(name string) (ent.Value, bool) {
 		return m.Fps()
 	case mediaartifact.FieldStorageStatus:
 		return m.StorageStatus()
+	case mediaartifact.FieldStorageProvider:
+		return m.StorageProvider()
 	case mediaartifact.FieldObjectKey:
 		return m.ObjectKey()
 	case mediaartifact.FieldPublicURL:
@@ -20957,6 +21594,8 @@ func (m *MediaArtifactMutation) OldField(ctx context.Context, name string) (ent.
 		return m.OldFps(ctx)
 	case mediaartifact.FieldStorageStatus:
 		return m.OldStorageStatus(ctx)
+	case mediaartifact.FieldStorageProvider:
+		return m.OldStorageProvider(ctx)
 	case mediaartifact.FieldObjectKey:
 		return m.OldObjectKey(ctx)
 	case mediaartifact.FieldPublicURL:
@@ -21078,6 +21717,13 @@ func (m *MediaArtifactMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetStorageStatus(v)
+		return nil
+	case mediaartifact.FieldStorageProvider:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetStorageProvider(v)
 		return nil
 	case mediaartifact.FieldObjectKey:
 		v, ok := value.(string)
@@ -21339,6 +21985,9 @@ func (m *MediaArtifactMutation) ResetField(name string) error {
 	case mediaartifact.FieldStorageStatus:
 		m.ResetStorageStatus()
 		return nil
+	case mediaartifact.FieldStorageProvider:
+		m.ResetStorageProvider()
+		return nil
 	case mediaartifact.FieldObjectKey:
 		m.ResetObjectKey()
 		return nil
@@ -21403,26 +22052,574 @@ func (m *MediaArtifactMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown MediaArtifact edge %s", name)
 }
 
+// MediaModelAliasMutation represents an operation that mutates the MediaModelAlias nodes in the graph.
+type MediaModelAliasMutation struct {
+	config
+	op                      Op
+	typ                     string
+	id                      *int64
+	created_at              *time.Time
+	updated_at              *time.Time
+	requested_model_id      *string
+	clearedFields           map[string]struct{}
+	model_definition        *int64
+	clearedmodel_definition bool
+	done                    bool
+	oldValue                func(context.Context) (*MediaModelAlias, error)
+	predicates              []predicate.MediaModelAlias
+}
+
+var _ ent.Mutation = (*MediaModelAliasMutation)(nil)
+
+// mediamodelaliasOption allows management of the mutation configuration using functional options.
+type mediamodelaliasOption func(*MediaModelAliasMutation)
+
+// newMediaModelAliasMutation creates new mutation for the MediaModelAlias entity.
+func newMediaModelAliasMutation(c config, op Op, opts ...mediamodelaliasOption) *MediaModelAliasMutation {
+	m := &MediaModelAliasMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeMediaModelAlias,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withMediaModelAliasID sets the ID field of the mutation.
+func withMediaModelAliasID(id int64) mediamodelaliasOption {
+	return func(m *MediaModelAliasMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *MediaModelAlias
+		)
+		m.oldValue = func(ctx context.Context) (*MediaModelAlias, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().MediaModelAlias.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withMediaModelAlias sets the old MediaModelAlias of the mutation.
+func withMediaModelAlias(node *MediaModelAlias) mediamodelaliasOption {
+	return func(m *MediaModelAliasMutation) {
+		m.oldValue = func(context.Context) (*MediaModelAlias, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m MediaModelAliasMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m MediaModelAliasMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *MediaModelAliasMutation) ID() (id int64, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *MediaModelAliasMutation) IDs(ctx context.Context) ([]int64, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int64{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().MediaModelAlias.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *MediaModelAliasMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *MediaModelAliasMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the MediaModelAlias entity.
+// If the MediaModelAlias object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *MediaModelAliasMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *MediaModelAliasMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *MediaModelAliasMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *MediaModelAliasMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the MediaModelAlias entity.
+// If the MediaModelAlias object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *MediaModelAliasMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *MediaModelAliasMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// SetRequestedModelID sets the "requested_model_id" field.
+func (m *MediaModelAliasMutation) SetRequestedModelID(s string) {
+	m.requested_model_id = &s
+}
+
+// RequestedModelID returns the value of the "requested_model_id" field in the mutation.
+func (m *MediaModelAliasMutation) RequestedModelID() (r string, exists bool) {
+	v := m.requested_model_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRequestedModelID returns the old "requested_model_id" field's value of the MediaModelAlias entity.
+// If the MediaModelAlias object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *MediaModelAliasMutation) OldRequestedModelID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRequestedModelID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRequestedModelID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRequestedModelID: %w", err)
+	}
+	return oldValue.RequestedModelID, nil
+}
+
+// ResetRequestedModelID resets all changes to the "requested_model_id" field.
+func (m *MediaModelAliasMutation) ResetRequestedModelID() {
+	m.requested_model_id = nil
+}
+
+// SetModelDefinitionID sets the "model_definition_id" field.
+func (m *MediaModelAliasMutation) SetModelDefinitionID(i int64) {
+	m.model_definition = &i
+}
+
+// ModelDefinitionID returns the value of the "model_definition_id" field in the mutation.
+func (m *MediaModelAliasMutation) ModelDefinitionID() (r int64, exists bool) {
+	v := m.model_definition
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldModelDefinitionID returns the old "model_definition_id" field's value of the MediaModelAlias entity.
+// If the MediaModelAlias object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *MediaModelAliasMutation) OldModelDefinitionID(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldModelDefinitionID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldModelDefinitionID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldModelDefinitionID: %w", err)
+	}
+	return oldValue.ModelDefinitionID, nil
+}
+
+// ResetModelDefinitionID resets all changes to the "model_definition_id" field.
+func (m *MediaModelAliasMutation) ResetModelDefinitionID() {
+	m.model_definition = nil
+}
+
+// ClearModelDefinition clears the "model_definition" edge to the MediaModelDefinition entity.
+func (m *MediaModelAliasMutation) ClearModelDefinition() {
+	m.clearedmodel_definition = true
+	m.clearedFields[mediamodelalias.FieldModelDefinitionID] = struct{}{}
+}
+
+// ModelDefinitionCleared reports if the "model_definition" edge to the MediaModelDefinition entity was cleared.
+func (m *MediaModelAliasMutation) ModelDefinitionCleared() bool {
+	return m.clearedmodel_definition
+}
+
+// ModelDefinitionIDs returns the "model_definition" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// ModelDefinitionID instead. It exists only for internal usage by the builders.
+func (m *MediaModelAliasMutation) ModelDefinitionIDs() (ids []int64) {
+	if id := m.model_definition; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetModelDefinition resets all changes to the "model_definition" edge.
+func (m *MediaModelAliasMutation) ResetModelDefinition() {
+	m.model_definition = nil
+	m.clearedmodel_definition = false
+}
+
+// Where appends a list predicates to the MediaModelAliasMutation builder.
+func (m *MediaModelAliasMutation) Where(ps ...predicate.MediaModelAlias) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the MediaModelAliasMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *MediaModelAliasMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.MediaModelAlias, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *MediaModelAliasMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *MediaModelAliasMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (MediaModelAlias).
+func (m *MediaModelAliasMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *MediaModelAliasMutation) Fields() []string {
+	fields := make([]string, 0, 4)
+	if m.created_at != nil {
+		fields = append(fields, mediamodelalias.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, mediamodelalias.FieldUpdatedAt)
+	}
+	if m.requested_model_id != nil {
+		fields = append(fields, mediamodelalias.FieldRequestedModelID)
+	}
+	if m.model_definition != nil {
+		fields = append(fields, mediamodelalias.FieldModelDefinitionID)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *MediaModelAliasMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case mediamodelalias.FieldCreatedAt:
+		return m.CreatedAt()
+	case mediamodelalias.FieldUpdatedAt:
+		return m.UpdatedAt()
+	case mediamodelalias.FieldRequestedModelID:
+		return m.RequestedModelID()
+	case mediamodelalias.FieldModelDefinitionID:
+		return m.ModelDefinitionID()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *MediaModelAliasMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case mediamodelalias.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case mediamodelalias.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	case mediamodelalias.FieldRequestedModelID:
+		return m.OldRequestedModelID(ctx)
+	case mediamodelalias.FieldModelDefinitionID:
+		return m.OldModelDefinitionID(ctx)
+	}
+	return nil, fmt.Errorf("unknown MediaModelAlias field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *MediaModelAliasMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case mediamodelalias.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case mediamodelalias.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	case mediamodelalias.FieldRequestedModelID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRequestedModelID(v)
+		return nil
+	case mediamodelalias.FieldModelDefinitionID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetModelDefinitionID(v)
+		return nil
+	}
+	return fmt.Errorf("unknown MediaModelAlias field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *MediaModelAliasMutation) AddedFields() []string {
+	var fields []string
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *MediaModelAliasMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *MediaModelAliasMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown MediaModelAlias numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *MediaModelAliasMutation) ClearedFields() []string {
+	return nil
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *MediaModelAliasMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *MediaModelAliasMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown MediaModelAlias nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *MediaModelAliasMutation) ResetField(name string) error {
+	switch name {
+	case mediamodelalias.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case mediamodelalias.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	case mediamodelalias.FieldRequestedModelID:
+		m.ResetRequestedModelID()
+		return nil
+	case mediamodelalias.FieldModelDefinitionID:
+		m.ResetModelDefinitionID()
+		return nil
+	}
+	return fmt.Errorf("unknown MediaModelAlias field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *MediaModelAliasMutation) AddedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.model_definition != nil {
+		edges = append(edges, mediamodelalias.EdgeModelDefinition)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *MediaModelAliasMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case mediamodelalias.EdgeModelDefinition:
+		if id := m.model_definition; id != nil {
+			return []ent.Value{*id}
+		}
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *MediaModelAliasMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 1)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *MediaModelAliasMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *MediaModelAliasMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.clearedmodel_definition {
+		edges = append(edges, mediamodelalias.EdgeModelDefinition)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *MediaModelAliasMutation) EdgeCleared(name string) bool {
+	switch name {
+	case mediamodelalias.EdgeModelDefinition:
+		return m.clearedmodel_definition
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *MediaModelAliasMutation) ClearEdge(name string) error {
+	switch name {
+	case mediamodelalias.EdgeModelDefinition:
+		m.ClearModelDefinition()
+		return nil
+	}
+	return fmt.Errorf("unknown MediaModelAlias unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *MediaModelAliasMutation) ResetEdge(name string) error {
+	switch name {
+	case mediamodelalias.EdgeModelDefinition:
+		m.ResetModelDefinition()
+		return nil
+	}
+	return fmt.Errorf("unknown MediaModelAlias edge %s", name)
+}
+
 // MediaModelDefinitionMutation represents an operation that mutates the MediaModelDefinition nodes in the graph.
 type MediaModelDefinitionMutation struct {
 	config
-	op                Op
-	typ               string
-	id                *int64
-	created_at        *time.Time
-	updated_at        *time.Time
-	model_id          *string
-	media_type        *string
-	operations        *[]string
-	appendoperations  []string
-	constraints       *json.RawMessage
-	appendconstraints json.RawMessage
-	billing_unit      *string
-	enabled           *bool
-	clearedFields     map[string]struct{}
-	done              bool
-	oldValue          func(context.Context) (*MediaModelDefinition, error)
-	predicates        []predicate.MediaModelDefinition
+	op                 Op
+	typ                string
+	id                 *int64
+	created_at         *time.Time
+	updated_at         *time.Time
+	model_id           *string
+	vendor             *string
+	media_type         *string
+	operations         *[]string
+	appendoperations   []string
+	constraints        *json.RawMessage
+	appendconstraints  json.RawMessage
+	billing_unit       *string
+	default_adapter    *string
+	default_async_mode *string
+	enabled            *bool
+	clearedFields      map[string]struct{}
+	done               bool
+	oldValue           func(context.Context) (*MediaModelDefinition, error)
+	predicates         []predicate.MediaModelDefinition
 }
 
 var _ ent.Mutation = (*MediaModelDefinitionMutation)(nil)
@@ -21631,6 +22828,42 @@ func (m *MediaModelDefinitionMutation) ResetModelID() {
 	m.model_id = nil
 }
 
+// SetVendor sets the "vendor" field.
+func (m *MediaModelDefinitionMutation) SetVendor(s string) {
+	m.vendor = &s
+}
+
+// Vendor returns the value of the "vendor" field in the mutation.
+func (m *MediaModelDefinitionMutation) Vendor() (r string, exists bool) {
+	v := m.vendor
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldVendor returns the old "vendor" field's value of the MediaModelDefinition entity.
+// If the MediaModelDefinition object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *MediaModelDefinitionMutation) OldVendor(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldVendor is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldVendor requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldVendor: %w", err)
+	}
+	return oldValue.Vendor, nil
+}
+
+// ResetVendor resets all changes to the "vendor" field.
+func (m *MediaModelDefinitionMutation) ResetVendor() {
+	m.vendor = nil
+}
+
 // SetMediaType sets the "media_type" field.
 func (m *MediaModelDefinitionMutation) SetMediaType(s string) {
 	m.media_type = &s
@@ -21805,6 +23038,78 @@ func (m *MediaModelDefinitionMutation) ResetBillingUnit() {
 	m.billing_unit = nil
 }
 
+// SetDefaultAdapter sets the "default_adapter" field.
+func (m *MediaModelDefinitionMutation) SetDefaultAdapter(s string) {
+	m.default_adapter = &s
+}
+
+// DefaultAdapter returns the value of the "default_adapter" field in the mutation.
+func (m *MediaModelDefinitionMutation) DefaultAdapter() (r string, exists bool) {
+	v := m.default_adapter
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDefaultAdapter returns the old "default_adapter" field's value of the MediaModelDefinition entity.
+// If the MediaModelDefinition object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *MediaModelDefinitionMutation) OldDefaultAdapter(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDefaultAdapter is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDefaultAdapter requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDefaultAdapter: %w", err)
+	}
+	return oldValue.DefaultAdapter, nil
+}
+
+// ResetDefaultAdapter resets all changes to the "default_adapter" field.
+func (m *MediaModelDefinitionMutation) ResetDefaultAdapter() {
+	m.default_adapter = nil
+}
+
+// SetDefaultAsyncMode sets the "default_async_mode" field.
+func (m *MediaModelDefinitionMutation) SetDefaultAsyncMode(s string) {
+	m.default_async_mode = &s
+}
+
+// DefaultAsyncMode returns the value of the "default_async_mode" field in the mutation.
+func (m *MediaModelDefinitionMutation) DefaultAsyncMode() (r string, exists bool) {
+	v := m.default_async_mode
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDefaultAsyncMode returns the old "default_async_mode" field's value of the MediaModelDefinition entity.
+// If the MediaModelDefinition object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *MediaModelDefinitionMutation) OldDefaultAsyncMode(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDefaultAsyncMode is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDefaultAsyncMode requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDefaultAsyncMode: %w", err)
+	}
+	return oldValue.DefaultAsyncMode, nil
+}
+
+// ResetDefaultAsyncMode resets all changes to the "default_async_mode" field.
+func (m *MediaModelDefinitionMutation) ResetDefaultAsyncMode() {
+	m.default_async_mode = nil
+}
+
 // SetEnabled sets the "enabled" field.
 func (m *MediaModelDefinitionMutation) SetEnabled(b bool) {
 	m.enabled = &b
@@ -21875,7 +23180,7 @@ func (m *MediaModelDefinitionMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *MediaModelDefinitionMutation) Fields() []string {
-	fields := make([]string, 0, 8)
+	fields := make([]string, 0, 11)
 	if m.created_at != nil {
 		fields = append(fields, mediamodeldefinition.FieldCreatedAt)
 	}
@@ -21884,6 +23189,9 @@ func (m *MediaModelDefinitionMutation) Fields() []string {
 	}
 	if m.model_id != nil {
 		fields = append(fields, mediamodeldefinition.FieldModelID)
+	}
+	if m.vendor != nil {
+		fields = append(fields, mediamodeldefinition.FieldVendor)
 	}
 	if m.media_type != nil {
 		fields = append(fields, mediamodeldefinition.FieldMediaType)
@@ -21896,6 +23204,12 @@ func (m *MediaModelDefinitionMutation) Fields() []string {
 	}
 	if m.billing_unit != nil {
 		fields = append(fields, mediamodeldefinition.FieldBillingUnit)
+	}
+	if m.default_adapter != nil {
+		fields = append(fields, mediamodeldefinition.FieldDefaultAdapter)
+	}
+	if m.default_async_mode != nil {
+		fields = append(fields, mediamodeldefinition.FieldDefaultAsyncMode)
 	}
 	if m.enabled != nil {
 		fields = append(fields, mediamodeldefinition.FieldEnabled)
@@ -21914,6 +23228,8 @@ func (m *MediaModelDefinitionMutation) Field(name string) (ent.Value, bool) {
 		return m.UpdatedAt()
 	case mediamodeldefinition.FieldModelID:
 		return m.ModelID()
+	case mediamodeldefinition.FieldVendor:
+		return m.Vendor()
 	case mediamodeldefinition.FieldMediaType:
 		return m.MediaType()
 	case mediamodeldefinition.FieldOperations:
@@ -21922,6 +23238,10 @@ func (m *MediaModelDefinitionMutation) Field(name string) (ent.Value, bool) {
 		return m.Constraints()
 	case mediamodeldefinition.FieldBillingUnit:
 		return m.BillingUnit()
+	case mediamodeldefinition.FieldDefaultAdapter:
+		return m.DefaultAdapter()
+	case mediamodeldefinition.FieldDefaultAsyncMode:
+		return m.DefaultAsyncMode()
 	case mediamodeldefinition.FieldEnabled:
 		return m.Enabled()
 	}
@@ -21939,6 +23259,8 @@ func (m *MediaModelDefinitionMutation) OldField(ctx context.Context, name string
 		return m.OldUpdatedAt(ctx)
 	case mediamodeldefinition.FieldModelID:
 		return m.OldModelID(ctx)
+	case mediamodeldefinition.FieldVendor:
+		return m.OldVendor(ctx)
 	case mediamodeldefinition.FieldMediaType:
 		return m.OldMediaType(ctx)
 	case mediamodeldefinition.FieldOperations:
@@ -21947,6 +23269,10 @@ func (m *MediaModelDefinitionMutation) OldField(ctx context.Context, name string
 		return m.OldConstraints(ctx)
 	case mediamodeldefinition.FieldBillingUnit:
 		return m.OldBillingUnit(ctx)
+	case mediamodeldefinition.FieldDefaultAdapter:
+		return m.OldDefaultAdapter(ctx)
+	case mediamodeldefinition.FieldDefaultAsyncMode:
+		return m.OldDefaultAsyncMode(ctx)
 	case mediamodeldefinition.FieldEnabled:
 		return m.OldEnabled(ctx)
 	}
@@ -21979,6 +23305,13 @@ func (m *MediaModelDefinitionMutation) SetField(name string, value ent.Value) er
 		}
 		m.SetModelID(v)
 		return nil
+	case mediamodeldefinition.FieldVendor:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetVendor(v)
+		return nil
 	case mediamodeldefinition.FieldMediaType:
 		v, ok := value.(string)
 		if !ok {
@@ -22006,6 +23339,20 @@ func (m *MediaModelDefinitionMutation) SetField(name string, value ent.Value) er
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetBillingUnit(v)
+		return nil
+	case mediamodeldefinition.FieldDefaultAdapter:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDefaultAdapter(v)
+		return nil
+	case mediamodeldefinition.FieldDefaultAsyncMode:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDefaultAsyncMode(v)
 		return nil
 	case mediamodeldefinition.FieldEnabled:
 		v, ok := value.(bool)
@@ -22072,6 +23419,9 @@ func (m *MediaModelDefinitionMutation) ResetField(name string) error {
 	case mediamodeldefinition.FieldModelID:
 		m.ResetModelID()
 		return nil
+	case mediamodeldefinition.FieldVendor:
+		m.ResetVendor()
+		return nil
 	case mediamodeldefinition.FieldMediaType:
 		m.ResetMediaType()
 		return nil
@@ -22083,6 +23433,12 @@ func (m *MediaModelDefinitionMutation) ResetField(name string) error {
 		return nil
 	case mediamodeldefinition.FieldBillingUnit:
 		m.ResetBillingUnit()
+		return nil
+	case mediamodeldefinition.FieldDefaultAdapter:
+		m.ResetDefaultAdapter()
+		return nil
+	case mediamodeldefinition.FieldDefaultAsyncMode:
+		m.ResetDefaultAsyncMode()
 		return nil
 	case mediamodeldefinition.FieldEnabled:
 		m.ResetEnabled()

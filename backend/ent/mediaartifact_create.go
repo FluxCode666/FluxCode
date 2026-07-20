@@ -200,6 +200,20 @@ func (_c *MediaArtifactCreate) SetNillableStorageStatus(v *string) *MediaArtifac
 	return _c
 }
 
+// SetStorageProvider sets the "storage_provider" field.
+func (_c *MediaArtifactCreate) SetStorageProvider(v string) *MediaArtifactCreate {
+	_c.mutation.SetStorageProvider(v)
+	return _c
+}
+
+// SetNillableStorageProvider sets the "storage_provider" field if the given value is not nil.
+func (_c *MediaArtifactCreate) SetNillableStorageProvider(v *string) *MediaArtifactCreate {
+	if v != nil {
+		_c.SetStorageProvider(*v)
+	}
+	return _c
+}
+
 // SetObjectKey sets the "object_key" field.
 func (_c *MediaArtifactCreate) SetObjectKey(v string) *MediaArtifactCreate {
 	_c.mutation.SetObjectKey(v)
@@ -319,6 +333,10 @@ func (_c *MediaArtifactCreate) defaults() {
 		v := mediaartifact.DefaultStorageStatus
 		_c.mutation.SetStorageStatus(v)
 	}
+	if _, ok := _c.mutation.StorageProvider(); !ok {
+		v := mediaartifact.DefaultStorageProvider
+		_c.mutation.SetStorageProvider(v)
+	}
 }
 
 // check runs all checks and user-defined validators on the builder.
@@ -384,6 +402,14 @@ func (_c *MediaArtifactCreate) check() error {
 	if v, ok := _c.mutation.StorageStatus(); ok {
 		if err := mediaartifact.StorageStatusValidator(v); err != nil {
 			return &ValidationError{Name: "storage_status", err: fmt.Errorf(`ent: validator failed for field "MediaArtifact.storage_status": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.StorageProvider(); !ok {
+		return &ValidationError{Name: "storage_provider", err: errors.New(`ent: missing required field "MediaArtifact.storage_provider"`)}
+	}
+	if v, ok := _c.mutation.StorageProvider(); ok {
+		if err := mediaartifact.StorageProviderValidator(v); err != nil {
+			return &ValidationError{Name: "storage_provider", err: fmt.Errorf(`ent: validator failed for field "MediaArtifact.storage_provider": %w`, err)}
 		}
 	}
 	return nil
@@ -472,6 +498,10 @@ func (_c *MediaArtifactCreate) createSpec() (*MediaArtifact, *sqlgraph.CreateSpe
 	if value, ok := _c.mutation.StorageStatus(); ok {
 		_spec.SetField(mediaartifact.FieldStorageStatus, field.TypeString, value)
 		_node.StorageStatus = value
+	}
+	if value, ok := _c.mutation.StorageProvider(); ok {
+		_spec.SetField(mediaartifact.FieldStorageProvider, field.TypeString, value)
+		_node.StorageProvider = value
 	}
 	if value, ok := _c.mutation.ObjectKey(); ok {
 		_spec.SetField(mediaartifact.FieldObjectKey, field.TypeString, value)
@@ -772,6 +802,18 @@ func (u *MediaArtifactUpsert) SetStorageStatus(v string) *MediaArtifactUpsert {
 // UpdateStorageStatus sets the "storage_status" field to the value that was provided on create.
 func (u *MediaArtifactUpsert) UpdateStorageStatus() *MediaArtifactUpsert {
 	u.SetExcluded(mediaartifact.FieldStorageStatus)
+	return u
+}
+
+// SetStorageProvider sets the "storage_provider" field.
+func (u *MediaArtifactUpsert) SetStorageProvider(v string) *MediaArtifactUpsert {
+	u.Set(mediaartifact.FieldStorageProvider, v)
+	return u
+}
+
+// UpdateStorageProvider sets the "storage_provider" field to the value that was provided on create.
+func (u *MediaArtifactUpsert) UpdateStorageProvider() *MediaArtifactUpsert {
+	u.SetExcluded(mediaartifact.FieldStorageProvider)
 	return u
 }
 
@@ -1162,6 +1204,20 @@ func (u *MediaArtifactUpsertOne) SetStorageStatus(v string) *MediaArtifactUpsert
 func (u *MediaArtifactUpsertOne) UpdateStorageStatus() *MediaArtifactUpsertOne {
 	return u.Update(func(s *MediaArtifactUpsert) {
 		s.UpdateStorageStatus()
+	})
+}
+
+// SetStorageProvider sets the "storage_provider" field.
+func (u *MediaArtifactUpsertOne) SetStorageProvider(v string) *MediaArtifactUpsertOne {
+	return u.Update(func(s *MediaArtifactUpsert) {
+		s.SetStorageProvider(v)
+	})
+}
+
+// UpdateStorageProvider sets the "storage_provider" field to the value that was provided on create.
+func (u *MediaArtifactUpsertOne) UpdateStorageProvider() *MediaArtifactUpsertOne {
+	return u.Update(func(s *MediaArtifactUpsert) {
+		s.UpdateStorageProvider()
 	})
 }
 
@@ -1730,6 +1786,20 @@ func (u *MediaArtifactUpsertBulk) SetStorageStatus(v string) *MediaArtifactUpser
 func (u *MediaArtifactUpsertBulk) UpdateStorageStatus() *MediaArtifactUpsertBulk {
 	return u.Update(func(s *MediaArtifactUpsert) {
 		s.UpdateStorageStatus()
+	})
+}
+
+// SetStorageProvider sets the "storage_provider" field.
+func (u *MediaArtifactUpsertBulk) SetStorageProvider(v string) *MediaArtifactUpsertBulk {
+	return u.Update(func(s *MediaArtifactUpsert) {
+		s.SetStorageProvider(v)
+	})
+}
+
+// UpdateStorageProvider sets the "storage_provider" field to the value that was provided on create.
+func (u *MediaArtifactUpsertBulk) UpdateStorageProvider() *MediaArtifactUpsertBulk {
+	return u.Update(func(s *MediaArtifactUpsert) {
+		s.UpdateStorageProvider()
 	})
 }
 

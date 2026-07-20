@@ -25,8 +25,10 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/generatedimage"
 	"github.com/Wei-Shaw/sub2api/ent/giftbalancerecord"
 	"github.com/Wei-Shaw/sub2api/ent/group"
+	"github.com/Wei-Shaw/sub2api/ent/groupmediamodelscope"
 	"github.com/Wei-Shaw/sub2api/ent/idempotencyrecord"
 	"github.com/Wei-Shaw/sub2api/ent/mediaartifact"
+	"github.com/Wei-Shaw/sub2api/ent/mediamodelalias"
 	"github.com/Wei-Shaw/sub2api/ent/mediamodeldefinition"
 	"github.com/Wei-Shaw/sub2api/ent/mediatask"
 	"github.com/Wei-Shaw/sub2api/ent/paymentauditlog"
@@ -131,8 +133,10 @@ func checkColumn(t, c string) error {
 			generatedimage.Table:                 generatedimage.ValidColumn,
 			giftbalancerecord.Table:              giftbalancerecord.ValidColumn,
 			group.Table:                          group.ValidColumn,
+			groupmediamodelscope.Table:           groupmediamodelscope.ValidColumn,
 			idempotencyrecord.Table:              idempotencyrecord.ValidColumn,
 			mediaartifact.Table:                  mediaartifact.ValidColumn,
+			mediamodelalias.Table:                mediamodelalias.ValidColumn,
 			mediamodeldefinition.Table:           mediamodeldefinition.ValidColumn,
 			mediatask.Table:                      mediatask.ValidColumn,
 			paymentauditlog.Table:                paymentauditlog.ValidColumn,

@@ -19,6 +19,8 @@ const (
 	FieldUpdatedAt = "updated_at"
 	// FieldModelID holds the string denoting the model_id field in the database.
 	FieldModelID = "model_id"
+	// FieldVendor holds the string denoting the vendor field in the database.
+	FieldVendor = "vendor"
 	// FieldMediaType holds the string denoting the media_type field in the database.
 	FieldMediaType = "media_type"
 	// FieldOperations holds the string denoting the operations field in the database.
@@ -27,6 +29,10 @@ const (
 	FieldConstraints = "constraints"
 	// FieldBillingUnit holds the string denoting the billing_unit field in the database.
 	FieldBillingUnit = "billing_unit"
+	// FieldDefaultAdapter holds the string denoting the default_adapter field in the database.
+	FieldDefaultAdapter = "default_adapter"
+	// FieldDefaultAsyncMode holds the string denoting the default_async_mode field in the database.
+	FieldDefaultAsyncMode = "default_async_mode"
 	// FieldEnabled holds the string denoting the enabled field in the database.
 	FieldEnabled = "enabled"
 	// Table holds the table name of the mediamodeldefinition in the database.
@@ -39,10 +45,13 @@ var Columns = []string{
 	FieldCreatedAt,
 	FieldUpdatedAt,
 	FieldModelID,
+	FieldVendor,
 	FieldMediaType,
 	FieldOperations,
 	FieldConstraints,
 	FieldBillingUnit,
+	FieldDefaultAdapter,
+	FieldDefaultAsyncMode,
 	FieldEnabled,
 }
 
@@ -65,10 +74,22 @@ var (
 	UpdateDefaultUpdatedAt func() time.Time
 	// ModelIDValidator is a validator for the "model_id" field. It is called by the builders before save.
 	ModelIDValidator func(string) error
+	// DefaultVendor holds the default value on creation for the "vendor" field.
+	DefaultVendor string
+	// VendorValidator is a validator for the "vendor" field. It is called by the builders before save.
+	VendorValidator func(string) error
 	// MediaTypeValidator is a validator for the "media_type" field. It is called by the builders before save.
 	MediaTypeValidator func(string) error
 	// BillingUnitValidator is a validator for the "billing_unit" field. It is called by the builders before save.
 	BillingUnitValidator func(string) error
+	// DefaultDefaultAdapter holds the default value on creation for the "default_adapter" field.
+	DefaultDefaultAdapter string
+	// DefaultAdapterValidator is a validator for the "default_adapter" field. It is called by the builders before save.
+	DefaultAdapterValidator func(string) error
+	// DefaultDefaultAsyncMode holds the default value on creation for the "default_async_mode" field.
+	DefaultDefaultAsyncMode string
+	// DefaultAsyncModeValidator is a validator for the "default_async_mode" field. It is called by the builders before save.
+	DefaultAsyncModeValidator func(string) error
 	// DefaultEnabled holds the default value on creation for the "enabled" field.
 	DefaultEnabled bool
 )
@@ -96,6 +117,11 @@ func ByModelID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldModelID, opts...).ToFunc()
 }
 
+// ByVendor orders the results by the vendor field.
+func ByVendor(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldVendor, opts...).ToFunc()
+}
+
 // ByMediaType orders the results by the media_type field.
 func ByMediaType(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldMediaType, opts...).ToFunc()
@@ -104,6 +130,16 @@ func ByMediaType(opts ...sql.OrderTermOption) OrderOption {
 // ByBillingUnit orders the results by the billing_unit field.
 func ByBillingUnit(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldBillingUnit, opts...).ToFunc()
+}
+
+// ByDefaultAdapter orders the results by the default_adapter field.
+func ByDefaultAdapter(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldDefaultAdapter, opts...).ToFunc()
+}
+
+// ByDefaultAsyncMode orders the results by the default_async_mode field.
+func ByDefaultAsyncMode(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldDefaultAsyncMode, opts...).ToFunc()
 }
 
 // ByEnabled orders the results by the enabled field.

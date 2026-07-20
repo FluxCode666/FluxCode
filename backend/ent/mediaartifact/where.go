@@ -129,6 +129,11 @@ func StorageStatus(v string) predicate.MediaArtifact {
 	return predicate.MediaArtifact(sql.FieldEQ(FieldStorageStatus, v))
 }
 
+// StorageProvider applies equality check predicate on the "storage_provider" field. It's identical to StorageProviderEQ.
+func StorageProvider(v string) predicate.MediaArtifact {
+	return predicate.MediaArtifact(sql.FieldEQ(FieldStorageProvider, v))
+}
+
 // ObjectKey applies equality check predicate on the "object_key" field. It's identical to ObjectKeyEQ.
 func ObjectKey(v string) predicate.MediaArtifact {
 	return predicate.MediaArtifact(sql.FieldEQ(FieldObjectKey, v))
@@ -937,6 +942,71 @@ func StorageStatusEqualFold(v string) predicate.MediaArtifact {
 // StorageStatusContainsFold applies the ContainsFold predicate on the "storage_status" field.
 func StorageStatusContainsFold(v string) predicate.MediaArtifact {
 	return predicate.MediaArtifact(sql.FieldContainsFold(FieldStorageStatus, v))
+}
+
+// StorageProviderEQ applies the EQ predicate on the "storage_provider" field.
+func StorageProviderEQ(v string) predicate.MediaArtifact {
+	return predicate.MediaArtifact(sql.FieldEQ(FieldStorageProvider, v))
+}
+
+// StorageProviderNEQ applies the NEQ predicate on the "storage_provider" field.
+func StorageProviderNEQ(v string) predicate.MediaArtifact {
+	return predicate.MediaArtifact(sql.FieldNEQ(FieldStorageProvider, v))
+}
+
+// StorageProviderIn applies the In predicate on the "storage_provider" field.
+func StorageProviderIn(vs ...string) predicate.MediaArtifact {
+	return predicate.MediaArtifact(sql.FieldIn(FieldStorageProvider, vs...))
+}
+
+// StorageProviderNotIn applies the NotIn predicate on the "storage_provider" field.
+func StorageProviderNotIn(vs ...string) predicate.MediaArtifact {
+	return predicate.MediaArtifact(sql.FieldNotIn(FieldStorageProvider, vs...))
+}
+
+// StorageProviderGT applies the GT predicate on the "storage_provider" field.
+func StorageProviderGT(v string) predicate.MediaArtifact {
+	return predicate.MediaArtifact(sql.FieldGT(FieldStorageProvider, v))
+}
+
+// StorageProviderGTE applies the GTE predicate on the "storage_provider" field.
+func StorageProviderGTE(v string) predicate.MediaArtifact {
+	return predicate.MediaArtifact(sql.FieldGTE(FieldStorageProvider, v))
+}
+
+// StorageProviderLT applies the LT predicate on the "storage_provider" field.
+func StorageProviderLT(v string) predicate.MediaArtifact {
+	return predicate.MediaArtifact(sql.FieldLT(FieldStorageProvider, v))
+}
+
+// StorageProviderLTE applies the LTE predicate on the "storage_provider" field.
+func StorageProviderLTE(v string) predicate.MediaArtifact {
+	return predicate.MediaArtifact(sql.FieldLTE(FieldStorageProvider, v))
+}
+
+// StorageProviderContains applies the Contains predicate on the "storage_provider" field.
+func StorageProviderContains(v string) predicate.MediaArtifact {
+	return predicate.MediaArtifact(sql.FieldContains(FieldStorageProvider, v))
+}
+
+// StorageProviderHasPrefix applies the HasPrefix predicate on the "storage_provider" field.
+func StorageProviderHasPrefix(v string) predicate.MediaArtifact {
+	return predicate.MediaArtifact(sql.FieldHasPrefix(FieldStorageProvider, v))
+}
+
+// StorageProviderHasSuffix applies the HasSuffix predicate on the "storage_provider" field.
+func StorageProviderHasSuffix(v string) predicate.MediaArtifact {
+	return predicate.MediaArtifact(sql.FieldHasSuffix(FieldStorageProvider, v))
+}
+
+// StorageProviderEqualFold applies the EqualFold predicate on the "storage_provider" field.
+func StorageProviderEqualFold(v string) predicate.MediaArtifact {
+	return predicate.MediaArtifact(sql.FieldEqualFold(FieldStorageProvider, v))
+}
+
+// StorageProviderContainsFold applies the ContainsFold predicate on the "storage_provider" field.
+func StorageProviderContainsFold(v string) predicate.MediaArtifact {
+	return predicate.MediaArtifact(sql.FieldContainsFold(FieldStorageProvider, v))
 }
 
 // ObjectKeyEQ applies the EQ predicate on the "object_key" field.

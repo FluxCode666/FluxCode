@@ -47,6 +47,8 @@ type MediaArtifact struct {
 	Fps *float64 `json:"fps,omitempty"`
 	// StorageStatus holds the value of the "storage_status" field.
 	StorageStatus string `json:"storage_status,omitempty"`
+	// StorageProvider holds the value of the "storage_provider" field.
+	StorageProvider string `json:"storage_provider,omitempty"`
 	// ObjectKey holds the value of the "object_key" field.
 	ObjectKey *string `json:"object_key,omitempty"`
 	// PublicURL holds the value of the "public_url" field.
@@ -67,7 +69,7 @@ func (*MediaArtifact) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullFloat64)
 		case mediaartifact.FieldID, mediaartifact.FieldTaskID, mediaartifact.FieldPosition, mediaartifact.FieldSizeBytes, mediaartifact.FieldWidth, mediaartifact.FieldHeight:
 			values[i] = new(sql.NullInt64)
-		case mediaartifact.FieldDirection, mediaartifact.FieldMediaType, mediaartifact.FieldContentType, mediaartifact.FieldChecksumSha256, mediaartifact.FieldResolution, mediaartifact.FieldStorageStatus, mediaartifact.FieldObjectKey, mediaartifact.FieldPublicURL, mediaartifact.FieldUpstreamReference:
+		case mediaartifact.FieldDirection, mediaartifact.FieldMediaType, mediaartifact.FieldContentType, mediaartifact.FieldChecksumSha256, mediaartifact.FieldResolution, mediaartifact.FieldStorageStatus, mediaartifact.FieldStorageProvider, mediaartifact.FieldObjectKey, mediaartifact.FieldPublicURL, mediaartifact.FieldUpstreamReference:
 			values[i] = new(sql.NullString)
 		case mediaartifact.FieldCreatedAt, mediaartifact.FieldUpdatedAt, mediaartifact.FieldExpiresAt:
 			values[i] = new(sql.NullTime)
@@ -186,6 +188,12 @@ func (_m *MediaArtifact) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.StorageStatus = value.String
 			}
+		case mediaartifact.FieldStorageProvider:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field storage_provider", values[i])
+			} else if value.Valid {
+				_m.StorageProvider = value.String
+			}
 		case mediaartifact.FieldObjectKey:
 			if value, ok := values[i].(*sql.NullString); !ok {
 				return fmt.Errorf("unexpected type %T for field object_key", values[i])
@@ -302,6 +310,9 @@ func (_m *MediaArtifact) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("storage_status=")
 	builder.WriteString(_m.StorageStatus)
+	builder.WriteString(", ")
+	builder.WriteString("storage_provider=")
+	builder.WriteString(_m.StorageProvider)
 	builder.WriteString(", ")
 	if v := _m.ObjectKey; v != nil {
 		builder.WriteString("object_key=")

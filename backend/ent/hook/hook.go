@@ -165,6 +165,18 @@ func (f GroupFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.GroupMutation", m)
 }
 
+// The GroupMediaModelScopeFunc type is an adapter to allow the use of ordinary
+// function as GroupMediaModelScope mutator.
+type GroupMediaModelScopeFunc func(context.Context, *ent.GroupMediaModelScopeMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f GroupMediaModelScopeFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.GroupMediaModelScopeMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.GroupMediaModelScopeMutation", m)
+}
+
 // The IdempotencyRecordFunc type is an adapter to allow the use of ordinary
 // function as IdempotencyRecord mutator.
 type IdempotencyRecordFunc func(context.Context, *ent.IdempotencyRecordMutation) (ent.Value, error)
@@ -187,6 +199,18 @@ func (f MediaArtifactFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Valu
 		return f(ctx, mv)
 	}
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.MediaArtifactMutation", m)
+}
+
+// The MediaModelAliasFunc type is an adapter to allow the use of ordinary
+// function as MediaModelAlias mutator.
+type MediaModelAliasFunc func(context.Context, *ent.MediaModelAliasMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f MediaModelAliasFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.MediaModelAliasMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.MediaModelAliasMutation", m)
 }
 
 // The MediaModelDefinitionFunc type is an adapter to allow the use of ordinary

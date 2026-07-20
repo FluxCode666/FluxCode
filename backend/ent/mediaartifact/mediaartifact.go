@@ -43,6 +43,8 @@ const (
 	FieldFps = "fps"
 	// FieldStorageStatus holds the string denoting the storage_status field in the database.
 	FieldStorageStatus = "storage_status"
+	// FieldStorageProvider holds the string denoting the storage_provider field in the database.
+	FieldStorageProvider = "storage_provider"
 	// FieldObjectKey holds the string denoting the object_key field in the database.
 	FieldObjectKey = "object_key"
 	// FieldPublicURL holds the string denoting the public_url field in the database.
@@ -73,6 +75,7 @@ var Columns = []string{
 	FieldResolution,
 	FieldFps,
 	FieldStorageStatus,
+	FieldStorageProvider,
 	FieldObjectKey,
 	FieldPublicURL,
 	FieldUpstreamReference,
@@ -118,6 +121,10 @@ var (
 	DefaultStorageStatus string
 	// StorageStatusValidator is a validator for the "storage_status" field. It is called by the builders before save.
 	StorageStatusValidator func(string) error
+	// DefaultStorageProvider holds the default value on creation for the "storage_provider" field.
+	DefaultStorageProvider string
+	// StorageProviderValidator is a validator for the "storage_provider" field. It is called by the builders before save.
+	StorageProviderValidator func(string) error
 )
 
 // OrderOption defines the ordering options for the MediaArtifact queries.
@@ -201,6 +208,11 @@ func ByFps(opts ...sql.OrderTermOption) OrderOption {
 // ByStorageStatus orders the results by the storage_status field.
 func ByStorageStatus(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldStorageStatus, opts...).ToFunc()
+}
+
+// ByStorageProvider orders the results by the storage_provider field.
+func ByStorageProvider(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldStorageProvider, opts...).ToFunc()
 }
 
 // ByObjectKey orders the results by the object_key field.

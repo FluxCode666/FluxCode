@@ -28,8 +28,10 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/generatedimage"
 	"github.com/Wei-Shaw/sub2api/ent/giftbalancerecord"
 	"github.com/Wei-Shaw/sub2api/ent/group"
+	"github.com/Wei-Shaw/sub2api/ent/groupmediamodelscope"
 	"github.com/Wei-Shaw/sub2api/ent/idempotencyrecord"
 	"github.com/Wei-Shaw/sub2api/ent/mediaartifact"
+	"github.com/Wei-Shaw/sub2api/ent/mediamodelalias"
 	"github.com/Wei-Shaw/sub2api/ent/mediamodeldefinition"
 	"github.com/Wei-Shaw/sub2api/ent/mediatask"
 	"github.com/Wei-Shaw/sub2api/ent/paymentauditlog"
@@ -96,10 +98,14 @@ type Client struct {
 	GiftBalanceRecord *GiftBalanceRecordClient
 	// Group is the client for interacting with the Group builders.
 	Group *GroupClient
+	// GroupMediaModelScope is the client for interacting with the GroupMediaModelScope builders.
+	GroupMediaModelScope *GroupMediaModelScopeClient
 	// IdempotencyRecord is the client for interacting with the IdempotencyRecord builders.
 	IdempotencyRecord *IdempotencyRecordClient
 	// MediaArtifact is the client for interacting with the MediaArtifact builders.
 	MediaArtifact *MediaArtifactClient
+	// MediaModelAlias is the client for interacting with the MediaModelAlias builders.
+	MediaModelAlias *MediaModelAliasClient
 	// MediaModelDefinition is the client for interacting with the MediaModelDefinition builders.
 	MediaModelDefinition *MediaModelDefinitionClient
 	// MediaTask is the client for interacting with the MediaTask builders.
@@ -186,8 +192,10 @@ func (c *Client) init() {
 	c.GeneratedImage = NewGeneratedImageClient(c.config)
 	c.GiftBalanceRecord = NewGiftBalanceRecordClient(c.config)
 	c.Group = NewGroupClient(c.config)
+	c.GroupMediaModelScope = NewGroupMediaModelScopeClient(c.config)
 	c.IdempotencyRecord = NewIdempotencyRecordClient(c.config)
 	c.MediaArtifact = NewMediaArtifactClient(c.config)
+	c.MediaModelAlias = NewMediaModelAliasClient(c.config)
 	c.MediaModelDefinition = NewMediaModelDefinitionClient(c.config)
 	c.MediaTask = NewMediaTaskClient(c.config)
 	c.PaymentAuditLog = NewPaymentAuditLogClient(c.config)
@@ -324,8 +332,10 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		GeneratedImage:                 NewGeneratedImageClient(cfg),
 		GiftBalanceRecord:              NewGiftBalanceRecordClient(cfg),
 		Group:                          NewGroupClient(cfg),
+		GroupMediaModelScope:           NewGroupMediaModelScopeClient(cfg),
 		IdempotencyRecord:              NewIdempotencyRecordClient(cfg),
 		MediaArtifact:                  NewMediaArtifactClient(cfg),
+		MediaModelAlias:                NewMediaModelAliasClient(cfg),
 		MediaModelDefinition:           NewMediaModelDefinitionClient(cfg),
 		MediaTask:                      NewMediaTaskClient(cfg),
 		PaymentAuditLog:                NewPaymentAuditLogClient(cfg),
@@ -389,8 +399,10 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		GeneratedImage:                 NewGeneratedImageClient(cfg),
 		GiftBalanceRecord:              NewGiftBalanceRecordClient(cfg),
 		Group:                          NewGroupClient(cfg),
+		GroupMediaModelScope:           NewGroupMediaModelScopeClient(cfg),
 		IdempotencyRecord:              NewIdempotencyRecordClient(cfg),
 		MediaArtifact:                  NewMediaArtifactClient(cfg),
+		MediaModelAlias:                NewMediaModelAliasClient(cfg),
 		MediaModelDefinition:           NewMediaModelDefinitionClient(cfg),
 		MediaTask:                      NewMediaTaskClient(cfg),
 		PaymentAuditLog:                NewPaymentAuditLogClient(cfg),
@@ -454,16 +466,17 @@ func (c *Client) Use(hooks ...Hook) {
 		c.APIKey, c.Account, c.AccountGroup, c.Announcement, c.AnnouncementRead,
 		c.ChannelMonitor, c.ChannelMonitorDailyRollup, c.ChannelMonitorHistory,
 		c.ChannelMonitorRequestTemplate, c.ErrorPassthroughRule, c.GeneratedImage,
-		c.GiftBalanceRecord, c.Group, c.IdempotencyRecord, c.MediaArtifact,
-		c.MediaModelDefinition, c.MediaTask, c.PaymentAuditLog, c.PaymentOrder,
-		c.PaymentProviderInstance, c.PromoCode, c.PromoCodeUsage, c.Promotion,
-		c.PromotionPlanRule, c.PromotionUsage, c.Proxy, c.RedeemCode, c.Referral,
-		c.SalesCommissionMonthlySnapshot, c.SalesCommissionRecord,
-		c.SalesCommissionSettlement, c.SalesCommissionSettlementItem,
-		c.SalesCommissionTier, c.SecuritySecret, c.Setting, c.SubscriptionGrant,
-		c.SubscriptionPlan, c.TLSFingerprintProfile, c.UsageCleanupTask, c.UsageLog,
-		c.User, c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
-		c.UserReferralConfig, c.UserSubscription,
+		c.GiftBalanceRecord, c.Group, c.GroupMediaModelScope, c.IdempotencyRecord,
+		c.MediaArtifact, c.MediaModelAlias, c.MediaModelDefinition, c.MediaTask,
+		c.PaymentAuditLog, c.PaymentOrder, c.PaymentProviderInstance, c.PromoCode,
+		c.PromoCodeUsage, c.Promotion, c.PromotionPlanRule, c.PromotionUsage, c.Proxy,
+		c.RedeemCode, c.Referral, c.SalesCommissionMonthlySnapshot,
+		c.SalesCommissionRecord, c.SalesCommissionSettlement,
+		c.SalesCommissionSettlementItem, c.SalesCommissionTier, c.SecuritySecret,
+		c.Setting, c.SubscriptionGrant, c.SubscriptionPlan, c.TLSFingerprintProfile,
+		c.UsageCleanupTask, c.UsageLog, c.User, c.UserAllowedGroup,
+		c.UserAttributeDefinition, c.UserAttributeValue, c.UserReferralConfig,
+		c.UserSubscription,
 	} {
 		n.Use(hooks...)
 	}
@@ -476,16 +489,17 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 		c.APIKey, c.Account, c.AccountGroup, c.Announcement, c.AnnouncementRead,
 		c.ChannelMonitor, c.ChannelMonitorDailyRollup, c.ChannelMonitorHistory,
 		c.ChannelMonitorRequestTemplate, c.ErrorPassthroughRule, c.GeneratedImage,
-		c.GiftBalanceRecord, c.Group, c.IdempotencyRecord, c.MediaArtifact,
-		c.MediaModelDefinition, c.MediaTask, c.PaymentAuditLog, c.PaymentOrder,
-		c.PaymentProviderInstance, c.PromoCode, c.PromoCodeUsage, c.Promotion,
-		c.PromotionPlanRule, c.PromotionUsage, c.Proxy, c.RedeemCode, c.Referral,
-		c.SalesCommissionMonthlySnapshot, c.SalesCommissionRecord,
-		c.SalesCommissionSettlement, c.SalesCommissionSettlementItem,
-		c.SalesCommissionTier, c.SecuritySecret, c.Setting, c.SubscriptionGrant,
-		c.SubscriptionPlan, c.TLSFingerprintProfile, c.UsageCleanupTask, c.UsageLog,
-		c.User, c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
-		c.UserReferralConfig, c.UserSubscription,
+		c.GiftBalanceRecord, c.Group, c.GroupMediaModelScope, c.IdempotencyRecord,
+		c.MediaArtifact, c.MediaModelAlias, c.MediaModelDefinition, c.MediaTask,
+		c.PaymentAuditLog, c.PaymentOrder, c.PaymentProviderInstance, c.PromoCode,
+		c.PromoCodeUsage, c.Promotion, c.PromotionPlanRule, c.PromotionUsage, c.Proxy,
+		c.RedeemCode, c.Referral, c.SalesCommissionMonthlySnapshot,
+		c.SalesCommissionRecord, c.SalesCommissionSettlement,
+		c.SalesCommissionSettlementItem, c.SalesCommissionTier, c.SecuritySecret,
+		c.Setting, c.SubscriptionGrant, c.SubscriptionPlan, c.TLSFingerprintProfile,
+		c.UsageCleanupTask, c.UsageLog, c.User, c.UserAllowedGroup,
+		c.UserAttributeDefinition, c.UserAttributeValue, c.UserReferralConfig,
+		c.UserSubscription,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -520,10 +534,14 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.GiftBalanceRecord.mutate(ctx, m)
 	case *GroupMutation:
 		return c.Group.mutate(ctx, m)
+	case *GroupMediaModelScopeMutation:
+		return c.GroupMediaModelScope.mutate(ctx, m)
 	case *IdempotencyRecordMutation:
 		return c.IdempotencyRecord.mutate(ctx, m)
 	case *MediaArtifactMutation:
 		return c.MediaArtifact.mutate(ctx, m)
+	case *MediaModelAliasMutation:
+		return c.MediaModelAlias.mutate(ctx, m)
 	case *MediaModelDefinitionMutation:
 		return c.MediaModelDefinition.mutate(ctx, m)
 	case *MediaTaskMutation:
@@ -2693,6 +2711,171 @@ func (c *GroupClient) mutate(ctx context.Context, m *GroupMutation) (Value, erro
 	}
 }
 
+// GroupMediaModelScopeClient is a client for the GroupMediaModelScope schema.
+type GroupMediaModelScopeClient struct {
+	config
+}
+
+// NewGroupMediaModelScopeClient returns a client for the GroupMediaModelScope from the given config.
+func NewGroupMediaModelScopeClient(c config) *GroupMediaModelScopeClient {
+	return &GroupMediaModelScopeClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `groupmediamodelscope.Hooks(f(g(h())))`.
+func (c *GroupMediaModelScopeClient) Use(hooks ...Hook) {
+	c.hooks.GroupMediaModelScope = append(c.hooks.GroupMediaModelScope, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `groupmediamodelscope.Intercept(f(g(h())))`.
+func (c *GroupMediaModelScopeClient) Intercept(interceptors ...Interceptor) {
+	c.inters.GroupMediaModelScope = append(c.inters.GroupMediaModelScope, interceptors...)
+}
+
+// Create returns a builder for creating a GroupMediaModelScope entity.
+func (c *GroupMediaModelScopeClient) Create() *GroupMediaModelScopeCreate {
+	mutation := newGroupMediaModelScopeMutation(c.config, OpCreate)
+	return &GroupMediaModelScopeCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of GroupMediaModelScope entities.
+func (c *GroupMediaModelScopeClient) CreateBulk(builders ...*GroupMediaModelScopeCreate) *GroupMediaModelScopeCreateBulk {
+	return &GroupMediaModelScopeCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *GroupMediaModelScopeClient) MapCreateBulk(slice any, setFunc func(*GroupMediaModelScopeCreate, int)) *GroupMediaModelScopeCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &GroupMediaModelScopeCreateBulk{err: fmt.Errorf("calling to GroupMediaModelScopeClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*GroupMediaModelScopeCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &GroupMediaModelScopeCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for GroupMediaModelScope.
+func (c *GroupMediaModelScopeClient) Update() *GroupMediaModelScopeUpdate {
+	mutation := newGroupMediaModelScopeMutation(c.config, OpUpdate)
+	return &GroupMediaModelScopeUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *GroupMediaModelScopeClient) UpdateOne(_m *GroupMediaModelScope) *GroupMediaModelScopeUpdateOne {
+	mutation := newGroupMediaModelScopeMutation(c.config, OpUpdateOne, withGroupMediaModelScope(_m))
+	return &GroupMediaModelScopeUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *GroupMediaModelScopeClient) UpdateOneID(id int64) *GroupMediaModelScopeUpdateOne {
+	mutation := newGroupMediaModelScopeMutation(c.config, OpUpdateOne, withGroupMediaModelScopeID(id))
+	return &GroupMediaModelScopeUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for GroupMediaModelScope.
+func (c *GroupMediaModelScopeClient) Delete() *GroupMediaModelScopeDelete {
+	mutation := newGroupMediaModelScopeMutation(c.config, OpDelete)
+	return &GroupMediaModelScopeDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *GroupMediaModelScopeClient) DeleteOne(_m *GroupMediaModelScope) *GroupMediaModelScopeDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *GroupMediaModelScopeClient) DeleteOneID(id int64) *GroupMediaModelScopeDeleteOne {
+	builder := c.Delete().Where(groupmediamodelscope.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &GroupMediaModelScopeDeleteOne{builder}
+}
+
+// Query returns a query builder for GroupMediaModelScope.
+func (c *GroupMediaModelScopeClient) Query() *GroupMediaModelScopeQuery {
+	return &GroupMediaModelScopeQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeGroupMediaModelScope},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a GroupMediaModelScope entity by its id.
+func (c *GroupMediaModelScopeClient) Get(ctx context.Context, id int64) (*GroupMediaModelScope, error) {
+	return c.Query().Where(groupmediamodelscope.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *GroupMediaModelScopeClient) GetX(ctx context.Context, id int64) *GroupMediaModelScope {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryGroup queries the group edge of a GroupMediaModelScope.
+func (c *GroupMediaModelScopeClient) QueryGroup(_m *GroupMediaModelScope) *GroupQuery {
+	query := (&GroupClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(groupmediamodelscope.Table, groupmediamodelscope.FieldID, id),
+			sqlgraph.To(group.Table, group.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, groupmediamodelscope.GroupTable, groupmediamodelscope.GroupColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryModelDefinition queries the model_definition edge of a GroupMediaModelScope.
+func (c *GroupMediaModelScopeClient) QueryModelDefinition(_m *GroupMediaModelScope) *MediaModelDefinitionQuery {
+	query := (&MediaModelDefinitionClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(groupmediamodelscope.Table, groupmediamodelscope.FieldID, id),
+			sqlgraph.To(mediamodeldefinition.Table, mediamodeldefinition.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, groupmediamodelscope.ModelDefinitionTable, groupmediamodelscope.ModelDefinitionColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *GroupMediaModelScopeClient) Hooks() []Hook {
+	return c.hooks.GroupMediaModelScope
+}
+
+// Interceptors returns the client interceptors.
+func (c *GroupMediaModelScopeClient) Interceptors() []Interceptor {
+	return c.inters.GroupMediaModelScope
+}
+
+func (c *GroupMediaModelScopeClient) mutate(ctx context.Context, m *GroupMediaModelScopeMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&GroupMediaModelScopeCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&GroupMediaModelScopeUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&GroupMediaModelScopeUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&GroupMediaModelScopeDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown GroupMediaModelScope mutation op: %q", m.Op())
+	}
+}
+
 // IdempotencyRecordClient is a client for the IdempotencyRecord schema.
 type IdempotencyRecordClient struct {
 	config
@@ -2956,6 +3139,155 @@ func (c *MediaArtifactClient) mutate(ctx context.Context, m *MediaArtifactMutati
 		return (&MediaArtifactDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown MediaArtifact mutation op: %q", m.Op())
+	}
+}
+
+// MediaModelAliasClient is a client for the MediaModelAlias schema.
+type MediaModelAliasClient struct {
+	config
+}
+
+// NewMediaModelAliasClient returns a client for the MediaModelAlias from the given config.
+func NewMediaModelAliasClient(c config) *MediaModelAliasClient {
+	return &MediaModelAliasClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `mediamodelalias.Hooks(f(g(h())))`.
+func (c *MediaModelAliasClient) Use(hooks ...Hook) {
+	c.hooks.MediaModelAlias = append(c.hooks.MediaModelAlias, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `mediamodelalias.Intercept(f(g(h())))`.
+func (c *MediaModelAliasClient) Intercept(interceptors ...Interceptor) {
+	c.inters.MediaModelAlias = append(c.inters.MediaModelAlias, interceptors...)
+}
+
+// Create returns a builder for creating a MediaModelAlias entity.
+func (c *MediaModelAliasClient) Create() *MediaModelAliasCreate {
+	mutation := newMediaModelAliasMutation(c.config, OpCreate)
+	return &MediaModelAliasCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of MediaModelAlias entities.
+func (c *MediaModelAliasClient) CreateBulk(builders ...*MediaModelAliasCreate) *MediaModelAliasCreateBulk {
+	return &MediaModelAliasCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *MediaModelAliasClient) MapCreateBulk(slice any, setFunc func(*MediaModelAliasCreate, int)) *MediaModelAliasCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &MediaModelAliasCreateBulk{err: fmt.Errorf("calling to MediaModelAliasClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*MediaModelAliasCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &MediaModelAliasCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for MediaModelAlias.
+func (c *MediaModelAliasClient) Update() *MediaModelAliasUpdate {
+	mutation := newMediaModelAliasMutation(c.config, OpUpdate)
+	return &MediaModelAliasUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *MediaModelAliasClient) UpdateOne(_m *MediaModelAlias) *MediaModelAliasUpdateOne {
+	mutation := newMediaModelAliasMutation(c.config, OpUpdateOne, withMediaModelAlias(_m))
+	return &MediaModelAliasUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *MediaModelAliasClient) UpdateOneID(id int64) *MediaModelAliasUpdateOne {
+	mutation := newMediaModelAliasMutation(c.config, OpUpdateOne, withMediaModelAliasID(id))
+	return &MediaModelAliasUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for MediaModelAlias.
+func (c *MediaModelAliasClient) Delete() *MediaModelAliasDelete {
+	mutation := newMediaModelAliasMutation(c.config, OpDelete)
+	return &MediaModelAliasDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *MediaModelAliasClient) DeleteOne(_m *MediaModelAlias) *MediaModelAliasDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *MediaModelAliasClient) DeleteOneID(id int64) *MediaModelAliasDeleteOne {
+	builder := c.Delete().Where(mediamodelalias.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &MediaModelAliasDeleteOne{builder}
+}
+
+// Query returns a query builder for MediaModelAlias.
+func (c *MediaModelAliasClient) Query() *MediaModelAliasQuery {
+	return &MediaModelAliasQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeMediaModelAlias},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a MediaModelAlias entity by its id.
+func (c *MediaModelAliasClient) Get(ctx context.Context, id int64) (*MediaModelAlias, error) {
+	return c.Query().Where(mediamodelalias.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *MediaModelAliasClient) GetX(ctx context.Context, id int64) *MediaModelAlias {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryModelDefinition queries the model_definition edge of a MediaModelAlias.
+func (c *MediaModelAliasClient) QueryModelDefinition(_m *MediaModelAlias) *MediaModelDefinitionQuery {
+	query := (&MediaModelDefinitionClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(mediamodelalias.Table, mediamodelalias.FieldID, id),
+			sqlgraph.To(mediamodeldefinition.Table, mediamodeldefinition.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, mediamodelalias.ModelDefinitionTable, mediamodelalias.ModelDefinitionColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *MediaModelAliasClient) Hooks() []Hook {
+	return c.hooks.MediaModelAlias
+}
+
+// Interceptors returns the client interceptors.
+func (c *MediaModelAliasClient) Interceptors() []Interceptor {
+	return c.inters.MediaModelAlias
+}
+
+func (c *MediaModelAliasClient) mutate(ctx context.Context, m *MediaModelAliasMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&MediaModelAliasCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&MediaModelAliasUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&MediaModelAliasUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&MediaModelAliasDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown MediaModelAlias mutation op: %q", m.Op())
 	}
 }
 
@@ -7657,11 +7989,11 @@ type (
 		APIKey, Account, AccountGroup, Announcement, AnnouncementRead, ChannelMonitor,
 		ChannelMonitorDailyRollup, ChannelMonitorHistory,
 		ChannelMonitorRequestTemplate, ErrorPassthroughRule, GeneratedImage,
-		GiftBalanceRecord, Group, IdempotencyRecord, MediaArtifact,
-		MediaModelDefinition, MediaTask, PaymentAuditLog, PaymentOrder,
-		PaymentProviderInstance, PromoCode, PromoCodeUsage, Promotion,
-		PromotionPlanRule, PromotionUsage, Proxy, RedeemCode, Referral,
-		SalesCommissionMonthlySnapshot, SalesCommissionRecord,
+		GiftBalanceRecord, Group, GroupMediaModelScope, IdempotencyRecord,
+		MediaArtifact, MediaModelAlias, MediaModelDefinition, MediaTask,
+		PaymentAuditLog, PaymentOrder, PaymentProviderInstance, PromoCode,
+		PromoCodeUsage, Promotion, PromotionPlanRule, PromotionUsage, Proxy,
+		RedeemCode, Referral, SalesCommissionMonthlySnapshot, SalesCommissionRecord,
 		SalesCommissionSettlement, SalesCommissionSettlementItem, SalesCommissionTier,
 		SecuritySecret, Setting, SubscriptionGrant, SubscriptionPlan,
 		TLSFingerprintProfile, UsageCleanupTask, UsageLog, User, UserAllowedGroup,
@@ -7672,11 +8004,11 @@ type (
 		APIKey, Account, AccountGroup, Announcement, AnnouncementRead, ChannelMonitor,
 		ChannelMonitorDailyRollup, ChannelMonitorHistory,
 		ChannelMonitorRequestTemplate, ErrorPassthroughRule, GeneratedImage,
-		GiftBalanceRecord, Group, IdempotencyRecord, MediaArtifact,
-		MediaModelDefinition, MediaTask, PaymentAuditLog, PaymentOrder,
-		PaymentProviderInstance, PromoCode, PromoCodeUsage, Promotion,
-		PromotionPlanRule, PromotionUsage, Proxy, RedeemCode, Referral,
-		SalesCommissionMonthlySnapshot, SalesCommissionRecord,
+		GiftBalanceRecord, Group, GroupMediaModelScope, IdempotencyRecord,
+		MediaArtifact, MediaModelAlias, MediaModelDefinition, MediaTask,
+		PaymentAuditLog, PaymentOrder, PaymentProviderInstance, PromoCode,
+		PromoCodeUsage, Promotion, PromotionPlanRule, PromotionUsage, Proxy,
+		RedeemCode, Referral, SalesCommissionMonthlySnapshot, SalesCommissionRecord,
 		SalesCommissionSettlement, SalesCommissionSettlementItem, SalesCommissionTier,
 		SecuritySecret, Setting, SubscriptionGrant, SubscriptionPlan,
 		TLSFingerprintProfile, UsageCleanupTask, UsageLog, User, UserAllowedGroup,

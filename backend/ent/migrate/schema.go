@@ -728,6 +728,46 @@ var (
 			},
 		},
 	}
+	// GroupMediaModelScopesColumns holds the columns for the "group_media_model_scopes" table.
+	GroupMediaModelScopesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "group_id", Type: field.TypeInt64},
+		{Name: "model_definition_id", Type: field.TypeInt64},
+	}
+	// GroupMediaModelScopesTable holds the schema information for the "group_media_model_scopes" table.
+	GroupMediaModelScopesTable = &schema.Table{
+		Name:       "group_media_model_scopes",
+		Columns:    GroupMediaModelScopesColumns,
+		PrimaryKey: []*schema.Column{GroupMediaModelScopesColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "group_media_model_scopes_groups_group",
+				Columns:    []*schema.Column{GroupMediaModelScopesColumns[3]},
+				RefColumns: []*schema.Column{GroupsColumns[0]},
+				OnDelete:   schema.Cascade,
+			},
+			{
+				Symbol:     "group_media_model_scopes_media_model_definitions_model_definition",
+				Columns:    []*schema.Column{GroupMediaModelScopesColumns[4]},
+				RefColumns: []*schema.Column{MediaModelDefinitionsColumns[0]},
+				OnDelete:   schema.Cascade,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "groupmediamodelscope_group_id_model_definition_id",
+				Unique:  true,
+				Columns: []*schema.Column{GroupMediaModelScopesColumns[3], GroupMediaModelScopesColumns[4]},
+			},
+			{
+				Name:    "groupmediamodelscope_model_definition_id",
+				Unique:  false,
+				Columns: []*schema.Column{GroupMediaModelScopesColumns[4]},
+			},
+		},
+	}
 	// IdempotencyRecordsColumns holds the columns for the "idempotency_records" table.
 	IdempotencyRecordsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt64, Increment: true},
@@ -784,6 +824,7 @@ var (
 		{Name: "resolution", Type: field.TypeString, Size: 32, Default: ""},
 		{Name: "fps", Type: field.TypeFloat64, Nullable: true},
 		{Name: "storage_status", Type: field.TypeString, Size: 24, Default: "pending"},
+		{Name: "storage_provider", Type: field.TypeString, Size: 32, Default: "legacy"},
 		{Name: "object_key", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "text"}},
 		{Name: "public_url", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "text"}},
 		{Name: "upstream_reference", Type: field.TypeString, Nullable: true, Size: 2147483647},
@@ -802,16 +843,48 @@ var (
 			},
 		},
 	}
+	// MediaModelAliasesColumns holds the columns for the "media_model_aliases" table.
+	MediaModelAliasesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "requested_model_id", Type: field.TypeString, Unique: true, Size: 128},
+		{Name: "model_definition_id", Type: field.TypeInt64},
+	}
+	// MediaModelAliasesTable holds the schema information for the "media_model_aliases" table.
+	MediaModelAliasesTable = &schema.Table{
+		Name:       "media_model_aliases",
+		Columns:    MediaModelAliasesColumns,
+		PrimaryKey: []*schema.Column{MediaModelAliasesColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "media_model_aliases_media_model_definitions_model_definition",
+				Columns:    []*schema.Column{MediaModelAliasesColumns[4]},
+				RefColumns: []*schema.Column{MediaModelDefinitionsColumns[0]},
+				OnDelete:   schema.Cascade,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "mediamodelalias_model_definition_id",
+				Unique:  false,
+				Columns: []*schema.Column{MediaModelAliasesColumns[4]},
+			},
+		},
+	}
 	// MediaModelDefinitionsColumns holds the columns for the "media_model_definitions" table.
 	MediaModelDefinitionsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt64, Increment: true},
 		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
 		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
 		{Name: "model_id", Type: field.TypeString, Unique: true, Size: 128},
+		{Name: "vendor", Type: field.TypeString, Size: 64, Default: ""},
 		{Name: "media_type", Type: field.TypeString, Size: 16},
 		{Name: "operations", Type: field.TypeJSON},
 		{Name: "constraints", Type: field.TypeJSON},
 		{Name: "billing_unit", Type: field.TypeString, Size: 32},
+		{Name: "default_adapter", Type: field.TypeString, Size: 64, Default: ""},
+		{Name: "default_async_mode", Type: field.TypeString, Size: 16, Default: "unsupported"},
 		{Name: "enabled", Type: field.TypeBool, Default: true},
 	}
 	// MediaModelDefinitionsTable holds the schema information for the "media_model_definitions" table.
@@ -823,7 +896,7 @@ var (
 			{
 				Name:    "mediamodeldefinition_enabled_media_type",
 				Unique:  false,
-				Columns: []*schema.Column{MediaModelDefinitionsColumns[8], MediaModelDefinitionsColumns[4]},
+				Columns: []*schema.Column{MediaModelDefinitionsColumns[11], MediaModelDefinitionsColumns[5]},
 			},
 		},
 	}
@@ -2165,8 +2238,10 @@ var (
 		GeneratedImagesTable,
 		GiftBalanceRecordsTable,
 		GroupsTable,
+		GroupMediaModelScopesTable,
 		IdempotencyRecordsTable,
 		MediaArtifactsTable,
+		MediaModelAliasesTable,
 		MediaModelDefinitionsTable,
 		MediaTasksTable,
 		PaymentAuditLogsTable,
@@ -2251,8 +2326,14 @@ func init() {
 	GroupsTable.Annotation = &entsql.Annotation{
 		Table: "groups",
 	}
+	GroupMediaModelScopesTable.ForeignKeys[0].RefTable = GroupsTable
+	GroupMediaModelScopesTable.ForeignKeys[1].RefTable = MediaModelDefinitionsTable
 	IdempotencyRecordsTable.Annotation = &entsql.Annotation{
 		Table: "idempotency_records",
+	}
+	MediaModelAliasesTable.ForeignKeys[0].RefTable = MediaModelDefinitionsTable
+	MediaModelAliasesTable.Annotation = &entsql.Annotation{
+		Table: "media_model_aliases",
 	}
 	PaymentAuditLogsTable.Annotation = &entsql.Annotation{
 		Table: "payment_audit_logs",

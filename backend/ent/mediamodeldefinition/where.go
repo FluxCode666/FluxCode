@@ -69,6 +69,11 @@ func ModelID(v string) predicate.MediaModelDefinition {
 	return predicate.MediaModelDefinition(sql.FieldEQ(FieldModelID, v))
 }
 
+// Vendor applies equality check predicate on the "vendor" field. It's identical to VendorEQ.
+func Vendor(v string) predicate.MediaModelDefinition {
+	return predicate.MediaModelDefinition(sql.FieldEQ(FieldVendor, v))
+}
+
 // MediaType applies equality check predicate on the "media_type" field. It's identical to MediaTypeEQ.
 func MediaType(v string) predicate.MediaModelDefinition {
 	return predicate.MediaModelDefinition(sql.FieldEQ(FieldMediaType, v))
@@ -77,6 +82,16 @@ func MediaType(v string) predicate.MediaModelDefinition {
 // BillingUnit applies equality check predicate on the "billing_unit" field. It's identical to BillingUnitEQ.
 func BillingUnit(v string) predicate.MediaModelDefinition {
 	return predicate.MediaModelDefinition(sql.FieldEQ(FieldBillingUnit, v))
+}
+
+// DefaultAdapter applies equality check predicate on the "default_adapter" field. It's identical to DefaultAdapterEQ.
+func DefaultAdapter(v string) predicate.MediaModelDefinition {
+	return predicate.MediaModelDefinition(sql.FieldEQ(FieldDefaultAdapter, v))
+}
+
+// DefaultAsyncMode applies equality check predicate on the "default_async_mode" field. It's identical to DefaultAsyncModeEQ.
+func DefaultAsyncMode(v string) predicate.MediaModelDefinition {
+	return predicate.MediaModelDefinition(sql.FieldEQ(FieldDefaultAsyncMode, v))
 }
 
 // Enabled applies equality check predicate on the "enabled" field. It's identical to EnabledEQ.
@@ -229,6 +244,71 @@ func ModelIDContainsFold(v string) predicate.MediaModelDefinition {
 	return predicate.MediaModelDefinition(sql.FieldContainsFold(FieldModelID, v))
 }
 
+// VendorEQ applies the EQ predicate on the "vendor" field.
+func VendorEQ(v string) predicate.MediaModelDefinition {
+	return predicate.MediaModelDefinition(sql.FieldEQ(FieldVendor, v))
+}
+
+// VendorNEQ applies the NEQ predicate on the "vendor" field.
+func VendorNEQ(v string) predicate.MediaModelDefinition {
+	return predicate.MediaModelDefinition(sql.FieldNEQ(FieldVendor, v))
+}
+
+// VendorIn applies the In predicate on the "vendor" field.
+func VendorIn(vs ...string) predicate.MediaModelDefinition {
+	return predicate.MediaModelDefinition(sql.FieldIn(FieldVendor, vs...))
+}
+
+// VendorNotIn applies the NotIn predicate on the "vendor" field.
+func VendorNotIn(vs ...string) predicate.MediaModelDefinition {
+	return predicate.MediaModelDefinition(sql.FieldNotIn(FieldVendor, vs...))
+}
+
+// VendorGT applies the GT predicate on the "vendor" field.
+func VendorGT(v string) predicate.MediaModelDefinition {
+	return predicate.MediaModelDefinition(sql.FieldGT(FieldVendor, v))
+}
+
+// VendorGTE applies the GTE predicate on the "vendor" field.
+func VendorGTE(v string) predicate.MediaModelDefinition {
+	return predicate.MediaModelDefinition(sql.FieldGTE(FieldVendor, v))
+}
+
+// VendorLT applies the LT predicate on the "vendor" field.
+func VendorLT(v string) predicate.MediaModelDefinition {
+	return predicate.MediaModelDefinition(sql.FieldLT(FieldVendor, v))
+}
+
+// VendorLTE applies the LTE predicate on the "vendor" field.
+func VendorLTE(v string) predicate.MediaModelDefinition {
+	return predicate.MediaModelDefinition(sql.FieldLTE(FieldVendor, v))
+}
+
+// VendorContains applies the Contains predicate on the "vendor" field.
+func VendorContains(v string) predicate.MediaModelDefinition {
+	return predicate.MediaModelDefinition(sql.FieldContains(FieldVendor, v))
+}
+
+// VendorHasPrefix applies the HasPrefix predicate on the "vendor" field.
+func VendorHasPrefix(v string) predicate.MediaModelDefinition {
+	return predicate.MediaModelDefinition(sql.FieldHasPrefix(FieldVendor, v))
+}
+
+// VendorHasSuffix applies the HasSuffix predicate on the "vendor" field.
+func VendorHasSuffix(v string) predicate.MediaModelDefinition {
+	return predicate.MediaModelDefinition(sql.FieldHasSuffix(FieldVendor, v))
+}
+
+// VendorEqualFold applies the EqualFold predicate on the "vendor" field.
+func VendorEqualFold(v string) predicate.MediaModelDefinition {
+	return predicate.MediaModelDefinition(sql.FieldEqualFold(FieldVendor, v))
+}
+
+// VendorContainsFold applies the ContainsFold predicate on the "vendor" field.
+func VendorContainsFold(v string) predicate.MediaModelDefinition {
+	return predicate.MediaModelDefinition(sql.FieldContainsFold(FieldVendor, v))
+}
+
 // MediaTypeEQ applies the EQ predicate on the "media_type" field.
 func MediaTypeEQ(v string) predicate.MediaModelDefinition {
 	return predicate.MediaModelDefinition(sql.FieldEQ(FieldMediaType, v))
@@ -357,6 +437,136 @@ func BillingUnitEqualFold(v string) predicate.MediaModelDefinition {
 // BillingUnitContainsFold applies the ContainsFold predicate on the "billing_unit" field.
 func BillingUnitContainsFold(v string) predicate.MediaModelDefinition {
 	return predicate.MediaModelDefinition(sql.FieldContainsFold(FieldBillingUnit, v))
+}
+
+// DefaultAdapterEQ applies the EQ predicate on the "default_adapter" field.
+func DefaultAdapterEQ(v string) predicate.MediaModelDefinition {
+	return predicate.MediaModelDefinition(sql.FieldEQ(FieldDefaultAdapter, v))
+}
+
+// DefaultAdapterNEQ applies the NEQ predicate on the "default_adapter" field.
+func DefaultAdapterNEQ(v string) predicate.MediaModelDefinition {
+	return predicate.MediaModelDefinition(sql.FieldNEQ(FieldDefaultAdapter, v))
+}
+
+// DefaultAdapterIn applies the In predicate on the "default_adapter" field.
+func DefaultAdapterIn(vs ...string) predicate.MediaModelDefinition {
+	return predicate.MediaModelDefinition(sql.FieldIn(FieldDefaultAdapter, vs...))
+}
+
+// DefaultAdapterNotIn applies the NotIn predicate on the "default_adapter" field.
+func DefaultAdapterNotIn(vs ...string) predicate.MediaModelDefinition {
+	return predicate.MediaModelDefinition(sql.FieldNotIn(FieldDefaultAdapter, vs...))
+}
+
+// DefaultAdapterGT applies the GT predicate on the "default_adapter" field.
+func DefaultAdapterGT(v string) predicate.MediaModelDefinition {
+	return predicate.MediaModelDefinition(sql.FieldGT(FieldDefaultAdapter, v))
+}
+
+// DefaultAdapterGTE applies the GTE predicate on the "default_adapter" field.
+func DefaultAdapterGTE(v string) predicate.MediaModelDefinition {
+	return predicate.MediaModelDefinition(sql.FieldGTE(FieldDefaultAdapter, v))
+}
+
+// DefaultAdapterLT applies the LT predicate on the "default_adapter" field.
+func DefaultAdapterLT(v string) predicate.MediaModelDefinition {
+	return predicate.MediaModelDefinition(sql.FieldLT(FieldDefaultAdapter, v))
+}
+
+// DefaultAdapterLTE applies the LTE predicate on the "default_adapter" field.
+func DefaultAdapterLTE(v string) predicate.MediaModelDefinition {
+	return predicate.MediaModelDefinition(sql.FieldLTE(FieldDefaultAdapter, v))
+}
+
+// DefaultAdapterContains applies the Contains predicate on the "default_adapter" field.
+func DefaultAdapterContains(v string) predicate.MediaModelDefinition {
+	return predicate.MediaModelDefinition(sql.FieldContains(FieldDefaultAdapter, v))
+}
+
+// DefaultAdapterHasPrefix applies the HasPrefix predicate on the "default_adapter" field.
+func DefaultAdapterHasPrefix(v string) predicate.MediaModelDefinition {
+	return predicate.MediaModelDefinition(sql.FieldHasPrefix(FieldDefaultAdapter, v))
+}
+
+// DefaultAdapterHasSuffix applies the HasSuffix predicate on the "default_adapter" field.
+func DefaultAdapterHasSuffix(v string) predicate.MediaModelDefinition {
+	return predicate.MediaModelDefinition(sql.FieldHasSuffix(FieldDefaultAdapter, v))
+}
+
+// DefaultAdapterEqualFold applies the EqualFold predicate on the "default_adapter" field.
+func DefaultAdapterEqualFold(v string) predicate.MediaModelDefinition {
+	return predicate.MediaModelDefinition(sql.FieldEqualFold(FieldDefaultAdapter, v))
+}
+
+// DefaultAdapterContainsFold applies the ContainsFold predicate on the "default_adapter" field.
+func DefaultAdapterContainsFold(v string) predicate.MediaModelDefinition {
+	return predicate.MediaModelDefinition(sql.FieldContainsFold(FieldDefaultAdapter, v))
+}
+
+// DefaultAsyncModeEQ applies the EQ predicate on the "default_async_mode" field.
+func DefaultAsyncModeEQ(v string) predicate.MediaModelDefinition {
+	return predicate.MediaModelDefinition(sql.FieldEQ(FieldDefaultAsyncMode, v))
+}
+
+// DefaultAsyncModeNEQ applies the NEQ predicate on the "default_async_mode" field.
+func DefaultAsyncModeNEQ(v string) predicate.MediaModelDefinition {
+	return predicate.MediaModelDefinition(sql.FieldNEQ(FieldDefaultAsyncMode, v))
+}
+
+// DefaultAsyncModeIn applies the In predicate on the "default_async_mode" field.
+func DefaultAsyncModeIn(vs ...string) predicate.MediaModelDefinition {
+	return predicate.MediaModelDefinition(sql.FieldIn(FieldDefaultAsyncMode, vs...))
+}
+
+// DefaultAsyncModeNotIn applies the NotIn predicate on the "default_async_mode" field.
+func DefaultAsyncModeNotIn(vs ...string) predicate.MediaModelDefinition {
+	return predicate.MediaModelDefinition(sql.FieldNotIn(FieldDefaultAsyncMode, vs...))
+}
+
+// DefaultAsyncModeGT applies the GT predicate on the "default_async_mode" field.
+func DefaultAsyncModeGT(v string) predicate.MediaModelDefinition {
+	return predicate.MediaModelDefinition(sql.FieldGT(FieldDefaultAsyncMode, v))
+}
+
+// DefaultAsyncModeGTE applies the GTE predicate on the "default_async_mode" field.
+func DefaultAsyncModeGTE(v string) predicate.MediaModelDefinition {
+	return predicate.MediaModelDefinition(sql.FieldGTE(FieldDefaultAsyncMode, v))
+}
+
+// DefaultAsyncModeLT applies the LT predicate on the "default_async_mode" field.
+func DefaultAsyncModeLT(v string) predicate.MediaModelDefinition {
+	return predicate.MediaModelDefinition(sql.FieldLT(FieldDefaultAsyncMode, v))
+}
+
+// DefaultAsyncModeLTE applies the LTE predicate on the "default_async_mode" field.
+func DefaultAsyncModeLTE(v string) predicate.MediaModelDefinition {
+	return predicate.MediaModelDefinition(sql.FieldLTE(FieldDefaultAsyncMode, v))
+}
+
+// DefaultAsyncModeContains applies the Contains predicate on the "default_async_mode" field.
+func DefaultAsyncModeContains(v string) predicate.MediaModelDefinition {
+	return predicate.MediaModelDefinition(sql.FieldContains(FieldDefaultAsyncMode, v))
+}
+
+// DefaultAsyncModeHasPrefix applies the HasPrefix predicate on the "default_async_mode" field.
+func DefaultAsyncModeHasPrefix(v string) predicate.MediaModelDefinition {
+	return predicate.MediaModelDefinition(sql.FieldHasPrefix(FieldDefaultAsyncMode, v))
+}
+
+// DefaultAsyncModeHasSuffix applies the HasSuffix predicate on the "default_async_mode" field.
+func DefaultAsyncModeHasSuffix(v string) predicate.MediaModelDefinition {
+	return predicate.MediaModelDefinition(sql.FieldHasSuffix(FieldDefaultAsyncMode, v))
+}
+
+// DefaultAsyncModeEqualFold applies the EqualFold predicate on the "default_async_mode" field.
+func DefaultAsyncModeEqualFold(v string) predicate.MediaModelDefinition {
+	return predicate.MediaModelDefinition(sql.FieldEqualFold(FieldDefaultAsyncMode, v))
+}
+
+// DefaultAsyncModeContainsFold applies the ContainsFold predicate on the "default_async_mode" field.
+func DefaultAsyncModeContainsFold(v string) predicate.MediaModelDefinition {
+	return predicate.MediaModelDefinition(sql.FieldContainsFold(FieldDefaultAsyncMode, v))
 }
 
 // EnabledEQ applies the EQ predicate on the "enabled" field.

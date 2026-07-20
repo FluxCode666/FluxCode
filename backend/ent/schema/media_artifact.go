@@ -35,6 +35,7 @@ func (MediaArtifact) Fields() []ent.Field {
 		field.String("resolution").MaxLen(32).Default(""),
 		field.Float("fps").Optional().Nillable(),
 		field.String("storage_status").MaxLen(24).Default("pending"),
+		field.String("storage_provider").MaxLen(32).Default("legacy"),
 		field.String("object_key").SchemaType(map[string]string{dialect.Postgres: "text"}).Optional().Nillable(),
 		field.String("public_url").SchemaType(map[string]string{dialect.Postgres: "text"}).Optional().Nillable(),
 		field.Text("upstream_reference").Optional().Nillable().Sensitive(),
