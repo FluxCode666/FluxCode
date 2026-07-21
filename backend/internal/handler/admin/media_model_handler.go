@@ -21,32 +21,49 @@ func NewMediaModelAdminHandler(service *service.MediaModelAdminService) *MediaMo
 }
 
 type mediaModelWriteRequest struct {
-	ModelID          string                   `json:"model_id"`
-	Vendor           string                   `json:"vendor"`
-	MediaType        service.MediaType        `json:"media_type"`
-	Operations       []service.MediaOperation `json:"operations"`
-	Constraints      json.RawMessage          `json:"constraints"`
-	BillingUnit      string                   `json:"billing_unit"`
-	DefaultAdapter   string                   `json:"default_adapter"`
-	DefaultAsyncMode service.NativeAsyncMode  `json:"default_async_mode"`
-	Enabled          *bool                    `json:"enabled"`
-	Aliases          []string                 `json:"aliases"`
+	ModelID                  string                   `json:"model_id"`
+	Vendor                   string                   `json:"vendor"`
+	MediaType                service.MediaType        `json:"media_type"`
+	Operations               []service.MediaOperation `json:"operations"`
+	Constraints              json.RawMessage          `json:"constraints"`
+	BillingUnit              string                   `json:"billing_unit"`
+	DeprecatedDefaultAdapter json.RawMessage          `json:"default_adapter"`
+	DeprecatedDefaultAsync   json.RawMessage          `json:"default_async_mode"`
+	Enabled                  *bool                    `json:"enabled"`
+	Aliases                  []string                 `json:"aliases"`
+}
+
+type mediaAdapterCapabilitiesResponse struct {
+	Operations          []service.MediaOperation `json:"operations"`
+	SyncUpstream        bool                     `json:"sync_upstream"`
+	NativeAsyncUpstream bool                     `json:"native_async_upstream"`
+	ContentFetch        bool                     `json:"content_fetch"`
+}
+
+type mediaAdapterResolutionResponse struct {
+	Status          service.MediaAdapterResolutionStatus `json:"status"`
+	ResolvedAdapter string                               `json:"resolved_adapter"`
+	MatchedBy       service.MediaAdapterMatchType        `json:"matched_by"`
+	MatchedFamily   string                               `json:"matched_family"`
+	Capabilities    *mediaAdapterCapabilitiesResponse    `json:"capabilities"`
+	ReasonCode      string                               `json:"reason_code"`
 }
 
 type mediaModelResponse struct {
-	ID               int64                    `json:"id"`
-	ModelID          string                   `json:"model_id"`
-	Vendor           string                   `json:"vendor"`
-	MediaType        service.MediaType        `json:"media_type"`
-	Operations       []service.MediaOperation `json:"operations"`
-	Constraints      json.RawMessage          `json:"constraints"`
-	BillingUnit      string                   `json:"billing_unit"`
-	DefaultAdapter   string                   `json:"default_adapter"`
-	DefaultAsyncMode service.NativeAsyncMode  `json:"default_async_mode"`
-	Enabled          bool                     `json:"enabled"`
-	Aliases          []string                 `json:"aliases"`
-	CreatedAt        time.Time                `json:"created_at"`
-	UpdatedAt        time.Time                `json:"updated_at"`
+	ID                int64                          `json:"id"`
+	ModelID           string                         `json:"model_id"`
+	Vendor            string                         `json:"vendor"`
+	MediaType         service.MediaType              `json:"media_type"`
+	Operations        []service.MediaOperation       `json:"operations"`
+	Constraints       json.RawMessage                `json:"constraints"`
+	BillingUnit       string                         `json:"billing_unit"`
+	DefaultAdapter    string                         `json:"default_adapter"`
+	DefaultAsyncMode  service.NativeAsyncMode        `json:"default_async_mode"`
+	AdapterResolution mediaAdapterResolutionResponse `json:"adapter_resolution"`
+	Enabled           bool                           `json:"enabled"`
+	Aliases           []string                       `json:"aliases"`
+	CreatedAt         time.Time                      `json:"created_at"`
+	UpdatedAt         time.Time                      `json:"updated_at"`
 }
 
 type mediaModelListResponse struct {
@@ -59,6 +76,26 @@ type mediaModelScopesRequest struct {
 
 type mediaModelScopesResponse struct {
 	ModelIDs []string `json:"model_ids"`
+}
+
+type mediaAdapterPreflightItemResponse struct {
+	ModelID                 string                               `json:"model_id"`
+	Enabled                 bool                                 `json:"enabled"`
+	ResolutionStatus        service.MediaAdapterResolutionStatus `json:"resolution_status"`
+	ResolvedAdapter         string                               `json:"resolved_adapter"`
+	LegacyDefaultAdapter    string                               `json:"legacy_default_adapter"`
+	LegacyCheckApplicable   bool                                 `json:"legacy_check_applicable"`
+	AdapterKeyMatches       bool                                 `json:"adapter_key_matches"`
+	LegacyDefaultAsyncMode  service.NativeAsyncMode              `json:"legacy_default_async_mode"`
+	LegacyAsyncModeReadable bool                                 `json:"legacy_async_mode_readable"`
+	ReasonCode              string                               `json:"reason_code"`
+	RolloutSafe             bool                                 `json:"rollout_safe"`
+}
+
+type mediaAdapterPreflightResponse struct {
+	Safe          bool                                `json:"safe"`
+	BlockingCount int                                 `json:"blocking_count"`
+	Items         []mediaAdapterPreflightItemResponse `json:"items"`
 }
 
 // List returns all enabled and disabled global media model definitions.
@@ -74,6 +111,18 @@ func (h *MediaModelAdminHandler) List(c *gin.Context) {
 		output = append(output, mediaModelRecordToResponse(item))
 	}
 	response.Success(c, mediaModelListResponse{Items: output})
+}
+
+// Preflight reports whether persisted media models are safe for a rolling
+// migration to code-owned adapter resolution.
+// GET /api/v1/admin/media-models/preflight
+func (h *MediaModelAdminHandler) Preflight(c *gin.Context) {
+	report, err := h.service.Preflight(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, mediaAdapterPreflightResponseFromService(report))
 }
 
 // GetByID returns one global media model definition.
@@ -230,15 +279,13 @@ func (r mediaModelWriteRequest) toServiceRecord() service.MediaModelAdminRecord 
 	}
 	return service.MediaModelAdminRecord{
 		Definition: service.MediaModelDefinition{
-			ModelID:          r.ModelID,
-			Vendor:           r.Vendor,
-			MediaType:        r.MediaType,
-			Operations:       append([]service.MediaOperation(nil), r.Operations...),
-			Constraints:      append(json.RawMessage(nil), r.Constraints...),
-			BillingUnit:      r.BillingUnit,
-			DefaultAdapter:   r.DefaultAdapter,
-			DefaultAsyncMode: r.DefaultAsyncMode,
-			Enabled:          enabled,
+			ModelID:     r.ModelID,
+			Vendor:      r.Vendor,
+			MediaType:   r.MediaType,
+			Operations:  append([]service.MediaOperation(nil), r.Operations...),
+			Constraints: append(json.RawMessage(nil), r.Constraints...),
+			BillingUnit: r.BillingUnit,
+			Enabled:     enabled,
 		},
 		Aliases: append([]string(nil), r.Aliases...),
 	}
@@ -259,18 +306,69 @@ func mediaModelRecordToResponse(record service.MediaModelAdminRecord) mediaModel
 		constraints = json.RawMessage(`{}`)
 	}
 	return mediaModelResponse{
-		ID:               definition.ID,
-		ModelID:          definition.ModelID,
-		Vendor:           definition.Vendor,
-		MediaType:        definition.MediaType,
-		Operations:       operations,
-		Constraints:      constraints,
-		BillingUnit:      definition.BillingUnit,
-		DefaultAdapter:   definition.DefaultAdapter,
-		DefaultAsyncMode: definition.DefaultAsyncMode,
-		Enabled:          definition.Enabled,
-		Aliases:          aliases,
-		CreatedAt:        definition.CreatedAt,
-		UpdatedAt:        definition.UpdatedAt,
+		ID:                definition.ID,
+		ModelID:           definition.ModelID,
+		Vendor:            definition.Vendor,
+		MediaType:         definition.MediaType,
+		Operations:        operations,
+		Constraints:       constraints,
+		BillingUnit:       definition.BillingUnit,
+		DefaultAdapter:    record.AdapterResolution.ResolvedAdapter,
+		DefaultAsyncMode:  record.AdapterResolution.CompatibilityAsyncMode(),
+		AdapterResolution: mediaAdapterResolutionToResponse(record.AdapterResolution),
+		Enabled:           definition.Enabled,
+		Aliases:           aliases,
+		CreatedAt:         definition.CreatedAt,
+		UpdatedAt:         definition.UpdatedAt,
 	}
+}
+
+func mediaAdapterResolutionToResponse(resolution service.MediaAdapterResolution) mediaAdapterResolutionResponse {
+	response := mediaAdapterResolutionResponse{
+		Status:          resolution.Status,
+		ResolvedAdapter: resolution.ResolvedAdapter,
+		MatchedBy:       resolution.MatchedBy,
+		MatchedFamily:   resolution.MatchedFamily,
+		ReasonCode:      resolution.ReasonCode,
+	}
+	if resolution.Capabilities == nil {
+		return response
+	}
+	operations := append([]service.MediaOperation(nil), resolution.Capabilities.Operations...)
+	if operations == nil {
+		operations = []service.MediaOperation{}
+	}
+	response.Capabilities = &mediaAdapterCapabilitiesResponse{
+		Operations:          operations,
+		SyncUpstream:        resolution.Capabilities.SyncUpstream,
+		NativeAsyncUpstream: resolution.Capabilities.NativeAsyncUpstream,
+		ContentFetch:        resolution.Capabilities.ContentFetch,
+	}
+	return response
+}
+
+func mediaAdapterPreflightResponseFromService(report *service.MediaAdapterPreflightReport) mediaAdapterPreflightResponse {
+	response := mediaAdapterPreflightResponse{Items: []mediaAdapterPreflightItemResponse{}}
+	if report == nil {
+		return response
+	}
+	response.Safe = report.Safe
+	response.BlockingCount = report.BlockingCount
+	response.Items = make([]mediaAdapterPreflightItemResponse, 0, len(report.Items))
+	for _, item := range report.Items {
+		response.Items = append(response.Items, mediaAdapterPreflightItemResponse{
+			ModelID:                 item.ModelID,
+			Enabled:                 item.Enabled,
+			ResolutionStatus:        item.Status,
+			ResolvedAdapter:         item.ResolvedAdapter,
+			LegacyDefaultAdapter:    item.LegacyDefaultAdapter,
+			LegacyCheckApplicable:   item.LegacyCheckApplicable,
+			AdapterKeyMatches:       item.AdapterKeyMatches,
+			LegacyDefaultAsyncMode:  item.LegacyDefaultAsyncMode,
+			LegacyAsyncModeReadable: item.LegacyAsyncModeReadable,
+			ReasonCode:              item.ReasonCode,
+			RolloutSafe:             item.RolloutSafe,
+		})
+	}
+	return response
 }

@@ -1,19 +1,48 @@
 package routes
 
 import (
+	"context"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/handler"
+	adminhandler "github.com/Wei-Shaw/sub2api/internal/handler/admin"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
+	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
+
+type mediaModelRouteAdminRepository struct{}
+
+func (mediaModelRouteAdminRepository) ListAdmin(context.Context) ([]service.MediaModelAdminRecord, error) {
+	return []service.MediaModelAdminRecord{}, nil
+}
+
+func (mediaModelRouteAdminRepository) GetAdminByID(context.Context, int64) (*service.MediaModelAdminRecord, error) {
+	return nil, service.ErrMediaModelDefinitionNotFound
+}
+
+func (mediaModelRouteAdminRepository) CreateAdmin(context.Context, service.MediaModelAdminRecord) (*service.MediaModelAdminRecord, error) {
+	return nil, nil
+}
+
+func (mediaModelRouteAdminRepository) UpdateAdmin(context.Context, int64, service.MediaModelAdminRecord) (*service.MediaModelAdminRecord, error) {
+	return nil, nil
+}
+
+func (mediaModelRouteAdminRepository) DeleteAdmin(context.Context, int64) error { return nil }
 
 func TestRegisterAdminRoutesIncludesMediaModelManagement(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 	v1 := router.Group("/api/v1")
-	handlers := &handler.Handlers{Admin: &handler.AdminHandlers{}}
+	resolver := service.NewMediaAdapterResolver(service.NewMediaAdapterRegistry())
+	mediaModelService := service.NewMediaModelAdminService(mediaModelRouteAdminRepository{}, nil, nil, nil, resolver)
+	handlers := &handler.Handlers{Admin: &handler.AdminHandlers{
+		MediaModel: adminhandler.NewMediaModelAdminHandler(mediaModelService),
+	}}
 	RegisterAdminRoutes(v1, handlers, middleware.AdminAuthMiddleware(func(c *gin.Context) { c.Next() }))
 
 	registered := make(map[string]struct{})
@@ -23,6 +52,7 @@ func TestRegisterAdminRoutesIncludesMediaModelManagement(t *testing.T) {
 	for _, route := range []string{
 		"GET /api/v1/admin/media-models",
 		"POST /api/v1/admin/media-models",
+		"GET /api/v1/admin/media-models/preflight",
 		"GET /api/v1/admin/media-models/:id",
 		"PUT /api/v1/admin/media-models/:id",
 		"DELETE /api/v1/admin/media-models/:id",
@@ -32,4 +62,10 @@ func TestRegisterAdminRoutesIncludesMediaModelManagement(t *testing.T) {
 		_, ok := registered[route]
 		require.True(t, ok, "missing route %s", route)
 	}
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/admin/media-models/preflight", nil)
+	router.ServeHTTP(recorder, request)
+	require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
+	require.Contains(t, recorder.Body.String(), `"safe":true`)
 }

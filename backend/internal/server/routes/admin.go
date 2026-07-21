@@ -115,6 +115,7 @@ func registerMediaModelRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	{
 		models.GET("", h.Admin.MediaModel.List)
 		models.POST("", h.Admin.MediaModel.Create)
+		models.GET("/preflight", h.Admin.MediaModel.Preflight)
 		models.GET("/:id", h.Admin.MediaModel.GetByID)
 		models.PUT("/:id", h.Admin.MediaModel.Update)
 		models.DELETE("/:id", h.Admin.MediaModel.Delete)

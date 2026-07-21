@@ -12,12 +12,14 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 )
 
 type mediaModelHandlerStore struct {
 	records      []service.MediaModelAdminRecord
 	nextID       int64
 	refreshCalls int
+	writeCount   int
 }
 
 func (s *mediaModelHandlerStore) ListEnabled(context.Context) ([]service.MediaModelDefinition, error) {
@@ -63,6 +65,7 @@ func (s *mediaModelHandlerStore) GetAdminByID(_ context.Context, id int64) (*ser
 }
 
 func (s *mediaModelHandlerStore) CreateAdmin(_ context.Context, record service.MediaModelAdminRecord) (*service.MediaModelAdminRecord, error) {
+	s.writeCount++
 	s.nextID++
 	record.Definition.ID = s.nextID
 	s.records = append(s.records, cloneHandlerMediaRecord(record))
@@ -71,6 +74,7 @@ func (s *mediaModelHandlerStore) CreateAdmin(_ context.Context, record service.M
 }
 
 func (s *mediaModelHandlerStore) UpdateAdmin(_ context.Context, id int64, record service.MediaModelAdminRecord) (*service.MediaModelAdminRecord, error) {
+	s.writeCount++
 	for index := range s.records {
 		if s.records[index].Definition.ID == id {
 			record.Definition.ID = id
@@ -83,6 +87,7 @@ func (s *mediaModelHandlerStore) UpdateAdmin(_ context.Context, id int64, record
 }
 
 func (s *mediaModelHandlerStore) DeleteAdmin(_ context.Context, id int64) error {
+	s.writeCount++
 	for index := range s.records {
 		if s.records[index].Definition.ID == id {
 			s.records = append(s.records[:index], s.records[index+1:]...)
@@ -180,6 +185,7 @@ func newMediaModelHandlerFixture(t *testing.T, platform string, registrations ..
 	router := gin.New()
 	router.GET("/admin/media-models", handler.List)
 	router.POST("/admin/media-models", handler.Create)
+	router.GET("/admin/media-models/preflight", handler.Preflight)
 	router.GET("/admin/media-models/:id", handler.GetByID)
 	router.PUT("/admin/media-models/:id", handler.Update)
 	router.DELETE("/admin/media-models/:id", handler.Delete)
@@ -231,6 +237,100 @@ func TestMediaModelAdminHandlerCreateReturnsCompleteNormalizedModelAndRefreshesR
 	require.Contains(t, listRecorder.Body.String(), `"items":[{`)
 }
 
+func TestMediaModelHandlerIgnoresDeprecatedAdapterInputs(t *testing.T) {
+	registration := service.MediaAdapterRegistration{
+		Key: "xai-image",
+		Adapter: service.NewFakeMediaAdapter(service.FakeMediaAdapterOptions{
+			Name: "xai-image", NativeAsyncMode: service.NativeAsyncUnsupported,
+		}),
+		SupportedOperations: []service.MediaOperation{service.MediaOperationTextToImage},
+		ExactRules: []service.MediaAdapterExactRule{{
+			Vendor: "xai", ModelID: "grok-2-image",
+			Capabilities: service.MediaAdapterRuleCapabilities{
+				Operations: []service.MediaOperation{service.MediaOperationTextToImage}, SyncUpstream: true,
+			},
+		}},
+	}
+	expectedResolution := `{"status":"ready","resolved_adapter":"xai-image","matched_by":"exact","matched_family":"","capabilities":{"operations":["text_to_image"],"sync_upstream":true,"native_async_upstream":false,"content_fetch":false},"reason_code":""}`
+	for _, tt := range []struct {
+		name             string
+		deprecatedFields string
+	}{
+		{name: "adapter string and async null", deprecatedFields: `"default_adapter":"client-value","default_async_mode":null`},
+		{name: "adapter null and arbitrary async string", deprecatedFields: `"default_adapter":null,"default_async_mode":"sometimes"`},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			router, store, _ := newMediaModelHandlerFixture(t, service.PlatformMedia, registration)
+			body := `{"model_id":"grok-2-image","vendor":"xai","media_type":"image","operations":["text_to_image"],"constraints":{},"billing_unit":"image","enabled":true,"aliases":[],` + tt.deprecatedFields + `}`
+			recorder := performMediaModelHandlerRequest(router, http.MethodPost, "/admin/media-models", body)
+
+			require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
+			require.Len(t, store.records, 1)
+			require.Empty(t, store.records[0].Definition.DefaultAdapter)
+			require.Empty(t, store.records[0].Definition.DefaultAsyncMode)
+			require.Empty(t, store.records[0].LegacyDefaultAdapter)
+			require.JSONEq(t, expectedResolution, gjson.Get(recorder.Body.String(), "data.adapter_resolution").Raw)
+			require.Equal(t, "xai-image", gjson.Get(recorder.Body.String(), "data.default_adapter").String())
+			require.Equal(t, string(service.NativeAsyncUnsupported), gjson.Get(recorder.Body.String(), "data.default_async_mode").String())
+		})
+	}
+}
+
+func TestMediaModelHandlerReturnsSameResolutionAcrossReadAndWriteResponses(t *testing.T) {
+	router, store, _ := newMediaModelHandlerFixture(t, service.PlatformMedia)
+	created := performMediaModelHandlerRequest(router, http.MethodPost, "/admin/media-models", validMediaModelHandlerBody())
+	require.Equal(t, http.StatusOK, created.Code, created.Body.String())
+	require.Len(t, store.records, 1)
+	store.records[0].LegacyDefaultAdapter = "legacy-wrong-adapter"
+	store.records[0].LegacyDefaultAsyncMode = service.NativeAsyncRequired
+
+	got := performMediaModelHandlerRequest(router, http.MethodGet, "/admin/media-models/1", "")
+	listed := performMediaModelHandlerRequest(router, http.MethodGet, "/admin/media-models", "")
+	updatedBody := strings.ReplaceAll(validMediaModelHandlerBody(), "GPT-IMAGE-LATEST", "GPT-IMAGE-NEXT")
+	updated := performMediaModelHandlerRequest(router, http.MethodPut, "/admin/media-models/1", updatedBody)
+	for name, recorder := range map[string]*httptest.ResponseRecorder{
+		"create": created, "get": got, "list": listed, "update": updated,
+	} {
+		t.Run(name, func(t *testing.T) {
+			require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
+			path := "data.adapter_resolution"
+			if name == "list" {
+				path = "data.items.0.adapter_resolution"
+			}
+			require.JSONEq(t, `{"status":"ready","resolved_adapter":"openai-images","matched_by":"exact","matched_family":"","capabilities":{"operations":["text_to_image"],"sync_upstream":true,"native_async_upstream":true,"content_fetch":false},"reason_code":""}`, gjson.Get(recorder.Body.String(), path).Raw)
+			basePath := "data"
+			if name == "list" {
+				basePath = "data.items.0"
+			}
+			require.Equal(t, "openai-images", gjson.Get(recorder.Body.String(), basePath+".default_adapter").String())
+			require.Equal(t, string(service.NativeAsyncOptional), gjson.Get(recorder.Body.String(), basePath+".default_async_mode").String())
+		})
+	}
+}
+
+func TestMediaModelHandlerPreflightIsReadOnlyAndReturnsUnsafeReport(t *testing.T) {
+	router, store, _ := newMediaModelHandlerFixture(t, service.PlatformMedia)
+	created := performMediaModelHandlerRequest(router, http.MethodPost, "/admin/media-models", validMediaModelHandlerBody())
+	require.Equal(t, http.StatusOK, created.Code, created.Body.String())
+	store.records[0].LegacyDefaultAdapter = "legacy-wrong-adapter"
+	store.records[0].LegacyDefaultAsyncMode = service.NativeAsyncRequired
+	writesBefore, refreshesBefore := store.writeCount, store.refreshCalls
+
+	recorder := performMediaModelHandlerRequest(router, http.MethodGet, "/admin/media-models/preflight", "")
+
+	require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
+	require.False(t, gjson.Get(recorder.Body.String(), "data.safe").Bool())
+	require.Equal(t, int64(1), gjson.Get(recorder.Body.String(), "data.blocking_count").Int())
+	require.Equal(t, "gpt-image-2", gjson.Get(recorder.Body.String(), "data.items.0.model_id").String())
+	require.Equal(t, "ready", gjson.Get(recorder.Body.String(), "data.items.0.resolution_status").String())
+	require.Equal(t, "openai-images", gjson.Get(recorder.Body.String(), "data.items.0.resolved_adapter").String())
+	require.Equal(t, "legacy-wrong-adapter", gjson.Get(recorder.Body.String(), "data.items.0.legacy_default_adapter").String())
+	require.False(t, gjson.Get(recorder.Body.String(), "data.items.0.adapter_key_matches").Bool())
+	require.False(t, gjson.Get(recorder.Body.String(), "data.items.0.rollout_safe").Bool())
+	require.Equal(t, writesBefore, store.writeCount)
+	require.Equal(t, refreshesBefore, store.refreshCalls)
+}
+
 func TestMediaModelAdminHandlerUpdateAndDeleteRefreshRegistry(t *testing.T) {
 	router, store, registry := newMediaModelHandlerFixture(t, service.PlatformMedia)
 	created := performMediaModelHandlerRequest(router, http.MethodPost, "/admin/media-models", validMediaModelHandlerBody())
@@ -270,9 +370,7 @@ func TestMediaModelAdminHandlerStrictlyRejectsInvalidDefinitions(t *testing.T) {
 		body string
 	}{
 		{name: "unknown request field", body: `{"model_id":"image","vendor":"openai","media_type":"image","operations":["text_to_image"],"constraints":{},"billing_unit":"image","default_adapter":"openai-images","default_async_mode":"optional","enabled":true,"aliases":[],"script":"x"}`},
-		{name: "invalid adapter", body: `{"model_id":"image","vendor":"openai","media_type":"image","operations":["text_to_image"],"constraints":{},"billing_unit":"image","default_adapter":"bad adapter","default_async_mode":"optional","enabled":true,"aliases":[]}`},
 		{name: "operation type mismatch", body: `{"model_id":"image","vendor":"openai","media_type":"image","operations":["text_to_video"],"constraints":{},"billing_unit":"image","default_adapter":"openai-images","default_async_mode":"optional","enabled":true,"aliases":[]}`},
-		{name: "invalid async mode", body: `{"model_id":"image","vendor":"openai","media_type":"image","operations":["text_to_image"],"constraints":{},"billing_unit":"image","default_adapter":"openai-images","default_async_mode":"sometimes","enabled":true,"aliases":[]}`},
 		{name: "unknown constraints field", body: `{"model_id":"image","vendor":"openai","media_type":"image","operations":["text_to_image"],"constraints":{"script":"x"},"billing_unit":"image","default_adapter":"openai-images","default_async_mode":"optional","enabled":true,"aliases":[]}`},
 		{name: "duplicate normalized alias", body: `{"model_id":"image","vendor":"openai","media_type":"image","operations":["text_to_image"],"constraints":{},"billing_unit":"image","default_adapter":"openai-images","default_async_mode":"optional","enabled":true,"aliases":["Alias"," alias "]}`},
 		{name: "missing enabled", body: `{"model_id":"image","vendor":"openai","media_type":"image","operations":["text_to_image"],"constraints":{},"billing_unit":"image","default_adapter":"openai-images","default_async_mode":"optional","aliases":[]}`},

@@ -898,6 +898,14 @@ func (h *MediaTaskHandler) writeServiceError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, service.ErrMediaTaskNotFound):
 		writeMediaError(c, http.StatusNotFound, "media_task_not_found", "Media task not found")
+	case errors.Is(err, service.ErrMediaModelAdapterUnavailable):
+		writeMediaErrorType(
+			c,
+			http.StatusServiceUnavailable,
+			"MEDIA_MODEL_ADAPTER_UNAVAILABLE",
+			"The media model adapter is temporarily unavailable",
+			"server_error",
+		)
 	case errors.Is(err, service.ErrGroupNotFound):
 		writeMediaError(c, http.StatusNotFound, "group_not_found", "Media group not found")
 	case errors.Is(err, service.ErrMediaIdempotencyConflict):
@@ -927,7 +935,11 @@ func (h *MediaTaskHandler) writeServiceError(c *gin.Context, err error) {
 }
 
 func writeMediaError(c *gin.Context, status int, code, message string) {
-	c.JSON(status, mediaAPIErrorEnvelope{Error: mediaAPIError{Code: code, Message: message, Type: "invalid_request_error"}})
+	writeMediaErrorType(c, status, code, message, "invalid_request_error")
+}
+
+func writeMediaErrorType(c *gin.Context, status int, code, message, errorType string) {
+	c.JSON(status, mediaAPIErrorEnvelope{Error: mediaAPIError{Code: code, Message: message, Type: errorType}})
 }
 
 var (

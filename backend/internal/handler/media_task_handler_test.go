@@ -860,6 +860,19 @@ func TestMediaTaskHandlerMapsStableServiceErrorsWithoutLeak(t *testing.T) {
 	}
 }
 
+func TestMediaTaskHandlerReturnsUnavailableForTombstone(t *testing.T) {
+	router, app := newStandaloneMediaRouter(t)
+	app.createResult = nil
+	app.createErr = service.ErrMediaModelAdapterUnavailable.WithMetadata(map[string]string{
+		"model_id": "grok-2-image", "resolution_status": "unresolved", "reason_code": "MEDIA_ADAPTER_UNRESOLVED",
+	})
+
+	recorder := performAPIKeyRequest(router, http.MethodPost, "/v1/images/generations", `{"model":"grok-2-image","prompt":"cat"}`, 42)
+
+	require.Equal(t, http.StatusServiceUnavailable, recorder.Code)
+	require.JSONEq(t, `{"error":{"code":"MEDIA_MODEL_ADAPTER_UNAVAILABLE","message":"The media model adapter is temporarily unavailable","type":"server_error"}}`, recorder.Body.String())
+}
+
 func TestMediaTaskHandlerHidesTaskFromDifferentUser(t *testing.T) {
 	router, _ := newStandaloneMediaRouter(t)
 	rec := performAuthenticatedRequest(router, http.MethodGet, "/v1/videos/task_other", "", 99)
