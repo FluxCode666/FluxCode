@@ -2361,13 +2361,13 @@ export default {
 
     mediaModels: {
       title: 'Media Model Registry',
-      description: 'Manage image/video models, vendors, adapters, and downstream aliases',
+      description: 'Manage image/video models, vendors, downstream aliases, and system adapter status',
       registryLabel: 'Media Model Registry',
       registryHint:
-        'Bind adapters here by model vendor and canonical model. Media accounts only hold provider credentials, upstream model IDs, and parameter mappings.',
+        'Adapters are resolved uniquely in code by model vendor plus canonical model or family. Administrators only maintain model business metadata.',
       create: 'Register Media Model',
       edit: 'Edit Media Model',
-      search: 'Search models, vendors, adapters, or aliases…',
+      search: 'Search models, vendors, system adapter status, or aliases…',
       emptyTitle: 'No media models registered',
       emptyHint: 'Register a canonical model before selecting it in media accounts or groups.',
       deleteTitle: 'Delete Media Model',
@@ -2377,7 +2377,7 @@ export default {
         vendor: 'Vendor',
         type: 'Media Type',
         operations: 'Capabilities',
-        adapter: 'Adapter / Async',
+        adapter: 'System Adapter',
         aliases: 'Downstream Aliases',
         status: 'Status',
         actions: 'Actions'
@@ -2408,6 +2408,35 @@ export default {
         optional: 'Sync or async upstream',
         required: 'Asynchronous upstream only'
       },
+      resolution: {
+        title: 'System Adapter Resolution',
+        pending: 'The system will resolve the adapter from the model vendor and canonical model after saving.',
+        recalculateAfterSave: 'The vendor or operations changed. The adapter will be resolved again when saved.',
+        status: {
+          ready: 'Ready',
+          invalid_definition: 'Invalid model definition',
+          unresolved: 'No adapter rule found',
+          ambiguous: 'Multiple model families matched',
+          implementation_missing: 'Adapter implementation not deployed',
+          capability_mismatch: 'Adapter capability mismatch'
+        },
+        matchedBy: {
+          exact: 'Exact model match',
+          family: 'Model family match'
+        },
+        capabilities: {
+          sync: 'Synchronous upstream',
+          nativeAsync: 'Native asynchronous upstream',
+          contentFetch: 'Media content fetch'
+        },
+        reason: {
+          MEDIA_MODEL_DEFINITION_INVALID: 'The model definition is invalid. Check its vendor, model ID, media type, operations, and constraints.',
+          MEDIA_ADAPTER_UNRESOLVED: 'This deployment has no code adapter rule for the model vendor and model.',
+          MEDIA_ADAPTER_AMBIGUOUS: 'The model matches multiple code-defined families. The rules must be fixed and redeployed.',
+          MEDIA_ADAPTER_IMPLEMENTATION_MISSING: 'A resolution rule exists, but its Adapter implementation is not deployed with this version.',
+          MEDIA_ADAPTER_CAPABILITY_MISMATCH: 'The model requires capabilities the deployed Adapter does not provide. Its actual capabilities remain visible above.'
+        }
+      },
       form: {
         modelId: 'Canonical Model ID',
         modelIdPlaceholder: 'e.g. seedance-1.5-pro',
@@ -2415,10 +2444,6 @@ export default {
         vendorPlaceholder: 'e.g. bytedance, xai, google',
         mediaType: 'Media Type',
         operations: 'Supported Operations',
-        adapter: 'Default Adapter',
-        adapterPlaceholder: 'e.g. volcengine-seedance',
-        adapterHint: 'This is the global model adapter rule. Account forms no longer expose an Adapter field.',
-        asyncMode: 'Default Upstream Mode',
         billingUnit: 'Billing Unit',
         enabled: 'Enable this model for scheduling',
         aliases: 'Downstream Model Aliases',
@@ -2436,7 +2461,6 @@ export default {
       validation: {
         modelId: 'Model ID may only contain lowercase letters, numbers, and . _ : / -',
         vendor: 'Model vendor is required',
-        adapter: 'Adapter may only contain lowercase letters, numbers, _ or -',
         billingUnit: 'Billing unit is required',
         operations: 'Select at least one supported operation',
         nonNegativeInteger: 'Count and FPS constraints must be non-negative integers',

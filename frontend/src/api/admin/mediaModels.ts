@@ -17,7 +17,7 @@ export async function list(): Promise<MediaModelDefinition[]> {
 
 export async function listEnabled(): Promise<MediaModelDefinition[]> {
   const items = await list()
-  return items.filter((item) => item.enabled)
+  return items.filter((item) => item.enabled && item.adapter_resolution.status === 'ready')
 }
 
 export async function create(input: MediaModelDefinitionInput): Promise<MediaModelDefinition> {

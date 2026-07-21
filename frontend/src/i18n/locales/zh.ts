@@ -2407,13 +2407,13 @@ export default {
 
     mediaModels: {
       title: '媒体模型注册表',
-      description: '统一管理图片与视频模型、厂商、Adapter 和下游模型别名',
+      description: '统一管理图片与视频模型、厂商、下游模型别名和系统适配状态',
       registryLabel: 'Media Model Registry',
       registryHint:
-        'Adapter 在这里按“模型厂商 + 公共模型”统一绑定；媒体账号只配置供应商凭证、上游模型和参数映射，不再重复选择 Adapter。',
+        'Adapter 由系统代码按“模型厂商 + 规范模型或模型家族”唯一解析；管理员只维护模型业务元数据。',
       create: '注册媒体模型',
       edit: '编辑媒体模型',
-      search: '搜索模型、厂商、Adapter 或别名…',
+      search: '搜索模型、厂商、系统适配状态或别名…',
       emptyTitle: '尚未注册媒体模型',
       emptyHint: '先注册公共模型，随后才能在媒体账号和媒体分组中选择它。',
       deleteTitle: '删除媒体模型',
@@ -2423,7 +2423,7 @@ export default {
         vendor: '模型厂商',
         type: '媒体类型',
         operations: '能力',
-        adapter: 'Adapter / 异步',
+        adapter: '系统适配',
         aliases: '下游别名',
         status: '状态',
         actions: '操作'
@@ -2454,6 +2454,35 @@ export default {
         optional: '同步/异步均可',
         required: '仅异步上游'
       },
+      resolution: {
+        title: '系统 Adapter 解析',
+        pending: '保存后由系统根据模型厂商和规范模型重新解析 Adapter。',
+        recalculateAfterSave: '模型厂商或能力已修改，保存时将重新解析 Adapter。',
+        status: {
+          ready: '已就绪',
+          invalid_definition: '模型定义无效',
+          unresolved: '未找到适配规则',
+          ambiguous: '命中多个模型家族',
+          implementation_missing: '适配实现未部署',
+          capability_mismatch: '适配能力不匹配'
+        },
+        matchedBy: {
+          exact: '精确模型匹配',
+          family: '模型家族匹配'
+        },
+        capabilities: {
+          sync: '同步上游',
+          nativeAsync: '原生异步上游',
+          contentFetch: '媒体内容回源'
+        },
+        reason: {
+          MEDIA_MODEL_DEFINITION_INVALID: '模型定义无效，请检查厂商、模型 ID、媒体类型、能力和约束。',
+          MEDIA_ADAPTER_UNRESOLVED: '当前部署未包含对应“模型厂商 + 模型”的代码适配规则。',
+          MEDIA_ADAPTER_AMBIGUOUS: '当前模型同时命中多个代码模型家族，需要开发修正规则后重新部署。',
+          MEDIA_ADAPTER_IMPLEMENTATION_MISSING: '解析规则存在，但对应 Adapter 实现未随当前版本部署。',
+          MEDIA_ADAPTER_CAPABILITY_MISMATCH: '模型所需能力超出当前 Adapter 的实际能力；上方仍显示已部署的实际能力。'
+        }
+      },
       form: {
         modelId: '公共模型 ID',
         modelIdPlaceholder: '例如 seedance-1.5-pro',
@@ -2461,10 +2490,6 @@ export default {
         vendorPlaceholder: '例如 bytedance、xai、google',
         mediaType: '媒体类型',
         operations: '支持的生成能力',
-        adapter: '默认 Adapter',
-        adapterPlaceholder: '例如 volcengine-seedance',
-        adapterHint: '这是全局模型适配规则。账号表单不会再出现 Adapter 输入项。',
-        asyncMode: '默认上游执行方式',
         billingUnit: '计费单位',
         enabled: '启用该模型并允许进入调度',
         aliases: '下游请求模型别名',
@@ -2482,7 +2507,6 @@ export default {
       validation: {
         modelId: '公共模型 ID 只能包含小写字母、数字及 . _ : / -',
         vendor: '请填写模型厂商',
-        adapter: 'Adapter 只能包含小写字母、数字、_ 或 -',
         billingUnit: '请填写计费单位',
         operations: '请至少选择一项生成能力',
         nonNegativeInteger: '数量与 FPS 约束必须是非负整数',

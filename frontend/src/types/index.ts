@@ -745,6 +745,32 @@ export interface MediaModelConstraints {
   max_reference_images?: number
 }
 
+export type MediaAdapterResolutionStatus =
+  | 'ready'
+  | 'invalid_definition'
+  | 'unresolved'
+  | 'ambiguous'
+  | 'implementation_missing'
+  | 'capability_mismatch'
+
+export type MediaAdapterMatchType = '' | 'exact' | 'family'
+
+export interface MediaAdapterCapabilities {
+  operations: MediaOperation[]
+  sync_upstream: boolean
+  native_async_upstream: boolean
+  content_fetch: boolean
+}
+
+export interface MediaAdapterResolution {
+  status: MediaAdapterResolutionStatus
+  resolved_adapter: string
+  matched_by: MediaAdapterMatchType
+  matched_family: string
+  capabilities: MediaAdapterCapabilities | null
+  reason_code: string
+}
+
 export interface MediaModelDefinition {
   id: number
   model_id: string
@@ -753,10 +779,13 @@ export interface MediaModelDefinition {
   operations: MediaOperation[]
   constraints: MediaModelConstraints
   billing_unit: string
-  default_adapter: string
-  default_async_mode: NativeAsyncMode
+  /** @deprecated 仅用于旧服务端响应兼容，请读取 adapter_resolution。 */
+  default_adapter?: string
+  /** @deprecated 仅用于旧服务端响应兼容，请读取 adapter_resolution。 */
+  default_async_mode?: NativeAsyncMode
   enabled: boolean
   aliases: string[]
+  adapter_resolution: MediaAdapterResolution
   created_at?: string
   updated_at?: string
 }
@@ -768,8 +797,6 @@ export interface MediaModelDefinitionInput {
   operations: MediaOperation[]
   constraints: MediaModelConstraints
   billing_unit: string
-  default_adapter: string
-  default_async_mode: NativeAsyncMode
   enabled: boolean
   aliases: string[]
 }

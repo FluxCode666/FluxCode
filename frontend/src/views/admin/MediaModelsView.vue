@@ -41,8 +41,6 @@ const createDefault = (): MediaModelDefinitionInput => ({
   operations: ['text_to_image'],
   constraints: {},
   billing_unit: 'image',
-  default_adapter: '',
-  default_async_mode: 'unsupported',
   enabled: true,
   aliases: [],
 })
@@ -54,7 +52,7 @@ const columns = computed<Column[]>(() => [
   { key: 'vendor', label: t('admin.mediaModels.columns.vendor') },
   { key: 'media_type', label: t('admin.mediaModels.columns.type') },
   { key: 'operations', label: t('admin.mediaModels.columns.operations') },
-  { key: 'default_adapter', label: t('admin.mediaModels.columns.adapter') },
+  { key: 'adapter_resolution', label: t('admin.mediaModels.columns.adapter') },
   { key: 'aliases', label: t('admin.mediaModels.columns.aliases') },
   { key: 'enabled', label: t('admin.mediaModels.columns.status') },
   { key: 'actions', label: t('admin.mediaModels.columns.actions') },
@@ -65,7 +63,7 @@ const filteredModels = computed(() => {
   return models.value.filter((model) => {
     if (mediaType.value && model.media_type !== mediaType.value) return false
     if (!query) return true
-    return [model.model_id, model.vendor, model.default_adapter, ...model.aliases]
+    return [model.model_id, model.vendor, ...model.aliases, ...resolutionSearchValues(model)]
       .some((value) => value.toLowerCase().includes(query))
   })
 })
@@ -81,6 +79,14 @@ function operationLabel(operation: MediaOperation): string {
   return t(`admin.mediaModels.operations.${operation}`)
 }
 
+function resolutionSearchValues(model: MediaModelDefinition): string[] {
+  return [
+    model.adapter_resolution.resolved_adapter,
+    model.adapter_resolution.matched_family,
+    model.adapter_resolution.reason_code,
+  ]
+}
+
 function toInput(model: MediaModelDefinition): MediaModelDefinitionInput {
   return {
     model_id: model.model_id,
@@ -89,11 +95,27 @@ function toInput(model: MediaModelDefinition): MediaModelDefinitionInput {
     operations: [...model.operations],
     constraints: { ...model.constraints },
     billing_unit: model.billing_unit,
-    default_adapter: model.default_adapter,
-    default_async_mode: model.default_async_mode,
     enabled: model.enabled,
     aliases: [...model.aliases],
   }
+}
+
+const knownResolutionReasonCodes = new Set([
+  'MEDIA_MODEL_DEFINITION_INVALID',
+  'MEDIA_ADAPTER_UNRESOLVED',
+  'MEDIA_ADAPTER_AMBIGUOUS',
+  'MEDIA_ADAPTER_IMPLEMENTATION_MISSING',
+  'MEDIA_ADAPTER_CAPABILITY_MISMATCH',
+])
+
+function saveErrorMessage(error: any): string {
+  const reason = error?.reason
+    || error?.response?.data?.reason
+    || error?.response?.data?.error?.code
+  if (knownResolutionReasonCodes.has(reason)) {
+    return t(`admin.mediaModels.resolution.reason.${reason}`)
+  }
+  return error?.message || t('admin.mediaModels.messages.saveFailed')
 }
 
 async function loadModels() {
@@ -141,7 +163,7 @@ async function saveModel() {
     closeEditor()
     await loadModels()
   } catch (error: any) {
-    appStore.showError(error?.message || t('admin.mediaModels.messages.saveFailed'))
+    appStore.showError(saveErrorMessage(error))
   } finally {
     submitting.value = false
   }
@@ -152,7 +174,7 @@ async function toggleEnabled(model: MediaModelDefinition) {
     await adminAPI.mediaModels.update(model.id, { ...toInput(model), enabled: !model.enabled })
     await loadModels()
   } catch (error: any) {
-    appStore.showError(error?.message || t('admin.mediaModels.messages.saveFailed'))
+    appStore.showError(saveErrorMessage(error))
   }
 }
 
@@ -265,9 +287,32 @@ onMounted(loadModels)
               </span>
             </div>
           </template>
-          <template #cell-default_adapter="{ row }">
-            <div class="font-mono text-xs text-gray-700 dark:text-gray-300">{{ row.default_adapter }}</div>
-            <div class="mt-1 text-[11px] text-gray-400">{{ t(`admin.mediaModels.asyncModes.${row.default_async_mode}`) }}</div>
+          <template #cell-adapter_resolution="{ row }">
+            <div class="space-y-1 text-xs" :data-resolution-status="row.adapter_resolution.status">
+              <div
+                class="font-medium"
+                :class="row.adapter_resolution.status === 'ready'
+                  ? 'text-emerald-700 dark:text-emerald-300'
+                  : 'text-amber-700 dark:text-amber-300'"
+              >
+                {{ t(`admin.mediaModels.resolution.status.${row.adapter_resolution.status}`) }}
+              </div>
+              <div v-if="row.adapter_resolution.resolved_adapter" class="font-mono text-gray-700 dark:text-gray-300">
+                {{ row.adapter_resolution.resolved_adapter }}
+              </div>
+              <div v-if="row.adapter_resolution.matched_by" class="text-[11px] text-gray-400">
+                {{ t(`admin.mediaModels.resolution.matchedBy.${row.adapter_resolution.matched_by}`) }}
+                <span v-if="row.adapter_resolution.matched_family"> · {{ row.adapter_resolution.matched_family }}</span>
+              </div>
+              <div v-if="row.adapter_resolution.capabilities" class="text-[11px] text-gray-400">
+                {{ t('admin.mediaModels.resolution.capabilities.sync') }}:
+                {{ row.adapter_resolution.capabilities.sync_upstream ? t('common.yes') : t('common.no') }} ·
+                {{ t('admin.mediaModels.resolution.capabilities.nativeAsync') }}:
+                {{ row.adapter_resolution.capabilities.native_async_upstream ? t('common.yes') : t('common.no') }} ·
+                {{ t('admin.mediaModels.resolution.capabilities.contentFetch') }}:
+                {{ row.adapter_resolution.capabilities.content_fetch ? t('common.yes') : t('common.no') }}
+              </div>
+            </div>
           </template>
           <template #cell-aliases="{ row }">
             <span class="text-sm text-gray-600 dark:text-gray-400">{{ row.aliases.length ? row.aliases.join(', ') : '—' }}</span>
@@ -275,6 +320,7 @@ onMounted(loadModels)
           <template #cell-enabled="{ row }">
             <button
               type="button"
+              :data-test="`toggle-media-model-${row.id}`"
               class="rounded-full px-2.5 py-1 text-xs font-medium transition"
               :class="row.enabled
                 ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:text-emerald-300'
@@ -286,7 +332,7 @@ onMounted(loadModels)
           </template>
           <template #cell-actions="{ row }">
             <div class="flex items-center gap-1">
-              <button class="rounded-lg p-2 text-gray-500 hover:bg-gray-100 hover:text-primary-600 dark:hover:bg-dark-700" type="button" :title="t('common.edit')" @click="openEdit(row)">
+              <button :data-test="`edit-media-model-${row.id}`" class="rounded-lg p-2 text-gray-500 hover:bg-gray-100 hover:text-primary-600 dark:hover:bg-dark-700" type="button" :title="t('common.edit')" @click="openEdit(row)">
                 <Icon name="edit" size="sm" />
               </button>
               <button class="rounded-lg p-2 text-gray-500 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/30" type="button" :title="t('common.delete')" @click="requestDelete(row)">
@@ -313,7 +359,12 @@ onMounted(loadModels)
       @close="closeEditor"
     >
       <form id="media-model-form" @submit.prevent="saveModel">
-        <MediaModelEditor v-model="form" :editing="Boolean(editing)" @update:valid="editorValid = $event" />
+        <MediaModelEditor
+          v-model="form"
+          :editing="Boolean(editing)"
+          :adapter-resolution="editing?.adapter_resolution ?? null"
+          @update:valid="editorValid = $event"
+        />
       </form>
       <template #footer>
         <div class="flex justify-end gap-3">

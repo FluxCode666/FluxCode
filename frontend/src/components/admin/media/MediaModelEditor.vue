@@ -2,17 +2,19 @@
 import { computed, ref, toRaw, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
+import MediaAdapterResolutionPanel from '@/components/admin/media/MediaAdapterResolutionPanel.vue'
 import type {
+  MediaAdapterResolution,
   MediaModelConstraints,
   MediaModelDefinitionInput,
   MediaOperation,
   MediaType,
-  NativeAsyncMode,
 } from '@/types'
 
 const props = defineProps<{
   modelValue: MediaModelDefinitionInput
   editing?: boolean
+  adapterResolution?: MediaAdapterResolution | null
 }>()
 
 const emit = defineEmits<{
@@ -38,6 +40,7 @@ const videoDurationsText = ref(formatList(props.modelValue.constraints.video_dur
 const videoResolutionsText = ref(formatList(props.modelValue.constraints.video_resolutions))
 let syncingFromParent = false
 let lastEmittedObject: MediaModelDefinitionInput | null = null
+const resolutionDirty = ref(false)
 
 const availableOperations = computed(() =>
   local.value.media_type === 'image' ? imageOperations : videoOperations,
@@ -50,9 +53,6 @@ const validationErrors = computed(() => {
     errors.push(t('admin.mediaModels.validation.modelId'))
   }
   if (!value.vendor.trim()) errors.push(t('admin.mediaModels.validation.vendor'))
-  if (!/^[a-z0-9][a-z0-9_-]{0,63}$/.test(value.default_adapter.trim())) {
-    errors.push(t('admin.mediaModels.validation.adapter'))
-  }
   if (!value.billing_unit.trim()) errors.push(t('admin.mediaModels.validation.billingUnit'))
   if (value.operations.length === 0) errors.push(t('admin.mediaModels.validation.operations'))
   const integerConstraints = [
@@ -130,7 +130,6 @@ function publish() {
   normalizeIntegerConstraints()
   local.value.model_id = local.value.model_id.trim().toLowerCase()
   local.value.vendor = local.value.vendor.trim().toLowerCase()
-  local.value.default_adapter = local.value.default_adapter.trim().toLowerCase()
   local.value.billing_unit = local.value.billing_unit.trim().toLowerCase()
   local.value.aliases = parseList(aliasesText.value)
   const value = cloneInput(local.value)
@@ -148,6 +147,7 @@ function hydrateDrafts(value: MediaModelDefinitionInput) {
 
 function setMediaType(mediaType: MediaType) {
   if (local.value.media_type === mediaType) return
+  if (props.editing) resolutionDirty.value = true
   local.value.media_type = mediaType
   local.value.operations = mediaType === 'image' ? ['text_to_image'] : ['text_to_video']
   local.value.constraints = cloneConstraints(undefined)
@@ -158,9 +158,15 @@ function setMediaType(mediaType: MediaType) {
 }
 
 function toggleOperation(operation: MediaOperation) {
+  if (props.editing) resolutionDirty.value = true
   const index = local.value.operations.indexOf(operation)
   if (index >= 0) local.value.operations.splice(index, 1)
   else local.value.operations.push(operation)
+  publish()
+}
+
+function updateVendor() {
+  if (props.editing) resolutionDirty.value = true
   publish()
 }
 
@@ -221,7 +227,7 @@ watch(
           class="input"
           type="text"
           :placeholder="t('admin.mediaModels.form.vendorPlaceholder')"
-          @input="publish"
+          @input="updateVendor"
         />
       </div>
     </div>
@@ -265,41 +271,14 @@ watch(
       </div>
     </div>
 
-    <div class="rounded-xl border border-rose-200 bg-rose-50/60 p-4 dark:border-rose-900/60 dark:bg-rose-950/20">
-      <div class="grid gap-4 sm:grid-cols-2">
-        <div>
-          <label for="media-registry-adapter" class="input-label">
-            {{ t('admin.mediaModels.form.adapter') }}
-          </label>
-          <input
-            id="media-registry-adapter"
-            v-model="local.default_adapter"
-            data-test="media-registry-adapter"
-            class="input font-mono"
-            type="text"
-            :placeholder="t('admin.mediaModels.form.adapterPlaceholder')"
-            @input="publish"
-          />
-        </div>
-        <div>
-          <label for="media-registry-async-mode" class="input-label">
-            {{ t('admin.mediaModels.form.asyncMode') }}
-          </label>
-          <select
-            id="media-registry-async-mode"
-            v-model="local.default_async_mode"
-            data-test="media-registry-async-mode"
-            class="input"
-            @change="publish"
-          >
-            <option v-for="mode in (['unsupported', 'optional', 'required'] as NativeAsyncMode[])" :key="mode" :value="mode">
-              {{ t(`admin.mediaModels.asyncModes.${mode}`) }}
-            </option>
-          </select>
-        </div>
-      </div>
-      <p class="mt-2 text-xs text-rose-700 dark:text-rose-300">
-        {{ t('admin.mediaModels.form.adapterHint') }}
+    <div>
+      <MediaAdapterResolutionPanel :resolution="adapterResolution" />
+      <p
+        v-if="editing && resolutionDirty"
+        data-test="media-adapter-resolution-dirty"
+        class="mt-2 text-xs text-amber-700 dark:text-amber-300"
+      >
+        {{ t('admin.mediaModels.resolution.recalculateAfterSave') }}
       </p>
     </div>
 

@@ -2,7 +2,7 @@ import { mount } from '@vue/test-utils'
 import { defineComponent, ref } from 'vue'
 import { describe, expect, it, vi } from 'vitest'
 
-import type { MediaModelDefinitionInput } from '@/types'
+import type { MediaAdapterResolution, MediaModelDefinitionInput } from '@/types'
 import MediaModelEditor from '../MediaModelEditor.vue'
 
 vi.mock('vue-i18n', () => ({
@@ -16,10 +16,22 @@ const initialValue = (): MediaModelDefinitionInput => ({
   operations: ['text_to_video'],
   constraints: { video_durations: [5, 10] },
   billing_unit: 'second',
-  default_adapter: 'volcengine-seedance',
-  default_async_mode: 'required',
   enabled: true,
   aliases: ['seedance'],
+})
+
+const readyResolution = (): MediaAdapterResolution => ({
+  status: 'ready',
+  resolved_adapter: 'volcengine-seedance',
+  matched_by: 'family',
+  matched_family: 'seedance',
+  capabilities: {
+    operations: ['text_to_video'],
+    sync_upstream: false,
+    native_async_upstream: true,
+    content_fetch: true,
+  },
+  reason_code: '',
 })
 
 const initialImageValue = (): MediaModelDefinitionInput => ({
@@ -55,16 +67,28 @@ async function typeOneCharacterAtATime(
 }
 
 describe('MediaModelEditor', () => {
-  it('在全局 Registry 层配置 Adapter 与别名', async () => {
-    const wrapper = mount(MediaModelEditor, { props: { modelValue: initialValue() } })
+  it('只编辑业务字段并只读展示系统解析的 Adapter', async () => {
+    const wrapper = mount(MediaModelEditor, {
+      props: { modelValue: initialValue(), adapterResolution: readyResolution() },
+    })
 
-    expect(wrapper.get<HTMLInputElement>('[data-test="media-registry-adapter"]').element.value)
-      .toBe('volcengine-seedance')
+    expect(wrapper.find('[data-test="media-registry-adapter"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="media-registry-async-mode"]').exists()).toBe(false)
+    expect(wrapper.get('[data-test="media-adapter-resolution"]').text())
+      .toContain('volcengine-seedance')
+    expect(wrapper.text()).toContain('seedance')
     await wrapper.get('[data-test="media-registry-aliases"]').setValue('seedance, doubao-video')
 
     const emitted = wrapper.emitted('update:modelValue')?.at(-1)?.[0] as MediaModelDefinitionInput
     expect(emitted.aliases).toEqual(['seedance', 'doubao-video'])
-    expect(emitted.default_adapter).toBe('volcengine-seedance')
+    expect(emitted).not.toHaveProperty('default_adapter')
+    expect(emitted).not.toHaveProperty('default_async_mode')
+  })
+
+  it('新建模型时提示保存后由系统解析', () => {
+    const wrapper = mount(MediaModelEditor, { props: { modelValue: initialValue() } })
+
+    expect(wrapper.get('[data-test="media-adapter-resolution-pending"]').exists()).toBe(true)
   })
 
   it('切换媒体类型时重置为相符的默认能力', async () => {
@@ -78,10 +102,9 @@ describe('MediaModelEditor', () => {
     expect(emitted.constraints.video_durations).toEqual([])
   })
 
-  it('拒绝重复别名与非法 Adapter 名称', async () => {
+  it('拒绝重复别名', async () => {
     const wrapper = mount(MediaModelEditor, { props: { modelValue: initialValue() } })
 
-    await wrapper.get('[data-test="media-registry-adapter"]').setValue('Bad Adapter')
     await wrapper.get('[data-test="media-registry-aliases"]').setValue('seedance, seedance')
 
     expect(wrapper.get('[data-test="media-registry-validation-errors"]').exists()).toBe(true)
