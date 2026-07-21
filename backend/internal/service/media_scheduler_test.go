@@ -205,8 +205,8 @@ func TestMediaSchedulerSelectsAcrossPlatformsForSameModel(t *testing.T) {
 	}}
 	selector := &mediaSchedulerSelectorStub{selectedID: 2}
 	registry := NewMediaAdapterRegistry()
-	registry.Register("gemini", NewFakeMediaAdapter(FakeMediaAdapterOptions{Name: "gemini", NativeAsyncMode: NativeAsyncOptional}))
-	registry.Register("xai", NewFakeMediaAdapter(FakeMediaAdapterOptions{Name: "xai", NativeAsyncMode: NativeAsyncRequired}))
+	require.NoError(t, registry.Register("gemini", NewFakeMediaAdapter(FakeMediaAdapterOptions{Name: "gemini", NativeAsyncMode: NativeAsyncOptional})))
+	require.NoError(t, registry.Register("xai", NewFakeMediaAdapter(FakeMediaAdapterOptions{Name: "xai", NativeAsyncMode: NativeAsyncRequired})))
 	scheduler := newTestMediaScheduler(repo, selector, registry)
 
 	snapshot, err := scheduler.SnapshotCandidates(context.Background(), 7, "veo-3.1")
@@ -246,7 +246,7 @@ func TestMediaSchedulerRoutesVersionOneMediaAccountByRegistryAndGroupScope(t *te
 	registry := NewMediaModelRegistry(models)
 	require.NoError(t, registry.Refresh(context.Background()))
 	adapters := NewMediaAdapterRegistry()
-	adapters.Register("openai-images", NewFakeMediaAdapter(FakeMediaAdapterOptions{Name: "openai-images", NativeAsyncMode: NativeAsyncUnsupported}))
+	require.NoError(t, adapters.Register("openai-images", NewFakeMediaAdapter(FakeMediaAdapterOptions{Name: "openai-images", NativeAsyncMode: NativeAsyncUnsupported})))
 	groupRepo := &mediaSchedulerGroupRepoStub{group: &Group{ID: 9, Platform: PlatformMedia}}
 	scheduler := NewMediaScheduler(
 		&mediaSchedulerAccountRepoStub{accounts: []Account{account}},
@@ -283,8 +283,8 @@ func TestMediaSchedulerUsesProvidedFrozenDefinitionAcrossRegistryRefresh(t *test
 	registry := NewMediaModelRegistry(&mediaModelRepoStub{items: []MediaModelDefinition{refreshed}})
 	require.NoError(t, registry.Refresh(context.Background()))
 	adapters := NewMediaAdapterRegistry()
-	adapters.Register("adapter-v1", NewFakeMediaAdapter(FakeMediaAdapterOptions{Name: "adapter-v1", NativeAsyncMode: NativeAsyncUnsupported}))
-	adapters.Register("adapter-v2", NewFakeMediaAdapter(FakeMediaAdapterOptions{Name: "adapter-v2", NativeAsyncMode: NativeAsyncUnsupported}))
+	require.NoError(t, adapters.Register("adapter-v1", NewFakeMediaAdapter(FakeMediaAdapterOptions{Name: "adapter-v1", NativeAsyncMode: NativeAsyncUnsupported})))
+	require.NoError(t, adapters.Register("adapter-v2", NewFakeMediaAdapter(FakeMediaAdapterOptions{Name: "adapter-v2", NativeAsyncMode: NativeAsyncUnsupported})))
 	scheduler := NewMediaScheduler(
 		&mediaSchedulerAccountRepoStub{accounts: []Account{account}},
 		&mediaSchedulerSelectorStub{selectedID: account.ID}, adapters,
@@ -312,7 +312,7 @@ func TestMediaSchedulerRejectsMediaModelOutsideGroupScope(t *testing.T) {
 	registry := NewMediaModelRegistry(&mediaModelRepoStub{items: []MediaModelDefinition{definition}})
 	require.NoError(t, registry.Refresh(context.Background()))
 	adapters := NewMediaAdapterRegistry()
-	adapters.Register("sync", NewFakeMediaAdapter(FakeMediaAdapterOptions{Name: "sync", NativeAsyncMode: NativeAsyncUnsupported}))
+	require.NoError(t, adapters.Register("sync", NewFakeMediaAdapter(FakeMediaAdapterOptions{Name: "sync", NativeAsyncMode: NativeAsyncUnsupported})))
 	scheduler := NewMediaScheduler(&mediaSchedulerAccountRepoStub{}, &mediaSchedulerSelectorStub{}, adapters,
 		&mediaSchedulerGroupRepoStub{group: &Group{ID: 10, Platform: PlatformMedia}}, registry,
 		&mediaSchedulerScopeRepoStub{modelIDs: []string{"other"}})
@@ -329,7 +329,7 @@ func TestMediaSchedulerSnapshotRechecksCurrentGroupPlatformPolicy(t *testing.T) 
 	group := &Group{ID: 7, Platform: PlatformOpenAI, MediaCrossPlatformEnabled: false}
 	groups := &mediaSchedulerGroupRepoStub{group: group}
 	registry := NewMediaAdapterRegistry()
-	registry.Register("sync", NewFakeMediaAdapter(FakeMediaAdapterOptions{Name: "sync", NativeAsyncMode: NativeAsyncUnsupported}))
+	require.NoError(t, registry.Register("sync", NewFakeMediaAdapter(FakeMediaAdapterOptions{Name: "sync", NativeAsyncMode: NativeAsyncUnsupported})))
 	scheduler := newTestMediaScheduler(repo, &mediaSchedulerSelectorStub{selectedID: 1}, registry, groups)
 
 	snapshot, err := scheduler.SnapshotCandidates(context.Background(), group.ID, "image")
@@ -366,8 +366,8 @@ func TestMediaSchedulerSnapshotFiltersAvailabilityModelAndAdapterMethodSets(t *t
 	noConfig.Extra = nil
 
 	registry := NewMediaAdapterRegistry()
-	registry.Register("sync", NewFakeMediaAdapter(FakeMediaAdapterOptions{Name: "sync", NativeAsyncMode: NativeAsyncUnsupported}))
-	registry.Register("async", NewFakeMediaAdapter(FakeMediaAdapterOptions{Name: "async", NativeAsyncMode: NativeAsyncRequired}))
+	require.NoError(t, registry.Register("sync", NewFakeMediaAdapter(FakeMediaAdapterOptions{Name: "sync", NativeAsyncMode: NativeAsyncUnsupported})))
+	require.NoError(t, registry.Register("async", NewFakeMediaAdapter(FakeMediaAdapterOptions{Name: "async", NativeAsyncMode: NativeAsyncRequired})))
 	repo := &mediaSchedulerAccountRepoStub{accounts: []Account{validSync, missingAdapter, wrongRequired, wrongOptional, disabled, cooling, unsupportedModel, noConfig}}
 	scheduler := newTestMediaScheduler(repo, &mediaSchedulerSelectorStub{selectedID: 1}, registry)
 
@@ -392,8 +392,8 @@ func TestMediaSchedulerSelectExcludesAndUsesFrozenResolvedModel(t *testing.T) {
 	repo := &mediaSchedulerAccountRepoStub{accounts: []Account{original, backup}}
 	selector := &mediaSchedulerSelectorStub{selectedID: 11}
 	registry := NewMediaAdapterRegistry()
-	registry.Register("xai", NewFakeMediaAdapter(FakeMediaAdapterOptions{Name: "xai", NativeAsyncMode: NativeAsyncRequired}))
-	registry.Register("gemini", NewFakeMediaAdapter(FakeMediaAdapterOptions{Name: "gemini", NativeAsyncMode: NativeAsyncOptional}))
+	require.NoError(t, registry.Register("xai", NewFakeMediaAdapter(FakeMediaAdapterOptions{Name: "xai", NativeAsyncMode: NativeAsyncRequired})))
+	require.NoError(t, registry.Register("gemini", NewFakeMediaAdapter(FakeMediaAdapterOptions{Name: "gemini", NativeAsyncMode: NativeAsyncOptional})))
 	scheduler := newTestMediaScheduler(repo, selector, registry)
 	snapshot, err := scheduler.SnapshotCandidates(context.Background(), 1, "image")
 	require.NoError(t, err)
@@ -414,7 +414,7 @@ func TestMediaSchedulerSelectDoesNotReResolveCurrentModelRegistry(t *testing.T) 
 	repo := &mediaSchedulerAccountRepoStub{accounts: []Account{account}}
 	selector := &mediaSchedulerSelectorStub{selectedID: account.ID}
 	adapters := NewMediaAdapterRegistry()
-	adapters.Register("sync", NewFakeMediaAdapter(FakeMediaAdapterOptions{Name: "sync", NativeAsyncMode: NativeAsyncUnsupported}))
+	require.NoError(t, adapters.Register("sync", NewFakeMediaAdapter(FakeMediaAdapterOptions{Name: "sync", NativeAsyncMode: NativeAsyncUnsupported})))
 	models := NewMediaModelRegistry(&mediaModelRepoStub{})
 	require.NoError(t, models.Refresh(context.Background()))
 	scheduler := NewMediaScheduler(repo, selector, adapters, &mediaSchedulerGroupRepoStub{group: &Group{ID: 1, Platform: PlatformMedia}}, models)
@@ -440,7 +440,7 @@ func TestMediaSchedulerSelectRechecksRealtimeAvailabilityAndAdapter(t *testing.T
 	repo := &mediaSchedulerAccountRepoStub{accounts: accounts}
 	selector := &mediaSchedulerSelectorStub{selectedID: 3}
 	registry := NewMediaAdapterRegistry()
-	registry.Register("sync", NewFakeMediaAdapter(FakeMediaAdapterOptions{Name: "sync", NativeAsyncMode: NativeAsyncUnsupported}))
+	require.NoError(t, registry.Register("sync", NewFakeMediaAdapter(FakeMediaAdapterOptions{Name: "sync", NativeAsyncMode: NativeAsyncUnsupported})))
 	scheduler := newTestMediaScheduler(repo, selector, registry)
 	snapshot, err := scheduler.SnapshotCandidates(context.Background(), 1, "image")
 	require.NoError(t, err)
@@ -463,7 +463,7 @@ func TestMediaSchedulerSelectRejectsDuplicateMalformedAndSelectorEscape(t *testi
 	account := task12Account(1, PlatformOpenAI, "image", "up", "sync", NativeAsyncUnsupported)
 	repo := &mediaSchedulerAccountRepoStub{accounts: []Account{account}}
 	registry := NewMediaAdapterRegistry()
-	registry.Register("sync", NewFakeMediaAdapter(FakeMediaAdapterOptions{Name: "sync", NativeAsyncMode: NativeAsyncUnsupported}))
+	require.NoError(t, registry.Register("sync", NewFakeMediaAdapter(FakeMediaAdapterOptions{Name: "sync", NativeAsyncMode: NativeAsyncUnsupported})))
 
 	t.Run("duplicate snapshot id", func(t *testing.T) {
 		scheduler := newTestMediaScheduler(repo, &mediaSchedulerSelectorStub{selectedID: 1}, registry)
@@ -520,7 +520,7 @@ func TestMediaSchedulerReleasesSelectorResultReturnedWithError(t *testing.T) {
 		},
 	}
 	registry := NewMediaAdapterRegistry()
-	registry.Register("sync", NewFakeMediaAdapter(FakeMediaAdapterOptions{Name: "sync", NativeAsyncMode: NativeAsyncUnsupported}))
+	require.NoError(t, registry.Register("sync", NewFakeMediaAdapter(FakeMediaAdapterOptions{Name: "sync", NativeAsyncMode: NativeAsyncUnsupported})))
 	scheduler := newTestMediaScheduler(repo, selector, registry)
 	snapshot, err := scheduler.SnapshotCandidates(context.Background(), 1, "image")
 	require.NoError(t, err)
@@ -540,7 +540,7 @@ func TestMediaSchedulerRejectsStableAcquiredSelectionWithoutRefresh(t *testing.T
 		ReleaseFunc: func() { releases.Add(1) },
 	}}
 	registry := NewMediaAdapterRegistry()
-	registry.Register("sync", NewFakeMediaAdapter(FakeMediaAdapterOptions{Name: "sync", NativeAsyncMode: NativeAsyncUnsupported}))
+	require.NoError(t, registry.Register("sync", NewFakeMediaAdapter(FakeMediaAdapterOptions{Name: "sync", NativeAsyncMode: NativeAsyncUnsupported})))
 	scheduler := newTestMediaScheduler(repo, selector, registry)
 	snapshot, err := scheduler.SnapshotCandidates(context.Background(), 1, "image")
 	require.NoError(t, err)
@@ -557,7 +557,7 @@ func TestMediaSchedulerRejectsMalformedSelectorWaitPlans(t *testing.T) {
 	account := task12Account(1, PlatformOpenAI, "image", "up", "sync", NativeAsyncUnsupported)
 	repo := &mediaSchedulerAccountRepoStub{accounts: []Account{account}}
 	registry := NewMediaAdapterRegistry()
-	registry.Register("sync", NewFakeMediaAdapter(FakeMediaAdapterOptions{Name: "sync", NativeAsyncMode: NativeAsyncUnsupported}))
+	require.NoError(t, registry.Register("sync", NewFakeMediaAdapter(FakeMediaAdapterOptions{Name: "sync", NativeAsyncMode: NativeAsyncUnsupported})))
 	snapshotScheduler := newTestMediaScheduler(repo, &mediaSchedulerSelectorStub{selectedID: 1}, registry)
 	snapshot, err := snapshotScheduler.SnapshotCandidates(context.Background(), 1, "image")
 	require.NoError(t, err)

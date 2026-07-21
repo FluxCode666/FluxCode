@@ -24,15 +24,18 @@ func TestMediaAdapterRegistryReportsSmallCapabilities(t *testing.T) {
 	t.Parallel()
 
 	registry := NewMediaAdapterRegistry()
-	registry.Register("fake-sync", NewFakeMediaAdapter(FakeMediaAdapterOptions{
+	require.NoError(t, registry.Register("fake-sync", NewFakeMediaAdapter(FakeMediaAdapterOptions{
+		Name:            "fake-sync",
 		NativeAsyncMode: NativeAsyncUnsupported,
-	}))
-	registry.Register("fake-async", NewFakeMediaAdapter(FakeMediaAdapterOptions{
+	})))
+	require.NoError(t, registry.Register("fake-async", NewFakeMediaAdapter(FakeMediaAdapterOptions{
+		Name:            "fake-async",
 		NativeAsyncMode: NativeAsyncRequired,
-	}))
-	registry.Register("fake-optional", NewFakeMediaAdapter(FakeMediaAdapterOptions{
+	})))
+	require.NoError(t, registry.Register("fake-optional", NewFakeMediaAdapter(FakeMediaAdapterOptions{
+		Name:            "fake-optional",
 		NativeAsyncMode: NativeAsyncOptional,
-	}))
+	})))
 
 	syncAdapter, err := registry.Resolve("fake-sync")
 	require.NoError(t, err)
@@ -69,26 +72,19 @@ func TestMediaAdapterRegistryNormalizesAndRejectsInvalidRegistration(t *testing.
 	t.Parallel()
 
 	registry := NewMediaAdapterRegistry()
-	adapter := &mediaAdapterTestStub{name: "adapter-name-is-not-consulted"}
-	registry.Register("  XAI  ", adapter)
+	adapter := &mediaAdapterTestStub{name: "xai"}
+	require.NoError(t, registry.Register("  XAI  ", adapter))
 
 	resolved, err := registry.Resolve(" xAi ")
 	require.NoError(t, err)
 	require.Same(t, adapter, resolved)
 
-	require.PanicsWithValue(t, "media adapter name and implementation are required", func() {
-		registry.Register("  ", adapter)
-	})
-	require.PanicsWithValue(t, "media adapter name and implementation are required", func() {
-		registry.Register("nil", nil)
-	})
+	require.ErrorContains(t, registry.Register("  ", adapter), "name and implementation are required")
+	require.ErrorContains(t, registry.Register("nil", nil), "name and implementation are required")
 	var typedNil *mediaAdapterTestStub
-	require.PanicsWithValue(t, "media adapter name and implementation are required", func() {
-		registry.Register("typed-nil", typedNil)
-	})
-	require.PanicsWithValue(t, "duplicate media adapter: xai", func() {
-		registry.Register("xai", &mediaAdapterTestStub{})
-	})
+	require.ErrorContains(t, registry.Register("typed-nil", typedNil), "name and implementation are required")
+	require.ErrorContains(t, registry.Register("xai", &mediaAdapterTestStub{name: "xai"}), "duplicate media adapter")
+	require.ErrorContains(t, registry.Register("other", &mediaAdapterTestStub{name: "mismatch"}), "does not match implementation name")
 }
 
 func TestMediaAdapterRegistryReturnsStableNotFoundError(t *testing.T) {
@@ -105,7 +101,7 @@ func TestMediaAdapterRegistryReturnsStableNotFoundError(t *testing.T) {
 	adapter, err := zero.Resolve("missing")
 	require.Nil(t, adapter)
 	require.ErrorIs(t, err, ErrMediaAdapterNotFound)
-	zero.Register("late", &mediaAdapterTestStub{name: "late"})
+	require.NoError(t, zero.Register("late", &mediaAdapterTestStub{name: "late"}))
 	adapter, err = zero.Resolve("late")
 	require.NoError(t, err)
 	require.Equal(t, "late", adapter.Name())
@@ -138,7 +134,9 @@ func TestMediaAdapterRegistrySupportsConcurrentRegisterAndResolve(t *testing.T) 
 		go func() {
 			defer wg.Done()
 			<-start
-			registry.Register(name, &mediaAdapterTestStub{name: name})
+			if err := registry.Register(name, &mediaAdapterTestStub{name: name}); err != nil {
+				errCh <- err
+			}
 		}()
 		go func() {
 			defer wg.Done()

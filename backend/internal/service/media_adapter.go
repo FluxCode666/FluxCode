@@ -4,9 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"reflect"
+	"slices"
 	"strings"
 	"sync"
 )
@@ -179,40 +182,297 @@ type MediaAborter interface {
 }
 
 type MediaAdapterRegistry struct {
-	mu       sync.RWMutex
-	adapters map[string]MediaAdapter
+	mu             sync.RWMutex
+	adapters       map[string]MediaAdapter
+	aliases        map[string]string
+	registrations  []MediaAdapterRegistration
+	routingMetrics MediaRoutingMetrics
+	logger         *slog.Logger
 }
 
 func NewMediaAdapterRegistry() *MediaAdapterRegistry {
-	return &MediaAdapterRegistry{adapters: make(map[string]MediaAdapter)}
+	return &MediaAdapterRegistry{
+		adapters: make(map[string]MediaAdapter),
+		aliases:  make(map[string]string),
+		logger:   slog.Default(),
+	}
 }
 
-func (r *MediaAdapterRegistry) Register(name string, adapter MediaAdapter) {
+func (r *MediaAdapterRegistry) SetRoutingMetrics(metrics MediaRoutingMetrics) {
+	r.mu.Lock()
+	r.routingMetrics = metrics
+	r.mu.Unlock()
+}
+
+func (r *MediaAdapterRegistry) SetLogger(logger *slog.Logger) {
+	if logger == nil {
+		logger = slog.Default()
+	}
+	r.mu.Lock()
+	r.logger = logger
+	r.mu.Unlock()
+}
+
+func (r *MediaAdapterRegistry) Register(name string, adapter MediaAdapter) error {
 	key := normalizeMediaAdapterName(name)
 	if key == "" || isNilMediaAdapter(adapter) {
-		panic("media adapter name and implementation are required")
+		return errors.New("media adapter name and implementation are required")
+	}
+	if normalizeMediaAdapterName(adapter.Name()) != key {
+		return fmt.Errorf("media adapter key %q does not match implementation name %q", key, adapter.Name())
 	}
 
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if _, exists := r.aliases[key]; exists {
+		return fmt.Errorf("media adapter key %q conflicts with an alias", key)
+	}
+	if _, exists := r.adapters[key]; exists {
+		return fmt.Errorf("duplicate media adapter: %s", key)
+	}
 	if r.adapters == nil {
 		r.adapters = make(map[string]MediaAdapter)
 	}
-	if _, exists := r.adapters[key]; exists {
-		panic("duplicate media adapter: " + key)
-	}
 	r.adapters[key] = adapter
+	return nil
+}
+
+func (r *MediaAdapterRegistry) RegisterDefinition(registration MediaAdapterRegistration) error {
+	normalized, err := normalizeAndValidateMediaAdapterRegistration(registration)
+	if err != nil {
+		return err
+	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if _, exists := r.aliases[normalized.Key]; exists {
+		return fmt.Errorf("media adapter key %q conflicts with an alias", normalized.Key)
+	}
+	if _, exists := r.adapters[normalized.Key]; exists {
+		return fmt.Errorf("duplicate media adapter: %s", normalized.Key)
+	}
+	exactKeys := make(map[mediaAdapterExactRuleKey]struct{})
+	for _, existing := range r.registrations {
+		for _, rule := range existing.ExactRules {
+			exactKeys[mediaAdapterExactRuleKey{vendor: rule.Vendor, modelID: rule.ModelID}] = struct{}{}
+		}
+	}
+	for _, rule := range normalized.ExactRules {
+		key := mediaAdapterExactRuleKey{vendor: rule.Vendor, modelID: rule.ModelID}
+		if _, exists := exactKeys[key]; exists {
+			return fmt.Errorf("duplicate media adapter exact rule: vendor=%q model_id=%q", rule.Vendor, rule.ModelID)
+		}
+		exactKeys[key] = struct{}{}
+	}
+
+	if r.adapters == nil {
+		r.adapters = make(map[string]MediaAdapter)
+	}
+	r.adapters[normalized.Key] = normalized.Adapter
+	r.registrations = append(r.registrations, cloneMediaAdapterRegistration(normalized))
+	return nil
+}
+
+func (r *MediaAdapterRegistry) RegisterAlias(oldKey, canonicalKey string) error {
+	oldKey = normalizeMediaAdapterName(oldKey)
+	canonicalKey = normalizeMediaAdapterName(canonicalKey)
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if oldKey == "" || canonicalKey == "" || oldKey == canonicalKey {
+		return errors.New("media adapter alias and canonical key are invalid")
+	}
+	if _, exists := r.adapters[oldKey]; exists {
+		return fmt.Errorf("media adapter alias %q conflicts with a canonical key", oldKey)
+	}
+	if _, exists := r.aliases[oldKey]; exists {
+		return fmt.Errorf("duplicate media adapter alias: %s", oldKey)
+	}
+	if _, aliasTarget := r.aliases[canonicalKey]; aliasTarget {
+		return errors.New("media adapter alias chains are not allowed")
+	}
+	if _, exists := r.adapters[canonicalKey]; !exists {
+		return fmt.Errorf("canonical media adapter %q is not registered", canonicalKey)
+	}
+	if r.aliases == nil {
+		r.aliases = make(map[string]string)
+	}
+	r.aliases[oldKey] = canonicalKey
+	return nil
 }
 
 func (r *MediaAdapterRegistry) Resolve(name string) (MediaAdapter, error) {
-	key := normalizeMediaAdapterName(name)
+	requestedKey := normalizeMediaAdapterName(name)
 	r.mu.RLock()
-	adapter, ok := r.adapters[key]
+	canonicalKey := requestedKey
+	if target, ok := r.aliases[requestedKey]; ok {
+		canonicalKey = target
+	}
+	adapter, ok := r.adapters[canonicalKey]
+	metrics, logger := r.routingMetrics, r.logger
 	r.mu.RUnlock()
 	if !ok {
 		return nil, ErrMediaAdapterNotFound
 	}
+	if canonicalKey != requestedKey {
+		if metrics != nil {
+			metrics.IncrementHistoricalAdapterAliasResolution()
+		}
+		if logger == nil {
+			logger = slog.Default()
+		}
+		logger.Debug(
+			"media_adapter_historical_alias_resolved",
+			"legacy_adapter_key", requestedKey,
+			"adapter_key", canonicalKey,
+		)
+	}
 	return adapter, nil
+}
+
+func (r *MediaAdapterRegistry) CanonicalKey(name string) (canonical string, aliased bool) {
+	key := normalizeMediaAdapterName(name)
+	r.mu.RLock()
+	canonical, aliased = r.aliases[key]
+	r.mu.RUnlock()
+	if !aliased {
+		return key, false
+	}
+	return canonical, true
+}
+
+func (r *MediaAdapterRegistry) Registrations() []MediaAdapterRegistration {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return cloneMediaAdapterRegistrations(r.registrations)
+}
+
+func (r *MediaAdapterRegistry) Validate() error {
+	r.mu.RLock()
+	adapters := make(map[string]MediaAdapter, len(r.adapters))
+	for key, adapter := range r.adapters {
+		adapters[key] = adapter
+	}
+	aliases := make(map[string]string, len(r.aliases))
+	for alias, canonical := range r.aliases {
+		aliases[alias] = canonical
+	}
+	registrations := cloneMediaAdapterRegistrations(r.registrations)
+	r.mu.RUnlock()
+
+	for key, adapter := range adapters {
+		if key == "" || normalizeMediaAdapterName(key) != key || isNilMediaAdapter(adapter) {
+			return fmt.Errorf("invalid media adapter registry entry %q", key)
+		}
+		if normalizeMediaAdapterName(adapter.Name()) != key {
+			return fmt.Errorf("media adapter key %q does not match implementation name %q", key, adapter.Name())
+		}
+		if _, exists := aliases[key]; exists {
+			return fmt.Errorf("media adapter key %q conflicts with an alias", key)
+		}
+	}
+	for alias, canonical := range aliases {
+		if alias == "" || canonical == "" || alias == canonical || normalizeMediaAdapterName(alias) != alias || normalizeMediaAdapterName(canonical) != canonical {
+			return fmt.Errorf("invalid media adapter alias %q", alias)
+		}
+		if _, exists := adapters[alias]; exists {
+			return fmt.Errorf("media adapter alias %q conflicts with a canonical key", alias)
+		}
+		if _, exists := aliases[canonical]; exists {
+			return fmt.Errorf("media adapter alias %q points to another alias", alias)
+		}
+		if _, exists := adapters[canonical]; !exists {
+			return fmt.Errorf("media adapter alias %q points to missing key %q", alias, canonical)
+		}
+	}
+
+	registrationKeys := make(map[string]struct{}, len(registrations))
+	exactKeys := make(map[mediaAdapterExactRuleKey]struct{})
+	for _, registration := range registrations {
+		canonicalKey := normalizeMediaAdapterName(registration.Key)
+		if canonicalKey != registration.Key {
+			return fmt.Errorf("media adapter registration %q is not canonical: key", registration.Key)
+		}
+		if _, exists := registrationKeys[canonicalKey]; exists {
+			return fmt.Errorf("duplicate media adapter registration key: %s", canonicalKey)
+		}
+		registrationKeys[canonicalKey] = struct{}{}
+
+		liveAdapter, exists := adapters[canonicalKey]
+		if !exists {
+			return fmt.Errorf("media adapter registration %q has no implementation", registration.Key)
+		}
+		if isNilMediaAdapter(registration.Adapter) {
+			return fmt.Errorf("media adapter registration %q has no registered implementation snapshot", registration.Key)
+		}
+		if normalizeMediaAdapterName(registration.Adapter.Name()) != canonicalKey {
+			return fmt.Errorf("media adapter registration %q implementation name is not canonical", registration.Key)
+		}
+
+		validationRegistration := cloneMediaAdapterRegistration(registration)
+		validationRegistration.Adapter = liveAdapter
+		normalized, err := normalizeAndValidateMediaAdapterRegistration(validationRegistration)
+		if err != nil {
+			return fmt.Errorf("validate media adapter registration %q: %w", registration.Key, err)
+		}
+		if err := validateCanonicalMediaAdapterRegistration(registration, normalized); err != nil {
+			return err
+		}
+		for _, rule := range normalized.ExactRules {
+			key := mediaAdapterExactRuleKey{vendor: rule.Vendor, modelID: rule.ModelID}
+			if _, exists := exactKeys[key]; exists {
+				return fmt.Errorf("duplicate media adapter exact rule: vendor=%q model_id=%q", rule.Vendor, rule.ModelID)
+			}
+			exactKeys[key] = struct{}{}
+		}
+	}
+	return nil
+}
+
+func validateCanonicalMediaAdapterRegistration(stored, normalized MediaAdapterRegistration) error {
+	nonCanonical := func(field string) error {
+		return fmt.Errorf("media adapter registration %q is not canonical: %s", stored.Key, field)
+	}
+	if stored.Key != normalized.Key {
+		return nonCanonical("key")
+	}
+	if !slices.Equal(stored.SupportedOperations, normalized.SupportedOperations) {
+		return nonCanonical("supported operations")
+	}
+	if len(stored.ExactRules) != len(normalized.ExactRules) {
+		return nonCanonical("exact rules")
+	}
+	for index := range stored.ExactRules {
+		storedRule, normalizedRule := stored.ExactRules[index], normalized.ExactRules[index]
+		if storedRule.Vendor != normalizedRule.Vendor {
+			return nonCanonical(fmt.Sprintf("exact rule %d vendor", index))
+		}
+		if storedRule.ModelID != normalizedRule.ModelID {
+			return nonCanonical(fmt.Sprintf("exact rule %d model id", index))
+		}
+		if storedRule.Capabilities.SyncUpstream != normalizedRule.Capabilities.SyncUpstream ||
+			storedRule.Capabilities.NativeAsyncUpstream != normalizedRule.Capabilities.NativeAsyncUpstream ||
+			!slices.Equal(storedRule.Capabilities.Operations, normalizedRule.Capabilities.Operations) {
+			return nonCanonical(fmt.Sprintf("exact rule %d capabilities", index))
+		}
+	}
+	if len(stored.FamilyRules) != len(normalized.FamilyRules) {
+		return nonCanonical("family rules")
+	}
+	for index := range stored.FamilyRules {
+		storedRule, normalizedRule := stored.FamilyRules[index], normalized.FamilyRules[index]
+		if storedRule.Vendor != normalizedRule.Vendor {
+			return nonCanonical(fmt.Sprintf("family rule %d vendor", index))
+		}
+		if storedRule.FamilyID != normalizedRule.FamilyID {
+			return nonCanonical(fmt.Sprintf("family rule %d family id", index))
+		}
+		if storedRule.Capabilities.SyncUpstream != normalizedRule.Capabilities.SyncUpstream ||
+			storedRule.Capabilities.NativeAsyncUpstream != normalizedRule.Capabilities.NativeAsyncUpstream ||
+			!slices.Equal(storedRule.Capabilities.Operations, normalizedRule.Capabilities.Operations) {
+			return nonCanonical(fmt.Sprintf("family rule %d capabilities", index))
+		}
+	}
+	return nil
 }
 
 func normalizeMediaAdapterName(name string) string {

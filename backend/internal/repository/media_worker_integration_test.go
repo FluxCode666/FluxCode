@@ -144,7 +144,7 @@ func newIntegrationMediaWorker(t *testing.T) *integrationMediaWorkerFixture {
 	artifactRepo := NewMediaArtifactRepository(client)
 	adapter := &integrationWorkerAdapter{allowed: map[string]struct{}{}}
 	adapters := service.NewMediaAdapterRegistry()
-	adapters.Register(adapter.Name(), adapter)
+	require.NoError(t, adapters.Register(adapter.Name(), adapter))
 	account := &service.Account{ID: 707, Platform: service.PlatformOpenAI, Status: service.StatusActive, Schedulable: true, Concurrency: 1}
 	scheduler := service.NewMediaScheduler(&integrationWorkerAccounts{account: account}, &integrationWorkerSelector{}, adapters, integrationWorkerGroups{})
 	models := service.NewMediaModelRegistry(&integrationWorkerModels{})

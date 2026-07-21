@@ -15,6 +15,18 @@ type mediaStageMetric struct {
 	elapsedNanos atomic.Int64
 }
 
+type MediaRoutingMetrics interface {
+	IncrementAdapterResolutionFailure(status MediaAdapterResolutionStatus)
+	IncrementCandidateCapabilityMismatch()
+	IncrementHistoricalAdapterAliasResolution()
+}
+
+type mediaRoutingMetricCounters struct {
+	resolutionFailures          [5]atomic.Int64
+	candidateCapabilityMismatch atomic.Int64
+	historicalAliasResolution   atomic.Int64
+}
+
 // AtomicMediaTaskMetrics 使用固定维度的原子计数器聚合 Worker 指标。
 // 未知媒体类型或阶段会被忽略，避免由无界标签创建高基数状态。
 type AtomicMediaTaskMetrics struct {
@@ -23,6 +35,7 @@ type AtomicMediaTaskMetrics struct {
 	duplicates        [mediaMetricTypeCount]atomic.Int64
 	storageFailures   [mediaMetricTypeCount]atomic.Int64
 	settlementRetries [mediaMetricTypeCount]atomic.Int64
+	routing           mediaRoutingMetricCounters
 }
 
 func NewAtomicMediaTaskMetrics() *AtomicMediaTaskMetrics {
@@ -66,6 +79,26 @@ func (m *AtomicMediaTaskMetrics) IncrementSettlementRetry(mediaType MediaType) {
 		return
 	}
 	m.incrementByMediaType(mediaType, &m.settlementRetries)
+}
+
+func (m *AtomicMediaTaskMetrics) IncrementAdapterResolutionFailure(status MediaAdapterResolutionStatus) {
+	index, ok := mediaAdapterResolutionFailureIndex(status)
+	if m == nil || !ok {
+		return
+	}
+	m.routing.resolutionFailures[index].Add(1)
+}
+
+func (m *AtomicMediaTaskMetrics) IncrementCandidateCapabilityMismatch() {
+	if m != nil {
+		m.routing.candidateCapabilityMismatch.Add(1)
+	}
+}
+
+func (m *AtomicMediaTaskMetrics) IncrementHistoricalAdapterAliasResolution() {
+	if m != nil {
+		m.routing.historicalAliasResolution.Add(1)
+	}
 }
 
 func (m *AtomicMediaTaskMetrics) incrementByMediaType(mediaType MediaType, counters *[mediaMetricTypeCount]atomic.Int64) {
@@ -112,6 +145,28 @@ func (m *AtomicMediaTaskMetrics) SettlementRetries() int64 {
 		return 0
 	}
 	return sumMediaMetricCounters(m, &m.settlementRetries)
+}
+
+func (m *AtomicMediaTaskMetrics) AdapterResolutionFailures(status MediaAdapterResolutionStatus) int64 {
+	index, ok := mediaAdapterResolutionFailureIndex(status)
+	if m == nil || !ok {
+		return 0
+	}
+	return m.routing.resolutionFailures[index].Load()
+}
+
+func (m *AtomicMediaTaskMetrics) CandidateCapabilityMismatches() int64 {
+	if m == nil {
+		return 0
+	}
+	return m.routing.candidateCapabilityMismatch.Load()
+}
+
+func (m *AtomicMediaTaskMetrics) HistoricalAdapterAliasResolutions() int64 {
+	if m == nil {
+		return 0
+	}
+	return m.routing.historicalAliasResolution.Load()
 }
 
 func sumMediaMetricCounters(m *AtomicMediaTaskMetrics, counters *[mediaMetricTypeCount]atomic.Int64) int64 {
@@ -161,4 +216,22 @@ func mediaMetricStageIndex(stage MediaTaskStage) (int, bool) {
 	}
 }
 
+func mediaAdapterResolutionFailureIndex(status MediaAdapterResolutionStatus) (int, bool) {
+	switch status {
+	case MediaAdapterResolutionInvalidDefinition:
+		return 0, true
+	case MediaAdapterResolutionUnresolved:
+		return 1, true
+	case MediaAdapterResolutionAmbiguous:
+		return 2, true
+	case MediaAdapterResolutionImplementationMissing:
+		return 3, true
+	case MediaAdapterResolutionCapabilityMismatch:
+		return 4, true
+	default:
+		return 0, false
+	}
+}
+
 var _ MediaTaskMetrics = (*AtomicMediaTaskMetrics)(nil)
+var _ MediaRoutingMetrics = (*AtomicMediaTaskMetrics)(nil)

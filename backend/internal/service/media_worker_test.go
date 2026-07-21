@@ -1374,7 +1374,7 @@ func TestMediaWorkerSubmissionUnknownWithIdempotencyNeverSwitchesCandidate(t *te
 		Code: "submission_unknown", Message: "connection closed", Retryable: true, SubmissionUnknown: true,
 	}}
 	fallback := newWorkerAdapter("worker-fallback-unknown")
-	fixture.worker.deps.Adapters.Register(fallback.Name(), fallback)
+	require.NoError(t, fixture.worker.deps.Adapters.Register(fallback.Name(), fallback))
 	fallbackAccount := &Account{ID: 9, Platform: PlatformOpenAI, Status: StatusActive, Schedulable: true, Concurrency: 1}
 	accountRepo := fixture.worker.deps.Scheduler.accountRepo.(*workerAccountRepository)
 	accountRepo.extra = append(accountRepo.extra, fallbackAccount)
@@ -1761,7 +1761,7 @@ func TestMediaWorkerRetriesExplicitRejectionOnDifferentSnapshottedAccount(t *tes
 		Code: "upstream_busy", Message: "busy", Retryable: true,
 	}
 	fallback := newWorkerAdapter("worker-fallback")
-	fixture.worker.deps.Adapters.Register(fallback.Name(), fallback)
+	require.NoError(t, fixture.worker.deps.Adapters.Register(fallback.Name(), fallback))
 	fallbackAccount := &Account{ID: 8, Platform: PlatformOpenAI, Status: StatusActive, Schedulable: true, Concurrency: 1}
 	accountRepo := fixture.worker.deps.Scheduler.accountRepo.(*workerAccountRepository)
 	accountRepo.extra = append(accountRepo.extra, fallbackAccount)
@@ -1792,7 +1792,7 @@ func TestMediaWorkerRetryCandidateInfrastructureErrorDoesNotSettleLastUpstreamFa
 		Code: "upstream_busy", Message: "busy", Retryable: true,
 	}
 	fallback := newWorkerAdapter("worker-fallback-infrastructure")
-	fixture.worker.deps.Adapters.Register(fallback.Name(), fallback)
+	require.NoError(t, fixture.worker.deps.Adapters.Register(fallback.Name(), fallback))
 	fallbackAccount := &Account{ID: 8, Platform: PlatformOpenAI, Status: StatusActive, Schedulable: true, Concurrency: 1}
 	accountRepo := fixture.worker.deps.Scheduler.accountRepo.(*workerAccountRepository)
 	accountRepo.extra = append(accountRepo.extra, fallbackAccount)
@@ -2161,7 +2161,7 @@ func TestMediaWorkerPersistenceFailureWithNonAbortableAdapterStillReleasesResour
 	fixture := newMediaWorkerFixture(t, true, NativeAsyncRequired)
 	inner := newWorkerAdapter("worker-non-abortable-inner")
 	adapter := &nonAbortableWorkerAdapter{name: "worker-non-abortable", inner: inner}
-	fixture.worker.deps.Adapters.Register(adapter.Name(), adapter)
+	require.NoError(t, fixture.worker.deps.Adapters.Register(adapter.Name(), adapter))
 	candidates, err := json.Marshal([]MediaAccountCandidateSnapshot{{
 		AccountID: fixture.account.ID, Platform: fixture.account.Platform,
 		ResolvedModel: ResolvedMediaAccountModel{
@@ -2242,7 +2242,7 @@ func newMediaWorkerFixture(t *testing.T, clientAsync bool, mode NativeAsyncMode)
 	t.Helper()
 	adapter := newWorkerAdapter("worker-fake")
 	registry := NewMediaAdapterRegistry()
-	registry.Register(adapter.Name(), adapter)
+	require.NoError(t, registry.Register(adapter.Name(), adapter))
 	account := &Account{ID: 7, Platform: PlatformOpenAI, Status: StatusActive, Schedulable: true, Concurrency: 1}
 	accountRepo := &workerAccountRepository{account: account}
 	selector := &workerSelector{refreshOwned: true}
@@ -2292,7 +2292,7 @@ func prepareRecoverableSubmittingTask(t *testing.T, fixture *mediaWorkerFixture,
 	t.Helper()
 	fixedAdapter := newWorkerAdapter("worker-fixed-submitter")
 	fixedAdapter.supportsIdempotency = supportsIdempotency
-	fixture.worker.deps.Adapters.Register(fixedAdapter.Name(), fixedAdapter)
+	require.NoError(t, fixture.worker.deps.Adapters.Register(fixedAdapter.Name(), fixedAdapter))
 	fixedAccount := &Account{ID: 9, Platform: PlatformOpenAI, Status: StatusActive, Schedulable: true, Concurrency: 1}
 	accountRepo := fixture.worker.deps.Scheduler.accountRepo.(*workerAccountRepository)
 	accountRepo.extra = append(accountRepo.extra, fixedAccount)

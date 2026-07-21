@@ -314,9 +314,9 @@ func TestMediaContentServiceFallsBackToAdapterAfterObjectStoreError(t *testing.T
 		UpstreamReference: "upstream-video-reference", ContentType: "video/mp4",
 	}}}
 	registry := NewMediaAdapterRegistry()
-	registry.Register("content-fetcher", &mediaContentFetcherAdapterStub{content: &MediaContent{
+	require.NoError(t, registry.Register("content-fetcher", &mediaContentFetcherAdapterStub{content: &MediaContent{
 		Body: io.NopCloser(strings.NewReader("proxy")), StatusCode: http.StatusOK, ContentLength: 5, ContentType: "video/mp4",
-	}})
+	}}))
 	svc := NewMediaContentService(
 		tasks, artifacts, mediaContentSettingsStub{settings: &SystemSettings{MediaVideoProxyFallbackEnabled: true}},
 		mediaContentAccountRepoStub{account: &Account{ID: accountID}}, registry, mediaContentHTTPReaderStub{},
@@ -347,7 +347,7 @@ func TestMediaContentServiceFinalFallbackErrorPreservesUnavailableAndInternalCau
 		UpstreamReference: "upstream-video-reference", ContentType: "video/mp4",
 	}}}
 	registry := NewMediaAdapterRegistry()
-	registry.Register("content-fetcher", &mediaContentFetcherAdapterStub{err: proxyErr})
+	require.NoError(t, registry.Register("content-fetcher", &mediaContentFetcherAdapterStub{err: proxyErr}))
 	svc := NewMediaContentService(
 		tasks, artifacts, mediaContentSettingsStub{settings: &SystemSettings{MediaVideoProxyFallbackEnabled: true}},
 		mediaContentAccountRepoStub{account: &Account{ID: accountID}}, registry, mediaContentHTTPReaderStub{},
@@ -377,7 +377,7 @@ func TestMediaContentServiceSecureProxyFailuresRemainUnavailable(t *testing.T) {
 				UpstreamReference: "upstream-video-reference", ContentType: "video/mp4",
 			}}}
 			registry := NewMediaAdapterRegistry()
-			registry.Register("content-fetcher", &mediaContentFetcherAdapterStub{err: proxyErr})
+			require.NoError(t, registry.Register("content-fetcher", &mediaContentFetcherAdapterStub{err: proxyErr}))
 			svc := NewMediaContentService(
 				tasks, artifacts, mediaContentSettingsStub{settings: &SystemSettings{MediaVideoProxyFallbackEnabled: true}},
 				mediaContentAccountRepoStub{account: &Account{ID: accountID}}, registry,
