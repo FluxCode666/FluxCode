@@ -36,6 +36,7 @@ services:
     volumes:
       # Local directory mapping for easy migration
       - ./data:/app/data
+      - ./generated:/app/.fluxcode/generated
       # Optional: Mount custom config.yaml (uncomment and create the file first)
       # Copy config.example.yaml to config.yaml, modify it, then uncomment:
       # - ./config.yaml:/app/data/config.yaml
@@ -52,6 +53,7 @@ services:
       - SERVER_PORT=8080
       - SERVER_MODE=${SERVER_MODE:-release}
       - RUN_MODE=${RUN_MODE:-standard}
+      - MEDIA_TASKS_LOCAL_STORAGE_PATH=/app/.fluxcode/generated
 
       # =======================================================================
       # Database Configuration (PostgreSQL)

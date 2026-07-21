@@ -19,12 +19,14 @@ services:
       - "${BIND_HOST:-127.0.0.1}:${SERVER_PORT:-8080}:8080"
     volumes:
       - ./data:/app/data
+      - ./generated:/app/.fluxcode/generated
     environment:
       - AUTO_SETUP=true
       - SERVER_HOST=0.0.0.0
       - SERVER_PORT=8080
       - SERVER_MODE=debug
       - RUN_MODE=${RUN_MODE:-standard}
+      - MEDIA_TASKS_LOCAL_STORAGE_PATH=/app/.fluxcode/generated
       - DATABASE_HOST=postgres
       - DATABASE_PORT=5432
       - DATABASE_USER=${POSTGRES_USER:-sub2api}

@@ -3,8 +3,10 @@ package service
 import (
 	"encoding/json"
 	"errors"
+	"net/http"
 	"testing"
 
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/stretchr/testify/require"
 )
 
@@ -282,6 +284,24 @@ func TestMediaAccountConfigPreservesNonEmptyRequestMappingOnRoundTrip(t *testing
 	binding, ok := (&Account{Extra: roundTrip}).ResolveMediaModelBinding("seedance")
 	require.True(t, ok)
 	require.Equal(t, []MediaMappingRule{{Source: "size", Target: "chicun", Operation: "rename"}}, binding.RequestMapping.Rules)
+}
+
+func TestMediaAccountConfigWrapsInvalidRequestMappingAsBadRequest(t *testing.T) {
+	err := normalizeMediaAccountConfigInExtra(map[string]any{"media_config": map[string]any{
+		"version": 1, "provider": "relay", "models": map[string]any{
+			"image": map[string]any{
+				"enabled": true, "upstream_model_id": "image-up", "async_mode": "unsupported",
+				"request_mapping": map[string]any{"rules": []any{map[string]any{
+					"source": "size", "target": "provider.size", "operation": "unknown",
+				}}},
+			},
+		},
+	}})
+
+	require.ErrorIs(t, err, ErrInvalidMediaAccountConfig)
+	require.ErrorIs(t, err, ErrInvalidMediaRequestMapping)
+	require.Equal(t, http.StatusBadRequest, infraerrors.Code(err))
+	require.Equal(t, "INVALID_MEDIA_ACCOUNT_CONFIG", infraerrors.Reason(err))
 }
 
 func TestMediaAccountConfigVersionOneRejectsInvalidBindings(t *testing.T) {

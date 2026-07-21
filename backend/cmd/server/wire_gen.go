@@ -114,7 +114,19 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	proxyExitInfoProber := repository.NewProxyExitInfoProber(configConfig)
 	proxyLatencyCache := repository.NewProxyLatencyCache(redisClient)
 	privacyClientFactory := providePrivacyClientFactory()
-	adminService := service.NewAdminService(userRepository, groupRepository, accountRepository, proxyRepository, apiKeyRepository, redeemCodeRepository, userGroupRateRepository, billingCacheService, proxyExitInfoProber, proxyLatencyCache, apiKeyAuthCacheInvalidator, client, settingService, subscriptionService, userSubscriptionRepository, privacyClientFactory)
+	mediaModelRepository := repository.NewMediaModelRepository(client)
+	atomicMediaTaskMetrics := service.ProvideMediaTaskMetrics()
+	httpUpstream := repository.NewHTTPUpstream(configConfig)
+	mediaAdapterRegistry, err := service.ProvideMediaAdapterRegistry(atomicMediaTaskMetrics, httpUpstream)
+	if err != nil {
+		return nil, err
+	}
+	mediaAdapterResolver := service.ProvideMediaAdapterResolver(mediaAdapterRegistry)
+	mediaModelRegistry, err := service.ProvideMediaModelRegistry(mediaModelRepository, mediaAdapterResolver, atomicMediaTaskMetrics)
+	if err != nil {
+		return nil, err
+	}
+	adminService := service.NewAdminService(userRepository, groupRepository, accountRepository, proxyRepository, apiKeyRepository, redeemCodeRepository, userGroupRateRepository, billingCacheService, proxyExitInfoProber, proxyLatencyCache, apiKeyAuthCacheInvalidator, client, settingService, subscriptionService, userSubscriptionRepository, privacyClientFactory, mediaModelRegistry)
 	concurrencyCache := repository.ProvideConcurrencyCache(redisClient, configConfig)
 	concurrencyService := service.ProvideConcurrencyService(concurrencyCache, accountRepository, configConfig)
 	registry := payment.ProvideRegistry()
@@ -147,7 +159,6 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	geminiTokenCache := repository.NewGeminiTokenCache(redisClient)
 	compositeTokenCacheInvalidator := service.NewCompositeTokenCacheInvalidator(geminiTokenCache)
 	rateLimitService := service.ProvideRateLimitService(accountRepository, usageLogRepository, configConfig, geminiQuotaService, tempUnschedCache, timeoutCounterCache, settingService, compositeTokenCacheInvalidator)
-	httpUpstream := repository.NewHTTPUpstream(configConfig)
 	claudeUsageFetcher := repository.NewClaudeUsageFetcher(httpUpstream)
 	antigravityQuotaFetcher := service.NewAntigravityQuotaFetcher(proxyRepository)
 	usageCache := service.NewUsageCache()
@@ -252,21 +263,12 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	salesCommissionHandler := admin.NewSalesCommissionHandler(salesCommissionService)
 	promotionService := service.NewPromotionService(promotionRepository)
 	promotionHandler := admin.NewPromotionHandler(promotionService)
-	mediaModelRepository := repository.NewMediaModelRepository(client)
 	groupMediaModelScopeRepository := repository.NewGroupMediaModelScopeRepository(client)
-	atomicMediaTaskMetrics := service.ProvideMediaTaskMetrics()
-	mediaAdapterRegistry, err := service.ProvideMediaAdapterRegistry(atomicMediaTaskMetrics)
-	if err != nil {
-		return nil, err
-	}
-	mediaAdapterResolver := service.ProvideMediaAdapterResolver(mediaAdapterRegistry)
-	mediaModelRegistry, err := service.ProvideMediaModelRegistry(mediaModelRepository, mediaAdapterResolver, atomicMediaTaskMetrics)
-	if err != nil {
-		return nil, err
-	}
 	mediaModelAdminService := service.NewMediaModelAdminService(mediaModelRepository, groupMediaModelScopeRepository, groupRepository, mediaModelRegistry, mediaAdapterResolver)
 	mediaModelAdminHandler := admin.NewMediaModelAdminHandler(mediaModelAdminService)
-	adminHandlers := handler.ProvideAdminHandlers(dashboardHandler, adminUserHandler, groupHandler, accountHandler, adminAnnouncementHandler, dataManagementHandler, backupHandler, oAuthHandler, openAIOAuthHandler, geminiOAuthHandler, antigravityOAuthHandler, proxyHandler, adminRedeemHandler, promoHandler, settingHandler, opsHandler, systemHandler, adminSubscriptionHandler, adminUsageHandler, generatedImageHandler, userAttributeHandler, errorPassthroughHandler, tlsFingerprintProfileHandler, adminAPIKeyHandler, scheduledTestHandler, poolMonitorHandler, channelHandler, channelMonitorHandler, channelMonitorRequestTemplateHandler, paymentHandler, referralHandler, salesCommissionHandler, promotionHandler, mediaModelAdminHandler)
+	mediaStorageSettingsService := service.NewMediaStorageSettingsService(settingRepository, configConfig, secretEncryptor)
+	mediaStorageHandler := admin.NewMediaStorageHandler(mediaStorageSettingsService)
+	adminHandlers := handler.ProvideAdminHandlers(dashboardHandler, adminUserHandler, groupHandler, accountHandler, adminAnnouncementHandler, dataManagementHandler, backupHandler, oAuthHandler, openAIOAuthHandler, geminiOAuthHandler, antigravityOAuthHandler, proxyHandler, adminRedeemHandler, promoHandler, settingHandler, opsHandler, systemHandler, adminSubscriptionHandler, adminUsageHandler, generatedImageHandler, userAttributeHandler, errorPassthroughHandler, tlsFingerprintProfileHandler, adminAPIKeyHandler, scheduledTestHandler, poolMonitorHandler, channelHandler, channelMonitorHandler, channelMonitorRequestTemplateHandler, paymentHandler, referralHandler, salesCommissionHandler, promotionHandler, mediaModelAdminHandler, mediaStorageHandler)
 	usageRecordWorkerPool := service.NewUsageRecordWorkerPool(configConfig)
 	userMsgQueueCache := repository.NewUserMsgQueueCache(redisClient)
 	userMessageQueueService := service.ProvideUserMessageQueueService(userMsgQueueCache, rpmCache, configConfig)
@@ -284,20 +286,26 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	channelMonitorUserHandler := handler.NewChannelMonitorUserHandler(channelMonitorService, settingService)
 	mediaScheduler := service.ProvideMediaScheduler(accountRepository, groupRepository, concurrencyService, gatewayCache, mediaAdapterRegistry, mediaModelRegistry, groupMediaModelScopeRepository, configConfig, atomicMediaTaskMetrics)
 	mediaContentPolicy := service.ProvideMediaContentPolicy()
-	mediaPricingPort := service.ProvideMediaPricing()
+	mediaPricingPort := service.ProvideMediaPricing(configConfig, groupRepository, channelService, userGroupRateRepository)
 	mediaTaskRepository := repository.NewMediaTaskRepository(client)
 	mediaArtifactRepository := repository.NewMediaArtifactRepository(client)
-	mediaBillingPort := service.ProvideMediaBilling()
+	mediaStorageConsistencyRepository := repository.NewMediaStorageConsistencyRepository(db)
+	mediaBillingLedgerRepository := repository.NewMediaBillingRepository(db)
+	mediaBillingPort := service.ProvideMediaBilling(configConfig, mediaBillingLedgerRepository, billingCache, apiKeyAuthCacheInvalidator, schedulerOutboxQueue)
 	mediaBillingCoordinator := service.ProvideMediaSettlementCoordinator(mediaTaskRepository, mediaBillingPort)
 	mediaTaskQueue := repository.ProvideMediaTaskQueue(redisClient, configConfig)
 	mediaHTTPContentReader := repository.ProvideMediaHTTPContentReader(httpUpstream, configConfig)
-	mediaArtifactObjectStore := service.ProvideMediaArtifactObjectStore()
-	mediaContentService := service.ProvideMediaContentService(mediaTaskRepository, mediaArtifactRepository, settingService, accountRepository, mediaAdapterRegistry, mediaHTTPContentReader, mediaArtifactObjectStore)
+	mediaStorageArtifactUsageRepository := repository.NewMediaStorageArtifactUsageRepository(client)
+	mediaArtifactObjectStore, err := service.ProvideMediaArtifactObjectStore(mediaStorageSettingsService, configConfig, mediaStorageArtifactUsageRepository, mediaStorageConsistencyRepository)
+	if err != nil {
+		return nil, err
+	}
+	mediaContentService := service.ProvideMediaContentService(mediaTaskRepository, mediaArtifactRepository, mediaStorageConsistencyRepository, settingService, accountRepository, mediaAdapterRegistry, mediaHTTPContentReader, mediaArtifactObjectStore)
 	mediaWorker, err := service.ProvideMediaWorker(mediaTaskQueue, mediaTaskRepository, mediaContentService, mediaScheduler, mediaModelRegistry, mediaAdapterRegistry, mediaBillingPort, mediaBillingCoordinator, atomicMediaTaskMetrics, configConfig)
 	if err != nil {
 		return nil, err
 	}
-	mediaOrchestrator := service.ProvideMediaOrchestrator(mediaModelRegistry, groupRepository, mediaScheduler, settingService, mediaContentPolicy, mediaPricingPort, mediaTaskRepository, mediaArtifactRepository, mediaBillingPort, mediaBillingCoordinator, mediaTaskQueue, mediaWorker)
+	mediaOrchestrator := service.ProvideMediaOrchestrator(mediaModelRegistry, groupRepository, mediaScheduler, settingService, mediaContentPolicy, mediaPricingPort, mediaTaskRepository, mediaArtifactRepository, mediaStorageConsistencyRepository, mediaBillingPort, mediaBillingCoordinator, mediaTaskQueue, mediaWorker)
 	mediaTaskHandler := handler.NewMediaTaskHandler(mediaOrchestrator, mediaContentService, mediaContentService, configConfig)
 	idempotencyCoordinator := service.ProvideIdempotencyCoordinator(idempotencyRepository, configConfig)
 	idempotencyCleanupService := service.ProvideIdempotencyCleanupService(idempotencyRepository, configConfig)

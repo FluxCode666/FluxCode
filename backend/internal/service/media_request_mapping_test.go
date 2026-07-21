@@ -23,14 +23,20 @@ func TestMediaRequestMappingApplyOperationsAndNestedPaths(t *testing.T) {
 	require.Contains(t, request["input"].(map[string]any), "prompt")
 }
 
-func TestMediaRequestMappingApplyReportsMissingEnumAndCastFailures(t *testing.T) {
+func TestMediaRequestMappingSkipsMissingOptionalSourcesAndReportsPresentValueFailures(t *testing.T) {
+	result, err := (MediaRequestMapping{Rules: []MediaMappingRule{
+		{Operation: "rename", Source: "size", Target: "chicun"},
+		{Operation: "copy", Source: "quality", Target: "pinzhi"},
+	}}).Apply(map[string]any{"prompt": "cat"})
+	require.NoError(t, err)
+	require.Equal(t, map[string]any{"prompt": "cat"}, result)
+
 	tests := []struct {
 		name    string
 		mapping MediaRequestMapping
 		request map[string]any
 		want    error
 	}{
-		{"missing", MediaRequestMapping{Rules: []MediaMappingRule{{Operation: "copy", Source: "missing", Target: "out"}}}, map[string]any{}, ErrMediaMappingValueMissing},
 		{"enum", MediaRequestMapping{Rules: []MediaMappingRule{{Operation: "enum", Source: "kind", Target: "out", Values: map[string]string{"a": "b"}}}}, map[string]any{"kind": "x"}, ErrMediaMappingEnumMiss},
 		{"cast", MediaRequestMapping{Rules: []MediaMappingRule{{Operation: "cast", Source: "count", Target: "out", Cast: "integer"}}}, map[string]any{"count": "not-a-number"}, ErrMediaMappingCastFailed},
 	}
@@ -47,7 +53,14 @@ func TestMediaRequestMappingRejectsUnsafeAndConflictingTargets(t *testing.T) {
 		{Rules: []MediaMappingRule{{Operation: "script", Target: "out"}}},
 		{Rules: []MediaMappingRule{{Operation: "copy", Source: "a[0]", Target: "out"}}},
 		{Rules: []MediaMappingRule{{Operation: "rename", Source: "a", Target: "a"}}},
+		{Rules: []MediaMappingRule{{Operation: "copy", Source: "a", Target: "a"}}},
+		{Rules: []MediaMappingRule{{Operation: "copy", Source: "a", Target: "a.child"}}},
+		{Rules: []MediaMappingRule{{Operation: "cast", Source: "a.child", Target: "a", Cast: "string"}}},
 		{Rules: []MediaMappingRule{{Operation: "copy", Source: "a", Target: "out"}, {Operation: "default", Target: "out", Value: true}}},
+		{Rules: []MediaMappingRule{{Operation: "copy", Source: "a", Target: "out"}, {Operation: "default", Target: "out.child", Value: true}}},
+		{Rules: []MediaMappingRule{{Operation: "copy", Source: "source.child", Target: "out"}, {Operation: "default", Target: "source", Value: map[string]any{}}}},
+		{Rules: []MediaMappingRule{{Operation: "rename", Source: "image.size", Target: "image.chicun"}, {Operation: "copy", Source: "quality", Target: "pinzhi"}}},
+		{Rules: []MediaMappingRule{{Operation: "default", Target: "image", Value: map[string]any{}}}},
 	}
 	for _, mapping := range tests {
 		require.Error(t, mapping.Validate())

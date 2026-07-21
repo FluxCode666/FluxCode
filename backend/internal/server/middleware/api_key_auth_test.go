@@ -18,6 +18,62 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestShouldSkipAPIKeyBillingForPaidMediaTaskReadsOnly(t *testing.T) {
+	for _, test := range []struct {
+		method string
+		path   string
+		want   bool
+	}{
+		{http.MethodGet, "/v1/usage", true},
+		{http.MethodGet, "/v1/images/task_abc", true},
+		{http.MethodGet, "/v1/images/task_abc/content", true},
+		{http.MethodGet, "/v1/videos/task_abc", true},
+		{http.MethodGet, "/v1/videos/task_abc/content", true},
+		{http.MethodPost, "/v1/images/task_abc", false},
+		{http.MethodGet, "/v1/images/generations", false},
+		{http.MethodGet, "/v1/images/task_abc/other", false},
+		{http.MethodGet, "/v1/models", false},
+	} {
+		t.Run(test.method+" "+test.path, func(t *testing.T) {
+			require.Equal(t, test.want, shouldSkipAPIKeyBilling(test.method, test.path))
+		})
+	}
+}
+
+func TestAPIKeyAuthAllowsExhaustedKeyToReadPaidMediaTask(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	user := &service.User{ID: 7, Status: service.StatusActive, Balance: 0}
+	apiKey := &service.APIKey{
+		ID: 100, UserID: user.ID, Key: "exhausted-media-key",
+		Status: service.StatusAPIKeyQuotaExhausted, User: user,
+	}
+	repo := &stubApiKeyRepo{getByKey: func(_ context.Context, key string) (*service.APIKey, error) {
+		if key != apiKey.Key {
+			return nil, service.ErrAPIKeyNotFound
+		}
+		copy := *apiKey
+		return &copy, nil
+	}}
+	cfg := &config.Config{RunMode: config.RunModeStandard}
+	apiKeyService := service.NewAPIKeyService(repo, nil, nil, nil, nil, nil, cfg)
+	router := gin.New()
+	router.Use(gin.HandlerFunc(NewAPIKeyAuthMiddleware(apiKeyService, nil, cfg)))
+	router.GET("/v1/images/task_paid", func(c *gin.Context) { c.Status(http.StatusOK) })
+	router.POST("/v1/images/task_paid", func(c *gin.Context) { c.Status(http.StatusOK) })
+
+	read := httptest.NewRecorder()
+	readRequest := httptest.NewRequest(http.MethodGet, "/v1/images/task_paid", nil)
+	readRequest.Header.Set("x-api-key", apiKey.Key)
+	router.ServeHTTP(read, readRequest)
+	require.Equal(t, http.StatusOK, read.Code)
+
+	write := httptest.NewRecorder()
+	writeRequest := httptest.NewRequest(http.MethodPost, "/v1/images/task_paid", nil)
+	writeRequest.Header.Set("x-api-key", apiKey.Key)
+	router.ServeHTTP(write, writeRequest)
+	require.Equal(t, http.StatusTooManyRequests, write.Code)
+}
+
 func TestSimpleModeBypassesQuotaCheck(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

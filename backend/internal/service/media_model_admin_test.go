@@ -453,6 +453,8 @@ func TestMediaModelAdminServiceStrictValidation(t *testing.T) {
 		{name: "model id", mutate: func(r *MediaModelAdminRecord) { r.Definition.ModelID = "bad model" }},
 		{name: "vendor", mutate: func(r *MediaModelAdminRecord) { r.Definition.Vendor = "bad.vendor" }},
 		{name: "media type", mutate: func(r *MediaModelAdminRecord) { r.Definition.MediaType = "audio" }},
+		{name: "unsupported billing unit", mutate: func(r *MediaModelAdminRecord) { r.Definition.BillingUnit = "request" }},
+		{name: "mismatched billing unit", mutate: func(r *MediaModelAdminRecord) { r.Definition.BillingUnit = "second" }},
 		{name: "operation", mutate: func(r *MediaModelAdminRecord) { r.Definition.Operations = []MediaOperation{"unknown"} }},
 		{name: "duplicate operation", mutate: func(r *MediaModelAdminRecord) {
 			r.Definition.Operations = []MediaOperation{MediaOperationTextToImage, MediaOperationTextToImage}

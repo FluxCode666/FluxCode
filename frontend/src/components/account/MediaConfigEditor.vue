@@ -2,14 +2,13 @@
 import { computed, onMounted, ref, toRaw, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { adminAPI } from '@/api/admin'
+import RequestMappingEditor from './RequestMappingEditor.vue'
 import type {
   MediaAccountConfig,
   MediaAccountModelBinding,
   MediaBindingAsyncMode,
-  MediaMappingOperation,
   MediaModelDefinition,
-  MediaRequestMapping,
-  MediaRequestMappingRule
+  MediaRequestMapping
 } from '@/types'
 
 interface ModelRow {
@@ -18,8 +17,8 @@ interface ModelRow {
   enabled: boolean
   upstreamModelID: string
   asyncMode: MediaBindingAsyncMode
-  requestMappingText: string
-  requestMappingError: boolean
+  requestMapping: MediaRequestMapping
+  requestMappingValid: boolean
 }
 
 const props = defineProps<{
@@ -94,13 +93,6 @@ function rowModelUnavailable(row: ModelRow): boolean {
     && !selectedDefinition(row)
 }
 
-function mappingText(mapping: MediaRequestMapping | undefined): string {
-  if (!mapping?.rules?.length) {
-    return ''
-  }
-  return JSON.stringify(mapping, null, 2)
-}
-
 function createRow(model = '', binding?: MediaAccountModelBinding): ModelRow {
   nextRowID += 1
   return {
@@ -109,8 +101,8 @@ function createRow(model = '', binding?: MediaAccountModelBinding): ModelRow {
     enabled: binding?.enabled ?? true,
     upstreamModelID: binding?.upstream_model_id || '',
     asyncMode: binding?.async_mode || 'unsupported',
-    requestMappingText: mappingText(binding?.request_mapping),
-    requestMappingError: false
+    requestMapping: binding?.request_mapping || {},
+    requestMappingValid: true
   }
 }
 
@@ -118,86 +110,6 @@ function setValidity(value: boolean) {
   if (currentValid === value) return
   currentValid = value
   emit('update:valid', value)
-}
-
-const mappingOperations = new Set(['rename', 'copy', 'default', 'enum', 'cast'])
-const mappingCasts = new Set(['string', 'number', 'integer', 'boolean'])
-const mappingRuleKeys = new Set(['source', 'target', 'operation', 'value', 'values', 'cast'])
-const safeMappingPath = /^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$/
-
-function isValidMappingRules(value: unknown): boolean {
-  if (value === undefined) return true
-  if (!Array.isArray(value)) return false
-  const targets = new Set<string>()
-  for (const item of value) {
-    if (!item || typeof item !== 'object' || Array.isArray(item)) return false
-    const rule = item as Record<string, unknown>
-    if (Object.keys(rule).some((key) => !mappingRuleKeys.has(key))) return false
-    const operation = typeof rule.operation === 'string' ? rule.operation.trim().toLowerCase() : ''
-    const target = typeof rule.target === 'string' ? rule.target.trim() : ''
-    if (!mappingOperations.has(operation) || !safeMappingPath.test(target) || targets.has(target)) return false
-    targets.add(target)
-    if (operation === 'rename' || operation === 'copy' || operation === 'enum' || operation === 'cast') {
-      const source = typeof rule.source === 'string' ? rule.source.trim() : ''
-      if (!safeMappingPath.test(source) || (operation === 'rename' && source === target)) return false
-    }
-    if (operation === 'enum') {
-      if (!rule.values || typeof rule.values !== 'object' || Array.isArray(rule.values) ||
-        Object.keys(rule.values as Record<string, unknown>).length === 0 ||
-        Object.values(rule.values as Record<string, unknown>).some((mapped) => typeof mapped !== 'string')) return false
-    }
-    if (operation === 'cast' && (typeof rule.cast !== 'string' || !mappingCasts.has(rule.cast.trim().toLowerCase()))) {
-      return false
-    }
-  }
-  return true
-}
-
-function parseRequestMapping(row: ModelRow): MediaRequestMapping | null {
-  const source = row.requestMappingText.trim()
-  if (!source) {
-    row.requestMappingError = false
-    return {}
-  }
-  try {
-    const parsed = JSON.parse(source) as unknown
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-      row.requestMappingError = true
-      return null
-    }
-    const mapping = parsed as Record<string, unknown>
-    if (Object.keys(mapping).some((key) => key !== 'rules')) {
-      row.requestMappingError = true
-      return null
-    }
-    if (!isValidMappingRules(mapping.rules)) {
-      row.requestMappingError = true
-      return null
-    }
-    const rules = Array.isArray(mapping.rules)
-      ? mapping.rules.map((item): MediaRequestMappingRule => {
-          const rule = item as Record<string, unknown>
-          const normalized: MediaRequestMappingRule = {
-            operation: String(rule.operation).trim().toLowerCase() as MediaMappingOperation,
-            target: String(rule.target).trim()
-          }
-          if (typeof rule.source === 'string') normalized.source = rule.source.trim()
-          if (Object.prototype.hasOwnProperty.call(rule, 'value')) normalized.value = rule.value
-          if (rule.values && typeof rule.values === 'object' && !Array.isArray(rule.values)) {
-            normalized.values = rule.values as Record<string, string>
-          }
-          if (typeof rule.cast === 'string') {
-            normalized.cast = rule.cast.trim().toLowerCase() as MediaRequestMappingRule['cast']
-          }
-          return normalized
-        })
-      : undefined
-    row.requestMappingError = false
-    return rules ? { rules } : {}
-  } catch {
-    row.requestMappingError = true
-    return null
-  }
 }
 
 function refreshValidity(): boolean {
@@ -216,7 +128,7 @@ function refreshValidity(): boolean {
       duplicateModel.value = model
     }
     if (model) seen.add(model)
-    if (!parseRequestMapping(row)) mappingValid = false
+    if (!row.requestMappingValid) mappingValid = false
     if (!rowSupportsSelectedMode(row)) accountModesValid = false
   }
 
@@ -257,7 +169,7 @@ function publish() {
       enabled: row.enabled,
       upstream_model_id: row.upstreamModelID.trim(),
       async_mode: row.asyncMode,
-      request_mapping: parseRequestMapping(row) || {}
+      request_mapping: row.requestMapping
     }
   }
   const emittedValue: MediaAccountConfig = {
@@ -278,6 +190,16 @@ function addModel() {
 function removeModel(index: number) {
   rows.value.splice(index, 1)
   publish()
+}
+
+function updateRequestMapping(row: ModelRow, mapping: MediaRequestMapping) {
+  row.requestMapping = mapping
+  publish()
+}
+
+function updateRequestMappingValidity(row: ModelRow, valid: boolean) {
+  row.requestMappingValid = valid
+  refreshValidity()
 }
 
 onMounted(loadRegistryModels)
@@ -446,25 +368,12 @@ onMounted(loadRegistryModels)
           </button>
         </div>
 
-        <div>
-          <label :for="`${row.id}-mapping`" class="input-label text-xs">
-            {{ t('admin.accounts.mediaConfig.requestMapping') }}
-          </label>
-          <textarea
-            :id="`${row.id}-mapping`"
-            v-model="row.requestMappingText"
-            :data-test="`media-request-mapping-${index}`"
-            class="input min-h-24 font-mono text-xs"
-            :class="{ 'border-red-500 focus:border-red-500 focus:ring-red-500/30': row.requestMappingError }"
-            :placeholder="t('admin.accounts.mediaConfig.requestMappingPlaceholder')"
-            :aria-invalid="row.requestMappingError"
-            @input="publish"
-          />
-          <p class="input-hint">{{ t('admin.accounts.mediaConfig.requestMappingHint') }}</p>
-          <p v-if="row.requestMappingError" class="mt-1 text-xs text-red-600 dark:text-red-400" role="alert">
-            {{ t('admin.accounts.mediaConfig.invalidRequestMapping') }}
-          </p>
-        </div>
+        <RequestMappingEditor
+          :model-value="row.requestMapping"
+          :id-prefix="`media-request-mapping-${index}`"
+          @update:model-value="updateRequestMapping(row, $event)"
+          @update:valid="updateRequestMappingValidity(row, $event)"
+        />
       </div>
     </div>
 

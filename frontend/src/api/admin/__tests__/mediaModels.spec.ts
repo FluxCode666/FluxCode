@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { MediaModelDefinition, MediaModelDefinitionInput } from '@/types'
-import { create, listEnabled, remove, update } from '../mediaModels'
+import { create, listEnabled, previewRequestMapping, remove, update } from '../mediaModels'
 
 const { getMock, postMock, putMock, deleteMock } = vi.hoisted(() => ({
   getMock: vi.fn(),
@@ -113,5 +113,21 @@ describe('mediaModels API', () => {
     await remove(readyModel.id)
 
     expect(deleteMock).toHaveBeenCalledWith(`/admin/media-models/${readyModel.id}`)
+  })
+
+  it('通过只读管理员端点预览声明式请求映射', async () => {
+    const request = { prompt: 'hello', size: '1024x1024' }
+    const mapping = {
+      rules: [{ operation: 'rename' as const, source: 'size', target: 'image_size' }],
+    }
+    const result = { prompt: 'hello', image_size: '1024x1024' }
+    postMock.mockResolvedValue({ data: { result } })
+
+    await expect(previewRequestMapping(request, mapping)).resolves.toEqual(result)
+
+    expect(postMock).toHaveBeenCalledWith(
+      '/admin/media-models/request-mapping-preview',
+      { request, mapping },
+    )
   })
 })

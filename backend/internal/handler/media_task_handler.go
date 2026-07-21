@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
@@ -31,19 +32,21 @@ const (
 	mediaInputCleanupErrorClass = "discard_failed"
 	quickTimeBoxScanBytes       = 4 << 10
 	quickTimeBoxScanLimit       = 32
+	maxMediaB64ImageBytes       = 20 << 20
+	maxMediaB64ResponseBytes    = 64 << 20
 )
 
 type MediaTaskApplication interface {
 	Create(ctx context.Context, req service.MediaCreateRequest) (*service.MediaCreateResult, error)
-	GetForUser(ctx context.Context, publicID string, userID int64) (*service.MediaTask, []service.MediaArtifact, error)
+	GetForUser(ctx context.Context, publicID string, userID, apiKeyID int64) (*service.MediaTask, []service.MediaArtifact, error)
 }
 
 type MediaVideoContentOpener interface {
-	OpenVideo(ctx context.Context, publicID string, userID int64, byteRange string) (*service.MediaContent, error)
+	OpenVideo(ctx context.Context, publicID string, userID, apiKeyID int64, byteRange string) (*service.MediaContent, error)
 }
 
 type MediaImageContentOpener interface {
-	OpenImage(ctx context.Context, publicID string, userID int64, byteRange string) (*service.MediaContent, error)
+	OpenImage(ctx context.Context, publicID string, userID, apiKeyID int64, position int, byteRange string) (*service.MediaContent, error)
 }
 
 type MediaInputCleanupObserver interface {
@@ -325,7 +328,7 @@ func (h *MediaTaskHandler) GetImageContent(c *gin.Context) {
 }
 
 func (h *MediaTaskHandler) getMediaContent(c *gin.Context, mediaType service.MediaType) {
-	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	identity, ok := mediaReadIdentity(c)
 	if !ok {
 		writeMediaError(c, http.StatusUnauthorized, "invalid_api_key", "Invalid API key")
 		return
@@ -350,9 +353,14 @@ func (h *MediaTaskHandler) getMediaContent(c *gin.Context, mediaType service.Med
 			writeMediaError(c, http.StatusBadGateway, "media_content_unavailable", "Media content is temporarily unavailable")
 			return
 		}
-		content, err = imageOpener.OpenImage(c.Request.Context(), c.Param("id"), subject.UserID, byteRange)
+		position, valid := mediaContentPosition(c.Query("index"))
+		if !valid {
+			writeMediaError(c, http.StatusBadRequest, "invalid_index", "The requested image index is invalid")
+			return
+		}
+		content, err = imageOpener.OpenImage(c.Request.Context(), c.Param("id"), identity.userID, identity.apiKeyID, position, byteRange)
 	case service.MediaTypeVideo:
-		content, err = h.content.OpenVideo(c.Request.Context(), c.Param("id"), subject.UserID, byteRange)
+		content, err = h.content.OpenVideo(c.Request.Context(), c.Param("id"), identity.userID, identity.apiKeyID, byteRange)
 	default:
 		writeMediaError(c, http.StatusBadGateway, "media_content_unavailable", "Media content is temporarily unavailable")
 		return
@@ -391,6 +399,8 @@ func (h *MediaTaskHandler) writeContentError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, service.ErrMediaTaskNotFound):
 		writeMediaError(c, http.StatusNotFound, "media_task_not_found", "Media task not found")
+	case errors.Is(err, service.ErrMediaArtifactNotFound):
+		writeMediaError(c, http.StatusNotFound, "media_content_not_found", "Media content not found")
 	case errors.Is(err, service.ErrInvalidMediaRange), errors.Is(err, service.ErrMediaRangeNotSatisfiable):
 		writeMediaError(c, http.StatusRequestedRangeNotSatisfiable, "invalid_range", "The requested range is invalid or unsatisfiable")
 	default:
@@ -410,6 +420,16 @@ func mediaCreateIdentity(c *gin.Context) (mediaIdentity, bool) {
 		return mediaIdentity{}, false
 	}
 	return mediaIdentity{userID: apiKey.UserID, apiKeyID: apiKey.ID, groupID: *apiKey.GroupID}, true
+}
+
+func mediaReadIdentity(c *gin.Context) (mediaIdentity, bool) {
+	apiKey, keyOK := middleware2.GetAPIKeyFromContext(c)
+	subject, subjectOK := middleware2.GetAuthSubjectFromContext(c)
+	if !keyOK || !subjectOK || apiKey == nil || apiKey.ID <= 0 || apiKey.UserID <= 0 ||
+		subject.UserID != apiKey.UserID {
+		return mediaIdentity{}, false
+	}
+	return mediaIdentity{userID: apiKey.UserID, apiKeyID: apiKey.ID}, true
 }
 
 func (h *MediaTaskHandler) decodeJSON(c *gin.Context, target any) bool {
@@ -638,14 +658,28 @@ func (h *MediaTaskHandler) create(c *gin.Context, req service.MediaCreateRequest
 	}
 	switch result.Disposition {
 	case service.MediaCreateDispositionAccepted, service.MediaCreateDispositionFallbackAsync:
-		c.JSON(http.StatusAccepted, taskResponse(result.Task, result.Artifacts))
+		response, responseErr := h.taskResponse(c.Request.Context(), result.Task, result.Artifacts, req.UserID, req.APIKeyID)
+		if responseErr != nil {
+			return inputsAdopted, responseErr
+		}
+		c.JSON(http.StatusAccepted, response)
 		return inputsAdopted, nil
 	case service.MediaCreateDispositionCompleted:
 		if result.Task.MediaType == service.MediaTypeImage {
-			c.JSON(http.StatusOK, imageResponse(result.Task, result.Artifacts))
+			response, responseErr := h.imageResponse(
+				c.Request.Context(), result.Task, result.Artifacts, mediaImageResponseFormat(req.Spec), req.UserID, req.APIKeyID,
+			)
+			if responseErr != nil {
+				return inputsAdopted, responseErr
+			}
+			c.JSON(http.StatusOK, response)
 			return inputsAdopted, nil
 		}
-		c.JSON(http.StatusOK, taskResponse(result.Task, result.Artifacts))
+		response, responseErr := h.taskResponse(c.Request.Context(), result.Task, result.Artifacts, req.UserID, req.APIKeyID)
+		if responseErr != nil {
+			return inputsAdopted, responseErr
+		}
+		c.JSON(http.StatusOK, response)
 		return inputsAdopted, nil
 	case service.MediaCreateDispositionGatewayTimeout:
 		writeMediaError(c, http.StatusGatewayTimeout, "media_gateway_timeout", "Media generation did not complete before the gateway timeout")
@@ -657,7 +691,7 @@ func (h *MediaTaskHandler) create(c *gin.Context, req service.MediaCreateRequest
 }
 
 func (h *MediaTaskHandler) getTask(c *gin.Context, expectedType service.MediaType) {
-	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	identity, ok := mediaReadIdentity(c)
 	if !ok {
 		writeMediaError(c, http.StatusUnauthorized, "invalid_api_key", "Invalid API key")
 		return
@@ -666,7 +700,7 @@ func (h *MediaTaskHandler) getTask(c *gin.Context, expectedType service.MediaTyp
 		writeMediaError(c, http.StatusServiceUnavailable, "media_unavailable", "Media generation is temporarily unavailable")
 		return
 	}
-	task, artifacts, err := h.app.GetForUser(c.Request.Context(), c.Param("id"), subject.UserID)
+	task, artifacts, err := h.app.GetForUser(c.Request.Context(), c.Param("id"), identity.userID, identity.apiKeyID)
 	if err != nil || task == nil || task.MediaType != expectedType {
 		if err == nil || errors.Is(err, service.ErrMediaTaskNotFound) {
 			writeMediaError(c, http.StatusNotFound, "media_task_not_found", "Media task not found")
@@ -675,10 +709,20 @@ func (h *MediaTaskHandler) getTask(c *gin.Context, expectedType service.MediaTyp
 		h.writeServiceError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, taskResponse(task, artifacts))
+	response, responseErr := h.taskResponse(c.Request.Context(), task, artifacts, identity.userID, identity.apiKeyID)
+	if responseErr != nil {
+		h.writeServiceError(c, responseErr)
+		return
+	}
+	c.JSON(http.StatusOK, response)
 }
 
-func taskResponse(task *service.MediaTask, artifacts []service.MediaArtifact) mediaTaskResponse {
+func (h *MediaTaskHandler) taskResponse(
+	ctx context.Context,
+	task *service.MediaTask,
+	artifacts []service.MediaArtifact,
+	userID, apiKeyID int64,
+) (mediaTaskResponse, error) {
 	response := mediaTaskResponse{
 		ID: task.PublicID, Object: "media.task", MediaType: string(task.MediaType), Operation: string(task.Operation),
 		Model: task.RequestedModel, Status: publicMediaStatus(task.Status), Progress: task.Progress, CreatedAt: task.CreatedAt.Unix(),
@@ -688,47 +732,165 @@ func taskResponse(task *service.MediaTask, artifacts []service.MediaArtifact) me
 			result, _ := json.Marshal(map[string]string{"content_url": "/v1/videos/" + url.PathEscape(task.PublicID) + "/content"})
 			response.Result = result
 		} else {
-			result, _ := json.Marshal(map[string]any{"data": imageData(task, artifacts)})
+			data, err := h.imageData(ctx, task, artifacts, mediaImageResponseFormatFromTask(task), userID, apiKeyID)
+			if err != nil {
+				return mediaTaskResponse{}, err
+			}
+			result, _ := json.Marshal(map[string]any{"data": data})
 			response.Result = result
 		}
 	}
 	if task.Status == service.MediaTaskStatusFailed {
 		response.Error = safeMediaTaskError(task.ErrorCode)
 	}
-	return response
+	return response, nil
 }
 
-func imageResponse(task *service.MediaTask, artifacts []service.MediaArtifact) mediaImageResponse {
+func (h *MediaTaskHandler) imageResponse(
+	ctx context.Context,
+	task *service.MediaTask,
+	artifacts []service.MediaArtifact,
+	responseFormat string,
+	userID, apiKeyID int64,
+) (mediaImageResponse, error) {
 	created := time.Now().Unix()
 	if task != nil && !task.CreatedAt.IsZero() {
 		created = task.CreatedAt.Unix()
 	}
-	return mediaImageResponse{Created: created, Data: imageData(task, artifacts)}
+	data, err := h.imageData(ctx, task, artifacts, responseFormat, userID, apiKeyID)
+	if err != nil {
+		return mediaImageResponse{}, err
+	}
+	return mediaImageResponse{Created: created, Data: data}, nil
 }
 
-func imageData(task *service.MediaTask, artifacts []service.MediaArtifact) []mediaImageDataItem {
+func (h *MediaTaskHandler) imageData(
+	ctx context.Context,
+	task *service.MediaTask,
+	artifacts []service.MediaArtifact,
+	responseFormat string,
+	userID, apiKeyID int64,
+) ([]mediaImageDataItem, error) {
 	data := make([]mediaImageDataItem, 0, len(artifacts))
+	totalB64Bytes := int64(0)
 	for _, artifact := range artifacts {
 		if artifact.Direction != "output" || artifact.MediaType != service.MediaTypeImage {
 			continue
 		}
-		if service.IsSafePublicMediaURL(artifact.PublicURL) {
-			data = append(data, mediaImageDataItem{URL: artifact.PublicURL})
+		if responseFormat != "b64_json" {
+			if service.IsSafePublicMediaURL(artifact.PublicURL) {
+				data = append(data, mediaImageDataItem{URL: artifact.PublicURL})
+				continue
+			}
+			// Local/MinIO/proxied outputs intentionally do not expose storage or
+			// upstream references. The authenticated content endpoint is the URL
+			// contract for every non-public artifact.
+			if task == nil || task.PublicID == "" {
+				return nil, service.ErrMediaContentUnavailable
+			}
+			data = append(data, mediaImageDataItem{
+				URL: "/v1/images/" + url.PathEscape(task.PublicID) + "/content?index=" + strconv.Itoa(artifact.Position),
+			})
 			continue
 		}
+
 		if b64JSON, ok := service.MediaImageB64JSON(artifact); ok {
+			decodedBytes := int64(base64.StdEncoding.DecodedLen(len(b64JSON)))
+			if decodedBytes > maxMediaB64ImageBytes || totalB64Bytes+decodedBytes > maxMediaB64ResponseBytes {
+				return nil, service.ErrMediaContentTooLarge
+			}
+			totalB64Bytes += decodedBytes
 			data = append(data, mediaImageDataItem{B64JSON: b64JSON})
 			continue
 		}
-		// Local/MinIO-backed outputs intentionally do not expose object keys.
-		// Return the authenticated task content endpoint as the delivery URL.
-		if task != nil && task.PublicID != "" && artifact.ObjectKey != "" {
-			data = append(data, mediaImageDataItem{
-				URL: "/v1/images/" + url.PathEscape(task.PublicID) + "/content",
-			})
+		if task == nil || task.PublicID == "" || h == nil || h.content == nil {
+			return nil, service.ErrMediaContentUnavailable
+		}
+		imageOpener, ok := h.content.(MediaImageContentOpener)
+		if !ok {
+			return nil, service.ErrMediaContentUnavailable
+		}
+		content, err := imageOpener.OpenImage(ctx, task.PublicID, userID, apiKeyID, artifact.Position, "")
+		if err != nil {
+			return nil, err
+		}
+		if content == nil || content.Body == nil {
+			return nil, service.ErrMediaContentUnavailable
+		}
+		remaining := int64(maxMediaB64ResponseBytes) - totalB64Bytes
+		limit := int64(maxMediaB64ImageBytes)
+		if remaining < limit {
+			limit = remaining
+		}
+		if limit <= 0 || content.ContentLength > limit {
+			_ = content.Body.Close()
+			return nil, service.ErrMediaContentTooLarge
+		}
+		payload, readErr := io.ReadAll(io.LimitReader(content.Body, limit+1))
+		closeErr := content.Body.Close()
+		if readErr != nil {
+			return nil, readErr
+		}
+		if closeErr != nil {
+			return nil, closeErr
+		}
+		if len(payload) == 0 {
+			return nil, service.ErrMediaContentUnavailable
+		}
+		if int64(len(payload)) > limit {
+			return nil, service.ErrMediaContentTooLarge
+		}
+		if _, safe := service.NormalizeImageContentType(content.ContentType); !safe {
+			return nil, service.ErrMediaContentUnavailable
+		}
+		totalB64Bytes += int64(len(payload))
+		data = append(data, mediaImageDataItem{B64JSON: base64.StdEncoding.EncodeToString(payload)})
+	}
+	return data, nil
+}
+
+func mediaImageResponseFormat(spec service.MediaSpec) string {
+	if spec.Image != nil && strings.TrimSpace(spec.Image.ResponseFormat) == "b64_json" {
+		return "b64_json"
+	}
+	return "url"
+}
+
+func mediaImageResponseFormatFromTask(task *service.MediaTask) string {
+	if task == nil || len(task.RequestSpec) == 0 {
+		if task != nil && strings.TrimSpace(task.ImageResponseFormat) == "b64_json" {
+			return "b64_json"
+		}
+		return "url"
+	}
+	raw := task.RequestSpec
+	var envelope struct {
+		OriginalRequest json.RawMessage `json:"original_request"`
+	}
+	if err := json.Unmarshal(raw, &envelope); err == nil && len(envelope.OriginalRequest) > 0 {
+		raw = envelope.OriginalRequest
+	}
+	var spec service.MediaSpec
+	if err := json.Unmarshal(raw, &spec); err != nil {
+		return "url"
+	}
+	return mediaImageResponseFormat(spec)
+}
+
+func mediaContentPosition(raw string) (int, bool) {
+	if raw == "" {
+		return 0, true
+	}
+	for i := 0; i < len(raw); i++ {
+		if raw[i] < '0' || raw[i] > '9' {
+			return 0, false
 		}
 	}
-	return data
+	position, err := strconv.ParseUint(raw, 10, 31)
+	if err != nil {
+		return 0, false
+	}
+	return int(position), true
 }
 
 func safePublicMediaURL(raw string) bool {
@@ -916,6 +1078,13 @@ func (h *MediaTaskHandler) writeServiceError(c *gin.Context, err error) {
 		writeMediaError(c, http.StatusForbidden, "content_policy_violation", "The media request was rejected by content policy")
 	case errors.Is(err, service.ErrMediaGenerationNotAllowed):
 		writeMediaError(c, http.StatusForbidden, "media_generation_not_allowed", "Media generation is not allowed for this group")
+	case isMediaBillingEligibilityError(err):
+		// Media precharge runs after the common API-key middleware. A balance,
+		// quota or subscription state may change between those two checks, so
+		// preserve the same downstream semantics used by the text gateways
+		// instead of misclassifying the deterministic billing rejection as 500.
+		status, code, message := billingErrorDetails(err)
+		writeMediaErrorType(c, status, code, message, code)
 	case errors.Is(err, service.ErrMediaInputNotRecoverable):
 		writeMediaError(c, http.StatusBadRequest, "invalid_media_input", "The media input is invalid")
 	case errors.Is(err, service.ErrInvalidMediaRange), errors.Is(err, service.ErrMediaRangeNotSatisfiable):
@@ -932,6 +1101,23 @@ func (h *MediaTaskHandler) writeServiceError(c *gin.Context, err error) {
 	default:
 		writeMediaError(c, http.StatusInternalServerError, "internal_error", "The media request could not be completed")
 	}
+}
+
+func isMediaBillingEligibilityError(err error) bool {
+	return errors.Is(err, service.ErrInsufficientBalance) ||
+		errors.Is(err, service.ErrBillingServiceUnavailable) ||
+		errors.Is(err, service.ErrAPIKeyExpired) ||
+		errors.Is(err, service.ErrAPIKeyQuotaExhausted) ||
+		errors.Is(err, service.ErrAPIKeyRateLimit5hExceeded) ||
+		errors.Is(err, service.ErrAPIKeyRateLimit1dExceeded) ||
+		errors.Is(err, service.ErrAPIKeyRateLimit7dExceeded) ||
+		errors.Is(err, service.ErrSubscriptionNotFound) ||
+		errors.Is(err, service.ErrSubscriptionInvalid) ||
+		errors.Is(err, service.ErrSubscriptionExpired) ||
+		errors.Is(err, service.ErrSubscriptionSuspended) ||
+		errors.Is(err, service.ErrDailyLimitExceeded) ||
+		errors.Is(err, service.ErrWeeklyLimitExceeded) ||
+		errors.Is(err, service.ErrMonthlyLimitExceeded)
 }
 
 func writeMediaError(c *gin.Context, status int, code, message string) {

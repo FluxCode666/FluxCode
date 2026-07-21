@@ -3,6 +3,7 @@ package middleware
 import (
 	"context"
 	"errors"
+	"net/http"
 	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
@@ -122,8 +123,9 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 
 		// ── 5. 加载订阅（订阅模式时始终加载） ───────────────────────
 
-		// skipBilling: /v1/usage 只需鉴权，跳过所有计费执行
-		skipBilling := c.Request.URL.Path == "/v1/usage"
+		// 用量查询与已经付费的媒体任务读取只需鉴权，跳过新请求的计费门禁。
+		// 媒体 Handler 仍会校验任务所属的 user_id + api_key_id。
+		skipBilling := shouldSkipAPIKeyBilling(c.Request.Method, c.Request.URL.Path)
 
 		var subscription *service.UserSubscription
 		isSubscriptionType := apiKey.Group != nil && apiKey.Group.IsSubscriptionType()
@@ -210,6 +212,24 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 
 		c.Next()
 	}
+}
+
+func shouldSkipAPIKeyBilling(method, requestPath string) bool {
+	if requestPath == "/v1/usage" {
+		return true
+	}
+	if method != http.MethodGet {
+		return false
+	}
+	segments := strings.Split(strings.Trim(requestPath, "/"), "/")
+	if len(segments) != 3 && len(segments) != 4 {
+		return false
+	}
+	if segments[0] != "v1" || (segments[1] != "images" && segments[1] != "videos") ||
+		!strings.HasPrefix(segments[2], "task_") || len(segments[2]) == len("task_") {
+		return false
+	}
+	return len(segments) == 3 || segments[3] == "content"
 }
 
 // GetAPIKeyFromContext 从上下文中获取API key

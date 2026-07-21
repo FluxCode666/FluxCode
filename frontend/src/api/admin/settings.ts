@@ -31,6 +31,31 @@ export interface MediaGenerationSettings {
   media_video_proxy_fallback_enabled: boolean
 }
 
+export type MediaStorageProvider = 'local' | 'minio'
+
+export interface MediaMinIOConfig {
+  endpoint: string
+  bucket: string
+  access_key_id: string
+  secret_access_key: string
+  secret_access_key_configured: boolean
+  region: string
+  use_ssl: boolean
+  force_path_style: boolean
+  prefix: string
+}
+
+export interface MediaStorageConfig {
+  provider: MediaStorageProvider
+  local_path: string
+  minio: MediaMinIOConfig
+}
+
+export interface MediaStorageTestResult {
+  ok: boolean
+  message: string
+}
+
 /**
  * System settings interface
  */
@@ -409,6 +434,28 @@ export async function updateSettings(settings: UpdateSettingsRequest): Promise<S
   return data
 }
 
+export async function getMediaStorageConfig(): Promise<MediaStorageConfig> {
+  const { data } = await apiClient.get<MediaStorageConfig>('/admin/settings/media-storage')
+  return data
+}
+
+export async function updateMediaStorageConfig(
+  config: MediaStorageConfig
+): Promise<MediaStorageConfig> {
+  const { data } = await apiClient.put<MediaStorageConfig>('/admin/settings/media-storage', config)
+  return data
+}
+
+export async function testMediaStorageConfig(
+  config: MediaStorageConfig
+): Promise<MediaStorageTestResult> {
+  const { data } = await apiClient.post<MediaStorageTestResult>(
+    '/admin/settings/media-storage/test',
+    config
+  )
+  return data
+}
+
 /**
  * Test SMTP connection request
  */
@@ -701,6 +748,9 @@ export async function resetWebSearchUsage(
 export const settingsAPI = {
   getSettings,
   updateSettings,
+  getMediaStorageConfig,
+  updateMediaStorageConfig,
+  testMediaStorageConfig,
   testSmtpConnection,
   sendTestEmail,
   getAdminApiKey,

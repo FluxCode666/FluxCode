@@ -67,6 +67,9 @@ services:
     # For debugging, uncomment: ports: ["127.0.0.1:8081:8080"]
     volumes:
       - backend1_data:/app/data
+      # Replicas on this Docker host can reuse this named volume. For multiple
+      # hosts, replace it with a shared RWX/NFS mount or select MinIO.
+      - backend1_media:/app/.fluxcode/generated
     environment:
       # =======================================================================
       # Auto Setup (creates admin account and DB schema on first run)
@@ -82,6 +85,7 @@ services:
       - RUN_MODE=${RUN_MODE:-standard}
       - SKIP_STARTUP_INIT=${SKIP_STARTUP_INIT:-false}
       - MEDIA_TASKS_ENABLED=${MEDIA_TASKS_ENABLED:-true}
+      - MEDIA_TASKS_LOCAL_STORAGE_PATH=/app/.fluxcode/generated
 
       # =======================================================================
       # Database Configuration (shared PostgreSQL)
@@ -186,6 +190,9 @@ services:
   #       hard: 100000
   #   volumes:
   #     - backend2_data:/app/data
+  #     # Share this volume with backend-1 on the same Docker host. For
+  #     # multiple hosts, mount the same RWX/NFS path or select MinIO.
+  #     - backend1_media:/app/.fluxcode/generated
   #   environment:
   #     - AUTO_SETUP=true
   #     - SERVER_HOST=0.0.0.0
@@ -194,6 +201,7 @@ services:
   #     - RUN_MODE=${RUN_MODE:-standard}
   #     - SKIP_STARTUP_INIT=true
   #     - MEDIA_TASKS_ENABLED=${MEDIA_TASKS_ENABLED:-true}
+  #     - MEDIA_TASKS_LOCAL_STORAGE_PATH=/app/.fluxcode/generated
   #     - DATABASE_HOST=${DATABASE_HOST:-postgres}
   #     - DATABASE_PORT=${DATABASE_PORT:-5432}
   #     - DATABASE_USER=${DATABASE_USER:-sub2api}
@@ -306,6 +314,8 @@ services:
 # =============================================================================
 volumes:
   backend1_data:
+    driver: local
+  backend1_media:
     driver: local
   # backend2_data:
   #   driver: local

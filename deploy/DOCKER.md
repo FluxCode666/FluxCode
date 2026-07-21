@@ -8,8 +8,10 @@ Sub2API is an AI API Gateway Platform for distributing and managing AI product s
 docker run -d \
   --name sub2api \
   -p 8080:8080 \
+  -v sub2api_media:/app/.fluxcode/generated \
   -e DATABASE_URL="postgres://user:pass@host:5432/sub2api" \
   -e REDIS_URL="redis://host:6379" \
+  -e MEDIA_TASKS_LOCAL_STORAGE_PATH="/app/.fluxcode/generated" \
   weishaw/sub2api:latest
 ```
 
@@ -23,9 +25,12 @@ services:
     image: weishaw/sub2api:latest
     ports:
       - "8080:8080"
+    volumes:
+      - sub2api_media:/app/.fluxcode/generated
     environment:
       - DATABASE_URL=postgres://postgres:postgres@db:5432/sub2api?sslmode=disable
       - REDIS_URL=redis://redis:6379
+      - MEDIA_TASKS_LOCAL_STORAGE_PATH=/app/.fluxcode/generated
     depends_on:
       - db
       - redis
@@ -45,6 +50,7 @@ services:
       - redis_data:/data
 
 volumes:
+  sub2api_media:
   postgres_data:
   redis_data:
 ```
@@ -57,6 +63,11 @@ volumes:
 | `REDIS_URL` | Redis connection string | Yes | - |
 | `PORT` | Server port | No | `8080` |
 | `GIN_MODE` | Gin framework mode (`debug`/`release`) | No | `release` |
+| `MEDIA_TASKS_LOCAL_STORAGE_PATH` | Local media artifact directory | No | `/app/.fluxcode/generated` |
+
+The media volume above is suitable for a single application instance. Multiple
+instances must use MinIO/S3-compatible storage or mount the same shared RWX/NFS
+directory at `/app/.fluxcode/generated`.
 
 ## Supported Architectures
 

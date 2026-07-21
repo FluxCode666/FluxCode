@@ -103,7 +103,7 @@ export default {
       badge: 'Developer Access',
       title: 'Integration Docs',
       subtitle:
-        'Standard integration guidance for SDKs, backend services, and automation scripts, covering OpenAI Chat, OpenAI Responses, Anthropic Messages, and OpenAI image generation APIs.',
+        'Standard integration guidance for SDKs, backend services, and automation scripts, covering text protocols plus standalone unified image and video generation APIs.',
       cards: {
         baseUrl: 'Base URL',
         auth: 'Default Auth',
@@ -133,20 +133,21 @@ export default {
         },
         step3: {
           title: 'Send a Minimal Request',
-          description: 'Validate a successful 200 response with the minimal examples below, then add streaming, tools, or image parameters step by step.'
+          description: 'Validate a 200 response for text APIs or a 200 / 202 response for media APIs, then add advanced fields step by step.'
         }
       },
       notes: {
         item1: 'OpenAI-compatible protocols normally use `Authorization: Bearer <API_KEY>`; for Anthropic-compatible traffic, `x-api-key` plus `anthropic-version` is recommended.',
         item2: 'Use a model name that is currently enabled in your dashboard. Available models may differ by group, plan, or channel.',
-        item3: 'When you need streaming, add `stream: true` to the request body and keep the rest of your existing SDK parameters unchanged.',
-        item4: 'For OpenAI Images, when you request `response_format=url`, the returned image domain follows the site’s current image storage configuration.'
+        item3: 'Use `stream: true` for streaming text responses. Media APIs use `async: true` to create pollable tasks; the two flags have different semantics.',
+        item4: 'Read media results from the URL in the task response or the authenticated `/content` endpoint. Do not depend on raw upstream provider URLs.'
       }
     },
     fields: {
       method: 'Method',
       endpoint: 'Endpoint',
       authHeader: 'Auth Header',
+      idempotencyHeader: 'Idempotency Header (Optional)',
       contentType: 'Content Type',
       versionHeader: 'Version Header',
       exampleCurl: 'cURL Example',
@@ -159,7 +160,8 @@ export default {
       requiredLabel: 'Required',
       optionalLabel: 'Optional',
       supportedValues: 'Supported values',
-      exampleTabsTitle: 'Code Examples'
+      exampleTabsTitle: 'Code Examples',
+      responseExamplesTitle: 'Response Status Examples'
     },
     sections: {
       openaiChat: {
@@ -193,13 +195,23 @@ export default {
         }
       },
       openaiImages: {
-        badge: 'OpenAI Images',
-        title: 'OpenAI Image Generation API',
-        description: 'For text-to-image generation with OpenAI Images-compatible calls, suitable for built-in image tools, posters, and marketing creatives.',
+        badge: 'Unified Media · Images',
+        title: 'Unified Image Generation API',
+        description: 'Use an API key bound to a media group to enter a pipeline isolated from text protocols. Synchronous calls keep the OpenAI Images result shape, while asynchronous calls return a unified pollable task.',
         bullets: {
-          item1: 'The request path is `POST /v1/images/generations`, with common fields such as `model`, `prompt`, `size`, and `response_format`.',
-          item2: 'If you also need image editing or masking, you can extend the same auth flow to `POST /v1/images/edits`.',
-          item3: 'When `response_format=url` is requested, the returned image URL follows the current image storage and CDN configuration of the site.'
+          item1: '`POST /v1/images/generations` waits synchronously when `async` is omitted or false, and returns a 202 task when `async=true`.',
+          item2: 'Query asynchronous tasks with `GET /v1/images/{task_id}`. On completion, read URL or base64 results from `result.data`.',
+          item3: '`GET /v1/images/{task_id}/content?index={position}` uses the same API-key authentication and reads a completed image output by position. Omitting `index` reads position 0.'
+        }
+      },
+      mediaVideos: {
+        badge: 'Unified Media · Videos',
+        title: 'Unified Video Generation API',
+        description: 'Use an API key bound to a media group for text-to-video, image-to-video, reference-image generation, and video remixing, with synchronous waits or asynchronous tasks.',
+        bullets: {
+          item1: '`POST /v1/videos` waits synchronously when `async` is omitted or false, and returns a 202 task when `async=true`.',
+          item2: 'Use `GET /v1/videos/{task_id}` to query queued, in_progress, completed, or failed status.',
+          item3: 'After completion, download the video from `GET /v1/videos/{task_id}/content`; standard single-range byte requests are supported.'
         }
       }
     }
@@ -3134,10 +3146,63 @@ export default {
         upstreamModel: 'Upstream Model ID',
         enabled: 'Enable this model',
         asyncMode: 'Upstream Async Capability',
-        requestMapping: 'Request Parameter Mapping (JSON)',
+        requestMapping: 'Request Parameter Mapping',
         requestMappingPlaceholder: '{\n  "rules": [{ "source": "size", "target": "chicun", "operation": "rename" }]\n}',
         requestMappingHint: 'Optional. Supports rename, copy, default, enum, and cast. Only declarative JSON is accepted; scripts are never executed.',
         invalidRequestMapping: 'The request mapping must be a valid JSON object containing only rules.',
+        mappingEditor: {
+          title: 'Request Parameter Mapping',
+          hint: 'Rules run from top to bottom. Unmapped unified parameters are still handled by the system Adapter.',
+          addRule: 'Add Rule',
+          empty: 'No custom mapping. Unified request parameters will be passed to the system Adapter.',
+          ruleNumber: 'Rule {number}',
+          moveUp: 'Move rule up',
+          moveDown: 'Move rule down',
+          removeRule: 'Remove rule',
+          operation: 'Operation',
+          source: 'Source Path',
+          target: 'Target Path',
+          defaultValue: 'Default Value (JSON)',
+          defaultValueHint: 'Accepts strings, numbers, booleans, null, arrays, or objects. Strings must use double quotes.',
+          enumValues: 'Enum Value Mapping',
+          addEnumValue: 'Add Enum Value',
+          enumInput: 'Downstream Value',
+          enumOutput: 'Upstream Value',
+          removeEnumValue: 'Remove enum value',
+          castType: 'Target Type',
+          previewTitle: 'Transformation Preview',
+          sampleRequest: 'Unified Downstream Request Sample (JSON)',
+          runPreview: 'Run Preview',
+          previewing: 'Previewing…',
+          previewResult: 'Transformed Upstream Request',
+          previewFailed: 'Request mapping preview failed',
+          fixRulesBeforePreview: 'Fix the rule validation errors before previewing.',
+          invalidSampleJSON: 'The unified downstream request sample is not valid JSON.',
+          sampleMustBeObject: 'The unified downstream request sample must be a JSON object.',
+          operations: {
+            rename: 'Rename and remove source',
+            copy: 'Copy field',
+            default: 'Set default when target is missing',
+            enum: 'Map enum value',
+            cast: 'Cast primitive type'
+          },
+          casts: {
+            string: 'string',
+            number: 'number',
+            integer: 'integer',
+            boolean: 'boolean'
+          },
+          errors: {
+            path: 'Paths may only contain dot-separated letters, digits, and underscores, and no segment may start with a digit.',
+            pathConflict: 'Source and target paths cannot overlap other mapping paths as parent or child paths.',
+            samePath: 'rename and copy source and target paths must differ.',
+            envelopeRoot: 'The image or video media envelope root cannot be replaced directly.',
+            mixedPathStyle: 'Media envelope paths and request body paths cannot be mixed in one mapping.',
+            defaultJSON: 'The default value must be valid JSON.',
+            enumRequired: 'enum requires at least one value mapping.',
+            enumDuplicate: 'An enum rule cannot contain the same downstream value more than once.'
+          }
+        },
         addModel: 'Add Model Binding',
         remove: 'Remove',
         removeModel: 'Remove model binding',
@@ -5778,6 +5843,28 @@ export default {
         videoStorageModeHint: 'Video results use hybrid storage; this mode is currently fixed.',
         proxyFallback: 'Enable video proxy fallback',
         proxyFallbackHint: 'Use the application proxy as a delivery fallback when the primary stored video URL is unavailable.',
+      },
+      mediaStorage: {
+        title: 'Media Artifact Storage',
+        description: 'Applies only to new media tasks; historical DB/Qiniu data is not migrated. Local is the default, while MinIO is recommended for multiple instances.',
+        provider: 'Storage backend',
+        localPath: 'Local path',
+        localPathHint: 'Source deployments default to ./data/generated; Docker defaults to /app/.fluxcode/generated. Switching backends does not move existing files.',
+        multiInstanceWarning: 'With multiple instances, Local must use the same shared RWX/NFS path on every instance. Otherwise use MinIO.',
+        endpoint: 'Endpoint',
+        bucket: 'Bucket',
+        region: 'Region',
+        accessKey: 'Access Key ID',
+        secretKey: 'Secret Access Key',
+        secretConfigured: 'Configured; leave blank to keep the existing secret',
+        prefix: 'Object prefix',
+        useSSL: 'Use HTTPS / SSL',
+        pathStyle: 'Use path-style addressing',
+        test: 'Test connection',
+        testing: 'Testing…',
+        testSucceeded: 'Connection test succeeded',
+        testFailed: 'Connection test failed',
+        saved: 'Media storage settings saved',
       },
       emailTabDisabledTitle: 'Email Verification Not Enabled',
       emailTabDisabledHint: 'Enable email verification in the Security tab to configure email sending.',

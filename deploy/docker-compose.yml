@@ -28,6 +28,7 @@ services:
     volumes:
       # Data persistence (config.yaml will be auto-generated here)
       - sub2api_data:/app/data
+      - media_generated:/app/.fluxcode/generated
       # Optional: Mount custom config.yaml (uncomment and create the file first)
       # Copy config.example.yaml to config.yaml, modify it, then uncomment:
       # - ./config.yaml:/app/data/config.yaml
@@ -48,6 +49,7 @@ services:
       - SERVER_PORT=8080
       - SERVER_MODE=${SERVER_MODE:-release}
       - RUN_MODE=${RUN_MODE:-standard}
+      - MEDIA_TASKS_LOCAL_STORAGE_PATH=/app/.fluxcode/generated
 
       # =======================================================================
       # Database Configuration (PostgreSQL)
@@ -249,6 +251,8 @@ services:
 # =============================================================================
 volumes:
   sub2api_data:
+    driver: local
+  media_generated:
     driver: local
   postgres_data:
     driver: local

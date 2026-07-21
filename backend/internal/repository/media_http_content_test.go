@@ -194,10 +194,14 @@ func TestMediaHTTPContentReaderRejectsNonASCIIRangeWithoutUpstream(t *testing.T)
 	require.ErrorIs(t, err, service.ErrInvalidMediaRange)
 }
 
-func TestSafeMediaContentTypeAllowsOnlyVideo(t *testing.T) {
-	require.Equal(t, "video/mp4", safeMediaContentType("video/mp4; charset=binary"))
+func TestSafeMediaContentTypeMatchesExpectedMediaType(t *testing.T) {
+	require.Equal(t, "video/mp4", safeMediaContentType("video/mp4; charset=binary", service.MediaTypeVideo))
+	require.Equal(t, "image/png", safeMediaContentType("image/png; charset=binary", service.MediaTypeImage))
+	require.Equal(t, "application/octet-stream", safeMediaContentType("video/mp4", service.MediaTypeImage))
+	require.Equal(t, "application/octet-stream", safeMediaContentType("image/png", service.MediaTypeVideo))
 	for _, unsafe := range []string{"", "text/html", "application/javascript", "image/svg+xml"} {
-		require.Equal(t, "application/octet-stream", safeMediaContentType(unsafe))
+		require.Equal(t, "application/octet-stream", safeMediaContentType(unsafe, service.MediaTypeImage))
+		require.Equal(t, "application/octet-stream", safeMediaContentType(unsafe, service.MediaTypeVideo))
 	}
 }
 

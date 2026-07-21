@@ -479,6 +479,7 @@ type adminServiceImpl struct {
 	defaultSubAssigner   DefaultSubscriptionAssigner
 	userSubRepo          UserSubscriptionRepository
 	privacyClientFactory PrivacyClientFactory
+	mediaModels          *MediaModelRegistry
 }
 
 type userGroupRateBatchReader interface {
@@ -503,6 +504,7 @@ func NewAdminService(
 	defaultSubAssigner DefaultSubscriptionAssigner,
 	userSubRepo UserSubscriptionRepository,
 	privacyClientFactory PrivacyClientFactory,
+	mediaModels *MediaModelRegistry,
 ) AdminService {
 	return &adminServiceImpl{
 		userRepo:             userRepo,
@@ -521,6 +523,7 @@ func NewAdminService(
 		defaultSubAssigner:   defaultSubAssigner,
 		userSubRepo:          userSubRepo,
 		privacyClientFactory: privacyClientFactory,
+		mediaModels:          mediaModels,
 	}
 }
 
@@ -1852,6 +1855,11 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 	if err := validateMediaPlatformAccount(account); err != nil {
 		return nil, err
 	}
+	if account.Platform == PlatformMedia {
+		if err := validateMediaAccountConfigChange(s.mediaModels, nil, account.Extra); err != nil {
+			return nil, err
+		}
+	}
 	if err := s.accountRepo.Create(ctx, account); err != nil {
 		return nil, err
 	}
@@ -1915,6 +1923,11 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 	if input.Extra != nil {
 		if err := normalizeMediaAccountConfigInExtra(input.Extra); err != nil {
 			return nil, err
+		}
+		if account.Platform == PlatformMedia {
+			if err := validateMediaAccountConfigChange(s.mediaModels, account.Extra, input.Extra); err != nil {
+				return nil, err
+			}
 		}
 		// 保留配额用量字段，防止编辑账号时意外重置
 		for _, key := range []string{"quota_used", "quota_daily_used", "quota_daily_start", "quota_weekly_used", "quota_weekly_start"} {

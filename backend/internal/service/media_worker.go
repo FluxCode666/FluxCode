@@ -799,6 +799,20 @@ func (w *MediaWorker) executeSelected(
 		ResolvedRequest: append(json.RawMessage(nil), selection.ResolvedRequest...),
 		UpstreamModel:   selection.ResolvedModel.UpstreamModel, IdempotencyKey: task.PublicID,
 	}
+	if mediaSpecHasInputArtifacts(spec) {
+		reader, ok := w.deps.Artifacts.(MediaArtifactInputReader)
+		if !ok {
+			return nil, systemMediaFailure("system_input", "media input reader is unavailable"), false, nil
+		}
+		inputs, inputErr := reader.LoadInputs(ctx, task, spec, selection.Account)
+		if inputErr != nil {
+			if ctx.Err() != nil {
+				return nil, nil, false, ctx.Err()
+			}
+			return nil, systemMediaFailure("system_input", "media input artifacts cannot be loaded"), false, nil
+		}
+		request.Inputs = inputs
+	}
 
 	stageStarted := time.Now()
 	if path == MediaExecutionPathSync {
@@ -890,6 +904,13 @@ func (w *MediaWorker) executeSelected(
 	}
 	result, failure, pollErr := w.poll(ctx, task, selection.Account, adapter, trace)
 	return result, failure, false, pollErr
+}
+
+func mediaSpecHasInputArtifacts(spec MediaSpec) bool {
+	if spec.Image != nil && len(spec.Image.InputArtifactIDs) > 0 {
+		return true
+	}
+	return spec.Video != nil && (len(spec.Video.ReferenceArtifactIDs) > 0 || spec.Video.SourceArtifactID != nil)
 }
 
 func (w *MediaWorker) resumePolling(ctx context.Context, task *MediaTask, active *mediaActiveExecution, trace *mediaExecutionTrace) (*MediaGenerateResult, *mediaExecutionFailure, error) {
@@ -1197,7 +1218,10 @@ func (w *MediaWorker) RecoverOnce(ctx context.Context) error {
 		}
 		w.deps.Metrics.IncrementRecovery(task.MediaType)
 	}
-	pending, err := w.deps.Tasks.ListSettlementPending(ctx, w.cfg.RecoveryBatchSize)
+	// A failed attempt changes updated_at, so waiting one recovery interval
+	// gives it a bounded backoff and lets older pending rows advance first.
+	retryReadyBefore := time.Now().Add(-w.cfg.RecoveryInterval)
+	pending, err := w.deps.Tasks.ListSettlementPending(ctx, retryReadyBefore, w.cfg.RecoveryBatchSize)
 	if err != nil {
 		return fmt.Errorf("list settlement-pending media tasks: %w", err)
 	}

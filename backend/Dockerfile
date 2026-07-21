@@ -1,5 +1,7 @@
 FROM golang:1.25.7-alpine
 
+ENV MEDIA_TASKS_LOCAL_STORAGE_PATH=/app/.fluxcode/generated
+
 WORKDIR /app
 
 # 安装必要的工具

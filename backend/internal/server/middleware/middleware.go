@@ -129,6 +129,12 @@ func RequireGroupAssignment(settingService *service.SettingService, writeError G
 			c.Next()
 			return
 		}
+		// 已创建并付费的媒体任务由 Handler 按原 user_id + api_key_id
+		// 校验归属，不再要求该 Key 仍绑定可调度分组。
+		if shouldSkipAPIKeyBilling(c.Request.Method, c.Request.URL.Path) {
+			c.Next()
+			return
+		}
 		// 未分组 Key — 检查系统设置
 		if settingService.IsUngroupedKeySchedulingAllowed(c.Request.Context()) {
 			c.Next()

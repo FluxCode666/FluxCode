@@ -136,20 +136,21 @@ type MediaTaskController interface {
 }
 
 type MediaOrchestratorDependencies struct {
-	Registry          *MediaModelRegistry
-	Groups            MediaGroupProvider
-	Scheduler         MediaCandidateSnapshotter
-	Settings          MediaSettingsProvider
-	ContentPolicy     MediaContentPolicy
-	Pricing           MediaPricingPort
-	Tasks             MediaTaskRepository
-	Artifacts         MediaArtifactRepository
-	Billing           MediaBillingPort
-	Settlement        MediaSettlementCoordinator
-	Queue             MediaTaskQueue
-	Controller        MediaTaskController
-	Clock             MediaClock
-	PublicIDGenerator func() (string, error)
+	Registry           *MediaModelRegistry
+	Groups             MediaGroupProvider
+	Scheduler          MediaCandidateSnapshotter
+	Settings           MediaSettingsProvider
+	ContentPolicy      MediaContentPolicy
+	Pricing            MediaPricingPort
+	Tasks              MediaTaskRepository
+	Artifacts          MediaArtifactRepository
+	StorageConsistency MediaStorageConsistencyRepository
+	Billing            MediaBillingPort
+	Settlement         MediaSettlementCoordinator
+	Queue              MediaTaskQueue
+	Controller         MediaTaskController
+	Clock              MediaClock
+	PublicIDGenerator  func() (string, error)
 }
 
 type MediaOrchestrator struct {
@@ -240,7 +241,8 @@ func (o *MediaOrchestrator) Create(ctx context.Context, req MediaCreateRequest) 
 			ctx, req, inputs, fingerprint, fmt.Errorf("encode media request spec: %w", err),
 		)
 	}
-	if err := freezeMediaCandidateRequests(candidates, initialSpec, req.MediaType); err != nil {
+	candidates, err = freezeMediaCandidateRequests(candidates, initialSpec, req.MediaType)
+	if err != nil {
 		return o.reuseConcurrentIdempotencyWinner(
 			ctx, req, inputs, fingerprint, fmt.Errorf("freeze media candidate requests: %w", err),
 		)
@@ -337,15 +339,22 @@ func (o *MediaOrchestrator) reuseConcurrentIdempotencyWinner(
 	}
 }
 
-func freezeMediaCandidateRequests(candidates []MediaAccountCandidateSnapshot, requestSpec json.RawMessage, mediaType MediaType) error {
+func freezeMediaCandidateRequests(
+	candidates []MediaAccountCandidateSnapshot,
+	requestSpec json.RawMessage,
+	mediaType MediaType,
+) ([]MediaAccountCandidateSnapshot, error) {
 	var request map[string]any
 	if err := json.Unmarshal(requestSpec, &request); err != nil {
-		return err
+		return nil, err
 	}
+	resolvedCandidates := make([]MediaAccountCandidateSnapshot, 0, len(candidates))
+	var candidateErrors []error
 	for index := range candidates {
 		mapping := candidates[index].ResolvedModel.RequestMapping
 		if err := validateMediaMappingMediaType(mapping, mediaType); err != nil {
-			return fmt.Errorf("candidate %d: %w", candidates[index].AccountID, err)
+			candidateErrors = append(candidateErrors, fmt.Errorf("candidate %d: %w", candidates[index].AccountID, err))
+			continue
 		}
 		resolved := request
 		var err error
@@ -355,7 +364,8 @@ func freezeMediaCandidateRequests(candidates []MediaAccountCandidateSnapshot, re
 			key := string(mediaType)
 			body, ok := request[key].(map[string]any)
 			if !ok {
-				return fmt.Errorf("candidate %d: media request body is invalid", candidates[index].AccountID)
+				candidateErrors = append(candidateErrors, fmt.Errorf("candidate %d: media request body is invalid", candidates[index].AccountID))
+				continue
 			}
 			body, err = mapping.Apply(body)
 			if err == nil {
@@ -364,15 +374,21 @@ func freezeMediaCandidateRequests(candidates []MediaAccountCandidateSnapshot, re
 			}
 		}
 		if err != nil {
-			return fmt.Errorf("candidate %d: %w", candidates[index].AccountID, err)
+			candidateErrors = append(candidateErrors, fmt.Errorf("candidate %d: %w", candidates[index].AccountID, err))
+			continue
 		}
 		encoded, err := json.Marshal(resolved)
 		if err != nil {
-			return fmt.Errorf("candidate %d: encode resolved request: %w", candidates[index].AccountID, err)
+			candidateErrors = append(candidateErrors, fmt.Errorf("candidate %d: encode resolved request: %w", candidates[index].AccountID, err))
+			continue
 		}
 		candidates[index].ResolvedRequest = encoded
+		resolvedCandidates = append(resolvedCandidates, candidates[index])
 	}
-	return nil
+	if len(resolvedCandidates) == 0 {
+		return nil, errors.Join(append([]error{ErrNoAvailableAccounts}, candidateErrors...)...)
+	}
+	return resolvedCandidates, nil
 }
 
 func validateMediaMappingMediaType(mapping MediaRequestMapping, mediaType MediaType) error {
@@ -386,8 +402,31 @@ func validateMediaMappingMediaType(mapping MediaRequestMapping, mediaType MediaT
 				}
 			}
 		}
+		if protectedMediaPricingMappingTarget(rule.Target, mediaType) {
+			return fmt.Errorf(
+				"%w: mapping cannot write canonical pricing field %s",
+				ErrInvalidMediaRequestMapping,
+				rule.Target,
+			)
+		}
 	}
 	return nil
+}
+
+func protectedMediaPricingMappingTarget(mappingPath string, mediaType MediaType) bool {
+	segments := strings.Split(mappingPath, ".")
+	field := segments[len(segments)-1]
+	if len(segments) > 1 && segments[0] != string(mediaType) {
+		return false
+	}
+	switch mediaType {
+	case MediaTypeImage:
+		return field == "n" || field == "size" || field == "quality"
+	case MediaTypeVideo:
+		return field == "duration_seconds" || field == "resolution" || field == "fps"
+	default:
+		return false
+	}
 }
 
 func mediaMappingUsesEnvelopePaths(mapping MediaRequestMapping) bool {
@@ -401,16 +440,19 @@ func mediaMappingUsesEnvelopePaths(mapping MediaRequestMapping) bool {
 	return false
 }
 
-func (o *MediaOrchestrator) GetForUser(ctx context.Context, publicID string, userID int64) (*MediaTask, []MediaArtifact, error) {
+func (o *MediaOrchestrator) GetForUser(ctx context.Context, publicID string, userID, apiKeyID int64) (*MediaTask, []MediaArtifact, error) {
 	if err := o.validateRead(); err != nil {
 		return nil, nil, err
 	}
-	task, err := o.deps.Tasks.GetByPublicIDForUser(ctx, publicID, userID)
+	task, err := o.deps.Tasks.GetByPublicIDForUser(ctx, publicID, userID, apiKeyID)
 	if err != nil {
 		if errors.Is(err, ErrMediaTaskNotFound) {
 			return nil, nil, ErrMediaTaskNotFound
 		}
 		return nil, nil, fmt.Errorf("load media task for user: %w", err)
+	}
+	if mediaCompletionAwaitingSettlement(task) {
+		return sanitizeMediaTaskForUser(task), nil, nil
 	}
 	artifacts, err := o.deps.Artifacts.ListByTaskID(ctx, task.ID)
 	if err != nil {
@@ -440,13 +482,16 @@ func (o *MediaOrchestrator) waitSync(ctx context.Context, task *MediaTask, setti
 		defer timer.Stop()
 	}
 
+	settlementAttemptObserved := false
 	for {
 		current, err := o.deps.Tasks.GetByID(ctx, task.ID)
 		if err != nil {
 			return nil, fmt.Errorf("load media task while waiting: %w", err)
 		}
 		if current.Status.IsTerminal() {
-			return o.terminalResult(ctx, current)
+			if !mediaCompletionAwaitingSettlement(current) || settlementAttemptObserved {
+				return o.terminalResult(ctx, current)
+			}
 		}
 
 		select {
@@ -464,13 +509,17 @@ func (o *MediaOrchestrator) waitSync(ctx context.Context, task *MediaTask, setti
 			if !ok {
 				current, readErr := o.deps.Tasks.GetByID(ctx, task.ID)
 				if readErr == nil && current.Status.IsTerminal() {
-					continue
+					return o.terminalResult(ctx, current)
 				}
 				if readErr != nil {
 					return nil, errors.Join(ErrMediaTerminalSubscriptionClosed, fmt.Errorf("recheck media task: %w", readErr))
 				}
 				return nil, ErrMediaTerminalSubscriptionClosed
 			}
+			// Worker publishes only after its first settlement attempt. Re-read the
+			// durable billing status before deciding between synchronous success
+			// and a 202 response that continues recovery in the background.
+			settlementAttemptObserved = true
 		}
 	}
 }
@@ -882,12 +931,40 @@ func (o *MediaOrchestrator) initializeAndEnqueue(
 	inputs []MediaArtifactInput,
 	billingSnapshot MediaBillingSnapshot,
 	settings *SystemSettings,
-) (*MediaCreateResult, error) {
+) (result *MediaCreateResult, returnErr error) {
 	inputsDurable := false
+	var persistedInputs []MediaArtifact
+	defer func() {
+		if len(persistedInputs) == 0 || (result != nil && result.InputsAdopted) {
+			return
+		}
+		cleanupErr := o.rollbackPersistedInputs(ctx, persistedInputs)
+		if cleanupErr == nil {
+			return
+		}
+		// Preserve the staged objects when their durable rows could not be
+		// removed. This avoids turning a recoverable orphan into a broken row
+		// whose immutable object locator no longer exists.
+		result = mediaCreateResultWithInputOwnership(result, task, true)
+		returnErr = errors.Join(returnErr, cleanupErr)
+	}()
 	if len(inputs) > 0 {
-		artifactIDs, persistErr := o.persistInputs(ctx, task, inputs)
+		var persistErr error
+		persistedInputs, persistErr = o.persistInputs(ctx, task, inputs)
 		if persistErr != nil {
+			if errors.Is(persistErr, ErrMediaStorageCommitOutcomeUnknown) {
+				// The current input row may already be committed. Preserve all
+				// staged objects and prior rows until an operator/reconciler can
+				// determine the database outcome.
+				return &MediaCreateResult{Task: task, InputsAdopted: true}, o.failWithReconciledPrecharge(
+					ctx, task, billingSnapshot, "system_input", persistErr,
+				)
+			}
 			return &MediaCreateResult{Task: task}, o.failWithReconciledPrecharge(ctx, task, billingSnapshot, "system_input", persistErr)
+		}
+		artifactIDs := make([]int64, len(persistedInputs))
+		for index := range persistedInputs {
+			artifactIDs[index] = persistedInputs[index].ID
 		}
 		durableSpec, specErr := mediaSpecWithInputArtifacts(req.Spec, req.Operation, artifactIDs)
 		if specErr != nil {
@@ -901,8 +978,9 @@ func (o *MediaOrchestrator) initializeAndEnqueue(
 		if decodeErr != nil {
 			return &MediaCreateResult{Task: task}, o.failWithReconciledPrecharge(ctx, task, billingSnapshot, "system_input", fmt.Errorf("decode media candidate snapshot: %w", decodeErr))
 		}
-		if err := freezeMediaCandidateRequests(candidates, encoded, req.MediaType); err != nil {
-			return &MediaCreateResult{Task: task}, o.failWithReconciledPrecharge(ctx, task, billingSnapshot, "system_input", fmt.Errorf("refresh media candidate requests: %w", err))
+		candidates, freezeErr := freezeMediaCandidateRequests(candidates, encoded, req.MediaType)
+		if freezeErr != nil {
+			return &MediaCreateResult{Task: task}, o.failWithReconciledPrecharge(ctx, task, billingSnapshot, "system_input", fmt.Errorf("refresh media candidate requests: %w", freezeErr))
 		}
 		candidateJSON, candidateErr := encodeMediaCandidateSnapshotV1(candidates)
 		if candidateErr != nil {
@@ -956,8 +1034,7 @@ func (o *MediaOrchestrator) initializeAndEnqueue(
 	readyReconciled := false
 	if updateErr != nil || !updated {
 		fresh, readErr := o.deps.Tasks.GetByID(ctx, task.ID)
-		readyObserved := readErr == nil && fresh != nil && fresh.BillingStatus == MediaBillingStatusPrecharged &&
-			fresh.PrechargedAmount == prechargeResult.PrechargedAmount && fresh.LeaseUntil == nil
+		readyObserved := readErr == nil && mediaInitializationReadyOrAdvanced(fresh, prechargeResult.PrechargedAmount)
 		if readyObserved {
 			task = fresh
 			readyReconciled = true
@@ -995,8 +1072,26 @@ func (o *MediaOrchestrator) initializeAndEnqueue(
 			return &MediaCreateResult{Task: task, InputsAdopted: true}, err
 		}
 	}
-	result, err := o.waitSync(ctx, task, settings)
-	return mediaCreateResultWithInputOwnership(result, task, true), err
+	waitResult, waitErr := o.waitSync(ctx, task, settings)
+	return mediaCreateResultWithInputOwnership(waitResult, task, true), waitErr
+}
+
+func mediaInitializationReadyOrAdvanced(task *MediaTask, prechargedAmount float64) bool {
+	if task == nil || task.PrechargedAmount != prechargedAmount {
+		return false
+	}
+	if task.Status == MediaTaskStatusQueued {
+		return task.BillingStatus == MediaBillingStatusPrecharged && task.LeaseUntil == nil
+	}
+	// Once a Worker has claimed or terminalized the task, the ready CAS was
+	// necessarily visible. Its lease and billing state may already have advanced
+	// while the initializer is reconciling an ambiguous write result.
+	switch task.BillingStatus {
+	case MediaBillingStatusPrecharged, MediaBillingStatusSettling, MediaBillingStatusRetry, MediaBillingStatusSettled:
+		return true
+	default:
+		return false
+	}
 }
 
 func mediaCreateResultWithInputOwnership(result *MediaCreateResult, task *MediaTask, adopted bool) *MediaCreateResult {
@@ -1009,14 +1104,21 @@ func mediaCreateResultWithInputOwnership(result *MediaCreateResult, task *MediaT
 	return result
 }
 
-func (o *MediaOrchestrator) persistInputs(ctx context.Context, task *MediaTask, inputs []MediaArtifactInput) ([]int64, error) {
-	ids := make([]int64, 0, len(inputs))
+func (o *MediaOrchestrator) persistInputs(ctx context.Context, task *MediaTask, inputs []MediaArtifactInput) ([]MediaArtifact, error) {
+	createdArtifacts := make([]MediaArtifact, 0, len(inputs))
 	for _, input := range inputs {
 		artifact := &MediaArtifact{
 			TaskID: task.ID, Direction: "input", Position: input.Position, MediaType: input.MediaType,
 			ContentType: input.ContentType, SizeBytes: input.SizeBytes, ChecksumSHA256: input.ChecksumSHA256,
-			ObjectKey: input.ObjectKey, PublicURL: input.ExternalURL, UpstreamReference: input.UpstreamReference,
+			StorageProvider: input.StorageProvider, StorageRevision: input.StorageRevision, ObjectKey: input.ObjectKey,
+			PublicURL: input.ExternalURL, UpstreamReference: input.UpstreamReference,
 			Resolution: input.Resolution,
+		}
+		if artifact.StorageProvider == "" {
+			artifact.StorageProvider = MediaStorageProviderLegacy
+		}
+		if artifact.ObjectKey != "" {
+			artifact.StorageStatus = "stored"
 		}
 		if input.Width > 0 {
 			artifact.Width = mediaIntPointer(input.Width)
@@ -1030,16 +1132,38 @@ func (o *MediaOrchestrator) persistInputs(ctx context.Context, task *MediaTask, 
 		if input.FPS > 0 {
 			artifact.FPS = mediaFloatPointer(input.FPS)
 		}
-		created, err := o.deps.Artifacts.Create(ctx, artifact)
+		created, err := commitMediaArtifact(ctx, o.deps.Artifacts, o.deps.StorageConsistency, artifact)
 		if err != nil {
-			return nil, fmt.Errorf("persist media input position %d: %w", input.Position, err)
+			return createdArtifacts, fmt.Errorf("persist media input position %d: %w", input.Position, err)
 		}
 		if created == nil || created.ID <= 0 {
-			return nil, fmt.Errorf("persist media input position %d: repository returned invalid artifact", input.Position)
+			return createdArtifacts, fmt.Errorf("persist media input position %d: repository returned invalid artifact", input.Position)
 		}
-		ids = append(ids, created.ID)
+		createdArtifacts = append(createdArtifacts, *created)
 	}
-	return ids, nil
+	return createdArtifacts, nil
+}
+
+func (o *MediaOrchestrator) rollbackPersistedInputs(ctx context.Context, artifacts []MediaArtifact) error {
+	if o == nil || o.deps.Artifacts == nil || len(artifacts) == 0 {
+		return nil
+	}
+	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), mediaOrchestratorDetachedTimeout)
+	defer cancel()
+
+	var cleanupErrors []error
+	for index := len(artifacts) - 1; index >= 0; index-- {
+		artifact := artifacts[index]
+		deleted, err := o.deps.Artifacts.DeleteExact(cleanupCtx, &artifact)
+		if err != nil {
+			cleanupErrors = append(cleanupErrors, fmt.Errorf("delete media input %d during rollback: %w", artifact.ID, err))
+			continue
+		}
+		// deleted=false is idempotent success: an overlapping compensation
+		// path already removed this exact immutable row.
+		_ = deleted
+	}
+	return errors.Join(cleanupErrors...)
 }
 
 func (o *MediaOrchestrator) reuseTask(ctx context.Context, task *MediaTask, fingerprint string, clientAsync bool, settings *SystemSettings) (*MediaCreateResult, error) {
@@ -1144,6 +1268,12 @@ func (o *MediaOrchestrator) loadSettings(ctx context.Context) (*SystemSettings, 
 
 func (o *MediaOrchestrator) terminalResult(ctx context.Context, task *MediaTask) (*MediaCreateResult, error) {
 	if task.Status == MediaTaskStatusCompleted {
+		if mediaCompletionAwaitingSettlement(task) {
+			return &MediaCreateResult{
+				Task:        maskUnsettledMediaCompletion(task),
+				Disposition: MediaCreateDispositionAccepted,
+			}, nil
+		}
 		artifacts, err := o.deps.Artifacts.ListByTaskID(ctx, task.ID)
 		if err != nil {
 			return nil, fmt.Errorf("list completed media artifacts: %w", err)
@@ -1296,7 +1426,7 @@ func sanitizeMediaTaskForUser(task *MediaTask) *MediaTask {
 	if task == nil {
 		return nil
 	}
-	copy := *task
+	copy := *maskUnsettledMediaCompletion(task)
 	copy.ID = 0
 	copy.UserID = 0
 	copy.APIKeyID = 0
@@ -1309,6 +1439,7 @@ func sanitizeMediaTaskForUser(task *MediaTask) *MediaTask {
 	copy.ClientAsync = false
 	copy.SyncFallback = false
 	copy.Stage = ""
+	copy.ImageResponseFormat = mediaTaskImageResponseFormat(task)
 	copy.RequestSpec = nil
 	copy.CandidateSnapshot = nil
 	copy.RequestFingerprint = ""
@@ -1334,6 +1465,47 @@ func sanitizeMediaTaskForUser(task *MediaTask) *MediaTask {
 	copy.FinishedAt = nil
 	copy.SyncFallbackAt = nil
 	copy.UpdatedAt = time.Time{}
+	return &copy
+}
+
+func mediaTaskImageResponseFormat(task *MediaTask) string {
+	if task == nil || task.MediaType != MediaTypeImage {
+		return ""
+	}
+	original, _, _, err := decodeSelectedMediaRequestEnvelope(task.RequestSpec)
+	if err != nil {
+		return "url"
+	}
+	var spec MediaSpec
+	if err := json.Unmarshal(original, &spec); err != nil || spec.Image == nil {
+		return "url"
+	}
+	if strings.TrimSpace(spec.Image.ResponseFormat) == "b64_json" {
+		return "b64_json"
+	}
+	return "url"
+}
+
+func mediaCompletionAwaitingSettlement(task *MediaTask) bool {
+	return task != nil && task.Status == MediaTaskStatusCompleted && task.BillingStatus != MediaBillingStatusSettled
+}
+
+func maskUnsettledMediaCompletion(task *MediaTask) *MediaTask {
+	if task == nil {
+		return nil
+	}
+	copy := *task
+	if !mediaCompletionAwaitingSettlement(task) {
+		return &copy
+	}
+	copy.Status = MediaTaskStatusInProgress
+	copy.Stage = MediaTaskStageSettling
+	if copy.Progress >= 100 {
+		copy.Progress = 99
+	}
+	copy.ErrorCode = ""
+	copy.ErrorMessage = ""
+	copy.FinishedAt = nil
 	return &copy
 }
 

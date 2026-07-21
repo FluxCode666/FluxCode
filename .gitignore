@@ -104,6 +104,9 @@ backend/internal/web/dist/*
 # 后端运行时缓存数据
 backend/data/
 
+# Docker 本地媒体产物（运行时数据，不保留占位文件）
+deploy/generated/
+
 # ===================
 # 本地配置文件（包含敏感信息）
 # ===================

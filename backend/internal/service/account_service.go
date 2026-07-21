@@ -225,6 +225,7 @@ type UpdateAccountRequest struct {
 type AccountService struct {
 	accountRepo AccountRepository
 	groupRepo   GroupRepository
+	mediaModels *MediaModelRegistry
 }
 
 type groupExistenceBatchChecker interface {
@@ -232,10 +233,15 @@ type groupExistenceBatchChecker interface {
 }
 
 // NewAccountService 创建账号服务实例
-func NewAccountService(accountRepo AccountRepository, groupRepo GroupRepository) *AccountService {
+func NewAccountService(
+	accountRepo AccountRepository,
+	groupRepo GroupRepository,
+	mediaModels *MediaModelRegistry,
+) *AccountService {
 	return &AccountService{
 		accountRepo: accountRepo,
 		groupRepo:   groupRepo,
+		mediaModels: mediaModels,
 	}
 }
 
@@ -268,6 +274,11 @@ func (s *AccountService) Create(ctx context.Context, req CreateAccountRequest) (
 	}
 	if err := validateMediaPlatformAccount(account); err != nil {
 		return nil, err
+	}
+	if account.Platform == PlatformMedia {
+		if err := validateMediaAccountConfigChange(s.mediaModels, nil, account.Extra); err != nil {
+			return nil, err
+		}
 	}
 	if err := validateAccountGroupBindings(ctx, s.groupRepo, account.Platform, account.Type, req.GroupIDs); err != nil {
 		return nil, err
@@ -332,6 +343,11 @@ func (s *AccountService) Update(ctx context.Context, id int64, req UpdateAccount
 	if req.Extra != nil {
 		if err := normalizeMediaAccountConfigInExtra(*req.Extra); err != nil {
 			return nil, err
+		}
+		if account.Platform == PlatformMedia {
+			if err := validateMediaAccountConfigChange(s.mediaModels, account.Extra, *req.Extra); err != nil {
+				return nil, err
+			}
 		}
 	}
 

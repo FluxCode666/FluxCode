@@ -73,6 +73,8 @@ func ensureSingleMediaMappingJSONValue(decoder *json.Decoder) error {
 
 func (m MediaRequestMapping) Validate() error {
 	targets := make(map[string]struct{}, len(m.Rules))
+	sources := make([]string, 0, len(m.Rules))
+	pathStyle := ""
 	for index := range m.Rules {
 		rule := m.Rules[index]
 		op := strings.ToLower(strings.TrimSpace(rule.Operation))
@@ -82,8 +84,10 @@ func (m MediaRequestMapping) Validate() error {
 		if err := validateMediaMappingPath(rule.Target); err != nil {
 			return fmt.Errorf("%w: rule %d target: %w", ErrInvalidMediaRequestMapping, index, err)
 		}
-		if _, exists := targets[rule.Target]; exists {
-			return fmt.Errorf("%w: %s", ErrMediaMappingTargetConflict, rule.Target)
+		for existing := range targets {
+			if mediaMappingPathsOverlap(existing, rule.Target) {
+				return fmt.Errorf("%w: %s conflicts with %s", ErrMediaMappingTargetConflict, rule.Target, existing)
+			}
 		}
 		targets[rule.Target] = struct{}{}
 		switch op {
@@ -91,9 +95,27 @@ func (m MediaRequestMapping) Validate() error {
 			if err := validateMediaMappingPath(rule.Source); err != nil {
 				return fmt.Errorf("%w: rule %d source: %w", ErrInvalidMediaRequestMapping, index, err)
 			}
+			sources = append(sources, rule.Source)
 		}
-		if op == "rename" && rule.Source == rule.Target {
-			return fmt.Errorf("%w: rule %d rename source and target match", ErrInvalidMediaRequestMapping, index)
+		if (op == "rename" || op == "copy") && rule.Source == rule.Target {
+			return fmt.Errorf("%w: rule %d %s source and target match", ErrInvalidMediaRequestMapping, index, op)
+		}
+		for _, mappingPath := range []string{rule.Source, rule.Target} {
+			if mappingPath == "" {
+				continue
+			}
+			if mappingPath == string(MediaTypeImage) || mappingPath == string(MediaTypeVideo) {
+				return fmt.Errorf("%w: rule %d cannot replace a media envelope root", ErrInvalidMediaRequestMapping, index)
+			}
+			currentStyle := mediaMappingPathStyle(mappingPath)
+			if pathStyle == "" {
+				pathStyle = currentStyle
+			} else if currentStyle != pathStyle {
+				return fmt.Errorf("%w: rule %d mixes envelope and body paths", ErrInvalidMediaRequestMapping, index)
+			}
+		}
+		if rule.Source != "" && rule.Source != rule.Target && mediaMappingPathsOverlap(rule.Source, rule.Target) {
+			return fmt.Errorf("%w: rule %d source and target paths overlap", ErrInvalidMediaRequestMapping, index)
 		}
 		switch op {
 		case "enum":
@@ -105,6 +127,13 @@ func (m MediaRequestMapping) Validate() error {
 			case "string", "number", "integer", "boolean":
 			default:
 				return fmt.Errorf("%w: rule %d cast type %q", ErrInvalidMediaRequestMapping, index, rule.Cast)
+			}
+		}
+	}
+	for _, source := range sources {
+		for target := range targets {
+			if source != target && mediaMappingPathsOverlap(source, target) {
+				return fmt.Errorf("%w: source %s overlaps target %s", ErrInvalidMediaRequestMapping, source, target)
 			}
 		}
 	}
@@ -132,7 +161,10 @@ func (m MediaRequestMapping) Apply(request map[string]any) (map[string]any, erro
 		case "rename", "copy", "enum", "cast":
 			value, found = mediaMappingGet(result, rule.Source)
 			if !found {
-				return nil, fmt.Errorf("%w: rule %d source %s", ErrMediaMappingValueMissing, index, rule.Source)
+				// Canonical media fields such as size, quality and output_format
+				// are optional. A mapping rule only transforms a value that the
+				// caller actually supplied.
+				continue
 			}
 		}
 		if op == "enum" {
@@ -166,6 +198,18 @@ func (m MediaRequestMapping) Apply(request map[string]any) (map[string]any, erro
 		}
 	}
 	return result, nil
+}
+
+func mediaMappingPathsOverlap(left, right string) bool {
+	return left == right || strings.HasPrefix(left, right+".") || strings.HasPrefix(right, left+".")
+}
+
+func mediaMappingPathStyle(mappingPath string) string {
+	root := strings.SplitN(mappingPath, ".", 2)[0]
+	if root == string(MediaTypeImage) || root == string(MediaTypeVideo) {
+		return "envelope"
+	}
+	return "body"
 }
 
 func isMediaMappingOperation(op string) bool {

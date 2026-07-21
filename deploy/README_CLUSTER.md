@@ -493,6 +493,13 @@ server {
 
 媒体模型的 Adapter 由部署代码按“模型厂商 + 规范模型或模型家族”解析。多实例从旧数据库路由字段切换到代码解析前，必须先完成只读预检，并在发布窗口冻结相关写入。
 
+### 媒体产物存储前置要求
+
+- 多实例生产环境应在「系统设置 → 媒体生成 → 媒体产物存储」选择 MinIO，并在保存前完成真实写/读/删连接测试。
+- 若必须使用 Local，所有实例需将同一 RWX/NFS 路径挂载到 `/app/.fluxcode/generated`。集群示例中的 `backend1_media` 只是单实例默认卷，复制 backend 实例时不得为每个实例创建互不共享的 Local volume。
+- `MEDIA_TASKS_LOCAL_STORAGE_PATH=/app/.fluxcode/generated` 只是未保存系统设置时的 Docker 默认值；切换存储后端只影响新数据，不会搬迁历史 Artifact。
+- MinIO 故障不会自动回退 Local，避免一次任务的产物在不同实例上不可追踪地分散。
+
 ### 1. 启动隔离的预检候选实例
 
 旧版本没有 preflight 路由，因此先使用待发布的新版本启动一个候选实例。该实例必须：

@@ -118,6 +118,7 @@ func TestMediaOrchestratorReadyWakeupClaimsImmediatelyAfterEarlyMessageAck(t *te
 			task.Status = MediaTaskStatusCompleted
 			task.Stage = MediaTaskStageCompleted
 			task.Progress = 100
+			task.BillingStatus = MediaBillingStatusSettled
 			task.LeaseUntil = nil
 			task.Version++
 		})
@@ -208,6 +209,7 @@ func TestMediaOrchestratorReadyPublishAppliedErrorReloadsRealTerminalResult(t *t
 	fixture.repo.readyPublishedHook = func(task *MediaTask) {
 		task.Status = MediaTaskStatusCompleted
 		task.Stage = MediaTaskStageCompleted
+		task.BillingStatus = MediaBillingStatusSettled
 		fixture.artifacts.mu.Lock()
 		fixture.artifacts.items[task.ID] = []MediaArtifact{{ID: 61, TaskID: task.ID, Direction: "output", Position: 0}}
 		fixture.artifacts.mu.Unlock()
@@ -601,6 +603,63 @@ func TestMediaOrchestratorRejectsMappingForOppositeMediaEnvelope(t *testing.T) {
 	req.Operation = MediaOperationTextToImage
 
 	_, err := fixture.orchestrator.Create(context.Background(), req)
+	require.ErrorIs(t, err, ErrInvalidMediaRequestMapping)
+	require.Zero(t, fixture.repo.createCalls())
+}
+
+func TestMediaOrchestratorSkipsBadMappedCandidateWhenAnotherCandidateIsHealthy(t *testing.T) {
+	fixture := newMediaOrchestratorFixture(t)
+	fixture.scheduler.candidates = []MediaAccountCandidateSnapshot{
+		{
+			AccountID: 7, Platform: PlatformMedia,
+			ResolvedModel: ResolvedMediaAccountModel{
+				Adapter: "fake", UpstreamModel: "bad-mapping", NativeAsyncMode: NativeAsyncOptional,
+				RequestMapping: MediaRequestMapping{Rules: []MediaMappingRule{{
+					Source: "prompt", Target: "upstream_prompt", Operation: "enum",
+					Values: map[string]string{"dog": "DOG"},
+				}}},
+			},
+		},
+		{
+			AccountID: 8, Platform: PlatformMedia,
+			ResolvedModel: ResolvedMediaAccountModel{
+				Adapter: "fake", UpstreamModel: "healthy", NativeAsyncMode: NativeAsyncOptional,
+			},
+		},
+	}
+
+	result, err := fixture.orchestrator.Create(context.Background(), validAsyncMediaCreateRequest())
+	require.NoError(t, err)
+	stored := fixture.repo.mustGet(result.Task.ID)
+	candidates, err := decodeMediaCandidateSnapshotV1(stored.CandidateSnapshot)
+	require.NoError(t, err)
+	require.Len(t, candidates, 1)
+	require.Equal(t, int64(8), candidates[0].AccountID)
+}
+
+func TestMediaOrchestratorOptionalMappingSourceMayBeOmitted(t *testing.T) {
+	fixture := newMediaOrchestratorFixture(t)
+	fixture.scheduler.candidates[0].ResolvedModel.RequestMapping = MediaRequestMapping{Rules: []MediaMappingRule{{
+		Source: "size", Target: "chicun", Operation: "rename",
+	}}}
+
+	result, err := fixture.orchestrator.Create(context.Background(), validAsyncMediaCreateRequest())
+	require.NoError(t, err)
+	stored := fixture.repo.mustGet(result.Task.ID)
+	candidates, err := decodeMediaCandidateSnapshotV1(stored.CandidateSnapshot)
+	require.NoError(t, err)
+	require.Len(t, candidates, 1)
+	require.JSONEq(t, `{"image":{"n":1,"prompt":"cat"}}`, string(candidates[0].ResolvedRequest))
+}
+
+func TestMediaOrchestratorRejectsMappingThatReintroducesCanonicalPricingField(t *testing.T) {
+	fixture := newMediaOrchestratorFixture(t)
+	fixture.scheduler.candidates[0].ResolvedModel.RequestMapping = MediaRequestMapping{Rules: []MediaMappingRule{
+		{Source: "n", Target: "seed", Operation: "rename"},
+		{Target: "n", Operation: "default", Value: 16},
+	}}
+
+	_, err := fixture.orchestrator.Create(context.Background(), validAsyncMediaCreateRequest())
 	require.ErrorIs(t, err, ErrInvalidMediaRequestMapping)
 	require.Zero(t, fixture.repo.createCalls())
 }
@@ -1079,7 +1138,7 @@ func TestMediaOrchestratorPrechargedInitializationFailurePersistsRecoveryBeforeP
 					ErrorCode:   tt.code,
 				},
 			}, recovery)
-			pending, pendingErr := fixture.repo.ListSettlementPending(context.Background(), 10)
+			pending, pendingErr := fixture.repo.ListSettlementPending(context.Background(), time.Now().Add(time.Minute), 10)
 			require.NoError(t, pendingErr)
 			require.Len(t, pending, 1)
 			require.Equal(t, stored.ID, pending[0].ID)
@@ -1128,6 +1187,68 @@ func TestMediaOrchestratorPrechargedInitializationFailureRefundsActualAmount(t *
 	}
 }
 
+func TestMediaOrchestratorRollsBackEarlierInputRowsWhenLaterCreateFails(t *testing.T) {
+	fixture := newMediaOrchestratorFixture(t)
+	persistErr := errors.New("persist second input failed")
+	fixture.artifacts.createErr = persistErr
+	fixture.artifacts.createErrAt = 2
+	req := validAsyncMediaCreateRequest()
+	req.Operation = MediaOperationImageToImage
+	req.Inputs = []MediaArtifactInput{
+		validOrchestratorImageInput(0, "image/png"),
+		validOrchestratorImageInput(1, "image/png"),
+	}
+
+	result, err := fixture.orchestrator.Create(context.Background(), req)
+
+	require.ErrorIs(t, err, persistErr)
+	require.NotNil(t, result)
+	require.False(t, result.InputsAdopted)
+	stored, listErr := fixture.artifacts.ListByTaskID(context.Background(), result.Task.ID)
+	require.NoError(t, listErr)
+	require.Empty(t, stored)
+}
+
+func TestMediaOrchestratorAdoptsInputsWhenArtifactCommitOutcomeIsUnknown(t *testing.T) {
+	fixture := newMediaOrchestratorFixture(t)
+	fixture.orchestrator.deps.StorageConsistency = &mediaContentConsistencyStub{
+		repo: fixture.artifacts, errAt: 2, err: ErrMediaStorageCommitOutcomeUnknown,
+	}
+	req := validAsyncMediaCreateRequest()
+	req.Operation = MediaOperationImageToImage
+	first := validOrchestratorImageInput(0, "image/png")
+	second := validOrchestratorImageInput(1, "image/png")
+	first.StorageProvider, second.StorageProvider = MediaStorageProviderLocal, MediaStorageProviderLocal
+	first.StorageRevision, second.StorageRevision = "revision-1", "revision-1"
+	req.Inputs = []MediaArtifactInput{first, second}
+
+	result, err := fixture.orchestrator.Create(context.Background(), req)
+
+	require.ErrorIs(t, err, ErrMediaStorageCommitOutcomeUnknown)
+	require.NotNil(t, result)
+	require.True(t, result.InputsAdopted, "the handler must retain objects which may already be referenced")
+	stored, listErr := fixture.artifacts.ListByTaskID(context.Background(), result.Task.ID)
+	require.NoError(t, listErr)
+	require.Len(t, stored, 1, "prior committed rows must not be rolled back while the current outcome is unknown")
+}
+
+func TestMediaOrchestratorRollsBackInputRowsWhenDurableSpecWriteFails(t *testing.T) {
+	fixture := newMediaOrchestratorFixture(t)
+	fixture.repo.durableWriteErrors = 1
+	req := validAsyncMediaCreateRequest()
+	req.Operation = MediaOperationImageToImage
+	req.Inputs = []MediaArtifactInput{validOrchestratorImageInput(0, "image/png")}
+
+	result, err := fixture.orchestrator.Create(context.Background(), req)
+
+	require.ErrorContains(t, err, "durable input write failed")
+	require.NotNil(t, result)
+	require.False(t, result.InputsAdopted)
+	stored, listErr := fixture.artifacts.ListByTaskID(context.Background(), result.Task.ID)
+	require.NoError(t, listErr)
+	require.Empty(t, stored)
+}
+
 func TestMediaOrchestratorCompensationWriteAppliedButReturnedErrorStillSettles(t *testing.T) {
 	fixture := newMediaOrchestratorFixture(t)
 	fixture.pricing.snapshot.EstimatedAmount = 3.25
@@ -1161,6 +1282,35 @@ func TestMediaOrchestratorDeterministicPrechargeFailureTerminatesWithoutRefund(t
 	require.Empty(t, stored.SettlementRecovery)
 	require.Equal(t, 0, fixture.queue.enqueueCalls())
 	require.Equal(t, 0, fixture.billing.settleFailureCalls())
+}
+
+func TestMediaOrchestratorPreservesClassifiableBillingPrechargeErrors(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		err  error
+	}{
+		{name: "insufficient balance", err: ErrInsufficientBalance},
+		{name: "api key quota", err: ErrAPIKeyQuotaExhausted},
+		{name: "api key rate limit", err: ErrAPIKeyRateLimit5hExceeded},
+		{name: "subscription limit", err: ErrDailyLimitExceeded},
+		{name: "subscription status", err: ErrSubscriptionInvalid},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			fixture := newMediaOrchestratorFixture(t)
+			fixture.billing.prechargeErr = fmt.Errorf("billing ledger rejected precharge: %w", tt.err)
+
+			result, err := fixture.orchestrator.Create(context.Background(), validAsyncMediaCreateRequest())
+
+			require.ErrorIs(t, err, tt.err)
+			require.NotNil(t, result)
+			stored := fixture.repo.mustGet(result.Task.ID)
+			require.Equal(t, MediaTaskStatusFailed, stored.Status)
+			require.Equal(t, "billing_precharge", stored.ErrorCode)
+			require.Equal(t, MediaBillingStatusSettled, stored.BillingStatus)
+			require.Equal(t, 0, fixture.queue.enqueueCalls())
+			require.Equal(t, 0, fixture.billing.settleFailureCalls())
+		})
+	}
 }
 
 func TestMediaOrchestratorDeterministicReconciledPrechargeFailureTerminatesWithoutRefund(t *testing.T) {
@@ -1236,6 +1386,7 @@ func TestMediaOrchestratorSyncSubscribePrecedesFirstDBRead(t *testing.T) {
 	fixture.repo.readyPublishedHook = func(task *MediaTask) {
 		task.Status = MediaTaskStatusCompleted
 		task.Stage = MediaTaskStageCompleted
+		task.BillingStatus = MediaBillingStatusSettled
 	}
 	result, err := fixture.orchestrator.Create(context.Background(), validSyncMediaCreateRequest())
 	require.NoError(t, err)
@@ -1650,6 +1801,7 @@ func TestMediaOrchestratorTimeoutTransitionErrorReloadsCompletedWinner(t *testin
 	fixture.repo.beforeNextVersionedTransition = func(task *MediaTask) {
 		task.Status = MediaTaskStatusCompleted
 		task.Stage = MediaTaskStageCompleted
+		task.BillingStatus = MediaBillingStatusSettled
 		task.Version++
 		fixture.artifacts.mu.Lock()
 		fixture.artifacts.items[task.ID] = []MediaArtifact{{ID: 81, TaskID: task.ID, Direction: "output", Position: 0}}
@@ -1771,7 +1923,7 @@ func TestMediaOrchestratorGetForUserSanitizesInternalTaskFields(t *testing.T) {
 		ID: 1, TaskID: created.Task.ID, ObjectKey: "private/object", UpstreamReference: "private-upstream", PublicURL: "https://example.test/media",
 	}}
 
-	task, artifacts, err := fixture.orchestrator.GetForUser(context.Background(), created.Task.PublicID, created.Task.UserID)
+	task, artifacts, err := fixture.orchestrator.GetForUser(context.Background(), created.Task.PublicID, created.Task.UserID, created.Task.APIKeyID)
 	require.NoError(t, err)
 	require.Nil(t, task.AccountID)
 	require.Empty(t, task.UpstreamTaskID)
@@ -1798,8 +1950,133 @@ func TestMediaOrchestratorGetForUserSanitizesInternalTaskFields(t *testing.T) {
 	require.Empty(t, artifacts[0].UpstreamReference)
 	require.Equal(t, "https://example.test/media", artifacts[0].PublicURL)
 
-	_, _, err = fixture.orchestrator.GetForUser(context.Background(), created.Task.PublicID, created.Task.UserID+1)
+	_, _, err = fixture.orchestrator.GetForUser(context.Background(), created.Task.PublicID, created.Task.UserID+1, created.Task.APIKeyID)
 	require.ErrorIs(t, err, ErrMediaTaskNotFound)
+}
+
+func TestMediaOrchestratorDefersCompletedResultVisibilityUntilSettlementSucceeds(t *testing.T) {
+	fixture := newMediaOrchestratorFixture(t)
+	created, err := fixture.orchestrator.Create(context.Background(), validAsyncMediaCreateRequest())
+	require.NoError(t, err)
+	fixture.artifacts.items[created.Task.ID] = []MediaArtifact{{
+		ID: 91, TaskID: created.Task.ID, Direction: "output", Position: 0,
+		MediaType: MediaTypeImage, PublicURL: "https://example.test/private-until-settled.png",
+	}}
+	fixture.repo.mutate(created.Task.ID, func(task *MediaTask) {
+		task.Status = MediaTaskStatusCompleted
+		task.Stage = MediaTaskStageCompleted
+		task.Progress = 100
+		task.BillingStatus = MediaBillingStatusRetry
+		finishedAt := time.Now().UTC()
+		task.FinishedAt = &finishedAt
+	})
+
+	internal := fixture.repo.mustGet(created.Task.ID)
+	result, err := fixture.orchestrator.terminalResult(context.Background(), internal)
+	require.NoError(t, err)
+	require.Equal(t, MediaCreateDispositionAccepted, result.Disposition)
+	require.Equal(t, MediaTaskStatusInProgress, result.Task.Status)
+	require.Equal(t, MediaTaskStageSettling, result.Task.Stage)
+	require.Equal(t, 99, result.Task.Progress)
+	require.Nil(t, result.Task.FinishedAt)
+	require.Empty(t, result.Artifacts)
+
+	publicTask, artifacts, err := fixture.orchestrator.GetForUser(
+		context.Background(), created.Task.PublicID, created.Task.UserID, created.Task.APIKeyID,
+	)
+	require.NoError(t, err)
+	require.Equal(t, MediaTaskStatusInProgress, publicTask.Status)
+	require.Equal(t, 99, publicTask.Progress)
+	require.Empty(t, artifacts)
+
+	fixture.repo.mutate(created.Task.ID, func(task *MediaTask) {
+		task.BillingStatus = MediaBillingStatusSettled
+	})
+	internal = fixture.repo.mustGet(created.Task.ID)
+	result, err = fixture.orchestrator.terminalResult(context.Background(), internal)
+	require.NoError(t, err)
+	require.Equal(t, MediaCreateDispositionCompleted, result.Disposition)
+	require.Equal(t, MediaTaskStatusCompleted, result.Task.Status)
+	require.Len(t, result.Artifacts, 1)
+
+	publicTask, artifacts, err = fixture.orchestrator.GetForUser(
+		context.Background(), created.Task.PublicID, created.Task.UserID, created.Task.APIKeyID,
+	)
+	require.NoError(t, err)
+	require.Equal(t, MediaTaskStatusCompleted, publicTask.Status)
+	require.Len(t, artifacts, 1)
+}
+
+func TestMediaOrchestratorWaitSyncKeepsSynchronousCompletionWhenSettlementSucceeds(t *testing.T) {
+	fixture := newMediaOrchestratorFixture(t)
+	fixture.clock.autoFire = false
+	created, err := fixture.orchestrator.Create(context.Background(), validAsyncMediaCreateRequest())
+	require.NoError(t, err)
+	fixture.repo.mutate(created.Task.ID, func(task *MediaTask) {
+		task.Status = MediaTaskStatusCompleted
+		task.Stage = MediaTaskStageCompleted
+		task.Progress = 100
+		task.BillingStatus = MediaBillingStatusPrecharged
+	})
+	fixture.artifacts.items[created.Task.ID] = []MediaArtifact{{
+		ID: 92, TaskID: created.Task.ID, Direction: "output", Position: 0, MediaType: MediaTypeImage,
+	}}
+	terminal := make(chan MediaTaskStatus, 1)
+	fixture.queue.terminal = terminal
+	readUnsettled := make(chan struct{})
+	var readOnce sync.Once
+	fixture.repo.getHook = func(_ int, task *MediaTask) {
+		if mediaCompletionAwaitingSettlement(task) {
+			readOnce.Do(func() { close(readUnsettled) })
+		}
+	}
+	go func() {
+		<-readUnsettled
+		fixture.repo.mutate(created.Task.ID, func(task *MediaTask) {
+			task.BillingStatus = MediaBillingStatusSettled
+		})
+		terminal <- MediaTaskStatusCompleted
+	}()
+
+	settings := fixture.settings.settings
+	settings.MediaSyncWaitTimeoutSeconds = 1
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	result, err := fixture.orchestrator.waitSync(ctx, created.Task, &settings)
+	require.NoError(t, err)
+	require.Equal(t, MediaCreateDispositionCompleted, result.Disposition)
+	require.Len(t, result.Artifacts, 1)
+}
+
+func TestMediaOrchestratorWaitSyncReturnsAcceptedAfterFailedSettlementAttempt(t *testing.T) {
+	fixture := newMediaOrchestratorFixture(t)
+	fixture.clock.autoFire = false
+	created, err := fixture.orchestrator.Create(context.Background(), validAsyncMediaCreateRequest())
+	require.NoError(t, err)
+	fixture.repo.mutate(created.Task.ID, func(task *MediaTask) {
+		task.Status = MediaTaskStatusCompleted
+		task.Stage = MediaTaskStageCompleted
+		task.Progress = 100
+		task.BillingStatus = MediaBillingStatusRetry
+	})
+	fixture.artifacts.items[created.Task.ID] = []MediaArtifact{{
+		ID: 93, TaskID: created.Task.ID, Direction: "output", Position: 0, MediaType: MediaTypeImage,
+	}}
+	terminal := make(chan MediaTaskStatus, 1)
+	terminal <- MediaTaskStatusCompleted
+	fixture.queue.terminal = terminal
+
+	settings := fixture.settings.settings
+	settings.MediaSyncWaitTimeoutSeconds = 1
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	result, err := fixture.orchestrator.waitSync(ctx, created.Task, &settings)
+	require.NoError(t, err)
+	require.Equal(t, MediaCreateDispositionAccepted, result.Disposition)
+	require.Equal(t, MediaTaskStatusInProgress, result.Task.Status)
+	require.Equal(t, MediaTaskStageSettling, result.Task.Stage)
+	require.Equal(t, 99, result.Task.Progress)
+	require.Empty(t, result.Artifacts)
 }
 
 func validAsyncMediaCreateRequest() MediaCreateRequest {
@@ -1963,6 +2240,7 @@ type orchestratorTaskRepository struct {
 	transitionVersionedErr          error
 	transitionVersionedAppliedErr   error
 	failSettlementPlanWrites        int
+	durableWriteErrors              int
 	readyWriteErrors                int
 	readyWriteAppliedErrors         int
 	getErrors                       int
@@ -2027,14 +2305,14 @@ func (r *orchestratorTaskRepository) GetByID(ctx context.Context, id int64) (*Me
 	return cloneOrchestratorTask(task), nil
 }
 
-func (r *orchestratorTaskRepository) GetByPublicIDForUser(ctx context.Context, publicID string, userID int64) (*MediaTask, error) {
+func (r *orchestratorTaskRepository) GetByPublicIDForUser(ctx context.Context, publicID string, userID, apiKeyID int64) (*MediaTask, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	for _, task := range r.tasks {
-		if task.PublicID == publicID && task.UserID == userID {
+		if task.PublicID == publicID && task.UserID == userID && task.APIKeyID == apiKeyID {
 			return cloneOrchestratorTask(task), nil
 		}
 	}
@@ -2076,6 +2354,10 @@ func (r *orchestratorTaskRepository) UpdateQueued(ctx context.Context, id, versi
 	task, ok := r.tasks[id]
 	if !ok || task.Status != MediaTaskStatusQueued || task.Version != version {
 		return false, nil
+	}
+	if _, persistsInputs := updates["request_spec"]; persistsInputs && r.durableWriteErrors > 0 {
+		r.durableWriteErrors--
+		return false, errors.New("durable input write failed")
 	}
 	if _, publishesReady := updates["billing_status"]; publishesReady && r.readyWriteErrors > 0 {
 		r.readyWriteErrors--
@@ -2155,6 +2437,7 @@ func (r *orchestratorTaskRepository) Transition(ctx context.Context, id int64, f
 		r.completeOnNextTransition = false
 		task.Status = MediaTaskStatusCompleted
 		task.Stage = MediaTaskStageCompleted
+		task.BillingStatus = MediaBillingStatusSettled
 		return false, nil
 	}
 	task.Status = to
@@ -2176,6 +2459,7 @@ func (r *orchestratorTaskRepository) TransitionSyncTimeout(ctx context.Context, 
 		r.completeOnNextTransition = false
 		task.Status = MediaTaskStatusCompleted
 		task.Stage = MediaTaskStageCompleted
+		task.BillingStatus = MediaBillingStatusSettled
 		task.Version++
 		return false, nil
 	}
@@ -2226,6 +2510,7 @@ func (r *orchestratorTaskRepository) MarkSyncFallback(ctx context.Context, id in
 		r.completeOnNextFallback = false
 		task.Status = MediaTaskStatusCompleted
 		task.Stage = MediaTaskStageCompleted
+		task.BillingStatus = MediaBillingStatusSettled
 		return false, nil
 	}
 	task.SyncFallback = true
@@ -2234,6 +2519,7 @@ func (r *orchestratorTaskRepository) MarkSyncFallback(ctx context.Context, id in
 		r.completeAfterSuccessfulFallback = false
 		task.Status = MediaTaskStatusCompleted
 		task.Stage = MediaTaskStageCompleted
+		task.BillingStatus = MediaBillingStatusSettled
 		task.Version++
 	}
 	if r.markFallbackAppliedErr != nil {
@@ -2247,7 +2533,7 @@ func (r *orchestratorTaskRepository) MarkSyncFallback(ctx context.Context, id in
 func (r *orchestratorTaskRepository) ListRecoverable(context.Context, time.Time, int) ([]MediaTask, error) {
 	return nil, nil
 }
-func (r *orchestratorTaskRepository) ListSettlementPending(_ context.Context, limit int) ([]MediaTask, error) {
+func (r *orchestratorTaskRepository) ListSettlementPending(_ context.Context, retryReadyBefore time.Time, limit int) ([]MediaTask, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	result := make([]MediaTask, 0, limit)
@@ -2255,7 +2541,7 @@ func (r *orchestratorTaskRepository) ListSettlementPending(_ context.Context, li
 		billingPending := task.BillingStatus == MediaBillingStatusPrecharged ||
 			task.BillingStatus == MediaBillingStatusSettling || task.BillingStatus == MediaBillingStatusRetry
 		hasRecovery := task.Status.IsTerminal() && len(task.SettlementRecovery) > 0
-		if billingPending && (len(task.SettlementPlan) > 0 || hasRecovery) {
+		if billingPending && (len(task.SettlementPlan) > 0 || hasRecovery) && !task.UpdatedAt.After(retryReadyBefore) {
 			result = append(result, *cloneOrchestratorTask(task))
 			if len(result) >= limit {
 				break
@@ -2410,10 +2696,13 @@ func cloneOrchestratorTime(value *time.Time) *time.Time {
 }
 
 type orchestratorArtifactRepository struct {
-	mu        sync.Mutex
-	nextID    int64
-	items     map[int64][]MediaArtifact
-	createErr error
+	mu          sync.Mutex
+	nextID      int64
+	items       map[int64][]MediaArtifact
+	createErr   error
+	createErrAt int
+	createCalls int
+	deleteErr   error
 }
 
 func newOrchestratorArtifactRepository() *orchestratorArtifactRepository {
@@ -2425,7 +2714,8 @@ func (r *orchestratorArtifactRepository) Create(ctx context.Context, artifact *M
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if r.createErr != nil {
+	r.createCalls++
+	if r.createErr != nil && (r.createErrAt == 0 || r.createCalls == r.createErrAt) {
 		return nil, r.createErr
 	}
 	copy := *artifact
@@ -2433,6 +2723,30 @@ func (r *orchestratorArtifactRepository) Create(ctx context.Context, artifact *M
 	r.nextID++
 	r.items[copy.TaskID] = append(r.items[copy.TaskID], copy)
 	return &copy, nil
+}
+func (r *orchestratorArtifactRepository) DeleteExact(ctx context.Context, artifact *MediaArtifact) (bool, error) {
+	if err := ctx.Err(); err != nil {
+		return false, err
+	}
+	if artifact == nil {
+		return false, nil
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.deleteErr != nil {
+		return false, r.deleteErr
+	}
+	items := r.items[artifact.TaskID]
+	for index := range items {
+		stored := items[index]
+		if stored.ID == artifact.ID && stored.Direction == artifact.Direction && stored.Position == artifact.Position &&
+			stored.StorageProvider == artifact.StorageProvider && stored.ObjectKey == artifact.ObjectKey &&
+			stored.ChecksumSHA256 == artifact.ChecksumSHA256 {
+			r.items[artifact.TaskID] = append(items[:index], items[index+1:]...)
+			return true, nil
+		}
+	}
+	return false, nil
 }
 func (r *orchestratorArtifactRepository) ListByTaskID(ctx context.Context, taskID int64) ([]MediaArtifact, error) {
 	if err := ctx.Err(); err != nil {
@@ -2454,6 +2768,7 @@ type orchestratorQueue struct {
 	enqueueFunc       func(int, int64) error
 	subscribeHook     func()
 	closeSubscription bool
+	terminal          <-chan MediaTaskStatus
 }
 
 func (q *orchestratorQueue) EnsureGroups(context.Context) error { return nil }
@@ -2493,6 +2808,9 @@ func (q *orchestratorQueue) SubscribeTerminal(ctx context.Context, _ int64) (<-c
 		q.subscribeHook()
 	}
 	ch := make(chan MediaTaskStatus)
+	if q.terminal != nil {
+		return q.terminal, func() {}, nil
+	}
 	if q.closeSubscription {
 		close(ch)
 	}

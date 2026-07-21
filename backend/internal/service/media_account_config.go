@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
@@ -113,7 +114,12 @@ func NormalizeMediaAccountConfig(config MediaAccountConfig) (MediaAccountConfig,
 			}
 			binding.NativeAsyncMode = mode
 			if err := binding.RequestMapping.Validate(); err != nil {
-				return MediaAccountConfig{}, err
+				return MediaAccountConfig{}, fmt.Errorf(
+					"%w: model %q request_mapping: %w",
+					ErrInvalidMediaAccountConfig,
+					model,
+					err,
+				)
 			}
 			normalized[model] = binding
 		}
@@ -216,6 +222,9 @@ func mediaAccountConfigFromExtra(extra map[string]any) (MediaAccountConfig, bool
 	}
 	config, err = NormalizeMediaAccountConfig(config)
 	if err != nil {
+		if !errors.Is(err, ErrInvalidMediaAccountConfig) {
+			return MediaAccountConfig{}, true, fmt.Errorf("%w: %w", ErrInvalidMediaAccountConfig, err)
+		}
 		return MediaAccountConfig{}, true, err
 	}
 	return config, true, nil
@@ -407,4 +416,127 @@ func mediaAccountConfigMap(config MediaAccountConfig) map[string]any {
 		}
 	}
 	return map[string]any{"version": 1, "provider": config.Adapter, "models": models}
+}
+
+// validateMediaAccountConfigChange validates only enabled bindings that are
+// new or changed. Unchanged historical bindings must not make an unrelated
+// account update fail after a model becomes unavailable in the live registry;
+// disabling or removing such a binding remains possible as well.
+func validateMediaAccountConfigChange(
+	registry *MediaModelRegistry,
+	previousExtra map[string]any,
+	nextExtra map[string]any,
+) error {
+	nextConfig, configured, err := mediaAccountConfigFromExtra(nextExtra)
+	if err != nil || !configured {
+		return err
+	}
+
+	var previousConfig *MediaAccountConfig
+	if previous, previousConfigured, previousErr := mediaAccountConfigFromExtra(previousExtra); previousErr == nil && previousConfigured {
+		previousConfig = &previous
+	}
+	return validateMediaAccountEnabledBindings(registry, previousConfig, nextConfig)
+}
+
+func validateMediaAccountEnabledBindings(
+	registry *MediaModelRegistry,
+	previous *MediaAccountConfig,
+	next MediaAccountConfig,
+) error {
+	previousBindings := normalizedMediaAccountBindings(previous)
+	for modelID, binding := range normalizedMediaAccountBindings(&next) {
+		if !binding.Enabled {
+			continue
+		}
+		if previousBinding, exists := previousBindings[modelID]; exists && mediaAccountBindingsEqual(previousBinding, binding) {
+			continue
+		}
+		if registry == nil {
+			return errors.New("media model registry is nil")
+		}
+
+		definition, err := registry.definitionByID(modelID)
+		if err != nil {
+			return fmt.Errorf(
+				"%w: enabled model %q is not an enabled, adapter-ready canonical model: %w",
+				ErrInvalidMediaAccountConfig,
+				modelID,
+				err,
+			)
+		}
+		if definition == nil ||
+			!definition.Enabled ||
+			normalizeMediaModelID(definition.ModelID) != modelID ||
+			!definition.AdapterResolution.IsReady() {
+			return fmt.Errorf(
+				"%w: enabled model %q is not an enabled, adapter-ready canonical model",
+				ErrInvalidMediaAccountConfig,
+				modelID,
+			)
+		}
+		if !definition.AdapterResolution.SupportsAccountMode(binding.NativeAsyncMode) {
+			return fmt.Errorf(
+				"%w: enabled model %q async_mode is incompatible with its adapter capabilities",
+				ErrInvalidMediaAccountConfig,
+				modelID,
+			)
+		}
+		if err := validateMediaMappingMediaType(binding.RequestMapping, definition.MediaType); err != nil {
+			return fmt.Errorf(
+				"%w: enabled model %q request_mapping: %w",
+				ErrInvalidMediaAccountConfig,
+				modelID,
+				err,
+			)
+		}
+	}
+	return nil
+}
+
+func mediaAccountBindingsEqual(left, right MediaModelBinding) bool {
+	if left.Enabled != right.Enabled ||
+		left.UpstreamModel != right.UpstreamModel ||
+		left.NativeAsyncMode != right.NativeAsyncMode ||
+		len(left.RequestMapping.Rules) != len(right.RequestMapping.Rules) {
+		return false
+	}
+	if len(left.RequestMapping.Rules) == 0 {
+		// An omitted rules array and an explicit empty array are semantically the
+		// same mapping and commonly differ only because of a UI JSON round trip.
+		return true
+	}
+	return reflect.DeepEqual(left.RequestMapping.Rules, right.RequestMapping.Rules)
+}
+
+func normalizedMediaAccountBindings(config *MediaAccountConfig) map[string]MediaModelBinding {
+	if config == nil {
+		return nil
+	}
+	if config.Version == 1 || len(config.Models) > 0 {
+		bindings := make(map[string]MediaModelBinding, len(config.Models))
+		for modelID, binding := range config.Models {
+			bindings[normalizeMediaModelID(modelID)] = binding
+		}
+		return bindings
+	}
+
+	bindings := make(map[string]MediaModelBinding, len(config.ModelOverrides))
+	for modelID, override := range config.ModelOverrides {
+		upstreamModel := override.UpstreamModel
+		if upstreamModel == "" {
+			upstreamModel = strings.TrimSpace(modelID)
+		}
+		mode := override.NativeAsyncMode
+		if mode == "" {
+			mode = config.NativeAsyncMode
+		}
+		bindings[normalizeMediaModelID(modelID)] = MediaModelBinding{
+			Enabled:         true,
+			UpstreamModel:   upstreamModel,
+			NativeAsyncMode: mode,
+			RequestMapping:  MediaRequestMapping{},
+		}
+	}
+	return bindings
 }

@@ -79,7 +79,7 @@ Media Gateway
 Model Registry
   - 请求别名 → 规范模型 ID
   - 校验模型能力
-  - 获取模型厂商和默认 Adapter
+  - 按模型厂商 + 规范模型匹配代码注册的 Adapter
         │
         ▼
 Media Scheduler
@@ -124,7 +124,7 @@ GET  /v1/images/{task_id}
 GET  /v1/images/{task_id}/content
 ```
 
-`/v1/images/{task_id}/content` 用于本地或 MinIO 产物的签名内容交付；多图任务通过签名参数选择产物位置。
+`/v1/images/{task_id}/content?index={position}` 用于本地或 MinIO 产物的鉴权内容交付；`index` 为非负产物位置，省略时默认为 `0`。多图响应中的每个私有存储 URL 都必须携带对应 `index`，避免多张图片指向同一产物。
 
 ### 6.2 视频
 
@@ -163,7 +163,7 @@ GET  /v1/videos/{task_id}/content
 public_model_id       // 唯一规范模型 ID
 vendor                // 模型厂商
 capabilities          // image、video 或 both
-default_adapter       // vendor + model 对应 Adapter
+adapter_resolution    // 运行时按 vendor + model 自动解析，不由管理员填写
 default_async_mode    // unsupported、native、emulated
 enabled
 ```
@@ -496,7 +496,7 @@ Local/MinIO
 
 ### 14.1 全局媒体模型
 
-管理端维护公共模型 ID、厂商、图片/视频能力、默认 Adapter、默认异步能力和启用状态，并维护系统级请求模型别名。
+管理端维护公共模型 ID、厂商、图片/视频能力、默认异步能力和启用状态，并展示代码注册表自动解析出的 Adapter 与能力诊断；管理员不填写 Adapter。管理端同时维护系统级请求模型别名。
 
 ### 14.2 媒体账号
 

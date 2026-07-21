@@ -59,6 +59,9 @@ func RegisterAdminRoutes(
 		// 系统设置
 		registerSettingsRoutes(admin, h)
 
+		// 新媒体产物存储设置
+		registerMediaStorageRoutes(admin, h)
+
 		// 数据管理
 		registerDataManagementRoutes(admin, h)
 
@@ -116,6 +119,7 @@ func registerMediaModelRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		models.GET("", h.Admin.MediaModel.List)
 		models.POST("", h.Admin.MediaModel.Create)
 		models.GET("/preflight", h.Admin.MediaModel.Preflight)
+		models.POST("/request-mapping-preview", h.Admin.MediaModel.PreviewRequestMapping)
 		models.GET("/:id", h.Admin.MediaModel.GetByID)
 		models.PUT("/:id", h.Admin.MediaModel.Update)
 		models.DELETE("/:id", h.Admin.MediaModel.Delete)
@@ -550,6 +554,15 @@ func registerBackupRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 
 		// 恢复操作
 		backup.POST("/:id/restore", h.Admin.Backup.RestoreBackup)
+	}
+}
+
+func registerMediaStorageRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	storage := admin.Group("/settings/media-storage")
+	{
+		storage.GET("", h.Admin.MediaStorage.Get)
+		storage.PUT("", h.Admin.MediaStorage.Update)
+		storage.POST("/test", h.Admin.MediaStorage.Test)
 	}
 }
 

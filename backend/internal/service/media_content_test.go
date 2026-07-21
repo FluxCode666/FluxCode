@@ -9,6 +9,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -33,29 +34,61 @@ type mediaContentTaskRepoStub struct {
 	returnNil bool
 }
 
-func (s *mediaContentTaskRepoStub) GetByPublicIDForUser(_ context.Context, publicID string, userID int64) (*MediaTask, error) {
+func (s *mediaContentTaskRepoStub) GetByPublicIDForUser(_ context.Context, publicID string, userID, apiKeyID int64) (*MediaTask, error) {
 	if s.err != nil {
 		return nil, s.err
 	}
 	if s.returnNil {
 		return nil, nil
 	}
-	if s.task == nil || s.task.PublicID != publicID || s.task.UserID != userID {
+	if s.task == nil || s.task.PublicID != publicID || s.task.UserID != userID ||
+		(s.task.APIKeyID > 0 && s.task.APIKeyID != apiKeyID) {
 		return nil, ErrMediaTaskNotFound
 	}
 	copy := *s.task
+	// Most content tests predate billing visibility and model an already
+	// publishable completed task. Individual settlement tests set an explicit
+	// non-settled status.
+	if copy.Status == MediaTaskStatusCompleted && copy.BillingStatus == "" {
+		copy.BillingStatus = MediaBillingStatusSettled
+	}
 	return &copy, nil
 }
 
 type mediaContentArtifactRepoStub struct {
-	items []MediaArtifact
+	items       []MediaArtifact
+	createCalls int
+	createErrAt int
+	createErr   error
+	deleteErr   error
 }
 
 func (s *mediaContentArtifactRepoStub) Create(_ context.Context, artifact *MediaArtifact) (*MediaArtifact, error) {
+	s.createCalls++
+	if s.createErr != nil && s.createCalls == s.createErrAt {
+		return nil, s.createErr
+	}
 	copy := *artifact
 	copy.ID = int64(len(s.items) + 1)
 	s.items = append(s.items, copy)
 	return &copy, nil
+}
+
+func (s *mediaContentArtifactRepoStub) DeleteExact(_ context.Context, artifact *MediaArtifact) (bool, error) {
+	if s.deleteErr != nil {
+		return false, s.deleteErr
+	}
+	for index := range s.items {
+		stored := s.items[index]
+		if artifact != nil && stored.ID == artifact.ID && stored.TaskID == artifact.TaskID &&
+			stored.Direction == artifact.Direction && stored.Position == artifact.Position &&
+			stored.StorageProvider == artifact.StorageProvider && stored.ObjectKey == artifact.ObjectKey &&
+			stored.ChecksumSHA256 == artifact.ChecksumSHA256 {
+			s.items = append(s.items[:index], s.items[index+1:]...)
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func (s *mediaContentArtifactRepoStub) ListByTaskID(_ context.Context, taskID int64) ([]MediaArtifact, error) {
@@ -111,10 +144,63 @@ func (mediaContentHTTPReaderStub) Open(context.Context, MediaHTTPContentRequest)
 	return nil, ErrMediaContentUnavailable
 }
 
+type mediaContentHTTPReaderResultStub struct {
+	content *MediaContent
+	err     error
+}
+
+func (mediaContentHTTPReaderResultStub) ValidateURL(raw string) (string, error) { return raw, nil }
+func (s mediaContentHTTPReaderResultStub) Open(context.Context, MediaHTTPContentRequest) (*MediaContent, error) {
+	return s.content, s.err
+}
+
+type trackedMediaReadCloser struct {
+	reader      io.Reader
+	closeErr    error
+	closeCalls  int
+	largestRead int
+}
+
+func (r *trackedMediaReadCloser) Read(buffer []byte) (int, error) {
+	if len(buffer) > r.largestRead {
+		r.largestRead = len(buffer)
+	}
+	return r.reader.Read(buffer)
+}
+
+func (r *trackedMediaReadCloser) Close() error {
+	r.closeCalls++
+	return r.closeErr
+}
+
 type mediaContentObjectStoreStub struct {
-	put     func(context.Context, MediaArtifactInput) (*MediaArtifact, error)
-	open    func(context.Context, *MediaArtifact, string) (*MediaContent, error)
-	discard func(context.Context, MediaArtifactInput) error
+	put       func(context.Context, MediaArtifactInput) (*MediaArtifact, error)
+	putStream func(context.Context, MediaArtifactInput, io.Reader) (*MediaArtifact, error)
+	open      func(context.Context, *MediaArtifact, string) (*MediaContent, error)
+	discard   func(context.Context, MediaArtifactInput) error
+}
+
+type mediaContentConsistencyStub struct {
+	repo  MediaArtifactRepository
+	calls int
+	errAt int
+	err   error
+}
+
+func (*mediaContentConsistencyStub) CommitConfig(context.Context, string, string, []string) error {
+	return errors.New("unexpected config commit")
+}
+
+func (s *mediaContentConsistencyStub) CommitArtifact(
+	ctx context.Context,
+	_ string,
+	artifact *MediaArtifact,
+) (*MediaArtifact, error) {
+	s.calls++
+	if s.err != nil && s.calls == s.errAt {
+		return nil, s.err
+	}
+	return s.repo.Create(ctx, artifact)
 }
 
 func (s mediaContentObjectStoreStub) Discard(ctx context.Context, input MediaArtifactInput) error {
@@ -126,6 +212,17 @@ func (s mediaContentObjectStoreStub) Discard(ctx context.Context, input MediaArt
 
 func (s mediaContentObjectStoreStub) Put(ctx context.Context, input MediaArtifactInput) (*MediaArtifact, error) {
 	return s.put(ctx, input)
+}
+
+func (s mediaContentObjectStoreStub) PutStream(
+	ctx context.Context,
+	input MediaArtifactInput,
+	body io.Reader,
+) (*MediaArtifact, error) {
+	if s.putStream == nil {
+		return nil, ErrMediaStorageProviderUnavailable
+	}
+	return s.putStream(ctx, input, body)
 }
 
 func (s mediaContentObjectStoreStub) Open(ctx context.Context, artifact *MediaArtifact, byteRange string) (*MediaContent, error) {
@@ -152,7 +249,7 @@ func TestMediaContentServiceDecodesDataURLAndAppliesRange(t *testing.T) {
 		NewDisabledMediaArtifactObjectStore(),
 	)
 
-	content, err := svc.OpenVideo(context.Background(), "task_public", 42, "bytes=2-5")
+	content, err := svc.OpenVideo(context.Background(), "task_public", 42, 8, "bytes=2-5")
 	require.NoError(t, err)
 	defer content.Body.Close()
 	body, err := io.ReadAll(content.Body)
@@ -178,7 +275,7 @@ func TestMediaContentServiceDecodesImageDataURLAndAppliesRange(t *testing.T) {
 		NewDisabledMediaArtifactObjectStore(),
 	)
 
-	content, err := svc.OpenImage(context.Background(), "task_public", 42, "bytes=2-5")
+	content, err := svc.OpenImage(context.Background(), "task_public", 42, 8, 0, "bytes=2-5")
 	require.NoError(t, err)
 	defer content.Body.Close()
 	body, err := io.ReadAll(content.Body)
@@ -187,6 +284,39 @@ func TestMediaContentServiceDecodesImageDataURLAndAppliesRange(t *testing.T) {
 	require.Equal(t, "image/png", content.ContentType)
 	require.Equal(t, "bytes 2-5/10", content.ContentRange)
 	require.Equal(t, []byte("2345"), body)
+}
+
+func TestMediaContentServiceOpensImageOutputByPosition(t *testing.T) {
+	tasks := &mediaContentTaskRepoStub{task: &MediaTask{
+		ID: 1, PublicID: "task_public", UserID: 42,
+		MediaType: MediaTypeImage, Status: MediaTaskStatusCompleted, CreatedAt: time.Unix(1784112000, 0),
+	}}
+	artifacts := &mediaContentArtifactRepoStub{items: []MediaArtifact{
+		{
+			ID: 2, TaskID: 1, Direction: "output", Position: 0, MediaType: MediaTypeImage,
+			ContentType: "image/png", UpstreamReference: "data:image/png;base64,Zmlyc3Q=",
+		},
+		{
+			ID: 3, TaskID: 1, Direction: "output", Position: 1, MediaType: MediaTypeImage,
+			ContentType: "image/png", UpstreamReference: "data:image/png;base64,c2Vjb25k",
+		},
+	}}
+	svc := NewMediaContentService(
+		tasks, artifacts,
+		mediaContentSettingsStub{settings: &SystemSettings{}},
+		mediaContentAccountRepoStub{}, NewMediaAdapterRegistry(), mediaContentHTTPReaderStub{},
+		NewDisabledMediaArtifactObjectStore(),
+	)
+
+	content, err := svc.OpenImage(context.Background(), "task_public", 42, 8, 1, "")
+	require.NoError(t, err)
+	defer content.Body.Close()
+	body, err := io.ReadAll(content.Body)
+	require.NoError(t, err)
+	require.Equal(t, []byte("second"), body)
+
+	_, err = svc.OpenImage(context.Background(), "task_public", 42, 8, 2, "")
+	require.ErrorIs(t, err, ErrMediaArtifactNotFound)
 }
 
 func TestMediaContentServiceHidesTaskOwnedByAnotherUser(t *testing.T) {
@@ -199,7 +329,22 @@ func TestMediaContentServiceHidesTaskOwnedByAnotherUser(t *testing.T) {
 		NewMediaAdapterRegistry(), mediaContentHTTPReaderStub{}, NewDisabledMediaArtifactObjectStore(),
 	)
 
-	_, err := svc.OpenVideo(context.Background(), "task_public", 99, "")
+	_, err := svc.OpenVideo(context.Background(), "task_public", 99, 8, "")
+	require.ErrorIs(t, err, ErrMediaTaskNotFound)
+}
+
+func TestMediaContentServiceHidesTaskOwnedByAnotherAPIKey(t *testing.T) {
+	tasks := &mediaContentTaskRepoStub{task: &MediaTask{
+		ID: 1, PublicID: "task_public", UserID: 42, APIKeyID: 8,
+		MediaType: MediaTypeVideo, Status: MediaTaskStatusCompleted,
+	}}
+	svc := NewMediaContentService(
+		tasks, &mediaContentArtifactRepoStub{},
+		mediaContentSettingsStub{settings: &SystemSettings{}}, mediaContentAccountRepoStub{},
+		NewMediaAdapterRegistry(), mediaContentHTTPReaderStub{}, NewDisabledMediaArtifactObjectStore(),
+	)
+
+	_, err := svc.OpenVideo(context.Background(), "task_public", 42, 9, "")
 	require.ErrorIs(t, err, ErrMediaTaskNotFound)
 }
 
@@ -244,7 +389,7 @@ func TestMediaContentServicePropagatesObjectStoreRangeErrorsWithoutProxyFallback
 					open: func(context.Context, *MediaArtifact, string) (*MediaContent, error) { return nil, rangeErr },
 				},
 			)
-			content, err := svc.OpenVideo(context.Background(), "task_public", 42, "bytes=0-1")
+			content, err := svc.OpenVideo(context.Background(), "task_public", 42, 8, "bytes=0-1")
 			require.Nil(t, content)
 			require.ErrorIs(t, err, rangeErr)
 		})
@@ -269,7 +414,7 @@ func TestMediaContentServiceFallsBackToInlineDataAfterObjectStoreError(t *testin
 		},
 	)
 
-	content, err := svc.OpenVideo(context.Background(), "task_public", 42, "")
+	content, err := svc.OpenVideo(context.Background(), "task_public", 42, 8, "")
 	require.NoError(t, err)
 	defer content.Body.Close()
 	body, readErr := io.ReadAll(content.Body)
@@ -296,7 +441,7 @@ func TestMediaContentServiceFallsBackWhenObjectStoreReturnsNilBody(t *testing.T)
 		},
 	)
 
-	content, err := svc.OpenVideo(context.Background(), "task_public", 42, "")
+	content, err := svc.OpenVideo(context.Background(), "task_public", 42, 8, "")
 	require.NoError(t, err)
 	require.NotNil(t, content.Body)
 	defer content.Body.Close()
@@ -329,7 +474,7 @@ func TestMediaContentServiceFallsBackToAdapterAfterObjectStoreError(t *testing.T
 		},
 	)
 
-	content, err := svc.OpenVideo(context.Background(), "task_public", 42, "")
+	content, err := svc.OpenVideo(context.Background(), "task_public", 42, 8, "")
 	require.NoError(t, err)
 	defer content.Body.Close()
 	body, readErr := io.ReadAll(content.Body)
@@ -365,7 +510,7 @@ func TestMediaContentServiceUsesHistoricalAdapterAliasForContentFetch(t *testing
 		NewDisabledMediaArtifactObjectStore(),
 	)
 
-	content, err := svc.OpenVideo(context.Background(), task.PublicID, task.UserID, "")
+	content, err := svc.OpenVideo(context.Background(), task.PublicID, task.UserID, task.APIKeyID, "")
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, content.Body.Close()) })
 	require.Equal(t, int64(1), adapter.calls.Load())
@@ -396,7 +541,7 @@ func TestMediaContentServiceFinalFallbackErrorPreservesUnavailableAndInternalCau
 		},
 	)
 
-	content, err := svc.OpenVideo(context.Background(), "task_public", 42, "")
+	content, err := svc.OpenVideo(context.Background(), "task_public", 42, 8, "")
 	require.Nil(t, content)
 	require.ErrorIs(t, err, ErrMediaContentUnavailable)
 	require.ErrorIs(t, err, storeErr)
@@ -423,7 +568,7 @@ func TestMediaContentServiceSecureProxyFailuresRemainUnavailable(t *testing.T) {
 				mediaContentHTTPReaderStub{}, NewDisabledMediaArtifactObjectStore(),
 			)
 
-			content, err := svc.OpenVideo(context.Background(), "task_public", 42, "")
+			content, err := svc.OpenVideo(context.Background(), "task_public", 42, 8, "")
 			require.Nil(t, content)
 			require.ErrorIs(t, err, ErrMediaContentUnavailable)
 			require.ErrorIs(t, err, proxyErr)
@@ -449,7 +594,7 @@ func TestMediaContentServiceNoFallbackPreservesStoreErrorAsUnavailable(t *testin
 		},
 	)
 
-	content, err := svc.OpenVideo(context.Background(), "task_public", 42, "")
+	content, err := svc.OpenVideo(context.Background(), "task_public", 42, 8, "")
 	require.Nil(t, content)
 	require.ErrorIs(t, err, ErrMediaContentUnavailable)
 	require.ErrorIs(t, err, storeErr)
@@ -616,6 +761,280 @@ func TestMediaContentServiceRejectsEmptyOrMismatchedOutputsBeforeSideEffects(t *
 			require.Empty(t, artifacts.items)
 		})
 	}
+}
+
+func TestMediaContentServiceStreamsExternalOutputAndClosesBody(t *testing.T) {
+	accountID := int64(9)
+	video := testMediaMP4(2 << 20)
+	sum := sha256.Sum256(video)
+	body := &trackedMediaReadCloser{reader: bytes.NewReader(video)}
+	artifacts := &mediaContentArtifactRepoStub{}
+	bufferedPutCalled := false
+	streamPutCalled := false
+	store := mediaContentObjectStoreStub{
+		put: func(context.Context, MediaArtifactInput) (*MediaArtifact, error) {
+			bufferedPutCalled = true
+			return nil, errors.New("unexpected buffered put")
+		},
+		putStream: func(_ context.Context, input MediaArtifactInput, reader io.Reader) (*MediaArtifact, error) {
+			streamPutCalled = true
+			require.Empty(t, input.Data)
+			require.Empty(t, input.ExternalURL)
+			require.Equal(t, int64(len(video)), input.SizeBytes)
+			written, err := io.CopyBuffer(io.Discard, reader, make([]byte, 32<<10))
+			require.NoError(t, err)
+			require.Equal(t, int64(len(video)), written)
+			return &MediaArtifact{
+				MediaType: MediaTypeVideo, ContentType: "video/mp4", SizeBytes: written,
+				ChecksumSHA256: hex.EncodeToString(sum[:]), StorageProvider: MediaStorageProviderLocal,
+				ObjectKey: "tasks/output/video.mp4",
+			}, nil
+		},
+	}
+	svc := NewMediaContentService(
+		nil, artifacts, mediaContentSettingsStub{settings: &SystemSettings{}},
+		mediaContentAccountRepoStub{account: &Account{ID: accountID}}, nil,
+		mediaContentHTTPReaderResultStub{content: &MediaContent{
+			Body: body, StatusCode: http.StatusOK, ContentType: "video/mp4", ContentLength: int64(len(video)),
+		}},
+		store,
+	)
+
+	stored, err := svc.PersistOutputs(context.Background(), &MediaTask{
+		ID: 10, AccountID: &accountID, MediaType: MediaTypeVideo,
+	}, []MediaArtifactInput{{
+		MediaType: MediaTypeVideo, ContentType: "video/mp4", ExternalURL: "https://cdn.example/video.mp4",
+	}})
+	require.NoError(t, err)
+	require.Len(t, stored, 1)
+	require.True(t, streamPutCalled)
+	require.False(t, bufferedPutCalled)
+	require.Equal(t, 1, body.closeCalls)
+	require.LessOrEqual(t, body.largestRead, 32<<10)
+}
+
+func TestMediaContentServiceDiscardsStreamedObjectWhenResponseCloseFails(t *testing.T) {
+	accountID := int64(9)
+	closeErr := errors.New("upstream response close failed")
+	body := &trackedMediaReadCloser{reader: bytes.NewReader(testMediaMP4(2048)), closeErr: closeErr}
+	artifacts := &mediaContentArtifactRepoStub{}
+	discarded := false
+	store := mediaContentObjectStoreStub{
+		put: func(context.Context, MediaArtifactInput) (*MediaArtifact, error) {
+			return nil, errors.New("unexpected buffered put")
+		},
+		putStream: func(_ context.Context, input MediaArtifactInput, reader io.Reader) (*MediaArtifact, error) {
+			_, err := io.Copy(io.Discard, reader)
+			if err != nil {
+				return nil, err
+			}
+			return &MediaArtifact{
+				MediaType: input.MediaType, ContentType: input.ContentType,
+				StorageProvider: MediaStorageProviderLocal, ObjectKey: "tasks/output/video.mp4",
+			}, nil
+		},
+		discard: func(_ context.Context, input MediaArtifactInput) error {
+			discarded = true
+			require.Equal(t, MediaStorageProviderLocal, input.StorageProvider)
+			require.Equal(t, "tasks/output/video.mp4", input.ObjectKey)
+			return nil
+		},
+	}
+	svc := NewMediaContentService(
+		nil, artifacts, mediaContentSettingsStub{settings: &SystemSettings{}},
+		mediaContentAccountRepoStub{account: &Account{ID: accountID}}, nil,
+		mediaContentHTTPReaderResultStub{content: &MediaContent{
+			Body: body, StatusCode: http.StatusOK, ContentType: "video/mp4", ContentLength: 2048,
+		}},
+		store,
+	)
+
+	stored, err := svc.PersistOutputs(context.Background(), &MediaTask{
+		ID: 10, AccountID: &accountID, MediaType: MediaTypeVideo,
+	}, []MediaArtifactInput{{
+		MediaType: MediaTypeVideo, ContentType: "video/mp4", ExternalURL: "https://cdn.example/video.mp4",
+	}})
+	require.Nil(t, stored)
+	require.ErrorIs(t, err, closeErr)
+	require.True(t, discarded)
+	require.Equal(t, 1, body.closeCalls)
+	require.Empty(t, artifacts.items)
+}
+
+func TestMediaContentServiceRejectsInvalidExternalStreamsBeforeDatabaseWrite(t *testing.T) {
+	accountID := int64(9)
+	video := testMediaMP4(2048)
+	for _, tt := range []struct {
+		name          string
+		maxStoreBytes int64
+		input         MediaArtifactInput
+		contentType   string
+		contentLength int64
+		wantErr       error
+	}{
+		{
+			name: "adapter and response length differ", maxStoreBytes: 4096,
+			input: MediaArtifactInput{
+				MediaType: MediaTypeVideo, ContentType: "video/mp4", SizeBytes: int64(len(video) - 1),
+				ExternalURL: "https://cdn.example/video.mp4",
+			},
+			contentType: "video/mp4", contentLength: int64(len(video)), wantErr: ErrMediaStorageIntegrity,
+		},
+		{
+			name: "adapter and response content type differ", maxStoreBytes: 4096,
+			input: MediaArtifactInput{
+				MediaType: MediaTypeVideo, ContentType: "video/webm", ExternalURL: "https://cdn.example/video.webm",
+			},
+			contentType: "video/mp4", contentLength: int64(len(video)), wantErr: ErrMediaStorageIntegrity,
+		},
+		{
+			name: "declared mime differs from body", maxStoreBytes: 4096,
+			input: MediaArtifactInput{
+				MediaType: MediaTypeVideo, ContentType: "video/webm", ExternalURL: "https://cdn.example/video.webm",
+			},
+			contentType: "video/webm", contentLength: int64(len(video)), wantErr: ErrInvalidMediaInput,
+		},
+		{
+			name: "stream exceeds storage limit", maxStoreBytes: 1024,
+			input: MediaArtifactInput{
+				MediaType: MediaTypeVideo, ContentType: "video/mp4", ExternalURL: "https://cdn.example/video.mp4",
+			},
+			contentType: "video/mp4", contentLength: -1, wantErr: ErrMediaContentTooLarge,
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			root := t.TempDir()
+			store, err := NewLocalMediaArtifactObjectStore(root, tt.maxStoreBytes)
+			require.NoError(t, err)
+			t.Cleanup(func() { require.NoError(t, store.Close()) })
+			body := &trackedMediaReadCloser{reader: bytes.NewReader(video)}
+			artifacts := &mediaContentArtifactRepoStub{}
+			svc := NewMediaContentService(
+				nil, artifacts, mediaContentSettingsStub{settings: &SystemSettings{}},
+				mediaContentAccountRepoStub{account: &Account{ID: accountID}}, nil,
+				mediaContentHTTPReaderResultStub{content: &MediaContent{
+					Body: body, StatusCode: http.StatusOK, ContentType: tt.contentType, ContentLength: tt.contentLength,
+				}},
+				store,
+			)
+
+			stored, err := svc.PersistOutputs(context.Background(), &MediaTask{
+				ID: 10, AccountID: &accountID, MediaType: MediaTypeVideo,
+			}, []MediaArtifactInput{tt.input})
+			require.Nil(t, stored)
+			require.ErrorIs(t, err, tt.wantErr)
+			require.Empty(t, artifacts.items)
+			require.Zero(t, countRegularFiles(t, root))
+			require.Equal(t, 1, body.closeCalls)
+		})
+	}
+}
+
+func TestMediaContentServiceRollsBackEarlierOutputsWhenLaterArtifactCreateFails(t *testing.T) {
+	persistErr := errors.New("persist second output failed")
+	artifacts := &mediaContentArtifactRepoStub{createErr: persistErr, createErrAt: 2}
+	discarded := make([]string, 0, 2)
+	store := mediaContentObjectStoreStub{
+		put: func(_ context.Context, input MediaArtifactInput) (*MediaArtifact, error) {
+			return &MediaArtifact{
+				MediaType: input.MediaType, ContentType: input.ContentType,
+				StorageProvider: MediaStorageProviderLocal,
+				ObjectKey:       "output/object-" + strconv.Itoa(input.Position),
+			}, nil
+		},
+		discard: func(_ context.Context, input MediaArtifactInput) error {
+			discarded = append(discarded, input.ObjectKey)
+			return nil
+		},
+	}
+	svc := NewMediaContentService(
+		nil, artifacts, mediaContentSettingsStub{settings: &SystemSettings{}}, nil, nil,
+		mediaContentHTTPReaderStub{}, store,
+	)
+
+	stored, err := svc.PersistOutputs(context.Background(), &MediaTask{ID: 10, MediaType: MediaTypeImage}, []MediaArtifactInput{
+		{MediaType: MediaTypeImage, ContentType: "image/png", Data: []byte("first")},
+		{MediaType: MediaTypeImage, ContentType: "image/png", Data: []byte("second")},
+	})
+
+	require.Nil(t, stored)
+	require.ErrorIs(t, err, persistErr)
+	require.Empty(t, artifacts.items)
+	// The current unindexed object is discarded first, then the earlier
+	// indexed object is removed by the batch rollback.
+	require.Equal(t, []string{"output/object-1", "output/object-0"}, discarded)
+}
+
+func TestMediaContentServiceRollsBackEarlierOutputsWhenLaterPutFails(t *testing.T) {
+	putErr := errors.New("store second output failed")
+	artifacts := &mediaContentArtifactRepoStub{}
+	putCalls := 0
+	discarded := make([]string, 0, 1)
+	store := mediaContentObjectStoreStub{
+		put: func(_ context.Context, input MediaArtifactInput) (*MediaArtifact, error) {
+			putCalls++
+			if putCalls == 2 {
+				return nil, putErr
+			}
+			return &MediaArtifact{
+				MediaType: input.MediaType, ContentType: input.ContentType,
+				StorageProvider: MediaStorageProviderLocal, ObjectKey: "output/first",
+			}, nil
+		},
+		discard: func(_ context.Context, input MediaArtifactInput) error {
+			discarded = append(discarded, input.ObjectKey)
+			return nil
+		},
+	}
+	svc := NewMediaContentService(
+		nil, artifacts, mediaContentSettingsStub{settings: &SystemSettings{}}, nil, nil,
+		mediaContentHTTPReaderStub{}, store,
+	)
+
+	stored, err := svc.PersistOutputs(context.Background(), &MediaTask{ID: 10, MediaType: MediaTypeImage}, []MediaArtifactInput{
+		{MediaType: MediaTypeImage, ContentType: "image/png", Data: []byte("first")},
+		{MediaType: MediaTypeImage, ContentType: "image/png", Data: []byte("second")},
+	})
+
+	require.Nil(t, stored)
+	require.ErrorIs(t, err, putErr)
+	require.Empty(t, artifacts.items)
+	require.Equal(t, []string{"output/first"}, discarded)
+}
+
+func TestMediaContentServiceRetainsObjectsWhenArtifactCommitOutcomeIsUnknown(t *testing.T) {
+	artifacts := &mediaContentArtifactRepoStub{}
+	consistency := &mediaContentConsistencyStub{
+		repo: artifacts, errAt: 2, err: ErrMediaStorageCommitOutcomeUnknown,
+	}
+	discarded := make([]string, 0, 2)
+	store := mediaContentObjectStoreStub{
+		put: func(_ context.Context, input MediaArtifactInput) (*MediaArtifact, error) {
+			return &MediaArtifact{
+				MediaType: input.MediaType, ContentType: input.ContentType,
+				StorageProvider: MediaStorageProviderLocal, StorageRevision: "revision-1",
+				ObjectKey: "output/object-" + strconv.Itoa(input.Position),
+			}, nil
+		},
+		discard: func(_ context.Context, input MediaArtifactInput) error {
+			discarded = append(discarded, input.ObjectKey)
+			return nil
+		},
+	}
+	svc := NewMediaContentService(
+		nil, artifacts, mediaContentSettingsStub{settings: &SystemSettings{}}, nil, nil,
+		mediaContentHTTPReaderStub{}, store, consistency,
+	)
+
+	stored, err := svc.PersistOutputs(context.Background(), &MediaTask{ID: 10, MediaType: MediaTypeImage}, []MediaArtifactInput{
+		{MediaType: MediaTypeImage, ContentType: "image/png", Data: []byte("first")},
+		{MediaType: MediaTypeImage, ContentType: "image/png", Data: []byte("second")},
+	})
+
+	require.Nil(t, stored)
+	require.ErrorIs(t, err, ErrMediaStorageCommitOutcomeUnknown)
+	require.Len(t, artifacts.items, 1, "a prior committed row must not be compensated while the current outcome is unknown")
+	require.Empty(t, discarded, "an unknown commit may already reference every written object")
 }
 
 func TestMediaContentServiceRejectsPrivateStoredImageWithoutDeliveryPath(t *testing.T) {
@@ -791,7 +1210,7 @@ func TestMediaContentServiceBoundsInlineDataWhileOpening(t *testing.T) {
 		tasks, artifacts, mediaContentSettingsStub{settings: &SystemSettings{MediaVideoProxyFallbackEnabled: true}},
 		mediaContentAccountRepoStub{}, NewMediaAdapterRegistry(), mediaContentHTTPReaderStub{}, NewDisabledMediaArtifactObjectStore(),
 	)
-	content, err := svc.OpenVideo(context.Background(), "task_public", 42, "")
+	content, err := svc.OpenVideo(context.Background(), "task_public", 42, 8, "")
 	require.Nil(t, content)
 	require.ErrorIs(t, err, ErrMediaContentTooLarge)
 }
@@ -826,8 +1245,35 @@ func TestMediaContentServiceOpenVideoRequiresCompletedVideoOwnedByUser(t *testin
 		mediaContentAccountRepoStub{}, NewMediaAdapterRegistry(), mediaContentHTTPReaderStub{},
 		NewDisabledMediaArtifactObjectStore(),
 	)
-	_, err := svc.OpenVideo(context.Background(), "task_public", 42, "")
+	_, err := svc.OpenVideo(context.Background(), "task_public", 42, 8, "")
 	require.ErrorIs(t, err, ErrMediaTaskNotFound)
+}
+
+func TestMediaContentServiceHidesCompletedOutputUntilSettlementSucceeds(t *testing.T) {
+	task := &MediaTask{
+		ID: 1, PublicID: "task_public", UserID: 42, APIKeyID: 8,
+		MediaType: MediaTypeImage, Status: MediaTaskStatusCompleted, BillingStatus: MediaBillingStatusRetry,
+	}
+	tasks := &mediaContentTaskRepoStub{task: task}
+	artifacts := &mediaContentArtifactRepoStub{items: []MediaArtifact{{
+		ID: 2, TaskID: task.ID, Direction: "output", Position: 0, MediaType: MediaTypeImage,
+		ContentType: "image/png", UpstreamReference: "data:image/png;base64,c2VjcmV0",
+	}}}
+	svc := NewMediaContentService(
+		tasks, artifacts, mediaContentSettingsStub{settings: &SystemSettings{}},
+		mediaContentAccountRepoStub{}, NewMediaAdapterRegistry(), mediaContentHTTPReaderStub{},
+		NewDisabledMediaArtifactObjectStore(),
+	)
+
+	content, err := svc.OpenImage(context.Background(), task.PublicID, task.UserID, task.APIKeyID, 0, "")
+	require.Nil(t, content)
+	require.ErrorIs(t, err, ErrMediaTaskNotFound)
+
+	task.BillingStatus = MediaBillingStatusSettled
+	content, err = svc.OpenImage(context.Background(), task.PublicID, task.UserID, task.APIKeyID, 0, "")
+	require.NoError(t, err)
+	require.NotNil(t, content)
+	require.NoError(t, content.Body.Close())
 }
 
 func TestMediaContentServiceOpenVideoClassifiesTaskRepositoryErrors(t *testing.T) {
@@ -849,7 +1295,7 @@ func TestMediaContentServiceOpenVideoClassifiesTaskRepositoryErrors(t *testing.T
 				NewMediaAdapterRegistry(), mediaContentHTTPReaderStub{}, NewDisabledMediaArtifactObjectStore(),
 			)
 
-			content, err := svc.OpenVideo(context.Background(), "task_public", 42, "")
+			content, err := svc.OpenVideo(context.Background(), "task_public", 42, 8, "")
 			require.Nil(t, content)
 			if tt.wantNotFound {
 				require.ErrorIs(t, err, ErrMediaTaskNotFound)
@@ -879,7 +1325,7 @@ func TestMediaContentServiceOpenVideoHidesIneligibleTaskStates(t *testing.T) {
 				mediaContentSettingsStub{settings: &SystemSettings{}}, mediaContentAccountRepoStub{},
 				NewMediaAdapterRegistry(), mediaContentHTTPReaderStub{}, NewDisabledMediaArtifactObjectStore(),
 			)
-			_, err := svc.OpenVideo(context.Background(), "task_public", 42, "")
+			_, err := svc.OpenVideo(context.Background(), "task_public", 42, 8, "")
 			require.ErrorIs(t, err, ErrMediaTaskNotFound)
 		})
 	}

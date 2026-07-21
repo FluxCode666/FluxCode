@@ -37,6 +37,7 @@ vi.mock('vue-i18n', async () => {
         const map: Record<string, string> = {
           'integrationDocs.nav.overview': '接入总览',
           'integrationDocs.fields.authHeader': '鉴权 Header',
+          'integrationDocs.fields.idempotencyHeader': '幂等 Header（可选）',
           'integrationDocs.fields.contentType': '内容类型',
           'integrationDocs.fields.versionHeader': '协议版本 Header',
           'integrationDocs.fields.endpoint': '请求路径',
@@ -50,6 +51,7 @@ vi.mock('vue-i18n', async () => {
           'integrationDocs.fields.optionalLabel': '可选',
           'integrationDocs.fields.supportedValues': '支持值',
           'integrationDocs.fields.exampleTabsTitle': '调用示例',
+          'integrationDocs.fields.responseExamplesTitle': '响应状态示例',
           'common.copied': '已复制',
           'common.copiedToClipboard': '已复制到剪贴板',
           'keys.copyToClipboard': '复制到剪贴板',
@@ -94,12 +96,18 @@ vi.mock('vue-i18n', async () => {
           'integrationDocs.sections.anthropicMessages.bullets.item1': 'Anthropic 要点 1',
           'integrationDocs.sections.anthropicMessages.bullets.item2': 'Anthropic 要点 2',
           'integrationDocs.sections.anthropicMessages.bullets.item3': 'Anthropic 要点 3',
-          'integrationDocs.sections.openaiImages.badge': 'OpenAI Images',
-          'integrationDocs.sections.openaiImages.title': 'OpenAI 生图接口',
+          'integrationDocs.sections.openaiImages.badge': 'Unified Media · Images',
+          'integrationDocs.sections.openaiImages.title': '统一图片生成接口',
           'integrationDocs.sections.openaiImages.description': 'Images 描述',
           'integrationDocs.sections.openaiImages.bullets.item1': 'Images 要点 1',
           'integrationDocs.sections.openaiImages.bullets.item2': 'Images 要点 2',
-          'integrationDocs.sections.openaiImages.bullets.item3': 'Images 要点 3'
+          'integrationDocs.sections.openaiImages.bullets.item3': 'Images 要点 3',
+          'integrationDocs.sections.mediaVideos.badge': 'Unified Media · Videos',
+          'integrationDocs.sections.mediaVideos.title': '统一视频生成接口',
+          'integrationDocs.sections.mediaVideos.description': 'Videos 描述',
+          'integrationDocs.sections.mediaVideos.bullets.item1': 'Videos 要点 1',
+          'integrationDocs.sections.mediaVideos.bullets.item2': 'Videos 要点 2',
+          'integrationDocs.sections.mediaVideos.bullets.item3': 'Videos 要点 3'
         }
         return map[key] || key
       },
@@ -129,7 +137,54 @@ describe('IntegrationDocsView', () => {
     expect(fetchPublicSettings).toHaveBeenCalledTimes(1)
     expect(wrapper.text()).toContain('messages[].role')
     expect(wrapper.text()).toContain('previous_response_id')
-    expect(wrapper.text()).toContain('images[].image_url')
+    expect(wrapper.text()).toContain('duration_seconds')
+    expect(wrapper.text()).toContain('reference_image_urls')
+  })
+
+  it('documents the unified image and video task lifecycle from the backend contract', async () => {
+    const wrapper = mount(IntegrationDocsView, {
+      global: {
+        stubs: {
+          PublicHeader: true
+        }
+      }
+    })
+
+    await flushPromises()
+
+    const imageSection = wrapper.get('#openai-images')
+    const videoSection = wrapper.get('#media-videos')
+
+    expect(imageSection.text()).toContain('/v1/images/{task_id}')
+    expect(imageSection.text()).toContain('/v1/images/{task_id}/content')
+    expect(imageSection.text()).toContain('index')
+    expect(imageSection.text()).toContain('async')
+    expect(imageSection.text()).not.toContain('mask.image_url')
+
+    expect(videoSection.text()).toContain('/v1/videos')
+    expect(videoSection.text()).toContain('/v1/videos/{task_id}')
+	    expect(videoSection.text()).toContain('/v1/videos/{task_id}/content')
+	    expect(videoSection.text()).toContain('image_url')
+	    expect(videoSection.text()).toContain('video_url')
+
+    const durationRow = videoSection.findAll('tr').find((row) => row.text().includes('duration_seconds'))
+    expect(durationRow).toBeDefined()
+    expect(durationRow!.text()).toContain('必填')
+    expect(durationRow!.text()).toContain('1 至 600')
+
+    const videoUploadRow = videoSection
+      .findAll('tr')
+      .find((row) => row.find('code').exists() && row.find('code').text() === 'video')
+    expect(videoUploadRow).toBeDefined()
+    expect(videoUploadRow!.text()).toContain('file')
+    expect(videoUploadRow!.text()).not.toContain('file[]')
+    expect(videoUploadRow!.text()).toContain('只能上传 1 个文件')
+
+	    for (const sectionId of ['openai-images', 'media-videos']) {
+      expect(wrapper.get(`[data-testid="response-example-${sectionId}-200"]`).text()).toContain('HTTP 200')
+      expect(wrapper.get(`[data-testid="response-example-${sectionId}-202"]`).text()).toContain('HTTP 202')
+      expect(wrapper.get(`[data-testid="response-example-${sectionId}-504"]`).text()).toContain('media_gateway_timeout')
+    }
   })
 
   it('switches code example tabs independently per section', async () => {

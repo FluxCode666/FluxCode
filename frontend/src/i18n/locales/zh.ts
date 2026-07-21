@@ -101,7 +101,7 @@ export default {
       badge: '开发者接入',
       title: '接入文档',
       subtitle:
-        '面向 SDK、服务端和自动化脚本的标准接入说明，覆盖 OpenAI Chat、OpenAI Responses、Anthropic Messages 与 OpenAI 生图接口。',
+        '面向 SDK、服务端和自动化脚本的标准接入说明，覆盖文本协议与独立的统一图片、视频生成接口。',
       cards: {
         baseUrl: 'Base URL',
         auth: '默认鉴权',
@@ -131,20 +131,21 @@ export default {
         },
         step3: {
           title: '发送最小请求',
-          description: '先用下方最小示例验证 200 响应，再逐步补流式、工具调用、图片参数等高级字段。'
+          description: '先用下方最小示例验证文本接口的 200 响应，或媒体接口的 200 / 202 响应，再逐步增加高级字段。'
         }
       },
       notes: {
         item1: 'OpenAI 协议默认使用 `Authorization: Bearer <API_KEY>`；Anthropic 协议建议使用 `x-api-key` 与 `anthropic-version`。',
         item2: '模型名请填写你控制台里当前可用的模型；不同分组、套餐或渠道可用模型可能不同。',
-        item3: '需要流式输出时，直接在请求体追加 `stream: true`；其余参数沿用你当前 SDK 的写法即可。',
-        item4: 'OpenAI 生图如果返回 `response_format=url`，图片地址的具体域名会跟随站点当前的图片存储配置。'
+        item3: '文本接口需要流式输出时使用 `stream: true`；媒体接口使用 `async: true` 创建可轮询任务，两者语义不同。',
+        item4: '媒体结果应通过任务响应中的 URL 或鉴权 `/content` 接口读取；不要依赖上游供应商的原始地址。'
       }
     },
     fields: {
       method: '请求方法',
       endpoint: '请求路径',
       authHeader: '鉴权 Header',
+      idempotencyHeader: '幂等 Header（可选）',
       contentType: '内容类型',
       versionHeader: '协议版本 Header',
       exampleCurl: 'cURL 示例',
@@ -157,7 +158,8 @@ export default {
       requiredLabel: '必填',
       optionalLabel: '可选',
       supportedValues: '支持值',
-      exampleTabsTitle: '调用示例'
+      exampleTabsTitle: '调用示例',
+      responseExamplesTitle: '响应状态示例'
     },
     sections: {
       openaiChat: {
@@ -191,13 +193,23 @@ export default {
         }
       },
       openaiImages: {
-        badge: 'OpenAI Images',
-        title: 'OpenAI 生图接口',
-        description: '用于文生图接入，兼容 OpenAI Images API 的标准调用方式，适合站内生图、海报生成和营销素材场景。',
+        badge: 'Unified Media · Images',
+        title: '统一图片生成接口',
+        description: '使用绑定媒体分组的 API Key 进入独立于文本协议的调用链路；同步请求保持 OpenAI Images 结果结构，异步请求统一返回可查询任务。',
         bullets: {
-          item1: '请求路径为 `POST /v1/images/generations`，常用字段包括 `model`、`prompt`、`size`、`response_format`。',
-          item2: '若你的业务需要图生图或蒙版编辑，可在同一套鉴权方式下继续接 `POST /v1/images/edits`。',
-          item3: '当请求 `response_format=url` 时，返回的图片 URL 会跟随当前站点的图片存储与 CDN 配置。'
+          item1: '`POST /v1/images/generations` 省略 `async` 或传 `false` 时同步等待；传 `async=true` 时返回 202 任务。',
+          item2: '异步任务使用 `GET /v1/images/{task_id}` 查询；完成后从 `result.data` 读取 URL 或 base64 结果。',
+          item3: '`GET /v1/images/{task_id}/content?index={position}` 使用同一 API Key 鉴权，按位置读取已完成任务的图片输出；省略 `index` 时读取第 0 张。'
+        }
+      },
+      mediaVideos: {
+        badge: 'Unified Media · Videos',
+        title: '统一视频生成接口',
+        description: '使用绑定媒体分组的 API Key，统一调用文生视频、图生视频、参考图生成和视频重绘，并可选择同步等待或异步任务模式。',
+        bullets: {
+          item1: '`POST /v1/videos` 省略 `async` 或传 `false` 时同步等待；传 `async=true` 时返回 202 任务。',
+          item2: '使用 `GET /v1/videos/{task_id}` 查询 queued、in_progress、completed 或 failed 状态。',
+          item3: '任务完成后使用 `GET /v1/videos/{task_id}/content` 下载成片；支持标准 Range 单段字节请求。'
         }
       }
     }
@@ -3200,10 +3212,63 @@ export default {
         upstreamModel: '上游模型 ID',
         enabled: '启用此模型',
         asyncMode: '上游异步能力',
-        requestMapping: '请求参数映射（JSON）',
+        requestMapping: '请求参数映射',
         requestMappingPlaceholder: '{\n  "rules": [{ "source": "size", "target": "chicun", "operation": "rename" }]\n}',
         requestMappingHint: '可选。支持 rename、copy、default、enum、cast；这里只接受声明式 JSON，不执行脚本。',
         invalidRequestMapping: '请求参数映射必须是合法的 JSON 对象，且只能包含 rules。',
+        mappingEditor: {
+          title: '请求参数映射',
+          hint: '规则按从上到下的顺序执行。未配置的统一参数仍交给系统 Adapter 处理。',
+          addRule: '添加规则',
+          empty: '暂无自定义映射；统一请求参数将直接交给系统 Adapter。',
+          ruleNumber: '规则 {number}',
+          moveUp: '上移规则',
+          moveDown: '下移规则',
+          removeRule: '删除规则',
+          operation: '操作',
+          source: '来源路径',
+          target: '目标路径',
+          defaultValue: '默认值（JSON）',
+          defaultValueHint: '支持字符串、数字、布尔值、null、数组或对象。字符串需要带双引号。',
+          enumValues: '枚举值映射',
+          addEnumValue: '添加枚举值',
+          enumInput: '下游值',
+          enumOutput: '上游值',
+          removeEnumValue: '删除枚举值',
+          castType: '目标类型',
+          previewTitle: '转换预览',
+          sampleRequest: '统一下游请求样例（JSON）',
+          runPreview: '运行预览',
+          previewing: '预览中…',
+          previewResult: '转换后的上游请求',
+          previewFailed: '请求映射预览失败',
+          fixRulesBeforePreview: '请先修正规则中的校验错误。',
+          invalidSampleJSON: '统一下游请求样例不是合法 JSON。',
+          sampleMustBeObject: '统一下游请求样例必须是 JSON 对象。',
+          operations: {
+            rename: '重命名并删除来源字段',
+            copy: '复制字段',
+            default: '目标缺失时填默认值',
+            enum: '映射枚举值',
+            cast: '转换基础类型'
+          },
+          casts: {
+            string: 'string',
+            number: 'number',
+            integer: 'integer',
+            boolean: 'boolean'
+          },
+          errors: {
+            path: '路径只能由字母、数字、下划线和点分段组成，且每段不能以数字开头。',
+            pathConflict: '来源或目标路径不能与其他映射路径形成父子冲突。',
+            samePath: 'rename 和 copy 的来源路径与目标路径不能相同。',
+            envelopeRoot: '不能直接替换 image 或 video 媒体 envelope 根节点。',
+            mixedPathStyle: '同一组规则不能混用媒体 envelope 路径与请求 body 路径。',
+            defaultJSON: '默认值必须是合法 JSON。',
+            enumRequired: 'enum 至少需要一组值映射。',
+            enumDuplicate: '同一条 enum 规则不能重复配置相同的下游值。'
+          }
+        },
         addModel: '添加模型绑定',
         remove: '删除',
         removeModel: '删除模型绑定',
@@ -5910,6 +5975,28 @@ export default {
         videoStorageModeHint: '视频结果使用混合存储，当前模式固定。',
         proxyFallback: '启用视频代理回退',
         proxyFallbackHint: '主存储视频链接不可用时，使用应用代理作为交付回退。',
+      },
+      mediaStorage: {
+        title: '媒体产物存储',
+        description: '仅影响新媒体任务；历史 DB/Qiniu 数据不会迁移。Local 为默认，MinIO 适合多实例部署。',
+        provider: '存储后端',
+        localPath: 'Local 路径',
+        localPathHint: '源码部署默认 ./data/generated；Docker 默认 /app/.fluxcode/generated。切换后端不会搬迁已有文件。',
+        multiInstanceWarning: '多实例使用 Local 时，各实例必须挂载同一个共享 RWX/NFS 路径；否则请使用 MinIO。',
+        endpoint: 'Endpoint',
+        bucket: 'Bucket',
+        region: 'Region',
+        accessKey: 'Access Key ID',
+        secretKey: 'Secret Access Key',
+        secretConfigured: '已配置；留空保留原密钥',
+        prefix: '对象前缀',
+        useSSL: '使用 HTTPS / SSL',
+        pathStyle: '使用 Path-style 地址',
+        test: '测试连接',
+        testing: '测试中…',
+        testSucceeded: '连接测试成功',
+        testFailed: '连接测试失败',
+        saved: '媒体存储设置已保存',
       },
       emailTabDisabledTitle: '邮箱验证未启用',
       emailTabDisabledHint: '请在「安全与认证」选项卡中启用邮箱验证后，再配置邮件发送。',

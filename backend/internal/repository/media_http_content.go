@@ -145,7 +145,7 @@ func (r *mediaHTTPContentReader) Open(ctx context.Context, input service.MediaHT
 		body: resp.Body, cancel: cancel, remaining: r.maxBytes,
 	}
 	return &service.MediaContent{
-		Body: body, StatusCode: resp.StatusCode, ContentType: safeMediaContentType(resp.Header.Get("Content-Type")),
+		Body: body, StatusCode: resp.StatusCode, ContentType: safeMediaContentType(resp.Header.Get("Content-Type"), input.MediaType),
 		ContentLength: resp.ContentLength, ContentRange: resp.Header.Get("Content-Range"),
 		AcceptRanges: resp.Header.Get("Accept-Ranges"),
 	}, nil
@@ -163,9 +163,17 @@ func copyAllowedMediaHeaders(dst, src http.Header) {
 	}
 }
 
-func safeMediaContentType(value string) string {
-	contentType, _ := service.NormalizeVideoContentType(value)
-	return contentType
+func safeMediaContentType(value string, mediaType service.MediaType) string {
+	switch mediaType {
+	case service.MediaTypeImage:
+		contentType, _ := service.NormalizeImageContentType(value)
+		return contentType
+	case service.MediaTypeVideo:
+		contentType, _ := service.NormalizeVideoContentType(value)
+		return contentType
+	default:
+		return "application/octet-stream"
+	}
 }
 
 type boundedCancelReadCloser struct {

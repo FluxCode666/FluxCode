@@ -12,6 +12,8 @@ FROM ${POSTGRES_IMAGE} AS pg-client
 
 FROM ${ALPINE_IMAGE}
 
+ENV MEDIA_TASKS_LOCAL_STORAGE_PATH=/app/.fluxcode/generated
+
 LABEL maintainer="Wei-Shaw <github.com/Wei-Shaw>"
 LABEL description="Sub2API - AI API Gateway Platform"
 LABEL org.opencontainers.image.source="https://github.com/Wei-Shaw/sub2api"
@@ -45,8 +47,8 @@ WORKDIR /app
 # Copy pre-built binary from GoReleaser
 COPY sub2api /app/sub2api
 
-# Create data directory
-RUN mkdir -p /app/data && chown -R sub2api:sub2api /app
+# Create persistent data and media artifact directories
+RUN mkdir -p /app/data /app/.fluxcode/generated && chown -R sub2api:sub2api /app
 
 # Copy entrypoint script (fixes volume permissions then drops to sub2api)
 COPY deploy/docker-entrypoint.sh /app/docker-entrypoint.sh

@@ -85,7 +85,7 @@ echo "JWT_SECRET=${JWT_SECRET}" >> .env
 echo "TOTP_ENCRYPTION_KEY=${TOTP_ENCRYPTION_KEY}" >> .env
 
 # Create data directories
-mkdir -p data postgres_data redis_data
+mkdir -p data generated postgres_data redis_data
 
 # Start all services using local directory version
 docker compose -f docker-compose.local.yml up -d
@@ -101,10 +101,16 @@ docker compose -f docker-compose.local.yml logs -f sub2api
 
 | Version | Data Storage | Migration | Best For |
 |---------|-------------|-----------|----------|
-| **docker-compose.local.yml** | Local directories (./data, ./postgres_data, ./redis_data) | ✅ Easy (tar entire directory) | Production, need frequent backups/migration |
+| **docker-compose.local.yml** | Local directories (./data, ./generated, ./postgres_data, ./redis_data) | ✅ Easy (tar entire directory) | Production, need frequent backups/migration |
 | **docker-compose.yml** | Named volumes (/var/lib/docker/volumes/) | ⚠️ Requires docker commands | Simple setup, don't need migration |
 
 **Recommendation:** Use `docker-compose.local.yml` (deployed by `docker-deploy.sh`) for easier data management and migration.
+
+### Media artifact storage
+
+New image/video tasks default to Local storage. Source deployments use `./data/generated`; Docker Compose sets `MEDIA_TASKS_LOCAL_STORAGE_PATH=/app/.fluxcode/generated` and persists that directory in `./generated` or a named volume. This affects only new media artifacts; historical DB/Qiniu records are not migrated.
+
+Configure the active backend in **System Settings → Media Generation → Media Artifact Storage**. Use MinIO/S3-compatible storage for multiple application instances. If Local is selected in a multi-instance deployment, every instance must mount the same RWX/NFS directory at `/app/.fluxcode/generated`; per-instance volumes will make artifacts unreadable when another instance handles the request.
 
 ### How Auto-Setup Works
 

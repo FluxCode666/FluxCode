@@ -675,8 +675,13 @@ func buildMediaAdapterRegistry(registrations []MediaAdapterRegistration, metrics
 	return registry, nil
 }
 
-func ProvideMediaAdapterRegistry(metrics MediaRoutingMetrics) (*MediaAdapterRegistry, error) {
-	return buildMediaAdapterRegistry([]MediaAdapterRegistration{}, metrics)
+func ProvideMediaAdapterRegistry(metrics MediaRoutingMetrics, httpUpstream HTTPUpstream) (*MediaAdapterRegistry, error) {
+	openAIImages := NewOpenAIImagesMediaAdapter(httpUpstream)
+	nanoBanana := NewNanoBananaMediaAdapter(httpUpstream)
+	return buildMediaAdapterRegistry([]MediaAdapterRegistration{
+		NewOpenAIImagesMediaAdapterRegistration(openAIImages),
+		nanoBananaMediaAdapterRegistration(nanoBanana),
+	}, metrics)
 }
 
 func ProvideMediaAdapterResolver(registry *MediaAdapterRegistry) *MediaAdapterResolver {
@@ -693,8 +698,17 @@ func ProvideMediaModelRegistry(repo MediaModelDefinitionRepository, resolver *Me
 	return registry, nil
 }
 
-func ProvideMediaBilling() MediaBillingPort {
-	return DisabledMediaBilling{}
+func ProvideMediaBilling(
+	cfg *config.Config,
+	ledger MediaBillingLedgerRepository,
+	cache BillingCache,
+	authCache APIKeyAuthCacheInvalidator,
+	outboxQueue SchedulerOutboxQueue,
+) MediaBillingPort {
+	if cfg != nil && cfg.RunMode == config.RunModeSimple {
+		return DisabledMediaBilling{}
+	}
+	return NewProductionMediaBilling(ledger, cache, authCache, outboxQueue)
 }
 
 func ProvideMediaSettlementCoordinator(tasks MediaTaskRepository, billing MediaBillingPort) *MediaBillingCoordinator {
@@ -705,12 +719,36 @@ func ProvideMediaContentPolicy() MediaContentPolicy {
 	return AllowAllMediaContentPolicy{}
 }
 
-func ProvideMediaPricing() MediaPricingPort {
-	return ZeroMediaPricing{}
+func ProvideMediaPricing(
+	cfg *config.Config,
+	groups GroupRepository,
+	channels *ChannelService,
+	userRates UserGroupRateRepository,
+) MediaPricingPort {
+	if cfg != nil && cfg.RunMode == config.RunModeSimple {
+		return ZeroMediaPricing{}
+	}
+	return NewProductionMediaPricing(groups, channels, userRates)
 }
 
-func ProvideMediaArtifactObjectStore() MediaArtifactObjectStore {
-	return NewDisabledMediaArtifactObjectStore()
+func ProvideMediaArtifactObjectStore(
+	settings *MediaStorageSettingsService,
+	cfg *config.Config,
+	usage MediaStorageArtifactUsageRepository,
+	consistency MediaStorageConsistencyRepository,
+) (MediaArtifactObjectStore, error) {
+	maxContentBytes := int64(2 << 30)
+	if cfg != nil && cfg.MediaTasks.MaxContentBytes > 0 {
+		maxContentBytes = cfg.MediaTasks.MaxContentBytes
+	}
+	store, err := NewConfiguredMediaArtifactObjectStore(settings, maxContentBytes)
+	if err != nil {
+		return nil, err
+	}
+	settings.SetArtifactUsageRepository(usage)
+	settings.SetConsistencyRepository(consistency)
+	settings.SetTester(store)
+	return store, nil
 }
 
 func ProvideMediaTaskMetrics() *AtomicMediaTaskMetrics {
@@ -735,13 +773,14 @@ func ProvideMediaScheduler(
 func ProvideMediaContentService(
 	tasks MediaTaskRepository,
 	artifacts MediaArtifactRepository,
+	consistency MediaStorageConsistencyRepository,
 	settings *SettingService,
 	accounts AccountRepository,
 	adapters *MediaAdapterRegistry,
 	httpReader MediaHTTPContentReader,
 	objectStore MediaArtifactObjectStore,
 ) *MediaContentService {
-	return NewMediaContentService(tasks, artifacts, settings, accounts, adapters, httpReader, objectStore)
+	return NewMediaContentService(tasks, artifacts, settings, accounts, adapters, httpReader, objectStore, consistency)
 }
 
 func ProvideMediaWorker(
@@ -795,6 +834,7 @@ func ProvideMediaOrchestrator(
 	pricing MediaPricingPort,
 	tasks MediaTaskRepository,
 	artifacts MediaArtifactRepository,
+	storageConsistency MediaStorageConsistencyRepository,
 	billing MediaBillingPort,
 	settlements MediaSettlementCoordinator,
 	queue MediaTaskQueue,
@@ -803,7 +843,8 @@ func ProvideMediaOrchestrator(
 	return NewMediaOrchestrator(MediaOrchestratorDependencies{
 		Registry: registry, Groups: groups, Scheduler: scheduler, Settings: settings,
 		ContentPolicy: contentPolicy, Pricing: pricing, Tasks: tasks, Artifacts: artifacts,
-		Billing: billing, Settlement: settlements, Queue: queue, Controller: worker,
+		StorageConsistency: storageConsistency,
+		Billing:            billing, Settlement: settlements, Queue: queue, Controller: worker,
 	})
 }
 

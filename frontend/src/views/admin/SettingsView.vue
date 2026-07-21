@@ -1665,6 +1665,7 @@
         <!-- Tab: Media Generation -->
         <div v-show="activeTab === 'media'" class="space-y-6">
           <MediaGenerationSettingsCard v-model="mediaGenerationSettings" />
+          <MediaStorageSettingsCard />
         </div>
 
         <!-- Tab: System Prompt -->
@@ -3684,6 +3685,7 @@ import Toggle from '@/components/common/Toggle.vue'
 import ProxySelector from '@/components/common/ProxySelector.vue'
 import ImageUpload from '@/components/common/ImageUpload.vue'
 import MediaGenerationSettingsCard from '@/components/admin/settings/MediaGenerationSettingsCard.vue'
+import MediaStorageSettingsCard from '@/components/admin/settings/MediaStorageSettingsCard.vue'
 import BackupSettings from '@/views/admin/BackupView.vue'
 import { useClipboard } from '@/composables/useClipboard'
 import { extractApiErrorMessage } from '@/utils/apiError'

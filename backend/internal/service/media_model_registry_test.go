@@ -557,6 +557,16 @@ func TestMediaModelRegistryPublishesInvalidDefinitionTombstones(t *testing.T) {
 			d.BillingUnit = "per image"
 			return d
 		}()},
+		{name: "billing unit unsupported", definition: func() MediaModelDefinition {
+			d := validImageModelDefinition()
+			d.BillingUnit = "request"
+			return d
+		}()},
+		{name: "billing unit mismatches media type", definition: func() MediaModelDefinition {
+			d := validImageModelDefinition()
+			d.BillingUnit = "second"
+			return d
+		}()},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -567,6 +577,14 @@ func TestMediaModelRegistryPublishesInvalidDefinitionTombstones(t *testing.T) {
 			require.Equal(t, string(MediaAdapterResolutionInvalidDefinition), infraerrors.FromError(err).Metadata["resolution_status"])
 		})
 	}
+}
+
+func TestValidateMediaModelDefinitionBaseRequiresVideoSecondBilling(t *testing.T) {
+	definition := validVideoModelDefinition()
+	require.NoError(t, validateMediaModelDefinitionBase(definition))
+
+	definition.BillingUnit = MediaBillingUnitImage
+	require.EqualError(t, validateMediaModelDefinitionBase(definition), `video model billing unit must be "second"`)
 }
 
 func TestMediaModelRegistryResolverDefinitionDoesNotRequireEnabled(t *testing.T) {

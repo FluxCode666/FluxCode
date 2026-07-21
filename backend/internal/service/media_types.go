@@ -147,7 +147,8 @@ func (s MediaSpec) Validate(mediaType MediaType) error {
 	if s.Image != nil {
 		if strings.TrimSpace(s.Image.Prompt) == "" || utf8.RuneCountInString(s.Image.Prompt) > MaxMediaPromptRunes ||
 			s.Image.Count < 1 || s.Image.Count > MaxMediaImageCount ||
-			len(s.Image.InputArtifactIDs) > MaxMediaReferenceInputs {
+			len(s.Image.InputArtifactIDs) > MaxMediaReferenceInputs ||
+			!validMediaImageResponseFormat(s.Image.ResponseFormat) {
 			return ErrInvalidMediaSpec
 		}
 	}
@@ -157,10 +158,19 @@ func (s MediaSpec) Validate(mediaType MediaType) error {
 			referenceCount++
 		}
 		if strings.TrimSpace(s.Video.Prompt) == "" || utf8.RuneCountInString(s.Video.Prompt) > MaxMediaPromptRunes ||
-			s.Video.DurationSeconds < 0 || s.Video.DurationSeconds > MaxMediaVideoDurationSeconds ||
+			s.Video.DurationSeconds <= 0 || s.Video.DurationSeconds > MaxMediaVideoDurationSeconds ||
 			s.Video.FPS < 0 || s.Video.FPS > MaxMediaVideoFPS || referenceCount > MaxMediaReferenceInputs {
 			return ErrInvalidMediaSpec
 		}
 	}
 	return nil
+}
+
+func validMediaImageResponseFormat(value string) bool {
+	switch strings.TrimSpace(value) {
+	case "", "url", "b64_json":
+		return true
+	default:
+		return false
+	}
 }

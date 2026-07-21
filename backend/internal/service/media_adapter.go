@@ -27,16 +27,25 @@ type MediaExecutionRequest struct {
 	ResolvedRequest json.RawMessage
 	UpstreamModel   string
 	IdempotencyKey  string
+	// Inputs contains validated, bounded bytes for input artifacts referenced by
+	// Spec. The Worker materializes this slice before calling an Adapter so
+	// provider implementations never need repository or object-store access.
+	Inputs []MediaArtifactInput
 }
 
 type MediaArtifactInput struct {
-	Direction         string
-	Position          int
-	MediaType         MediaType
-	ContentType       string
-	Data              []byte
-	SizeBytes         int64
-	ChecksumSHA256    string
+	Direction       string
+	Position        int
+	MediaType       MediaType
+	ContentType     string
+	Data            []byte
+	SizeBytes       int64
+	ChecksumSHA256  string
+	StorageProvider string
+	// StorageRevision is an opaque revision of the encrypted storage settings
+	// row used for this write. It is internal-only and is never serialized to an
+	// upstream or downstream request.
+	StorageRevision   string `json:"-"`
 	ObjectKey         string
 	ExternalURL       string
 	UpstreamReference string
@@ -60,6 +69,7 @@ type MediaHTTPContentRequest struct {
 	URL       string
 	Headers   http.Header
 	Account   *Account
+	MediaType MediaType
 	ByteRange string
 }
 
@@ -78,6 +88,13 @@ type MediaArtifactObjectStore interface {
 	Discard(ctx context.Context, input MediaArtifactInput) error
 }
 
+// MediaArtifactStreamObjectStore persists a bounded media body without first
+// materializing the complete object in memory. Enabled production stores must
+// implement this interface so large generated videos remain constant-memory.
+type MediaArtifactStreamObjectStore interface {
+	PutStream(ctx context.Context, input MediaArtifactInput, body io.Reader) (*MediaArtifact, error)
+}
+
 type MediaInputStager interface {
 	Stage(ctx context.Context, userID int64, input MediaArtifactInput) (MediaArtifactInput, error)
 }
@@ -89,6 +106,13 @@ type MediaInputDiscarder interface {
 type MediaInputLifecycle interface {
 	MediaInputStager
 	MediaInputDiscarder
+}
+
+// MediaArtifactInputReader materializes immutable input artifacts for an
+// Adapter after the Worker has selected an account. Implementations must
+// enforce task ownership, media type, byte limits and integrity checks.
+type MediaArtifactInputReader interface {
+	LoadInputs(ctx context.Context, task *MediaTask, spec MediaSpec, account *Account) ([]MediaArtifactInput, error)
 }
 
 type MediaUsage struct {

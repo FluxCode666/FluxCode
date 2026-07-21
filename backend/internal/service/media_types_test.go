@@ -1,6 +1,7 @@
 package service
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -32,14 +33,17 @@ func TestMediaSpecValidateEnforcesGlobalHardLimitsWithoutModelConstraints(t *tes
 		wantErr   bool
 	}{
 		{name: "image boundary", mediaType: MediaTypeImage, spec: MediaSpec{Image: &ImageSpec{Prompt: strings.Repeat("图", 32000), Count: 16}}},
+		{name: "image url response", mediaType: MediaTypeImage, spec: MediaSpec{Image: &ImageSpec{Prompt: "cat", Count: 1, ResponseFormat: "url"}}},
+		{name: "image base64 response", mediaType: MediaTypeImage, spec: MediaSpec{Image: &ImageSpec{Prompt: "cat", Count: 1, ResponseFormat: "b64_json"}}},
+		{name: "image invalid response format", mediaType: MediaTypeImage, spec: MediaSpec{Image: &ImageSpec{Prompt: "cat", Count: 1, ResponseFormat: "base64"}}, wantErr: true},
 		{name: "image count too high", mediaType: MediaTypeImage, spec: MediaSpec{Image: &ImageSpec{Prompt: "cat", Count: 17}}, wantErr: true},
 		{name: "image prompt too long", mediaType: MediaTypeImage, spec: MediaSpec{Image: &ImageSpec{Prompt: strings.Repeat("p", 32001), Count: 1}}, wantErr: true},
 		{name: "video boundary", mediaType: MediaTypeVideo, spec: MediaSpec{Video: &VideoSpec{Prompt: strings.Repeat("片", 32000), DurationSeconds: 600, FPS: 120}}},
-		{name: "video duration omitted", mediaType: MediaTypeVideo, spec: MediaSpec{Video: &VideoSpec{Prompt: "cat", FPS: 24}}},
+		{name: "video duration omitted", mediaType: MediaTypeVideo, spec: MediaSpec{Video: &VideoSpec{Prompt: "cat", FPS: 24}}, wantErr: true},
 		{name: "video negative duration", mediaType: MediaTypeVideo, spec: MediaSpec{Video: &VideoSpec{Prompt: "cat", DurationSeconds: -1, FPS: 24}}, wantErr: true},
 		{name: "video duration too high", mediaType: MediaTypeVideo, spec: MediaSpec{Video: &VideoSpec{Prompt: "cat", DurationSeconds: 601, FPS: 24}}, wantErr: true},
 		{name: "video fps omitted", mediaType: MediaTypeVideo, spec: MediaSpec{Video: &VideoSpec{Prompt: "cat", DurationSeconds: 5}}},
-		{name: "video duration and fps omitted", mediaType: MediaTypeVideo, spec: MediaSpec{Video: &VideoSpec{Prompt: "cat"}}},
+		{name: "video duration and fps omitted", mediaType: MediaTypeVideo, spec: MediaSpec{Video: &VideoSpec{Prompt: "cat"}}, wantErr: true},
 		{name: "video negative fps", mediaType: MediaTypeVideo, spec: MediaSpec{Video: &VideoSpec{Prompt: "cat", DurationSeconds: 5, FPS: -1}}, wantErr: true},
 		{name: "video fps too high", mediaType: MediaTypeVideo, spec: MediaSpec{Video: &VideoSpec{Prompt: "cat", DurationSeconds: 5, FPS: 121}}, wantErr: true},
 		{name: "video prompt too long", mediaType: MediaTypeVideo, spec: MediaSpec{Video: &VideoSpec{Prompt: strings.Repeat("p", 32001), DurationSeconds: 5, FPS: 24}}, wantErr: true},
@@ -88,6 +92,17 @@ func TestMediaSpecValidateRequiresMatchingExclusiveSpec(t *testing.T) {
 			require.Equal(t, tt.wantErr, err != nil)
 		})
 	}
+}
+
+func TestMediaTaskImageResponseFormatPreservesOriginalSelectedRequest(t *testing.T) {
+	task := &MediaTask{
+		MediaType:   MediaTypeImage,
+		RequestSpec: json.RawMessage(`{"original_request":{"image":{"prompt":"cat","n":1,"response_format":"b64_json"}},"resolved_request":{"image":{"prompt":"cat","n":1}},"request_mapping":{}}`),
+	}
+	require.Equal(t, "b64_json", mediaTaskImageResponseFormat(task))
+
+	task.RequestSpec = json.RawMessage(`{"image":{"prompt":"cat","n":1}}`)
+	require.Equal(t, "url", mediaTaskImageResponseFormat(task))
 }
 
 func TestMediaTaskStageCanTransitionTo(t *testing.T) {

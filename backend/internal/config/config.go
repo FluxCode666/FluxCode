@@ -183,6 +183,10 @@ type MediaTaskConfig struct {
 	StreamBlockMilliseconds    int   `mapstructure:"stream_block_milliseconds"`
 	ContentProxyTimeoutSeconds int   `mapstructure:"content_proxy_timeout_seconds"`
 	MaxContentBytes            int64 `mapstructure:"max_content_bytes"`
+	// LocalStoragePath is the deployment default used when no media storage
+	// setting has been persisted yet. Docker images override it with
+	// /app/.fluxcode/generated while source deployments keep ./data/generated.
+	LocalStoragePath string `mapstructure:"local_storage_path"`
 }
 
 type LinuxDoConnectConfig struct {
@@ -1068,6 +1072,7 @@ func load(allowMissingJWTSecret bool) (*Config, error) {
 	cfg.OIDC.UserInfoIDPath = strings.TrimSpace(cfg.OIDC.UserInfoIDPath)
 	cfg.OIDC.UserInfoUsernamePath = strings.TrimSpace(cfg.OIDC.UserInfoUsernamePath)
 	cfg.Dashboard.KeyPrefix = strings.TrimSpace(cfg.Dashboard.KeyPrefix)
+	cfg.MediaTasks.LocalStoragePath = strings.TrimSpace(cfg.MediaTasks.LocalStoragePath)
 	cfg.CORS.AllowedOrigins = normalizeStringSlice(cfg.CORS.AllowedOrigins)
 	cfg.Security.ResponseHeaders.AdditionalAllowed = normalizeStringSlice(cfg.Security.ResponseHeaders.AdditionalAllowed)
 	cfg.Security.ResponseHeaders.ForceRemove = normalizeStringSlice(cfg.Security.ResponseHeaders.ForceRemove)
@@ -1406,6 +1411,7 @@ func setDefaults() {
 	viper.SetDefault("media_tasks.stream_block_milliseconds", 1000)
 	viper.SetDefault("media_tasks.content_proxy_timeout_seconds", 90)
 	viper.SetDefault("media_tasks.max_content_bytes", int64(2147483648))
+	viper.SetDefault("media_tasks.local_storage_path", "./data/generated")
 
 	// Gateway
 	viper.SetDefault("gateway.response_header_timeout", 600) // 600秒(10分钟)等待上游响应头，LLM高负载时可能排队较久
@@ -1596,6 +1602,9 @@ func (c *Config) Validate() error {
 	}
 	if c.MediaTasks.MaxContentBytes <= 0 {
 		return fmt.Errorf("media_tasks.max_content_bytes must be positive")
+	}
+	if strings.TrimSpace(c.MediaTasks.LocalStoragePath) == "" {
+		return fmt.Errorf("media_tasks.local_storage_path must not be empty")
 	}
 	switch c.Log.Level {
 	case "debug", "info", "warn", "error":

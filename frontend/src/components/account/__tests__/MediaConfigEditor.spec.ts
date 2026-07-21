@@ -144,9 +144,9 @@ describe('MediaConfigEditor', () => {
     const wrapper = mountHarness()
     await flushPromises()
     await wrapper.get('[data-test="media-async-mode-0"]').setValue('unsupported')
-    await wrapper.get('[data-test="media-request-mapping-0"]').setValue(JSON.stringify({
-      rules: [{ source: 'size', target: 'chicun', operation: 'rename' }]
-    }))
+    await wrapper.get('[data-test="media-request-mapping-0-add-rule"]').trigger('click')
+    await wrapper.get('[data-test="media-request-mapping-0-source-0"]').setValue('size')
+    await wrapper.get('[data-test="media-request-mapping-0-target-0"]').setValue('chicun')
 
     expect(wrapper.getComponent(MediaConfigEditor).props('modelValue').models.seedance).toEqual({
       enabled: true,
@@ -286,15 +286,17 @@ describe('MediaConfigEditor', () => {
     expect(wrapper.get('[data-test="valid"]').text()).toBe('true')
   })
 
-  it('拒绝非法请求映射 JSON，并在修复后恢复有效状态', async () => {
+  it('拒绝非法请求映射路径，并在修复后恢复有效状态', async () => {
     const wrapper = mountHarness()
     await flushPromises()
-    await wrapper.get('[data-test="media-request-mapping-0"]').setValue('{invalid')
+    await wrapper.get('[data-test="media-request-mapping-0-add-rule"]').trigger('click')
+    await wrapper.get('[data-test="media-request-mapping-0-source-0"]').setValue('size[0]')
+    await wrapper.get('[data-test="media-request-mapping-0-target-0"]').setValue('image_size')
 
     expect(wrapper.get('[data-test="valid"]').text()).toBe('false')
-    expect(wrapper.get('[data-test="media-request-mapping-0"]').attributes('aria-invalid')).toBe('true')
+    expect(wrapper.get('[data-test="media-request-mapping-0-source-0"]').attributes('aria-invalid')).toBe('true')
 
-    await wrapper.get('[data-test="media-request-mapping-0"]').setValue('{}')
+    await wrapper.get('[data-test="media-request-mapping-0-source-0"]').setValue('size')
     expect(wrapper.get('[data-test="valid"]').text()).toBe('true')
   })
 

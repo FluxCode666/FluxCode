@@ -493,7 +493,20 @@ func validateMediaModelDefinitionBase(definition MediaModelDefinition) error {
 	if !isValidMediaSimpleIdentifier(definition.BillingUnit, 32) {
 		return errors.New("media model billing unit has invalid format")
 	}
-	return validateMediaModelShapeAndConstraints(definition)
+	if err := validateMediaModelShapeAndConstraints(definition); err != nil {
+		return err
+	}
+	switch definition.MediaType {
+	case MediaTypeImage:
+		if definition.BillingUnit != MediaBillingUnitImage {
+			return fmt.Errorf("image model billing unit must be %q", MediaBillingUnitImage)
+		}
+	case MediaTypeVideo:
+		if definition.BillingUnit != MediaBillingUnitSecond {
+			return fmt.Errorf("video model billing unit must be %q", MediaBillingUnitSecond)
+		}
+	}
+	return nil
 }
 
 func validateMediaModelShapeAndConstraints(definition MediaModelDefinition) error {

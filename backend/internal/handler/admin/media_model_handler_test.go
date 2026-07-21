@@ -186,6 +186,7 @@ func newMediaModelHandlerFixture(t *testing.T, platform string, registrations ..
 	router.GET("/admin/media-models", handler.List)
 	router.POST("/admin/media-models", handler.Create)
 	router.GET("/admin/media-models/preflight", handler.Preflight)
+	router.POST("/admin/media-models/request-mapping-preview", handler.PreviewRequestMapping)
 	router.GET("/admin/media-models/:id", handler.GetByID)
 	router.PUT("/admin/media-models/:id", handler.Update)
 	router.DELETE("/admin/media-models/:id", handler.Delete)
@@ -331,6 +332,68 @@ func TestMediaModelHandlerPreflightIsReadOnlyAndReturnsUnsafeReport(t *testing.T
 	require.Equal(t, refreshesBefore, store.refreshCalls)
 }
 
+func TestMediaModelHandlerPreviewsRequestMappingWithoutWrites(t *testing.T) {
+	router, store, _ := newMediaModelHandlerFixture(t, service.PlatformMedia)
+	writesBefore, refreshesBefore := store.writeCount, store.refreshCalls
+	body := `{
+		"request":{"prompt":"hello","size":"1024x1024","seed":"42"},
+		"mapping":{"rules":[
+			{"operation":"rename","source":"size","target":"image_size"},
+			{"operation":"default","target":"count","value":1},
+			{"operation":"cast","source":"seed","target":"seed_number","cast":"integer"}
+		]}
+	}`
+
+	recorder := performMediaModelHandlerRequest(router, http.MethodPost, "/admin/media-models/request-mapping-preview", body)
+
+	require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
+	require.JSONEq(t, `{"prompt":"hello","image_size":"1024x1024","seed":"42","count":1,"seed_number":42}`, gjson.Get(recorder.Body.String(), "data.result").Raw)
+	require.Equal(t, writesBefore, store.writeCount)
+	require.Equal(t, refreshesBefore, store.refreshCalls)
+}
+
+func TestMediaModelHandlerPreviewSkipsMissingOptionalMappingSource(t *testing.T) {
+	router, store, _ := newMediaModelHandlerFixture(t, service.PlatformMedia)
+	writesBefore, refreshesBefore := store.writeCount, store.refreshCalls
+	body := `{
+		"request":{"prompt":"hello"},
+		"mapping":{"rules":[
+			{"operation":"copy","source":"size","target":"image_size"}
+		]}
+	}`
+
+	recorder := performMediaModelHandlerRequest(router, http.MethodPost, "/admin/media-models/request-mapping-preview", body)
+
+	require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
+	require.JSONEq(t, `{"prompt":"hello"}`, gjson.Get(recorder.Body.String(), "data.result").Raw)
+	require.Equal(t, writesBefore, store.writeCount)
+	require.Equal(t, refreshesBefore, store.refreshCalls)
+}
+
+func TestMediaModelHandlerPreviewRejectsInvalidEnvelopeAndMapping(t *testing.T) {
+	router, _, _ := newMediaModelHandlerFixture(t, service.PlatformMedia)
+	tests := []struct {
+		name string
+		body string
+		want string
+	}{
+		{name: "missing request", body: `{"mapping":{}}`, want: "request is required"},
+		{name: "missing mapping", body: `{"request":{}}`, want: "mapping is required"},
+		{name: "request must be object", body: `{"request":[],"mapping":{}}`, want: "cannot unmarshal array"},
+		{name: "unknown envelope field", body: `{"request":{},"mapping":{},"script":"x"}`, want: "unknown field"},
+		{name: "unknown mapping field", body: `{"request":{},"mapping":{"script":"x"}}`, want: "unknown field"},
+		{name: "unknown rule field", body: `{"request":{},"mapping":{"rules":[{"operation":"default","target":"n","value":1,"script":"x"}]}}`, want: "unknown field"},
+		{name: "rule missing source", body: `{"request":{},"mapping":{"rules":[{"operation":"copy","target":"image_size"}]}}`, want: "path is empty"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			recorder := performMediaModelHandlerRequest(router, http.MethodPost, "/admin/media-models/request-mapping-preview", tt.body)
+			require.Equal(t, http.StatusBadRequest, recorder.Code, recorder.Body.String())
+			require.Contains(t, recorder.Body.String(), tt.want)
+		})
+	}
+}
+
 func TestMediaModelAdminHandlerUpdateAndDeleteRefreshRegistry(t *testing.T) {
 	router, store, registry := newMediaModelHandlerFixture(t, service.PlatformMedia)
 	created := performMediaModelHandlerRequest(router, http.MethodPost, "/admin/media-models", validMediaModelHandlerBody())
@@ -372,6 +435,8 @@ func TestMediaModelAdminHandlerStrictlyRejectsInvalidDefinitions(t *testing.T) {
 		{name: "unknown request field", body: `{"model_id":"image","vendor":"openai","media_type":"image","operations":["text_to_image"],"constraints":{},"billing_unit":"image","default_adapter":"openai-images","default_async_mode":"optional","enabled":true,"aliases":[],"script":"x"}`},
 		{name: "operation type mismatch", body: `{"model_id":"image","vendor":"openai","media_type":"image","operations":["text_to_video"],"constraints":{},"billing_unit":"image","default_adapter":"openai-images","default_async_mode":"optional","enabled":true,"aliases":[]}`},
 		{name: "unknown constraints field", body: `{"model_id":"image","vendor":"openai","media_type":"image","operations":["text_to_image"],"constraints":{"script":"x"},"billing_unit":"image","default_adapter":"openai-images","default_async_mode":"optional","enabled":true,"aliases":[]}`},
+		{name: "unsupported billing unit", body: `{"model_id":"image","vendor":"openai","media_type":"image","operations":["text_to_image"],"constraints":{},"billing_unit":"request","default_adapter":"openai-images","default_async_mode":"optional","enabled":true,"aliases":[]}`},
+		{name: "mismatched billing unit", body: `{"model_id":"image","vendor":"openai","media_type":"image","operations":["text_to_image"],"constraints":{},"billing_unit":"second","default_adapter":"openai-images","default_async_mode":"optional","enabled":true,"aliases":[]}`},
 		{name: "duplicate normalized alias", body: `{"model_id":"image","vendor":"openai","media_type":"image","operations":["text_to_image"],"constraints":{},"billing_unit":"image","default_adapter":"openai-images","default_async_mode":"optional","enabled":true,"aliases":["Alias"," alias "]}`},
 		{name: "missing enabled", body: `{"model_id":"image","vendor":"openai","media_type":"image","operations":["text_to_image"],"constraints":{},"billing_unit":"image","default_adapter":"openai-images","default_async_mode":"optional","aliases":[]}`},
 	}

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
@@ -194,9 +195,9 @@ func (r *mediaTaskRepository) GetByID(ctx context.Context, id int64) (*service.M
 	return mediaTaskFromEnt(task), nil
 }
 
-func (r *mediaTaskRepository) GetByPublicIDForUser(ctx context.Context, publicID string, userID int64) (*service.MediaTask, error) {
+func (r *mediaTaskRepository) GetByPublicIDForUser(ctx context.Context, publicID string, userID, apiKeyID int64) (*service.MediaTask, error) {
 	task, err := r.client.MediaTask.Query().
-		Where(mediatask.PublicIDEQ(publicID), mediatask.UserIDEQ(userID)).
+		Where(mediatask.PublicIDEQ(publicID), mediatask.UserIDEQ(userID), mediatask.APIKeyIDEQ(apiKeyID)).
 		Only(ctx)
 	if err != nil {
 		if dbent.IsNotFound(err) {
@@ -481,10 +482,15 @@ func (r *mediaTaskRepository) ListRecoverable(ctx context.Context, now time.Time
 	return mediaTasksFromEnt(tasks), nil
 }
 
-func (r *mediaTaskRepository) ListSettlementPending(ctx context.Context, limit int) ([]service.MediaTask, error) {
+func (r *mediaTaskRepository) ListSettlementPending(
+	ctx context.Context,
+	retryReadyBefore time.Time,
+	limit int,
+) ([]service.MediaTask, error) {
 	tasks, err := r.client.MediaTask.Query().
 		Where(
 			mediatask.BillingStatusIn("precharged", "settling", "retry"),
+			mediatask.UpdatedAtLTE(retryReadyBefore),
 			mediatask.Or(
 				mediatask.SettlementPlanNotNil(),
 				mediatask.And(
@@ -496,7 +502,10 @@ func (r *mediaTaskRepository) ListSettlementPending(ctx context.Context, limit i
 				),
 			),
 		).
-		Order(mediatask.ByID()).
+		// Every settlement attempt updates updated_at. Oldest-first ordering
+		// therefore provides a durable round-robin cursor: a failed row moves to
+		// the back instead of occupying a fixed low-ID batch forever.
+		Order(mediatask.ByUpdatedAt(), mediatask.ByID()).
 		Limit(limit).
 		All(ctx)
 	if err != nil {
@@ -526,6 +535,26 @@ func NewMediaArtifactRepository(client *dbent.Client) service.MediaArtifactRepos
 	return &mediaArtifactRepository{client: client}
 }
 
+type mediaStorageArtifactUsageRepository struct {
+	client *dbent.Client
+}
+
+func NewMediaStorageArtifactUsageRepository(client *dbent.Client) service.MediaStorageArtifactUsageRepository {
+	return &mediaStorageArtifactUsageRepository{client: client}
+}
+
+func (r *mediaStorageArtifactUsageRepository) HasArtifactsForStorageProvider(
+	ctx context.Context,
+	provider string,
+) (bool, error) {
+	if r == nil || r.client == nil {
+		return false, errors.New("media storage artifact usage repository is unavailable")
+	}
+	return r.client.MediaArtifact.Query().
+		Where(mediaartifact.StorageProviderEQ(normalizedMediaArtifactStorageProvider(provider))).
+		Exist(ctx)
+}
+
 func (r *mediaArtifactRepository) Create(ctx context.Context, artifact *service.MediaArtifact) (*service.MediaArtifact, error) {
 	create := r.client.MediaArtifact.Create().
 		SetTaskID(artifact.TaskID).
@@ -540,6 +569,7 @@ func (r *mediaArtifactRepository) Create(ctx context.Context, artifact *service.
 		SetNillableDurationSeconds(artifact.DurationSeconds).
 		SetResolution(artifact.Resolution).
 		SetNillableFps(artifact.FPS).
+		SetStorageProvider(normalizedMediaArtifactStorageProvider(artifact.StorageProvider)).
 		SetNillableExpiresAt(utcTimePointer(artifact.ExpiresAt))
 	if artifact.StorageStatus != "" {
 		create.SetStorageStatus(artifact.StorageStatus)
@@ -599,6 +629,7 @@ func mediaArtifactContentIdentityEqual(left, right *service.MediaArtifact) bool 
 		left.Resolution == right.Resolution &&
 		optionalComparableEqual(left.FPS, right.FPS) &&
 		left.StorageStatus == normalizedMediaArtifactStorageStatus(right.StorageStatus) &&
+		left.StorageProvider == normalizedMediaArtifactStorageProvider(right.StorageProvider) &&
 		left.ObjectKey == right.ObjectKey &&
 		left.PublicURL == right.PublicURL &&
 		left.UpstreamReference == right.UpstreamReference &&
@@ -610,6 +641,14 @@ func normalizedMediaArtifactStorageStatus(status string) string {
 		return "pending"
 	}
 	return status
+}
+
+func normalizedMediaArtifactStorageProvider(provider string) string {
+	provider = strings.ToLower(strings.TrimSpace(provider))
+	if provider == "" {
+		return service.MediaStorageProviderLegacy
+	}
+	return provider
 }
 
 func optionalComparableEqual[T comparable](left, right *T) bool {
@@ -721,6 +760,7 @@ func mediaArtifactFromEnt(artifact *dbent.MediaArtifact) *service.MediaArtifact 
 		Resolution:        artifact.Resolution,
 		FPS:               cloneFloatPointer(artifact.Fps),
 		StorageStatus:     artifact.StorageStatus,
+		StorageProvider:   artifact.StorageProvider,
 		ObjectKey:         stringFromPointer(artifact.ObjectKey),
 		PublicURL:         stringFromPointer(artifact.PublicURL),
 		UpstreamReference: stringFromPointer(artifact.UpstreamReference),

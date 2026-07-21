@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
 	"strconv"
 	"time"
 
@@ -98,6 +99,17 @@ type mediaAdapterPreflightResponse struct {
 	Items         []mediaAdapterPreflightItemResponse `json:"items"`
 }
 
+const mediaRequestMappingPreviewMaxBytes = 1 << 20
+
+type mediaRequestMappingPreviewRequest struct {
+	Request *map[string]any              `json:"request"`
+	Mapping *service.MediaRequestMapping `json:"mapping"`
+}
+
+type mediaRequestMappingPreviewResponse struct {
+	Result map[string]any `json:"result"`
+}
+
 // List returns all enabled and disabled global media model definitions.
 // GET /api/v1/admin/media-models
 func (h *MediaModelAdminHandler) List(c *gin.Context) {
@@ -123,6 +135,32 @@ func (h *MediaModelAdminHandler) Preflight(c *gin.Context) {
 		return
 	}
 	response.Success(c, mediaAdapterPreflightResponseFromService(report))
+}
+
+// PreviewRequestMapping applies a declarative account request mapping to a
+// unified downstream request sample without persisting either value.
+// POST /api/v1/admin/media-models/request-mapping-preview
+func (h *MediaModelAdminHandler) PreviewRequestMapping(c *gin.Context) {
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, mediaRequestMappingPreviewMaxBytes)
+	var req mediaRequestMappingPreviewRequest
+	if err := decodeStrictAdminJSON(c, &req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	if req.Request == nil {
+		response.BadRequest(c, "Invalid request: request is required and must be an object")
+		return
+	}
+	if req.Mapping == nil {
+		response.BadRequest(c, "Invalid request: mapping is required and must be an object")
+		return
+	}
+	result, err := req.Mapping.Apply(*req.Request)
+	if err != nil {
+		response.BadRequest(c, "Invalid request mapping preview: "+err.Error())
+		return
+	}
+	response.Success(c, mediaRequestMappingPreviewResponse{Result: result})
 }
 
 // GetByID returns one global media model definition.

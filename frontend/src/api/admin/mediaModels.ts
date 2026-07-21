@@ -1,6 +1,10 @@
 import { apiClient } from '../client'
 
-import type { MediaModelDefinition, MediaModelDefinitionInput } from '@/types'
+import type {
+  MediaModelDefinition,
+  MediaModelDefinitionInput,
+  MediaRequestMapping,
+} from '@/types'
 
 export interface MediaModelListResponse {
   items: MediaModelDefinition[]
@@ -8,6 +12,10 @@ export interface MediaModelListResponse {
 
 export interface GroupMediaModelScopesResponse {
   model_ids: string[]
+}
+
+export interface MediaRequestMappingPreviewResponse {
+  result: Record<string, unknown>
 }
 
 export async function list(): Promise<MediaModelDefinition[]> {
@@ -37,6 +45,17 @@ export async function remove(id: number): Promise<void> {
   await apiClient.delete(`/admin/media-models/${id}`)
 }
 
+export async function previewRequestMapping(
+  request: Record<string, unknown>,
+  mapping: MediaRequestMapping,
+): Promise<Record<string, unknown>> {
+  const { data } = await apiClient.post<MediaRequestMappingPreviewResponse>(
+    '/admin/media-models/request-mapping-preview',
+    { request, mapping },
+  )
+  return data.result
+}
+
 export async function getGroupScopes(groupId: number): Promise<string[]> {
   const { data } = await apiClient.get<GroupMediaModelScopesResponse>(
     `/admin/groups/${groupId}/media-model-scopes`,
@@ -58,6 +77,7 @@ export const mediaModelsAPI = {
   create,
   update,
   remove,
+  previewRequestMapping,
   getGroupScopes,
   replaceGroupScopes,
 }

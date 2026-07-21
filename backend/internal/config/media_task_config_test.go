@@ -24,6 +24,7 @@ func TestMediaTaskConfigDefaults(t *testing.T) {
 	require.Equal(t, 1000, cfg.MediaTasks.StreamBlockMilliseconds)
 	require.Equal(t, 90, cfg.MediaTasks.ContentProxyTimeoutSeconds)
 	require.Equal(t, int64(2147483648), cfg.MediaTasks.MaxContentBytes)
+	require.Equal(t, "./data/generated", cfg.MediaTasks.LocalStoragePath)
 }
 
 func TestMediaTaskConfigLoadsDeploymentOverrides(t *testing.T) {
@@ -40,6 +41,7 @@ media_tasks:
   stream_block_milliseconds: 750
   content_proxy_timeout_seconds: 60
   max_content_bytes: 1048576
+  local_storage_path: /tmp/fluxcode-generated
 `)
 
 	require.False(t, cfg.MediaTasks.Enabled)
@@ -53,6 +55,7 @@ media_tasks:
 	require.Equal(t, 750, cfg.MediaTasks.StreamBlockMilliseconds)
 	require.Equal(t, 60, cfg.MediaTasks.ContentProxyTimeoutSeconds)
 	require.Equal(t, int64(1048576), cfg.MediaTasks.MaxContentBytes)
+	require.Equal(t, "/tmp/fluxcode-generated", cfg.MediaTasks.LocalStoragePath)
 }
 
 func TestMediaTaskConfigRejectsNonPositiveDeploymentValues(t *testing.T) {
@@ -87,6 +90,11 @@ media_tasks:
   lease_renew_interval_seconds: 30
 `)
 	require.ErrorContains(t, err, "media_tasks.lease_renew_interval_seconds")
+}
+
+func TestMediaTaskConfigRejectsEmptyLocalStoragePath(t *testing.T) {
+	_, err := loadConfigWithYAMLError(t, "media_tasks:\n  local_storage_path: '   '\n")
+	require.ErrorContains(t, err, "media_tasks.local_storage_path")
 }
 
 func loadConfigWithYAML(t *testing.T, yaml string) *Config {

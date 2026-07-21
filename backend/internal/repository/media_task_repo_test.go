@@ -132,14 +132,17 @@ func TestMediaTaskRepositoryCreateAndLookupRoundTrip(t *testing.T) {
 	byID, err := repo.GetByID(ctx, created.ID)
 	require.NoError(t, err)
 	require.Equal(t, created.ID, byID.ID)
-	byPublicID, err := repo.GetByPublicIDForUser(ctx, created.PublicID, created.UserID)
+	byPublicID, err := repo.GetByPublicIDForUser(ctx, created.PublicID, created.UserID, created.APIKeyID)
 	require.NoError(t, err)
 	require.Equal(t, created.ID, byPublicID.ID)
 	byIdempotencyKey, err := repo.GetByIdempotencyKey(ctx, created.UserID, created.APIKeyID, created.IdempotencyKey)
 	require.NoError(t, err)
 	require.Equal(t, created.ID, byIdempotencyKey.ID)
 
-	_, err = repo.GetByPublicIDForUser(ctx, created.PublicID, created.UserID+1)
+	_, err = repo.GetByPublicIDForUser(ctx, created.PublicID, created.UserID+1, created.APIKeyID)
+	require.ErrorIs(t, err, service.ErrMediaTaskNotFound)
+	require.True(t, dbent.IsNotFound(err))
+	_, err = repo.GetByPublicIDForUser(ctx, created.PublicID, created.UserID, created.APIKeyID+1)
 	require.ErrorIs(t, err, service.ErrMediaTaskNotFound)
 	require.True(t, dbent.IsNotFound(err))
 	_, err = repo.GetByIdempotencyKey(ctx, created.UserID, created.APIKeyID, "")
@@ -280,7 +283,7 @@ func TestMediaTaskRepositoryMediaNotFoundMappingPreservesContextErrors(t *testin
 	canceled, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	_, err := repo.GetByPublicIDForUser(canceled, "task_missing", 1)
+	_, err := repo.GetByPublicIDForUser(canceled, "task_missing", 1, 1)
 	require.ErrorIs(t, err, context.Canceled)
 	require.False(t, errors.Is(err, service.ErrMediaTaskNotFound))
 }
@@ -541,9 +544,64 @@ func TestMediaTaskRepositoryListsRecoverableAndSettlementPending(t *testing.T) {
 	_, err = repo.Create(ctx, settled)
 	require.NoError(t, err)
 
-	settlementPending, err := repo.ListSettlementPending(ctx, 10)
+	settlementPending, err := repo.ListSettlementPending(ctx, time.Now().Add(time.Minute), 10)
 	require.NoError(t, err)
 	require.Equal(t, []int64{pendingTask.ID, recoveryOnlyTask.ID, retryingTask.ID}, mediaTaskIDs(settlementPending))
+}
+
+func TestMediaTaskRepositorySettlementRecoveryBackoffAdvancesPastFailedBatch(t *testing.T) {
+	repo, client := newMediaTaskRepositoryTestHarness(t)
+	ctx := context.Background()
+	now := time.Now().UTC().Truncate(time.Second)
+	oldest := now.Add(-time.Hour)
+	ids := make([]int64, 0, 3)
+	for index := 0; index < 3; index++ {
+		task := newRepositoryMediaTask(fmt.Sprintf("task_settlement_fair_%d", index))
+		task.Status = service.MediaTaskStatusCompleted
+		task.Stage = service.MediaTaskStageCompleted
+		task.BillingStatus = service.MediaBillingStatusRetry
+		task.SettlementPlan = json.RawMessage(`{"type":"success","usage":{"image_count":1}}`)
+		task.CreatedAt = oldest.Add(time.Duration(index) * time.Second)
+		task.UpdatedAt = task.CreatedAt
+		created, err := repo.Create(ctx, task)
+		require.NoError(t, err)
+		ids = append(ids, created.ID)
+	}
+
+	firstBatch, err := repo.ListSettlementPending(ctx, now, 2)
+	require.NoError(t, err)
+	require.Equal(t, ids[:2], mediaTaskIDs(firstBatch))
+
+	// Model two failed attempts through the production billing CAS. Ent's
+	// UpdateDefault advances updated_at, which is the durable retry cursor.
+	for _, id := range ids[:2] {
+		updated, err := repo.UpdateBilling(ctx, id, service.MediaBillingStatusRetry, map[string]any{
+			"billing_status": service.MediaBillingStatusSettling,
+		})
+		require.NoError(t, err)
+		require.True(t, updated)
+		updated, err = repo.UpdateBilling(ctx, id, service.MediaBillingStatusSettling, map[string]any{
+			"billing_status": service.MediaBillingStatusRetry,
+		})
+		require.NoError(t, err)
+		require.True(t, updated)
+		stored, err := repo.GetByID(ctx, id)
+		require.NoError(t, err)
+		require.True(t, stored.UpdatedAt.After(oldest))
+	}
+	// Pin exact timestamps only to make the tie-break assertion deterministic.
+	_, err = client.MediaTask.UpdateOneID(ids[0]).SetUpdatedAt(now).Save(ctx)
+	require.NoError(t, err)
+	_, err = client.MediaTask.UpdateOneID(ids[1]).SetUpdatedAt(now.Add(time.Second)).Save(ctx)
+	require.NoError(t, err)
+
+	backoffReady, err := repo.ListSettlementPending(ctx, now.Add(-time.Minute), 10)
+	require.NoError(t, err)
+	require.Equal(t, []int64{ids[2]}, mediaTaskIDs(backoffReady))
+
+	nextBatch, err := repo.ListSettlementPending(ctx, now.Add(time.Minute), 2)
+	require.NoError(t, err)
+	require.Equal(t, []int64{ids[2], ids[0]}, mediaTaskIDs(nextBatch))
 }
 
 func TestMediaTaskRepositoryTransitionPersistsSettlementRecoveryForPendingScan(t *testing.T) {
@@ -578,7 +636,7 @@ func TestMediaTaskRepositoryTransitionPersistsSettlementRecoveryForPendingScan(t
 	stored, err := repo.GetByID(ctx, task.ID)
 	require.NoError(t, err)
 	require.JSONEq(t, string(recovery), string(stored.SettlementRecovery))
-	pending, err := repo.ListSettlementPending(ctx, 10)
+	pending, err := repo.ListSettlementPending(ctx, time.Now().Add(time.Minute), 10)
 	require.NoError(t, err)
 	require.Equal(t, []int64{task.ID}, mediaTaskIDs(pending))
 }
@@ -721,7 +779,7 @@ func TestMediaTaskRepositoryTransitionQueuedFencesInitializationOwnerAndPersists
 	staleAfterSuccess, err := repo.TransitionQueued(ctx, task.ID, task.Version, service.MediaTaskStatusFailed, nil)
 	require.NoError(t, err)
 	require.False(t, staleAfterSuccess)
-	pending, err := repo.ListSettlementPending(ctx, 10)
+	pending, err := repo.ListSettlementPending(ctx, time.Now().Add(time.Minute), 10)
 	require.NoError(t, err)
 	require.Equal(t, []int64{task.ID}, mediaTaskIDs(pending))
 }
@@ -1063,6 +1121,29 @@ func TestMediaArtifactRepositoryCreateRejectsConflictingContentIdentity(t *testi
 			require.ErrorIs(t, err, service.ErrMediaArtifactConflict)
 		})
 	}
+}
+
+func TestMediaArtifactRepositoryDeleteExactRequiresImmutableIdentity(t *testing.T) {
+	repo, task := newMediaArtifactRepositoryTestHarness(t)
+	ctx := context.Background()
+	created, err := repo.Create(ctx, completeRepositoryMediaArtifact(task.ID))
+	require.NoError(t, err)
+
+	wrong := *created
+	wrong.ObjectKey = "objects/not-the-created-object"
+	deleted, err := repo.DeleteExact(ctx, &wrong)
+	require.NoError(t, err)
+	require.False(t, deleted)
+	items, err := repo.ListByTaskID(ctx, task.ID)
+	require.NoError(t, err)
+	require.Len(t, items, 1)
+
+	deleted, err = repo.DeleteExact(ctx, created)
+	require.NoError(t, err)
+	require.True(t, deleted)
+	items, err = repo.ListByTaskID(ctx, task.ID)
+	require.NoError(t, err)
+	require.Empty(t, items)
 }
 
 func completeRepositoryMediaArtifact(taskID int64) *service.MediaArtifact {

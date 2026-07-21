@@ -53,11 +53,15 @@ func TestRegisterAdminRoutesIncludesMediaModelManagement(t *testing.T) {
 		"GET /api/v1/admin/media-models",
 		"POST /api/v1/admin/media-models",
 		"GET /api/v1/admin/media-models/preflight",
+		"POST /api/v1/admin/media-models/request-mapping-preview",
 		"GET /api/v1/admin/media-models/:id",
 		"PUT /api/v1/admin/media-models/:id",
 		"DELETE /api/v1/admin/media-models/:id",
 		"GET /api/v1/admin/groups/:id/media-model-scopes",
 		"PUT /api/v1/admin/groups/:id/media-model-scopes",
+		"GET /api/v1/admin/settings/media-storage",
+		"PUT /api/v1/admin/settings/media-storage",
+		"POST /api/v1/admin/settings/media-storage/test",
 	} {
 		_, ok := registered[route]
 		require.True(t, ok, "missing route %s", route)
@@ -68,4 +72,27 @@ func TestRegisterAdminRoutesIncludesMediaModelManagement(t *testing.T) {
 	router.ServeHTTP(recorder, request)
 	require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
 	require.Contains(t, recorder.Body.String(), `"safe":true`)
+}
+
+func TestMediaRequestMappingPreviewRouteRequiresAdminMiddleware(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	v1 := router.Group("/api/v1")
+	resolver := service.NewMediaAdapterResolver(service.NewMediaAdapterRegistry())
+	mediaModelService := service.NewMediaModelAdminService(mediaModelRouteAdminRepository{}, nil, nil, nil, resolver)
+	handlers := &handler.Handlers{Admin: &handler.AdminHandlers{
+		MediaModel: adminhandler.NewMediaModelAdminHandler(mediaModelService),
+	}}
+	authCalls := 0
+	RegisterAdminRoutes(v1, handlers, middleware.AdminAuthMiddleware(func(c *gin.Context) {
+		authCalls++
+		c.AbortWithStatus(http.StatusUnauthorized)
+	}))
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/admin/media-models/request-mapping-preview", nil)
+	router.ServeHTTP(recorder, request)
+
+	require.Equal(t, http.StatusUnauthorized, recorder.Code)
+	require.Equal(t, 1, authCalls)
 }

@@ -92,7 +92,7 @@
                   </div>
                 </div>
                 <div class="rounded-full border border-[#7b6857]/12 bg-[#f4ede2] px-3 py-1 text-xs font-medium text-[#6d5c4d] dark:border-white/10 dark:bg-white/5 dark:text-dark-200">
-                  {{ localizeText(text('4 组示例', '4 example sets')) }}
+                  {{ localizeText(text(`${protocols.length} 组示例`, `${protocols.length} example sets`)) }}
                 </div>
               </div>
 
@@ -420,6 +420,33 @@
               </div>
             </div>
 
+            <div v-if="section.responseExamples.length" class="mt-8">
+              <h3 class="text-lg font-semibold text-gray-900 dark:text-white">
+                {{ t('integrationDocs.fields.responseExamplesTitle') }}
+              </h3>
+              <div class="mt-4 grid gap-4 xl:grid-cols-3">
+                <article
+                  v-for="response in section.responseExamples"
+                  :key="`${section.id}-${response.status}`"
+                  :data-testid="`response-example-${section.id}-${response.status}`"
+                  class="overflow-hidden rounded-[28px] border border-[#7b6857]/10 bg-[#fcfaf6] dark:border-white/10 dark:bg-dark-950/25"
+                >
+                  <div class="flex items-center justify-between border-b border-[#7b6857]/10 px-4 py-3 dark:border-white/10">
+                    <span class="font-mono text-sm font-semibold text-gray-900 dark:text-white">
+                      HTTP {{ response.status }}
+                    </span>
+                    <span class="text-xs font-medium text-gray-500 dark:text-dark-300">
+                      {{ localizeText(response.title) }}
+                    </span>
+                  </div>
+                  <p class="px-4 pt-4 text-sm leading-relaxed text-gray-600 dark:text-dark-300">
+                    {{ localizeText(response.description) }}
+                  </p>
+                  <pre class="mt-4 overflow-x-auto bg-[#231d17] p-4 font-mono text-xs leading-relaxed text-[#f7efe5]"><code v-text="response.body"></code></pre>
+                </article>
+              </div>
+            </div>
+
             <div class="mt-8">
               <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div class="text-sm font-semibold text-gray-900 dark:text-white">
@@ -524,6 +551,13 @@ type ProtocolExample = {
   code: string
 }
 
+type ProtocolResponseExample = {
+  status: number
+  title: LocalizedText
+  description: LocalizedText
+  body: string
+}
+
 type ExtraParameterGroup = {
   title: LocalizedText
   description?: LocalizedText
@@ -542,6 +576,7 @@ type ProtocolSection = {
   parameterNotice?: string
   params: ProtocolParam[]
   extraParameterGroups: ExtraParameterGroup[]
+  responseExamples: ProtocolResponseExample[]
   examples: ProtocolExample[]
 }
 
@@ -567,7 +602,8 @@ const baseUrl = computed(() => {
 
 const openAIModel = computed(() => resolveOpenAIUseKeyModelId(appStore.openaiUseKeyModelId))
 const anthropicModel = 'claude-sonnet-4-5'
-const imageModel = 'gpt-image-1'
+const imageModel = 'gpt-image-2'
+const videoModel = 'seedance-1.5-pro'
 const activeExampleTabs = ref<Record<string, ExampleTabId>>({})
 const copiedExampleSectionId = ref<string | null>(null)
 const activeSectionId = ref('')
@@ -579,7 +615,12 @@ const standardPaths = computed(() => [
   '/v1/responses',
   '/v1/messages',
   '/v1/images/generations',
-  '/v1/images/edits'
+  '/v1/images/edits',
+  '/v1/images/{task_id}',
+  '/v1/images/{task_id}/content',
+  '/v1/videos',
+  '/v1/videos/{task_id}',
+  '/v1/videos/{task_id}/content'
 ])
 
 function text(zh: string, en: string): LocalizedText {
@@ -721,6 +762,14 @@ const protocols = computed<ProtocolSection[]>(() => {
     }
   ]
 
+  const mediaHeaders: HeaderItem[] = [
+    ...openAIHeaders,
+    {
+      label: t('integrationDocs.fields.idempotencyHeader'),
+      value: 'Idempotency-Key: your-unique-request-id'
+    }
+  ]
+
   const anthropicHeaders: HeaderItem[] = [
     {
       label: t('integrationDocs.fields.authHeader'),
@@ -767,6 +816,14 @@ const protocols = computed<ProtocolSection[]>(() => {
     prompt: '一张具有未来感的 API 网关控制台插画，浅色背景，蓝金配色',
     size: '1024x1024',
     response_format: 'url'
+  }
+
+  const videoBody = {
+    model: videoModel,
+    prompt: '日落时分，镜头缓慢掠过海边城市天际线',
+    duration_seconds: 5,
+    resolution: '720p',
+    async: true
   }
 
   const openAIChatExamples: ProtocolExample[] = [
@@ -908,7 +965,7 @@ const protocols = computed<ProtocolSection[]>(() => {
     {
       id: 'curl',
       label: 'cURL',
-      code: buildCurl(`${baseUrl.value}/v1/images/generations`, openAIHeaders, imageBody)
+      code: buildCurl(`${baseUrl.value}/v1/images/generations`, mediaHeaders, imageBody)
     },
     {
       id: 'python',
@@ -944,6 +1001,53 @@ const protocols = computed<ProtocolSection[]>(() => {
           'Content-Type': 'application/json'
         },
         imageBody
+      )
+    }
+  ]
+
+  const videoExamples: ProtocolExample[] = [
+    {
+      id: 'curl',
+      label: 'cURL',
+      code: buildCurl(`${baseUrl.value}/v1/videos`, mediaHeaders, videoBody)
+    },
+    {
+      id: 'python',
+      label: 'Python',
+      code: buildPython(
+        `${baseUrl.value}/v1/videos`,
+        {
+          Authorization: `Bearer ${apiKeyPlaceholder}`,
+          'Content-Type': 'application/json',
+          'Idempotency-Key': 'your-unique-request-id'
+        },
+        videoBody
+      )
+    },
+    {
+      id: 'javascript',
+      label: 'JavaScript',
+      code: buildJavaScript(
+        `${baseUrl.value}/v1/videos`,
+        {
+          Authorization: `Bearer ${apiKeyPlaceholder}`,
+          'Content-Type': 'application/json',
+          'Idempotency-Key': 'your-unique-request-id'
+        },
+        videoBody
+      )
+    },
+    {
+      id: 'java',
+      label: 'Java',
+      code: buildJava(
+        `${baseUrl.value}/v1/videos`,
+        {
+          Authorization: `Bearer ${apiKeyPlaceholder}`,
+          'Content-Type': 'application/json',
+          'Idempotency-Key': 'your-unique-request-id'
+        },
+        videoBody
       )
     }
   ]
@@ -1182,6 +1286,7 @@ const protocols = computed<ProtocolSection[]>(() => {
         )
       ],
       extraParameterGroups: [],
+      responseExamples: [],
       examples: openAIChatExamples
     },
     {
@@ -1393,6 +1498,7 @@ const protocols = computed<ProtocolSection[]>(() => {
         )
       ],
       extraParameterGroups: [],
+      responseExamples: [],
       examples: responsesExamples
     },
     {
@@ -1566,6 +1672,7 @@ const protocols = computed<ProtocolSection[]>(() => {
         )
       ],
       extraParameterGroups: [],
+      responseExamples: [],
       examples: anthropicExamples
     },
     {
@@ -1573,9 +1680,14 @@ const protocols = computed<ProtocolSection[]>(() => {
       badge: t('integrationDocs.sections.openaiImages.badge'),
       title: t('integrationDocs.sections.openaiImages.title'),
       description: t('integrationDocs.sections.openaiImages.description'),
-      method: 'POST',
-      endpoints: ['/v1/images/generations', '/v1/images/edits'],
-      headers: openAIHeaders,
+      method: 'POST / GET',
+      endpoints: [
+        '/v1/images/generations',
+        '/v1/images/edits',
+        '/v1/images/{task_id}',
+        '/v1/images/{task_id}/content'
+      ],
+      headers: mediaHeaders,
       bullets: [
         t('integrationDocs.sections.openaiImages.bullets.item1'),
         t('integrationDocs.sections.openaiImages.bullets.item2'),
@@ -1583,12 +1695,19 @@ const protocols = computed<ProtocolSection[]>(() => {
       ],
       parameterNotice:
         docsLocale.value === 'zh'
-          ? '下表先列文生图与图生图共用字段，再补 `/v1/images/edits` 的专属输入参数。'
-          : 'The first table lists fields shared by generations and edits, followed by edit-specific inputs for `/v1/images/edits`.',
+          ? '`/v1/images/generations` 使用 JSON；`/v1/images/edits` 使用 multipart/form-data，并沿用同名生成参数。'
+          : '`/v1/images/generations` accepts JSON. `/v1/images/edits` uses multipart/form-data and accepts the same named generation options.',
       params: [
-        param('model', 'string', false, text('生图模型 ID。未传时网关默认 `gpt-image-2`。', 'Image model ID. The gateway defaults to `gpt-image-2` when omitted.')),
-        param('prompt', 'string', false, text('图片生成提示词。', 'Image generation prompt.')),
-        param('stream', 'boolean', false, text('是否启用流式生图事件。', 'Enable streaming image-generation events.')),
+        param('model', 'string', true, text('已在媒体模型注册表启用的公共模型 ID。', 'Public model ID enabled in the media model registry.')),
+        param('prompt', 'string', true, text('图片生成或编辑提示词。', 'Prompt for image generation or editing.')),
+        param(
+          'async',
+          'boolean',
+          false,
+          text('传 `true` 时立即创建异步任务；省略或传 `false` 时同步等待。', 'Set to `true` to create an asynchronous task immediately; omit it or set `false` to wait synchronously.'),
+          text('true, false', 'true, false'),
+          text('默认 false；任务一旦以异步方式接受，不支持取消。', 'Defaults to false. Once accepted asynchronously, a task cannot be cancelled.')
+        ),
         param('n', 'integer', false, text('生成图片张数。', 'Number of images to generate.'), undefined, text('必须为正整数；默认 1。', 'Must be a positive integer; defaults to 1.')),
         param(
           'size',
@@ -1601,8 +1720,9 @@ const protocols = computed<ProtocolSection[]>(() => {
           'response_format',
           'string',
           false,
-          text('返回格式。', 'Response format.'),
-          text('b64_json, url', 'b64_json, url')
+          text('返回格式；`url` 返回鉴权下载地址，`b64_json` 返回实际图片 Base64。', 'Response format. `url` returns an authenticated download URL, while `b64_json` returns the actual image Base64.'),
+          text('b64_json, url', 'b64_json, url'),
+          text('默认 url。', 'Defaults to url.')
         ),
         param(
           'quality',
@@ -1611,109 +1731,239 @@ const protocols = computed<ProtocolSection[]>(() => {
           text('图片质量档位。', 'Image quality level.')
         ),
         param(
-          'background',
-          'string',
-          false,
-          text('背景处理策略。', 'Background handling strategy.')
-        ),
-        param(
           'output_format',
           'string',
           false,
           text('输出图片格式。', 'Output image format.')
-        ),
-        param(
-          'moderation',
-          'string',
-          false,
-          text('内容审核策略。', 'Moderation strategy.')
-        ),
-        param(
-          'input_fidelity',
-          'string',
-          false,
-          text('图生图时的输入保真度。', 'Input fidelity for image editing.')
-        ),
-        param(
-          'style',
-          'string',
-          false,
-          text('图片风格档位。', 'Image style mode.')
-        ),
-        param(
-          'output_compression',
-          'integer',
-          false,
-          text('输出压缩率。', 'Output compression ratio.')
-        ),
-        param(
-          'partial_images',
-          'integer',
-          false,
-          text('是否允许分阶段返回部分图片。', 'Whether partial images may be returned during generation.')
         )
       ],
       extraParameterGroups: [
         {
-          title: text('/v1/images/edits JSON 额外参数', 'Additional JSON params for /v1/images/edits'),
+          title: text('/v1/images/edits 文件参数', 'File fields for /v1/images/edits'),
           description: text(
-            '当你走 JSON 方式调用图生图时，当前网关接受 URL / data URL 形式的输入图片。',
-            'When calling image edits with JSON, the gateway accepts URLs or data URLs as image inputs.'
-          ),
-          params: [
-            param(
-              'images[].image_url',
-              'string',
-              true,
-              text('输入原图 URL 或 data URL。', 'Source image URL or data URL.')
-            ),
-            param(
-              'mask.image_url',
-              'string',
-              false,
-              text('蒙版图片 URL 或 data URL。', 'Mask image URL or data URL.')
-            ),
-            param(
-              'images[].file_id',
-              'string',
-              false,
-              text('当前网关不支持 file_id 方式。', 'The gateway does not support file_id input.'),
-              undefined,
-              text('请改用 `images[].image_url`。', 'Use `images[].image_url` instead.')
-            ),
-            param(
-              'mask.file_id',
-              'string',
-              false,
-              text('当前网关不支持 mask.file_id。', 'The gateway does not support mask.file_id.'),
-              undefined,
-              text('请改用 `mask.image_url`。', 'Use `mask.image_url` instead.')
-            )
-          ]
-        },
-        {
-          title: text('/v1/images/edits multipart 额外参数', 'Additional multipart params for /v1/images/edits'),
-          description: text(
-            '当你使用 multipart/form-data 上传文件时，网关会读取下列字段。',
-            'When using multipart/form-data uploads, the gateway reads the fields below.'
+            '使用 multipart/form-data 重复提交 `image` 字段可按顺序上传多张 PNG、JPEG 或 WebP；当前接口不接收 `mask` 字段。',
+            'With multipart/form-data, repeat the `image` field to upload ordered PNG, JPEG, or WebP inputs. The endpoint does not currently accept a `mask` field.'
           ),
           params: [
             param(
               'image',
               'file | file[]',
               true,
-              text('上传一张或多张原图文件。', 'Upload one or more source image files.')
+              text('一张或多张待编辑原图，最多 16 张。', 'One or more source images to edit, up to 16 files.')
+            )
+          ]
+        },
+        {
+          title: text('任务查询与内容读取', 'Task query and content delivery'),
+          description: text(
+            '异步创建返回的 `id` 用于查询任务；任务完成后，可使用结果中的 URL 或鉴权 content 接口读取图片。',
+            'Use the returned `id` to query an asynchronous task. After completion, read the result URL or the authenticated content endpoint.'
+          ),
+          params: [
+            param(
+              'task_id',
+              'string (path)',
+              true,
+              text('创建任务返回的公开任务 ID。', 'Public task ID returned when the task is created.')
             ),
             param(
-              'mask',
-              'file',
+              'index',
+              'integer (query)',
               false,
-              text('上传蒙版文件。', 'Upload a mask file.')
+              text('图片产物位置；多图结果中的每个私有存储 URL 都会携带对应位置。', 'Image output position. Each private-storage URL in a multi-image result includes its position.'),
+              text('如 0、1、2', 'For example, 0, 1, or 2'),
+              text('默认 0，必须为非负整数。', 'Defaults to 0 and must be a non-negative integer.')
+            ),
+            param(
+              'Range',
+              'string (header)',
+              false,
+              text('content 接口支持单段字节范围读取。', 'The content endpoint supports a single byte range.'),
+              text('如 bytes=0-1023', 'For example, bytes=0-1023')
             )
           ]
         }
       ],
+      responseExamples: [
+        {
+          status: 200,
+          title: text('同步完成', 'Synchronous completion'),
+          description: text(
+            '省略 `async` 或传 `false` 且在等待时限内完成时，直接返回 OpenAI Images 兼容结果。',
+            'When `async` is omitted or false and generation finishes before the wait limit, the response uses the OpenAI Images-compatible shape.'
+          ),
+          body: stringifyBody({
+            created: 1784112000,
+            data: [{ url: '/v1/images/task_example/content?index=0' }]
+          })
+        },
+        {
+          status: 202,
+          title: text('任务已接受', 'Task accepted'),
+          description: text(
+            '`async=true` 会立即返回任务；启用同步超时转异步时也可能返回同一结构。',
+            '`async=true` returns a task immediately. The same shape may be returned when sync-timeout fallback is enabled.'
+          ),
+          body: stringifyBody({
+            id: 'task_example',
+            object: 'media.task',
+            media_type: 'image',
+            operation: 'text_to_image',
+            model: imageModel,
+            status: 'queued',
+            progress: 0,
+            created_at: 1784112000
+          })
+        },
+        {
+          status: 504,
+          title: text('同步等待超时', 'Synchronous wait timed out'),
+          description: text(
+            '同步超时转异步关闭时返回；响应不会暴露任务 ID，也不会提供后续查询。',
+            'Returned when sync-timeout fallback is disabled. No task ID or follow-up query is exposed.'
+          ),
+          body: stringifyBody({
+            error: {
+              code: 'media_gateway_timeout',
+              message: 'Media generation did not complete before the gateway timeout',
+              type: 'invalid_request_error'
+            }
+          })
+        }
+      ],
       examples: imageExamples
+    },
+    {
+      id: 'media-videos',
+      badge: t('integrationDocs.sections.mediaVideos.badge'),
+      title: t('integrationDocs.sections.mediaVideos.title'),
+      description: t('integrationDocs.sections.mediaVideos.description'),
+      method: 'POST / GET',
+      endpoints: ['/v1/videos', '/v1/videos/{task_id}', '/v1/videos/{task_id}/content'],
+      headers: mediaHeaders,
+      bullets: [
+        t('integrationDocs.sections.mediaVideos.bullets.item1'),
+        t('integrationDocs.sections.mediaVideos.bullets.item2'),
+        t('integrationDocs.sections.mediaVideos.bullets.item3')
+      ],
+      parameterNotice:
+        docsLocale.value === 'zh'
+          ? '纯文生视频与 URL 输入使用 JSON；上传图片或视频素材时改用 multipart/form-data。'
+          : 'Use JSON for text-to-video and URL inputs. Switch to multipart/form-data when uploading image or video files.',
+      params: [
+        param('model', 'string', true, text('已在媒体模型注册表启用的视频模型 ID。', 'Video model ID enabled in the media model registry.')),
+        param('prompt', 'string', true, text('视频生成或重绘提示词。', 'Prompt for video generation or remixing.')),
+        param(
+          'async',
+          'boolean',
+          false,
+          text('传 `true` 时立即创建异步任务；省略或传 `false` 时同步等待。', 'Set to `true` to create an asynchronous task immediately; omit it or set `false` to wait synchronously.'),
+          text('true, false', 'true, false'),
+          text('默认 false；任务一旦以异步方式接受，不支持取消。', 'Defaults to false. Once accepted asynchronously, a task cannot be cancelled.')
+        ),
+        param(
+          'duration_seconds',
+          'integer',
+          true,
+          text('期望视频时长（秒），也是按秒计费的预扣与结算依据。', 'Requested video duration in seconds, also used for per-second precharge and settlement.'),
+          text('1 至 600', '1 to 600')
+        ),
+        param('resolution', 'string', false, text('期望输出分辨率。', 'Requested output resolution.')),
+        param('fps', 'integer', false, text('期望输出帧率。', 'Requested output frame rate.')),
+        param('image_url', 'string', false, text('图生视频的输入图片 URL。', 'Input image URL for image-to-video generation.')),
+        param(
+          'reference_image_urls',
+          'string[]',
+          false,
+          text('参考图 URL 数组，按传入顺序处理。', 'Ordered array of reference image URLs.')
+        ),
+        param('video_url', 'string', false, text('视频重绘的输入视频 URL。', 'Input video URL for video remixing.'))
+      ],
+      extraParameterGroups: [
+        {
+          title: text('multipart 素材上传', 'Multipart media uploads'),
+          description: text(
+            '一次请求可上传多张图片或一个视频，不能混合两类文件；其余字段沿用上方同名表单字段。',
+            'A request may upload multiple images or one video, but cannot mix both media types. Other options use the same form-field names shown above.'
+          ),
+          params: [
+            param('image', 'file | file[]', false, text('图生视频输入，支持 PNG、JPEG、WebP，最多 16 个文件。', 'Image-to-video inputs in PNG, JPEG, or WebP format, up to 16 files.')),
+            param('video', 'file', false, text('视频重绘输入，支持 MP4、WebM、MOV，每次只能上传 1 个文件。', 'Video remix input in MP4, WebM, or MOV format; exactly one file per request.'))
+          ]
+        },
+        {
+          title: text('任务查询与成片下载', 'Task query and video download'),
+          description: text(
+            '创建接口返回的 `id` 用于查询；任务完成后从 `result.content_url` 下载成片。',
+            'Use the returned `id` to query the task, then download the completed video from `result.content_url`.'
+          ),
+          params: [
+            param('task_id', 'string (path)', true, text('创建任务返回的公开任务 ID。', 'Public task ID returned when the task is created.')),
+            param(
+              'Range',
+              'string (header)',
+              false,
+              text('content 接口支持单段字节范围读取，适合断点续传。', 'The content endpoint supports a single byte range for resumable downloads.'),
+              text('如 bytes=0-1048575', 'For example, bytes=0-1048575')
+            )
+          ]
+        }
+      ],
+      responseExamples: [
+        {
+          status: 200,
+          title: text('同步完成', 'Synchronous completion'),
+          description: text(
+            '省略 `async` 或传 `false` 且按时完成时，直接返回已完成任务和下载路径。',
+            'When `async` is omitted or false and the task finishes in time, the response includes the completed task and download path.'
+          ),
+          body: stringifyBody({
+            id: 'task_example',
+            object: 'media.task',
+            media_type: 'video',
+            operation: 'text_to_video',
+            model: videoModel,
+            status: 'completed',
+            progress: 100,
+            created_at: 1784112000,
+            result: { content_url: '/v1/videos/task_example/content' }
+          })
+        },
+        {
+          status: 202,
+          title: text('任务已接受', 'Task accepted'),
+          description: text(
+            '`async=true` 会立即返回任务；启用同步超时转异步时也可能返回 202。随后轮询查询接口直到 completed 或 failed。',
+            '`async=true` returns immediately; sync-timeout fallback may also return 202 when enabled. Poll the task until its status is completed or failed.'
+          ),
+          body: stringifyBody({
+            id: 'task_example',
+            object: 'media.task',
+            media_type: 'video',
+            operation: 'text_to_video',
+            model: videoModel,
+            status: 'queued',
+            progress: 0,
+            created_at: 1784112000
+          })
+        },
+        {
+          status: 504,
+          title: text('同步等待超时', 'Synchronous wait timed out'),
+          description: text(
+            '同步超时转异步关闭时返回；响应不会暴露任务 ID，也不会提供后续查询。',
+            'Returned when sync-timeout fallback is disabled. No task ID or follow-up query is exposed.'
+          ),
+          body: stringifyBody({
+            error: {
+              code: 'media_gateway_timeout',
+              message: 'Media generation did not complete before the gateway timeout',
+              type: 'invalid_request_error'
+            }
+          })
+        }
+      ],
+      examples: videoExamples
     }
   ]
 })
@@ -1722,7 +1972,8 @@ const compatibilityChips = computed(() => [
   'OpenAI Chat',
   'OpenAI Responses',
   'Anthropic Messages',
-  'OpenAI Images'
+  'Unified Media Images',
+  'Unified Media Videos'
 ])
 
 const totalDocumentedParams = computed(() =>

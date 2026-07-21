@@ -196,6 +196,7 @@ func loadUsageBillingSubscriptionGroup(ctx context.Context, tx *sql.Tx, subscrip
 		WHERE us.id = $1
 			AND us.deleted_at IS NULL
 			AND g.deleted_at IS NULL
+		FOR UPDATE OF us
 	`, subscriptionID).Scan(&daily, &weekly, &monthly)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, service.ErrSubscriptionNotFound

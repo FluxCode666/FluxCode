@@ -674,6 +674,13 @@ func TestMediaWorkerRecoveryRequeuesSettlementPendingAtNormalPriority(t *testing
 	task.BillingStatus = MediaBillingStatusRetry
 	fixture.repo.mu.Unlock()
 
+	// A freshly failed settlement stays in backoff for one recovery interval.
+	require.NoError(t, fixture.worker.RecoverOnce(context.Background()))
+	require.Empty(t, fixture.queue.enqueuedTaskIDs())
+
+	fixture.repo.mu.Lock()
+	fixture.repo.tasks[fixture.task.ID].UpdatedAt = time.Now().Add(-2 * fixture.worker.cfg.RecoveryInterval)
+	fixture.repo.mu.Unlock()
 	require.NoError(t, fixture.worker.RecoverOnce(context.Background()))
 	require.Equal(t, []int64{fixture.task.ID}, fixture.queue.enqueuedTaskIDs())
 	require.Equal(t, []MediaQueuePriority{MediaQueuePriorityAsync}, fixture.queue.enqueuedPriorities())
@@ -2583,7 +2590,7 @@ func (r *workerTaskRepository) GetByID(_ context.Context, id int64) (*MediaTask,
 	}
 	return cloneWorkerTask(task), nil
 }
-func (r *workerTaskRepository) GetByPublicIDForUser(context.Context, string, int64) (*MediaTask, error) {
+func (r *workerTaskRepository) GetByPublicIDForUser(context.Context, string, int64, int64) (*MediaTask, error) {
 	return nil, errors.New("not implemented")
 }
 func (r *workerTaskRepository) GetByIdempotencyKey(context.Context, int64, int64, string) (*MediaTask, error) {
@@ -2746,7 +2753,7 @@ func (r *workerTaskRepository) ListRecoverable(_ context.Context, now time.Time,
 	}
 	return result, nil
 }
-func (r *workerTaskRepository) ListSettlementPending(_ context.Context, limit int) ([]MediaTask, error) {
+func (r *workerTaskRepository) ListSettlementPending(_ context.Context, retryReadyBefore time.Time, limit int) ([]MediaTask, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	result := make([]MediaTask, 0, limit)
@@ -2755,7 +2762,8 @@ func (r *workerTaskRepository) ListSettlementPending(_ context.Context, limit in
 			break
 		}
 		hasRecovery := task.Status.IsTerminal() && len(task.SettlementRecovery) > 0
-		if (len(task.SettlementPlan) > 0 || hasRecovery) && task.BillingStatus != MediaBillingStatusSettled {
+		if (len(task.SettlementPlan) > 0 || hasRecovery) && task.BillingStatus != MediaBillingStatusSettled &&
+			!task.UpdatedAt.After(retryReadyBefore) {
 			result = append(result, *cloneWorkerTask(task))
 		}
 	}

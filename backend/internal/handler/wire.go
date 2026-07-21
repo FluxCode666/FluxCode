@@ -43,6 +43,7 @@ func ProvideAdminHandlers(
 	salesCommissionHandler *admin.SalesCommissionHandler,
 	promotionHandler *admin.PromotionHandler,
 	mediaModelHandler *admin.MediaModelAdminHandler,
+	mediaStorageHandler *admin.MediaStorageHandler,
 ) *AdminHandlers {
 	return &AdminHandlers{
 		Dashboard:              dashboardHandler,
@@ -79,6 +80,7 @@ func ProvideAdminHandlers(
 		SalesCommission:        salesCommissionHandler,
 		Promotion:              promotionHandler,
 		MediaModel:             mediaModelHandler,
+		MediaStorage:           mediaStorageHandler,
 	}
 }
 
@@ -226,6 +228,7 @@ var ProviderSet = wire.NewSet(
 	admin.NewRedeemHandler,
 	admin.NewPromoHandler,
 	admin.NewSettingHandler,
+	admin.NewMediaStorageHandler,
 	admin.NewOpsHandler,
 	ProvideSystemHandler,
 	admin.NewSubscriptionHandler,
@@ -247,6 +250,7 @@ var ProviderSet = wire.NewSet(
 	NewSalesCommissionHandler,
 	admin.NewPromotionHandler,
 	service.NewMediaModelAdminService,
+	service.NewMediaStorageSettingsService,
 	admin.NewMediaModelAdminHandler,
 
 	// AdminHandlers and Handlers constructors

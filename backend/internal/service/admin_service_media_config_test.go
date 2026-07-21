@@ -40,7 +40,57 @@ func (r *adminServiceMediaConfigRepo) LastCreated() *Account {
 func newAdminServiceMediaConfigFixture(t *testing.T) (*adminServiceImpl, *adminServiceMediaConfigRepo) {
 	t.Helper()
 	repo := &adminServiceMediaConfigRepo{}
-	return &adminServiceImpl{accountRepo: repo}, repo
+	return &adminServiceImpl{accountRepo: repo, mediaModels: newMediaAccountValidationRegistry()}, repo
+}
+
+func newMediaAccountValidationRegistry() *MediaModelRegistry {
+	registry := NewMediaModelRegistry(nil)
+	models := map[string]MediaModelDefinition{}
+	addReady := func(modelID string, mediaType MediaType, mode NativeAsyncMode) {
+		operations := []MediaOperation{MediaOperationTextToImage}
+		billingUnit := "image"
+		if mediaType == MediaTypeVideo {
+			operations = []MediaOperation{MediaOperationTextToVideo}
+			billingUnit = "second"
+		}
+		models[modelID] = MediaModelDefinition{
+			ModelID:     modelID,
+			Vendor:      "model-vendor",
+			MediaType:   mediaType,
+			Operations:  operations,
+			BillingUnit: billingUnit,
+			Enabled:     true,
+			AdapterResolution: MediaAdapterResolution{
+				Status:          MediaAdapterResolutionReady,
+				ResolvedAdapter: "test-media-adapter",
+				Capabilities: &MediaAdapterCapabilities{
+					Operations:          operations,
+					SyncUpstream:        mode != NativeAsyncRequired,
+					NativeAsyncUpstream: mode != NativeAsyncUnsupported,
+				},
+			},
+		}
+	}
+	addReady("image", MediaTypeImage, NativeAsyncOptional)
+	addReady("veo", MediaTypeVideo, NativeAsyncOptional)
+	addReady("veo-3.1", MediaTypeVideo, NativeAsyncOptional)
+	addReady("sync-image", MediaTypeImage, NativeAsyncUnsupported)
+	addReady("async-image", MediaTypeImage, NativeAsyncRequired)
+	registry.snapshot.Store(mediaModelRegistrySnapshot{
+		models:  models,
+		aliases: map[string]string{"image-alias": "image"},
+		unavailableModels: map[string]mediaModelUnavailableTombstone{
+			"tombstone-image": {
+				CanonicalModelID: "tombstone-image",
+				Resolution: MediaAdapterResolution{
+					Status:     MediaAdapterResolutionUnresolved,
+					ReasonCode: "MEDIA_ADAPTER_UNRESOLVED",
+				},
+			},
+		},
+		unavailableAliases: map[string]string{},
+	})
+	return registry
 }
 
 func TestAdminServiceCreateAccountNormalizesMediaConfig(t *testing.T) {
@@ -136,6 +186,213 @@ func validMediaAccountExtra() map[string]any {
 	}}
 }
 
+func mediaAccountExtraWithBinding(
+	provider string,
+	modelID string,
+	enabled bool,
+	upstreamModel string,
+	asyncMode string,
+	requestMapping map[string]any,
+) map[string]any {
+	binding := map[string]any{
+		"enabled":           enabled,
+		"upstream_model_id": upstreamModel,
+		"async_mode":        asyncMode,
+	}
+	if requestMapping != nil {
+		binding["request_mapping"] = requestMapping
+	}
+	return map[string]any{"media_config": map[string]any{
+		"version":  1,
+		"provider": provider,
+		"models":   map[string]any{modelID: binding},
+	}}
+}
+
+func TestAdminServiceCreateAccountValidatesEnabledBindingsAgainstRegistry(t *testing.T) {
+	tests := []struct {
+		name      string
+		modelID   string
+		asyncMode string
+	}{
+		{name: "alias", modelID: "image-alias", asyncMode: "unsupported"},
+		{name: "missing", modelID: "missing-image", asyncMode: "unsupported"},
+		{name: "adapter tombstone", modelID: "tombstone-image", asyncMode: "unsupported"},
+		{name: "native requested from sync adapter", modelID: "sync-image", asyncMode: "native"},
+		{name: "sync requested from native-only adapter", modelID: "async-image", asyncMode: "unsupported"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc, repo := newAdminServiceMediaConfigFixture(t)
+			_, err := svc.CreateAccount(context.Background(), &CreateAccountInput{
+				Name: "media", Platform: PlatformMedia, Type: AccountTypeAPIKey,
+				Credentials:          map[string]any{"api_key": "media-key", "base_url": "https://media.example.com"},
+				SkipDefaultGroupBind: true,
+				Extra: mediaAccountExtraWithBinding(
+					"procurement-channel", tt.modelID, true, "upstream-image", tt.asyncMode, nil,
+				),
+			})
+			require.ErrorIs(t, err, ErrInvalidMediaAccountConfig)
+			require.Equal(t, http.StatusBadRequest, infraerrors.Code(err))
+			require.Equal(t, "INVALID_MEDIA_ACCOUNT_CONFIG", infraerrors.Reason(err))
+			require.Zero(t, repo.createCalls)
+		})
+	}
+}
+
+func TestAdminServiceCreateAccountAcceptsProviderLabelIndependentOfModelVendor(t *testing.T) {
+	svc, repo := newAdminServiceMediaConfigFixture(t)
+	created, err := svc.CreateAccount(context.Background(), &CreateAccountInput{
+		Name: "media", Platform: PlatformMedia, Type: AccountTypeAPIKey,
+		Credentials:          map[string]any{"api_key": "media-key", "base_url": "https://media.example.com"},
+		SkipDefaultGroupBind: true,
+		Extra: mediaAccountExtraWithBinding(
+			"procurement-channel", "image", true, "provider-image-id", "native", nil,
+		),
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, 1, repo.createCalls)
+	config, configured, decodeErr := mediaAccountConfigFromExtra(created.Extra)
+	require.NoError(t, decodeErr)
+	require.True(t, configured)
+	require.Equal(t, "procurement-channel", config.Provider)
+}
+
+func TestAdminServiceCreateAccountAllowsDisabledHistoricalBinding(t *testing.T) {
+	svc, repo := newAdminServiceMediaConfigFixture(t)
+	_, err := svc.CreateAccount(context.Background(), &CreateAccountInput{
+		Name: "media", Platform: PlatformMedia, Type: AccountTypeAPIKey,
+		Credentials:          map[string]any{"api_key": "media-key", "base_url": "https://media.example.com"},
+		SkipDefaultGroupBind: true,
+		Extra: mediaAccountExtraWithBinding(
+			"procurement-channel", "removed-image", false, "historical-upstream-id", "unsupported", nil,
+		),
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, 1, repo.createCalls)
+}
+
+func TestAdminServiceCreateAccountRejectsPricingFieldRequestMappingAsBadRequest(t *testing.T) {
+	svc, repo := newAdminServiceMediaConfigFixture(t)
+	_, err := svc.CreateAccount(context.Background(), &CreateAccountInput{
+		Name: "media", Platform: PlatformMedia, Type: AccountTypeAPIKey,
+		Credentials:          map[string]any{"api_key": "media-key", "base_url": "https://media.example.com"},
+		SkipDefaultGroupBind: true,
+		Extra: mediaAccountExtraWithBinding(
+			"procurement-channel", "image", true, "provider-image-id", "unsupported",
+			map[string]any{"rules": []any{map[string]any{
+				"target": "size", "operation": "default", "value": "2048x2048",
+			}}},
+		),
+	})
+
+	require.ErrorIs(t, err, ErrInvalidMediaAccountConfig)
+	require.ErrorIs(t, err, ErrInvalidMediaRequestMapping)
+	require.Equal(t, http.StatusBadRequest, infraerrors.Code(err))
+	require.Equal(t, "INVALID_MEDIA_ACCOUNT_CONFIG", infraerrors.Reason(err))
+	require.Zero(t, repo.createCalls)
+}
+
+func TestAdminServiceUpdateAccountDoesNotBlockHistoricalTombstones(t *testing.T) {
+	tests := []struct {
+		name      string
+		extra     map[string]any
+		nextExtra map[string]any
+	}{
+		{
+			name: "unchanged enabled tombstone",
+			extra: mediaAccountExtraWithBinding(
+				"procurement-channel", "tombstone-image", true, "historical-upstream-id", "unsupported", nil,
+			),
+		},
+		{
+			name: "disabled tombstone",
+			extra: mediaAccountExtraWithBinding(
+				"procurement-channel", "tombstone-image", false, "historical-upstream-id", "unsupported", nil,
+			),
+		},
+		{
+			name: "unchanged tombstone with explicit empty mapping rules",
+			extra: mediaAccountExtraWithBinding(
+				"procurement-channel", "tombstone-image", true, "historical-upstream-id", "unsupported", nil,
+			),
+			nextExtra: mediaAccountExtraWithBinding(
+				"procurement-channel", "tombstone-image", true, "historical-upstream-id", "unsupported",
+				map[string]any{"rules": []any{}},
+			),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc, repo := newAdminServiceMediaConfigFixture(t)
+			repo.account = &Account{
+				ID: 19, Name: "before", Platform: PlatformMedia, Type: AccountTypeAPIKey, Status: StatusActive,
+				Credentials: map[string]any{"api_key": "media-key", "base_url": "https://media.example.com"},
+				Extra:       tt.extra,
+			}
+			nextExtra := tt.nextExtra
+			if nextExtra == nil {
+				nextExtra = tt.extra
+			}
+			updated, err := svc.UpdateAccount(context.Background(), 19, &UpdateAccountInput{
+				Name:  "after",
+				Extra: nextExtra,
+			})
+			require.NoError(t, err)
+			require.Equal(t, "after", updated.Name)
+			require.Equal(t, 1, repo.updateCalls)
+		})
+	}
+}
+
+func TestAdminServiceUpdateAccountAllowsRemovingDisabledHistoricalBinding(t *testing.T) {
+	svc, repo := newAdminServiceMediaConfigFixture(t)
+	repo.account = &Account{
+		ID: 20, Name: "before", Platform: PlatformMedia, Type: AccountTypeAPIKey, Status: StatusActive,
+		Credentials: map[string]any{"api_key": "media-key", "base_url": "https://media.example.com"},
+		Extra: map[string]any{"media_config": map[string]any{
+			"version": 1, "provider": "procurement-channel", "models": map[string]any{
+				"image": map[string]any{
+					"enabled": true, "upstream_model_id": "provider-image-id", "async_mode": "unsupported",
+				},
+				"removed-image": map[string]any{
+					"enabled": false, "upstream_model_id": "historical-upstream-id", "async_mode": "unsupported",
+				},
+			},
+		}},
+	}
+	nextExtra := mediaAccountExtraWithBinding(
+		"procurement-channel", "image", true, "provider-image-id", "unsupported", nil,
+	)
+
+	_, err := svc.UpdateAccount(context.Background(), 20, &UpdateAccountInput{Extra: nextExtra})
+	require.NoError(t, err)
+	require.Equal(t, 1, repo.updateCalls)
+}
+
+func TestAdminServiceUpdateAccountRejectsEnablingHistoricalTombstone(t *testing.T) {
+	svc, repo := newAdminServiceMediaConfigFixture(t)
+	repo.account = &Account{
+		ID: 21, Name: "before", Platform: PlatformMedia, Type: AccountTypeAPIKey, Status: StatusActive,
+		Credentials: map[string]any{"api_key": "media-key", "base_url": "https://media.example.com"},
+		Extra: mediaAccountExtraWithBinding(
+			"procurement-channel", "tombstone-image", false, "historical-upstream-id", "unsupported", nil,
+		),
+	}
+	nextExtra := mediaAccountExtraWithBinding(
+		"procurement-channel", "tombstone-image", true, "historical-upstream-id", "unsupported", nil,
+	)
+
+	_, err := svc.UpdateAccount(context.Background(), 21, &UpdateAccountInput{Extra: nextExtra})
+	require.ErrorIs(t, err, ErrInvalidMediaAccountConfig)
+	require.Equal(t, http.StatusBadRequest, infraerrors.Code(err))
+	require.Zero(t, repo.updateCalls)
+}
+
 func TestAdminServiceCreateAccountRejectsMalformedMediaConfigBeforePersist(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -159,6 +416,8 @@ func TestAdminServiceCreateAccountRejectsMalformedMediaConfigBeforePersist(t *te
 				Extra:                map[string]any{"media_config": tt.raw, "preserved": true},
 			})
 			require.ErrorIs(t, err, tt.isErr)
+			require.Equal(t, http.StatusBadRequest, infraerrors.Code(err))
+			require.Equal(t, "INVALID_MEDIA_ACCOUNT_CONFIG", infraerrors.Reason(err))
 			require.Zero(t, repo.createCalls)
 		})
 	}
@@ -231,7 +490,7 @@ func TestAccountServiceUpdateRejectsInvalidMediaConfigBeforeMutatingLoadedAccoun
 		Credentials: map[string]any{"api_key": "media-key", "base_url": "https://media.example.com"},
 		Extra:       map[string]any{"preserved": true},
 	}}
-	svc := NewAccountService(repo, nil)
+	svc := NewAccountService(repo, nil, newMediaAccountValidationRegistry())
 	after := "after"
 	invalidExtra := map[string]any{"media_config": map[string]any{
 		"version": 1, "provider": "xai", "models": map[string]any{
@@ -248,7 +507,7 @@ func TestAccountServiceUpdateRejectsInvalidMediaConfigBeforeMutatingLoadedAccoun
 
 func TestAccountServiceCreateNormalizesVersionOneMediaConfig(t *testing.T) {
 	repo := &adminServiceMediaConfigRepo{}
-	svc := NewAccountService(repo, nil)
+	svc := NewAccountService(repo, nil, newMediaAccountValidationRegistry())
 
 	created, err := svc.Create(context.Background(), CreateAccountRequest{
 		Name: "media", Platform: PlatformMedia, Type: AccountTypeAPIKey,
@@ -275,7 +534,7 @@ func TestAccountServiceUpdateUpgradesLegacyMediaConfigOnOrdinarySave(t *testing.
 			"model_overrides": map[string]any{"veo": map[string]any{"upstream_model": "veo-up"}},
 		}},
 	}}
-	svc := NewAccountService(repo, nil)
+	svc := NewAccountService(repo, nil, newMediaAccountValidationRegistry())
 	after := "after"
 
 	updated, err := svc.Update(context.Background(), 10, UpdateAccountRequest{Name: &after})

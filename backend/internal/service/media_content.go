@@ -15,6 +15,7 @@ import (
 	"path"
 	"strconv"
 	"strings"
+	"time"
 )
 
 var (
@@ -32,8 +33,10 @@ var (
 
 const maxInlineMediaDecodedBytes = 1 << 20
 
+const maxMaterializedMediaInputBytes = 64 << 20
+
 type MediaContentTaskRepository interface {
-	GetByPublicIDForUser(ctx context.Context, publicID string, userID int64) (*MediaTask, error)
+	GetByPublicIDForUser(ctx context.Context, publicID string, userID, apiKeyID int64) (*MediaTask, error)
 }
 
 type MediaContentAccountRepository interface {
@@ -59,13 +62,14 @@ func (*DisabledMediaArtifactObjectStore) Discard(context.Context, MediaArtifactI
 }
 
 type MediaContentService struct {
-	tasks       MediaContentTaskRepository
-	artifacts   MediaArtifactRepository
-	settings    MediaSettingsProvider
-	accounts    MediaContentAccountRepository
-	adapters    *MediaAdapterRegistry
-	httpReader  MediaHTTPContentReader
-	objectStore MediaArtifactObjectStore
+	tasks              MediaContentTaskRepository
+	artifacts          MediaArtifactRepository
+	settings           MediaSettingsProvider
+	accounts           MediaContentAccountRepository
+	adapters           *MediaAdapterRegistry
+	httpReader         MediaHTTPContentReader
+	objectStore        MediaArtifactObjectStore
+	storageConsistency MediaStorageConsistencyRepository
 }
 
 func NewMediaContentService(
@@ -76,11 +80,16 @@ func NewMediaContentService(
 	adapters *MediaAdapterRegistry,
 	httpReader MediaHTTPContentReader,
 	objectStore MediaArtifactObjectStore,
+	storageConsistency ...MediaStorageConsistencyRepository,
 ) *MediaContentService {
-	return &MediaContentService{
+	service := &MediaContentService{
 		tasks: tasks, artifacts: artifacts, settings: settings, accounts: accounts,
 		adapters: adapters, httpReader: httpReader, objectStore: objectStore,
 	}
+	if len(storageConsistency) > 0 {
+		service.storageConsistency = storageConsistency[0]
+	}
+	return service
 }
 
 func (s *MediaContentService) Stage(ctx context.Context, _ int64, input MediaArtifactInput) (MediaArtifactInput, error) {
@@ -165,6 +174,178 @@ func (s *MediaContentService) Discard(ctx context.Context, _ int64, input MediaA
 	return nil
 }
 
+func (s *MediaContentService) LoadInputs(
+	ctx context.Context,
+	task *MediaTask,
+	spec MediaSpec,
+	account *Account,
+) ([]MediaArtifactInput, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if s == nil || s.artifacts == nil || task == nil || task.ID <= 0 {
+		return nil, ErrMediaContentUnavailable
+	}
+	requested, err := mediaRequestedArtifactInputs(spec)
+	if err != nil {
+		return nil, err
+	}
+	if len(requested) == 0 {
+		return nil, nil
+	}
+	artifacts, err := s.artifacts.ListByTaskID(ctx, task.ID)
+	if err != nil {
+		return nil, fmt.Errorf("list media input artifacts: %w", err)
+	}
+	byID := make(map[int64]*MediaArtifact, len(artifacts))
+	for index := range artifacts {
+		artifact := &artifacts[index]
+		if artifact.ID > 0 {
+			byID[artifact.ID] = artifact
+		}
+	}
+	seen := make(map[int64]struct{}, len(requested))
+	inputs := make([]MediaArtifactInput, 0, len(requested))
+	for position, ref := range requested {
+		if ref.id <= 0 {
+			return nil, ErrInvalidMediaInput
+		}
+		if _, exists := seen[ref.id]; exists {
+			return nil, ErrInvalidMediaInput
+		}
+		seen[ref.id] = struct{}{}
+		artifact := byID[ref.id]
+		if artifact == nil || artifact.TaskID != task.ID || artifact.Direction != "input" || artifact.MediaType != ref.mediaType {
+			return nil, ErrInvalidMediaInput
+		}
+		input, loadErr := s.loadArtifactInput(ctx, artifact, account)
+		if loadErr != nil {
+			return nil, fmt.Errorf("load media input artifact %d: %w", ref.id, loadErr)
+		}
+		input.Position = position
+		inputs = append(inputs, input)
+	}
+	return inputs, nil
+}
+
+type mediaRequestedArtifactInput struct {
+	id        int64
+	mediaType MediaType
+}
+
+func mediaRequestedArtifactInputs(spec MediaSpec) ([]mediaRequestedArtifactInput, error) {
+	requested := make([]mediaRequestedArtifactInput, 0, MaxMediaReferenceInputs)
+	if spec.Image != nil {
+		for _, id := range spec.Image.InputArtifactIDs {
+			requested = append(requested, mediaRequestedArtifactInput{id: id, mediaType: MediaTypeImage})
+		}
+	}
+	if spec.Video != nil {
+		for _, id := range spec.Video.ReferenceArtifactIDs {
+			requested = append(requested, mediaRequestedArtifactInput{id: id, mediaType: MediaTypeImage})
+		}
+		if spec.Video.SourceArtifactID != nil {
+			requested = append(requested, mediaRequestedArtifactInput{id: *spec.Video.SourceArtifactID, mediaType: MediaTypeVideo})
+		}
+	}
+	if len(requested) > MaxMediaReferenceInputs {
+		return nil, ErrInvalidMediaInput
+	}
+	return requested, nil
+}
+
+func (s *MediaContentService) loadArtifactInput(
+	ctx context.Context,
+	artifact *MediaArtifact,
+	account *Account,
+) (MediaArtifactInput, error) {
+	if artifact == nil {
+		return MediaArtifactInput{}, ErrInvalidMediaInput
+	}
+	var content *MediaContent
+	var err error
+	switch {
+	case artifact.ObjectKey != "":
+		if s.objectStore == nil {
+			return MediaArtifactInput{}, ErrMediaArtifactObjectStoreDisabled
+		}
+		content, err = s.objectStore.Open(ctx, artifact, "")
+	case artifact.PublicURL != "":
+		content, err = s.openExternalInput(ctx, artifact.PublicURL, artifact.MediaType, account)
+	case strings.HasPrefix(strings.ToLower(artifact.UpstreamReference), "data:"):
+		data, contentType, _, decodeErr := decodeMediaDataReferenceBounded(
+			artifact.UpstreamReference, artifact.ContentType, maxMaterializedMediaInputBytes, artifact.MediaType,
+		)
+		if decodeErr != nil {
+			return MediaArtifactInput{}, decodeErr
+		}
+		return validatedMaterializedArtifactInput(artifact, data, contentType)
+	case artifact.UpstreamReference != "":
+		content, err = s.openExternalInput(ctx, artifact.UpstreamReference, artifact.MediaType, account)
+	default:
+		return MediaArtifactInput{}, ErrMediaContentUnavailable
+	}
+	if err != nil {
+		return MediaArtifactInput{}, err
+	}
+	if content == nil || content.Body == nil {
+		return MediaArtifactInput{}, ErrMediaContentUnavailable
+	}
+	defer content.Body.Close() //nolint:errcheck
+	if content.ContentLength > maxMaterializedMediaInputBytes {
+		return MediaArtifactInput{}, ErrMediaContentTooLarge
+	}
+	data, err := io.ReadAll(io.LimitReader(content.Body, maxMaterializedMediaInputBytes+1))
+	if err != nil {
+		return MediaArtifactInput{}, err
+	}
+	if int64(len(data)) > maxMaterializedMediaInputBytes {
+		return MediaArtifactInput{}, ErrMediaContentTooLarge
+	}
+	contentType := content.ContentType
+	if normalizeStoredMediaContentType(contentType, artifact.MediaType) == "application/octet-stream" {
+		contentType = artifact.ContentType
+	}
+	return validatedMaterializedArtifactInput(artifact, data, contentType)
+}
+
+func (s *MediaContentService) openExternalInput(
+	ctx context.Context,
+	rawURL string,
+	mediaType MediaType,
+	account *Account,
+) (*MediaContent, error) {
+	if s.httpReader == nil || account == nil {
+		return nil, ErrMediaContentAccountRequired
+	}
+	return s.httpReader.Open(ctx, MediaHTTPContentRequest{URL: rawURL, Account: account, MediaType: mediaType})
+}
+
+func validatedMaterializedArtifactInput(
+	artifact *MediaArtifact,
+	data []byte,
+	contentType string,
+) (MediaArtifactInput, error) {
+	input := mediaArtifactInputFromStored(artifact)
+	input.Data = data
+	input.ExternalURL = ""
+	input.UpstreamReference = ""
+	validated, normalizedType, checksum, err := validateMediaObjectInput(input, maxMaterializedMediaInputBytes)
+	if err != nil {
+		return MediaArtifactInput{}, err
+	}
+	if normalizeStoredMediaContentType(contentType, artifact.MediaType) != normalizedType {
+		return MediaArtifactInput{}, ErrInvalidMediaInput
+	}
+	if artifact.SizeBytes > 0 && artifact.SizeBytes != int64(len(validated)) {
+		return MediaArtifactInput{}, ErrMediaStorageIntegrity
+	}
+	input.ContentType = normalizedType
+	input.SizeBytes = int64(len(validated))
+	input.ChecksumSHA256 = checksum
+	return input, nil
+}
+
 func mediaContentTypeFromExternalURL(raw string, mediaType MediaType) (string, error) {
 	parsed, err := url.Parse(raw)
 	if err != nil || parsed == nil {
@@ -194,7 +375,11 @@ func mediaContentTypeFromExternalURL(raw string, mediaType MediaType) (string, e
 	return contentType, nil
 }
 
-func (s *MediaContentService) PersistOutputs(ctx context.Context, task *MediaTask, inputs []MediaArtifactInput) ([]MediaArtifact, error) {
+func (s *MediaContentService) PersistOutputs(
+	ctx context.Context,
+	task *MediaTask,
+	inputs []MediaArtifactInput,
+) (result []MediaArtifact, returnErr error) {
 	if s == nil || task == nil || s.artifacts == nil || s.settings == nil {
 		return nil, ErrMediaContentUnavailable
 	}
@@ -213,7 +398,28 @@ func (s *MediaContentService) PersistOutputs(ctx context.Context, task *MediaTas
 	if settings == nil {
 		return nil, ErrMediaContentUnavailable
 	}
+	var storageDownloadAccount *Account
+	if mediaOutputsNeedMaterialization(s.objectStore, inputs) {
+		if task.AccountID == nil || s.accounts == nil || s.httpReader == nil {
+			return nil, ErrMediaContentAccountRequired
+		}
+		storageDownloadAccount, err = s.accounts.GetByID(ctx, *task.AccountID)
+		if err != nil {
+			return nil, fmt.Errorf("load media output download account: %w", err)
+		}
+		if storageDownloadAccount == nil {
+			return nil, ErrMediaContentAccountRequired
+		}
+	}
 	stored := make([]MediaArtifact, 0, len(inputs))
+	committed := false
+	defer func() {
+		if committed || len(stored) == 0 {
+			return
+		}
+		result = nil
+		returnErr = errors.Join(returnErr, s.rollbackPersistedOutputs(ctx, stored))
+	}()
 	for i := range inputs {
 		if err := ctx.Err(); err != nil {
 			return nil, err
@@ -222,27 +428,55 @@ func (s *MediaContentService) PersistOutputs(ctx context.Context, task *MediaTas
 		input.Direction = "output"
 		input.Position = i
 		if s.objectStore != nil {
-			artifact, putErr := s.objectStore.Put(ctx, input)
+			var artifact *MediaArtifact
+			var putErr error
+			if len(input.Data) == 0 && input.ExternalURL != "" && storageDownloadAccount != nil {
+				artifact, putErr = s.storeExternalOutput(ctx, input, storageDownloadAccount)
+			} else {
+				artifact, putErr = s.objectStore.Put(ctx, input)
+			}
 			if putErr == nil && artifact != nil && artifact.ObjectKey != "" {
 				mergeStoredArtifactMetadata(artifact, input)
 				if artifact.MediaType != task.MediaType {
-					return nil, ErrInvalidMediaInput
+					return nil, errors.Join(ErrInvalidMediaInput, s.discardStoredArtifact(ctx, artifact))
 				}
 				if artifact.MediaType == MediaTypeImage {
 					if deliveryErr := validateStoredImageDelivery(artifact); deliveryErr != nil {
-						return nil, deliveryErr
+						return nil, errors.Join(deliveryErr, s.discardStoredArtifact(ctx, artifact))
 					}
 				}
 				artifact.TaskID = task.ID
 				artifact.Direction = "output"
 				artifact.Position = i
 				artifact.StorageStatus = "stored"
-				created, createErr := s.artifacts.Create(ctx, artifact)
+				created, createErr := commitMediaArtifact(ctx, s.artifacts, s.storageConsistency, artifact)
 				if createErr != nil {
-					return nil, fmt.Errorf("persist stored media output: %w", createErr)
+					if errors.Is(createErr, ErrMediaStorageCommitOutcomeUnknown) {
+						// COMMIT may have succeeded. Retain this object and every prior
+						// row in the batch; compensating either could create a broken
+						// immutable locator.
+						committed = true
+						return nil, fmt.Errorf("persist stored media output: %w", createErr)
+					}
+					return nil, errors.Join(
+						fmt.Errorf("persist stored media output: %w", createErr),
+						s.discardStoredArtifact(ctx, artifact),
+					)
+				}
+				if created == nil || created.ID <= 0 {
+					return nil, errors.Join(
+						errors.New("persist stored media output: repository returned an invalid artifact"),
+						s.discardStoredArtifact(ctx, artifact),
+					)
 				}
 				stored = append(stored, *created)
 				continue
+			}
+			if putErr != nil && !errors.Is(putErr, ErrMediaArtifactObjectStoreDisabled) {
+				return nil, fmt.Errorf("store media output: %w", putErr)
+			}
+			if putErr == nil {
+				return nil, fmt.Errorf("%w: object store returned an incomplete artifact", ErrMediaStorageIntegrity)
 			}
 		}
 
@@ -272,9 +506,12 @@ func (s *MediaContentService) PersistOutputs(ctx context.Context, task *MediaTas
 			default:
 				return nil, ErrMediaContentUnavailable
 			}
-			created, createErr := s.artifacts.Create(ctx, artifact)
+			created, createErr := commitMediaArtifact(ctx, s.artifacts, s.storageConsistency, artifact)
 			if createErr != nil {
 				return nil, fmt.Errorf("persist deliverable image output: %w", createErr)
+			}
+			if created == nil || created.ID <= 0 {
+				return nil, errors.New("persist deliverable image output: repository returned an invalid artifact")
 			}
 			stored = append(stored, *created)
 			continue
@@ -293,13 +530,160 @@ func (s *MediaContentService) PersistOutputs(ctx context.Context, task *MediaTas
 			}
 			input.ExternalURL = normalized
 		}
-		created, createErr := s.artifacts.Create(ctx, artifactFromProxyInput(task.ID, input))
+		created, createErr := commitMediaArtifact(
+			ctx,
+			s.artifacts,
+			s.storageConsistency,
+			artifactFromProxyInput(task.ID, input),
+		)
 		if createErr != nil {
 			return nil, fmt.Errorf("persist proxy media output: %w", createErr)
 		}
+		if created == nil || created.ID <= 0 {
+			return nil, errors.New("persist proxy media output: repository returned an invalid artifact")
+		}
 		stored = append(stored, *created)
 	}
+	committed = true
 	return stored, nil
+}
+
+func (s *MediaContentService) rollbackPersistedOutputs(ctx context.Context, artifacts []MediaArtifact) error {
+	if s == nil || s.artifacts == nil || len(artifacts) == 0 {
+		return nil
+	}
+	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+	defer cancel()
+
+	var cleanupErrors []error
+	for index := len(artifacts) - 1; index >= 0; index-- {
+		artifact := artifacts[index]
+		deleted, err := s.artifacts.DeleteExact(cleanupCtx, &artifact)
+		if err != nil {
+			cleanupErrors = append(cleanupErrors, fmt.Errorf("delete media output %d during rollback: %w", artifact.ID, err))
+			continue
+		}
+		if artifact.ObjectKey == "" {
+			continue
+		}
+		if s.objectStore == nil {
+			cleanupErrors = append(cleanupErrors, fmt.Errorf("discard media output %d during rollback: object store is unavailable", artifact.ID))
+			if deleted {
+				if _, restoreErr := commitMediaArtifact(cleanupCtx, s.artifacts, s.storageConsistency, &artifact); restoreErr != nil {
+					cleanupErrors = append(cleanupErrors, fmt.Errorf("restore media output %d locator after rollback failure: %w", artifact.ID, restoreErr))
+				}
+			}
+			continue
+		}
+		if err := s.objectStore.Discard(cleanupCtx, mediaArtifactInputFromStored(&artifact)); err != nil {
+			cleanupErrors = append(cleanupErrors, fmt.Errorf("discard media output %d during rollback: %w", artifact.ID, err))
+			if deleted {
+				// Restore the immutable locator if object deletion failed. A retained
+				// orphan is recoverable; an unindexed object is not.
+				if _, restoreErr := commitMediaArtifact(cleanupCtx, s.artifacts, s.storageConsistency, &artifact); restoreErr != nil {
+					cleanupErrors = append(cleanupErrors, fmt.Errorf("restore media output %d locator after rollback failure: %w", artifact.ID, restoreErr))
+				}
+			}
+		}
+	}
+	return errors.Join(cleanupErrors...)
+}
+
+func mediaOutputsNeedMaterialization(store MediaArtifactObjectStore, inputs []MediaArtifactInput) bool {
+	if store == nil {
+		return false
+	}
+	if _, disabled := store.(*DisabledMediaArtifactObjectStore); disabled {
+		return false
+	}
+	for i := range inputs {
+		if len(inputs[i].Data) == 0 && strings.TrimSpace(inputs[i].ExternalURL) != "" {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *MediaContentService) storeExternalOutput(
+	ctx context.Context,
+	input MediaArtifactInput,
+	account *Account,
+) (artifact *MediaArtifact, returnErr error) {
+	streamStore, ok := s.objectStore.(MediaArtifactStreamObjectStore)
+	if !ok {
+		return nil, fmt.Errorf("%w: configured media store does not support streaming writes", ErrMediaStorageProviderUnavailable)
+	}
+	content, err := s.httpReader.Open(ctx, MediaHTTPContentRequest{
+		URL: input.ExternalURL, Account: account, MediaType: input.MediaType,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("download media output for storage: %w", err)
+	}
+	if content == nil || content.Body == nil {
+		return nil, ErrMediaContentUnavailable
+	}
+	defer func() {
+		closeErr := content.Body.Close()
+		if closeErr == nil {
+			return
+		}
+		closeErr = fmt.Errorf("close media output download: %w", closeErr)
+		if artifact != nil {
+			cleanupErr := s.discardStoredArtifact(ctx, artifact)
+			artifact = nil
+			returnErr = errors.Join(returnErr, closeErr, cleanupErr)
+			return
+		}
+		returnErr = errors.Join(returnErr, closeErr)
+	}()
+	if content.StatusCode != http.StatusOK {
+		return nil, ErrMediaContentUnavailable
+	}
+	if content.ContentLength > 0 {
+		if input.SizeBytes > 0 && input.SizeBytes != content.ContentLength {
+			return nil, fmt.Errorf("%w: upstream media length differs from adapter metadata", ErrMediaStorageIntegrity)
+		}
+		input.SizeBytes = content.ContentLength
+	}
+	responseContentType := normalizeStoredMediaContentType(content.ContentType, input.MediaType)
+	adapterContentType := normalizeStoredMediaContentType(input.ContentType, input.MediaType)
+	if responseContentType != "application/octet-stream" &&
+		adapterContentType != "application/octet-stream" &&
+		responseContentType != adapterContentType {
+		return nil, fmt.Errorf(
+			"%w: upstream media content type differs from adapter metadata",
+			ErrMediaStorageIntegrity,
+		)
+	}
+	declared := responseContentType
+	if declared == "application/octet-stream" {
+		declared = adapterContentType
+	}
+	if declared == "application/octet-stream" {
+		return nil, ErrInvalidMediaInput
+	}
+	input.ContentType = declared
+	input.ExternalURL = ""
+	artifact, err = streamStore.PutStream(ctx, input, content.Body)
+	if err != nil {
+		return artifact, fmt.Errorf("store downloaded media output: %w", err)
+	}
+	if artifact == nil || artifact.ObjectKey == "" {
+		return artifact, ErrMediaStorageIntegrity
+	}
+	return artifact, nil
+}
+
+func (s *MediaContentService) discardStoredArtifact(ctx context.Context, artifact *MediaArtifact) error {
+	if s == nil || s.objectStore == nil || artifact == nil || artifact.ObjectKey == "" {
+		return nil
+	}
+	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+	defer cancel()
+	if err := s.objectStore.Discard(cleanupCtx, mediaArtifactInputFromStored(artifact)); err != nil {
+		return fmt.Errorf("discard uncommitted media output: %w", err)
+	}
+	return nil
 }
 
 func validateStoredImageDelivery(artifact *MediaArtifact) error {
@@ -312,6 +696,10 @@ func validateStoredImageDelivery(artifact *MediaArtifact) error {
 			return nil
 		}
 		return ErrMediaContentUnavailable
+	}
+	if artifact.ObjectKey != "" &&
+		(artifact.StorageProvider == MediaStorageProviderLocal || artifact.StorageProvider == MediaStorageProviderMinIO) {
+		return nil
 	}
 	_, contentType, inline, err := decodeMediaDataReferenceBounded(
 		artifact.UpstreamReference, artifact.ContentType, maxInlineMediaDecodedBytes, MediaTypeImage,
@@ -326,15 +714,26 @@ func validateStoredImageDelivery(artifact *MediaArtifact) error {
 	return nil
 }
 
-func (s *MediaContentService) OpenImage(ctx context.Context, publicID string, userID int64, byteRange string) (*MediaContent, error) {
-	return s.openMediaContent(ctx, publicID, userID, byteRange, MediaTypeImage)
+func (s *MediaContentService) OpenImage(ctx context.Context, publicID string, userID, apiKeyID int64, position int, byteRange string) (*MediaContent, error) {
+	if position < 0 {
+		return nil, ErrMediaArtifactNotFound
+	}
+	return s.openMediaContent(ctx, publicID, userID, apiKeyID, position, byteRange, MediaTypeImage)
 }
 
-func (s *MediaContentService) OpenVideo(ctx context.Context, publicID string, userID int64, byteRange string) (*MediaContent, error) {
-	return s.openMediaContent(ctx, publicID, userID, byteRange, MediaTypeVideo)
+func (s *MediaContentService) OpenVideo(ctx context.Context, publicID string, userID, apiKeyID int64, byteRange string) (*MediaContent, error) {
+	return s.openMediaContent(ctx, publicID, userID, apiKeyID, 0, byteRange, MediaTypeVideo)
 }
 
-func (s *MediaContentService) openMediaContent(ctx context.Context, publicID string, userID int64, byteRange string, mediaType MediaType) (*MediaContent, error) {
+func (s *MediaContentService) openMediaContent(
+	ctx context.Context,
+	publicID string,
+	userID int64,
+	apiKeyID int64,
+	position int,
+	byteRange string,
+	mediaType MediaType,
+) (*MediaContent, error) {
 	if s == nil || s.tasks == nil || s.artifacts == nil {
 		return nil, ErrMediaContentUnavailable
 	}
@@ -343,21 +742,22 @@ func (s *MediaContentService) openMediaContent(ctx context.Context, publicID str
 			return nil, err
 		}
 	}
-	task, err := s.tasks.GetByPublicIDForUser(ctx, strings.TrimSpace(publicID), userID)
+	task, err := s.tasks.GetByPublicIDForUser(ctx, strings.TrimSpace(publicID), userID, apiKeyID)
 	if err != nil {
 		if errors.Is(err, ErrMediaTaskNotFound) {
 			return nil, ErrMediaTaskNotFound
 		}
 		return nil, errors.Join(ErrMediaContentUnavailable, fmt.Errorf("load media task: %w", err))
 	}
-	if task == nil || task.MediaType != mediaType || task.Status != MediaTaskStatusCompleted {
+	if task == nil || task.MediaType != mediaType || task.Status != MediaTaskStatusCompleted ||
+		task.BillingStatus != MediaBillingStatusSettled {
 		return nil, ErrMediaTaskNotFound
 	}
 	artifacts, err := s.artifacts.ListByTaskID(ctx, task.ID)
 	if err != nil {
 		return nil, fmt.Errorf("list media artifacts: %w", err)
 	}
-	artifact := firstOutputMedia(artifacts, mediaType)
+	artifact := outputMediaAtPosition(artifacts, mediaType, position)
 	if artifact == nil {
 		return nil, ErrMediaArtifactNotFound
 	}
@@ -550,7 +950,8 @@ func mediaArtifactInputFromStored(stored *MediaArtifact) MediaArtifactInput {
 	input := MediaArtifactInput{
 		Direction: stored.Direction, Position: stored.Position, MediaType: stored.MediaType,
 		ContentType: stored.ContentType, SizeBytes: stored.SizeBytes, ChecksumSHA256: stored.ChecksumSHA256,
-		ObjectKey: stored.ObjectKey, UpstreamReference: stored.UpstreamReference, Resolution: stored.Resolution,
+		StorageProvider: stored.StorageProvider, StorageRevision: stored.StorageRevision, ObjectKey: stored.ObjectKey,
+		UpstreamReference: stored.UpstreamReference, Resolution: stored.Resolution,
 	}
 	if stored.Width != nil {
 		input.Width = *stored.Width
@@ -580,6 +981,12 @@ func mergeStoredArtifactMetadata(artifact *MediaArtifact, input MediaArtifactInp
 	if artifact.ChecksumSHA256 == "" {
 		artifact.ChecksumSHA256 = input.ChecksumSHA256
 	}
+	if artifact.StorageProvider == "" {
+		artifact.StorageProvider = input.StorageProvider
+	}
+	if artifact.StorageRevision == "" {
+		artifact.StorageRevision = input.StorageRevision
+	}
 	if artifact.Resolution == "" {
 		artifact.Resolution = input.Resolution
 	}
@@ -605,7 +1012,8 @@ func artifactFromProxyInput(taskID int64, input MediaArtifactInput) *MediaArtifa
 	artifact := &MediaArtifact{
 		TaskID: taskID, Direction: "output", Position: input.Position, MediaType: input.MediaType,
 		ContentType: input.ContentType, SizeBytes: input.SizeBytes, ChecksumSHA256: input.ChecksumSHA256,
-		StorageStatus: "proxy", UpstreamReference: reference, Resolution: input.Resolution,
+		StorageStatus: "proxy", StorageProvider: MediaStorageProviderLegacy,
+		UpstreamReference: reference, Resolution: input.Resolution,
 	}
 	if input.Width > 0 {
 		artifact.Width = mediaIntPointer(input.Width)
@@ -672,9 +1080,9 @@ func MediaImageB64JSON(artifact MediaArtifact) (string, bool) {
 	return base64.StdEncoding.EncodeToString(data), true
 }
 
-func firstOutputMedia(artifacts []MediaArtifact, mediaType MediaType) *MediaArtifact {
+func outputMediaAtPosition(artifacts []MediaArtifact, mediaType MediaType, position int) *MediaArtifact {
 	for i := range artifacts {
-		if artifacts[i].Direction == "output" && artifacts[i].MediaType == mediaType {
+		if artifacts[i].Direction == "output" && artifacts[i].MediaType == mediaType && artifacts[i].Position == position {
 			copy := artifacts[i]
 			return &copy
 		}

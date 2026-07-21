@@ -26,6 +26,7 @@ type MediaTask struct {
 	Stage                   MediaTaskStage
 	Progress                int
 	RequestSpec             json.RawMessage
+	ImageResponseFormat     string
 	CandidateSnapshot       json.RawMessage
 	RequestFingerprint      string
 	IdempotencyKey          string
@@ -55,20 +56,25 @@ type MediaTask struct {
 }
 
 type MediaArtifact struct {
-	ID                int64
-	TaskID            int64
-	Direction         string
-	Position          int
-	MediaType         MediaType
-	ContentType       string
-	SizeBytes         int64
-	ChecksumSHA256    string
-	Width             *int
-	Height            *int
-	DurationSeconds   *float64
-	Resolution        string
-	FPS               *float64
-	StorageStatus     string
+	ID              int64
+	TaskID          int64
+	Direction       string
+	Position        int
+	MediaType       MediaType
+	ContentType     string
+	SizeBytes       int64
+	ChecksumSHA256  string
+	Width           *int
+	Height          *int
+	DurationSeconds *float64
+	Resolution      string
+	FPS             *float64
+	StorageStatus   string
+	StorageProvider string
+	// StorageRevision exists only between object Put and Artifact commit. It is
+	// deliberately not persisted: the guarded commit prevents locator changes
+	// once this artifact has been indexed.
+	StorageRevision   string `json:"-"`
 	ObjectKey         string
 	PublicURL         string
 	UpstreamReference string
@@ -80,7 +86,7 @@ type MediaArtifact struct {
 type MediaTaskRepository interface {
 	Create(ctx context.Context, task *MediaTask) (*MediaTask, error)
 	GetByID(ctx context.Context, id int64) (*MediaTask, error)
-	GetByPublicIDForUser(ctx context.Context, publicID string, userID int64) (*MediaTask, error)
+	GetByPublicIDForUser(ctx context.Context, publicID string, userID, apiKeyID int64) (*MediaTask, error)
 	GetByIdempotencyKey(ctx context.Context, userID, apiKeyID int64, key string) (*MediaTask, error)
 	UpdateQueued(ctx context.Context, id, version int64, updates map[string]any) (bool, error)
 	// TransitionQueued is the initialization-owner terminal path. It requires
@@ -100,11 +106,18 @@ type MediaTaskRepository interface {
 	TransitionClaimed(ctx context.Context, id int64, claimToken string, expectedVersion int64, expectedStage MediaTaskStage, from, to MediaTaskStatus, updates map[string]any) (bool, error)
 	MarkSyncFallback(ctx context.Context, id int64, at time.Time) (bool, error)
 	ListRecoverable(ctx context.Context, now time.Time, limit int) ([]MediaTask, error)
-	ListSettlementPending(ctx context.Context, limit int) ([]MediaTask, error)
+	// ListSettlementPending returns settlement work whose last state change is
+	// old enough to retry. Implementations must order oldest work first so a
+	// permanently failing task cannot starve later rows at the batch boundary.
+	ListSettlementPending(ctx context.Context, retryReadyBefore time.Time, limit int) ([]MediaTask, error)
 	UpdateBilling(ctx context.Context, id int64, fromStatus string, updates map[string]any) (bool, error)
 }
 
 type MediaArtifactRepository interface {
 	Create(ctx context.Context, artifact *MediaArtifact) (*MediaArtifact, error)
+	// DeleteExact removes exactly one row created by the current media workflow.
+	// Implementations must match the immutable artifact identity in addition to
+	// the row ID so compensation can never delete another task's artifact.
+	DeleteExact(ctx context.Context, artifact *MediaArtifact) (bool, error)
 	ListByTaskID(ctx context.Context, taskID int64) ([]MediaArtifact, error)
 }
