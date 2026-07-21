@@ -143,7 +143,7 @@ func TestMediaModelAliasRepositoryListAllMapsAliasesInIDOrder(t *testing.T) {
 	}, aliases)
 }
 
-func TestMediaModelRepositorySingleArgumentRegistryLoadsAliases(t *testing.T) {
+func TestMediaModelRepositoryRegistryWithResolverLoadsAliases(t *testing.T) {
 	client := newMediaModelRepositoryTestClient(t)
 	definition, err := client.MediaModelDefinition.Create().
 		SetModelID("canonical-image").
@@ -163,7 +163,25 @@ func TestMediaModelRepositorySingleArgumentRegistryLoadsAliases(t *testing.T) {
 		Save(context.Background())
 	require.NoError(t, err)
 
-	registry := service.NewMediaModelRegistry(NewMediaModelRepository(client))
+	adapterRegistry := service.NewMediaAdapterRegistry()
+	require.NoError(t, adapterRegistry.RegisterDefinition(service.MediaAdapterRegistration{
+		Key: "fake-adapter",
+		Adapter: service.NewFakeMediaAdapter(service.FakeMediaAdapterOptions{
+			Name: "fake-adapter", NativeAsyncMode: service.NativeAsyncOptional,
+		}),
+		SupportedOperations: []service.MediaOperation{service.MediaOperationTextToImage},
+		ExactRules: []service.MediaAdapterExactRule{{
+			Vendor: "fake-vendor", ModelID: "canonical-image",
+			Capabilities: service.MediaAdapterRuleCapabilities{
+				Operations:          []service.MediaOperation{service.MediaOperationTextToImage},
+				SyncUpstream:        true,
+				NativeAsyncUpstream: true,
+			},
+		}},
+	}))
+	registry := service.NewMediaModelRegistryWithResolver(
+		NewMediaModelRepository(client), service.NewMediaAdapterResolver(adapterRegistry),
+	)
 	require.NoError(t, registry.Refresh(context.Background()))
 	resolved, err := registry.Resolve("image-alias", service.MediaOperationTextToImage)
 	require.NoError(t, err)

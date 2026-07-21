@@ -12,6 +12,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 )
 
 var (
@@ -19,21 +21,26 @@ var (
 	ErrMediaOperationUnsupported        = errors.New("media operation unsupported")
 	ErrMediaCapabilityUnsupported       = errors.New("media capability unsupported")
 	ErrMediaSpecOutsideModelConstraints = errors.New("media spec outside model constraints")
+	ErrMediaModelAdapterUnavailable     = infraerrors.ServiceUnavailable(
+		"MEDIA_MODEL_ADAPTER_UNAVAILABLE",
+		"media model adapter is unavailable",
+	)
 )
 
 type MediaModelDefinition struct {
-	ID               int64
-	ModelID          string
-	Vendor           string
-	MediaType        MediaType
-	Operations       []MediaOperation
-	Constraints      json.RawMessage
-	BillingUnit      string
-	DefaultAdapter   string
-	DefaultAsyncMode NativeAsyncMode
-	Enabled          bool
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
+	ID                int64
+	ModelID           string
+	Vendor            string
+	MediaType         MediaType
+	Operations        []MediaOperation
+	Constraints       json.RawMessage
+	BillingUnit       string
+	DefaultAdapter    string
+	DefaultAsyncMode  NativeAsyncMode
+	AdapterResolution MediaAdapterResolution `json:"-"`
+	Enabled           bool
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
 }
 
 type MediaModelConstraints struct {
@@ -68,21 +75,43 @@ type MediaModelAliasRepository interface {
 	ListAll(ctx context.Context) ([]MediaModelAlias, error)
 }
 
+type mediaModelUnavailableTombstone struct {
+	CanonicalModelID string
+	Resolution       MediaAdapterResolution
+}
+
 type mediaModelRegistrySnapshot struct {
-	models  map[string]MediaModelDefinition
-	aliases map[string]string
+	models             map[string]MediaModelDefinition
+	aliases            map[string]string
+	unavailableModels  map[string]mediaModelUnavailableTombstone
+	unavailableAliases map[string]string
 }
 
 type MediaModelRegistry struct {
-	repo      MediaModelDefinitionRepository
-	aliasRepo MediaModelAliasRepository
-	snapshot  atomic.Value // mediaModelRegistrySnapshot
-	refreshMu sync.Mutex
-	startOnce sync.Once
+	repo           MediaModelDefinitionRepository
+	aliasRepo      MediaModelAliasRepository
+	resolver       *MediaAdapterResolver
+	routingMetrics MediaRoutingMetrics
+	logger         *slog.Logger
+	snapshot       atomic.Value // mediaModelRegistrySnapshot
+	refreshMu      sync.Mutex
+	observerMu     sync.RWMutex
+	startOnce      sync.Once
 }
 
 func NewMediaModelRegistry(repo MediaModelDefinitionRepository, aliasRepos ...MediaModelAliasRepository) *MediaModelRegistry {
-	registry := &MediaModelRegistry{repo: repo}
+	return NewMediaModelRegistryWithResolver(repo, NewMediaAdapterResolver(NewMediaAdapterRegistry()), aliasRepos...)
+}
+
+func NewMediaModelRegistryWithResolver(
+	repo MediaModelDefinitionRepository,
+	resolver *MediaAdapterResolver,
+	aliasRepos ...MediaModelAliasRepository,
+) *MediaModelRegistry {
+	if resolver == nil {
+		resolver = NewMediaAdapterResolver(NewMediaAdapterRegistry())
+	}
+	registry := &MediaModelRegistry{repo: repo, resolver: resolver, logger: slog.Default()}
 	if len(aliasRepos) > 0 {
 		registry.aliasRepo = aliasRepos[0]
 	} else if aliasRepo, ok := repo.(MediaModelAliasRepository); ok {
@@ -92,8 +121,10 @@ func NewMediaModelRegistry(repo MediaModelDefinitionRepository, aliasRepos ...Me
 		registry.aliasRepo = aliasRepo
 	}
 	registry.snapshot.Store(mediaModelRegistrySnapshot{
-		models:  map[string]MediaModelDefinition{},
-		aliases: map[string]string{},
+		models:             map[string]MediaModelDefinition{},
+		aliases:            map[string]string{},
+		unavailableModels:  map[string]mediaModelUnavailableTombstone{},
+		unavailableAliases: map[string]string{},
 	})
 	return registry
 }
@@ -112,49 +143,167 @@ func (r *MediaModelRegistry) Refresh(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	items := make(map[string]MediaModelDefinition, len(definitions))
+
+	// Validate the repository's global identity contract before resolving any
+	// individual model. A duplicate canonical ID/definition ID, or a disabled
+	// row returned by ListEnabled, invalidates the entire refresh and must leave
+	// the previous snapshot untouched.
+	normalizedDefinitions := make([]MediaModelDefinition, len(definitions))
+	allCanonicalIDs := make(map[string]struct{}, len(definitions))
 	ids := make(map[int64]string, len(definitions))
 	for index, definition := range definitions {
 		definition.ModelID = normalizeMediaModelID(definition.ModelID)
-		definition.Vendor = strings.TrimSpace(definition.Vendor)
-		definition.DefaultAdapter = normalizeMediaAdapterName(definition.DefaultAdapter)
-		definition.DefaultAsyncMode = NativeAsyncMode(strings.ToLower(strings.TrimSpace(string(definition.DefaultAsyncMode))))
+		definition.Vendor = strings.ToLower(strings.TrimSpace(definition.Vendor))
+		definition.BillingUnit = strings.ToLower(strings.TrimSpace(definition.BillingUnit))
 		definition.Operations = append([]MediaOperation(nil), definition.Operations...)
 		definition.Constraints = append(json.RawMessage(nil), definition.Constraints...)
-		if err := validateMediaModelDefinition(definition); err != nil {
-			return fmt.Errorf("validate media model definition at index %d: %w", index, err)
-		}
-		if _, exists := items[definition.ModelID]; exists {
+		definition.AdapterResolution = cloneMediaAdapterResolution(definition.AdapterResolution)
+		if _, exists := allCanonicalIDs[definition.ModelID]; exists {
 			return fmt.Errorf("duplicate media model id %q", definition.ModelID)
 		}
-		items[definition.ModelID] = definition
+		allCanonicalIDs[definition.ModelID] = struct{}{}
 		if definition.ID > 0 {
 			if _, exists := ids[definition.ID]; exists {
 				return fmt.Errorf("duplicate media model definition id %d", definition.ID)
 			}
 			ids[definition.ID] = definition.ModelID
 		}
+		normalizedDefinitions[index] = definition
 	}
+
+	items := make(map[string]MediaModelDefinition, len(definitions))
+	unavailableItems := make(map[string]mediaModelUnavailableTombstone)
+	for index, definition := range normalizedDefinitions {
+		if !definition.Enabled {
+			return fmt.Errorf("validate media model definition at index %d: disabled model returned by enabled model repository", index)
+		}
+	}
+	for index, definition := range normalizedDefinitions {
+		resolution := r.resolver.ResolveDefinition(definition)
+		switch resolution.Status {
+		case MediaAdapterResolutionReady:
+			if !resolution.IsReady() {
+				return fmt.Errorf("resolve media model definition at index %d (%q): ready resolution has no capabilities", index, definition.ModelID)
+			}
+			definition.AdapterResolution = cloneMediaAdapterResolution(resolution)
+			definition.DefaultAdapter = resolution.ResolvedAdapter
+			definition.DefaultAsyncMode = resolution.CompatibilityAsyncMode()
+			items[definition.ModelID] = definition
+			continue
+		case MediaAdapterResolutionImplementationMissing:
+			r.observeUnavailableResolution(definition, resolution)
+			return fmt.Errorf(
+				"resolve media model definition at index %d (%q): implementation_missing for adapter %q",
+				index,
+				definition.ModelID,
+				resolution.ResolvedAdapter,
+			)
+		case MediaAdapterResolutionInvalidDefinition,
+			MediaAdapterResolutionUnresolved,
+			MediaAdapterResolutionAmbiguous,
+			MediaAdapterResolutionCapabilityMismatch:
+			r.observeUnavailableResolution(definition, resolution)
+		default:
+			return fmt.Errorf(
+				"resolve media model definition at index %d (%q): unsupported resolution status %q",
+				index,
+				definition.ModelID,
+				resolution.Status,
+			)
+		}
+		unavailableItems[definition.ModelID] = mediaModelUnavailableTombstone{
+			CanonicalModelID: definition.ModelID,
+			Resolution:       cloneMediaAdapterResolution(resolution),
+		}
+	}
+
 	aliasItems := make(map[string]string, len(aliases))
+	unavailableAliasItems := make(map[string]string)
+	allAliases := make(map[string]struct{}, len(aliases))
 	for index, alias := range aliases {
 		requestedModelID := normalizeMediaModelID(alias.RequestedModelID)
-		if requestedModelID == "" {
-			return fmt.Errorf("media model alias at index %d has empty requested model id", index)
+		if !isValidMediaModelIdentifier(requestedModelID) {
+			return fmt.Errorf("media model alias at index %d has invalid requested model id", index)
 		}
-		if _, exists := aliasItems[requestedModelID]; exists {
+		if _, exists := allAliases[requestedModelID]; exists {
 			return fmt.Errorf("duplicate media model alias %q", requestedModelID)
 		}
-		if _, exists := items[requestedModelID]; exists {
+		allAliases[requestedModelID] = struct{}{}
+		if _, exists := allCanonicalIDs[requestedModelID]; exists {
 			return fmt.Errorf("media model alias %q conflicts with a canonical model id", requestedModelID)
 		}
 		canonicalModelID, exists := ids[alias.ModelDefinitionID]
 		if !exists {
 			return fmt.Errorf("media model alias %q references unavailable model definition %d", requestedModelID, alias.ModelDefinitionID)
 		}
-		aliasItems[requestedModelID] = canonicalModelID
+		if _, ready := items[canonicalModelID]; ready {
+			aliasItems[requestedModelID] = canonicalModelID
+			continue
+		}
+		if _, unavailable := unavailableItems[canonicalModelID]; unavailable {
+			unavailableAliasItems[requestedModelID] = canonicalModelID
+			continue
+		}
+		return fmt.Errorf("media model alias %q references model definition %d without a routing state", requestedModelID, alias.ModelDefinitionID)
 	}
-	r.snapshot.Store(mediaModelRegistrySnapshot{models: items, aliases: aliasItems})
+	r.snapshot.Store(mediaModelRegistrySnapshot{
+		models:             items,
+		aliases:            aliasItems,
+		unavailableModels:  unavailableItems,
+		unavailableAliases: unavailableAliasItems,
+	})
 	return nil
+}
+
+func (r *MediaModelRegistry) SetRoutingMetrics(metrics MediaRoutingMetrics) {
+	if r == nil {
+		return
+	}
+	r.observerMu.Lock()
+	r.routingMetrics = metrics
+	r.observerMu.Unlock()
+}
+
+func (r *MediaModelRegistry) SetLogger(logger *slog.Logger) {
+	if r == nil {
+		return
+	}
+	if logger == nil {
+		logger = slog.Default()
+	}
+	r.observerMu.Lock()
+	r.logger = logger
+	r.observerMu.Unlock()
+}
+
+func (r *MediaModelRegistry) observeUnavailableResolution(
+	definition MediaModelDefinition,
+	resolution MediaAdapterResolution,
+) {
+	r.observerMu.RLock()
+	routingMetrics := r.routingMetrics
+	logger := r.logger
+	r.observerMu.RUnlock()
+	if routingMetrics != nil {
+		routingMetrics.IncrementAdapterResolutionFailure(resolution.Status)
+	}
+	if logger == nil {
+		logger = slog.Default()
+	}
+	attributes := []any{
+		"canonical_model_id", definition.ModelID,
+		"vendor", definition.Vendor,
+		"adapter_resolution_status", string(resolution.Status),
+		"adapter_key", resolution.ResolvedAdapter,
+		"matched_by", string(resolution.MatchedBy),
+		"matched_family", resolution.MatchedFamily,
+		"reason_code", resolution.ReasonCode,
+	}
+	if resolution.Status == MediaAdapterResolutionImplementationMissing {
+		logger.Error("media_model_adapter_resolution_unavailable", attributes...)
+		return
+	}
+	logger.Warn("media_model_adapter_resolution_unavailable", attributes...)
 }
 
 // StartPeriodicRefresh keeps every instance eventually consistent after an
@@ -191,9 +340,17 @@ func (r *MediaModelRegistry) Resolve(model string, operation MediaOperation) (*M
 	modelID := normalizeMediaModelID(model)
 	if alias, ok := snapshot.aliases[modelID]; ok {
 		modelID = alias
+	} else if alias, ok := snapshot.unavailableAliases[modelID]; ok {
+		return nil, mediaModelUnavailableError(snapshot.unavailableModels[alias])
 	}
 	definition, ok := snapshot.models[modelID]
-	if !ok || !definition.Enabled {
+	if !ok {
+		if tombstone, unavailable := snapshot.unavailableModels[modelID]; unavailable {
+			return nil, mediaModelUnavailableError(tombstone)
+		}
+		return nil, ErrMediaModelNotFound
+	}
+	if !definition.Enabled {
 		return nil, ErrMediaModelNotFound
 	}
 	if !definition.Supports(operation) {
@@ -211,9 +368,17 @@ func (r *MediaModelRegistry) CanonicalModelID(model string) (string, error) {
 	modelID := normalizeMediaModelID(model)
 	if alias, ok := snapshot.aliases[modelID]; ok {
 		modelID = alias
+	} else if alias, ok := snapshot.unavailableAliases[modelID]; ok {
+		return "", mediaModelUnavailableError(snapshot.unavailableModels[alias])
 	}
 	definition, ok := snapshot.models[modelID]
-	if !ok || !definition.Enabled {
+	if !ok {
+		if tombstone, unavailable := snapshot.unavailableModels[modelID]; unavailable {
+			return "", mediaModelUnavailableError(tombstone)
+		}
+		return "", ErrMediaModelNotFound
+	}
+	if !definition.Enabled {
 		return "", ErrMediaModelNotFound
 	}
 	return definition.ModelID, nil
@@ -221,12 +386,27 @@ func (r *MediaModelRegistry) CanonicalModelID(model string) (string, error) {
 
 func (r *MediaModelRegistry) definitionByID(modelID string) (*MediaModelDefinition, error) {
 	snapshot := r.snapshot.Load().(mediaModelRegistrySnapshot)
-	definition, ok := snapshot.models[normalizeMediaModelID(modelID)]
-	if !ok || !definition.Enabled {
+	canonicalModelID := normalizeMediaModelID(modelID)
+	definition, ok := snapshot.models[canonicalModelID]
+	if !ok {
+		if tombstone, unavailable := snapshot.unavailableModels[canonicalModelID]; unavailable {
+			return nil, mediaModelUnavailableError(tombstone)
+		}
+		return nil, ErrMediaModelNotFound
+	}
+	if !definition.Enabled {
 		return nil, ErrMediaModelNotFound
 	}
 	copy := cloneMediaModelDefinition(definition)
 	return &copy, nil
+}
+
+func mediaModelUnavailableError(tombstone mediaModelUnavailableTombstone) error {
+	return ErrMediaModelAdapterUnavailable.WithMetadata(map[string]string{
+		"model_id":          tombstone.CanonicalModelID,
+		"resolution_status": string(tombstone.Resolution.Status),
+		"reason_code":       tombstone.Resolution.ReasonCode,
+	})
 }
 
 func (r *MediaModelRegistry) ResolveRouteRequest(request MediaRouteRequest) (*MediaModelDefinition, error) {
@@ -303,24 +483,20 @@ func validateMediaSpecAgainstDefinition(definition MediaModelDefinition, spec Me
 	return nil
 }
 
-func validateMediaModelDefinition(definition MediaModelDefinition) error {
-	if definition.ModelID == "" {
-		return errors.New("model id is empty")
+func validateMediaModelDefinitionBase(definition MediaModelDefinition) error {
+	if !isValidMediaModelIdentifier(definition.ModelID) {
+		return errors.New("media model id has invalid format")
 	}
-	if !definition.Enabled {
-		return errors.New("disabled model returned by enabled model repository")
+	if !isValidMediaSimpleIdentifier(definition.Vendor, 64) {
+		return errors.New("media model vendor has invalid format")
 	}
-	if definition.Vendor == "" {
-		return errors.New("media model vendor is empty")
+	if !isValidMediaSimpleIdentifier(definition.BillingUnit, 32) {
+		return errors.New("media model billing unit has invalid format")
 	}
-	if !isValidMediaAdapterName(definition.DefaultAdapter) {
-		return errors.New("media model default adapter has invalid format")
-	}
-	switch definition.DefaultAsyncMode {
-	case NativeAsyncUnsupported, NativeAsyncOptional, NativeAsyncRequired:
-	default:
-		return fmt.Errorf("unsupported default async mode %q", definition.DefaultAsyncMode)
-	}
+	return validateMediaModelShapeAndConstraints(definition)
+}
+
+func validateMediaModelShapeAndConstraints(definition MediaModelDefinition) error {
 	if definition.MediaType != MediaTypeImage && definition.MediaType != MediaTypeVideo {
 		return fmt.Errorf("unsupported media type %q", definition.MediaType)
 	}
@@ -347,6 +523,32 @@ func validateMediaModelDefinition(definition MediaModelDefinition) error {
 		return err
 	}
 	return validateMediaModelConstraints(definition.MediaType, constraints)
+}
+
+func validateEnabledMediaModelDefinition(definition MediaModelDefinition) error {
+	if !definition.Enabled {
+		return errors.New("disabled model returned by enabled model repository")
+	}
+	return validateMediaModelDefinitionBase(definition)
+}
+
+// validateMediaModelDefinition remains as a compatibility wrapper while the
+// worker/admin call sites migrate to the base validator in later tasks.
+func validateMediaModelDefinition(definition MediaModelDefinition) error {
+	return validateEnabledMediaModelDefinition(definition)
+}
+
+// ResolveDefinition is the only model-definition resolution entrypoint. It
+// keeps base shape validation consistent across serving and admin diagnosis,
+// without requiring the definition to be enabled.
+func (r *MediaAdapterResolver) ResolveDefinition(definition MediaModelDefinition) MediaAdapterResolution {
+	if err := validateMediaModelDefinitionBase(definition); err != nil {
+		return mediaAdapterResolutionFailure(
+			MediaAdapterResolutionInvalidDefinition,
+			"MEDIA_MODEL_DEFINITION_INVALID",
+		)
+	}
+	return r.Resolve(definition.Vendor, definition.ModelID, definition.Operations)
 }
 
 func decodeMediaModelConstraints(raw json.RawMessage) (MediaModelConstraints, error) {
@@ -446,7 +648,18 @@ func mediaTypeForOperation(operation MediaOperation) (MediaType, bool) {
 func cloneMediaModelDefinition(definition MediaModelDefinition) MediaModelDefinition {
 	definition.Operations = append([]MediaOperation(nil), definition.Operations...)
 	definition.Constraints = append(json.RawMessage(nil), definition.Constraints...)
+	definition.AdapterResolution = cloneMediaAdapterResolution(definition.AdapterResolution)
 	return definition
+}
+
+func cloneMediaAdapterResolution(input MediaAdapterResolution) MediaAdapterResolution {
+	copy := input
+	if input.Capabilities != nil {
+		capabilities := *input.Capabilities
+		capabilities.Operations = append([]MediaOperation(nil), input.Capabilities.Operations...)
+		copy.Capabilities = &capabilities
+	}
+	return copy
 }
 
 func normalizeMediaModelID(model string) string {
