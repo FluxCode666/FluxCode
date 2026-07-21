@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -94,10 +95,12 @@ func (s mediaContentAccountRepoStub) GetByID(context.Context, int64) (*Account, 
 type mediaContentFetcherAdapterStub struct {
 	content *MediaContent
 	err     error
+	calls   atomic.Int64
 }
 
 func (*mediaContentFetcherAdapterStub) Name() string { return "content-fetcher" }
 func (s *mediaContentFetcherAdapterStub) OpenContent(context.Context, *Account, *MediaArtifact, string) (*MediaContent, error) {
+	s.calls.Add(1)
 	return s.content, s.err
 }
 
@@ -332,6 +335,42 @@ func TestMediaContentServiceFallsBackToAdapterAfterObjectStoreError(t *testing.T
 	body, readErr := io.ReadAll(content.Body)
 	require.NoError(t, readErr)
 	require.Equal(t, []byte("proxy"), body)
+}
+
+func TestMediaContentServiceUsesHistoricalAdapterAliasForContentFetch(t *testing.T) {
+	accountID := int64(9)
+	task := &MediaTask{
+		ID: 1, PublicID: "task_public", UserID: 42, AccountID: &accountID,
+		Adapter: "legacy-content", MediaType: MediaTypeVideo, Status: MediaTaskStatusCompleted,
+	}
+	tasks := &mediaContentTaskRepoStub{task: task}
+	artifacts := &mediaContentArtifactRepoStub{items: []MediaArtifact{{
+		ID: 2, TaskID: task.ID, Direction: "output", Position: 0, MediaType: MediaTypeVideo,
+		ContentType: "video/mp4", UpstreamReference: "upstream-video-reference",
+	}}}
+	registry := NewMediaAdapterRegistry()
+	adapter := &mediaContentFetcherAdapterStub{content: &MediaContent{
+		Body: io.NopCloser(strings.NewReader("proxy")), StatusCode: http.StatusOK,
+		ContentLength: 5, ContentType: "video/mp4",
+	}}
+	require.NoError(t, registry.Register("content-fetcher", adapter))
+	require.NoError(t, registry.RegisterAlias("legacy-content", "content-fetcher"))
+	svc := NewMediaContentService(
+		tasks,
+		artifacts,
+		mediaContentSettingsStub{settings: &SystemSettings{MediaVideoProxyFallbackEnabled: true}},
+		mediaContentAccountRepoStub{account: &Account{ID: accountID}},
+		registry,
+		mediaContentHTTPReaderStub{},
+		NewDisabledMediaArtifactObjectStore(),
+	)
+
+	content, err := svc.OpenVideo(context.Background(), task.PublicID, task.UserID, "")
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, content.Body.Close()) })
+	require.Equal(t, int64(1), adapter.calls.Load())
+	require.Equal(t, http.StatusOK, content.StatusCode)
+	require.Equal(t, "legacy-content", task.Adapter)
 }
 
 func TestMediaContentServiceFinalFallbackErrorPreservesUnavailableAndInternalCauses(t *testing.T) {

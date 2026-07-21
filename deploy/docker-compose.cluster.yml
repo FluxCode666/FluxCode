@@ -81,6 +81,7 @@ services:
       - SERVER_MODE=${SERVER_MODE:-release}
       - RUN_MODE=${RUN_MODE:-standard}
       - SKIP_STARTUP_INIT=${SKIP_STARTUP_INIT:-false}
+      - MEDIA_TASKS_ENABLED=${MEDIA_TASKS_ENABLED:-true}
 
       # =======================================================================
       # Database Configuration (shared PostgreSQL)
@@ -192,6 +193,7 @@ services:
   #     - SERVER_MODE=${SERVER_MODE:-release}
   #     - RUN_MODE=${RUN_MODE:-standard}
   #     - SKIP_STARTUP_INIT=true
+  #     - MEDIA_TASKS_ENABLED=${MEDIA_TASKS_ENABLED:-true}
   #     - DATABASE_HOST=${DATABASE_HOST:-postgres}
   #     - DATABASE_PORT=${DATABASE_PORT:-5432}
   #     - DATABASE_USER=${DATABASE_USER:-sub2api}

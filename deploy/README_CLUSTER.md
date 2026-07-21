@@ -489,6 +489,48 @@ server {
 
 ---
 
+## 媒体 Adapter 自动解析的滚动发布
+
+媒体模型的 Adapter 由部署代码按“模型厂商 + 规范模型或模型家族”解析。多实例从旧数据库路由字段切换到代码解析前，必须先完成只读预检，并在发布窗口冻结相关写入。
+
+### 1. 启动隔离的预检候选实例
+
+旧版本没有 preflight 路由，因此先使用待发布的新版本启动一个候选实例。该实例必须：
+
+- 设置 `MEDIA_TASKS_ENABLED=false`（对应 `media_tasks.enabled=false`），禁止 `MediaWorker.Start()`；集群 Compose 已显式透传该变量，启动前用 `docker compose -f docker-compose.cluster.yml config` 确认候选容器内的值为 `false`；
+- 不加入负载均衡，不承载公网或真实媒体请求；
+- 只通过受保护的 Admin 网络入口访问；
+- 使用与生产集群一致的数据库和多实例安全配置，以读取真实历史媒体模型；
+- 使用与本次发布完全相同的 Adapter 注册和历史 key alias。
+
+> `MEDIA_TASKS_ENABLED=false` 只阻止媒体 Worker 启动，不会自动关闭完整 Server 构造出的 ops、cleanup、监控、备份等其他后台组件。必须逐项关闭或隔离所有可能写库、清理数据或产生外部副作用的组件，再启动候选实例。
+
+### 2. 执行只读 preflight
+
+将候选实例的直连地址写入 `PREFLIGHT_BASE_URL`，不要经过当前生产负载均衡：
+
+```bash
+curl -fsS \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  "$PREFLIGHT_BASE_URL/api/v1/admin/media-models/preflight" | \
+  jq -e '.data.safe == true and .data.blocking_count == 0'
+```
+
+保存完整响应作为发布记录。`safe=true` 表示所有已启用模型都能由新代码解析，并且存在的旧 Adapter key/async 字段可供滚动期间旧实例继续读取；它不表示新建且旧 key 为空的模型能在旧版本实例上参与媒体路由。
+
+### 3. 冻结写入并滚动部署
+
+1. 根据 preflight 报告在运维层禁用所有 blocking 模型，再次执行预检直到通过。
+2. 冻结媒体模型 CRUD/启停、媒体账号新增模型绑定，以及媒体分组新增模型授权。
+3. 部署全部 API 和 Worker，确认所有实例版本一致，Adapter 注册与历史 alias/key 完全相同。
+4. 验证媒体任务恢复、历史任务内容回源正常后解除写入冻结。
+5. 部署已删除 Adapter 编辑项、且只消费 `adapter_resolution` 的新前端。
+6. 最后创建或启用仅由新版本支持的新媒体模型，再配置账号绑定和分组授权。
+
+如果无法创建无副作用的只读隔离实例、无法冻结上述写入、无法确认各实例 alias/key 一致，或无法关闭其他后台副作用组件，则不得运行候选 Server。应改用独立 preflight CLI（若届时提供），或停止旧实例后执行受控切换。
+
+---
+
 ## 重要注意事项
 
 ### 1. JWT_SECRET 必须一致
