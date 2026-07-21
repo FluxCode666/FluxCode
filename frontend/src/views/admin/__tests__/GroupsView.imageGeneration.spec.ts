@@ -2,7 +2,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { defineComponent, nextTick, type PropType } from 'vue'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { AdminGroup } from '@/types'
+import type { AdminGroup, MediaModelDefinition } from '@/types'
 import GroupsView from '../GroupsView.vue'
 
 const {
@@ -109,6 +109,31 @@ const legacyGroup = (overrides: Partial<LegacyAdminGroup> = {}): LegacyAdminGrou
   mcp_xml_inject: true,
   sort_order: 0,
   ...overrides,
+})
+
+const readyMediaModel = (modelID = 'ready-image'): MediaModelDefinition => ({
+  id: 1,
+  model_id: modelID,
+  vendor: 'xai',
+  media_type: 'image',
+  operations: ['text_to_image'],
+  constraints: {},
+  billing_unit: 'image',
+  enabled: true,
+  aliases: [],
+  adapter_resolution: {
+    status: 'ready',
+    resolved_adapter: 'xai-image',
+    matched_by: 'exact',
+    matched_family: '',
+    capabilities: {
+      operations: ['text_to_image'],
+      sync_upstream: true,
+      native_async_upstream: false,
+      content_fetch: false,
+    },
+    reason_code: '',
+  },
 })
 
 const BaseDialogStub = defineComponent({
@@ -284,17 +309,21 @@ describe('GroupsView media permissions', () => {
 
   it('媒体分组创建后保存独立的模型 scope', async () => {
     listMediaModels.mockResolvedValue([{
-      id: 1,
-      model_id: 'seedance',
+      ...readyMediaModel('seedance'),
       vendor: 'bytedance',
       media_type: 'video',
       operations: ['text_to_video'],
-      constraints: {},
       billing_unit: 'second',
-      default_adapter: 'volcengine-seedance',
-      default_async_mode: 'required',
-      enabled: true,
-      aliases: [],
+      adapter_resolution: {
+        ...readyMediaModel('seedance').adapter_resolution,
+        resolved_adapter: 'volcengine-seedance',
+        capabilities: {
+          operations: ['text_to_video'],
+          sync_upstream: false,
+          native_async_upstream: true,
+          content_fetch: false,
+        },
+      },
     }])
     const created = legacyGroup({ id: 21, name: 'media-group', platform: 'media' }) as AdminGroup
     createGroup.mockResolvedValue(created)
@@ -316,5 +345,122 @@ describe('GroupsView media permissions', () => {
       media_cross_platform_enabled: false,
     }))
     expect(replaceMediaScopes).toHaveBeenCalledWith(21, ['seedance'])
+  })
+
+  it('允许清空全部由当前不可用模型组成的历史授权', async () => {
+    listGroups.mockResolvedValue({
+      items: [legacyGroup({ id: 30, name: 'historical-media', platform: 'media' })],
+      total: 1,
+      pages: 1,
+    })
+    listMediaModels.mockResolvedValue([readyMediaModel()])
+    getMediaScopes.mockResolvedValue(['removed-image'])
+
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.get('[data-test="group-row-30"] button').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-test="remove-unavailable-media-model-removed-image"]').trigger('click')
+    await wrapper.get('#edit-group-form').trigger('submit')
+    await flushPromises()
+
+    expect(updateGroup).toHaveBeenCalled()
+    expect(replaceMediaScopes).toHaveBeenCalledWith(30, [])
+  })
+
+  it('模型列表加载失败时不展示历史删除入口且拒绝提交空授权', async () => {
+    listGroups.mockResolvedValue({
+      items: [legacyGroup({ id: 31, name: 'failed-media', platform: 'media' })],
+      total: 1,
+      pages: 1,
+    })
+    listMediaModels.mockRejectedValue(new Error('registry unavailable'))
+    getMediaScopes.mockResolvedValue(['removed-image'])
+
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.get('[data-test="group-row-31"] button').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('[data-test="remove-unavailable-media-model-removed-image"]').exists())
+      .toBe(false)
+    ;(wrapper.vm as any).editMediaModelIds = []
+    await nextTick()
+    await wrapper.get('#edit-group-form').trigger('submit')
+    await flushPromises()
+
+    expect(updateGroup).not.toHaveBeenCalled()
+    expect(replaceMediaScopes).not.toHaveBeenCalled()
+    expect(showError).toHaveBeenCalledWith('admin.groups.mediaModelScopeRequired')
+  })
+
+  it('媒体分组授权加载失败时即使重新选择 ready 模型也拒绝覆盖', async () => {
+    listGroups.mockResolvedValue({
+      items: [legacyGroup({ id: 34, name: 'scope-load-failed', platform: 'media' })],
+      total: 1,
+      pages: 1,
+    })
+    listMediaModels.mockResolvedValue([readyMediaModel()])
+    getMediaScopes.mockRejectedValue(new Error('scope unavailable'))
+
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.get('[data-test="group-row-34"] button').trigger('click')
+    await flushPromises()
+
+    expect(showError).toHaveBeenCalledWith('admin.groups.mediaModelScopeLoadFailed')
+    showError.mockClear()
+    await wrapper.get('[data-test="media-model-scope-ready-image"]').setValue(true)
+    await wrapper.get('#edit-group-form').trigger('submit')
+    await flushPromises()
+
+    expect(updateGroup).not.toHaveBeenCalled()
+    expect(replaceMediaScopes).not.toHaveBeenCalled()
+    expect(showError).toHaveBeenCalledWith('admin.groups.mediaModelScopeLoadFailed')
+  })
+
+  it('原始授权含 ready 模型时不允许全部清空', async () => {
+    listGroups.mockResolvedValue({
+      items: [legacyGroup({ id: 32, name: 'ready-media', platform: 'media' })],
+      total: 1,
+      pages: 1,
+    })
+    listMediaModels.mockResolvedValue([readyMediaModel()])
+    getMediaScopes.mockResolvedValue(['ready-image'])
+
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.get('[data-test="group-row-32"] button').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-test="media-model-scope-ready-image"]').setValue(false)
+    await wrapper.get('#edit-group-form').trigger('submit')
+    await flushPromises()
+
+    expect(updateGroup).not.toHaveBeenCalled()
+    expect(replaceMediaScopes).not.toHaveBeenCalled()
+    expect(showError).toHaveBeenCalledWith('admin.groups.mediaModelScopeRequired')
+  })
+
+  it('原始授权混合 ready 与不可用模型时同样不允许全部清空', async () => {
+    listGroups.mockResolvedValue({
+      items: [legacyGroup({ id: 33, name: 'mixed-media', platform: 'media' })],
+      total: 1,
+      pages: 1,
+    })
+    listMediaModels.mockResolvedValue([readyMediaModel()])
+    getMediaScopes.mockResolvedValue(['ready-image', 'removed-image'])
+
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.get('[data-test="group-row-33"] button').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-test="media-model-scope-ready-image"]').setValue(false)
+    await wrapper.get('[data-test="remove-unavailable-media-model-removed-image"]').trigger('click')
+    await wrapper.get('#edit-group-form').trigger('submit')
+    await flushPromises()
+
+    expect(updateGroup).not.toHaveBeenCalled()
+    expect(replaceMediaScopes).not.toHaveBeenCalled()
+    expect(showError).toHaveBeenCalledWith('admin.groups.mediaModelScopeRequired')
   })
 })

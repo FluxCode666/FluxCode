@@ -2053,7 +2053,7 @@ const createDefaultMediaConfig = (): MediaAccountConfig => ({
   models: {}
 })
 const mediaConfig = ref<MediaAccountConfig>(createDefaultMediaConfig())
-const mediaConfigValid = ref(true)
+const mediaConfigValid = ref(false)
 const antigravityModelRestrictionMode = ref<'whitelist' | 'mapping'>('whitelist')
 const antigravityWhitelistModels = ref<string[]>([])
 const antigravityModelMappings = ref<ModelMapping[]>([])
@@ -2413,7 +2413,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   const extra = newAccount.extra as Record<string, unknown> | undefined
   mixedScheduling.value = extra?.mixed_scheduling === true
   allowOverages.value = extra?.allow_overages === true
-  mediaConfigValid.value = true
+  mediaConfigValid.value = newAccount.platform !== 'media'
   mediaConfig.value = normalizeMediaConfigWire(mediaConfigWire)
 
   // Load OpenAI passthrough toggle (OpenAI OAuth/API Key)

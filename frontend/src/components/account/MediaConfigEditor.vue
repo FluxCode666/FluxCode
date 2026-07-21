@@ -37,6 +37,7 @@ const rows = ref<ModelRow[]>([])
 const registryModels = ref<MediaModelDefinition[]>([])
 const registryLoading = ref(false)
 const registryLoadFailed = ref(false)
+const registryLoaded = ref(false)
 const duplicateModel = ref('')
 const missingModelFields = ref(false)
 let nextRowID = 0
@@ -52,12 +53,17 @@ async function loadRegistryModels() {
   if (!loader) return
   registryLoading.value = true
   registryLoadFailed.value = false
+  registryLoaded.value = false
+  refreshValidity()
   try {
     registryModels.value = await loader()
+    registryLoaded.value = true
   } catch {
+    registryModels.value = []
     registryLoadFailed.value = true
   } finally {
     registryLoading.value = false
+    refreshValidity()
   }
 }
 
@@ -71,6 +77,21 @@ function modelOptionLabel(model: MediaModelDefinition): string {
 
 function selectedDefinition(row: ModelRow): MediaModelDefinition | undefined {
   return registryModelsByID.value.get(row.model.trim().toLowerCase())
+}
+
+function rowSupportsSelectedMode(row: ModelRow): boolean {
+  if (!row.enabled) return true
+  const capabilities = selectedDefinition(row)?.adapter_resolution.capabilities
+  if (!capabilities) return false
+  return row.asyncMode === 'native'
+    ? capabilities.native_async_upstream
+    : capabilities.sync_upstream
+}
+
+function rowModelUnavailable(row: ModelRow): boolean {
+  return registryLoaded.value
+    && Boolean(row.model.trim())
+    && !selectedDefinition(row)
 }
 
 function mappingText(mapping: MediaRequestMapping | undefined): string {
@@ -184,6 +205,7 @@ function refreshValidity(): boolean {
   duplicateModel.value = ''
   missingModelFields.value = rows.value.length === 0
   let mappingValid = true
+  let accountModesValid = true
 
   for (const row of rows.value) {
     const model = row.model.trim().toLowerCase()
@@ -195,10 +217,12 @@ function refreshValidity(): boolean {
     }
     if (model) seen.add(model)
     if (!parseRequestMapping(row)) mappingValid = false
+    if (!rowSupportsSelectedMode(row)) accountModesValid = false
   }
 
-  const valid = Boolean(provider.value.trim()) && !missingModelFields.value &&
-    !duplicateModel.value && mappingValid
+  const registryValidated = registryLoaded.value && !registryLoading.value && !registryLoadFailed.value
+  const valid = registryValidated && Boolean(provider.value.trim()) && !missingModelFields.value &&
+    !duplicateModel.value && mappingValid && accountModesValid
   setValidity(valid)
   return valid
 }
@@ -334,9 +358,23 @@ onMounted(loadRegistryModels)
             </select>
             <p v-if="selectedDefinition(row)" class="input-hint">
               {{ t('admin.accounts.mediaConfig.registryModelHint', {
-                adapter: selectedDefinition(row)?.default_adapter,
-                mode: t(`admin.mediaModels.asyncModes.${selectedDefinition(row)?.default_async_mode}`)
+                adapter: selectedDefinition(row)?.adapter_resolution.resolved_adapter,
+                match: selectedDefinition(row)?.adapter_resolution.matched_family
+                  || t(`admin.mediaModels.resolution.matchedBy.${selectedDefinition(row)?.adapter_resolution.matched_by}`),
+                sync: selectedDefinition(row)?.adapter_resolution.capabilities?.sync_upstream
+                  ? t('common.yes') : t('common.no'),
+                native: selectedDefinition(row)?.adapter_resolution.capabilities?.native_async_upstream
+                  ? t('common.yes') : t('common.no'),
+                content: selectedDefinition(row)?.adapter_resolution.capabilities?.content_fetch
+                  ? t('common.yes') : t('common.no')
               }) }}
+            </p>
+            <p
+              v-if="rowModelUnavailable(row)"
+              :data-test="`media-model-unavailable-${index}`"
+              class="mt-1 text-xs text-amber-700 dark:text-amber-300"
+            >
+              {{ t('admin.accounts.mediaConfig.legacyModelUnavailable') }}
             </p>
           </div>
           <div>
@@ -376,9 +414,26 @@ onMounted(loadRegistryModels)
               class="input"
               @change="publish"
             >
-              <option value="unsupported">{{ t('admin.accounts.mediaConfig.modes.unsupported') }}</option>
-              <option value="native">{{ t('admin.accounts.mediaConfig.modes.native') }}</option>
+              <option
+                value="unsupported"
+                :disabled="Boolean(selectedDefinition(row)) && !selectedDefinition(row)?.adapter_resolution.capabilities?.sync_upstream"
+              >
+                {{ t('admin.accounts.mediaConfig.modes.unsupported') }}
+              </option>
+              <option
+                value="native"
+                :disabled="Boolean(selectedDefinition(row)) && !selectedDefinition(row)?.adapter_resolution.capabilities?.native_async_upstream"
+              >
+                {{ t('admin.accounts.mediaConfig.modes.native') }}
+              </option>
             </select>
+            <p
+              v-if="selectedDefinition(row) && !rowSupportsSelectedMode(row)"
+              :data-test="`media-mode-capability-error-${index}`"
+              class="mt-1 text-xs text-red-600 dark:text-red-400"
+            >
+              {{ t('admin.accounts.mediaConfig.modeCapabilityMismatch') }}
+            </p>
           </div>
           <button
             type="button"

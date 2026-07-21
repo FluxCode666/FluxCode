@@ -2,9 +2,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent, nextTick } from 'vue'
 import { flushPromises, mount } from '@vue/test-utils'
 
-const { updateAccountMock, checkMixedChannelRiskMock } = vi.hoisted(() => ({
+const { updateAccountMock, checkMixedChannelRiskMock, listEnabledMock } = vi.hoisted(() => ({
   updateAccountMock: vi.fn(),
-  checkMixedChannelRiskMock: vi.fn()
+  checkMixedChannelRiskMock: vi.fn(),
+  listEnabledMock: vi.fn()
 }))
 
 vi.mock('@/stores/app', () => ({
@@ -35,19 +36,7 @@ vi.mock('@/api/admin', () => ({
       list: vi.fn().mockResolvedValue([])
     },
     mediaModels: {
-      listEnabled: vi.fn().mockResolvedValue([{
-        id: 1,
-        model_id: 'duplicate',
-        vendor: 'test-vendor',
-        media_type: 'image',
-        operations: ['text_to_image'],
-        constraints: {},
-        billing_unit: 'image',
-        default_adapter: 'test-adapter',
-        default_async_mode: 'unsupported',
-        enabled: true,
-        aliases: []
-      }])
+      listEnabled: listEnabledMock
     }
   }
 }))
@@ -68,7 +57,88 @@ vi.mock('vue-i18n', async () => {
 
 import EditAccountModal from '../EditAccountModal.vue'
 import MediaConfigEditor from '../MediaConfigEditor.vue'
-import type { Account, MediaAccountConfigWire } from '@/types'
+import type { Account, MediaAccountConfigWire, MediaModelDefinition } from '@/types'
+
+const readyEditRegistryModels: MediaModelDefinition[] = [{
+  id: 1,
+  model_id: 'duplicate',
+  vendor: 'test-vendor',
+  media_type: 'image',
+  operations: ['text_to_image'],
+  constraints: {},
+  billing_unit: 'image',
+  enabled: true,
+  aliases: [],
+  adapter_resolution: {
+    status: 'ready',
+    resolved_adapter: 'test-adapter',
+    matched_by: 'exact',
+    matched_family: '',
+    capabilities: {
+      operations: ['text_to_image'],
+      sync_upstream: true,
+      native_async_upstream: true,
+      content_fetch: false
+    },
+    reason_code: ''
+  }
+}, {
+  id: 2,
+  model_id: 'seedance',
+  vendor: 'bytedance',
+  media_type: 'video',
+  operations: ['text_to_video'],
+  constraints: {},
+  billing_unit: 'second',
+  enabled: true,
+  aliases: [],
+  adapter_resolution: {
+    status: 'ready',
+    resolved_adapter: 'volcengine-seedance',
+    matched_by: 'exact',
+    matched_family: '',
+    capabilities: {
+      operations: ['text_to_video'],
+      sync_upstream: false,
+      native_async_upstream: true,
+      content_fetch: false
+    },
+    reason_code: ''
+  }
+}, {
+  id: 3,
+  model_id: 'grok',
+  vendor: 'xai',
+  media_type: 'image',
+  operations: ['text_to_image'],
+  constraints: {},
+  billing_unit: 'image',
+  enabled: true,
+  aliases: [],
+  adapter_resolution: {
+    status: 'ready',
+    resolved_adapter: 'xai-image',
+    matched_by: 'exact',
+    matched_family: '',
+    capabilities: {
+      operations: ['text_to_image'],
+      sync_upstream: true,
+      native_async_upstream: false,
+      content_fetch: false
+    },
+    reason_code: ''
+  }
+}]
+
+function createDeferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void
+  let reject!: (reason?: unknown) => void
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise
+    reject = rejectPromise
+  })
+  return { promise, resolve, reject }
+}
 
 const BaseDialogStub = defineComponent({
   name: 'BaseDialog',
@@ -292,8 +362,30 @@ describe('EditAccountModal', () => {
   beforeEach(() => {
     updateAccountMock.mockReset()
     checkMixedChannelRiskMock.mockReset()
+    listEnabledMock.mockReset()
     checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    listEnabledMock.mockResolvedValue(readyEditRegistryModels)
   })
+
+  it('Registry 加载完成前禁止更新媒体账号，能力校验通过后允许提交', async () => {
+    const registryRequest = createDeferred<MediaModelDefinition[]>()
+    listEnabledMock.mockReturnValue(registryRequest.promise)
+    const account = buildMediaAccount()
+    updateAccountMock.mockResolvedValue(account)
+    const wrapper = mountModal(account)
+
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+    expect(updateAccountMock).not.toHaveBeenCalled()
+
+    registryRequest.resolve(readyEditRegistryModels)
+    await flushPromises()
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+  })
+
   it('hydrates and updates media_config without deleting existing extra keys', async () => {
     const account = buildMediaAccount()
     account.extra = {
@@ -453,6 +545,7 @@ describe('EditAccountModal', () => {
     await makeMediaConfigInvalid(wrapper)
     await wrapper.setProps({ show: false })
     await wrapper.setProps({ show: true })
+    await flushPromises()
     await wrapper.get('form#edit-account-form').trigger('submit.prevent')
 
     expect(wrapper.find('[data-test="media-duplicate-model-error"]').exists()).toBe(false)

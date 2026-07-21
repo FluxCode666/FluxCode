@@ -61,7 +61,14 @@
         <div v-for="index in 3" :key="index" class="h-9 animate-pulse rounded-lg bg-gray-100 dark:bg-dark-700"></div>
       </div>
       <div
-        v-else-if="availableModels.length"
+        v-else-if="modelsLoadFailed"
+        data-test="media-model-scopes-load-failed"
+        class="rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-700 dark:border-red-900/60 dark:bg-red-950/20 dark:text-red-300"
+      >
+        {{ t('admin.groups.mediaModelsLoadFailed') }}
+      </div>
+      <div
+        v-else-if="modelsLoaded && availableModels.length"
         data-test="media-model-scopes"
         class="grid max-h-56 gap-2 overflow-y-auto rounded-xl border border-gray-200 bg-gray-50 p-2 dark:border-dark-600 dark:bg-dark-800 sm:grid-cols-2"
       >
@@ -88,22 +95,52 @@
           </span>
         </label>
       </div>
-      <div v-else class="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/20 dark:text-amber-300">
+      <div v-else-if="modelsLoaded" class="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/20 dark:text-amber-300">
         {{ t('admin.groups.noMediaModels') }}
         <a href="/admin/media-models" class="ml-1 font-medium underline underline-offset-2">
           {{ t('admin.groups.manageMediaModels') }}
         </a>
       </div>
 
-      <p v-if="availableModels.length" class="text-xs text-gray-500 dark:text-gray-400">
-        {{ t('admin.groups.mediaModelsSelected', { count: selectedModelIds.length }) }}
-      </p>
+      <div
+        v-if="modelsLoaded && !modelsLoadFailed && unavailableSelectedIds.length"
+        class="space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-900/60 dark:bg-amber-950/20"
+      >
+        <p class="text-xs text-amber-800 dark:text-amber-300">
+          {{ t('admin.groups.unavailableMediaModelsHint') }}
+        </p>
+        <div
+          v-for="modelID in unavailableSelectedIds"
+          :key="modelID"
+          :data-test="`unavailable-media-model-${modelID}`"
+          class="flex items-center justify-between gap-3"
+        >
+          <code class="truncate text-xs text-amber-900 dark:text-amber-200">{{ modelID }}</code>
+          <button
+            type="button"
+            class="text-xs font-medium text-amber-800 underline underline-offset-2 dark:text-amber-300"
+            :data-test="`remove-unavailable-media-model-${modelID}`"
+            @click="removeUnavailableModel(modelID)"
+          >
+            {{ t('admin.groups.removeUnavailableMediaModel') }}
+          </button>
+        </div>
+      </div>
+
+      <template v-if="modelsLoaded && !modelsLoadFailed">
+        <p v-if="availableModels.length" class="text-xs text-gray-500 dark:text-gray-400">
+          {{ t('admin.groups.mediaModelsSelected', { count: availableSelectedCount }) }}
+        </p>
+        <p v-if="unavailableSelectedIds.length" class="text-xs text-amber-700 dark:text-amber-300">
+          {{ t('admin.groups.unavailableMediaModelsSelected', { count: unavailableSelectedIds.length }) }}
+        </p>
+      </template>
     </div>
   </section>
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import type { GroupMediaConfig, GroupPlatform, MediaModelDefinition } from '@/types'
@@ -114,10 +151,14 @@ const props = withDefaults(defineProps<{
   availableModels?: MediaModelDefinition[]
   selectedModelIds?: string[]
   modelsLoading?: boolean
+  modelsLoaded?: boolean
+  modelsLoadFailed?: boolean
 }>(), {
   availableModels: () => [],
   selectedModelIds: () => [],
   modelsLoading: false,
+  modelsLoaded: false,
+  modelsLoadFailed: false,
 })
 
 const emit = defineEmits<{
@@ -127,6 +168,19 @@ const emit = defineEmits<{
 
 const { t } = useI18n()
 const local = ref<GroupMediaConfig>({ ...props.modelValue })
+
+const availableModelIDs = computed(() => new Set(
+  props.availableModels.map((model) => model.model_id),
+))
+
+const unavailableSelectedIds = computed(() => {
+  if (!props.modelsLoaded || props.modelsLoadFailed) return []
+  return props.selectedModelIds.filter((modelID) => !availableModelIDs.value.has(modelID))
+})
+
+const availableSelectedCount = computed(() =>
+  props.selectedModelIds.filter((modelID) => availableModelIDs.value.has(modelID)).length,
+)
 
 watch(
   () => props.modelValue,
@@ -150,5 +204,12 @@ const toggleModel = (modelID: string, checked: boolean) => {
     ? [...new Set([...current, modelID])]
     : current.filter((item) => item !== modelID)
   emit('update:selectedModelIds', next)
+}
+
+const removeUnavailableModel = (modelID: string) => {
+  emit(
+    'update:selectedModelIds',
+    props.selectedModelIds.filter((candidate) => candidate !== modelID),
+  )
 }
 </script>

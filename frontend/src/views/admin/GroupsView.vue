@@ -951,6 +951,8 @@
             :platform="createForm.platform"
             :available-models="mediaModels"
             :models-loading="mediaModelsLoading"
+            :models-loaded="mediaModelsLoaded"
+            :models-load-failed="mediaModelsLoadFailed"
           />
         </div>
 
@@ -2106,6 +2108,8 @@
             :platform="editForm.platform"
             :available-models="mediaModels"
             :models-loading="mediaModelsLoading || editMediaScopesLoading"
+            :models-loaded="mediaModelsLoaded"
+            :models-load-failed="mediaModelsLoadFailed"
           />
         </div>
 
@@ -3005,9 +3009,13 @@ const rateMultipliersGroup = ref<AdminGroup | null>(null);
 const sortableGroups = ref<AdminGroup[]>([]);
 const mediaModels = ref<MediaModelDefinition[]>([]);
 const mediaModelsLoading = ref(false);
+const mediaModelsLoaded = ref(false);
+const mediaModelsLoadFailed = ref(false);
 const editMediaScopesLoading = ref(false);
+const editMediaScopesLoaded = ref(false);
 const createMediaModelIds = ref<string[]>([]);
 const editMediaModelIds = ref<string[]>([]);
+const editOriginalMediaModelIds = ref<string[]>([]);
 const createMessagesDispatchDefaults = createDefaultMessagesDispatchFormState();
 const editMessagesDispatchDefaults = createDefaultMessagesDispatchFormState();
 
@@ -3694,11 +3702,17 @@ const handleEdit = async (group: AdminGroup) => {
     group.model_routing,
   );
   editMediaModelIds.value = [];
+  editOriginalMediaModelIds.value = [];
+  editMediaScopesLoaded.value = group.platform !== 'media';
   if (group.platform === 'media') {
     editMediaScopesLoading.value = true;
     try {
       editMediaModelIds.value = await adminAPI.mediaModels.getGroupScopes(group.id);
+      editOriginalMediaModelIds.value = [...editMediaModelIds.value];
+      editMediaScopesLoaded.value = true;
     } catch (error) {
+      editOriginalMediaModelIds.value = [];
+      editMediaScopesLoaded.value = false;
       appStore.showError(t('admin.groups.mediaModelScopeLoadFailed'));
       console.error('Error loading media model scopes:', error);
     } finally {
@@ -3721,6 +3735,8 @@ const closeEditModal = () => {
   editForm.allow_video_generation = false;
   editForm.media_cross_platform_enabled = false;
   editMediaModelIds.value = [];
+  editOriginalMediaModelIds.value = [];
+  editMediaScopesLoaded.value = false;
   resetMessagesDispatchFormState(editForm);
 };
 
@@ -3730,9 +3746,21 @@ const handleUpdateGroup = async () => {
     appStore.showError(t("admin.groups.nameRequired"));
     return;
   }
-  if (editForm.platform === 'media' && editMediaModelIds.value.length === 0) {
-    appStore.showError(t('admin.groups.mediaModelScopeRequired'));
+  if (editingGroup.value.platform === 'media' && !editMediaScopesLoaded.value) {
+    appStore.showError(t('admin.groups.mediaModelScopeLoadFailed'));
     return;
+  }
+  if (editForm.platform === 'media' && editMediaModelIds.value.length === 0) {
+    const readyModelIDs = new Set(mediaModels.value.map((model) => model.model_id));
+    const canClearUnavailableOnlyScopes =
+      mediaModelsLoaded.value &&
+      !mediaModelsLoadFailed.value &&
+      editOriginalMediaModelIds.value.length > 0 &&
+      editOriginalMediaModelIds.value.every((id) => !readyModelIDs.has(id));
+    if (!canClearUnavailableOnlyScopes) {
+      appStore.showError(t('admin.groups.mediaModelScopeRequired'));
+      return;
+    }
   }
 
   submitting.value = true;
@@ -4010,10 +4038,16 @@ const saveSortOrder = async () => {
 
 const loadMediaModels = async () => {
   mediaModelsLoading.value = true;
+  mediaModels.value = [];
+  mediaModelsLoaded.value = false;
+  mediaModelsLoadFailed.value = false;
   try {
     mediaModels.value = await adminAPI.mediaModels.listEnabled();
+    mediaModelsLoaded.value = true;
   } catch (error) {
     mediaModels.value = [];
+    mediaModelsLoadFailed.value = true;
+    mediaModelsLoaded.value = false;
     console.error("Error loading media models:", error);
   } finally {
     mediaModelsLoading.value = false;

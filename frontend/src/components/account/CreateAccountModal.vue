@@ -3233,7 +3233,7 @@ const createDefaultMediaConfig = (): MediaAccountConfig => ({
   models: {}
 })
 const mediaConfig = ref<MediaAccountConfig>(createDefaultMediaConfig())
-const mediaConfigValid = ref(true)
+const mediaConfigValid = ref(false)
 const antigravityAccountType = ref<'oauth' | 'upstream'>('oauth') // For antigravity: oauth or upstream
 const upstreamBaseUrl = ref('') // For upstream type: base URL
 const upstreamApiKey = ref('') // For upstream type: API key
@@ -3590,6 +3590,7 @@ watch(
     if (newPlatform === 'media') {
       accountCategory.value = 'apikey'
       form.type = 'apikey'
+      mediaConfigValid.value = false
     } else {
       mediaConfig.value = createDefaultMediaConfig()
       mediaConfigValid.value = true

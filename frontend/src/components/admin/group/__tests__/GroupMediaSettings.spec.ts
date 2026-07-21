@@ -76,6 +76,7 @@ describe('GroupMediaSettings', () => {
           media_cross_platform_enabled: false,
         },
         selectedModelIds: ['seedance'],
+        modelsLoaded: true,
         availableModels: [
           {
             id: 1,
@@ -85,10 +86,21 @@ describe('GroupMediaSettings', () => {
             operations: ['text_to_video'],
             constraints: {},
             billing_unit: 'second',
-            default_adapter: 'volcengine-seedance',
-            default_async_mode: 'required',
             enabled: true,
             aliases: [],
+            adapter_resolution: {
+              status: 'ready',
+              resolved_adapter: 'volcengine-seedance',
+              matched_by: 'exact',
+              matched_family: '',
+              capabilities: {
+                operations: ['text_to_video'],
+                sync_upstream: false,
+                native_async_upstream: true,
+                content_fetch: false,
+              },
+              reason_code: '',
+            },
           },
           {
             id: 2,
@@ -98,10 +110,21 @@ describe('GroupMediaSettings', () => {
             operations: ['text_to_image'],
             constraints: {},
             billing_unit: 'image',
-            default_adapter: 'xai-image',
-            default_async_mode: 'unsupported',
             enabled: true,
             aliases: [],
+            adapter_resolution: {
+              status: 'ready',
+              resolved_adapter: 'xai-image',
+              matched_by: 'exact',
+              matched_family: '',
+              capabilities: {
+                operations: ['text_to_image'],
+                sync_upstream: true,
+                native_async_upstream: false,
+                content_fetch: false,
+              },
+              reason_code: '',
+            },
           },
         ],
       },
@@ -113,5 +136,68 @@ describe('GroupMediaSettings', () => {
       'seedance',
       'grok-image',
     ])
+  })
+
+  it('展示并允许移除当前已不可用的历史模型授权', async () => {
+    const wrapper = mount(GroupMediaSettings, {
+      props: {
+        modelValue: {
+          allow_image_generation: true,
+          allow_video_generation: false,
+          media_cross_platform_enabled: false,
+        },
+        platform: 'media',
+        availableModels: [{
+          id: 1,
+          model_id: 'ready-image',
+          vendor: 'xai',
+          media_type: 'image',
+          operations: ['text_to_image'],
+          constraints: {},
+          billing_unit: 'image',
+          enabled: true,
+          aliases: [],
+          adapter_resolution: {
+            status: 'ready',
+            resolved_adapter: 'xai-image',
+            matched_by: 'exact',
+            matched_family: '',
+            capabilities: {
+              operations: ['text_to_image'],
+              sync_upstream: true,
+              native_async_upstream: false,
+              content_fetch: false,
+            },
+            reason_code: '',
+          },
+        }],
+        selectedModelIds: ['ready-image', 'removed-image'],
+        modelsLoaded: true,
+        modelsLoadFailed: false,
+      },
+    })
+
+    expect(wrapper.get('[data-test="unavailable-media-model-removed-image"]').exists()).toBe(true)
+    await wrapper.get('[data-test="remove-unavailable-media-model-removed-image"]').trigger('click')
+    expect(wrapper.emitted('update:selectedModelIds')?.at(-1)).toEqual([['ready-image']])
+  })
+
+  it('Registry 加载失败时不把历史授权误判为不可用', () => {
+    const wrapper = mount(GroupMediaSettings, {
+      props: {
+        modelValue: {
+          allow_image_generation: true,
+          allow_video_generation: false,
+          media_cross_platform_enabled: false,
+        },
+        platform: 'media',
+        selectedModelIds: ['historical-image'],
+        modelsLoaded: false,
+        modelsLoadFailed: true,
+      },
+    })
+
+    expect(wrapper.find('[data-test="unavailable-media-model-historical-image"]').exists()).toBe(false)
+    expect(wrapper.get('[data-test="media-model-scopes-load-failed"]').exists()).toBe(true)
   })
 })

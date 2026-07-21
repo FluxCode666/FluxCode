@@ -3,6 +3,7 @@ import { defineComponent, nextTick, ref } from 'vue'
 import { flushPromises, mount } from '@vue/test-utils'
 import CreateAccountModal from '../CreateAccountModal.vue'
 import MediaConfigEditor from '../MediaConfigEditor.vue'
+import type { MediaModelDefinition } from '@/types'
 
 const {
   createAccountMock,
@@ -11,6 +12,7 @@ const {
   exchangeCodeMock,
   refreshOpenAITokenMock,
   refreshAntigravityTokenMock,
+  listEnabledMock,
   authStoreState
 } = vi.hoisted(() => ({
   createAccountMock: vi.fn(),
@@ -19,6 +21,7 @@ const {
   exchangeCodeMock: vi.fn(),
   refreshOpenAITokenMock: vi.fn(),
   refreshAntigravityTokenMock: vi.fn(),
+  listEnabledMock: vi.fn(),
   authStoreState: { isSimpleMode: false }
 }))
 
@@ -54,22 +57,45 @@ vi.mock('@/api/admin', () => ({
       refreshAntigravityToken: refreshAntigravityTokenMock
     },
     mediaModels: {
-      listEnabled: vi.fn().mockResolvedValue([{
-        id: 1,
-        model_id: 'duplicate',
-        vendor: 'test-vendor',
-        media_type: 'image',
-        operations: ['text_to_image'],
-        constraints: {},
-        billing_unit: 'image',
-        default_adapter: 'test-adapter',
-        default_async_mode: 'unsupported',
-        enabled: true,
-        aliases: []
-      }])
+      listEnabled: listEnabledMock
     }
   }
 }))
+
+const readyCreateRegistryModel: MediaModelDefinition = {
+  id: 1,
+  model_id: 'duplicate',
+  vendor: 'test-vendor',
+  media_type: 'image',
+  operations: ['text_to_image'],
+  constraints: {},
+  billing_unit: 'image',
+  enabled: true,
+  aliases: [],
+  adapter_resolution: {
+    status: 'ready',
+    resolved_adapter: 'test-adapter',
+    matched_by: 'exact',
+    matched_family: '',
+    capabilities: {
+      operations: ['text_to_image'],
+      sync_upstream: true,
+      native_async_upstream: true,
+      content_fetch: false
+    },
+    reason_code: ''
+  }
+}
+
+function createDeferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void
+  let reject!: (reason?: unknown) => void
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise
+    reject = rejectPromise
+  })
+  return { promise, resolve, reject }
+}
 
 vi.mock('@/api/admin/accounts', () => ({
   getAntigravityDefaultModelMapping: vi.fn().mockResolvedValue([])
@@ -261,6 +287,7 @@ describe('CreateAccountModal', () => {
     exchangeCodeMock.mockReset()
     refreshOpenAITokenMock.mockReset()
     refreshAntigravityTokenMock.mockReset()
+    listEnabledMock.mockReset()
     authStoreState.isSimpleMode = false
 
     createAccountMock.mockResolvedValue({})
@@ -299,6 +326,7 @@ describe('CreateAccountModal', () => {
       project_id: 'project-1',
       email: 'ag@example.com'
     })
+    listEnabledMock.mockResolvedValue([readyCreateRegistryModel])
   })
 
   it('简易模式隐藏媒体平台入口', () => {
@@ -344,6 +372,38 @@ describe('CreateAccountModal', () => {
       }
     })
     expect(createAccountMock.mock.calls[0]?.[0]?.extra?.media_config?.models).toHaveProperty('grok-imagine')
+  })
+
+  it('Registry 加载完成前禁止创建媒体账号，能力校验通过后允许提交', async () => {
+    const registryRequest = createDeferred<MediaModelDefinition[]>()
+    listEnabledMock.mockReturnValue(registryRequest.promise)
+    const wrapper = mountModal()
+
+    await fillMinimalCreateAccountForm(wrapper)
+    wrapper.getComponent(MediaConfigEditor).vm.$emit('update:modelValue', {
+      version: 1,
+      provider: 'test-vendor',
+      models: {
+        duplicate: {
+          enabled: true,
+          upstream_model_id: 'duplicate-upstream',
+          async_mode: 'native',
+          request_mapping: {}
+        }
+      }
+    })
+    await nextTick()
+
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+    expect(createAccountMock).not.toHaveBeenCalled()
+
+    registryRequest.resolve([readyCreateRegistryModel])
+    await flushPromises()
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(createAccountMock).toHaveBeenCalledTimes(1)
   })
 
   it('切换平台时清空已选分组，避免提交不可见的不兼容分组', async () => {
