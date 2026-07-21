@@ -99,8 +99,9 @@ func TestMediaModelRepositoryListEnabledMapsDefinitionFields(t *testing.T) {
 	require.Equal(t, []service.MediaOperation{service.MediaOperationTextToVideo, service.MediaOperationImageToVideo}, item.Operations)
 	require.JSONEq(t, string(constraints), string(item.Constraints))
 	require.Equal(t, "second", item.BillingUnit)
-	require.Equal(t, "fake-adapter", item.DefaultAdapter)
-	require.Equal(t, service.NativeAsyncOptional, item.DefaultAsyncMode)
+	require.Empty(t, item.DefaultAdapter)
+	require.Empty(t, item.DefaultAsyncMode)
+	require.Equal(t, service.MediaAdapterResolution{}, item.AdapterResolution)
 	require.True(t, item.Enabled)
 	require.Equal(t, createdAt, item.CreatedAt)
 	require.Equal(t, updatedAt, item.UpdatedAt)
@@ -224,6 +225,90 @@ func TestMediaModelRepositoryAdminCreatePersistsDefinitionAndAliasesAtomically(t
 	require.NoError(t, err)
 	require.Len(t, items, 1)
 	require.Equal(t, stored.Aliases, items[0].Aliases)
+}
+
+func TestMediaModelRepositoryAdminCreateUsesLegacyColumnDefaults(t *testing.T) {
+	client := newMediaModelRepositoryTestClient(t)
+	repo := NewMediaModelRepository(client)
+	input := validMediaModelAdminRecord("gpt-image-2")
+	input.Definition.DefaultAdapter = "client-adapter"
+	input.Definition.DefaultAsyncMode = service.NativeAsyncRequired
+	input.AdapterResolution = service.MediaAdapterResolution{
+		Status: service.MediaAdapterResolutionReady, ResolvedAdapter: "resolved-adapter",
+	}
+
+	created, err := repo.CreateAdmin(context.Background(), input)
+	require.NoError(t, err)
+	entity, err := client.MediaModelDefinition.Get(context.Background(), created.Definition.ID)
+	require.NoError(t, err)
+	require.Empty(t, entity.DefaultAdapter)
+	require.Equal(t, string(service.NativeAsyncUnsupported), entity.DefaultAsyncMode)
+	require.Empty(t, created.Definition.DefaultAdapter)
+	require.Empty(t, created.Definition.DefaultAsyncMode)
+	require.Empty(t, created.LegacyDefaultAdapter)
+	require.Equal(t, service.NativeAsyncUnsupported, created.LegacyDefaultAsyncMode)
+	require.Equal(t, service.MediaAdapterResolution{}, created.AdapterResolution)
+	require.Equal(t, service.MediaAdapterResolution{}, created.Definition.AdapterResolution)
+}
+
+func TestMediaModelRepositoryAdminUpdatePreservesLegacyRoutingColumns(t *testing.T) {
+	client := newMediaModelRepositoryTestClient(t)
+	repo := NewMediaModelRepository(client)
+	created, err := repo.CreateAdmin(context.Background(), validMediaModelAdminRecord("image-one"))
+	require.NoError(t, err)
+	_, err = client.MediaModelDefinition.UpdateOneID(created.Definition.ID).
+		SetDefaultAdapter("legacy-images").
+		SetDefaultAsyncMode(string(service.NativeAsyncRequired)).
+		Save(context.Background())
+	require.NoError(t, err)
+	input := validMediaModelAdminRecord("image-one")
+	input.Definition.DefaultAdapter = "replacement"
+	input.Definition.DefaultAsyncMode = service.NativeAsyncOptional
+	input.Definition.BillingUnit = "request"
+
+	updated, err := repo.UpdateAdmin(context.Background(), created.Definition.ID, input)
+	require.NoError(t, err)
+	entity, err := client.MediaModelDefinition.Get(context.Background(), created.Definition.ID)
+	require.NoError(t, err)
+	require.Equal(t, "legacy-images", entity.DefaultAdapter)
+	require.Equal(t, string(service.NativeAsyncRequired), entity.DefaultAsyncMode)
+	require.Equal(t, "request", entity.BillingUnit)
+	require.Empty(t, updated.Definition.DefaultAdapter)
+	require.Empty(t, updated.Definition.DefaultAsyncMode)
+	require.Equal(t, "legacy-images", updated.LegacyDefaultAdapter)
+	require.Equal(t, service.NativeAsyncRequired, updated.LegacyDefaultAsyncMode)
+}
+
+func TestMediaModelRepositoryAdminReadModelIsolatesLegacyRoutingColumns(t *testing.T) {
+	client := newMediaModelRepositoryTestClient(t)
+	entity, err := client.MediaModelDefinition.Create().
+		SetModelID("legacy-image").
+		SetVendor("openai").
+		SetMediaType(string(service.MediaTypeImage)).
+		SetOperations([]string{string(service.MediaOperationTextToImage)}).
+		SetConstraints([]byte(`{}`)).
+		SetBillingUnit("image").
+		SetDefaultAdapter(" Legacy-Images ").
+		SetDefaultAsyncMode(" OPTIONAL ").
+		SetEnabled(true).
+		Save(context.Background())
+	require.NoError(t, err)
+	repo := NewMediaModelRepository(client)
+
+	assertIsolated := func(t *testing.T, record service.MediaModelAdminRecord) {
+		t.Helper()
+		require.Empty(t, record.Definition.DefaultAdapter)
+		require.Empty(t, record.Definition.DefaultAsyncMode)
+		require.Equal(t, " Legacy-Images ", record.LegacyDefaultAdapter)
+		require.Equal(t, service.NativeAsyncMode(" OPTIONAL "), record.LegacyDefaultAsyncMode)
+	}
+	got, err := repo.GetAdminByID(context.Background(), entity.ID)
+	require.NoError(t, err)
+	assertIsolated(t, *got)
+	items, err := repo.ListAdmin(context.Background())
+	require.NoError(t, err)
+	require.Len(t, items, 1)
+	assertIsolated(t, items[0])
 }
 
 func TestMediaModelRepositoryAdminRejectsCrossNamespaceConflictsAndRollsBack(t *testing.T) {

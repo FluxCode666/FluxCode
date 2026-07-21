@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
@@ -660,17 +661,36 @@ func ProvideSettingService(settingRepo SettingRepository, groupRepo GroupReposit
 	return svc
 }
 
-func ProvideMediaModelRegistry(repo MediaModelDefinitionRepository) (*MediaModelRegistry, error) {
-	registry := NewMediaModelRegistry(repo)
+func buildMediaAdapterRegistry(registrations []MediaAdapterRegistration, metrics MediaRoutingMetrics) (*MediaAdapterRegistry, error) {
+	registry := NewMediaAdapterRegistry()
+	registry.SetRoutingMetrics(metrics)
+	for _, registration := range registrations {
+		if err := registry.RegisterDefinition(registration); err != nil {
+			return nil, fmt.Errorf("register media adapter %q: %w", registration.Key, err)
+		}
+	}
+	if err := registry.Validate(); err != nil {
+		return nil, fmt.Errorf("validate media adapter registry: %w", err)
+	}
+	return registry, nil
+}
+
+func ProvideMediaAdapterRegistry(metrics MediaRoutingMetrics) (*MediaAdapterRegistry, error) {
+	return buildMediaAdapterRegistry([]MediaAdapterRegistration{}, metrics)
+}
+
+func ProvideMediaAdapterResolver(registry *MediaAdapterRegistry) *MediaAdapterResolver {
+	return NewMediaAdapterResolver(registry)
+}
+
+func ProvideMediaModelRegistry(repo MediaModelDefinitionRepository, resolver *MediaAdapterResolver, metrics MediaRoutingMetrics) (*MediaModelRegistry, error) {
+	registry := NewMediaModelRegistryWithResolver(repo, resolver)
+	registry.SetRoutingMetrics(metrics)
 	if err := registry.Refresh(context.Background()); err != nil {
 		return nil, err
 	}
 	registry.StartPeriodicRefresh(context.Background(), 5*time.Second)
 	return registry, nil
-}
-
-func ProvideMediaAdapterRegistry() *MediaAdapterRegistry {
-	return NewMediaAdapterRegistry()
 }
 
 func ProvideMediaBilling() MediaBillingPort {
@@ -693,7 +713,7 @@ func ProvideMediaArtifactObjectStore() MediaArtifactObjectStore {
 	return NewDisabledMediaArtifactObjectStore()
 }
 
-func ProvideMediaTaskMetrics() MediaTaskMetrics {
+func ProvideMediaTaskMetrics() *AtomicMediaTaskMetrics {
 	return NewAtomicMediaTaskMetrics()
 }
 
@@ -706,9 +726,10 @@ func ProvideMediaScheduler(
 	models *MediaModelRegistry,
 	scopes GroupMediaModelScopeRepository,
 	cfg *config.Config,
+	metrics MediaRoutingMetrics,
 ) *MediaScheduler {
 	selector := NewAccountCandidateSelector(concurrency, cache, cfg.Gateway.Scheduling)
-	return NewMediaScheduler(accounts, selector, adapters, groups, models, scopes)
+	return NewMediaScheduler(accounts, selector, adapters, groups, models, scopes, metrics)
 }
 
 func ProvideMediaContentService(
@@ -787,8 +808,9 @@ func ProvideMediaOrchestrator(
 }
 
 var MediaTaskProviderSet = wire.NewSet(
-	ProvideMediaModelRegistry,
 	ProvideMediaAdapterRegistry,
+	ProvideMediaAdapterResolver,
+	ProvideMediaModelRegistry,
 	ProvideMediaBilling,
 	ProvideMediaSettlementCoordinator,
 	ProvideMediaContentPolicy,
@@ -799,6 +821,8 @@ var MediaTaskProviderSet = wire.NewSet(
 	ProvideMediaContentService,
 	ProvideMediaWorker,
 	ProvideMediaOrchestrator,
+	wire.Bind(new(MediaTaskMetrics), new(*AtomicMediaTaskMetrics)),
+	wire.Bind(new(MediaRoutingMetrics), new(*AtomicMediaTaskMetrics)),
 	wire.Bind(new(MediaSettlementCoordinator), new(*MediaBillingCoordinator)),
 	wire.Bind(new(MediaInputStager), new(*MediaContentService)),
 	wire.Bind(new(MediaArtifactWriter), new(*MediaContentService)),

@@ -254,11 +254,17 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	promotionHandler := admin.NewPromotionHandler(promotionService)
 	mediaModelRepository := repository.NewMediaModelRepository(client)
 	groupMediaModelScopeRepository := repository.NewGroupMediaModelScopeRepository(client)
-	mediaModelRegistry, err := service.ProvideMediaModelRegistry(mediaModelRepository)
+	atomicMediaTaskMetrics := service.ProvideMediaTaskMetrics()
+	mediaAdapterRegistry, err := service.ProvideMediaAdapterRegistry(atomicMediaTaskMetrics)
 	if err != nil {
 		return nil, err
 	}
-	mediaModelAdminService := service.NewMediaModelAdminService(mediaModelRepository, groupMediaModelScopeRepository, groupRepository, mediaModelRegistry)
+	mediaAdapterResolver := service.ProvideMediaAdapterResolver(mediaAdapterRegistry)
+	mediaModelRegistry, err := service.ProvideMediaModelRegistry(mediaModelRepository, mediaAdapterResolver, atomicMediaTaskMetrics)
+	if err != nil {
+		return nil, err
+	}
+	mediaModelAdminService := service.NewMediaModelAdminService(mediaModelRepository, groupMediaModelScopeRepository, groupRepository, mediaModelRegistry, mediaAdapterResolver)
 	mediaModelAdminHandler := admin.NewMediaModelAdminHandler(mediaModelAdminService)
 	adminHandlers := handler.ProvideAdminHandlers(dashboardHandler, adminUserHandler, groupHandler, accountHandler, adminAnnouncementHandler, dataManagementHandler, backupHandler, oAuthHandler, openAIOAuthHandler, geminiOAuthHandler, antigravityOAuthHandler, proxyHandler, adminRedeemHandler, promoHandler, settingHandler, opsHandler, systemHandler, adminSubscriptionHandler, adminUsageHandler, generatedImageHandler, userAttributeHandler, errorPassthroughHandler, tlsFingerprintProfileHandler, adminAPIKeyHandler, scheduledTestHandler, poolMonitorHandler, channelHandler, channelMonitorHandler, channelMonitorRequestTemplateHandler, paymentHandler, referralHandler, salesCommissionHandler, promotionHandler, mediaModelAdminHandler)
 	usageRecordWorkerPool := service.NewUsageRecordWorkerPool(configConfig)
@@ -276,8 +282,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	handlerReferralHandler := handler.NewReferralHandler(referralService)
 	handlerSalesCommissionHandler := handler.NewSalesCommissionHandler(salesCommissionService)
 	channelMonitorUserHandler := handler.NewChannelMonitorUserHandler(channelMonitorService, settingService)
-	mediaAdapterRegistry := service.ProvideMediaAdapterRegistry()
-	mediaScheduler := service.ProvideMediaScheduler(accountRepository, groupRepository, concurrencyService, gatewayCache, mediaAdapterRegistry, mediaModelRegistry, groupMediaModelScopeRepository, configConfig)
+	mediaScheduler := service.ProvideMediaScheduler(accountRepository, groupRepository, concurrencyService, gatewayCache, mediaAdapterRegistry, mediaModelRegistry, groupMediaModelScopeRepository, configConfig, atomicMediaTaskMetrics)
 	mediaContentPolicy := service.ProvideMediaContentPolicy()
 	mediaPricingPort := service.ProvideMediaPricing()
 	mediaTaskRepository := repository.NewMediaTaskRepository(client)
@@ -288,8 +293,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	mediaHTTPContentReader := repository.ProvideMediaHTTPContentReader(httpUpstream, configConfig)
 	mediaArtifactObjectStore := service.ProvideMediaArtifactObjectStore()
 	mediaContentService := service.ProvideMediaContentService(mediaTaskRepository, mediaArtifactRepository, settingService, accountRepository, mediaAdapterRegistry, mediaHTTPContentReader, mediaArtifactObjectStore)
-	mediaTaskMetrics := service.ProvideMediaTaskMetrics()
-	mediaWorker, err := service.ProvideMediaWorker(mediaTaskQueue, mediaTaskRepository, mediaContentService, mediaScheduler, mediaModelRegistry, mediaAdapterRegistry, mediaBillingPort, mediaBillingCoordinator, mediaTaskMetrics, configConfig)
+	mediaWorker, err := service.ProvideMediaWorker(mediaTaskQueue, mediaTaskRepository, mediaContentService, mediaScheduler, mediaModelRegistry, mediaAdapterRegistry, mediaBillingPort, mediaBillingCoordinator, atomicMediaTaskMetrics, configConfig)
 	if err != nil {
 		return nil, err
 	}

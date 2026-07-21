@@ -532,12 +532,6 @@ func validateEnabledMediaModelDefinition(definition MediaModelDefinition) error 
 	return validateMediaModelDefinitionBase(definition)
 }
 
-// validateMediaModelDefinition remains as a compatibility wrapper while the
-// worker/admin call sites migrate to the base validator in later tasks.
-func validateMediaModelDefinition(definition MediaModelDefinition) error {
-	return validateEnabledMediaModelDefinition(definition)
-}
-
 // ResolveDefinition is the only model-definition resolution entrypoint. It
 // keeps base shape validation consistent across serving and admin diagnosis,
 // without requiring the definition to be enabled.

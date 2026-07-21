@@ -8,6 +8,16 @@ import (
 	"github.com/zeromicro/go-zero/core/collection"
 )
 
+func TestBuildMediaAdapterRegistryRejectsInvalidRegistration(t *testing.T) {
+	registry, err := buildMediaAdapterRegistry([]MediaAdapterRegistration{{Key: "missing-adapter"}}, nil)
+	if err == nil {
+		t.Fatal("期望非法媒体 Adapter 注册返回错误")
+	}
+	if registry != nil {
+		t.Fatal("期望失败时不返回 Registry")
+	}
+}
+
 func TestProvideTimingWheelService_ReturnsError(t *testing.T) {
 	original := newTimingWheel
 	t.Cleanup(func() { newTimingWheel = original })

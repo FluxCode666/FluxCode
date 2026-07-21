@@ -28,8 +28,34 @@ var (
 // media model and its aliases. Aliases are persisted atomically with the
 // definition by MediaModelAdminRepository.
 type MediaModelAdminRecord struct {
-	Definition MediaModelDefinition
-	Aliases    []string
+	Definition             MediaModelDefinition
+	Aliases                []string
+	AdapterResolution      MediaAdapterResolution
+	LegacyDefaultAdapter   string
+	LegacyDefaultAsyncMode NativeAsyncMode
+}
+
+// MediaAdapterPreflightItem reports whether one persisted model is safe to
+// serve during a rolling migration from legacy database routing fields to
+// code-owned adapter resolution.
+type MediaAdapterPreflightItem struct {
+	ModelID                 string
+	Enabled                 bool
+	Status                  MediaAdapterResolutionStatus
+	ResolvedAdapter         string
+	LegacyDefaultAdapter    string
+	LegacyCheckApplicable   bool
+	AdapterKeyMatches       bool
+	LegacyDefaultAsyncMode  NativeAsyncMode
+	LegacyAsyncModeReadable bool
+	ReasonCode              string
+	RolloutSafe             bool
+}
+
+type MediaAdapterPreflightReport struct {
+	Safe          bool
+	BlockingCount int
+	Items         []MediaAdapterPreflightItem
 }
 
 // MediaModelAdminRepository owns transactional CRUD for definitions and
@@ -47,6 +73,7 @@ type MediaModelAdminService struct {
 	scopes   GroupMediaModelScopeRepository
 	groups   GroupRepository
 	registry *MediaModelRegistry
+	resolver *MediaAdapterResolver
 }
 
 func NewMediaModelAdminService(
@@ -54,8 +81,11 @@ func NewMediaModelAdminService(
 	scopes GroupMediaModelScopeRepository,
 	groups GroupRepository,
 	registry *MediaModelRegistry,
+	resolver *MediaAdapterResolver,
 ) *MediaModelAdminService {
-	return &MediaModelAdminService{models: models, scopes: scopes, groups: groups, registry: registry}
+	return &MediaModelAdminService{
+		models: models, scopes: scopes, groups: groups, registry: registry, resolver: resolver,
+	}
 }
 
 func (s *MediaModelAdminService) List(ctx context.Context) ([]MediaModelAdminRecord, error) {
@@ -68,6 +98,9 @@ func (s *MediaModelAdminService) List(ctx context.Context) ([]MediaModelAdminRec
 	}
 	if items == nil {
 		items = []MediaModelAdminRecord{}
+	}
+	for index := range items {
+		items[index] = s.enrichAdapterResolution(items[index])
 	}
 	return items, nil
 }
@@ -83,7 +116,11 @@ func (s *MediaModelAdminService) GetByID(ctx context.Context, id int64) (*MediaM
 	if err != nil {
 		return nil, fmt.Errorf("get media model: %w", err)
 	}
-	return item, nil
+	if item == nil {
+		return nil, ErrMediaModelDefinitionNotFound
+	}
+	enriched := s.enrichAdapterResolution(*item)
+	return &enriched, nil
 }
 
 func (s *MediaModelAdminService) Create(ctx context.Context, input MediaModelAdminRecord) (*MediaModelAdminRecord, error) {
@@ -94,12 +131,20 @@ func (s *MediaModelAdminService) Create(ctx context.Context, input MediaModelAdm
 	if s == nil || s.models == nil {
 		return nil, fmt.Errorf("media model admin repository is nil")
 	}
+	resolution := s.resolver.ResolveDefinition(normalized.Definition)
+	if normalized.Definition.Enabled && !resolution.IsReady() {
+		return nil, mediaAdapterNotReadyError(resolution)
+	}
 	created, err := s.models.CreateAdmin(ctx, normalized)
 	if err != nil {
 		return nil, fmt.Errorf("create media model: %w", err)
 	}
 	s.refreshRegistryAfterCommit(ctx)
-	return created, nil
+	if created == nil {
+		return nil, fmt.Errorf("create media model: repository returned nil record")
+	}
+	enriched := s.enrichAdapterResolution(*created)
+	return &enriched, nil
 }
 
 func (s *MediaModelAdminService) Update(ctx context.Context, id int64, input MediaModelAdminRecord) (*MediaModelAdminRecord, error) {
@@ -123,12 +168,20 @@ func (s *MediaModelAdminService) Update(ctx context.Context, id int64, input Med
 	if normalizeMediaModelID(existing.Definition.ModelID) != normalized.Definition.ModelID {
 		return nil, ErrMediaModelIDImmutable
 	}
+	resolution := s.resolver.ResolveDefinition(normalized.Definition)
+	if normalized.Definition.Enabled && !resolution.IsReady() {
+		return nil, mediaAdapterNotReadyError(resolution)
+	}
 	updated, err := s.models.UpdateAdmin(ctx, id, normalized)
 	if err != nil {
 		return nil, fmt.Errorf("update media model: %w", err)
 	}
 	s.refreshRegistryAfterCommit(ctx)
-	return updated, nil
+	if updated == nil {
+		return nil, fmt.Errorf("update media model: repository returned nil record")
+	}
+	enriched := s.enrichAdapterResolution(*updated)
+	return &enriched, nil
 }
 
 func (s *MediaModelAdminService) Delete(ctx context.Context, id int64) error {
@@ -152,11 +205,7 @@ func (s *MediaModelAdminService) GetGroupScopes(ctx context.Context, groupID int
 	if s.scopes == nil {
 		return nil, fmt.Errorf("group media model scope repository is nil")
 	}
-	// Disabled definitions cannot be written back by ReplaceGroupScopes and are
-	// ignored by the scheduler, so the management API only exposes effective
-	// grants. This prevents an invisible disabled scope from making later edits
-	// fail validation.
-	modelIDs, err := s.scopes.ListEnabledMediaModelIDs(ctx, groupID)
+	modelIDs, err := s.scopes.ListMediaModelIDs(ctx, groupID)
 	if err != nil {
 		return nil, fmt.Errorf("list group media model scopes: %w", err)
 	}
@@ -177,10 +226,92 @@ func (s *MediaModelAdminService) ReplaceGroupScopes(ctx context.Context, groupID
 	if s.scopes == nil {
 		return nil, fmt.Errorf("group media model scope repository is nil")
 	}
+	for _, modelID := range normalized {
+		if s.registry == nil {
+			return nil, fmt.Errorf("media model registry is nil")
+		}
+		canonical, resolveErr := s.registry.CanonicalModelID(modelID)
+		if resolveErr != nil || canonical != modelID {
+			return nil, ErrMediaModelScopeModelNotFound
+		}
+	}
 	if err := s.scopes.ReplaceMediaModelScopes(ctx, groupID, normalized); err != nil {
 		return nil, fmt.Errorf("replace group media model scopes: %w", err)
 	}
 	return s.GetGroupScopes(ctx, groupID)
+}
+
+// Preflight compares code-owned adapter resolution with the isolated legacy
+// routing columns without mutating either the database or the serving registry.
+func (s *MediaModelAdminService) Preflight(ctx context.Context) (*MediaAdapterPreflightReport, error) {
+	if s == nil || s.models == nil {
+		return nil, fmt.Errorf("media model admin repository is nil")
+	}
+	records, err := s.models.ListAdmin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list media models for preflight: %w", err)
+	}
+	report := &MediaAdapterPreflightReport{Safe: true, Items: []MediaAdapterPreflightItem{}}
+	for _, record := range records {
+		enriched := s.enrichAdapterResolution(record)
+		item := mediaAdapterPreflightItem(enriched)
+		legacyCompatible := !item.LegacyCheckApplicable ||
+			(item.AdapterKeyMatches && item.LegacyAsyncModeReadable)
+		compatible := item.Status == MediaAdapterResolutionReady && legacyCompatible
+		item.RolloutSafe = !item.Enabled || compatible
+		if item.Enabled && !compatible {
+			report.Safe = false
+			report.BlockingCount++
+		}
+		report.Items = append(report.Items, item)
+	}
+	return report, nil
+}
+
+func (s *MediaModelAdminService) enrichAdapterResolution(record MediaModelAdminRecord) MediaModelAdminRecord {
+	definition := cloneMediaModelDefinition(record.Definition)
+	resolution := s.resolver.ResolveDefinition(definition)
+	definition.AdapterResolution = cloneMediaAdapterResolution(resolution)
+	record.Definition = definition
+	record.AdapterResolution = cloneMediaAdapterResolution(resolution)
+	record.Aliases = append([]string(nil), record.Aliases...)
+	if record.Aliases == nil {
+		record.Aliases = []string{}
+	}
+	return record
+}
+
+func mediaAdapterPreflightItem(record MediaModelAdminRecord) MediaAdapterPreflightItem {
+	resolution := record.AdapterResolution
+	item := MediaAdapterPreflightItem{
+		ModelID:                record.Definition.ModelID,
+		Enabled:                record.Definition.Enabled,
+		Status:                 resolution.Status,
+		ResolvedAdapter:        resolution.ResolvedAdapter,
+		LegacyDefaultAdapter:   record.LegacyDefaultAdapter,
+		LegacyDefaultAsyncMode: record.LegacyDefaultAsyncMode,
+		ReasonCode:             resolution.ReasonCode,
+	}
+	item.LegacyCheckApplicable = strings.TrimSpace(item.LegacyDefaultAdapter) != ""
+	if !item.LegacyCheckApplicable {
+		item.AdapterKeyMatches = true
+		item.LegacyAsyncModeReadable = true
+		return item
+	}
+	item.AdapterKeyMatches = normalizeMediaAdapterName(item.LegacyDefaultAdapter) == item.ResolvedAdapter
+	switch NativeAsyncMode(strings.ToLower(strings.TrimSpace(string(item.LegacyDefaultAsyncMode)))) {
+	case NativeAsyncUnsupported, NativeAsyncOptional, NativeAsyncRequired:
+		item.LegacyAsyncModeReadable = true
+	}
+	return item
+}
+
+func mediaAdapterNotReadyError(resolution MediaAdapterResolution) error {
+	reasonCode := strings.TrimSpace(resolution.ReasonCode)
+	if reasonCode == "" {
+		reasonCode = "MEDIA_ADAPTER_UNRESOLVED"
+	}
+	return infraerrors.BadRequest(reasonCode, "media adapter is not ready")
 }
 
 func (s *MediaModelAdminService) requireMediaGroup(ctx context.Context, groupID int64) error {
@@ -234,8 +365,9 @@ func normalizeAndValidateMediaModelAdminRecord(input MediaModelAdminRecord) (Med
 	definition.Vendor = strings.ToLower(strings.TrimSpace(definition.Vendor))
 	definition.MediaType = MediaType(strings.ToLower(strings.TrimSpace(string(definition.MediaType))))
 	definition.BillingUnit = strings.ToLower(strings.TrimSpace(definition.BillingUnit))
-	definition.DefaultAdapter = normalizeMediaAdapterName(definition.DefaultAdapter)
-	definition.DefaultAsyncMode = NativeAsyncMode(strings.ToLower(strings.TrimSpace(string(definition.DefaultAsyncMode))))
+	definition.DefaultAdapter = ""
+	definition.DefaultAsyncMode = ""
+	definition.AdapterResolution = MediaAdapterResolution{}
 	definition.Operations = normalizeMediaOperations(definition.Operations)
 
 	if !isValidMediaModelIdentifier(definition.ModelID) {
@@ -247,22 +379,13 @@ func normalizeAndValidateMediaModelAdminRecord(input MediaModelAdminRecord) (Med
 	if !isValidMediaSimpleIdentifier(definition.BillingUnit, 32) {
 		return MediaModelAdminRecord{}, invalidMediaModelInput("billing_unit has invalid format")
 	}
-	if !isValidMediaAdapterName(definition.DefaultAdapter) || len(definition.DefaultAdapter) > 64 {
-		return MediaModelAdminRecord{}, invalidMediaModelInput("default_adapter has invalid format")
-	}
-
 	constraints, err := normalizeMediaModelConstraints(definition.Constraints)
 	if err != nil {
 		return MediaModelAdminRecord{}, invalidMediaModelInput(err.Error())
 	}
 	definition.Constraints = constraints
 
-	// Registry validation intentionally rejects disabled records because its
-	// repository only returns enabled rows. Validate the same routing metadata
-	// here while preserving the requested enabled state for persistence.
-	validationDefinition := definition
-	validationDefinition.Enabled = true
-	if err := validateMediaModelDefinition(validationDefinition); err != nil {
+	if err := validateMediaModelDefinitionBase(definition); err != nil {
 		return MediaModelAdminRecord{}, invalidMediaModelInput(err.Error())
 	}
 

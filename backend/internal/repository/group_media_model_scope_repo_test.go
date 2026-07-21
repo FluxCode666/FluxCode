@@ -4,6 +4,8 @@ import (
 	"context"
 	"testing"
 
+	"github.com/Wei-Shaw/sub2api/ent/groupmediamodelscope"
+	"github.com/Wei-Shaw/sub2api/ent/mediamodeldefinition"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/stretchr/testify/require"
 )
@@ -25,6 +27,39 @@ func TestGroupMediaModelScopeRepositoryReplacesCanonicalWhitelist(t *testing.T) 
 	modelIDs, err = repo.ListEnabledMediaModelIDs(context.Background(), mediaGroup.ID)
 	require.NoError(t, err)
 	require.Equal(t, []string{"video-model"}, modelIDs)
+}
+
+func TestGroupMediaModelScopeRepositoryHistoricalDisabledScopeRemainsVisibleUntilRemoved(t *testing.T) {
+	ctx := context.Background()
+	client := newMediaModelRepositoryTestClient(t)
+	mediaGroup, err := client.Group.Create().SetName("media").SetPlatform(service.PlatformMedia).Save(ctx)
+	require.NoError(t, err)
+	seedMediaModelDefinition(t, client, "ready-image", true)
+	seedMediaModelDefinition(t, client, "stale-image", true)
+	repo := NewGroupMediaModelScopeRepository(client)
+	require.NoError(t, repo.ReplaceMediaModelScopes(ctx, mediaGroup.ID, []string{"ready-image", "stale-image"}))
+	stale, err := client.MediaModelDefinition.Query().Where(mediamodeldefinition.ModelIDEQ("stale-image")).Only(ctx)
+	require.NoError(t, err)
+	_, err = client.MediaModelDefinition.UpdateOneID(stale.ID).SetEnabled(false).Save(ctx)
+	require.NoError(t, err)
+
+	all, err := repo.ListMediaModelIDs(ctx, mediaGroup.ID)
+	require.NoError(t, err)
+	require.Equal(t, []string{"ready-image", "stale-image"}, all)
+	enabled, err := repo.ListEnabledMediaModelIDs(ctx, mediaGroup.ID)
+	require.NoError(t, err)
+	require.Equal(t, []string{"ready-image"}, enabled)
+
+	require.NoError(t, repo.ReplaceMediaModelScopes(ctx, mediaGroup.ID, []string{"ready-image"}))
+	all, err = repo.ListMediaModelIDs(ctx, mediaGroup.ID)
+	require.NoError(t, err)
+	require.Equal(t, []string{"ready-image"}, all)
+	exists, err := client.GroupMediaModelScope.Query().Where(
+		groupmediamodelscope.GroupIDEQ(mediaGroup.ID),
+		groupmediamodelscope.ModelDefinitionIDEQ(stale.ID),
+	).Exist(ctx)
+	require.NoError(t, err)
+	require.False(t, exists)
 }
 
 func TestGroupMediaModelScopeRepositoryRejectsNonMediaGroup(t *testing.T) {

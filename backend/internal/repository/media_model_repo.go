@@ -41,18 +41,16 @@ func (r *mediaModelRepository) ListEnabled(ctx context.Context) ([]service.Media
 			operations[i] = service.MediaOperation(operation)
 		}
 		definitions = append(definitions, service.MediaModelDefinition{
-			ID:               entity.ID,
-			ModelID:          entity.ModelID,
-			Vendor:           entity.Vendor,
-			MediaType:        service.MediaType(entity.MediaType),
-			Operations:       operations,
-			Constraints:      append(json.RawMessage(nil), entity.Constraints...),
-			BillingUnit:      entity.BillingUnit,
-			DefaultAdapter:   entity.DefaultAdapter,
-			DefaultAsyncMode: service.NativeAsyncMode(entity.DefaultAsyncMode),
-			Enabled:          entity.Enabled,
-			CreatedAt:        entity.CreatedAt,
-			UpdatedAt:        entity.UpdatedAt,
+			ID:          entity.ID,
+			ModelID:     entity.ModelID,
+			Vendor:      entity.Vendor,
+			MediaType:   service.MediaType(entity.MediaType),
+			Operations:  operations,
+			Constraints: append(json.RawMessage(nil), entity.Constraints...),
+			BillingUnit: entity.BillingUnit,
+			Enabled:     entity.Enabled,
+			CreatedAt:   entity.CreatedAt,
+			UpdatedAt:   entity.UpdatedAt,
 		})
 	}
 	return definitions, nil
@@ -183,8 +181,6 @@ func (r *mediaModelRepository) UpdateAdmin(ctx context.Context, id int64, record
 		SetOperations(mediaOperationsToStrings(record.Definition.Operations)).
 		SetConstraints(append(json.RawMessage(nil), record.Definition.Constraints...)).
 		SetBillingUnit(record.Definition.BillingUnit).
-		SetDefaultAdapter(record.Definition.DefaultAdapter).
-		SetDefaultAsyncMode(string(record.Definition.DefaultAsyncMode)).
 		SetEnabled(record.Definition.Enabled).
 		Save(ctx)
 	if err != nil {
@@ -312,8 +308,6 @@ func createMediaModelDefinition(ctx context.Context, tx *dbent.Tx, definition se
 		SetOperations(mediaOperationsToStrings(definition.Operations)).
 		SetConstraints(append(json.RawMessage(nil), definition.Constraints...)).
 		SetBillingUnit(definition.BillingUnit).
-		SetDefaultAdapter(definition.DefaultAdapter).
-		SetDefaultAsyncMode(string(definition.DefaultAsyncMode)).
 		SetEnabled(definition.Enabled).
 		Save(ctx)
 }
@@ -342,20 +336,20 @@ func mediaModelAdminRecordFromEntity(entity *dbent.MediaModelDefinition, aliases
 	sort.Strings(aliases)
 	return service.MediaModelAdminRecord{
 		Definition: service.MediaModelDefinition{
-			ID:               entity.ID,
-			ModelID:          entity.ModelID,
-			Vendor:           entity.Vendor,
-			MediaType:        service.MediaType(entity.MediaType),
-			Operations:       operations,
-			Constraints:      append(json.RawMessage(nil), entity.Constraints...),
-			BillingUnit:      entity.BillingUnit,
-			DefaultAdapter:   entity.DefaultAdapter,
-			DefaultAsyncMode: service.NativeAsyncMode(entity.DefaultAsyncMode),
-			Enabled:          entity.Enabled,
-			CreatedAt:        entity.CreatedAt,
-			UpdatedAt:        entity.UpdatedAt,
+			ID:          entity.ID,
+			ModelID:     entity.ModelID,
+			Vendor:      entity.Vendor,
+			MediaType:   service.MediaType(entity.MediaType),
+			Operations:  operations,
+			Constraints: append(json.RawMessage(nil), entity.Constraints...),
+			BillingUnit: entity.BillingUnit,
+			Enabled:     entity.Enabled,
+			CreatedAt:   entity.CreatedAt,
+			UpdatedAt:   entity.UpdatedAt,
 		},
-		Aliases: aliases,
+		Aliases:                aliases,
+		LegacyDefaultAdapter:   entity.DefaultAdapter,
+		LegacyDefaultAsyncMode: service.NativeAsyncMode(entity.DefaultAsyncMode),
 	}
 }
 

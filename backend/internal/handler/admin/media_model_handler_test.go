@@ -125,19 +125,57 @@ func (r *mediaModelHandlerScopeRepo) ReplaceMediaModelScopes(_ context.Context, 
 func cloneHandlerMediaRecord(record service.MediaModelAdminRecord) service.MediaModelAdminRecord {
 	record.Definition.Operations = append([]service.MediaOperation(nil), record.Definition.Operations...)
 	record.Definition.Constraints = append(json.RawMessage(nil), record.Definition.Constraints...)
+	record.Definition.AdapterResolution = cloneHandlerMediaAdapterResolution(record.Definition.AdapterResolution)
+	record.AdapterResolution = cloneHandlerMediaAdapterResolution(record.AdapterResolution)
 	record.Aliases = append([]string(nil), record.Aliases...)
 	return record
 }
 
-func newMediaModelHandlerFixture(t *testing.T, platform string) (*gin.Engine, *mediaModelHandlerStore, *service.MediaModelRegistry) {
+func cloneHandlerMediaAdapterResolution(resolution service.MediaAdapterResolution) service.MediaAdapterResolution {
+	if resolution.Capabilities != nil {
+		capabilities := *resolution.Capabilities
+		capabilities.Operations = append([]service.MediaOperation(nil), resolution.Capabilities.Operations...)
+		resolution.Capabilities = &capabilities
+	}
+	return resolution
+}
+
+func defaultMediaModelHandlerRegistration() service.MediaAdapterRegistration {
+	return service.MediaAdapterRegistration{
+		Key: "openai-images",
+		Adapter: service.NewFakeMediaAdapter(service.FakeMediaAdapterOptions{
+			Name: "openai-images", NativeAsyncMode: service.NativeAsyncOptional,
+		}),
+		SupportedOperations: []service.MediaOperation{service.MediaOperationTextToImage},
+		ExactRules: []service.MediaAdapterExactRule{{
+			Vendor: "openai", ModelID: "gpt-image-2",
+			Capabilities: service.MediaAdapterRuleCapabilities{
+				Operations:          []service.MediaOperation{service.MediaOperationTextToImage},
+				SyncUpstream:        true,
+				NativeAsyncUpstream: true,
+			},
+		}},
+	}
+}
+
+func newMediaModelHandlerFixture(t *testing.T, platform string, registrations ...service.MediaAdapterRegistration) (*gin.Engine, *mediaModelHandlerStore, *service.MediaModelRegistry) {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
+	if len(registrations) == 0 {
+		registrations = []service.MediaAdapterRegistration{defaultMediaModelHandlerRegistration()}
+	}
 	store := &mediaModelHandlerStore{}
-	registry := service.NewMediaModelRegistry(store)
+	adapterRegistry := service.NewMediaAdapterRegistry()
+	for _, registration := range registrations {
+		require.NoError(t, adapterRegistry.RegisterDefinition(registration))
+	}
+	require.NoError(t, adapterRegistry.Validate())
+	resolver := service.NewMediaAdapterResolver(adapterRegistry)
+	registry := service.NewMediaModelRegistryWithResolver(store, resolver)
 	require.NoError(t, registry.Refresh(context.Background()))
 	scopes := &mediaModelHandlerScopeRepo{}
 	groups := &mediaModelHandlerGroupRepo{group: &service.Group{ID: 7, Platform: platform}}
-	svc := service.NewMediaModelAdminService(store, scopes, groups, registry)
+	svc := service.NewMediaModelAdminService(store, scopes, groups, registry, resolver)
 	handler := NewMediaModelAdminHandler(svc)
 	router := gin.New()
 	router.GET("/admin/media-models", handler.List)
@@ -250,11 +288,27 @@ func TestMediaModelAdminHandlerStrictlyRejectsInvalidDefinitions(t *testing.T) {
 }
 
 func TestMediaModelAdminHandlerGroupScopesContractAndMediaIsolation(t *testing.T) {
-	router, store, _ := newMediaModelHandlerFixture(t, service.PlatformMedia)
+	registration := service.MediaAdapterRegistration{
+		Key: "scope-images",
+		Adapter: service.NewFakeMediaAdapter(service.FakeMediaAdapterOptions{
+			Name: "scope-images", NativeAsyncMode: service.NativeAsyncUnsupported,
+		}),
+		SupportedOperations: []service.MediaOperation{service.MediaOperationTextToImage},
+		ExactRules: []service.MediaAdapterExactRule{
+			{Vendor: "openai", ModelID: "image-one", Capabilities: service.MediaAdapterRuleCapabilities{Operations: []service.MediaOperation{service.MediaOperationTextToImage}, SyncUpstream: true}},
+			{Vendor: "openai", ModelID: "image-two", Capabilities: service.MediaAdapterRuleCapabilities{Operations: []service.MediaOperation{service.MediaOperationTextToImage}, SyncUpstream: true}},
+		},
+	}
+	router, store, registry := newMediaModelHandlerFixture(t, service.PlatformMedia, registration)
+	store.records = []service.MediaModelAdminRecord{
+		{Definition: service.MediaModelDefinition{ID: 1, ModelID: "image-one", Vendor: "openai", MediaType: service.MediaTypeImage, Operations: []service.MediaOperation{service.MediaOperationTextToImage}, Constraints: json.RawMessage(`{}`), BillingUnit: "image", Enabled: true}},
+		{Definition: service.MediaModelDefinition{ID: 2, ModelID: "image-two", Vendor: "openai", MediaType: service.MediaTypeImage, Operations: []service.MediaOperation{service.MediaOperationTextToImage}, Constraints: json.RawMessage(`{}`), BillingUnit: "image", Enabled: true}},
+	}
+	require.NoError(t, registry.Refresh(context.Background()))
 	putRecorder := performMediaModelHandlerRequest(router, http.MethodPut, "/admin/groups/7/media-model-scopes", `{"model_ids":[" IMAGE-TWO ","image-one"]}`)
 	require.Equal(t, http.StatusOK, putRecorder.Code, putRecorder.Body.String())
 	require.Contains(t, putRecorder.Body.String(), `"model_ids":["image-one","image-two"]`)
-	require.Equal(t, 1, store.refreshCalls)
+	require.Equal(t, 2, store.refreshCalls)
 
 	getRecorder := performMediaModelHandlerRequest(router, http.MethodGet, "/admin/groups/7/media-model-scopes", "")
 	require.Equal(t, http.StatusOK, getRecorder.Code, getRecorder.Body.String())
