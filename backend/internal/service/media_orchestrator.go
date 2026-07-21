@@ -249,7 +249,7 @@ func (o *MediaOrchestrator) Create(ctx context.Context, req MediaCreateRequest) 
 		frozenDefinition := cloneMediaModelDefinition(*definition)
 		candidates[index].ModelDefinition = &frozenDefinition
 	}
-	candidateJSON, err := json.Marshal(candidates)
+	candidateJSON, err := encodeMediaCandidateSnapshotV1(candidates)
 	if err != nil {
 		return o.reuseConcurrentIdempotencyWinner(
 			ctx, req, inputs, fingerprint, fmt.Errorf("encode media candidate snapshot: %w", err),
@@ -897,14 +897,14 @@ func (o *MediaOrchestrator) initializeAndEnqueue(
 		if encodeErr != nil {
 			return &MediaCreateResult{Task: task}, o.failWithReconciledPrecharge(ctx, task, billingSnapshot, "system_input", fmt.Errorf("encode durable media request spec: %w", encodeErr))
 		}
-		var candidates []MediaAccountCandidateSnapshot
-		if err := json.Unmarshal(task.CandidateSnapshot, &candidates); err != nil {
-			return &MediaCreateResult{Task: task}, o.failWithReconciledPrecharge(ctx, task, billingSnapshot, "system_input", fmt.Errorf("decode media candidate snapshot: %w", err))
+		candidates, decodeErr := decodeMediaCandidateSnapshotV1(task.CandidateSnapshot)
+		if decodeErr != nil {
+			return &MediaCreateResult{Task: task}, o.failWithReconciledPrecharge(ctx, task, billingSnapshot, "system_input", fmt.Errorf("decode media candidate snapshot: %w", decodeErr))
 		}
 		if err := freezeMediaCandidateRequests(candidates, encoded, req.MediaType); err != nil {
 			return &MediaCreateResult{Task: task}, o.failWithReconciledPrecharge(ctx, task, billingSnapshot, "system_input", fmt.Errorf("refresh media candidate requests: %w", err))
 		}
-		candidateJSON, candidateErr := json.Marshal(candidates)
+		candidateJSON, candidateErr := encodeMediaCandidateSnapshotV1(candidates)
 		if candidateErr != nil {
 			return &MediaCreateResult{Task: task}, o.failWithReconciledPrecharge(ctx, task, billingSnapshot, "system_input", fmt.Errorf("encode durable media candidate snapshot: %w", candidateErr))
 		}

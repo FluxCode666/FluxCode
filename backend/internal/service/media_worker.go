@@ -92,11 +92,12 @@ type MediaWorker struct {
 }
 
 type mediaActiveExecution struct {
-	ctx           context.Context
-	cancel        context.CancelCauseFunc
-	claimToken    string
-	terminalizing atomic.Bool
-	abortOnce     sync.Once
+	ctx               context.Context
+	cancel            context.CancelCauseFunc
+	claimToken        string
+	terminalizing     atomic.Bool
+	frozenAliasLogged atomic.Bool
+	abortOnce         sync.Once
 
 	mu             sync.RWMutex
 	path           MediaExecutionPath
@@ -643,7 +644,7 @@ func (w *MediaWorker) resumeUnknownSubmission(
 	active *mediaActiveExecution,
 	trace *mediaExecutionTrace,
 ) (*MediaGenerateResult, *mediaExecutionFailure, error) {
-	adapter, err := w.deps.Adapters.Resolve(task.Adapter)
+	adapter, err := w.resolveFrozenMediaAdapter(task, active, task.Adapter)
 	if err != nil {
 		return nil, systemMediaFailure("system_adapter", "fixed media adapter is unavailable"), nil
 	}
@@ -694,7 +695,7 @@ func resolveWorkerMediaModelDefinition(
 			continue
 		}
 		definition := cloneMediaModelDefinition(*candidate.ModelDefinition)
-		if err := validateMediaModelDefinition(definition); err != nil {
+		if err := validateMediaModelDefinitionBase(definition); err != nil {
 			return nil, err
 		}
 		if definition.ModelID != normalizeMediaModelID(task.RequestedModel) ||
@@ -720,6 +721,26 @@ func resolveWorkerMediaModelDefinition(
 	return registry.Resolve(task.RequestedModel, task.Operation)
 }
 
+func (w *MediaWorker) resolveFrozenMediaAdapter(
+	task *MediaTask,
+	active *mediaActiveExecution,
+	adapterKey string,
+) (MediaAdapter, error) {
+	canonicalKey, aliased := w.deps.Adapters.CanonicalKey(adapterKey)
+	if aliased && active != nil && active.frozenAliasLogged.CompareAndSwap(false, true) {
+		w.logger.Info(
+			"media_worker_frozen_adapter_alias",
+			"task_id", task.ID,
+			"legacy_adapter_key", normalizeMediaAdapterName(adapterKey),
+			"adapter_key", canonicalKey,
+		)
+	}
+	// Deliberately resolve using the frozen historical key. CanonicalKey is only
+	// diagnostic; task columns and candidate snapshots remain byte-for-byte
+	// compatible with the execution tuple accepted at creation time.
+	return w.deps.Adapters.Resolve(adapterKey)
+}
+
 func (w *MediaWorker) executeSelected(
 	ctx context.Context,
 	task *MediaTask,
@@ -729,7 +750,7 @@ func (w *MediaWorker) executeSelected(
 	definition *MediaModelDefinition,
 	selection *MediaAccountSelection,
 ) (*MediaGenerateResult, *mediaExecutionFailure, bool, error) {
-	adapter, err := w.deps.Adapters.Resolve(selection.ResolvedModel.Adapter)
+	adapter, err := w.resolveFrozenMediaAdapter(task, active, selection.ResolvedModel.Adapter)
 	if err != nil {
 		return nil, systemMediaFailure("system_adapter", "media adapter is unavailable"), false, nil
 	}
@@ -875,7 +896,7 @@ func (w *MediaWorker) resumePolling(ctx context.Context, task *MediaTask, active
 	if task.AccountID == nil || task.Adapter == "" || task.UpstreamModel == "" {
 		return nil, systemMediaFailure("system_recovery", "submitted media task is missing fixed execution data"), nil
 	}
-	adapter, err := w.deps.Adapters.Resolve(task.Adapter)
+	adapter, err := w.resolveFrozenMediaAdapter(task, active, task.Adapter)
 	if err != nil {
 		return nil, systemMediaFailure("system_adapter", "fixed media adapter is unavailable"), nil
 	}
@@ -2007,14 +2028,7 @@ func encodeSelectedMediaRequest(raw json.RawMessage, selection *MediaAccountSele
 }
 
 func decodeWorkerCandidateSnapshot(raw json.RawMessage) ([]MediaAccountCandidateSnapshot, error) {
-	var candidates []MediaAccountCandidateSnapshot
-	if err := decodeWorkerJSON(raw, &candidates); err != nil {
-		return nil, err
-	}
-	if _, err := validateMediaCandidateSnapshot(candidates); err != nil {
-		return nil, err
-	}
-	return candidates, nil
+	return decodeMediaCandidateSnapshotV1(raw)
 }
 
 func decodeWorkerJSON(raw json.RawMessage, output any) error {

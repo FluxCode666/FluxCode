@@ -144,12 +144,34 @@ func newIntegrationMediaWorker(t *testing.T) *integrationMediaWorkerFixture {
 	artifactRepo := NewMediaArtifactRepository(client)
 	adapter := &integrationWorkerAdapter{allowed: map[string]struct{}{}}
 	adapters := service.NewMediaAdapterRegistry()
-	require.NoError(t, adapters.Register(adapter.Name(), adapter))
+	definition := integrationWorkerModelDefinition()
+	require.NoError(t, adapters.RegisterDefinition(service.MediaAdapterRegistration{
+		Key:                 adapter.Name(),
+		Adapter:             adapter,
+		SupportedOperations: []service.MediaOperation{service.MediaOperationTextToImage},
+		ExactRules: []service.MediaAdapterExactRule{{
+			Vendor: definition.Vendor, ModelID: definition.ModelID,
+			Capabilities: service.MediaAdapterRuleCapabilities{
+				Operations:          []service.MediaOperation{service.MediaOperationTextToImage},
+				NativeAsyncUpstream: true,
+			},
+		}},
+	}))
 	account := &service.Account{ID: 707, Platform: service.PlatformOpenAI, Status: service.StatusActive, Schedulable: true, Concurrency: 1}
 	scheduler := service.NewMediaScheduler(&integrationWorkerAccounts{account: account}, &integrationWorkerSelector{}, adapters, integrationWorkerGroups{})
-	models := service.NewMediaModelRegistry(&integrationWorkerModels{})
+	models := service.NewMediaModelRegistryWithResolver(
+		&integrationWorkerModels{}, service.NewMediaAdapterResolver(adapters),
+	)
 	require.NoError(t, models.Refresh(context.Background()))
-	candidates, err := json.Marshal([]service.MediaAccountCandidateSnapshot{{AccountID: account.ID, Platform: account.Platform, ResolvedModel: service.ResolvedMediaAccountModel{Adapter: adapter.Name(), UpstreamModel: "upstream-image", NativeAsyncMode: service.NativeAsyncRequired}}})
+	frozenDefinition, err := models.Resolve(definition.ModelID, service.MediaOperationTextToImage)
+	require.NoError(t, err)
+	candidates, err := json.Marshal([]service.MediaAccountCandidateSnapshot{{
+		AccountID: account.ID, Platform: account.Platform,
+		ResolvedModel: service.ResolvedMediaAccountModel{
+			Adapter: adapter.Name(), UpstreamModel: "upstream-image", NativeAsyncMode: service.NativeAsyncRequired,
+		},
+		ModelDefinition: frozenDefinition,
+	}})
 	require.NoError(t, err)
 	billing := &integrationWorkerBillingPort{settled: make(map[string]struct{})}
 	metrics := service.NewAtomicMediaTaskMetrics()
@@ -265,7 +287,15 @@ func (*integrationWorkerSelector) WaitStable(context.Context, *service.AccountWa
 type integrationWorkerModels struct{}
 
 func (*integrationWorkerModels) ListEnabled(context.Context) ([]service.MediaModelDefinition, error) {
-	return []service.MediaModelDefinition{{ModelID: "fake-image", MediaType: service.MediaTypeImage, Operations: []service.MediaOperation{service.MediaOperationTextToImage}, Enabled: true}}, nil
+	return []service.MediaModelDefinition{integrationWorkerModelDefinition()}, nil
+}
+
+func integrationWorkerModelDefinition() service.MediaModelDefinition {
+	return service.MediaModelDefinition{
+		ModelID: "fake-image", Vendor: "fake-vendor", BillingUnit: "image",
+		MediaType: service.MediaTypeImage, Operations: []service.MediaOperation{service.MediaOperationTextToImage},
+		DefaultAdapter: "integration-fake", DefaultAsyncMode: service.NativeAsyncRequired, Enabled: true,
+	}
 }
 
 type integrationArtifactWriter struct {

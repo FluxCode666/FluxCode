@@ -1229,7 +1229,7 @@ func TestMediaWorkerRecoveryDoesNotDependOnCurrentModelOrHistoricalRequestSpec(t
 		{
 			name: "deleted_or_disabled_model",
 			mutateDeps: func(worker *MediaWorker) {
-				worker.deps.Models = NewMediaModelRegistry(&workerModelRepository{})
+				worker.deps.Models = NewMediaModelRegistry(&mediaModelRepoStub{})
 			},
 		},
 		{
@@ -1284,6 +1284,85 @@ func TestMediaWorkerUsesCandidateSnapshotInsteadOfCurrentModelMapping(t *testing
 	request := fixture.adapter.lastRequest()
 	require.Equal(t, "upstream-image", request.UpstreamModel)
 	require.Equal(t, fixture.adapter.Name(), fixture.repo.mustGet(fixture.task.ID).Adapter)
+}
+
+func TestMediaWorkerUsesFrozenResolvedAdapterAndLogsHistoricalAliasOnce(t *testing.T) {
+	fixture := newMediaWorkerFixture(t, false, NativeAsyncUnsupported)
+	const legacyAdapter = "legacy-worker-fake"
+	require.NoError(t, fixture.worker.deps.Adapters.RegisterAlias(legacyAdapter, fixture.adapter.Name()))
+	candidates, err := decodeMediaCandidateSnapshotV1(fixture.task.CandidateSnapshot)
+	require.NoError(t, err)
+	candidates[0].ResolvedModel.Adapter = legacyAdapter
+	candidates[0].ModelDefinition.DefaultAdapter = "untrusted-definition-adapter"
+	candidates[0].ModelDefinition.DefaultAsyncMode = NativeAsyncRequired
+	encoded, err := encodeMediaCandidateSnapshotV1(candidates)
+	require.NoError(t, err)
+	fixture.repo.mu.Lock()
+	fixture.repo.tasks[fixture.task.ID].CandidateSnapshot = encoded
+	fixture.repo.mu.Unlock()
+	var logs bytes.Buffer
+	fixture.worker.logger = slog.New(slog.NewJSONHandler(&logs, nil))
+
+	require.NoError(t, fixture.worker.ProcessOne(context.Background(), fixture.task.ID))
+	require.Equal(t, MediaTaskStatusCompleted, fixture.repo.mustGet(fixture.task.ID).Status)
+	require.Equal(t, legacyAdapter, fixture.repo.mustGet(fixture.task.ID).Adapter)
+	require.Equal(t, int64(1), fixture.adapter.syncCalls.Load())
+
+	aliasEvents := 0
+	for _, line := range strings.Split(strings.TrimSpace(logs.String()), "\n") {
+		var record map[string]any
+		require.NoError(t, json.Unmarshal([]byte(line), &record))
+		if record["msg"] != "media_worker_frozen_adapter_alias" {
+			continue
+		}
+		aliasEvents++
+		require.Equal(t, float64(fixture.task.ID), record["task_id"])
+		require.Equal(t, legacyAdapter, record["legacy_adapter_key"])
+		require.Equal(t, fixture.adapter.Name(), record["adapter_key"])
+		for _, field := range []string{"requested_model", "upstream_model", "request", "credential", "response"} {
+			require.NotContains(t, record, field)
+		}
+	}
+	require.Equal(t, 1, aliasEvents)
+	for _, forbidden := range []string{"prompt", "credential", "upstream response"} {
+		require.NotContains(t, logs.String(), forbidden)
+	}
+}
+
+func TestMediaWorkerFrozenAdapterAliasLogsOnceAcrossRecoveryPaths(t *testing.T) {
+	t.Run("unknown submission", func(t *testing.T) {
+		fixture := newMediaWorkerFixture(t, true, NativeAsyncRequired)
+		fixedAdapter, _ := prepareRecoverableSubmittingTask(t, fixture, true)
+		const legacyAdapter = "legacy-fixed-submitter"
+		require.NoError(t, fixture.worker.deps.Adapters.RegisterAlias(legacyAdapter, fixedAdapter.Name()))
+		fixture.repo.mu.Lock()
+		fixture.repo.tasks[fixture.task.ID].Adapter = legacyAdapter
+		fixture.repo.mu.Unlock()
+		var logs bytes.Buffer
+		fixture.worker.logger = slog.New(slog.NewJSONHandler(&logs, nil))
+
+		require.NoError(t, fixture.worker.ProcessOne(context.Background(), fixture.task.ID))
+		require.Equal(t, legacyAdapter, fixture.repo.mustGet(fixture.task.ID).Adapter)
+		require.Equal(t, 1, strings.Count(logs.String(), `"msg":"media_worker_frozen_adapter_alias"`))
+		require.NotContains(t, logs.String(), "prompt")
+	})
+
+	t.Run("existing upstream", func(t *testing.T) {
+		fixture := newMediaWorkerFixture(t, true, NativeAsyncRequired)
+		prepareRecoverableExistingUpstream(fixture, "existing-upstream-alias")
+		const legacyAdapter = "legacy-poll-adapter"
+		require.NoError(t, fixture.worker.deps.Adapters.RegisterAlias(legacyAdapter, fixture.adapter.Name()))
+		fixture.repo.mu.Lock()
+		fixture.repo.tasks[fixture.task.ID].Adapter = legacyAdapter
+		fixture.repo.mu.Unlock()
+		var logs bytes.Buffer
+		fixture.worker.logger = slog.New(slog.NewJSONHandler(&logs, nil))
+
+		require.NoError(t, fixture.worker.ProcessOne(context.Background(), fixture.task.ID))
+		require.Equal(t, legacyAdapter, fixture.repo.mustGet(fixture.task.ID).Adapter)
+		require.Equal(t, 1, strings.Count(logs.String(), `"msg":"media_worker_frozen_adapter_alias"`))
+		require.NotContains(t, logs.String(), "prompt")
+	})
 }
 
 func TestMediaWorkerQueuedTaskUsesFrozenDefinitionAfterRegistryRemoval(t *testing.T) {
@@ -2242,23 +2321,39 @@ func newMediaWorkerFixture(t *testing.T, clientAsync bool, mode NativeAsyncMode)
 	t.Helper()
 	adapter := newWorkerAdapter("worker-fake")
 	registry := NewMediaAdapterRegistry()
-	require.NoError(t, registry.Register(adapter.Name(), adapter))
 	account := &Account{ID: 7, Platform: PlatformOpenAI, Status: StatusActive, Schedulable: true, Concurrency: 1}
 	accountRepo := &workerAccountRepository{account: account}
 	selector := &workerSelector{refreshOwned: true}
 	scheduler := NewMediaScheduler(accountRepo, selector, registry, workerGroupRepository{})
 	definition := MediaModelDefinition{
-		ModelID: "fake-image", Vendor: "fake-vendor", DefaultAdapter: adapter.Name(), DefaultAsyncMode: mode, MediaType: MediaTypeImage, Operations: []MediaOperation{MediaOperationTextToImage}, Enabled: true,
+		ModelID: "fake-image", Vendor: "fake-vendor", BillingUnit: "image", DefaultAdapter: adapter.Name(), DefaultAsyncMode: mode, MediaType: MediaTypeImage, Operations: []MediaOperation{MediaOperationTextToImage}, Enabled: true,
 	}
-	modelRegistry := NewMediaModelRegistry(&workerModelRepository{definition: definition})
+	require.NoError(t, registry.RegisterDefinition(MediaAdapterRegistration{
+		Key:                 adapter.Name(),
+		Adapter:             adapter,
+		SupportedOperations: []MediaOperation{MediaOperationTextToImage},
+		ExactRules: []MediaAdapterExactRule{{
+			Vendor: definition.Vendor, ModelID: definition.ModelID,
+			Capabilities: MediaAdapterRuleCapabilities{
+				Operations:          []MediaOperation{MediaOperationTextToImage},
+				SyncUpstream:        mode != NativeAsyncRequired,
+				NativeAsyncUpstream: mode != NativeAsyncUnsupported,
+			},
+		}},
+	}))
+	modelRegistry := NewMediaModelRegistryWithResolver(
+		&workerModelRepository{definition: definition}, NewMediaAdapterResolver(registry),
+	)
 	require.NoError(t, modelRegistry.Refresh(context.Background()))
-	candidates, err := json.Marshal([]MediaAccountCandidateSnapshot{{
+	frozenDefinition, err := modelRegistry.Resolve(definition.ModelID, MediaOperationTextToImage)
+	require.NoError(t, err)
+	candidates, err := encodeMediaCandidateSnapshotV1([]MediaAccountCandidateSnapshot{{
 		AccountID: account.ID,
 		Platform:  account.Platform,
 		ResolvedModel: ResolvedMediaAccountModel{
 			Adapter: adapter.Name(), UpstreamModel: "upstream-image", NativeAsyncMode: mode,
 		},
-		ModelDefinition: &definition,
+		ModelDefinition: frozenDefinition,
 	}})
 	require.NoError(t, err)
 	task := &MediaTask{

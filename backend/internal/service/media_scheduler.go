@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"sync/atomic"
 )
@@ -59,22 +60,33 @@ type mediaSchedulerModelScopeRepository interface {
 }
 
 type MediaScheduler struct {
-	accountRepo MediaSchedulerAccountRepository
-	groupRepo   MediaSchedulerGroupRepository
-	selector    AccountCandidateSelector
-	adapters    *MediaAdapterRegistry
-	registry    *MediaModelRegistry
-	scopes      mediaSchedulerModelScopeRepository
+	accountRepo    MediaSchedulerAccountRepository
+	groupRepo      MediaSchedulerGroupRepository
+	selector       AccountCandidateSelector
+	adapters       *MediaAdapterRegistry
+	registry       *MediaModelRegistry
+	scopes         mediaSchedulerModelScopeRepository
+	routingMetrics MediaRoutingMetrics
+	logger         *slog.Logger
 }
 
 func NewMediaScheduler(accountRepo MediaSchedulerAccountRepository, selector AccountCandidateSelector, adapters *MediaAdapterRegistry, groupRepo MediaSchedulerGroupRepository, dependencies ...any) *MediaScheduler {
-	scheduler := &MediaScheduler{accountRepo: accountRepo, groupRepo: groupRepo, selector: selector, adapters: adapters}
+	scheduler := &MediaScheduler{
+		accountRepo: accountRepo, groupRepo: groupRepo, selector: selector, adapters: adapters,
+		logger: slog.Default(),
+	}
 	for _, dependency := range dependencies {
 		switch value := dependency.(type) {
 		case *MediaModelRegistry:
 			scheduler.registry = value
 		case mediaSchedulerModelScopeRepository:
 			scheduler.scopes = value
+		case MediaRoutingMetrics:
+			scheduler.routingMetrics = value
+		case *slog.Logger:
+			if value != nil {
+				scheduler.logger = value
+			}
 		}
 	}
 	return scheduler
@@ -96,11 +108,17 @@ func (s *MediaScheduler) SnapshotCandidatesForDefinition(
 ) ([]MediaAccountCandidateSnapshot, error) {
 	definition = cloneMediaModelDefinition(definition)
 	definition.ModelID = normalizeMediaModelID(definition.ModelID)
-	definition.Vendor = strings.TrimSpace(definition.Vendor)
-	definition.DefaultAdapter = normalizeMediaAdapterName(definition.DefaultAdapter)
-	definition.DefaultAsyncMode = NativeAsyncMode(strings.ToLower(strings.TrimSpace(string(definition.DefaultAsyncMode))))
-	if err := validateMediaModelDefinition(definition); err != nil {
+	definition.Vendor = strings.ToLower(strings.TrimSpace(definition.Vendor))
+	definition.BillingUnit = strings.ToLower(strings.TrimSpace(definition.BillingUnit))
+	if err := validateEnabledMediaModelDefinition(definition); err != nil {
 		return nil, err
+	}
+	if !definition.AdapterResolution.IsReady() {
+		return nil, ErrMediaModelAdapterUnavailable.WithMetadata(map[string]string{
+			"model_id":          definition.ModelID,
+			"resolution_status": string(definition.AdapterResolution.Status),
+			"reason_code":       definition.AdapterResolution.ReasonCode,
+		})
 	}
 	if operation != "" && !definition.Supports(operation) {
 		return nil, ErrMediaOperationUnsupported
@@ -140,7 +158,10 @@ func (s *MediaScheduler) snapshotCandidates(
 		} else {
 			resolvedModel, resolveErr := s.registry.CanonicalModelID(requestedModel)
 			if resolveErr != nil {
-				return nil, ErrNoAvailableAccounts
+				if errors.Is(resolveErr, ErrMediaModelNotFound) {
+					return nil, ErrNoAvailableAccounts
+				}
+				return nil, resolveErr
 			}
 			canonicalModel = resolvedModel
 		}
@@ -204,13 +225,19 @@ func (s *MediaScheduler) snapshotCandidates(
 		}
 		resolved := account.ResolveMediaModel(modelForAccount)
 		if registryDefinition != nil {
-			resolved.Adapter = registryDefinition.DefaultAdapter
+			resolution := registryDefinition.AdapterResolution
+			resolved.Adapter = resolution.ResolvedAdapter
+			if !resolution.IsReady() || !resolution.SupportsAccountMode(resolved.NativeAsyncMode) {
+				s.observeCandidateCapabilityMismatch(canonicalModel, account.ID, resolved.Adapter, resolved.NativeAsyncMode)
+				continue
+			}
 		}
 		if !validResolvedMediaAccountModel(resolved) {
 			continue
 		}
 		adapter, adapterErr := s.adapters.Resolve(resolved.Adapter)
 		if adapterErr != nil || !adapterSupportsNativeMode(adapter, resolved.NativeAsyncMode) {
+			s.observeCandidateCapabilityMismatch(canonicalModel, account.ID, resolved.Adapter, resolved.NativeAsyncMode)
 			continue
 		}
 		result = append(result, MediaAccountCandidateSnapshot{
@@ -229,6 +256,44 @@ func (s *MediaScheduler) snapshotCandidates(
 		return nil, ErrNoAvailableAccounts
 	}
 	return result, nil
+}
+
+func (s *MediaScheduler) observeCandidateCapabilityMismatch(
+	canonicalModelID string,
+	accountID int64,
+	adapterKey string,
+	mode NativeAsyncMode,
+) {
+	if s.routingMetrics != nil {
+		s.routingMetrics.IncrementCandidateCapabilityMismatch()
+	}
+	logger := s.logger
+	if logger == nil {
+		logger = slog.Default()
+	}
+	logger.Debug(
+		"media_candidate_adapter_capability_mismatch",
+		"canonical_model_id", normalizeMediaModelID(canonicalModelID),
+		"account_id", accountID,
+		"adapter_key", normalizeMediaAdapterName(adapterKey),
+		"native_async_mode", string(mode),
+	)
+}
+
+func (r MediaAdapterResolution) SupportsAccountMode(mode NativeAsyncMode) bool {
+	if !r.IsReady() {
+		return false
+	}
+	switch mode {
+	case NativeAsyncUnsupported:
+		return r.Capabilities.SyncUpstream
+	case NativeAsyncRequired:
+		return r.Capabilities.NativeAsyncUpstream
+	case NativeAsyncOptional:
+		return r.Capabilities.SyncUpstream && r.Capabilities.NativeAsyncUpstream
+	default:
+		return false
+	}
 }
 
 func validResolvedMediaAccountModel(model ResolvedMediaAccountModel) bool {
@@ -300,6 +365,12 @@ func (s *MediaScheduler) Select(ctx context.Context, req MediaScheduleRequest) (
 		}
 		adapter, adapterErr := s.adapters.Resolve(snapshot.ResolvedModel.Adapter)
 		if adapterErr != nil || !adapterSupportsNativeMode(adapter, snapshot.ResolvedModel.NativeAsyncMode) {
+			s.observeCandidateCapabilityMismatch(
+				req.RequestedModel,
+				account.ID,
+				snapshot.ResolvedModel.Adapter,
+				snapshot.ResolvedModel.NativeAsyncMode,
+			)
 			continue
 		}
 		copy := *account

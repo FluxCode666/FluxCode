@@ -8,6 +8,7 @@ import (
 	"math"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -408,8 +409,8 @@ func TestMediaOrchestratorPersistsResolvedCandidateAndDurableInputSnapshot(t *te
 	result, err := fixture.orchestrator.Create(context.Background(), req)
 	require.NoError(t, err)
 	stored := fixture.repo.mustGet(result.Task.ID)
-	var candidates []MediaAccountCandidateSnapshot
-	require.NoError(t, json.Unmarshal(stored.CandidateSnapshot, &candidates))
+	candidates, err := decodeMediaCandidateSnapshotV1(stored.CandidateSnapshot)
+	require.NoError(t, err)
 	require.Len(t, candidates, 1)
 	require.Equal(t, fixture.scheduler.candidates[0].AccountID, candidates[0].AccountID)
 	require.Equal(t, fixture.scheduler.candidates[0].ResolvedModel, candidates[0].ResolvedModel)
@@ -434,12 +435,15 @@ func TestMediaOrchestratorPersistsCanonicalModelAndFrozenDefinitionForAlias(t *t
 	fixture := newMediaOrchestratorFixture(t)
 	definition := validImageModelDefinition()
 	definition.ID = 41
-	registry := NewMediaModelRegistry(&mediaModelRepositoryWithAliasesStub{
+	_, resolver := newTestMediaAdapterResolver(t,
+		testMediaAdapterRegistrationForDefinitions("fake", NativeAsyncOptional, definition),
+	)
+	registry := NewMediaModelRegistryWithResolver(&mediaModelRepositoryWithAliasesStub{
 		mediaModelRepoStub: mediaModelRepoStub{items: []MediaModelDefinition{definition}},
 		mediaModelAliasRepoStub: mediaModelAliasRepoStub{items: []MediaModelAlias{{
 			RequestedModelID: "image-alias", ModelDefinitionID: definition.ID,
 		}}},
-	})
+	}, resolver)
 	require.NoError(t, registry.Refresh(context.Background()))
 	fixture.orchestrator.deps.Registry = registry
 	req := validAsyncMediaCreateRequest()
@@ -449,23 +453,51 @@ func TestMediaOrchestratorPersistsCanonicalModelAndFrozenDefinitionForAlias(t *t
 	require.NoError(t, err)
 	stored := fixture.repo.mustGet(result.Task.ID)
 	require.Equal(t, "fake-image", stored.RequestedModel)
-	var candidates []MediaAccountCandidateSnapshot
-	require.NoError(t, json.Unmarshal(stored.CandidateSnapshot, &candidates))
+	candidates, err := decodeMediaCandidateSnapshotV1(stored.CandidateSnapshot)
+	require.NoError(t, err)
 	require.Len(t, candidates, 1)
 	require.NotNil(t, candidates[0].ModelDefinition)
 	require.Equal(t, definition.ModelID, candidates[0].ModelDefinition.ModelID)
+}
+
+func TestMediaOrchestratorRejectsUnavailableBeforeCreatePricingAndPrecharge(t *testing.T) {
+	fixture := newMediaOrchestratorFixture(t)
+	definition := validImageModelDefinition()
+	definition.ID = 51
+	definition.ModelID = "unknown-image"
+	definition.Vendor = "unknown"
+	definition.Operations = []MediaOperation{MediaOperationTextToImage}
+	_, resolver := newTestMediaAdapterResolver(t)
+	models := NewMediaModelRegistryWithResolver(
+		&mediaModelRepoStub{items: []MediaModelDefinition{definition}}, resolver,
+	)
+	require.NoError(t, models.Refresh(context.Background()))
+	fixture.orchestrator.deps.Registry = models
+	req := validAsyncMediaCreateRequest()
+	req.RequestedModel = definition.ModelID
+	_, err := fixture.orchestrator.Create(context.Background(), req)
+	require.ErrorIs(t, err, ErrMediaModelAdapterUnavailable)
+	require.Zero(t, fixture.repo.createCalls())
+	require.Zero(t, fixture.scheduler.snapshotCalls())
+	require.Zero(t, fixture.pricing.snapshotCalls())
+	require.Zero(t, fixture.billing.prechargeCalls())
+	require.Zero(t, fixture.queue.enqueueCalls())
+	require.Zero(t, fixture.controller.stopCalls())
 }
 
 func TestMediaOrchestratorIdempotentRetryUsesFrozenTaskAfterAliasRemoval(t *testing.T) {
 	fixture := newMediaOrchestratorFixture(t)
 	definition := validImageModelDefinition()
 	definition.ID = 42
-	registry := NewMediaModelRegistry(&mediaModelRepositoryWithAliasesStub{
+	_, resolver := newTestMediaAdapterResolver(t,
+		testMediaAdapterRegistrationForDefinitions("fake", NativeAsyncOptional, definition),
+	)
+	registry := NewMediaModelRegistryWithResolver(&mediaModelRepositoryWithAliasesStub{
 		mediaModelRepoStub: mediaModelRepoStub{items: []MediaModelDefinition{definition}},
 		mediaModelAliasRepoStub: mediaModelAliasRepoStub{items: []MediaModelAlias{{
 			RequestedModelID: "removed-image-alias", ModelDefinitionID: definition.ID,
 		}}},
-	})
+	}, resolver)
 	require.NoError(t, registry.Refresh(context.Background()))
 	fixture.orchestrator.deps.Registry = registry
 	req := validAsyncMediaCreateRequest()
@@ -1854,10 +1886,17 @@ type mediaOrchestratorFixture struct {
 
 func newMediaOrchestratorFixture(t *testing.T) *mediaOrchestratorFixture {
 	t.Helper()
-	registry := NewMediaModelRegistry(&mediaModelRepoStub{items: []MediaModelDefinition{
-		validImageModelDefinition(),
-		validVideoModelDefinition(),
-	}})
+	imageDefinition := validImageModelDefinition()
+	videoDefinition := validVideoModelDefinition()
+	_, resolver := newTestMediaAdapterResolver(t,
+		testMediaAdapterRegistrationForDefinitions(
+			"fake", NativeAsyncOptional, imageDefinition, videoDefinition,
+		),
+	)
+	registry := NewMediaModelRegistryWithResolver(&mediaModelRepoStub{items: []MediaModelDefinition{
+		imageDefinition,
+		videoDefinition,
+	}}, resolver)
 	require.NoError(t, registry.Refresh(context.Background()))
 	repo := newOrchestratorTaskRepository()
 	artifacts := newOrchestratorArtifactRepository()
@@ -2469,11 +2508,15 @@ func (q *orchestratorQueue) enqueueCalls() int { q.mu.Lock(); defer q.mu.Unlock(
 type orchestratorScheduler struct {
 	candidates []MediaAccountCandidateSnapshot
 	err        error
+	snapshots  atomic.Int64
 }
 
 func (s *orchestratorScheduler) SnapshotCandidates(context.Context, int64, string) ([]MediaAccountCandidateSnapshot, error) {
+	s.snapshots.Add(1)
 	return append([]MediaAccountCandidateSnapshot(nil), s.candidates...), s.err
 }
+
+func (s *orchestratorScheduler) snapshotCalls() int64 { return s.snapshots.Load() }
 
 type orchestratorSettings struct {
 	settings SystemSettings
@@ -2509,13 +2552,17 @@ func (p *orchestratorContentPolicy) Check(context.Context, int64, MediaType, Med
 }
 
 type orchestratorPricing struct {
-	snapshot MediaBillingSnapshot
-	err      error
+	snapshot  MediaBillingSnapshot
+	err       error
+	snapshots atomic.Int64
 }
 
 func (p *orchestratorPricing) Snapshot(context.Context, MediaCreateRequest, *MediaModelDefinition, []MediaAccountCandidateSnapshot) (MediaBillingSnapshot, error) {
+	p.snapshots.Add(1)
 	return p.snapshot, p.err
 }
+
+func (p *orchestratorPricing) snapshotCalls() int64 { return p.snapshots.Load() }
 
 type orchestratorBilling struct {
 	mu                    sync.Mutex

@@ -1,14 +1,19 @@
 package service
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/stretchr/testify/require"
 )
 
@@ -198,6 +203,238 @@ func task12Account(id int64, platform, model, upstream, adapter string, mode Nat
 	}
 }
 
+func TestMediaSchedulerUsesResolutionInsteadOfStoredDefaultAdapter(t *testing.T) {
+	definition := validImageModelDefinition()
+	definition.ID = 31
+	definition.ModelID = "grok-2-image"
+	definition.Vendor = "xai"
+	definition.Operations = []MediaOperation{MediaOperationTextToImage}
+	definition.DefaultAdapter = "malicious-db-value"
+	definition.DefaultAsyncMode = NativeAsyncRequired
+
+	adapters, resolver := newTestMediaAdapterResolver(t,
+		exactImageRegistration("xai-image", "xai", "grok-2-image"),
+	)
+	models := NewMediaModelRegistryWithResolver(
+		&mediaModelRepoStub{items: []MediaModelDefinition{definition}}, resolver,
+	)
+	require.NoError(t, models.Refresh(context.Background()))
+	account := Account{
+		ID: 21, Platform: PlatformMedia, Priority: 1, Concurrency: 1,
+		Status: StatusActive, Schedulable: true,
+		Credentials: map[string]any{"api_key": "do-not-log-secret"},
+		Extra: map[string]any{
+			"base_url": "https://sensitive-upstream.example",
+			"media_config": map[string]any{
+				"version": 1, "provider": "xai", "models": map[string]any{
+					"grok-2-image": map[string]any{
+						"enabled": true, "upstream_model_id": "grok-upstream", "async_mode": "unsupported",
+					},
+				},
+			},
+		},
+	}
+	accountRepo := &mediaSchedulerAccountRepoStub{accounts: []Account{account}}
+	metrics := NewAtomicMediaTaskMetrics()
+	var logs bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	scheduler := NewMediaScheduler(
+		accountRepo,
+		&mediaSchedulerSelectorStub{selectedID: account.ID},
+		adapters,
+		&mediaSchedulerGroupRepoStub{group: &Group{ID: 9, Platform: PlatformMedia}},
+		models,
+		&mediaSchedulerScopeRepoStub{modelIDs: []string{definition.ModelID}},
+		MediaRoutingMetrics(metrics),
+		logger,
+	)
+	candidates, err := scheduler.SnapshotCandidatesForOperation(
+		context.Background(), 9, definition.ModelID, MediaOperationTextToImage,
+	)
+	require.NoError(t, err)
+	require.Len(t, candidates, 1)
+	require.Equal(t, "xai-image", candidates[0].ResolvedModel.Adapter)
+
+	account.Extra = map[string]any{
+		"base_url": "https://sensitive-upstream.example",
+		"media_config": map[string]any{
+			"version": 1, "provider": "xai", "models": map[string]any{
+				"grok-2-image": map[string]any{
+					"enabled": true, "upstream_model_id": "grok-upstream", "async_mode": "native",
+				},
+			},
+		},
+	}
+	accountRepo.replaceAccounts([]Account{account})
+	_, err = scheduler.SnapshotCandidatesForOperation(
+		context.Background(), 9, definition.ModelID, MediaOperationTextToImage,
+	)
+	require.ErrorIs(t, err, ErrNoAvailableAccounts)
+	require.Equal(t, int64(1), metrics.CandidateCapabilityMismatches())
+
+	lines := strings.Split(strings.TrimSpace(logs.String()), "\n")
+	require.Len(t, lines, 1)
+	var record map[string]any
+	require.NoError(t, json.Unmarshal([]byte(lines[0]), &record))
+	require.Equal(t, "media_candidate_adapter_capability_mismatch", record["msg"])
+	require.Equal(t, definition.ModelID, record["canonical_model_id"])
+	require.Equal(t, float64(account.ID), record["account_id"])
+	require.Equal(t, "xai-image", record["adapter_key"])
+	require.Equal(t, string(NativeAsyncRequired), record["native_async_mode"])
+	for _, forbidden := range []string{
+		"do-not-log-secret", "sensitive-upstream.example", "grok-upstream", "request_mapping",
+	} {
+		require.NotContains(t, logs.String(), forbidden)
+	}
+}
+
+func TestMediaSchedulerKeepsLegacyOptionalSemantics(t *testing.T) {
+	for _, tt := range []struct {
+		name       string
+		resolution MediaAdapterResolution
+		want       bool
+	}{
+		{name: "both paths", resolution: readyResolution(true, true), want: true},
+		{name: "sync only", resolution: readyResolution(true, false)},
+		{name: "async only", resolution: readyResolution(false, true)},
+		{name: "not ready", resolution: mediaAdapterResolutionFailure(MediaAdapterResolutionUnresolved, "MEDIA_ADAPTER_UNRESOLVED")},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, tt.resolution.SupportsAccountMode(NativeAsyncOptional))
+		})
+	}
+	require.Equal(t, MediaExecutionPathSync, chooseMediaExecutionPath(false, NativeAsyncOptional))
+	require.Equal(t, MediaExecutionPathNativeAsync, chooseMediaExecutionPath(true, NativeAsyncOptional))
+}
+
+func TestMediaSchedulerSelectCountsFrozenAdapterMethodMismatch(t *testing.T) {
+	account := task12Account(31, PlatformOpenAI, "image", "upstream", "sync", NativeAsyncUnsupported)
+	repo := &mediaSchedulerAccountRepoStub{accounts: []Account{account}}
+	adapters := NewMediaAdapterRegistry()
+	require.NoError(t, adapters.Register("sync", NewFakeMediaAdapter(FakeMediaAdapterOptions{
+		Name: "sync", NativeAsyncMode: NativeAsyncUnsupported,
+	})))
+	metrics := NewAtomicMediaTaskMetrics()
+	scheduler := NewMediaScheduler(
+		repo, &mediaSchedulerSelectorStub{selectedID: account.ID}, adapters,
+		&mediaSchedulerGroupRepoStub{group: &Group{ID: 1, Platform: PlatformOpenAI}},
+		MediaRoutingMetrics(metrics),
+	)
+	snapshot := []MediaAccountCandidateSnapshot{{
+		AccountID: account.ID, Platform: account.Platform,
+		ResolvedModel: ResolvedMediaAccountModel{
+			Adapter: "sync", UpstreamModel: "upstream", NativeAsyncMode: NativeAsyncRequired,
+		},
+	}}
+
+	selection, err := scheduler.Select(context.Background(), MediaScheduleRequest{
+		GroupID: 1, RequestedModel: "image", CandidateSnapshot: snapshot,
+	})
+	require.Nil(t, selection)
+	require.ErrorIs(t, err, ErrNoAvailableAccounts)
+	require.Equal(t, int64(1), metrics.CandidateCapabilityMismatches())
+}
+
+func TestMediaSchedulerDefensivelyChecksCurrentAdapterMethodSet(t *testing.T) {
+	definition := validImageModelDefinition()
+	definition.ModelID = "method-drift-image"
+	definition.Vendor = "drift"
+	definition.Operations = []MediaOperation{MediaOperationTextToImage}
+	registration := testMediaAdapterRegistrationForDefinitions(
+		"drift-adapter", NativeAsyncOptional, definition,
+	)
+	adapters, resolver := newTestMediaAdapterResolver(t, registration)
+	models := NewMediaModelRegistryWithResolver(
+		&mediaModelRepoStub{items: []MediaModelDefinition{definition}}, resolver,
+	)
+	require.NoError(t, models.Refresh(context.Background()))
+	adapters.mu.Lock()
+	adapters.adapters["drift-adapter"] = NewFakeMediaAdapter(FakeMediaAdapterOptions{
+		Name: "drift-adapter", NativeAsyncMode: NativeAsyncUnsupported,
+	})
+	adapters.mu.Unlock()
+	account := Account{
+		ID: 22, Platform: PlatformMedia, Priority: 1, Concurrency: 1,
+		Status: StatusActive, Schedulable: true,
+		Extra: map[string]any{"media_config": map[string]any{
+			"version": 1, "provider": "drift", "models": map[string]any{
+				definition.ModelID: map[string]any{
+					"enabled": true, "upstream_model_id": "private-upstream", "async_mode": "native",
+				},
+			},
+		}},
+	}
+	metrics := NewAtomicMediaTaskMetrics()
+	scheduler := NewMediaScheduler(
+		&mediaSchedulerAccountRepoStub{accounts: []Account{account}},
+		&mediaSchedulerSelectorStub{}, adapters,
+		&mediaSchedulerGroupRepoStub{group: &Group{ID: 9, Platform: PlatformMedia}},
+		models, &mediaSchedulerScopeRepoStub{modelIDs: []string{definition.ModelID}},
+		MediaRoutingMetrics(metrics),
+	)
+
+	_, err := scheduler.SnapshotCandidatesForOperation(
+		context.Background(), 9, definition.ModelID, MediaOperationTextToImage,
+	)
+	require.ErrorIs(t, err, ErrNoAvailableAccounts)
+	require.Equal(t, int64(1), metrics.CandidateCapabilityMismatches())
+}
+
+func TestMediaSchedulerPreservesUnavailableTombstoneError(t *testing.T) {
+	definition := validImageModelDefinition()
+	definition.ID = 41
+	definition.ModelID = "unknown-image"
+	definition.Vendor = "unknown"
+	definition.Operations = []MediaOperation{MediaOperationTextToImage}
+	repo := &mediaModelRepositoryWithAliasesStub{
+		mediaModelRepoStub: mediaModelRepoStub{items: []MediaModelDefinition{definition}},
+		mediaModelAliasRepoStub: mediaModelAliasRepoStub{items: []MediaModelAlias{{
+			RequestedModelID: "unknown-alias", ModelDefinitionID: definition.ID,
+		}}},
+	}
+	_, resolver := newTestMediaAdapterResolver(t)
+	models := NewMediaModelRegistryWithResolver(repo, resolver)
+	require.NoError(t, models.Refresh(context.Background()))
+	scheduler := NewMediaScheduler(
+		&mediaSchedulerAccountRepoStub{},
+		&mediaSchedulerSelectorStub{},
+		NewMediaAdapterRegistry(),
+		&mediaSchedulerGroupRepoStub{group: &Group{ID: 9, Platform: PlatformMedia}},
+		models,
+		&mediaSchedulerScopeRepoStub{modelIDs: []string{definition.ModelID}},
+	)
+	for _, requested := range []string{definition.ModelID, "unknown-alias"} {
+		_, err := scheduler.SnapshotCandidatesForOperation(
+			context.Background(), 9, requested, MediaOperationTextToImage,
+		)
+		require.ErrorIs(t, err, ErrMediaModelAdapterUnavailable)
+	}
+}
+
+func TestMediaSchedulerFrozenDefinitionRequiresReadyRuntimeResolution(t *testing.T) {
+	definition := validImageModelDefinition()
+	definition.Operations = []MediaOperation{MediaOperationTextToImage}
+	definition.AdapterResolution = mediaAdapterResolutionFailure(
+		MediaAdapterResolutionUnresolved, "MEDIA_ADAPTER_UNRESOLVED",
+	)
+	scheduler := NewMediaScheduler(
+		&mediaSchedulerAccountRepoStub{},
+		&mediaSchedulerSelectorStub{},
+		NewMediaAdapterRegistry(),
+		&mediaSchedulerGroupRepoStub{group: &Group{ID: 9, Platform: PlatformMedia}},
+		&mediaSchedulerScopeRepoStub{modelIDs: []string{definition.ModelID}},
+	)
+
+	_, err := scheduler.SnapshotCandidatesForDefinition(
+		context.Background(), 9, definition, MediaOperationTextToImage,
+	)
+	require.ErrorIs(t, err, ErrMediaModelAdapterUnavailable)
+	metadata := infraerrors.FromError(err).Metadata
+	require.Equal(t, definition.ModelID, metadata["model_id"])
+	require.Equal(t, string(MediaAdapterResolutionUnresolved), metadata["resolution_status"])
+	require.Equal(t, "MEDIA_ADAPTER_UNRESOLVED", metadata["reason_code"])
+}
+
 func TestMediaSchedulerSelectsAcrossPlatformsForSameModel(t *testing.T) {
 	repo := &mediaSchedulerAccountRepoStub{accounts: []Account{
 		task12Account(1, PlatformGemini, "veo-3.1", "veo-gemini", "gemini", NativeAsyncOptional),
@@ -240,13 +477,14 @@ func TestMediaSchedulerRoutesVersionOneMediaAccountByRegistryAndGroupScope(t *te
 	definition := MediaModelDefinition{
 		ID: 31, ModelID: "seedance", Vendor: "bytedance", MediaType: MediaTypeImage,
 		Operations: []MediaOperation{MediaOperationTextToImage}, DefaultAdapter: "openai-images",
-		DefaultAsyncMode: NativeAsyncUnsupported, Enabled: true,
+		DefaultAsyncMode: NativeAsyncUnsupported, BillingUnit: "image", Enabled: true,
 	}
 	models := &mediaModelRepoStub{items: []MediaModelDefinition{definition}}
-	registry := NewMediaModelRegistry(models)
+	adapters, resolver := newTestMediaAdapterResolver(t,
+		exactImageRegistration("openai-images", definition.Vendor, definition.ModelID),
+	)
+	registry := NewMediaModelRegistryWithResolver(models, resolver)
 	require.NoError(t, registry.Refresh(context.Background()))
-	adapters := NewMediaAdapterRegistry()
-	require.NoError(t, adapters.Register("openai-images", NewFakeMediaAdapter(FakeMediaAdapterOptions{Name: "openai-images", NativeAsyncMode: NativeAsyncUnsupported})))
 	groupRepo := &mediaSchedulerGroupRepoStub{group: &Group{ID: 9, Platform: PlatformMedia}}
 	scheduler := NewMediaScheduler(
 		&mediaSchedulerAccountRepoStub{accounts: []Account{account}},
@@ -276,15 +514,20 @@ func TestMediaSchedulerUsesProvidedFrozenDefinitionAcrossRegistryRefresh(t *test
 	frozen := MediaModelDefinition{
 		ID: 51, ModelID: "seedance", Vendor: "bytedance", MediaType: MediaTypeImage,
 		Operations: []MediaOperation{MediaOperationTextToImage}, DefaultAdapter: "adapter-v1",
-		DefaultAsyncMode: NativeAsyncUnsupported, Enabled: true,
+		DefaultAsyncMode: NativeAsyncUnsupported, BillingUnit: "image", Enabled: true,
 	}
+	frozen.AdapterResolution = readyResolution(true, false)
+	frozen.AdapterResolution.ResolvedAdapter = "adapter-v1"
 	refreshed := cloneMediaModelDefinition(frozen)
 	refreshed.DefaultAdapter = "adapter-v2"
-	registry := NewMediaModelRegistry(&mediaModelRepoStub{items: []MediaModelDefinition{refreshed}})
+	adapters, resolver := newTestMediaAdapterResolver(t,
+		exactImageRegistration("adapter-v2", refreshed.Vendor, refreshed.ModelID),
+	)
+	registry := NewMediaModelRegistryWithResolver(
+		&mediaModelRepoStub{items: []MediaModelDefinition{refreshed}}, resolver,
+	)
 	require.NoError(t, registry.Refresh(context.Background()))
-	adapters := NewMediaAdapterRegistry()
 	require.NoError(t, adapters.Register("adapter-v1", NewFakeMediaAdapter(FakeMediaAdapterOptions{Name: "adapter-v1", NativeAsyncMode: NativeAsyncUnsupported})))
-	require.NoError(t, adapters.Register("adapter-v2", NewFakeMediaAdapter(FakeMediaAdapterOptions{Name: "adapter-v2", NativeAsyncMode: NativeAsyncUnsupported})))
 	scheduler := NewMediaScheduler(
 		&mediaSchedulerAccountRepoStub{accounts: []Account{account}},
 		&mediaSchedulerSelectorStub{selectedID: account.ID}, adapters,
@@ -308,11 +551,12 @@ func TestMediaSchedulerUsesProvidedFrozenDefinitionAcrossRegistryRefresh(t *test
 
 func TestMediaSchedulerRejectsMediaModelOutsideGroupScope(t *testing.T) {
 	definition := MediaModelDefinition{ID: 32, ModelID: "image", Vendor: "openai", MediaType: MediaTypeImage,
-		Operations: []MediaOperation{MediaOperationTextToImage}, DefaultAdapter: "sync", DefaultAsyncMode: NativeAsyncUnsupported, Enabled: true}
-	registry := NewMediaModelRegistry(&mediaModelRepoStub{items: []MediaModelDefinition{definition}})
+		Operations: []MediaOperation{MediaOperationTextToImage}, BillingUnit: "image", DefaultAdapter: "sync", DefaultAsyncMode: NativeAsyncUnsupported, Enabled: true}
+	adapters, resolver := newTestMediaAdapterResolver(t,
+		exactImageRegistration("sync", definition.Vendor, definition.ModelID),
+	)
+	registry := NewMediaModelRegistryWithResolver(&mediaModelRepoStub{items: []MediaModelDefinition{definition}}, resolver)
 	require.NoError(t, registry.Refresh(context.Background()))
-	adapters := NewMediaAdapterRegistry()
-	require.NoError(t, adapters.Register("sync", NewFakeMediaAdapter(FakeMediaAdapterOptions{Name: "sync", NativeAsyncMode: NativeAsyncUnsupported})))
 	scheduler := NewMediaScheduler(&mediaSchedulerAccountRepoStub{}, &mediaSchedulerSelectorStub{}, adapters,
 		&mediaSchedulerGroupRepoStub{group: &Group{ID: 10, Platform: PlatformMedia}}, registry,
 		&mediaSchedulerScopeRepoStub{modelIDs: []string{"other"}})
