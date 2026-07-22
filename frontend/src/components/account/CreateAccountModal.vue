@@ -2662,6 +2662,7 @@
         :show-mobile-refresh-token-option="form.platform === 'openai'"
         :show-session-token-option="false"
         :show-access-token-option="false"
+        :show-agent-identity-option="form.platform === 'openai'"
         :platform="form.platform"
         :show-project-id="geminiOAuthType === 'code_assist'"
         @generate-url="handleGenerateUrl"
@@ -2669,6 +2670,7 @@
         @validate-refresh-token="handleValidateRefreshToken"
         @validate-mobile-refresh-token="handleOpenAIValidateMobileRT"
         @validate-session-token="handleValidateSessionToken"
+        @import-agent-identity="handleImportAgentIdentity"
       />
 
     </div>
@@ -4438,6 +4440,64 @@ const handleOpenAIExchange = async (authCode: string) => {
     handleClose()
   } catch (error: any) {
     oauthClient.error.value = error.response?.data?.detail || t('admin.accounts.oauth.authFailed')
+    appStore.showError(oauthClient.error.value)
+  } finally {
+    oauthClient.loading.value = false
+  }
+}
+
+const handleImportAgentIdentity = async (content: string) => {
+  const oauthClient = openaiOAuth
+  const trimmed = content.trim()
+  if (!trimmed) {
+    oauthClient.error.value = t('admin.accounts.oauth.openai.agentIdentityEmpty')
+    return
+  }
+
+  oauthClient.loading.value = true
+  oauthClient.error.value = ''
+  try {
+    const result = await adminAPI.accounts.importAgentIdentity({
+      content: trimmed,
+      name: form.name || undefined,
+      notes: form.notes || undefined,
+      group_ids: form.group_ids,
+      proxy_id: form.proxy_id,
+      concurrency: form.concurrency,
+      priority: form.priority,
+      rate_multiplier: form.rate_multiplier,
+      load_factor: form.load_factor ?? undefined,
+      extra: buildOpenAIExtra(),
+      update_existing: true
+    })
+
+    if (result.failed > 0) {
+      const details = result.items
+        .filter((item) => item.action === 'failed' && item.message)
+        .map((item) => `#${item.index}: ${item.message}`)
+        .join('\n')
+      oauthClient.error.value = details
+      if (result.created + result.updated === 0) {
+        appStore.showError(t('admin.accounts.oauth.openai.agentIdentityImportFailed'))
+        return
+      }
+      appStore.showWarning(t('admin.accounts.oauth.openai.agentIdentityImportPartial', {
+        created: result.created,
+        updated: result.updated,
+        failed: result.failed
+      }))
+      emit('created')
+      return
+    }
+
+    appStore.showSuccess(t('admin.accounts.oauth.openai.agentIdentityImportSuccess', {
+      created: result.created,
+      updated: result.updated
+    }))
+    emit('created')
+    handleClose()
+  } catch (error: any) {
+    oauthClient.error.value = error.response?.data?.message || error.response?.data?.detail || t('admin.accounts.oauth.openai.agentIdentityImportFailed')
     appStore.showError(oauthClient.error.value)
   } finally {
     oauthClient.loading.value = false

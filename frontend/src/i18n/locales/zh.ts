@@ -3838,7 +3838,18 @@ export default {
           validating: '验证中...',
           validateAndCreate: '验证并创建账号',
           pleaseEnterRefreshToken: '请输入 Refresh Token',
-          pleaseEnterSessionToken: '请输入 Session Token'
+          pleaseEnterSessionToken: '请输入 Session Token',
+          agentIdentityAuth: 'Agent Identity auth.json',
+          agentIdentityDesc: '导入 Codex Agent Identity auth.json，不保存 OAuth access token、refresh token 或 ID token。',
+          agentIdentityInputLabel: 'Agent Identity auth.json',
+          agentIdentityPlaceholder: '粘贴一个 auth.json 对象，也支持按行粘贴多个 JSON 对象',
+          agentIdentityHint: '文件必须使用 auth_mode=agentIdentity，并包含 runtime、私钥、Team account ID 和 user ID。',
+          agentIdentityImport: '导入 Agent Identity',
+          agentIdentityImporting: '导入中...',
+          agentIdentityEmpty: '请输入 Agent Identity auth.json',
+          agentIdentityImportFailed: 'Agent Identity 导入失败',
+          agentIdentityImportPartial: '部分导入：新增 {created}，更新 {updated}，失败 {failed}',
+          agentIdentityImportSuccess: 'Agent Identity 导入完成：新增 {created}，更新 {updated}'
         },
         // Gemini specific
         gemini: {
