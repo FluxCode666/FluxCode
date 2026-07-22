@@ -52,6 +52,14 @@ type ConcurrencyCache interface {
 	CleanupStaleProcessSlots(ctx context.Context, activeRequestPrefix string) error
 }
 
+// APIKeyConcurrencyCache 是可选能力。将其从 ConcurrencyCache 主接口拆出，
+// 使现有的并发缓存测试替身及非 Redis 实现无需承担 API Key 统计职责。
+type APIKeyConcurrencyCache interface {
+	TrackAPIKeySlot(ctx context.Context, apiKeyID int64, requestID string) error
+	ReleaseAPIKeySlot(ctx context.Context, apiKeyID int64, requestID string) error
+	GetAPIKeyConcurrencyBatch(ctx context.Context, apiKeyIDs []int64) (map[int64]int, error)
+}
+
 var (
 	requestIDPrefix  = initRequestIDPrefix()
 	requestIDCounter atomic.Uint64
@@ -84,7 +92,9 @@ func (s *ConcurrencyService) CleanupStaleProcessSlots(ctx context.Context) error
 
 const (
 	// Default extra wait slots beyond concurrency limit
-	defaultExtraWaitSlots = 20
+	defaultExtraWaitSlots         = 20
+	apiKeyConcurrencyFetchTimeout = 3 * time.Second
+	apiKeySlotTrackTimeout        = 2 * time.Second
 )
 
 // ConcurrencyService manages concurrent request limiting for accounts and users
@@ -203,6 +213,73 @@ func (s *ConcurrencyService) AcquireUserSlot(ctx context.Context, userID int64, 
 		Acquired:    false,
 		ReleaseFunc: nil,
 	}, nil
+}
+
+// TrackAPIKeySlot records one active request for an API Key. It is deliberately
+// fail-open: a Redis issue must never reject a valid gateway request solely
+// because the optional list statistic cannot be updated.
+func (s *ConcurrencyService) TrackAPIKeySlot(ctx context.Context, apiKeyID int64) func() {
+	if s == nil || s.cache == nil || apiKeyID <= 0 {
+		return func() {}
+	}
+	cache, ok := s.cache.(APIKeyConcurrencyCache)
+	if !ok {
+		return func() {}
+	}
+
+	requestID := generateRequestID()
+	baseCtx := context.Background()
+	if ctx != nil {
+		baseCtx = context.WithoutCancel(ctx)
+	}
+	trackCtx, cancel := context.WithTimeout(baseCtx, apiKeySlotTrackTimeout)
+	err := cache.TrackAPIKeySlot(trackCtx, apiKeyID, requestID)
+	cancel()
+	if err != nil {
+		logger.LegacyPrintf("service.concurrency", "Warning: failed to track api key slot for %d (req=%s): %v", apiKeyID, requestID, err)
+		return func() {}
+	}
+
+	return func() {
+		releaseCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := cache.ReleaseAPIKeySlot(releaseCtx, apiKeyID, requestID); err != nil {
+			logger.LegacyPrintf("service.concurrency", "Warning: failed to release api key slot for %d (req=%s): %v", apiKeyID, requestID, err)
+		}
+	}
+}
+
+// GetAPIKeyConcurrencyBatch gets the current active-request count for each API
+// Key. The result is best-effort; missing or unavailable Redis returns zeroes.
+func (s *ConcurrencyService) GetAPIKeyConcurrencyBatch(ctx context.Context, apiKeyIDs []int64) (map[int64]int, error) {
+	result := zeroAPIKeyConcurrencyMap(apiKeyIDs)
+	if len(apiKeyIDs) == 0 || s == nil || s.cache == nil {
+		return result, nil
+	}
+	cache, ok := s.cache.(APIKeyConcurrencyCache)
+	if !ok {
+		return result, nil
+	}
+
+	redisCtx, cancel := context.WithTimeout(context.Background(), apiKeyConcurrencyFetchTimeout)
+	defer cancel()
+	counts, err := cache.GetAPIKeyConcurrencyBatch(redisCtx, apiKeyIDs)
+	if err != nil {
+		logger.LegacyPrintf("service.concurrency", "Warning: get api key concurrency batch failed: %v", err)
+		return result, nil
+	}
+	for _, apiKeyID := range apiKeyIDs {
+		result[apiKeyID] = counts[apiKeyID]
+	}
+	return result, nil
+}
+
+func zeroAPIKeyConcurrencyMap(apiKeyIDs []int64) map[int64]int {
+	result := make(map[int64]int, len(apiKeyIDs))
+	for _, apiKeyID := range apiKeyIDs {
+		result[apiKeyID] = 0
+	}
+	return result
 }
 
 // ============================================

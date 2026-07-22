@@ -61,6 +61,24 @@ func (s *ConcurrencyCacheSuite) TestAccountSlot_AcquireAndRelease() {
 	require.Equal(s.T(), 1, cur, "expected 1 after release")
 }
 
+func (s *ConcurrencyCacheSuite) TestAPIKeySlot_TrackAndRelease() {
+	cache, ok := s.cache.(service.APIKeyConcurrencyCache)
+	require.True(s.T(), ok, "Redis 并发缓存应支持 API Key 实时并发统计")
+
+	apiKeyID := int64(808)
+	require.NoError(s.T(), cache.TrackAPIKeySlot(s.ctx, apiKeyID, "api-key-req-1"))
+	require.NoError(s.T(), cache.TrackAPIKeySlot(s.ctx, apiKeyID, "api-key-req-2"))
+
+	counts, err := cache.GetAPIKeyConcurrencyBatch(s.ctx, []int64{apiKeyID})
+	require.NoError(s.T(), err)
+	require.Equal(s.T(), 2, counts[apiKeyID])
+
+	require.NoError(s.T(), cache.ReleaseAPIKeySlot(s.ctx, apiKeyID, "api-key-req-1"))
+	counts, err = cache.GetAPIKeyConcurrencyBatch(s.ctx, []int64{apiKeyID})
+	require.NoError(s.T(), err)
+	require.Equal(s.T(), 1, counts[apiKeyID])
+}
+
 func (s *ConcurrencyCacheSuite) TestAccountSlot_TTL() {
 	accountID := int64(11)
 	reqID := "req_ttl_test"

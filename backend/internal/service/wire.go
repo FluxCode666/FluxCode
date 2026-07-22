@@ -427,6 +427,23 @@ func ProvideConcurrencyService(cache ConcurrencyCache, accountRepo AccountReposi
 	return svc
 }
 
+// ProvideAPIKeyService wires API Key list queries to the shared concurrency
+// service while preserving NewAPIKeyService as the lightweight unit-test constructor.
+func ProvideAPIKeyService(
+	apiKeyRepo APIKeyRepository,
+	userRepo UserRepository,
+	groupRepo GroupRepository,
+	userSubRepo UserSubscriptionRepository,
+	userGroupRateRepo UserGroupRateRepository,
+	cache APIKeyCache,
+	cfg *config.Config,
+	concurrencyService *ConcurrencyService,
+) *APIKeyService {
+	svc := NewAPIKeyService(apiKeyRepo, userRepo, groupRepo, userSubRepo, userGroupRateRepo, cache, cfg)
+	svc.SetConcurrencyService(concurrencyService)
+	return svc
+}
+
 // ProvideUserMessageQueueService 创建用户消息串行队列服务并启动清理 worker
 func ProvideUserMessageQueueService(cache UserMsgQueueCache, rpmCache RPMCache, cfg *config.Config) *UserMessageQueueService {
 	svc := NewUserMessageQueueService(cache, rpmCache, &cfg.Gateway.UserMessageQueue)
@@ -667,7 +684,7 @@ var ProviderSet = wire.NewSet(
 	ProvideAuthService,
 	NewUserService,
 	NewUserUIPreferencesService,
-	NewAPIKeyService,
+	ProvideAPIKeyService,
 	ProvideAPIKeyAuthCacheInvalidator,
 	NewGroupService,
 	NewAccountService,

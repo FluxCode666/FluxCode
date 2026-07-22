@@ -46,6 +46,7 @@ type APIKey struct {
 	Group               *Group
 	SystemPrompt        string
 	SystemPromptMode    string
+	CurrentConcurrency  int
 
 	// Quota fields
 	Quota     float64    // Quota limit in USD (0 = unlimited)
