@@ -84,6 +84,10 @@ func (n *openAIWSPassthroughRequestNormalizer) Normalize(msgType coderws.Message
 	if err != nil {
 		return nil, err
 	}
+	payload, _, err = normalizeOpenAIAgentIdentityInputNamespaces(n.account, payload)
+	if err != nil {
+		return nil, err
+	}
 	n.lastOriginalModel = originalModel
 	n.pending = append(n.pending, passthroughTurnMetadata{OriginalModel: originalModel, ServiceTier: tier})
 	return payload, nil

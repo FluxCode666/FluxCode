@@ -2574,6 +2574,10 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		bodyModified = true
 		disablePatch()
 	}
+	if account.IsOpenAIAgentIdentity() && stripOpenAIAgentIdentityInputNamespaces(reqBody) {
+		bodyModified = true
+		disablePatch()
+	}
 
 	// Re-serialize body only if modified
 	if bodyModified {

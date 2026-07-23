@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"crypto"
 	"crypto/ed25519"
@@ -68,6 +69,56 @@ func (a *Account) IsOpenAIAgentIdentity() bool {
 		return false
 	}
 	return strings.EqualFold(strings.TrimSpace(a.GetCredential(openAIAuthModeCredentialKey)), OpenAIAuthModeAgentIdentity)
+}
+
+// normalizeOpenAIAgentIdentityInputNamespaces removes namespace metadata from
+// historical tool-call input items. Agent Identity currently rejects these
+// fields on both HTTP and WebSocket Responses endpoints, while namespace tool
+// declarations outside input must remain untouched for client-side routing.
+func normalizeOpenAIAgentIdentityInputNamespaces(account *Account, body []byte) ([]byte, bool, error) {
+	if account == nil || !account.IsOpenAIAgentIdentity() || len(body) == 0 || !bytes.Contains(body, []byte(`"namespace"`)) {
+		return body, false, nil
+	}
+
+	var reqBody map[string]any
+	if err := json.Unmarshal(body, &reqBody); err != nil {
+		return nil, false, fmt.Errorf("decode Agent Identity Responses request: %w", err)
+	}
+	if !stripOpenAIAgentIdentityInputNamespaces(reqBody) {
+		return body, false, nil
+	}
+	normalized, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, false, fmt.Errorf("encode Agent Identity Responses request: %w", err)
+	}
+	return normalized, true, nil
+}
+
+func stripOpenAIAgentIdentityInputNamespaces(reqBody map[string]any) bool {
+	input, ok := reqBody["input"].([]any)
+	if !ok {
+		return false
+	}
+
+	changed := false
+	for _, rawItem := range input {
+		item, ok := rawItem.(map[string]any)
+		if !ok {
+			continue
+		}
+		itemType, _ := item["type"].(string)
+		switch strings.ToLower(strings.TrimSpace(itemType)) {
+		case "function_call", "tool_call", "custom_tool_call", "mcp_tool_call":
+		default:
+			continue
+		}
+		if _, exists := item["namespace"]; !exists {
+			continue
+		}
+		delete(item, "namespace")
+		changed = true
+	}
+	return changed
 }
 
 func agentIdentityPrivateKey(account *Account) (ed25519.PrivateKey, error) {
