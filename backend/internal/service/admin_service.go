@@ -1917,7 +1917,16 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 		account.Notes = normalizeAccountNotes(input.Notes)
 	}
 	if len(input.Credentials) > 0 {
-		account.Credentials = input.Credentials
+		credentials := input.Credentials
+		if account.IsOpenAIAgentIdentity() {
+			if _, provided := credentials["agent_private_key"]; !provided {
+				credentials = cloneCredentials(credentials)
+				if privateKey, exists := account.Credentials["agent_private_key"]; exists {
+					credentials["agent_private_key"] = privateKey
+				}
+			}
+		}
+		account.Credentials = credentials
 	}
 	// Extra 使用 map：需要区分“未提供(nil)”与“显式清空({})”。
 	// 关闭配额限制时前端会删除 quota_* 键并提交 extra:{}，此时也必须落库。

@@ -3,16 +3,18 @@ import { defineComponent } from 'vue'
 import { mount } from '@vue/test-utils'
 import CreateAccountModal from '../CreateAccountModal.vue'
 
-const { createAccountMock, checkMixedChannelRiskMock } = vi.hoisted(() => ({
+const { createAccountMock, checkMixedChannelRiskMock, importAgentIdentityMock } = vi.hoisted(() => ({
   createAccountMock: vi.fn(),
-  checkMixedChannelRiskMock: vi.fn()
+  checkMixedChannelRiskMock: vi.fn(),
+  importAgentIdentityMock: vi.fn()
 }))
 
 vi.mock('@/stores/app', () => ({
   useAppStore: () => ({
     showError: vi.fn(),
     showSuccess: vi.fn(),
-    showInfo: vi.fn()
+    showInfo: vi.fn(),
+    showWarning: vi.fn()
   })
 }))
 
@@ -26,7 +28,8 @@ vi.mock('@/api/admin', () => ({
   adminAPI: {
     accounts: {
       create: createAccountMock,
-      checkMixedChannelRisk: checkMixedChannelRiskMock
+      checkMixedChannelRisk: checkMixedChannelRiskMock,
+      importAgentIdentity: importAgentIdentityMock
     },
     settings: {
       getWebSearchEmulationConfig: vi.fn().mockResolvedValue({ enabled: false, providers: [] }),
@@ -64,7 +67,7 @@ const BaseDialogStub = defineComponent({
 })
 
 const SelectStub = defineComponent({
-  name: 'Select',
+  name: 'SelectStub',
   inheritAttrs: false,
   props: {
     modelValue: {
@@ -107,6 +110,24 @@ const ModelWhitelistSelectorStub = defineComponent({
   template: '<div />'
 })
 
+const OAuthAuthorizationFlowStub = defineComponent({
+  name: 'OAuthAuthorizationFlow',
+  props: {
+    showAgentIdentityOption: Boolean
+  },
+  emits: ['import-agent-identity'],
+  template: `
+    <button
+      v-if="showAgentIdentityOption"
+      type="button"
+      data-testid="emit-agent-identity-import"
+      @click="$emit('import-agent-identity', '  {&quot;auth_mode&quot;:&quot;agentIdentity&quot;}  ')"
+    >
+      import
+    </button>
+  `
+})
+
 function mountModal() {
   return mount(CreateAccountModal, {
     props: {
@@ -123,7 +144,7 @@ function mountModal() {
         GroupSelector: true,
         ModelWhitelistSelector: ModelWhitelistSelectorStub,
         QuotaLimitCard: true,
-        OAuthAuthorizationFlow: true,
+        OAuthAuthorizationFlow: OAuthAuthorizationFlowStub,
         ConfirmDialog: true
       }
     }
@@ -170,5 +191,32 @@ describe('CreateAccountModal', () => {
 
     expect(createAccountMock).toHaveBeenCalledTimes(1)
     expect(createAccountMock.mock.calls[0]?.[0]?.extra?.codex_image_generation_bridge).toBe(true)
+  })
+
+  it('imports Agent Identity auth.json through the dedicated endpoint', async () => {
+    importAgentIdentityMock.mockReset().mockResolvedValue({
+      total: 1,
+      created: 1,
+      updated: 0,
+      failed: 0,
+      items: [{ index: 1, action: 'created', account_id: 42 }]
+    })
+
+    const wrapper = mountModal()
+    await wrapper.findAll('button').find((button) => button.text().includes('OpenAI'))?.trigger('click')
+    const textInputs = wrapper.findAll<HTMLInputElement>('form#create-account-form input[type="text"]')
+    await textInputs[0].setValue('Agent account')
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+
+    const flow = wrapper.getComponent(OAuthAuthorizationFlowStub)
+    expect(flow.props('showAgentIdentityOption')).toBe(true)
+    await wrapper.get('[data-testid="emit-agent-identity-import"]').trigger('click')
+
+    expect(importAgentIdentityMock).toHaveBeenCalledTimes(1)
+    expect(importAgentIdentityMock.mock.calls[0]?.[0]).toMatchObject({
+      content: '{"auth_mode":"agentIdentity"}',
+      name: 'Agent account',
+      update_existing: true
+    })
   })
 })

@@ -3701,7 +3701,18 @@ export default {
           validating: 'Validating...',
           validateAndCreate: 'Validate & Create Account',
           pleaseEnterRefreshToken: 'Please enter Refresh Token',
-          pleaseEnterSessionToken: 'Please enter Session Token'
+          pleaseEnterSessionToken: 'Please enter Session Token',
+          agentIdentityAuth: 'Agent Identity auth.json',
+          agentIdentityDesc: 'Import a Codex Agent Identity auth.json. OAuth access, refresh, and ID tokens are never stored.',
+          agentIdentityInputLabel: 'Agent Identity auth.json',
+          agentIdentityPlaceholder: 'Paste one auth.json object, or multiple JSON objects separated by lines',
+          agentIdentityHint: 'The file must use auth_mode=agentIdentity and include the runtime, private key, Team account ID, and user ID.',
+          agentIdentityImport: 'Import Agent Identity',
+          agentIdentityImporting: 'Importing...',
+          agentIdentityEmpty: 'Please enter an Agent Identity auth.json',
+          agentIdentityImportFailed: 'Agent Identity import failed',
+          agentIdentityImportPartial: 'Partial import: created {created}, updated {updated}, failed {failed}',
+          agentIdentityImportSuccess: 'Agent Identity import completed: created {created}, updated {updated}'
         },
         // Gemini specific
 	        gemini: {

@@ -229,7 +229,7 @@ func AccountFromServiceShallow(a *service.Account) *Account {
 		Notes:                   a.Notes,
 		Platform:                a.Platform,
 		Type:                    a.Type,
-		Credentials:             a.Credentials,
+		Credentials:             redactAgentIdentityPrivateKey(a.Credentials),
 		Extra:                   a.Extra,
 		ProxyID:                 a.ProxyID,
 		Concurrency:             a.Concurrency,
@@ -381,6 +381,22 @@ func AccountFromServiceShallow(a *service.Account) *Account {
 		}
 	}
 
+	return out
+}
+
+func redactAgentIdentityPrivateKey(credentials map[string]any) map[string]any {
+	if credentials == nil {
+		return nil
+	}
+	if _, exists := credentials["agent_private_key"]; !exists {
+		return credentials
+	}
+	out := make(map[string]any, len(credentials)-1)
+	for key, value := range credentials {
+		if key != "agent_private_key" {
+			out[key] = value
+		}
+	}
 	return out
 }
 

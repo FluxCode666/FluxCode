@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"log/slog"
 	"math/rand/v2"
@@ -266,6 +267,7 @@ type AccountUsageService struct {
 	cache                   *UsageCache
 	identityCache           IdentityCache
 	tlsFPProfileService     *TLSFingerprintProfileService
+	agentIdentityTaskMu     sync.Mutex
 }
 
 // NewAccountUsageService 创建 AccountUsageService 实例
@@ -594,8 +596,11 @@ func (s *AccountUsageService) probeOpenAICodexSnapshot(ctx context.Context, acco
 	if account == nil || !account.IsOAuth() {
 		return nil, nil
 	}
-	accessToken := account.GetOpenAIAccessToken()
-	if accessToken == "" {
+	accessToken := ""
+	if !account.IsOpenAIAgentIdentity() {
+		accessToken = account.GetOpenAIAccessToken()
+	}
+	if accessToken == "" && !account.IsOpenAIAgentIdentity() {
 		return nil, fmt.Errorf("no access token available")
 	}
 	modelID := openaipkg.DefaultTestModel
@@ -607,23 +612,6 @@ func (s *AccountUsageService) probeOpenAICodexSnapshot(ctx context.Context, acco
 
 	reqCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
-	req, err := http.NewRequestWithContext(reqCtx, http.MethodPost, chatgptCodexURL, bytes.NewReader(payloadBytes))
-	if err != nil {
-		return nil, fmt.Errorf("create openai probe request: %w", err)
-	}
-	req.Host = "chatgpt.com"
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+accessToken)
-	req.Header.Set("Accept", "text/event-stream")
-	req.Header.Set("OpenAI-Beta", "responses=experimental")
-	req.Header.Set("Originator", "codex_cli_rs")
-	req.Header.Set("Version", openAICodexProbeVersion)
-	// 发往 OpenAI 上游统一强制覆写 UA，不信任账号自定义 user_agent。
-	req.Header.Set("User-Agent", resolveCodexCLIUserAgent())
-	if chatgptAccountID := account.GetChatGPTAccountID(); chatgptAccountID != "" {
-		req.Header.Set("chatgpt-account-id", chatgptAccountID)
-	}
-
 	proxyURL := account.EffectiveProxyURL()
 	client, err := httppool.GetClient(httppool.Options{
 		ProxyURL:              proxyURL,
@@ -633,21 +621,63 @@ func (s *AccountUsageService) probeOpenAICodexSnapshot(ctx context.Context, acco
 	if err != nil {
 		return nil, fmt.Errorf("build openai probe client: %w", err)
 	}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("openai codex probe request failed: %w", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
+	for recovered := false; ; {
+		req, requestErr := http.NewRequestWithContext(reqCtx, http.MethodPost, chatgptCodexURL, bytes.NewReader(payloadBytes))
+		if requestErr != nil {
+			return nil, fmt.Errorf("create openai probe request: %w", requestErr)
+		}
+		req.Host = "chatgpt.com"
+		req.Header.Set("Content-Type", "application/json")
+		if account.IsOpenAIAgentIdentity() {
+			authHeaders, authErr := buildAgentIdentityAuthenticationHeaders(reqCtx, s.accountRepo, nil, &s.agentIdentityTaskMu, account)
+			if authErr != nil {
+				return nil, fmt.Errorf("build agent identity authentication: %w", authErr)
+			}
+			for key, values := range authHeaders {
+				for _, value := range values {
+					req.Header.Add(key, value)
+				}
+			}
+		} else {
+			req.Header.Set("Authorization", "Bearer "+accessToken)
+		}
+		req.Header.Set("Accept", "text/event-stream")
+		req.Header.Set("OpenAI-Beta", "responses=experimental")
+		req.Header.Set("Originator", "codex_cli_rs")
+		req.Header.Set("Version", openAICodexProbeVersion)
+		// 发往 OpenAI 上游统一强制覆写 UA，不信任账号自定义 user_agent。
+		req.Header.Set("User-Agent", resolveCodexCLIUserAgent())
+		setOpenAIChatGPTAccountHeaders(req.Header, account)
 
-	updates, err := extractOpenAICodexProbeUpdates(resp)
-	if err != nil {
-		return nil, err
+		resp, requestErr := client.Do(req)
+		if requestErr != nil {
+			return nil, fmt.Errorf("openai codex probe request failed: %w", requestErr)
+		}
+		if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+			body, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+			_ = resp.Body.Close()
+			body = redactAgentIdentitySensitiveBodyForAccount(reqCtx, s.accountRepo, account, body)
+			if account.IsOpenAIAgentIdentity() && !recovered && isAgentIdentityTaskInvalidHTTPResponse(resp.StatusCode, body) {
+				recovered = true
+				if recoveryErr := ensureAgentIdentityTaskForAccount(reqCtx, s.accountRepo, nil, &s.agentIdentityTaskMu, account, account.GetCredential("task_id")); recoveryErr != nil {
+					return nil, fmt.Errorf("agent identity task recovery failed: %w", recoveryErr)
+				}
+				continue
+			}
+			return nil, fmt.Errorf("openai codex probe returned status %d", resp.StatusCode)
+		}
+
+		updates, extractErr := extractOpenAICodexProbeUpdates(resp)
+		_ = resp.Body.Close()
+		if extractErr != nil {
+			return nil, extractErr
+		}
+		if len(updates) > 0 {
+			s.persistOpenAICodexProbeSnapshot(account.ID, updates)
+			return updates, nil
+		}
+		return nil, nil
 	}
-	if len(updates) > 0 {
-		s.persistOpenAICodexProbeSnapshot(account.ID, updates)
-		return updates, nil
-	}
-	return nil, nil
 }
 
 func (s *AccountUsageService) persistOpenAICodexProbeSnapshot(accountID int64, updates map[string]any) {

@@ -145,6 +145,40 @@ export async function create(accountData: CreateAccountRequest): Promise<Account
   return data
 }
 
+export interface AgentIdentityImportRequest {
+  content: string
+  name?: string
+  notes?: string
+  group_ids?: number[]
+  proxy_id?: number | null
+  concurrency?: number
+  priority?: number
+  rate_multiplier?: number
+  load_factor?: number
+  extra?: Record<string, unknown>
+  update_existing?: boolean
+  confirm_mixed_channel_risk?: boolean
+}
+
+export interface AgentIdentityImportResult {
+  total: number
+  created: number
+  updated: number
+  failed: number
+  items: Array<{
+    index: number
+    name?: string
+    action: 'created' | 'updated' | 'failed'
+    account_id?: number
+    message?: string
+  }>
+}
+
+export async function importAgentIdentity(payload: AgentIdentityImportRequest): Promise<AgentIdentityImportResult> {
+  const { data } = await apiClient.post<AgentIdentityImportResult>('/admin/accounts/import-agent-identity', payload)
+  return data
+}
+
 /**
  * Update account
  * @param id - Account ID
@@ -724,6 +758,7 @@ export const accountsAPI = {
   getById,
   getSummary,
   create,
+  importAgentIdentity,
   update,
   checkMixedChannelRisk,
   delete: deleteAccount,

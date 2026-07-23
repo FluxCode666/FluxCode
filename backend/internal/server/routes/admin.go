@@ -306,6 +306,7 @@ func registerAccountRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		accounts.GET("/summary", h.Admin.Account.GetSummary)
 		accounts.GET("/:id", h.Admin.Account.GetByID)
 		accounts.POST("", h.Admin.Account.Create)
+		accounts.POST("/import-agent-identity", h.Admin.Account.ImportAgentIdentity)
 		accounts.POST("/check-mixed-channel", h.Admin.Account.CheckMixedChannel)
 		accounts.POST("/sync/crs", h.Admin.Account.SyncFromCRS)
 		accounts.POST("/sync/crs/preview", h.Admin.Account.PreviewFromCRS)
@@ -613,7 +614,6 @@ func registerErrorPassthroughRoutes(admin *gin.RouterGroup, h *handler.Handlers)
 		rules.DELETE("/:id", h.Admin.ErrorPassthrough.Delete)
 	}
 }
-
 
 func registerPoolMonitorRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	if h == nil || h.Admin == nil || h.Admin.PoolMonitor == nil {
