@@ -1,9 +1,28 @@
 <template>
-  <div class="card overflow-visible p-4">
-    <h3 class="mb-4 text-sm font-semibold text-gray-900 dark:text-white">
-      {{ title }}
-    </h3>
-    <div ref="chartContainerRef" class="h-[24rem] sm:h-[26rem]" :style="chartContainerStyle">
+  <section class="card overflow-visible" data-test="proxy-usage-summary-card">
+    <button
+      type="button"
+      class="flex w-full items-center justify-between gap-3 p-4 text-left transition-colors hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary-500 dark:hover:bg-dark-800"
+      :aria-expanded="expanded"
+      aria-controls="proxy-usage-summary-content"
+      data-test="proxy-usage-summary-toggle"
+      @click="toggleExpanded"
+    >
+      <h3 class="text-sm font-semibold text-gray-900 dark:text-white">{{ title }}</h3>
+      <Icon
+        :name="expanded ? 'chevronDown' : 'chevronRight'"
+        size="sm"
+        class="shrink-0 text-gray-400 transition-transform duration-200"
+      />
+    </button>
+
+    <div
+      v-if="expanded"
+      id="proxy-usage-summary-content"
+      class="border-t border-gray-100 p-4 dark:border-dark-700"
+      data-test="proxy-usage-summary-content"
+    >
+      <div ref="chartContainerRef" class="h-[24rem] sm:h-[26rem]" :style="chartContainerStyle">
       <div v-if="loading" class="flex h-full items-center justify-center">
         <LoadingSpinner />
       </div>
@@ -98,8 +117,9 @@
       >
         {{ t('admin.dashboard.noDataAvailable') }}
       </div>
+      </div>
     </div>
-  </div>
+  </section>
 </template>
 
 <script setup lang="ts">
@@ -118,6 +138,7 @@ import {
 import type { ChartOptions, TooltipItem } from 'chart.js'
 import { Line } from 'vue-chartjs'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
+import Icon from '@/components/icons/Icon.vue'
 import type { ProxyUsageSummaryItem, ProxyUsageTimelinePoint } from '@/types'
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend)
@@ -164,6 +185,10 @@ const props = withDefaults(
   }
 )
 
+const emit = defineEmits<{
+  (e: 'expand'): void
+}>()
+
 const proxyPalette = [
   '#3b82f6',
   '#10b981',
@@ -197,6 +222,7 @@ const metricLegendItems = computed<MetricLegendItem[]>(() => [
 
 const hiddenMetricKeys = ref<Set<MetricKey>>(new Set())
 const hiddenProxyIDs = ref<Set<number>>(new Set())
+const expanded = ref(false)
 const chartContainerRef = ref<HTMLElement | null>(null)
 const legendAreaRef = ref<HTMLElement | null>(null)
 const chartAreaRef = ref<HTMLElement | null>(null)
@@ -218,6 +244,11 @@ const DESKTOP_BASE_HEIGHT = 416
 const MOBILE_MIN_CHART_HEIGHT = 220
 const DESKTOP_MIN_CHART_HEIGHT = 250
 const LEGEND_CHART_GAP = 12
+
+const toggleExpanded = (): void => {
+  expanded.value = !expanded.value
+  if (expanded.value) emit('expand')
+}
 
 watch(
   () => props.items,
@@ -280,6 +311,13 @@ const setupHeightObserver = (): void => {
   }
   if (legendAreaRef.value) {
     heightObserver.observe(legendAreaRef.value)
+  }
+}
+
+const teardownHeightObserver = (): void => {
+  if (heightObserver) {
+    heightObserver.disconnect()
+    heightObserver = null
   }
 }
 
@@ -347,7 +385,7 @@ const timelineLabels = computed(() => {
   }
   const labels = new Set<string>()
   ;(props.items || []).forEach((item) => {
-    ;(item.points || []).forEach((point) => {
+    (item.points || []).forEach((point) => {
       if (point?.bucket) {
         labels.add(point.bucket)
       }
@@ -672,6 +710,7 @@ const lineOptions = computed<ChartOptions<'line'>>(() => ({
 watch(
   [() => props.items, () => props.timelineLabels, () => props.loading],
   async () => {
+    if (!expanded.value) return
     await nextTick()
     setupHeightObserver()
     updateChartContainerHeight()
@@ -679,19 +718,25 @@ watch(
   { deep: true, immediate: true }
 )
 
-onMounted(async () => {
-  window.addEventListener('resize', handleViewportResize)
+watch(expanded, async (isExpanded) => {
+  if (!isExpanded) {
+    teardownHeightObserver()
+    dynamicContainerHeight.value = null
+    hideTooltip()
+    return
+  }
   await nextTick()
   setupHeightObserver()
   updateChartContainerHeight()
 })
 
+onMounted(() => {
+  window.addEventListener('resize', handleViewportResize)
+})
+
 onBeforeUnmount(() => {
   clearTooltipHideTimer()
   window.removeEventListener('resize', handleViewportResize)
-  if (heightObserver) {
-    heightObserver.disconnect()
-    heightObserver = null
-  }
+  teardownHeightObserver()
 })
 </script>

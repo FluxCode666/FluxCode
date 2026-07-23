@@ -171,7 +171,7 @@ describe('admin DashboardView', () => {
     expect(getSubscriptionExhaustionTrend).not.toHaveBeenCalled()
   })
 
-  it('renders request count and proxy usage charts and loads proxy summary data', async () => {
+  it('places the collapsed proxy usage card below recent usage and loads it on expansion', async () => {
     const wrapper = mount(DashboardView, {
       global: {
         stubs: {
@@ -190,9 +190,6 @@ describe('admin DashboardView', () => {
           SubscriptionExhaustionTrend: {
             template: '<div data-test="subscription-exhaustion-trend" />'
           },
-          ProxyUsageSummaryChart: {
-            template: '<div data-test="proxy-usage-summary-chart" />'
-          },
           Line: true
         }
       }
@@ -203,11 +200,22 @@ describe('admin DashboardView', () => {
     expect(wrapper.find('[data-test="token-usage-trend"]').exists()).toBe(true)
     expect(wrapper.find('[data-test="request-count-trend"]').exists()).toBe(true)
     expect(wrapper.find('[data-test="subscription-exhaustion-trend"]').exists()).toBe(false)
-    expect(wrapper.find('[data-test="proxy-usage-summary-chart"]').exists()).toBe(true)
-    expect(getProxyUsageSummary).toHaveBeenCalledTimes(1)
+    const recentUsageCard = wrapper.get('[data-test="recent-user-usage-card"]')
+    const proxyUsageCard = wrapper.get('[data-test="proxy-usage-summary-card"]')
+    expect(
+      Boolean(recentUsageCard.element.compareDocumentPosition(proxyUsageCard.element) & Node.DOCUMENT_POSITION_FOLLOWING)
+    ).toBe(true)
+    expect(wrapper.find('[data-test="proxy-usage-summary-content"]').exists()).toBe(false)
+    expect(getProxyUsageSummary).not.toHaveBeenCalled()
+
+    await wrapper.get('[data-test="proxy-usage-summary-toggle"]').trigger('click')
+    await flushPromises()
+
+    expect(getProxyUsageSummary).toHaveBeenCalledWith(expect.objectContaining({ granularity: 'hour' }))
+    expect(wrapper.find('[data-test="proxy-usage-summary-content"]').exists()).toBe(true)
   })
 
-  it('still renders dashboard when proxy usage summary endpoint fails', async () => {
+  it('still renders dashboard when the on-demand proxy usage request fails', async () => {
     getProxyUsageSummary.mockRejectedValueOnce({ status: 404, message: 'Not Found' })
 
     const wrapper = mount(DashboardView, {
@@ -227,7 +235,8 @@ describe('admin DashboardView', () => {
           },
           SubscriptionExhaustionTrend: true,
           ProxyUsageSummaryChart: {
-            template: '<div data-test="proxy-usage-summary-chart" />'
+            emits: ['expand'],
+            template: '<button data-test="proxy-usage-summary-toggle" @click="$emit(\'expand\')" />'
           },
           Line: true
         }
@@ -237,10 +246,16 @@ describe('admin DashboardView', () => {
     await flushPromises()
 
     expect(getSnapshotV2).toHaveBeenCalledTimes(1)
+    expect(getProxyUsageSummary).not.toHaveBeenCalled()
+    expect(wrapper.find('[data-test="token-usage-trend"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="request-count-trend"]').exists()).toBe(true)
+
+    await wrapper.get('[data-test="proxy-usage-summary-toggle"]').trigger('click')
+    await flushPromises()
+
     expect(getProxyUsageSummary).toHaveBeenCalledTimes(1)
     expect(wrapper.find('[data-test="token-usage-trend"]').exists()).toBe(true)
     expect(wrapper.find('[data-test="request-count-trend"]').exists()).toBe(true)
-    expect(wrapper.find('[data-test="proxy-usage-summary-chart"]').exists()).toBe(true)
   })
 
   it('loads and renders subscription exhaustion trend only for day granularity', async () => {

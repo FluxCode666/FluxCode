@@ -109,9 +109,16 @@ const AccountTableFiltersStub = defineComponent({
 })
 
 const DataTableStub = defineComponent({
+  props: {
+    data: {
+      type: Array,
+      default: () => []
+    }
+  },
   emits: ['sort'],
   template: `
     <div>
+      <slot v-if="data.length" name="cell-name" :row="data[0]" :value="data[0].name" />
       <button data-test="sort" @click="$emit('sort', 'created_at', 'desc')">sort</button>
     </div>
   `
@@ -149,6 +156,12 @@ describe('admin AccountsView', () => {
   })
 
   it('forwards advanced filters and sort state to the accounts api', async () => {
+    listAccounts.mockResolvedValue({
+      items: [{ id: 42, name: 'account-by-id' }],
+      total: 1,
+      pages: 1
+    })
+
     const wrapper = mount(AccountsView, {
       global: {
         stubs: {
@@ -189,6 +202,7 @@ describe('admin AccountsView', () => {
 
     await flushPromises()
     expect(listAccounts).toHaveBeenCalledTimes(1)
+    expect(wrapper.get('[data-test="account-id"]').text()).toBe('#42')
 
     await wrapper.get('[data-test="apply-filters"]').trigger('click')
     await vi.advanceTimersByTimeAsync(350)

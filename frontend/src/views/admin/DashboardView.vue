@@ -288,16 +288,9 @@
             :trend-data="subscriptionExhaustionTrend"
             :loading="subscriptionExhaustionLoading"
           />
-          <ProxyUsageSummaryChart
-            :items="proxyUsageSummary"
-            :loading="chartsLoading"
-            :title="t('admin.dashboard.proxyUsageSummary')"
-            :granularity="granularity"
-            :timeline-labels="proxyTimelineLabels"
-          />
 
           <!-- User Usage Trend (Full Width) -->
-          <div class="card p-4">
+          <div class="card p-4" data-test="recent-user-usage-card">
             <h3 class="mb-4 text-sm font-semibold text-gray-900 dark:text-white">
               {{ t('admin.dashboard.recentUsage') }} (Top 12)
             </h3>
@@ -314,6 +307,15 @@
               </div>
             </div>
           </div>
+
+          <ProxyUsageSummaryChart
+            :items="proxyUsageSummary"
+            :loading="proxyUsageLoading"
+            :title="t('admin.dashboard.proxyUsageSummary')"
+            :granularity="granularity"
+            :timeline-labels="proxyTimelineLabels"
+            @expand="handleProxyUsageExpand"
+          />
         </div>
       </template>
 
@@ -390,6 +392,7 @@ const router = useRouter()
 const stats = ref<DashboardStats | null>(null)
 const loading = ref(false)
 const chartsLoading = ref(false)
+const proxyUsageLoading = ref(false)
 const userTrendLoading = ref(false)
 const subscriptionExhaustionLoading = ref(false)
 const rankingLoading = ref(false)
@@ -402,6 +405,7 @@ const modelStats = ref<ModelStat[]>([])
 const userTrend = ref<UserUsageTrendPoint[]>([])
 const subscriptionExhaustionTrend = ref<SubscriptionExhaustionTrendPoint[]>([])
 const proxyUsageSummary = ref<ProxyUsageSummaryItem[]>([])
+const proxyUsageHasBeenOpened = ref(false)
 const rankingItems = ref<UserSpendingRankingItem[]>([])
 const rankingTotalActualCost = ref(0)
 const rankingTotalRequests = ref(0)
@@ -414,6 +418,7 @@ let chartLoadSeq = 0
 let usersTrendLoadSeq = 0
 let subscriptionExhaustionLoadSeq = 0
 let rankingLoadSeq = 0
+let proxyUsageLoadSeq = 0
 const rankingLimit = 12
 
 // Helper function to format date in local timezone
@@ -726,43 +731,23 @@ const loadDashboardSnapshot = async (includeStats: boolean) => {
   chartsLoading.value = true
   loadError.value = ''
   try {
-    const [snapshotResult, proxyResult] = await Promise.allSettled([
-      adminAPI.dashboard.getSnapshotV2({
-        start_date: startDate.value,
-        end_date: endDate.value,
-        granularity: granularity.value,
-        include_stats: includeStats,
-        include_trend: true,
-        include_model_stats: true,
-        include_group_stats: false,
-        include_users_trend: false
-      }),
-      adminAPI.dashboard.getProxyUsageSummary({
-        start_date: startDate.value,
-        end_date: endDate.value,
-        granularity: granularity.value
-      })
-    ])
+    const response = await adminAPI.dashboard.getSnapshotV2({
+      start_date: startDate.value,
+      end_date: endDate.value,
+      granularity: granularity.value,
+      include_stats: includeStats,
+      include_trend: true,
+      include_model_stats: true,
+      include_group_stats: false,
+      include_users_trend: false
+    })
     if (currentSeq !== chartLoadSeq) return
 
-    if (snapshotResult.status === 'rejected') {
-      throw snapshotResult.reason
-    }
-
-    const response = snapshotResult.value
     if (includeStats && response.stats) {
       stats.value = response.stats
     }
     trendData.value = fillTrendDataGaps(response.trend || [], startDate.value, endDate.value, granularity.value)
     modelStats.value = response.models || []
-
-    if (proxyResult.status === 'fulfilled') {
-      proxyUsageSummary.value = proxyResult.value.items || []
-    } else {
-      // 代理用量统计不是渲染 Dashboard 的硬依赖，失败时降级为空数据，避免整页空白
-      proxyUsageSummary.value = []
-      console.error('Error loading proxy usage summary:', proxyResult.reason)
-    }
   } catch (error) {
     if (currentSeq !== chartLoadSeq) return
     loadError.value = t('admin.dashboard.failedToLoad')
@@ -774,6 +759,34 @@ const loadDashboardSnapshot = async (includeStats: boolean) => {
       chartsLoading.value = false
     }
   }
+}
+
+const loadProxyUsageSummary = async () => {
+  const currentSeq = ++proxyUsageLoadSeq
+  proxyUsageLoading.value = true
+  try {
+    const response = await adminAPI.dashboard.getProxyUsageSummary({
+      start_date: startDate.value,
+      end_date: endDate.value,
+      granularity: granularity.value
+    })
+    if (currentSeq !== proxyUsageLoadSeq) return
+    proxyUsageSummary.value = response.items || []
+  } catch (error) {
+    if (currentSeq !== proxyUsageLoadSeq) return
+    // 代理使用统计为按需展开内容，失败时保留 Dashboard 其他图表可用。
+    proxyUsageSummary.value = []
+    console.error('Error loading proxy usage summary:', error)
+  } finally {
+    if (currentSeq === proxyUsageLoadSeq) {
+      proxyUsageLoading.value = false
+    }
+  }
+}
+
+const handleProxyUsageExpand = () => {
+  proxyUsageHasBeenOpened.value = true
+  void loadProxyUsageSummary()
 }
 
 const loadUsersTrend = async () => {
@@ -857,21 +870,25 @@ const loadUserSpendingRanking = async () => {
 }
 
 const loadDashboardStats = async () => {
-  await Promise.all([
+  const loaders = [
     loadDashboardSnapshot(true),
     loadUsersTrend(),
     loadSubscriptionExhaustionTrend(),
     loadUserSpendingRanking()
-  ])
+  ]
+  if (proxyUsageHasBeenOpened.value) loaders.push(loadProxyUsageSummary())
+  await Promise.all(loaders)
 }
 
 const loadChartData = async () => {
-  await Promise.all([
+  const loaders = [
     loadDashboardSnapshot(false),
     loadUsersTrend(),
     loadSubscriptionExhaustionTrend(),
     loadUserSpendingRanking()
-  ])
+  ]
+  if (proxyUsageHasBeenOpened.value) loaders.push(loadProxyUsageSummary())
+  await Promise.all(loaders)
 }
 
 onMounted(() => {

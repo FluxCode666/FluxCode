@@ -188,7 +188,10 @@
           </template>
           <template #cell-name="{ row, value }">
             <div class="flex flex-col">
-              <span class="font-medium text-gray-900 dark:text-white">{{ value }}</span>
+              <span class="font-medium text-gray-900 dark:text-white">
+                {{ value }}
+                <span data-test="account-id" class="ml-1 text-xs font-normal text-gray-500 dark:text-gray-400">#{{ row.id }}</span>
+              </span>
               <span
                 v-if="row.extra?.email_address"
                 class="text-xs text-gray-500 dark:text-gray-400 truncate max-w-[200px]"
@@ -1291,7 +1294,7 @@ const accountMatchesCurrentFilters = (account: Account) => {
     }
   }
   const search = String(params.search || '').trim().toLowerCase()
-  if (search && !account.name.toLowerCase().includes(search)) return false
+  if (search && !account.name.toLowerCase().includes(search) && String(account.id) !== search) return false
   return true
 }
 const mergeRuntimeFields = (oldAccount: Account, updatedAccount: Account): Account => ({

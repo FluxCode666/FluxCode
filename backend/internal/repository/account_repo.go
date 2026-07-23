@@ -539,7 +539,7 @@ func (r *accountRepository) ListWithFilters(ctx context.Context, params paginati
 		}
 	}
 	if search != "" {
-		q = q.Where(dbaccount.NameContainsFold(search))
+		q = q.Where(accountSearchPredicate(search))
 	}
 	if groupID == service.AccountListGroupUngrouped {
 		q = q.Where(dbaccount.Not(dbaccount.HasAccountGroups()))
@@ -629,7 +629,7 @@ func (r *accountRepository) ListWithAdvancedFilters(
 		q = q.Where(dbaccount.HasAccountGroupsWith(dbaccountgroup.GroupIDEQ(groupID)))
 	}
 	if search != "" {
-		q = q.Where(dbaccount.NameContainsFold(search))
+		q = q.Where(accountSearchPredicate(search))
 	}
 	if len(proxyIDs) > 0 {
 		var includeNoProxy bool
@@ -675,6 +675,19 @@ func (r *accountRepository) ListWithAdvancedFilters(
 		return nil, nil, err
 	}
 	return outAccounts, paginationResultFromTotal(int64(total), params), nil
+}
+
+// accountSearchPredicate matches account names case-insensitively and, for a
+// positive integer query, matches the account ID exactly.
+func accountSearchPredicate(search string) dbpredicate.Account {
+	accountID, err := strconv.ParseInt(search, 10, 64)
+	if err != nil || accountID <= 0 {
+		return dbaccount.NameContainsFold(search)
+	}
+	return dbaccount.Or(
+		dbaccount.NameContainsFold(search),
+		dbaccount.IDEQ(accountID),
+	)
 }
 
 func (r *accountRepository) GetAccountSummary(ctx context.Context) ([]service.AccountPlatformSummaryItem, error) {

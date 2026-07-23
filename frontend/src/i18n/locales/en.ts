@@ -3067,7 +3067,7 @@ export default {
       crsBack: 'Back',
       editAccount: 'Edit Account',
       deleteAccount: 'Delete Account',
-      searchAccounts: 'Search accounts...',
+      searchAccounts: 'Search account name or ID...',
       notes: 'Notes',
       notesPlaceholder: 'Enter notes',
       notesHint: 'Notes are optional',

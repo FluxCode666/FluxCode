@@ -3135,7 +3135,7 @@ export default {
       deleteConfirmMessage: "确定要删除账号 '{name}' 吗？",
       refreshCookie: '刷新 Cookie',
       testAccount: '测试账号',
-      searchAccounts: '搜索账号...',
+      searchAccounts: '搜索账号名称或 ID...',
       notes: '备注',
       notesPlaceholder: '请输入备注',
       notesHint: '备注可选',

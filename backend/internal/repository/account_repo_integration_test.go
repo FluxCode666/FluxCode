@@ -4,6 +4,7 @@ package repository
 
 import (
 	"context"
+	"strconv"
 	"testing"
 	"time"
 
@@ -556,6 +557,31 @@ func (s *AccountRepoSuite) TestListWithAdvancedFilters_FilterBySchedulingStatus(
 			s.ElementsMatch(tt.want, names)
 		})
 	}
+}
+
+func (s *AccountRepoSuite) TestListWithAdvancedFilters_FilterByAccountID() {
+	target := mustCreateAccount(s.T(), s.client, &service.Account{Name: "target-account"})
+	mustCreateAccount(s.T(), s.client, &service.Account{Name: "other-account"})
+
+	accounts, _, err := s.repo.ListWithAdvancedFilters(
+		s.ctx,
+		pagination.PaginationParams{Page: 1, PageSize: 10},
+		"",
+		"",
+		"",
+		"",
+		0,
+		strconv.FormatInt(target.ID, 10),
+		"",
+		"",
+		nil,
+		nil,
+		nil,
+	)
+
+	s.Require().NoError(err)
+	s.Require().Len(accounts, 1)
+	s.Require().Equal(target.ID, accounts[0].ID)
 }
 
 func (s *AccountRepoSuite) TestGetAccountSummary() {
