@@ -20,6 +20,8 @@ const (
 
 	opsCleanupLeaderLockKeyDefault = "ops:cleanup:leader"
 	opsCleanupLeaderLockTTLDefault = 30 * time.Minute
+
+	modelPerformanceMinimumRetentionDays = 7
 )
 
 var opsCleanupCronParser = cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
@@ -157,19 +159,20 @@ func (s *OpsCleanupService) runScheduled() {
 }
 
 type opsCleanupDeletedCounts struct {
-	errorLogs     int64
-	retryAttempts int64
-	alertEvents   int64
-	systemLogs    int64
-	logAudits     int64
-	systemMetrics int64
-	hourlyPreagg  int64
-	dailyPreagg   int64
+	errorLogs              int64
+	retryAttempts          int64
+	alertEvents            int64
+	systemLogs             int64
+	logAudits              int64
+	systemMetrics          int64
+	hourlyPreagg           int64
+	modelPerformanceHourly int64
+	dailyPreagg            int64
 }
 
 func (c opsCleanupDeletedCounts) String() string {
 	return fmt.Sprintf(
-		"error_logs=%d retry_attempts=%d alert_events=%d system_logs=%d log_audits=%d system_metrics=%d hourly_preagg=%d daily_preagg=%d",
+		"error_logs=%d retry_attempts=%d alert_events=%d system_logs=%d log_audits=%d system_metrics=%d hourly_preagg=%d model_performance_hourly=%d daily_preagg=%d",
 		c.errorLogs,
 		c.retryAttempts,
 		c.alertEvents,
@@ -177,6 +180,7 @@ func (c opsCleanupDeletedCounts) String() string {
 		c.logAudits,
 		c.systemMetrics,
 		c.hourlyPreagg,
+		c.modelPerformanceHourly,
 		c.dailyPreagg,
 	)
 }
@@ -244,6 +248,13 @@ func (s *OpsCleanupService) runCleanupOnce(ctx context.Context) (opsCleanupDelet
 		}
 		out.hourlyPreagg = n
 
+		modelPerformanceCutoff := now.AddDate(0, 0, -modelPerformanceRetentionDays(days))
+		n, err = deleteOldRowsByID(ctx, s.db, "model_performance_metrics_hourly", "bucket_start", modelPerformanceCutoff, batchSize, false)
+		if err != nil {
+			return out, err
+		}
+		out.modelPerformanceHourly = n
+
 		n, err = deleteOldRowsByID(ctx, s.db, "ops_metrics_daily", "bucket_date", cutoff, batchSize, true)
 		if err != nil {
 			return out, err
@@ -258,6 +269,16 @@ func (s *OpsCleanupService) runCleanupOnce(ctx context.Context) (opsCleanupDelet
 	}
 
 	return out, nil
+}
+
+func modelPerformanceRetentionDays(hourlyMetricsRetentionDays int) int {
+	if hourlyMetricsRetentionDays <= 0 {
+		return 0
+	}
+	if hourlyMetricsRetentionDays < modelPerformanceMinimumRetentionDays {
+		return modelPerformanceMinimumRetentionDays
+	}
+	return hourlyMetricsRetentionDays
 }
 
 func deleteOldRowsByID(

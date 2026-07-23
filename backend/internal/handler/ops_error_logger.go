@@ -40,6 +40,7 @@ const (
 	opsErrInsufficientQuota          = "insufficient_quota"
 
 	// 上游错误码常量 — 错误分类 (normalizeOpsErrorType / classifyOpsPhase / classifyOpsIsBusinessLimited)
+	opsCodeAPIKeyExpired        = "API_KEY_EXPIRED"
 	opsCodeInsufficientBalance  = "INSUFFICIENT_BALANCE"
 	opsCodeUsageLimitExceeded   = "USAGE_LIMIT_EXCEEDED"
 	opsCodeSubscriptionNotFound = "SUBSCRIPTION_NOT_FOUND"
@@ -1180,6 +1181,9 @@ func classifyOpsIsRetryable(errType string, statusCode int) bool {
 
 func classifyOpsIsBusinessLimited(errType, phase, code string, status int, message string) bool {
 	switch strings.TrimSpace(code) {
+	case opsCodeAPIKeyExpired:
+		// 仅排除本地已明确标记为失效的用户 API Key 403，不能把泛化鉴权失败视为业务限制。
+		return status == 403
 	case opsCodeInsufficientBalance, opsCodeUsageLimitExceeded, opsCodeSubscriptionNotFound, opsCodeSubscriptionInvalid, opsCodeUserInactive:
 		return true
 	}

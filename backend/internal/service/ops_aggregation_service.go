@@ -16,14 +16,18 @@ import (
 )
 
 const (
-	opsAggHourlyJobName = "ops_preaggregation_hourly"
-	opsAggDailyJobName  = "ops_preaggregation_daily"
+	opsAggHourlyJobName                 = "ops_preaggregation_hourly"
+	opsAggDailyJobName                  = "ops_preaggregation_daily"
+	opsAggModelPerformanceHourlyJobName = "ops_model_performance_preaggregation_hourly"
 
 	opsAggHourlyInterval = 10 * time.Minute
 	opsAggDailyInterval  = 1 * time.Hour
 
 	// Keep in sync with ops retention target (vNext default 30d).
 	opsAggBackfillWindow = 1 * time.Hour
+	// Public model performance supports a seven-day view even before the first
+	// normal incremental aggregation has completed.
+	opsAggModelPerformanceBackfillWindow = 7 * 24 * time.Hour
 
 	// Recompute overlap to absorb late-arriving rows near boundaries.
 	opsAggHourlyOverlap = 2 * time.Hour
@@ -40,11 +44,13 @@ const (
 	opsAggHourlyTimeout   = 5 * time.Minute
 	opsAggDailyTimeout    = 2 * time.Minute
 
-	opsAggHourlyLeaderLockKey = "ops:aggregation:hourly:leader"
-	opsAggDailyLeaderLockKey  = "ops:aggregation:daily:leader"
+	opsAggHourlyLeaderLockKey                 = "ops:aggregation:hourly:leader"
+	opsAggDailyLeaderLockKey                  = "ops:aggregation:daily:leader"
+	opsAggModelPerformanceHourlyLeaderLockKey = "ops:aggregation:model-performance-hourly:leader"
 
-	opsAggHourlyLeaderLockTTL = 15 * time.Minute
-	opsAggDailyLeaderLockTTL  = 10 * time.Minute
+	opsAggHourlyLeaderLockTTL                 = 15 * time.Minute
+	opsAggDailyLeaderLockTTL                  = 10 * time.Minute
+	opsAggModelPerformanceHourlyLeaderLockTTL = 15 * time.Minute
 )
 
 // OpsAggregationService periodically backfills ops_metrics_hourly / ops_metrics_daily
@@ -64,8 +70,9 @@ type OpsAggregationService struct {
 	startOnce sync.Once
 	stopOnce  sync.Once
 
-	hourlyMu sync.Mutex
-	dailyMu  sync.Mutex
+	hourlyMu                 sync.Mutex
+	dailyMu                  sync.Mutex
+	modelPerformanceHourlyMu sync.Mutex
 
 	skipLogMu sync.Mutex
 	skipLogAt time.Time
@@ -97,8 +104,27 @@ func (s *OpsAggregationService) Start() {
 			s.stopCh = make(chan struct{})
 		}
 		go s.hourlyLoop()
+		go s.modelPerformanceHourlyLoop()
 		go s.dailyLoop()
 	})
+}
+
+func (s *OpsAggregationService) modelPerformanceHourlyLoop() {
+	// Keep model performance independent from the global Ops rollup: its first
+	// run can backfill seven days without delaying the normal hourly metric job.
+	s.aggregateModelPerformanceHourly()
+
+	ticker := time.NewTicker(opsAggHourlyInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			s.aggregateModelPerformanceHourly()
+		case <-s.stopCh:
+			return
+		}
+	}
 }
 
 func (s *OpsAggregationService) Stop() {
@@ -243,6 +269,120 @@ func (s *OpsAggregationService) aggregateHourly() {
 		LastSuccessAt:  &successAt,
 		LastDurationMs: &dur,
 		LastResult:     &result,
+	})
+}
+
+func (s *OpsAggregationService) aggregateModelPerformanceHourly() {
+	s.aggregateModelPerformanceHourlyAt(time.Now().UTC())
+}
+
+func (s *OpsAggregationService) aggregateModelPerformanceHourlyAt(now time.Time) {
+	if s == nil || s.opsRepo == nil {
+		return
+	}
+	if s.cfg != nil {
+		if !s.cfg.Ops.Enabled || !s.cfg.Ops.Aggregation.Enabled {
+			return
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), opsAggHourlyTimeout)
+	defer cancel()
+
+	if !s.isMonitoringEnabled(ctx) {
+		return
+	}
+
+	release, ok := s.tryAcquireLeaderLock(
+		ctx,
+		opsAggModelPerformanceHourlyLeaderLockKey,
+		opsAggModelPerformanceHourlyLeaderLockTTL,
+		"[OpsAggregation][model-performance-hourly]",
+	)
+	if !ok {
+		return
+	}
+	if release != nil {
+		defer release()
+	}
+
+	s.modelPerformanceHourlyMu.Lock()
+	defer s.modelPerformanceHourlyMu.Unlock()
+
+	startedAt := time.Now().UTC()
+	runAt := now.UTC()
+	end := utcFloorToHour(runAt.Add(-opsAggSafeDelay))
+	start := end.Add(-opsAggModelPerformanceBackfillWindow)
+
+	ctxWatermark, cancelWatermark := context.WithTimeout(context.Background(), opsAggMaxQueryTimeout)
+	watermark, err := s.opsRepo.GetModelPerformanceMetricsAggregationWatermark(ctxWatermark)
+	cancelWatermark()
+	if err != nil {
+		s.recordModelPerformanceAggregationFailure(runAt, startedAt, err)
+		logger.LegacyPrintf("service.ops_aggregation", "[OpsAggregation][model-performance-hourly] failed to read watermark: %v", err)
+		return
+	}
+	if watermark != nil {
+		candidate := watermark.UTC().Add(-opsAggHourlyOverlap)
+		if candidate.After(start) {
+			start = candidate
+		}
+	}
+
+	start = utcFloorToHour(start)
+	if !start.Before(end) {
+		return
+	}
+
+	for cursor := start; cursor.Before(end); cursor = cursor.Add(opsAggHourlyChunk) {
+		chunkEnd := minTime(cursor.Add(opsAggHourlyChunk), end)
+		if err := s.opsRepo.UpsertModelPerformanceHourlyMetrics(ctx, cursor, chunkEnd); err != nil {
+			s.recordModelPerformanceAggregationFailure(runAt, startedAt, err)
+			logger.LegacyPrintf("service.ops_aggregation", "[OpsAggregation][model-performance-hourly] upsert failed (%s..%s): %v", cursor.Format(time.RFC3339), chunkEnd.Format(time.RFC3339), err)
+			return
+		}
+	}
+
+	if err := s.opsRepo.UpdateModelPerformanceMetricsAggregationWatermark(ctx, end); err != nil {
+		s.recordModelPerformanceAggregationFailure(runAt, startedAt, err)
+		logger.LegacyPrintf("service.ops_aggregation", "[OpsAggregation][model-performance-hourly] failed to update watermark: %v", err)
+		return
+	}
+
+	finishedAt := time.Now().UTC()
+	durationMs := finishedAt.Sub(startedAt).Milliseconds()
+	dur := durationMs
+	successAt := finishedAt
+	result := truncateString(fmt.Sprintf("window=%s..%s", start.Format(time.RFC3339), end.Format(time.RFC3339)), 2048)
+	hbCtx, hbCancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer hbCancel()
+	_ = s.opsRepo.UpsertJobHeartbeat(hbCtx, &OpsUpsertJobHeartbeatInput{
+		JobName:        opsAggModelPerformanceHourlyJobName,
+		LastRunAt:      &runAt,
+		LastSuccessAt:  &successAt,
+		LastDurationMs: &dur,
+		LastResult:     &result,
+	})
+}
+
+func (s *OpsAggregationService) recordModelPerformanceAggregationFailure(runAt, startedAt time.Time, aggErr error) {
+	if s == nil || s.opsRepo == nil || aggErr == nil {
+		return
+	}
+
+	finishedAt := time.Now().UTC()
+	durationMs := finishedAt.Sub(startedAt).Milliseconds()
+	dur := durationMs
+	msg := truncateString(aggErr.Error(), 2048)
+	errAt := finishedAt
+	hbCtx, hbCancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer hbCancel()
+	_ = s.opsRepo.UpsertJobHeartbeat(hbCtx, &OpsUpsertJobHeartbeatInput{
+		JobName:        opsAggModelPerformanceHourlyJobName,
+		LastRunAt:      &runAt,
+		LastErrorAt:    &errAt,
+		LastError:      &msg,
+		LastDurationMs: &dur,
 	})
 }
 

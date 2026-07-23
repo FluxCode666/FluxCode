@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { flushPromises, mount } from '@vue/test-utils'
+import { config, flushPromises, mount } from '@vue/test-utils'
 
 import ModelPricingPage from '../ModelPricingPage.vue'
 
@@ -62,9 +62,18 @@ const SelectStub = {
   `
 }
 
+const ModelPerformanceTrendChartStub = {
+  props: ['metric', 'points', 'range'],
+  template: '<div data-testid="model-performance-trend-stub" />'
+}
+
 describe('ModelPricingPage', () => {
   beforeEach(() => {
     vi.useFakeTimers()
+    config.global.stubs = {
+      ...config.global.stubs,
+      ModelPerformanceTrendChart: ModelPerformanceTrendChartStub
+    }
     listModels.mockReset()
     getModel.mockReset()
     listGroups.mockReset()
@@ -97,6 +106,12 @@ describe('ModelPricingPage', () => {
           image_output_price: 0,
           per_request_price: 0,
           intervals: []
+        },
+        performance: {
+          tps: 42.7,
+          availability: 99.6,
+          average_first_token_ms: 125.5,
+          average_request_time_ms: 830.2
         }
       }
     ])
@@ -121,6 +136,21 @@ describe('ModelPricingPage', () => {
         per_request_price: 0,
         intervals: []
       },
+      lowest_group_price: {
+        input_price: 0.000006,
+        output_price: 0.00003,
+        cache_write_price: 0.0000075,
+        cache_read_price: 0.0000006,
+        image_output_price: 0,
+        per_request_price: 0,
+        intervals: []
+      },
+      performance: {
+        tps: 42.7,
+        availability: 99.6,
+        average_first_token_ms: 125.5,
+        average_request_time_ms: 830.2
+      },
       groups: [
         {
           group_id: 1,
@@ -143,7 +173,20 @@ describe('ModelPricingPage', () => {
             cache_read_price: 2,
             image_output_price: 0,
             per_request_price: 0
+          },
+          performance: {
+            tps: 33.3,
+            availability: 98.4,
+            average_first_token_ms: 150,
+            average_request_time_ms: 910
           }
+        }
+      ],
+      performance_trend: [
+        {
+          bucket_start: '2026-07-19T00:00:00Z',
+          average_first_token_ms: 125.5,
+          availability: 99.6
         }
       ]
     })
@@ -153,6 +196,7 @@ describe('ModelPricingPage', () => {
     vi.runOnlyPendingTimers()
     vi.useRealTimers()
     vi.clearAllMocks()
+    delete config.global.stubs.ModelPerformanceTrendChart
   })
 
   it('renders model cards and loads model detail after click', async () => {
@@ -176,14 +220,14 @@ describe('ModelPricingPage', () => {
     expect(wrapper.text()).toContain('音频输出')
     expect(wrapper.find('[data-testid="base-dialog"]').exists()).toBe(false)
     const modelCard = wrapper.get('[data-testid="model-card-claude-sonnet-4"]')
-    expect(modelCard.text()).not.toContain('2')
+    expect(modelCard.text()).not.toContain('$6.00000/M · 2.00x')
     expect(modelCard.text()).toContain('$6.00000/M')
     expect(modelCard.text()).toContain('$30.0000/M')
 
     await wrapper.get('[data-testid="model-card-claude-sonnet-4"]').trigger('click')
     await flushPromises()
 
-    expect(getModel).toHaveBeenCalledWith('claude-sonnet-4', expect.any(Object))
+    expect(getModel).toHaveBeenCalledWith('claude-sonnet-4', '24h', expect.any(Object))
     expect(wrapper.get('[data-testid="base-dialog"]').exists()).toBe(true)
     expect(wrapper.get('[data-testid="model-pricing-detail-modal"]').exists()).toBe(true)
     expect(wrapper.text()).toContain('基础组')
@@ -240,7 +284,7 @@ describe('ModelPricingPage', () => {
     await vi.advanceTimersByTimeAsync(1)
     await flushPromises()
 
-    expect(listModels).toHaveBeenCalledWith({ q: 'claude', platform: '', capability: '' }, expect.any(Object))
+    expect(listModels).toHaveBeenCalledWith({ q: 'claude', platform: '', capability: '', range: '24h' }, expect.any(Object))
   })
 
   it('loads pay-as-you-go groups and filters models by selected group', async () => {
@@ -263,9 +307,62 @@ describe('ModelPricingPage', () => {
     await flushPromises()
 
     expect(listModels).toHaveBeenLastCalledWith(
-      { q: '', platform: '', capability: '', group_id: 1 },
+      { q: '', platform: '', capability: '', group_id: 1, range: '24h' },
       expect.any(Object)
     )
+  })
+
+  it('keeps cards at 24 hours and loads only the performance detail when its range changes', async () => {
+    const wrapper = mount(ModelPricingPage, {
+      global: {
+        stubs: {
+          PublicHeader: true,
+          BaseDialog: BaseDialogStub,
+          Select: SelectStub,
+          ModelPerformanceTrendChart: {
+            props: ['metric', 'points', 'range'],
+            template: '<div :data-testid="`trend-${metric}`">{{ range }} {{ points.length }}</div>'
+          }
+        }
+      }
+    })
+
+    await flushPromises()
+
+    const card = wrapper.get('[data-testid="model-card-claude-sonnet-4"]')
+    expect(card.get('[data-testid="model-card-latency-claude-sonnet-4"]').text()).toBe('125.5 ms')
+    expect(card.get('[data-testid="model-card-tps-claude-sonnet-4"]').text()).toBe('42.7 TPS')
+    expect(card.get('[data-testid="model-card-availability-claude-sonnet-4"]').text()).toBe('99.6%')
+    expect(wrapper.find('[data-testid="model-pricing-range-24h"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="model-pricing-range-7d"]').exists()).toBe(false)
+
+    const listRequestCount = listModels.mock.calls.length
+    await wrapper.get('[data-testid="model-card-claude-sonnet-4"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="model-detail-tab-price"]').attributes('aria-selected')).toBe('true')
+    expect(wrapper.get('[data-testid="model-detail-price-panel"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="model-detail-performance-panel"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="model-detail-range-24h"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="trend-average_first_token_ms"]').exists()).toBe(false)
+
+    await wrapper.get('[data-testid="model-detail-tab-performance"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="model-detail-tab-performance"]').attributes('aria-selected')).toBe('true')
+    expect(wrapper.get('[data-testid="model-detail-overall-performance"]').text()).toContain('42.7 TPS')
+    expect(wrapper.get('[data-testid="model-detail-group-performance-1"]').text()).toContain('33.3 TPS')
+    expect(wrapper.get('[data-testid="trend-average_first_token_ms"]').text()).toBe('24h 1')
+    expect(wrapper.get('[data-testid="trend-availability"]').text()).toBe('24h 1')
+
+    await wrapper.get('[data-testid="model-detail-range-7d"]').trigger('click')
+    await flushPromises()
+
+    expect(getModel).toHaveBeenLastCalledWith('claude-sonnet-4', '7d', expect.any(Object))
+    expect(getModel).toHaveBeenCalledTimes(2)
+    expect(listModels).toHaveBeenCalledTimes(listRequestCount)
+    expect(wrapper.get('[data-testid="trend-average_first_token_ms"]').text()).toBe('7d 1')
+    expect(wrapper.get('[data-testid="trend-availability"]').text()).toBe('7d 1')
   })
 
   it('shows query error and retries', async () => {

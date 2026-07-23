@@ -21,11 +21,17 @@ func NewModelPricingHandler(service *service.ModelPricingPageService) *ModelPric
 }
 
 func (h *ModelPricingHandler) ListModels(c *gin.Context) {
+	performanceRange, err := parseModelPricingPerformanceRange(c.Query("range"))
+	if err != nil {
+		response.ErrorWithDetails(c, http.StatusBadRequest, "性能时间范围只能为 24h 或 7d", "MODEL_PERFORMANCE_RANGE_INVALID", nil)
+		return
+	}
 	models, err := h.service.ListModels(c.Request.Context(), service.ModelPricingQuery{
-		Q:          strings.TrimSpace(c.Query("q")),
-		Platform:   strings.TrimSpace(c.Query("platform")),
-		Capability: strings.TrimSpace(c.Query("capability")),
-		GroupID:    parseModelPricingGroupID(c.Query("group_id")),
+		Q:                strings.TrimSpace(c.Query("q")),
+		Platform:         strings.TrimSpace(c.Query("platform")),
+		Capability:       strings.TrimSpace(c.Query("capability")),
+		GroupID:          parseModelPricingGroupID(c.Query("group_id")),
+		PerformanceRange: performanceRange,
 	})
 	if err != nil {
 		response.ErrorFrom(c, infraerrors.InternalServer("MODEL_PRICING_QUERY_FAILED", "模型定价查询失败"))
@@ -44,11 +50,16 @@ func (h *ModelPricingHandler) ListGroups(c *gin.Context) {
 }
 
 func (h *ModelPricingHandler) GetModel(c *gin.Context) {
+	performanceRange, err := parseModelPricingPerformanceRange(c.Query("range"))
+	if err != nil {
+		response.ErrorWithDetails(c, http.StatusBadRequest, "性能时间范围只能为 24h 或 7d", "MODEL_PERFORMANCE_RANGE_INVALID", nil)
+		return
+	}
 	modelID := strings.TrimSpace(c.Query("model"))
 	if modelID == "" {
 		modelID = strings.TrimSpace(c.Param("model"))
 	}
-	model, err := h.service.GetModel(c.Request.Context(), modelID)
+	model, err := h.service.GetModelWithRange(c.Request.Context(), modelID, performanceRange)
 	if err != nil {
 		if errors.Is(err, service.ErrModelPricingNotFound) {
 			response.ErrorWithDetails(c, http.StatusNotFound, "模型定价不存在", "MODEL_PRICING_NOT_FOUND", nil)
@@ -58,6 +69,10 @@ func (h *ModelPricingHandler) GetModel(c *gin.Context) {
 		return
 	}
 	response.Success(c, model)
+}
+
+func parseModelPricingPerformanceRange(value string) (service.ModelPerformanceRange, error) {
+	return service.ParseModelPerformanceRange(value)
 }
 
 func parseModelPricingGroupID(value string) int64 {

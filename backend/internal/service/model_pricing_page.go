@@ -5,6 +5,7 @@ import (
 	"errors"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 )
@@ -22,24 +23,41 @@ type modelPricingBilling interface {
 }
 
 type ModelPricingPageService struct {
-	channels modelPricingChannelLister
-	groups   modelPricingGroupLister
-	billing  modelPricingBilling
+	channels    modelPricingChannelLister
+	groups      modelPricingGroupLister
+	billing     modelPricingBilling
+	performance ModelPerformanceMetricsReader
+	now         func() time.Time
 }
 
-func NewModelPricingPageService(channelService *ChannelService, groupService *GroupService, billingService *BillingService) *ModelPricingPageService {
-	return &ModelPricingPageService{channels: channelService, groups: groupService, billing: billingService}
+func NewModelPricingPageService(channelService *ChannelService, groupService *GroupService, billingService *BillingService, performanceReader ModelPerformanceMetricsReader) *ModelPricingPageService {
+	return newModelPricingPageService(channelService, groupService, billingService, performanceReader)
 }
 
 func NewModelPricingPageServiceForTest(channels modelPricingChannelLister, groups modelPricingGroupLister, billing modelPricingBilling) *ModelPricingPageService {
-	return &ModelPricingPageService{channels: channels, groups: groups, billing: billing}
+	return newModelPricingPageService(channels, groups, billing, nil)
+}
+
+func newModelPricingPageServiceWithPerformanceForTest(channels modelPricingChannelLister, groups modelPricingGroupLister, billing modelPricingBilling, performanceReader ModelPerformanceMetricsReader) *ModelPricingPageService {
+	return newModelPricingPageService(channels, groups, billing, performanceReader)
+}
+
+func newModelPricingPageService(channels modelPricingChannelLister, groups modelPricingGroupLister, billing modelPricingBilling, performanceReader ModelPerformanceMetricsReader) *ModelPricingPageService {
+	return &ModelPricingPageService{
+		channels:    channels,
+		groups:      groups,
+		billing:     billing,
+		performance: performanceReader,
+		now:         time.Now,
+	}
 }
 
 type ModelPricingQuery struct {
-	Q          string
-	Platform   string
-	Capability string
-	GroupID    int64
+	Q                string
+	Platform         string
+	Capability       string
+	GroupID          int64
+	PerformanceRange ModelPerformanceRange
 }
 
 type ModelPricingGroupOption struct {
@@ -79,14 +97,15 @@ type ModelPricingMultipliers struct {
 }
 
 type ModelPricingModelSummary struct {
-	ID                  string             `json:"id"`
-	DisplayName         string             `json:"display_name"`
-	Platform            string             `json:"platform"`
-	Platforms           []string           `json:"platforms"`
-	Capabilities        []string           `json:"capabilities"`
-	SupportedGroupCount int                `json:"supported_group_count"`
-	OfficialPrice       ModelPricingAmount `json:"official_price"`
-	LowestGroupPrice    ModelPricingAmount `json:"lowest_group_price"`
+	ID                  string                  `json:"id"`
+	DisplayName         string                  `json:"display_name"`
+	Platform            string                  `json:"platform"`
+	Platforms           []string                `json:"platforms"`
+	Capabilities        []string                `json:"capabilities"`
+	SupportedGroupCount int                     `json:"supported_group_count"`
+	OfficialPrice       ModelPricingAmount      `json:"official_price"`
+	LowestGroupPrice    ModelPricingAmount      `json:"lowest_group_price"`
+	Performance         ModelPerformanceMetrics `json:"performance"`
 }
 
 type ModelPricingGroupPrice struct {
@@ -96,16 +115,19 @@ type ModelPricingGroupPrice struct {
 	BillingMode    string                  `json:"billing_mode"`
 	Price          ModelPricingAmount      `json:"price"`
 	Multipliers    ModelPricingMultipliers `json:"multipliers"`
+	Performance    ModelPerformanceMetrics `json:"performance"`
 }
 
 type ModelPricingModelDetail struct {
-	ID            string                   `json:"id"`
-	DisplayName   string                   `json:"display_name"`
-	Platform      string                   `json:"platform"`
-	Platforms     []string                 `json:"platforms"`
-	Capabilities  []string                 `json:"capabilities"`
-	OfficialPrice ModelPricingAmount       `json:"official_price"`
-	Groups        []ModelPricingGroupPrice `json:"groups"`
+	ID               string                             `json:"id"`
+	DisplayName      string                             `json:"display_name"`
+	Platform         string                             `json:"platform"`
+	Platforms        []string                           `json:"platforms"`
+	Capabilities     []string                           `json:"capabilities"`
+	OfficialPrice    ModelPricingAmount                 `json:"official_price"`
+	Groups           []ModelPricingGroupPrice           `json:"groups"`
+	Performance      ModelPerformanceMetrics            `json:"performance"`
+	PerformanceTrend []ModelPerformanceHourlyTrendPoint `json:"performance_trend"`
 }
 
 var ErrModelPricingNotFound = errors.New("model pricing not found")
@@ -129,11 +151,16 @@ type modelCatalogGroup struct {
 }
 
 func (s *ModelPricingPageService) ListModels(ctx context.Context, query ModelPricingQuery) ([]ModelPricingModelSummary, error) {
+	window, err := s.resolvePerformanceWindow(query.PerformanceRange)
+	if err != nil {
+		return nil, err
+	}
 	catalog, err := s.buildCatalog(ctx)
 	if err != nil {
 		return nil, err
 	}
 	models := make([]ModelPricingModelSummary, 0, len(catalog))
+	modelIDs := make([]string, 0, len(catalog))
 	for _, item := range catalog {
 		if !matchesModelPricingQuery(item, query) {
 			continue
@@ -149,6 +176,7 @@ func (s *ModelPricingPageService) ListModels(ctx context.Context, query ModelPri
 			OfficialPrice:       modelPricingToAmount(item.Official),
 			LowestGroupPrice:    lowestGroupPrice(filteredGroups),
 		})
+		modelIDs = append(modelIDs, item.ID)
 	}
 	sort.Slice(models, func(i, j int) bool {
 		if models[i].Platform == models[j].Platform {
@@ -156,6 +184,22 @@ func (s *ModelPricingPageService) ListModels(ctx context.Context, query ModelPri
 		}
 		return models[i].Platform < models[j].Platform
 	})
+	if len(modelIDs) == 0 || s.performance == nil {
+		return models, nil
+	}
+	var groupID *int64
+	if query.GroupID > 0 {
+		groupID = &query.GroupID
+	}
+	metrics, err := s.performance.ListModelPerformanceSummaries(ctx, window, modelIDs, groupID)
+	if err != nil {
+		return nil, err
+	}
+	for i := range models {
+		if metric, ok := metrics[models[i].ID]; ok {
+			models[i].Performance = metric
+		}
+	}
 	return models, nil
 }
 
@@ -188,6 +232,14 @@ func (s *ModelPricingPageService) ListGroups(ctx context.Context) ([]ModelPricin
 }
 
 func (s *ModelPricingPageService) GetModel(ctx context.Context, model string) (*ModelPricingModelDetail, error) {
+	return s.GetModelWithRange(ctx, model, ModelPerformanceRange24Hours)
+}
+
+func (s *ModelPricingPageService) GetModelWithRange(ctx context.Context, model string, performanceRange ModelPerformanceRange) (*ModelPricingModelDetail, error) {
+	window, err := s.resolvePerformanceWindow(performanceRange)
+	if err != nil {
+		return nil, err
+	}
 	model = strings.TrimSpace(model)
 	if model == "" {
 		return nil, errors.New("model is required")
@@ -201,6 +253,7 @@ func (s *ModelPricingPageService) GetModel(ctx context.Context, model string) (*
 		return nil, ErrModelPricingNotFound
 	}
 	groups := make([]ModelPricingGroupPrice, 0, len(item.Groups))
+	groupIDs := make([]int64, 0, len(item.Groups))
 	for _, group := range item.Groups {
 		final := applyGroupMultiplier(group.Resolved, group.RateMultiplier)
 		groups = append(groups, ModelPricingGroupPrice{
@@ -211,6 +264,7 @@ func (s *ModelPricingPageService) GetModel(ctx context.Context, model string) (*
 			Price:          final,
 			Multipliers:    amountMultipliers(final, modelPricingToAmount(item.Official)),
 		})
+		groupIDs = append(groupIDs, group.GroupID)
 	}
 	sort.Slice(groups, func(i, j int) bool {
 		if groups[i].RateMultiplier == groups[j].RateMultiplier {
@@ -218,7 +272,7 @@ func (s *ModelPricingPageService) GetModel(ctx context.Context, model string) (*
 		}
 		return groups[i].RateMultiplier < groups[j].RateMultiplier
 	})
-	return &ModelPricingModelDetail{
+	detail := &ModelPricingModelDetail{
 		ID:            item.ID,
 		DisplayName:   displayModelName(item.ID),
 		Platform:      item.PlatformDisplay(),
@@ -226,7 +280,33 @@ func (s *ModelPricingPageService) GetModel(ctx context.Context, model string) (*
 		Capabilities:  sortedStrings(item.Capabilities),
 		OfficialPrice: modelPricingToAmount(item.Official),
 		Groups:        groups,
-	}, nil
+	}
+	if s.performance == nil {
+		return detail, nil
+	}
+	performance, err := s.performance.GetModelPerformanceDetail(ctx, window, item.ID, groupIDs)
+	if err != nil {
+		return nil, err
+	}
+	if performance == nil {
+		return detail, nil
+	}
+	detail.Performance = performance.Overall
+	detail.PerformanceTrend = performance.Trend
+	for i := range detail.Groups {
+		if metric, ok := performance.Groups[detail.Groups[i].GroupID]; ok {
+			detail.Groups[i].Performance = metric
+		}
+	}
+	return detail, nil
+}
+
+func (s *ModelPricingPageService) resolvePerformanceWindow(performanceRange ModelPerformanceRange) (ModelPerformanceWindow, error) {
+	now := time.Now
+	if s != nil && s.now != nil {
+		now = s.now
+	}
+	return ResolveModelPerformanceWindow(now(), performanceRange)
 }
 
 func (s *ModelPricingPageService) buildCatalog(ctx context.Context) (map[string]*modelCatalogItem, error) {

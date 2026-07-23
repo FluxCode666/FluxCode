@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/stretchr/testify/require"
@@ -52,6 +53,52 @@ func (s *modelPricingGroupListerStub) ListActive(ctx context.Context) ([]Group, 
 type modelPricingBillingStub struct {
 	prices map[string]*ModelPricing
 	errs   map[string]error
+}
+
+type modelPerformanceReaderStub struct {
+	listCalls   []modelPerformanceSummaryQuery
+	detailCalls []modelPerformanceDetailQuery
+	listResult  map[string]ModelPerformanceMetrics
+	detail      *ModelPerformanceDetail
+	err         error
+}
+
+type modelPerformanceSummaryQuery struct {
+	Window  ModelPerformanceWindow
+	Models  []string
+	GroupID *int64
+}
+
+type modelPerformanceDetailQuery struct {
+	Window   ModelPerformanceWindow
+	Model    string
+	GroupIDs []int64
+}
+
+func (s *modelPerformanceReaderStub) ListModelPerformanceSummaries(ctx context.Context, window ModelPerformanceWindow, models []string, groupID *int64) (map[string]ModelPerformanceMetrics, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	modelCopy := append([]string(nil), models...)
+	var groupCopy *int64
+	if groupID != nil {
+		value := *groupID
+		groupCopy = &value
+	}
+	s.listCalls = append(s.listCalls, modelPerformanceSummaryQuery{Window: window, Models: modelCopy, GroupID: groupCopy})
+	return s.listResult, nil
+}
+
+func (s *modelPerformanceReaderStub) GetModelPerformanceDetail(ctx context.Context, window ModelPerformanceWindow, model string, groupIDs []int64) (*ModelPerformanceDetail, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	s.detailCalls = append(s.detailCalls, modelPerformanceDetailQuery{
+		Window:   window,
+		Model:    model,
+		GroupIDs: append([]int64(nil), groupIDs...),
+	})
+	return s.detail, nil
 }
 
 func (s *modelPricingBillingStub) GetModelPricing(model string) (*ModelPricing, error) {
@@ -514,6 +561,107 @@ func TestModelPricingPageServiceAggregatesSharedModelAcrossPlatforms(t *testing.
 	require.Equal(t, "OpenRouter 组", detail.Groups[1].GroupName)
 	require.Equal(t, BillingModePerRequest, BillingMode(detail.Groups[1].BillingMode))
 	require.Equal(t, 0.03, detail.Groups[1].Price.PerRequestPrice)
+}
+
+func TestResolveModelPerformanceWindowUsesCompleteUTCHours(t *testing.T) {
+	now := time.Date(2026, time.July, 20, 12, 3, 45, 0, time.FixedZone("CST", 8*60*60))
+
+	window, err := ResolveModelPerformanceWindow(now, ModelPerformanceRange24Hours)
+	require.NoError(t, err)
+	require.Equal(t, time.Date(2026, time.July, 20, 3, 0, 0, 0, time.UTC), window.End)
+	require.Equal(t, 24*time.Hour, window.End.Sub(window.Start))
+
+	weekly, err := ResolveModelPerformanceWindow(now, ModelPerformanceRange7Days)
+	require.NoError(t, err)
+	require.Equal(t, 7*24*time.Hour, weekly.End.Sub(weekly.Start))
+
+	_, err = ResolveModelPerformanceWindow(now, ModelPerformanceRange("30d"))
+	require.Error(t, err)
+}
+
+func TestModelPricingPageServiceAttachesSelectedGroupPerformanceToCards(t *testing.T) {
+	groupID := int64(2)
+	reader := &modelPerformanceReaderStub{listResult: map[string]ModelPerformanceMetrics{
+		"claude-sonnet-4": {
+			TPS:                floatPtr(11.5),
+			Availability:       floatPtr(98.5),
+			AverageFirstToken:  floatPtr(245),
+			AverageRequestTime: floatPtr(800),
+		},
+	}}
+	svc := newModelPricingPageServiceWithPerformanceForTest(
+		&modelPricingChannelListerStub{channels: []Channel{{
+			ID:       10,
+			Status:   StatusActive,
+			GroupIDs: []int64{1, 2},
+			ModelPricing: []ChannelModelPricing{{
+				Platform: "anthropic", Models: []string{"claude-sonnet-4"}, BillingMode: BillingModeToken,
+			}},
+		}}},
+		&modelPricingGroupListerStub{groups: []Group{
+			{ID: 1, Name: "基础组", Platform: "anthropic", Status: StatusActive},
+			{ID: 2, Name: "专业组", Platform: "anthropic", Status: StatusActive},
+		}},
+		&modelPricingBillingStub{prices: map[string]*ModelPricing{"claude-sonnet-4": {}}},
+		reader,
+	)
+	svc.now = func() time.Time { return time.Date(2026, time.July, 20, 12, 30, 0, 0, time.UTC) }
+
+	models, err := svc.ListModels(context.Background(), ModelPricingQuery{GroupID: groupID, PerformanceRange: ModelPerformanceRange7Days})
+	require.NoError(t, err)
+	require.Len(t, models, 1)
+	require.Equal(t, 11.5, *models[0].Performance.TPS)
+	require.Equal(t, 245.0, *models[0].Performance.AverageFirstToken)
+	require.Len(t, reader.listCalls, 1)
+	require.Equal(t, &groupID, reader.listCalls[0].GroupID)
+	require.Equal(t, 7*24*time.Hour, reader.listCalls[0].Window.End.Sub(reader.listCalls[0].Window.Start))
+	require.Equal(t, []string{"claude-sonnet-4"}, reader.listCalls[0].Models)
+}
+
+func TestModelPricingPageServiceDetailKeepsOverallPerformanceAndReturnsNullWithoutSamples(t *testing.T) {
+	reader := &modelPerformanceReaderStub{detail: &ModelPerformanceDetail{
+		Overall: ModelPerformanceMetrics{TPS: floatPtr(9), Availability: floatPtr(99), AverageFirstToken: floatPtr(320), AverageRequestTime: floatPtr(1200)},
+		Groups: map[int64]ModelPerformanceMetrics{
+			1: {TPS: floatPtr(7), Availability: floatPtr(97), AverageFirstToken: floatPtr(400), AverageRequestTime: floatPtr(1500)},
+		},
+		Trend: []ModelPerformanceHourlyTrendPoint{{
+			BucketStart:       time.Date(2026, time.July, 20, 3, 0, 0, 0, time.UTC),
+			Availability:      floatPtr(99),
+			AverageFirstToken: floatPtr(320),
+		}},
+	}}
+	svc := newModelPricingPageServiceWithPerformanceForTest(
+		&modelPricingChannelListerStub{channels: []Channel{{
+			ID:       10,
+			Status:   StatusActive,
+			GroupIDs: []int64{1, 2},
+			ModelPricing: []ChannelModelPricing{{
+				Platform: "anthropic", Models: []string{"claude-sonnet-4"}, BillingMode: BillingModeToken,
+			}},
+		}}},
+		&modelPricingGroupListerStub{groups: []Group{
+			{ID: 1, Name: "基础组", Platform: "anthropic", Status: StatusActive},
+			{ID: 2, Name: "专业组", Platform: "anthropic", Status: StatusActive},
+		}},
+		&modelPricingBillingStub{prices: map[string]*ModelPricing{"claude-sonnet-4": {}}},
+		reader,
+	)
+	svc.now = func() time.Time { return time.Date(2026, time.July, 20, 12, 30, 0, 0, time.UTC) }
+
+	detail, err := svc.GetModelWithRange(context.Background(), "claude-sonnet-4", ModelPerformanceRange24Hours)
+	require.NoError(t, err)
+	require.Equal(t, 9.0, *detail.Performance.TPS)
+	groupMetrics := map[int64]ModelPerformanceMetrics{}
+	for _, group := range detail.Groups {
+		groupMetrics[group.GroupID] = group.Performance
+	}
+	require.Equal(t, 7.0, *groupMetrics[1].TPS)
+	require.Nil(t, groupMetrics[2].TPS)
+	require.Len(t, detail.PerformanceTrend, 1)
+	require.Equal(t, time.UTC, detail.PerformanceTrend[0].BucketStart.Location())
+	require.Len(t, reader.detailCalls, 1)
+	require.Equal(t, "claude-sonnet-4", reader.detailCalls[0].Model)
+	require.Equal(t, []int64{1, 2}, reader.detailCalls[0].GroupIDs)
 }
 
 func floatPtr(v float64) *float64 { return &v }
