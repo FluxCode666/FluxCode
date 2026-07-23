@@ -53,3 +53,37 @@ func TestRunCheckForModel_RejectsRedirectsToDifferentOrigin(t *testing.T) {
 		t.Fatalf("redirect target should not be reached, got %d hits", redirectedHits)
 	}
 }
+
+func TestCallProvider_AnthropicExtractsTextAfterThinking(t *testing.T) {
+	swapMonitorHTTPClient(t)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"content": []map[string]any{
+				{"type": "thinking", "thinking": ""},
+				{"type": "text", "text": "74"},
+			},
+		})
+	}))
+	t.Cleanup(server.Close)
+
+	text, _, status, err := callProvider(
+		context.Background(),
+		MonitorProviderAnthropic,
+		server.URL,
+		"sk-anthropic",
+		"claude-opus-4-7",
+		"challenge",
+		nil,
+	)
+
+	if err != nil {
+		t.Fatalf("callProvider() error = %v", err)
+	}
+	if status != http.StatusOK {
+		t.Fatalf("callProvider() status = %d, want %d", status, http.StatusOK)
+	}
+	if text != "74" {
+		t.Fatalf("callProvider() text = %q, want %q", text, "74")
+	}
+}
