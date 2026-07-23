@@ -2601,6 +2601,10 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		if err != nil {
 			return openAIWSClientPayload{}, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "invalid service_tier", err)
 		}
+		normalized, _, err = normalizeOpenAIAgentIdentityInputNamespaces(account, normalized)
+		if err != nil {
+			return openAIWSClientPayload{}, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "invalid Agent Identity input", err)
+		}
 		ingressSessionOriginalModel = originalModel
 
 		return openAIWSClientPayload{

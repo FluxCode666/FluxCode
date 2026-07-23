@@ -15,7 +15,9 @@ import (
 	"testing"
 	"time"
 
+	coderws "github.com/coder/websocket"
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 	"golang.org/x/crypto/curve25519"
 	"golang.org/x/crypto/nacl/box"
 )
@@ -123,6 +125,50 @@ func TestAgentIdentityErrorRedaction(t *testing.T) {
 	require.NotContains(t, string(body), key.runtimeID)
 	require.NotContains(t, string(body), key.taskID)
 	require.NotContains(t, string(body), "AgentAssertion abc123")
+}
+
+func TestNormalizeOpenAIAgentIdentityInputNamespaces(t *testing.T) {
+	agentIdentity := &Account{Type: AccountTypeOAuth, Platform: PlatformOpenAI, Credentials: map[string]any{
+		"auth_mode": OpenAIAuthModeAgentIdentity,
+	}}
+	body := []byte(`{
+		"model":"gpt-5.5",
+		"tools":[{"type":"namespace","name":"collaboration"}],
+		"input":[
+			{"type":"message","namespace":"keep-message","content":"hello"},
+			{"type":"function_call","namespace":"collaboration","name":"spawn_agent","arguments":"{}"},
+			{"type":"custom_tool_call","namespace":"image_gen","name":"generate","input":"{}"}
+		]
+	}`)
+
+	normalized, changed, err := normalizeOpenAIAgentIdentityInputNamespaces(agentIdentity, body)
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.Equal(t, "collaboration", gjson.GetBytes(normalized, "tools.0.name").String())
+	require.Equal(t, "keep-message", gjson.GetBytes(normalized, "input.0.namespace").String())
+	require.False(t, gjson.GetBytes(normalized, "input.1.namespace").Exists())
+	require.False(t, gjson.GetBytes(normalized, "input.2.namespace").Exists())
+
+	standardOAuth := &Account{Type: AccountTypeOAuth, Platform: PlatformOpenAI, Credentials: map[string]any{}}
+	unchanged, changed, err := normalizeOpenAIAgentIdentityInputNamespaces(standardOAuth, body)
+	require.NoError(t, err)
+	require.False(t, changed)
+	require.Equal(t, body, unchanged)
+}
+
+func TestOpenAIWSPassthroughRequestNormalizerStripsAgentIdentityInputNamespaces(t *testing.T) {
+	account := &Account{Type: AccountTypeOAuth, Platform: PlatformOpenAI, Credentials: map[string]any{
+		"auth_mode": OpenAIAuthModeAgentIdentity,
+	}}
+	normalizer := &openAIWSPassthroughRequestNormalizer{account: account}
+
+	normalized, err := normalizer.Normalize(coderws.MessageText, []byte(`{
+		"type":"response.create",
+		"model":"gpt-5.5",
+		"input":[{"type":"function_call","namespace":"collaboration","name":"spawn_agent","arguments":"{}"}]
+	}`))
+	require.NoError(t, err)
+	require.False(t, gjson.GetBytes(normalized, "input.0.namespace").Exists())
 }
 
 func TestSetOpenAIChatGPTAccountHeadersIncludesFedRAMP(t *testing.T) {
