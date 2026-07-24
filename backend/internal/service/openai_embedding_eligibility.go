@@ -5,6 +5,8 @@ import (
 	"math"
 	"sort"
 	"strings"
+
+	"github.com/Wei-Shaw/sub2api/internal/config"
 )
 
 // EmbeddingModelEligibility is the immutable result of deciding whether one
@@ -33,6 +35,9 @@ func (c EmbeddingModelEligibility) PricingForPromptTokens(promptTokens int) (*Mo
 func (s *OpenAIGatewayService) ListAvailableEmbeddingModels(ctx context.Context, groupID *int64) ([]string, error) {
 	if s == nil || groupID == nil {
 		return nil, nil
+	}
+	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple {
+		return nil, ErrEmbeddingUnsupportedMode
 	}
 
 	accounts, err := s.listSchedulableAccountsForPlatform(ctx, groupID, PlatformEmbedding)
@@ -68,6 +73,9 @@ func (s *OpenAIGatewayService) ListAvailableEmbeddingModels(ctx context.Context,
 func (s *OpenAIGatewayService) ResolveEmbeddingModelEligibility(ctx context.Context, groupID *int64, publicModel string) ([]EmbeddingModelEligibility, error) {
 	if s == nil || groupID == nil || strings.TrimSpace(publicModel) == "" {
 		return nil, nil
+	}
+	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple {
+		return nil, ErrEmbeddingUnsupportedMode
 	}
 
 	accounts, err := s.listSchedulableAccountsForPlatform(ctx, groupID, PlatformEmbedding)

@@ -21,6 +21,7 @@ func TestParseUsageRequestType(t *testing.T) {
 		{name: "sync", input: "sync", want: RequestTypeSync},
 		{name: "stream", input: "stream", want: RequestTypeStream},
 		{name: "ws_v2", input: "ws_v2", want: RequestTypeWSV2},
+		{name: "embedding", input: "embedding", want: RequestTypeEmbedding},
 		{name: "case_insensitive", input: "WS_V2", want: RequestTypeWSV2},
 		{name: "trim_spaces", input: "  stream  ", want: RequestTypeStream},
 		{name: "invalid", input: "xxx", wantErr: true},
@@ -49,6 +50,7 @@ func TestRequestTypeNormalizeAndString(t *testing.T) {
 	require.Equal(t, "sync", RequestTypeSync.String())
 	require.Equal(t, "stream", RequestTypeStream.String())
 	require.Equal(t, "ws_v2", RequestTypeWSV2.String())
+	require.Equal(t, "embedding", RequestTypeEmbedding.String())
 }
 
 func TestRequestTypeFromLegacy(t *testing.T) {
@@ -74,9 +76,24 @@ func TestApplyLegacyRequestFields(t *testing.T) {
 	require.True(t, stream)
 	require.True(t, ws)
 
+	stream, ws = ApplyLegacyRequestFields(RequestTypeEmbedding, true, true)
+	require.False(t, stream)
+	require.False(t, ws)
+
 	stream, ws = ApplyLegacyRequestFields(RequestTypeUnknown, true, false)
 	require.True(t, stream)
 	require.False(t, ws)
+}
+
+func TestUsageLogEmbeddingRequestTypePreserved(t *testing.T) {
+	t.Parallel()
+
+	log := &UsageLog{RequestType: RequestTypeEmbedding, Stream: true, OpenAIWSMode: true}
+	log.SyncRequestTypeAndLegacyFields()
+
+	require.Equal(t, RequestTypeEmbedding, log.RequestType)
+	require.False(t, log.Stream)
+	require.False(t, log.OpenAIWSMode)
 }
 
 func TestUsageLogSyncRequestTypeAndLegacyFields(t *testing.T) {

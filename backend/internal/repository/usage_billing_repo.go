@@ -57,6 +57,11 @@ func (r *usageBillingRepository) Apply(ctx context.Context, cmd *service.UsageBi
 	if err := r.applyUsageBillingEffects(ctx, tx, cmd, result); err != nil {
 		return nil, err
 	}
+	if cmd.UsageLog != nil {
+		if err := execUsageLogInsertNoResult(ctx, tx, prepareUsageLogInsert(cmd.UsageLog)); err != nil {
+			return nil, err
+		}
+	}
 
 	if err := tx.Commit(); err != nil {
 		return nil, err

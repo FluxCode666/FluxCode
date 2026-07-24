@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
 	"github.com/tidwall/sjson"
 )
@@ -34,9 +35,10 @@ var lookupEmbeddingHostIP = func(ctx context.Context, host string) ([]net.IP, er
 }
 
 var (
-	ErrEmbeddingRequestInvalid = errors.New("invalid embedding request")
-	ErrEmbeddingUnavailable    = errors.New("embedding model is unavailable")
-	ErrEmbeddingUpstream       = errors.New("embedding upstream request failed")
+	ErrEmbeddingRequestInvalid  = errors.New("invalid embedding request")
+	ErrEmbeddingUnavailable     = errors.New("embedding model is unavailable")
+	ErrEmbeddingUpstream        = errors.New("embedding upstream request failed")
+	ErrEmbeddingUnsupportedMode = errors.New("embedding is unavailable in simple run mode")
 )
 
 // EmbeddingForwardError intentionally exposes only a stable category and
@@ -151,6 +153,9 @@ func (s *OpenAIGatewayService) acquireEmbeddingForwardSlot() (func(), bool) {
 // embedding flow. It reads neither inbound Authorization nor upstream error
 // bodies, and it returns a vector only after strict usage validation succeeds.
 func (s *OpenAIGatewayService) ForwardEmbeddings(ctx context.Context, input EmbeddingForwardInput) (*EmbeddingForwardResult, error) {
+	if s != nil && s.cfg != nil && s.cfg.RunMode == config.RunModeSimple {
+		return nil, ErrEmbeddingUnsupportedMode
+	}
 	if input.GroupID == nil {
 		return nil, ErrEmbeddingUnavailable
 	}
