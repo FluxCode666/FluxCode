@@ -965,6 +965,10 @@ export default {
         modelComment: '如果你有 Gemini 3 权限可以填：gemini-3-pro-preview',
         note: '这些环境变量将在当前终端会话中生效。如需永久配置，请将其添加到 ~/.bashrc、~/.zshrc 或相应的配置文件中。'
       },
+      embedding: {
+        description: 'Embedding 使用独立 API Key，仅提供 OpenAI 兼容的模型发现和向量接口。请先调用 GET /v1/models 获取可用模型。',
+        note: 'Embedding Key 只能用于 /v1/models 和 /v1/embeddings；服务端仅通过 Bearer API Key 请求上游，不会记录输入文本或向量。'
+      },
       opencode: {
         title: 'OpenCode 配置示例',
         subtitle: 'opencode.json',
@@ -1099,6 +1103,7 @@ export default {
     ws: 'WS',
     stream: '流式',
     sync: '同步',
+    embedding: 'Embedding',
     unknown: '未知',
     in: '输入',
     out: '输出',
@@ -5166,7 +5171,8 @@ export default {
         requestType: '类型',
         requestTypeSync: '同步',
         requestTypeStream: '流式',
-        requestTypeWs: 'WS'
+        requestTypeWs: 'WS',
+        requestTypeEmbedding: 'Embedding'
       },
       // Error Details Modal
       errorDetails: {
@@ -5247,6 +5253,7 @@ export default {
         platform: '平台',
         model: '模型',
         group: '分组',
+        channel: '渠道',
         user: '用户',
         account: '账号',
         latency: '请求时长',
@@ -5261,6 +5268,7 @@ export default {
         requestTypeSync: '同步',
         requestTypeStream: '流式',
         requestTypeWs: 'WebSocket',
+        requestTypeEmbedding: 'Embedding',
         modelMapping: '模型映射',
         timings: '时序信息',
         auth: '认证',
@@ -5302,6 +5310,7 @@ export default {
         tabRequest: '请求详情',
         tabResponse: '响应详情',
         responseBody: '响应详情',
+        contentPreviewUnavailable: 'Embedding 内容预览不可用。',
         compareA: '对比 A',
         compareB: '对比 B',
         retrySummary: '重试摘要',

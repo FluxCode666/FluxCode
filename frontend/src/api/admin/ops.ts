@@ -965,6 +965,8 @@ export interface OpsErrorLog {
   account_name: string
   group_id?: number | null
   group_name: string
+  channel_id?: number | null
+  channel_name?: string
 
   client_ip?: string | null
   request_path?: string

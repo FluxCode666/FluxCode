@@ -964,6 +964,10 @@ export default {
         modelComment: 'If you have Gemini 3 access, you can use: gemini-3-pro-preview',
         note: 'These environment variables will be active in the current terminal session. For permanent configuration, add them to ~/.bashrc, ~/.zshrc, or the appropriate configuration file.',
       },
+      embedding: {
+        description: 'Embedding uses a dedicated API key and exposes only OpenAI-compatible model discovery and vector APIs. Start with GET /v1/models to discover available models.',
+        note: 'Embedding keys are limited to /v1/models and /v1/embeddings. Upstream requests use Bearer API keys only; input text and vectors are never recorded.',
+      },
       opencode: {
         title: 'OpenCode Example',
         subtitle: 'opencode.json',
@@ -1097,6 +1101,7 @@ export default {
     ws: 'WS',
     stream: 'Stream',
     sync: 'Sync',
+    embedding: 'Embedding',
     unknown: 'Unknown',
     in: 'In',
     out: 'Out',
@@ -5035,7 +5040,8 @@ export default {
         requestType: 'Type',
         requestTypeSync: 'Sync',
         requestTypeStream: 'Stream',
-        requestTypeWs: 'WS'
+        requestTypeWs: 'WS',
+        requestTypeEmbedding: 'Embedding'
       },
       // Error Details Modal
       errorDetails: {
@@ -5116,6 +5122,7 @@ export default {
         platform: 'Platform',
         model: 'Model',
         group: 'Group',
+        channel: 'Channel',
         user: 'User',
         account: 'Account',
         latency: 'Request Duration',
@@ -5130,6 +5137,7 @@ export default {
         requestTypeSync: 'Sync',
         requestTypeStream: 'Stream',
         requestTypeWs: 'WebSocket',
+        requestTypeEmbedding: 'Embedding',
         modelMapping: 'Model Mapping',
         timings: 'Timings',
         auth: 'Auth',
@@ -5171,6 +5179,7 @@ export default {
         tabRequest: 'Request',
         tabResponse: 'Response',
         responseBody: 'Response',
+        contentPreviewUnavailable: 'Embedding content previews are unavailable.',
         compareA: 'Compare A',
         compareB: 'Compare B',
         retrySummary: 'Retry Summary',

@@ -80,6 +80,7 @@ type OpsInsertErrorLogInput struct {
 	APIKeyID  *int64
 	AccountID *int64
 	GroupID   *int64
+	ChannelID *int64
 	ClientIP  *string
 
 	Platform    string
@@ -94,7 +95,7 @@ type OpsInsertErrorLogInput struct {
 	RequestedModel string
 	// UpstreamModel is the actual model sent to upstream after mapping. Empty means no mapping.
 	UpstreamModel string
-	// RequestType is the granular request type: 0=unknown, 1=sync, 2=stream, 3=ws_v2.
+	// RequestType is the granular request type: 0=unknown, 1=sync, 2=stream, 3=ws_v2, 4=embedding.
 	// Matches service.RequestType enum semantics from usage_log.go.
 	RequestType *int16
 	UserAgent   string

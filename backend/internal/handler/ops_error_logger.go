@@ -26,6 +26,7 @@ const (
 	opsStreamKey      = "ops_stream"
 	opsRequestBodyKey = "ops_request_body"
 	opsAccountIDKey   = "ops_account_id"
+	opsChannelIDKey   = "ops_channel_id"
 
 	opsUpstreamModelKey = "ops_upstream_model"
 	opsRequestTypeKey   = "ops_request_type"
@@ -361,6 +362,12 @@ func setOpsEndpointContext(c *gin.Context, upstreamModel string, requestType int
 	c.Set(opsRequestTypeKey, requestType)
 }
 
+func setOpsChannelContext(c *gin.Context, channelID int64) {
+	if c != nil && channelID > 0 {
+		c.Set(opsChannelIDKey, channelID)
+	}
+}
+
 func attachOpsRequestBodyToEntry(c *gin.Context, entry *service.OpsInsertErrorLogInput) {
 	if c == nil || entry == nil {
 		return
@@ -636,8 +643,16 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 				ClientRequestID: clientRequestID,
 
 				AccountID: accountID,
-				Platform:  platform,
-				Model:     modelName,
+				ChannelID: func() *int64 {
+					if v, ok := c.Get(opsChannelIDKey); ok {
+						if id, ok := v.(int64); ok && id > 0 {
+							return &id
+						}
+					}
+					return nil
+				}(),
+				Platform: platform,
+				Model:    modelName,
 				RequestPath: func() string {
 					if c.Request != nil && c.Request.URL != nil {
 						return c.Request.URL.Path
@@ -787,8 +802,16 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 			ClientRequestID: clientRequestID,
 
 			AccountID: accountID,
-			Platform:  platform,
-			Model:     modelName,
+			ChannelID: func() *int64 {
+				if v, ok := c.Get(opsChannelIDKey); ok {
+					if id, ok := v.(int64); ok && id > 0 {
+						return &id
+					}
+				}
+				return nil
+			}(),
+			Platform: platform,
+			Model:    modelName,
 			RequestPath: func() string {
 				if c.Request != nil && c.Request.URL != nil {
 					return c.Request.URL.Path

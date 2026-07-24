@@ -135,6 +135,9 @@ func (s *OpsService) RetryError(ctx context.Context, requestedByUserID int64, er
 	if errorLog == nil {
 		return nil, infraerrors.NotFound("OPS_ERROR_NOT_FOUND", "ops error log not found")
 	}
+	if isEmbeddingOpsMetadata(errorLog.Platform, errorLog.RequestType, errorLog.RequestPath, errorLog.InboundEndpoint, errorLog.UpstreamEndpoint) {
+		return nil, infraerrors.BadRequest("OPS_RETRY_EMBEDDING_DISABLED", "embedding requests cannot be retried")
+	}
 	if strings.TrimSpace(errorLog.RequestBody) == "" {
 		return nil, infraerrors.BadRequest("OPS_RETRY_NO_REQUEST_BODY", "No request body found to retry")
 	}
@@ -172,6 +175,9 @@ func (s *OpsService) RetryUpstreamEvent(ctx context.Context, requestedByUserID i
 	}
 	if errorLog == nil {
 		return nil, infraerrors.NotFound("OPS_ERROR_NOT_FOUND", "ops error log not found")
+	}
+	if isEmbeddingOpsMetadata(errorLog.Platform, errorLog.RequestType, errorLog.RequestPath, errorLog.InboundEndpoint, errorLog.UpstreamEndpoint) {
+		return nil, infraerrors.BadRequest("OPS_RETRY_EMBEDDING_DISABLED", "embedding requests cannot be retried")
 	}
 
 	events, err := ParseOpsUpstreamErrors(errorLog.UpstreamErrors)

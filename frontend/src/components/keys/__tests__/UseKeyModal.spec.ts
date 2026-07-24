@@ -114,4 +114,16 @@ describe('UseKeyModal', () => {
     expect(configBlock).toContain('model = "gpt-5.5"')
     expect(configBlock).toContain('review_model = "gpt-5.5"')
   })
+
+  it('renders dedicated embedding discovery, curl, and OpenAI SDK examples', () => {
+    const wrapper = mountModal({ platform: 'embedding' })
+    const text = wrapper.text()
+
+    expect(text).toContain('GET /v1/models')
+    expect(text).toContain('POST /v1/embeddings')
+    expect(text).toContain('client.embeddings.create')
+    expect(text).toContain('sk-test')
+    expect(text).not.toContain('ANTHROPIC_BASE_URL')
+    expect(text).not.toContain('OPENAI_BASE_URL')
+  })
 })

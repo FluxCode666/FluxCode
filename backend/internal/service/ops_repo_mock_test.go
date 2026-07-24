@@ -13,6 +13,10 @@ type opsRepoMock struct {
 	ListSystemLogsFn                                    func(ctx context.Context, filter *OpsSystemLogFilter) (*OpsSystemLogList, error)
 	DeleteSystemLogsFn                                  func(ctx context.Context, filter *OpsSystemLogCleanupFilter) (int64, error)
 	InsertSystemLogCleanupAuditFn                       func(ctx context.Context, input *OpsSystemLogCleanupAudit) error
+	ListErrorLogsFn                                     func(ctx context.Context, filter *OpsErrorLogFilter) (*OpsErrorLogList, error)
+	GetErrorLogByIDFn                                   func(ctx context.Context, id int64) (*OpsErrorLogDetail, error)
+	InsertRetryAttemptFn                                func(ctx context.Context, input *OpsInsertRetryAttemptInput) (int64, error)
+	ListRetryAttemptsByErrorIDFn                        func(ctx context.Context, sourceErrorID int64, limit int) ([]*OpsRetryAttempt, error)
 	UpsertJobHeartbeatFn                                func(ctx context.Context, input *OpsUpsertJobHeartbeatInput) error
 	UpsertModelPerformanceHourlyMetricsFn               func(ctx context.Context, startTime, endTime time.Time) error
 	GetModelPerformanceMetricsAggregationWatermarkFn    func(ctx context.Context) (*time.Time, error)
@@ -34,10 +38,16 @@ func (m *opsRepoMock) BatchInsertErrorLogs(ctx context.Context, inputs []*OpsIns
 }
 
 func (m *opsRepoMock) ListErrorLogs(ctx context.Context, filter *OpsErrorLogFilter) (*OpsErrorLogList, error) {
+	if m.ListErrorLogsFn != nil {
+		return m.ListErrorLogsFn(ctx, filter)
+	}
 	return &OpsErrorLogList{Errors: []*OpsErrorLog{}, Page: 1, PageSize: 20}, nil
 }
 
 func (m *opsRepoMock) GetErrorLogByID(ctx context.Context, id int64) (*OpsErrorLogDetail, error) {
+	if m.GetErrorLogByIDFn != nil {
+		return m.GetErrorLogByIDFn(ctx, id)
+	}
 	return &OpsErrorLogDetail{}, nil
 }
 
@@ -74,6 +84,9 @@ func (m *opsRepoMock) InsertSystemLogCleanupAudit(ctx context.Context, input *Op
 }
 
 func (m *opsRepoMock) InsertRetryAttempt(ctx context.Context, input *OpsInsertRetryAttemptInput) (int64, error) {
+	if m.InsertRetryAttemptFn != nil {
+		return m.InsertRetryAttemptFn(ctx, input)
+	}
 	return 0, nil
 }
 
@@ -86,6 +99,9 @@ func (m *opsRepoMock) GetLatestRetryAttemptForError(ctx context.Context, sourceE
 }
 
 func (m *opsRepoMock) ListRetryAttemptsByErrorID(ctx context.Context, sourceErrorID int64, limit int) ([]*OpsRetryAttempt, error) {
+	if m.ListRetryAttemptsByErrorIDFn != nil {
+		return m.ListRetryAttemptsByErrorIDFn(ctx, sourceErrorID, limit)
+	}
 	return []*OpsRetryAttempt{}, nil
 }
 

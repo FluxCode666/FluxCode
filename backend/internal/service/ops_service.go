@@ -206,6 +206,25 @@ func (s *OpsService) prepareErrorLogInput(ctx context.Context, entry *OpsInsertE
 		entry.ErrorType = "api_error"
 	}
 
+	// Embedding content is never persisted. The request input, returned vectors,
+	// upstream payloads, and request headers are intentionally unavailable for
+	// replay or preview even when generic Ops capture is enabled.
+	if isEmbeddingOpsMetadata(entry.Platform, entry.RequestType, entry.RequestPath, entry.InboundEndpoint, entry.UpstreamEndpoint) {
+		entry.ErrorMessage = "embedding request failed"
+		entry.ErrorBody = ""
+		entry.UpstreamErrorMessage = nil
+		entry.UpstreamErrorDetail = nil
+		entry.UpstreamErrors = nil
+		entry.UpstreamErrorsJSON = nil
+		entry.RequestBodyJSON = nil
+		entry.RequestBodyTruncated = false
+		entry.RequestBodyBytes = nil
+		entry.RequestHeadersJSON = nil
+		entry.UserAgent = ""
+		entry.IsRetryable = false
+		rawRequestBody = nil
+	}
+
 	// Sanitize + trim request body (errors only).
 	if len(rawRequestBody) > 0 {
 		entry.RequestBodyJSON, entry.RequestBodyTruncated, entry.RequestBodyBytes = PrepareOpsRequestBodyForQueue(rawRequestBody)
@@ -343,6 +362,9 @@ func (s *OpsService) GetErrorLogs(ctx context.Context, filter *OpsErrorLogFilter
 		return nil, err
 	}
 
+	for _, item := range result.Errors {
+		redactEmbeddingOpsLog(item)
+	}
 	return result, nil
 }
 
@@ -360,7 +382,48 @@ func (s *OpsService) GetErrorLogByID(ctx context.Context, id int64) (*OpsErrorLo
 		}
 		return nil, infraerrors.InternalServer("OPS_ERROR_LOAD_FAILED", "Failed to load ops error log").WithCause(err)
 	}
+	redactEmbeddingOpsDetail(detail)
 	return detail, nil
+}
+
+func isEmbeddingOpsMetadata(platform string, requestType *int16, endpoints ...string) bool {
+	if strings.EqualFold(strings.TrimSpace(platform), PlatformEmbedding) {
+		return true
+	}
+	if requestType != nil && *requestType == int16(RequestTypeEmbedding) {
+		return true
+	}
+	for _, endpoint := range endpoints {
+		path := strings.TrimSuffix(strings.ToLower(strings.TrimSpace(endpoint)), "/")
+		if path == "/v1/embeddings" || strings.HasSuffix(path, "/v1/embeddings") {
+			return true
+		}
+	}
+	return false
+}
+
+func redactEmbeddingOpsLog(item *OpsErrorLog) {
+	if item == nil || !isEmbeddingOpsMetadata(item.Platform, item.RequestType, item.RequestPath, item.InboundEndpoint, item.UpstreamEndpoint) {
+		return
+	}
+	item.Message = "embedding request failed"
+	item.IsRetryable = false
+}
+
+func redactEmbeddingOpsDetail(detail *OpsErrorLogDetail) {
+	if detail == nil || !isEmbeddingOpsMetadata(detail.Platform, detail.RequestType, detail.RequestPath, detail.InboundEndpoint, detail.UpstreamEndpoint) {
+		return
+	}
+	redactEmbeddingOpsLog(&detail.OpsErrorLog)
+	detail.ErrorBody = ""
+	detail.UserAgent = ""
+	detail.UpstreamErrorMessage = ""
+	detail.UpstreamErrorDetail = ""
+	detail.UpstreamErrors = ""
+	detail.RequestBody = ""
+	detail.RequestBodyTruncated = false
+	detail.RequestBodyBytes = nil
+	detail.RequestHeaders = ""
 }
 
 func (s *OpsService) ListRetryAttemptsByErrorID(ctx context.Context, errorID int64, limit int) ([]*OpsRetryAttempt, error) {
@@ -373,12 +436,27 @@ func (s *OpsService) ListRetryAttemptsByErrorID(ctx context.Context, errorID int
 	if errorID <= 0 {
 		return nil, infraerrors.BadRequest("OPS_ERROR_INVALID_ID", "invalid error id")
 	}
+	detail, err := s.GetErrorLogByID(ctx, errorID)
+	if err != nil {
+		return nil, err
+	}
+	embedding := detail != nil && isEmbeddingOpsMetadata(detail.Platform, detail.RequestType, detail.RequestPath, detail.InboundEndpoint, detail.UpstreamEndpoint)
 	items, err := s.opsRepo.ListRetryAttemptsByErrorID(ctx, errorID, limit)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return []*OpsRetryAttempt{}, nil
 		}
 		return nil, infraerrors.InternalServer("OPS_RETRY_LIST_FAILED", "Failed to list retry attempts").WithCause(err)
+	}
+	if embedding {
+		for _, item := range items {
+			if item == nil {
+				continue
+			}
+			item.ResponsePreview = nil
+			item.ResponseTruncated = nil
+			item.ErrorMessage = nil
+		}
 	}
 	return items, nil
 }

@@ -224,6 +224,8 @@ const defaultClientTab = computed(() => {
       return 'gemini'
     case 'antigravity':
       return 'claude'
+    case 'embedding':
+      return 'embedding'
     default:
       return 'claude'
   }
@@ -327,6 +329,8 @@ const clientTabs = computed((): TabConfig[] => {
         { id: 'gemini', label: t('keys.useKeyModal.cliTabs.geminiCli'), icon: SparkleIcon },
         { id: 'opencode', label: t('keys.useKeyModal.cliTabs.opencode'), icon: TerminalIcon }
       ]
+    case 'embedding':
+      return []
     default:
       return [
         { id: 'claude', label: t('keys.useKeyModal.cliTabs.claudeCode'), icon: TerminalIcon },
@@ -348,7 +352,7 @@ const openaiTabs: TabConfig[] = [
   { id: 'windows', label: 'Windows', icon: WindowsIcon }
 ]
 
-const showShellTabs = computed(() => activeClientTab.value !== 'opencode')
+const showShellTabs = computed(() => props.platform !== 'embedding' && activeClientTab.value !== 'opencode')
 
 const currentTabs = computed(() => {
   if (!showShellTabs.value) return []
@@ -369,6 +373,8 @@ const platformDescription = computed(() => {
       return t('keys.useKeyModal.gemini.description')
     case 'antigravity':
       return t('keys.useKeyModal.antigravity.description')
+    case 'embedding':
+      return t('keys.useKeyModal.embedding.description')
     default:
       return t('keys.useKeyModal.description')
   }
@@ -389,6 +395,8 @@ const platformNote = computed(() => {
       return activeClientTab.value === 'claude'
         ? t('keys.useKeyModal.antigravity.claudeNote')
         : t('keys.useKeyModal.antigravity.geminiNote')
+    case 'embedding':
+      return t('keys.useKeyModal.embedding.note')
     default:
       return t('keys.useKeyModal.note')
   }
@@ -433,6 +441,10 @@ const currentFiles = computed((): FileConfig[] => {
     return trimmed.endsWith('/v1beta') ? trimmed : `${trimmed}/v1beta`
   })()
 
+  if (props.platform === 'embedding') {
+    return generateEmbeddingFiles(apiBase, apiKey)
+  }
+
   if (activeClientTab.value === 'opencode') {
     switch (props.platform) {
       case 'anthropic':
@@ -471,6 +483,41 @@ const currentFiles = computed((): FileConfig[] => {
       return generateAnthropicFiles(baseUrl, apiKey)
   }
 })
+
+function generateEmbeddingFiles(apiBase: string, apiKey: string): FileConfig[] {
+  const escapedAPIBase = apiBase.replace(/\"/g, '\\"')
+  const escapedAPIKey = apiKey.replace(/\"/g, '\\"')
+  return [
+    {
+      path: 'GET /v1/models',
+      content: `curl -sS "${escapedAPIBase}/models" \\
+  -H "Authorization: Bearer ${escapedAPIKey}"`
+    },
+    {
+      path: 'POST /v1/embeddings',
+      content: `curl -sS "${escapedAPIBase}/embeddings" \\
+  -H "Authorization: Bearer ${escapedAPIKey}" \\
+  -H "Content-Type: application/json" \\
+  -d '{"model":"YOUR_EMBEDDING_MODEL","input":"Text to embed"}'`
+    },
+    {
+      path: 'Python · OpenAI SDK',
+      content: `from openai import OpenAI
+
+client = OpenAI(
+    api_key="${apiKey.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}",
+    base_url="${apiBase.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}",
+)
+
+models = client.models.list()
+response = client.embeddings.create(
+    model="YOUR_EMBEDDING_MODEL",
+    input="Text to embed",
+)
+print(response.data[0].embedding)`
+    }
+  ]
+}
 
 function generateAnthropicFiles(baseUrl: string, apiKey: string): FileConfig[] {
   let path: string
@@ -1276,6 +1323,7 @@ const encodeBase64Utf8 = (value: string) => {
 }
 
 const quickSetupCommand = computed((): string => {
+  if (props.platform === 'embedding') return ''
   const files = currentFiles.value
   if (!files.length) return ''
 

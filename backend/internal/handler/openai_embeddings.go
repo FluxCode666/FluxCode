@@ -123,6 +123,7 @@ func (h *OpenAIGatewayHandler) Embeddings(c *gin.Context) {
 		return
 	}
 	setOpsSelectedAccount(c, result.Eligibility.Account.ID, service.PlatformEmbedding)
+	setOpsChannelContext(c, result.Eligibility.ChannelMapping.ChannelID)
 	setOpsEndpointContext(c, result.Eligibility.UpstreamModel, int16(service.RequestTypeEmbedding))
 
 	if err := h.gatewayService.BillEmbedding(ctx, &service.EmbeddingBillingInput{

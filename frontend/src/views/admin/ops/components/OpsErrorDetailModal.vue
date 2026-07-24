@@ -57,6 +57,13 @@
         </div>
 
         <div class="rounded-xl bg-gray-50 p-4 dark:bg-dark-900">
+          <div class="text-xs font-bold uppercase tracking-wider text-gray-400">{{ t('admin.ops.errorDetail.channel') }}</div>
+          <div class="mt-1 text-sm font-medium text-gray-900 dark:text-white">
+            {{ detail.channel_name || (detail.channel_id != null ? String(detail.channel_id) : '—') }}
+          </div>
+        </div>
+
+        <div class="rounded-xl bg-gray-50 p-4 dark:bg-dark-900">
           <div class="text-xs font-bold uppercase tracking-wider text-gray-400">{{ t('admin.ops.errorDetail.model') }}</div>
           <div class="mt-1 text-sm font-medium text-gray-900 dark:text-white">
             <template v-if="hasModelMapping(detail)">
@@ -109,9 +116,13 @@
       </div>
 
       <!-- Response content (client request -> error_body; upstream -> upstream_error_detail/message) -->
-      <div class="rounded-xl bg-gray-50 p-6 dark:bg-dark-900">
+      <div v-if="!isEmbeddingDetail" class="rounded-xl bg-gray-50 p-6 dark:bg-dark-900">
         <h3 class="text-sm font-black uppercase tracking-wider text-gray-900 dark:text-white">{{ t('admin.ops.errorDetail.responseBody') }}</h3>
         <pre class="mt-4 max-h-[520px] overflow-auto rounded-xl border border-gray-200 bg-white p-4 text-xs text-gray-800 dark:border-dark-700 dark:bg-dark-800 dark:text-gray-100"><code>{{ prettyJSON(primaryResponseBody || '') }}</code></pre>
+      </div>
+      <div v-else class="rounded-xl border border-indigo-200 bg-indigo-50 p-6 dark:border-indigo-900/60 dark:bg-indigo-950/30">
+        <h3 class="text-sm font-black uppercase tracking-wider text-indigo-900 dark:text-indigo-200">{{ t('admin.ops.errorDetail.contentPreviewUnavailable') }}</h3>
+        <p class="mt-2 text-sm text-indigo-800 dark:text-indigo-300">{{ t('admin.ops.errorDetail.contentPreviewUnavailable') }}</p>
       </div>
 
       <!-- Upstream errors list (only for request errors) -->
@@ -216,7 +227,13 @@ const appStore = useAppStore()
 const loading = ref(false)
 const detail = ref<OpsErrorDetail | null>(null)
 
-const showUpstreamList = computed(() => props.errorType === 'request')
+const isEmbeddingDetail = computed(() => {
+  const d = detail.value
+  if (!d) return false
+  return String(d.platform || '').toLowerCase() === 'embedding' || d.request_type === 4 || /\/v1\/embeddings\/?$/i.test(String(d.request_path || ''))
+})
+
+const showUpstreamList = computed(() => props.errorType === 'request' && !isEmbeddingDetail.value)
 
 const requestId = computed(() => detail.value?.request_id || detail.value?.client_request_id || '')
 
@@ -246,6 +263,7 @@ function formatRequestTypeLabel(type: number | null | undefined): string {
     case 1: return t('admin.ops.errorDetail.requestTypeSync')
     case 2: return t('admin.ops.errorDetail.requestTypeStream')
     case 3: return t('admin.ops.errorDetail.requestTypeWs')
+    case 4: return t('admin.ops.errorDetail.requestTypeEmbedding')
     default: return t('admin.ops.errorDetail.requestTypeUnknown')
   }
 }
@@ -274,6 +292,7 @@ const correlatedUpstreamErrors = computed<OpsErrorDetail[]>(() => correlatedUpst
 const expandedUpstreamDetailIds = ref(new Set<number>())
 
 function getUpstreamResponsePreview(ev: OpsErrorDetail): string {
+  if (isEmbeddingDetail.value || String(ev.platform || '').toLowerCase() === 'embedding' || ev.request_type === 4) return ''
   const upstreamPayload = resolveUpstreamPayload(ev)
   if (upstreamPayload) return upstreamPayload
   return String(ev.error_body || '').trim()
@@ -322,6 +341,11 @@ async function fetchDetail(id: number) {
     const kind = props.errorType || (detail.value?.phase === 'upstream' ? 'upstream' : 'request')
     const d = kind === 'upstream' ? await opsAPI.getUpstreamErrorDetail(id) : await opsAPI.getRequestErrorDetail(id)
     detail.value = d
+    if (props.errorType === 'request' && !isEmbeddingDetail.value) {
+      await fetchCorrelatedUpstreamErrors(id)
+    } else {
+      correlatedUpstream.value = []
+    }
   } catch (err: any) {
     detail.value = null
     appStore.showError(err?.message || t('admin.ops.failedToLoadErrorDetail'))
@@ -340,11 +364,6 @@ watch(
     if (typeof id === 'number' && id > 0) {
       expandedUpstreamDetailIds.value = new Set()
       fetchDetail(id)
-      if (props.errorType === 'request') {
-        fetchCorrelatedUpstreamErrors(id)
-      } else {
-        correlatedUpstream.value = []
-      }
     }
   },
   { immediate: true }
