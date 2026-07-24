@@ -34,6 +34,25 @@ func validateCodex2APIAccount(account *Account) error {
 	return nil
 }
 
+func validateEmbeddingAccount(account *Account) error {
+	if account == nil || account.Platform != PlatformEmbedding {
+		return nil
+	}
+	if account.Type != AccountTypeAPIKey {
+		return fmt.Errorf("embedding accounts only support apikey type")
+	}
+	if account.GetEmbeddingBaseURL() == "" {
+		return fmt.Errorf("embedding base_url is required")
+	}
+	if account.GetEmbeddingAPIKey() == "" {
+		return fmt.Errorf("embedding api_key is required")
+	}
+	if !account.HasEmbeddingModelConfiguration() {
+		return fmt.Errorf("embedding model whitelist or mapping is required")
+	}
+	return nil
+}
+
 func requireOAuthOnlyAppliesToGroup(platform string) bool {
 	switch platform {
 	case PlatformOpenAI, PlatformAntigravity, PlatformAnthropic, PlatformGemini:
@@ -227,6 +246,9 @@ func (s *AccountService) Create(ctx context.Context, req CreateAccountRequest) (
 	if err := validateCodex2APIAccount(account); err != nil {
 		return nil, err
 	}
+	if err := validateEmbeddingAccount(account); err != nil {
+		return nil, err
+	}
 	if err := validateAccountGroupBindings(ctx, s.groupRepo, account.Platform, account.Type, req.GroupIDs); err != nil {
 		return nil, err
 	}
@@ -328,6 +350,9 @@ func (s *AccountService) Update(ctx context.Context, id int64, req UpdateAccount
 
 	// 执行更新
 	if err := validateCodex2APIAccount(account); err != nil {
+		return nil, err
+	}
+	if err := validateEmbeddingAccount(account); err != nil {
 		return nil, err
 	}
 	if req.GroupIDs != nil {

@@ -45,6 +45,41 @@ func (s *openAISnapshotCacheStub) GetAccount(ctx context.Context, accountID int6
 	return &cloned, nil
 }
 
+func TestEmbeddingSchedulerPlatformUsesExactAPIKeyAccounts(t *testing.T) {
+	require.Equal(t, PlatformEmbedding, normalizeOpenAICompatibleSchedulerPlatform(PlatformEmbedding))
+	require.Equal(t, []string{PlatformEmbedding}, openAICompatibleSchedulerAccountPlatforms(PlatformEmbedding))
+
+	embeddingAPIKey := &Account{Platform: PlatformEmbedding, Type: AccountTypeAPIKey}
+	embeddingOAuth := &Account{Platform: PlatformEmbedding, Type: AccountTypeOAuth}
+	openAIAPIKey := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
+
+	require.True(t, isOpenAICompatibleAccountForPlatform(embeddingAPIKey, PlatformEmbedding))
+	require.False(t, isOpenAICompatibleAccountForPlatform(embeddingOAuth, PlatformEmbedding))
+	require.False(t, isOpenAICompatibleAccountForPlatform(openAIAPIKey, PlatformEmbedding))
+}
+
+func TestOpenAIAccountSchedulerSelectsOnlyEmbeddingAPIKeyAccount(t *testing.T) {
+	groupID := int64(888)
+	svc := &OpenAIGatewayService{
+		accountRepo: stubOpenAIAccountRepo{accounts: []Account{
+			{ID: 1, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1},
+			{ID: 2, Platform: PlatformEmbedding, Type: AccountTypeOAuth, Status: StatusActive, Schedulable: true, Concurrency: 1},
+			{ID: 3, Platform: PlatformEmbedding, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1},
+		}},
+		cfg: &config.Config{},
+	}
+
+	selection, err := svc.SelectAccountWithLoadAwarenessForPlatform(
+		context.Background(), PlatformEmbedding, &groupID, "", "", nil,
+	)
+	require.NoError(t, err)
+	require.NotNil(t, selection)
+	require.NotNil(t, selection.Account)
+	require.Equal(t, int64(3), selection.Account.ID)
+	require.Equal(t, PlatformEmbedding, selection.Account.Platform)
+	require.Equal(t, AccountTypeAPIKey, selection.Account.Type)
+}
+
 func TestOpenAIGatewayService_SelectAccountWithScheduler_SessionStickyRateLimitedAccountFallsBackToFreshCandidate(t *testing.T) {
 	ctx := context.Background()
 	groupID := int64(10101)

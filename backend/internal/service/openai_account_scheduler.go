@@ -34,10 +34,15 @@ type OpenAIAccountScheduleRequest struct {
 
 func normalizeOpenAICompatibleSchedulerPlatform(platform string) string {
 	platform = strings.TrimSpace(platform)
-	if IsOpenAICompatiblePlatform(platform) {
+	switch platform {
+	case PlatformOpenAI, PlatformCodex2API, PlatformEmbedding:
+		// Embedding deliberately stays outside IsOpenAICompatiblePlatform. It is
+		// accepted here only because this scheduler is also the shared account
+		// selection primitive for the embedding gateway.
 		return platform
+	default:
+		return PlatformOpenAI
 	}
-	return PlatformOpenAI
 }
 
 func openAICompatibleSchedulerAccountPlatforms(platform string) []string {
@@ -61,6 +66,8 @@ func isOpenAICompatibleAccountForPlatform(account *Account, platform string) boo
 		return account.Platform == PlatformCodex2API && account.Type == AccountTypeAPIKey
 	case PlatformCodex2API:
 		return account.Platform == PlatformCodex2API && account.Type == AccountTypeAPIKey
+	case PlatformEmbedding:
+		return account.Platform == PlatformEmbedding && account.Type == AccountTypeAPIKey
 	default:
 		return false
 	}

@@ -625,6 +625,66 @@ func (a *Account) GetBaseURL() string {
 	return baseURL
 }
 
+// IsEmbeddingAPIKey reports whether this account can use the dedicated embedding upstream contract.
+func (a *Account) IsEmbeddingAPIKey() bool {
+	return a != nil && a.Platform == PlatformEmbedding && a.Type == AccountTypeAPIKey
+}
+
+// GetEmbeddingBaseURL returns the explicitly configured embedding upstream URL.
+func (a *Account) GetEmbeddingBaseURL() string {
+	if !a.IsEmbeddingAPIKey() {
+		return ""
+	}
+	return strings.TrimSpace(a.GetCredential("base_url"))
+}
+
+// GetEmbeddingAPIKey returns the embedding upstream API key only for a valid embedding account type.
+func (a *Account) GetEmbeddingAPIKey() string {
+	if !a.IsEmbeddingAPIKey() {
+		return ""
+	}
+	return strings.TrimSpace(a.GetCredential("api_key"))
+}
+
+// HasEmbeddingModelConfiguration requires a non-empty, usable whitelist or model mapping.
+func (a *Account) HasEmbeddingModelConfiguration() bool {
+	if a == nil || a.Credentials == nil {
+		return false
+	}
+	if mapping, ok := a.Credentials["model_mapping"].(map[string]any); ok {
+		for from, to := range mapping {
+			if strings.TrimSpace(from) == "" {
+				continue
+			}
+			if target, ok := to.(string); ok && strings.TrimSpace(target) != "" {
+				return true
+			}
+		}
+	}
+	if mapping, ok := a.Credentials["model_mapping"].(map[string]string); ok {
+		for from, to := range mapping {
+			if strings.TrimSpace(from) != "" && strings.TrimSpace(to) != "" {
+				return true
+			}
+		}
+	}
+	if whitelist, ok := a.Credentials["model_whitelist"].([]any); ok {
+		for _, raw := range whitelist {
+			if model, ok := raw.(string); ok && strings.TrimSpace(model) != "" {
+				return true
+			}
+		}
+	}
+	if whitelist, ok := a.Credentials["model_whitelist"].([]string); ok {
+		for _, model := range whitelist {
+			if strings.TrimSpace(model) != "" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // GetGeminiBaseURL 返回 Gemini 兼容端点的 base URL。
 // Antigravity 平台的 APIKey 账号自动拼接 /antigravity。
 func (a *Account) GetGeminiBaseURL(defaultBaseURL string) string {

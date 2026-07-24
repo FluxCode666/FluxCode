@@ -50,3 +50,47 @@ func TestAccountCanBelongToGroupPlatform(t *testing.T) {
 		})
 	}
 }
+
+func TestEmbeddingPlatformHasExactGroupBinding(t *testing.T) {
+	if !AccountCanBelongToGroupPlatform(PlatformEmbedding, PlatformEmbedding) {
+		t.Fatal("embedding account must bind an embedding group")
+	}
+	if IsOpenAICompatiblePlatform(PlatformEmbedding) {
+		t.Fatal("embedding must not enter the OpenAI-compatible platform set")
+	}
+}
+
+func TestValidateEmbeddingAccount(t *testing.T) {
+	valid := &Account{Platform: PlatformEmbedding, Type: AccountTypeAPIKey, Credentials: map[string]any{
+		"base_url": "https://embeddings.example.test",
+		"api_key":  "sk-test",
+		"model_mapping": map[string]any{
+			"text-embedding-3-small": "vendor-embedding-small",
+		},
+	}}
+	if err := validateEmbeddingAccount(valid); err != nil {
+		t.Fatalf("valid embedding account rejected: %v", err)
+	}
+
+	for name, account := range map[string]*Account{
+		"oauth":            {Platform: PlatformEmbedding, Type: AccountTypeOAuth, Credentials: valid.Credentials},
+		"missing base url": {Platform: PlatformEmbedding, Type: AccountTypeAPIKey, Credentials: map[string]any{"api_key": "sk-test", "model_mapping": valid.Credentials["model_mapping"]}},
+		"missing api key":  {Platform: PlatformEmbedding, Type: AccountTypeAPIKey, Credentials: map[string]any{"base_url": "https://embeddings.example.test", "model_mapping": valid.Credentials["model_mapping"]}},
+		"missing mapping":  {Platform: PlatformEmbedding, Type: AccountTypeAPIKey, Credentials: map[string]any{"base_url": "https://embeddings.example.test", "api_key": "sk-test"}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if err := validateEmbeddingAccount(account); err == nil {
+				t.Fatal("invalid embedding account accepted")
+			}
+		})
+	}
+
+	whitelist := &Account{Platform: PlatformEmbedding, Type: AccountTypeAPIKey, Credentials: map[string]any{
+		"base_url":        "https://embeddings.example.test",
+		"api_key":         "sk-test",
+		"model_whitelist": []string{"text-embedding-3-small"},
+	}}
+	if err := validateEmbeddingAccount(whitelist); err != nil {
+		t.Fatalf("embedding whitelist account rejected: %v", err)
+	}
+}

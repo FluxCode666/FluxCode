@@ -26,6 +26,7 @@ const (
 	PlatformCodex2API   = domain.PlatformCodex2API
 	PlatformGemini      = domain.PlatformGemini
 	PlatformAntigravity = domain.PlatformAntigravity
+	PlatformEmbedding   = domain.PlatformEmbedding
 )
 
 const (
