@@ -302,7 +302,7 @@ func (s *OpenAIGatewayService) forwardEmbeddingCandidate(
 	if resp == nil || resp.Body == nil {
 		return nil, &EmbeddingForwardError{Category: "empty_response"}
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
 		_, _ = readUpstreamResponseBodyLimited(resp.Body, limits.responseMaxBytes)
@@ -521,9 +521,10 @@ func validateEmbeddingJSONDepth(body []byte, maxDepth int) error {
 				escaped = false
 				continue
 			}
-			if ch == '\\' {
+			switch ch {
+			case '\\':
 				escaped = true
-			} else if ch == '"' {
+			case '"':
 				inString = false
 			}
 			continue
