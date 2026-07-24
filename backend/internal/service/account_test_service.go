@@ -241,7 +241,7 @@ func (s *AccountTestService) testEmbeddingAccountConnection(c *gin.Context, acco
 	if err != nil || resp == nil || resp.Body == nil {
 		return s.sendEmbeddingTestError(c, "embedding_test_transport")
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	body, readErr := readUpstreamResponseBodyLimited(resp.Body, limits.responseMaxBytes)
 	if readErr != nil {
 		return s.sendEmbeddingTestError(c, "embedding_test_response")
