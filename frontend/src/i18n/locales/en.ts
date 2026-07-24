@@ -2492,6 +2492,7 @@ export default {
         codex2api: 'Codex2api',
         gemini: 'Gemini',
         antigravity: 'Antigravity',
+        embedding: 'Embedding',
         sora: 'Sora',
       },
       deleteConfirm:
@@ -3117,6 +3118,7 @@ export default {
         codex2api: 'Codex2api',
         gemini: 'Gemini',
         antigravity: 'Antigravity',
+        embedding: 'Embedding',
         sora: 'Sora',
       },
       types: {
@@ -3417,6 +3419,12 @@ export default {
         baseUrlHint: 'Codex2api endpoint Base URL is required, e.g. https://xxx',
         apiKeyHint: 'Your Codex2api API Key',
         pleaseEnterBaseUrl: 'Please enter Codex2api Base URL'
+      },
+      embedding: {
+        baseUrlHint: 'Enter an HTTPS OpenAI-compatible embedding endpoint',
+        apiKeyHint: 'Upstream requests use Bearer API Key authentication only',
+        baseUrlRequired: 'Embedding Base URL is required',
+        modelRequired: 'Embedding requires at least one model whitelist entry or mapping'
       },
       anthropic: {
         apiKeyPassthrough: 'Auto passthrough (auth only)',

@@ -2881,6 +2881,7 @@ const platformOptions = computed(() => [
   { value: 'openai', label: t('admin.groups.platforms.openai') },
   { value: 'gemini', label: t('admin.groups.platforms.gemini') },
   { value: 'antigravity', label: t('admin.groups.platforms.antigravity') },
+  { value: 'embedding', label: t('admin.groups.platforms.embedding', 'Embedding') },
   { value: 'sora', label: t('admin.groups.platforms.sora') }
 ])
 
@@ -2890,6 +2891,7 @@ const platformFilterOptions = computed(() => [
   { value: 'openai', label: t('admin.groups.platforms.openai') },
   { value: 'gemini', label: t('admin.groups.platforms.gemini') },
   { value: 'antigravity', label: t('admin.groups.platforms.antigravity') },
+  { value: 'embedding', label: t('admin.groups.platforms.embedding', 'Embedding') },
   { value: 'sora', label: t('admin.groups.platforms.sora') }
 ])
 

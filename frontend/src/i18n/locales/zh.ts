@@ -2511,6 +2511,7 @@ export default {
         codex2api: 'Codex2api',
         gemini: 'Gemini',
         antigravity: 'Antigravity',
+        embedding: 'Embedding',
         sora: 'Sora',
       },
       saving: '保存中...',
@@ -3293,6 +3294,7 @@ export default {
         codex2api: 'Codex2api',
         gemini: 'Gemini',
         antigravity: 'Antigravity',
+        embedding: 'Embedding',
         sora: 'Sora',
       },
       types: {
@@ -3565,6 +3567,12 @@ export default {
         baseUrlHint: 'Codex2api 接入地址必填，例如：https://xxx',
         apiKeyHint: '您的 Codex2api API Key',
         pleaseEnterBaseUrl: '请输入 Codex2api Base URL'
+      },
+      embedding: {
+        baseUrlHint: '必须填写 HTTPS 的 OpenAI-compatible embedding 地址',
+        apiKeyHint: '仅使用 Bearer API Key 请求上游',
+        baseUrlRequired: 'Embedding Base URL 为必填项',
+        modelRequired: 'Embedding 至少需要一个模型白名单或映射'
       },
       anthropic: {
         apiKeyPassthrough: '自动透传（仅替换认证）',

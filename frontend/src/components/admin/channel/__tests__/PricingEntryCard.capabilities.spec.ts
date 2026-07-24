@@ -2,6 +2,7 @@ import { mount } from '@vue/test-utils'
 import { describe, expect, it, vi } from 'vitest'
 
 import PricingEntryCard from '../PricingEntryCard.vue'
+import IntervalRow from '../IntervalRow.vue'
 import type { PricingFormEntry } from '../types'
 
 vi.mock('vue-i18n', () => ({
@@ -28,6 +29,37 @@ const baseEntry: PricingFormEntry = {
 }
 
 describe('PricingEntryCard capabilities', () => {
+
+  it('input-only 区间仅渲染范围与输入价格', () => {
+    const wrapper = mount(IntervalRow, {
+      props: {
+        mode: 'token',
+        inputOnly: true,
+        interval: {
+          min_tokens: 0, max_tokens: 1000, tier_label: '', input_price: 0,
+          output_price: 2, cache_write_price: 3, cache_read_price: 4,
+          per_request_price: null, sort_order: 0
+        }
+      },
+      global: { stubs: { Icon: true } }
+    })
+    expect(wrapper.text()).toContain('输入')
+    expect(wrapper.text()).not.toContain('输出')
+    expect(wrapper.text()).not.toContain('缓存W')
+    expect(wrapper.text()).not.toContain('缓存R')
+    expect(wrapper.findAll('input')).toHaveLength(3)
+  })
+
+  it('embedding 固定 token 输入计价并显示显式零价停用警告', () => {
+    const wrapper = mount(PricingEntryCard, {
+      props: { entry: { ...baseEntry, models: ['embed'], billing_mode: 'per_request', input_price: 0 }, platform: 'embedding' },
+      global: { stubs: { Icon: true, Select: true, ModelTagInput: true, IntervalRow: true } }
+    })
+    expect(wrapper.text()).toContain('已停用')
+    expect(wrapper.find('[data-testid="embedding-input-price"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="embedding-output-price"]').exists()).toBe(false)
+    expect(wrapper.find('.select-stub').exists()).toBe(false)
+  })
   it('renders model capability checkboxes', () => {
     const wrapper = mount(PricingEntryCard, {
       props: { entry: baseEntry, platform: 'anthropic' },

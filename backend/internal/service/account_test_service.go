@@ -178,6 +178,10 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 	}
 
 	// Route to platform-specific test method
+	if account.Platform == PlatformEmbedding {
+		return s.testEmbeddingAccountConnection(c, account, modelID)
+	}
+
 	if account.IsOpenAICompatible() {
 		return s.testOpenAIAccountConnection(c, account, modelID, prompt)
 	}
@@ -191,6 +195,104 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 	}
 
 	return s.testClaudeAccountConnection(c, account, modelID)
+}
+
+const defaultEmbeddingTestInput = "ping"
+
+// testEmbeddingAccountConnection exercises the dedicated embedding transport without
+// crossing the user billing path. It intentionally emits only stable categories: the
+// upstream body and returned vector are discarded before any SSE or log is produced.
+func (s *AccountTestService) testEmbeddingAccountConnection(c *gin.Context, account *Account, publicModel string) error {
+	publicModel = strings.TrimSpace(publicModel)
+	upstreamModel, ok := embeddingAccountModelMappings(account)[publicModel]
+	if !ok || publicModel == "" || strings.TrimSpace(upstreamModel) == "" {
+		return s.sendEmbeddingTestError(c, "embedding_test_model_unavailable")
+	}
+	if s == nil || s.cfg == nil {
+		return s.sendEmbeddingTestError(c, "embedding_test_configuration")
+	}
+	limits := (&OpenAIGatewayService{cfg: s.cfg}).embeddingLimits()
+	targetURL, destinationIP, err := resolveEmbeddingUpstreamTarget(c.Request.Context(), account.GetEmbeddingBaseURL(), limits)
+	if err != nil {
+		return s.sendEmbeddingTestError(c, "embedding_test_unsafe_upstream")
+	}
+	doer, ok := s.httpUpstream.(EmbeddingHTTPUpstream)
+	if !ok || doer == nil {
+		return s.sendEmbeddingTestError(c, "embedding_test_secure_transport_unavailable")
+	}
+	payload, err := json.Marshal(map[string]any{"model": strings.TrimSpace(upstreamModel), "input": defaultEmbeddingTestInput})
+	if err != nil {
+		return s.sendEmbeddingTestError(c, "embedding_test_request")
+	}
+	ctx, cancel := context.WithTimeout(c.Request.Context(), limits.timeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, targetURL, bytes.NewReader(payload))
+	if err != nil {
+		return s.sendEmbeddingTestError(c, "embedding_test_request")
+	}
+	req.GetBody = nil
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Authorization", "Bearer "+account.GetEmbeddingAPIKey())
+	s.sendEvent(c, TestEvent{Type: "test_start", Model: publicModel})
+	resp, err := doer.DoEmbedding(req, account.ID, account.Concurrency, EmbeddingUpstreamPolicy{
+		ValidatedIP: destinationIP, ResponseHeaderTimeout: limits.headerTimeout,
+	})
+	if err != nil || resp == nil || resp.Body == nil {
+		return s.sendEmbeddingTestError(c, "embedding_test_transport")
+	}
+	defer resp.Body.Close()
+	body, readErr := readEmbeddingResponseBody(resp.Body, limits.responseMaxBytes)
+	if readErr != nil {
+		return s.sendEmbeddingTestError(c, "embedding_test_response")
+	}
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return s.sendEmbeddingTestError(c, "embedding_test_"+embeddingStatusCategory(resp.StatusCode))
+	}
+	if _, err := parseEmbeddingPromptTokens(body, limits.maxJSONDepth); err != nil {
+		return s.sendEmbeddingTestError(c, "embedding_test_invalid_usage")
+	}
+	var envelope struct {
+		Data []struct {
+			Embedding json.RawMessage `json:"embedding"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(body, &envelope); err != nil || len(envelope.Data) == 0 || !validEmbeddingTestVector(envelope.Data[0].Embedding) {
+		return s.sendEmbeddingTestError(c, "embedding_test_invalid_response")
+	}
+	s.sendEvent(c, TestEvent{Type: "test_complete", Model: publicModel, Success: true})
+	return nil
+}
+
+func validEmbeddingTestVector(raw json.RawMessage) bool {
+	if len(raw) == 0 {
+		return false
+	}
+	var encoded string
+	if json.Unmarshal(raw, &encoded) == nil {
+		if strings.TrimSpace(encoded) == "" {
+			return false
+		}
+		_, err := base64.StdEncoding.DecodeString(encoded)
+		return err == nil
+	}
+	var vector []json.Number
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.UseNumber()
+	if err := decoder.Decode(&vector); err != nil || len(vector) == 0 {
+		return false
+	}
+	for _, value := range vector {
+		if _, err := value.Float64(); err != nil {
+			return false
+		}
+	}
+	return true
+}
+
+func (s *AccountTestService) sendEmbeddingTestError(c *gin.Context, category string) error {
+	s.sendEvent(c, TestEvent{Type: "error", Code: category, Error: category})
+	return errors.New(category)
 }
 
 // testClaudeAccountConnection tests an Anthropic Claude account's connection

@@ -46,6 +46,12 @@ describe('useModelWhitelist', () => {
     expect(models.indexOf('gemini-2.5-flash-image')).toBeLessThan(models.indexOf('gemini-2.5-flash'))
   })
 
+  it('embedding 模型列表不回退到 Claude', () => {
+    const models = getModelsByPlatform('embedding')
+    expect(models).toContain('text-embedding-3-small')
+    expect(models.some(model => model.startsWith('claude-'))).toBe(false)
+  })
+
   it('antigravity 模型列表会把新的 Gemini 图片模型排在前面', () => {
     const models = getModelsByPlatform('antigravity')
 

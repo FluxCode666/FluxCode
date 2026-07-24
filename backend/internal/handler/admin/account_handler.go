@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -1979,6 +1980,40 @@ func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
 	account, err := h.adminService.GetAccount(c.Request.Context(), accountID)
 	if err != nil {
 		response.NotFound(c, "Account not found")
+		return
+	}
+
+	if account.Platform == service.PlatformEmbedding {
+		mapping := account.GetModelMapping()
+		models := make([]openai.Model, 0, len(mapping))
+		for publicModel := range mapping {
+			publicModel = strings.TrimSpace(publicModel)
+			if publicModel != "" {
+				models = append(models, openai.Model{ID: publicModel, Object: "model", Type: "model", DisplayName: publicModel})
+			}
+		}
+		if len(models) == 0 && account.Credentials != nil {
+			appendModel := func(model string) {
+				model = strings.TrimSpace(model)
+				if model != "" {
+					models = append(models, openai.Model{ID: model, Object: "model", Type: "model", DisplayName: model})
+				}
+			}
+			switch whitelist := account.Credentials["model_whitelist"].(type) {
+			case []any:
+				for _, raw := range whitelist {
+					if model, ok := raw.(string); ok {
+						appendModel(model)
+					}
+				}
+			case []string:
+				for _, model := range whitelist {
+					appendModel(model)
+				}
+			}
+		}
+		sort.Slice(models, func(i, j int) bool { return models[i].ID < models[j].ID })
+		response.Success(c, models)
 		return
 	}
 

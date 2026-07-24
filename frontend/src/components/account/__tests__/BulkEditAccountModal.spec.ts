@@ -130,6 +130,14 @@ describe('BulkEditAccountModal', () => {
     })
   })
 
+  it('embedding 批量编辑拒绝空模型配置', async () => {
+    const wrapper = mountModal({ selectedPlatforms: ['embedding'], selectedTypes: ['apikey'] })
+    await wrapper.get('#bulk-edit-model-restriction-enabled').setValue(true)
+    await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+    expect(adminAPI.accounts.bulkUpdate).not.toHaveBeenCalled()
+  })
+
   it('OpenAI 账号批量编辑可开启自动透传', async () => {
     const wrapper = mountModal({
       selectedPlatforms: ['openai'],

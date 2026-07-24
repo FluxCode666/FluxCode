@@ -2065,9 +2065,9 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 
 	needMixedChannelCheck := input.GroupIDs != nil && !input.SkipMixedChannelCheck
 
-	// 预加载账号平台信息（分组平台校验和混合渠道检查需要）。
+	// 预加载账号信息：分组校验与 embedding 凭证合并后复验都必须发生在写入前。
 	platformByID := map[int64]string{}
-	if input.GroupIDs != nil {
+	if input.GroupIDs != nil || len(input.Credentials) > 0 {
 		accounts, err := s.accountRepo.GetByIDs(ctx, input.AccountIDs)
 		if err != nil {
 			return nil, err
@@ -2075,8 +2075,23 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 		for _, account := range accounts {
 			if account != nil {
 				platformByID[account.ID] = account.Platform
-				if err := validateAccountGroupBindings(ctx, s.groupRepo, account.Platform, account.Type, *input.GroupIDs); err != nil {
-					return nil, err
+				if input.GroupIDs != nil {
+					if err := validateAccountGroupBindings(ctx, s.groupRepo, account.Platform, account.Type, *input.GroupIDs); err != nil {
+						return nil, err
+					}
+				}
+				if len(input.Credentials) > 0 && account.Platform == PlatformEmbedding {
+					candidate := *account
+					candidate.Credentials = cloneCredentials(account.Credentials)
+					if candidate.Credentials == nil {
+						candidate.Credentials = make(map[string]any)
+					}
+					for key, value := range input.Credentials {
+						candidate.Credentials[key] = value
+					}
+					if err := validateEmbeddingAccount(&candidate); err != nil {
+						return nil, err
+					}
 				}
 			}
 		}

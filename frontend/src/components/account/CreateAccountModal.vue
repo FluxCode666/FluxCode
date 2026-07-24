@@ -70,7 +70,7 @@
       <!-- Platform Selection - Segmented Control Style -->
       <div>
         <label class="input-label">{{ t('admin.accounts.platform') }}</label>
-        <div class="mt-2 grid grid-cols-2 gap-1 rounded-lg bg-gray-100 p-1 dark:bg-dark-700 sm:grid-cols-5" data-tour="account-form-platform">
+        <div class="mt-2 grid grid-cols-2 gap-1 rounded-lg bg-gray-100 p-1 dark:bg-dark-700 sm:grid-cols-6" data-tour="account-form-platform">
           <button
             type="button"
             @click="form.platform = 'anthropic'"
@@ -171,6 +171,20 @@
           >
             <Icon name="cloud" size="sm" />
             Antigravity
+          </button>
+          <button
+            type="button"
+            data-testid="platform-embedding"
+            @click="form.platform = 'embedding'"
+            :class="[
+              'flex flex-1 items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-medium transition-all',
+              form.platform === 'embedding'
+                ? 'bg-white text-indigo-600 shadow-sm dark:bg-dark-600 dark:text-indigo-400'
+                : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
+            ]"
+          >
+            <Icon name="key" size="sm" />
+            Embedding
           </button>
         </div>
       </div>
@@ -878,6 +892,7 @@
           <label class="input-label">{{ t('admin.accounts.baseUrl') }}</label>
           <input
             v-model="apiKeyBaseUrl"
+            data-testid="create-apikey-base-url"
             type="text"
             class="input"
             :placeholder="
@@ -896,6 +911,7 @@
           <label class="input-label">{{ t('admin.accounts.apiKeyRequired') }}</label>
           <input
             v-model="apiKeyValue"
+            data-testid="create-apikey-value"
             type="password"
             required
             class="input font-mono"
@@ -1109,7 +1125,7 @@
         </div>
 
         <!-- Pool Mode Section -->
-        <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
+        <div v-if="form.platform !== 'embedding'" class="border-t border-gray-200 pt-4 dark:border-dark-600">
           <div class="mb-3 flex items-center justify-between">
             <div>
               <label class="input-label mb-0">{{ t('admin.accounts.poolMode') }}</label>
@@ -1161,7 +1177,7 @@
         </div>
 
         <!-- Custom Error Codes Section -->
-        <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
+        <div v-if="form.platform !== 'embedding'" class="border-t border-gray-200 pt-4 dark:border-dark-600">
           <div class="mb-3 flex items-center justify-between">
             <div>
               <label class="input-label mb-0">{{ t('admin.accounts.customErrorCodes') }}</label>
@@ -3065,6 +3081,7 @@ const oauthStepTitle = computed(() => {
 
 // Platform-specific hints for API Key type
 const baseUrlHint = computed(() => {
+  if (form.platform === 'embedding') return t('admin.accounts.embedding.baseUrlHint', '必须填写 HTTPS 的 OpenAI-compatible embedding 地址')
   if (form.platform === 'openai') return t('admin.accounts.openai.baseUrlHint')
   if (form.platform === 'codex2api') return t('admin.accounts.codex2api.baseUrlHint')
   if (form.platform === 'gemini') return t('admin.accounts.gemini.baseUrlHint')
@@ -3072,6 +3089,7 @@ const baseUrlHint = computed(() => {
 })
 
 const apiKeyHint = computed(() => {
+  if (form.platform === 'embedding') return t('admin.accounts.embedding.apiKeyHint', '仅使用 Bearer API Key 请求上游')
   if (form.platform === 'openai') return t('admin.accounts.openai.apiKeyHint')
   if (form.platform === 'codex2api') return t('admin.accounts.codex2api.apiKeyHint')
   if (form.platform === 'gemini') return t('admin.accounts.gemini.apiKeyHint')
@@ -3476,6 +3494,11 @@ watch(
       if (accountCategory.value !== 'apikey') accountCategory.value = 'apikey'
       return
     }
+    if (form.platform === 'embedding') {
+      form.type = 'apikey'
+      if (accountCategory.value !== 'apikey') accountCategory.value = 'apikey'
+      return
+    }
     if (form.platform === 'anthropic' && category === 'bedrock') {
       form.type = 'bedrock' as AccountType
       return
@@ -3501,7 +3524,9 @@ watch(
           ? ''
         : newPlatform === 'gemini'
           ? 'https://generativelanguage.googleapis.com'
-          : 'https://api.anthropic.com'
+          : newPlatform === 'embedding'
+            ? ''
+            : 'https://api.anthropic.com'
     // Clear model-related settings
     allowedModels.value = []
     modelMappings.value = []
@@ -3523,6 +3548,11 @@ watch(
     if (newPlatform === 'codex2api') {
       accountCategory.value = 'apikey'
       form.type = 'apikey'
+    }
+    if (newPlatform === 'embedding') {
+      accountCategory.value = 'apikey'
+      form.type = 'apikey'
+      modelRestrictionMode.value = 'whitelist'
     }
     // Reset Bedrock fields when switching platforms
     bedrockAccessKeyId.value = ''
@@ -4213,6 +4243,10 @@ const handleSubmit = async () => {
     appStore.showError(t('admin.accounts.pleaseEnterApiKey'))
     return
   }
+  if (form.platform === 'embedding' && !apiKeyBaseUrl.value.trim()) {
+    appStore.showError(t('admin.accounts.embedding.baseUrlRequired', 'Embedding Base URL 为必填项'))
+    return
+  }
   if (form.platform === 'codex2api' && !apiKeyBaseUrl.value.trim()) {
     appStore.showError(t('admin.accounts.codex2api.pleaseEnterBaseUrl'))
     return
@@ -4226,6 +4260,8 @@ const handleSubmit = async () => {
         ? ''
         : form.platform === 'gemini'
           ? 'https://generativelanguage.googleapis.com'
+          : form.platform === 'embedding'
+            ? ''
           : 'https://api.anthropic.com'
 
   // Build credentials with optional model mapping
@@ -4245,21 +4281,28 @@ const handleSubmit = async () => {
     }
   }
 
+  if (form.platform === 'embedding' && !credentials.model_mapping) {
+    appStore.showError(t('admin.accounts.embedding.modelRequired', 'Embedding 至少需要一个模型白名单或映射'))
+    return
+  }
+
   // Add pool mode if enabled
-  if (poolModeEnabled.value) {
+  if (form.platform !== 'embedding' && poolModeEnabled.value) {
     credentials.pool_mode = true
     credentials.pool_mode_retry_count = normalizePoolModeRetryCount(poolModeRetryCount.value)
   }
 
   // Add custom error codes if enabled
-  if (customErrorCodesEnabled.value) {
+  if (form.platform !== 'embedding' && customErrorCodesEnabled.value) {
     credentials.custom_error_codes_enabled = true
     credentials.custom_error_codes = [...selectedErrorCodes.value]
   }
 
-  applyInterceptWarmup(credentials, interceptWarmupRequests.value, 'create')
-  if (!applyTempUnschedConfig(credentials)) {
-    return
+  if (form.platform !== 'embedding') {
+    applyInterceptWarmup(credentials, interceptWarmupRequests.value, 'create')
+    if (!applyTempUnschedConfig(credentials)) {
+      return
+    }
   }
 
   form.credentials = credentials

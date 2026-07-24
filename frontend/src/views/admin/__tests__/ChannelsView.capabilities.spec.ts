@@ -115,6 +115,62 @@ const channelFixture: Channel = {
 }
 
 describe('ChannelsView capabilities mapping', () => {
+  it('round-trips embedding explicit zero input prices and strips unsupported price fields', () => {
+    const embeddingGroups: AdminGroup[] = [
+      { id: 3, name: 'Embedding A', platform: 'embedding', sort_order: 3, created_at: '', updated_at: '' }
+    ]
+    const embeddingChannel: Channel = {
+      ...channelFixture,
+      group_ids: [3],
+      model_pricing: [{
+        platform: 'embedding',
+        models: ['embed-model'],
+        capabilities: ['streaming'],
+        billing_mode: 'per_request',
+        input_price: 0,
+        output_price: 0.000015,
+        cache_write_price: 0.000001,
+        cache_read_price: 0.000002,
+        image_output_price: 0.25,
+        per_request_price: 0.5,
+        intervals: [{
+          min_tokens: 0,
+          max_tokens: 1000,
+          tier_label: 'disabled',
+          input_price: 0,
+          output_price: 0.000015,
+          cache_write_price: 0.000001,
+          cache_read_price: 0.000002,
+          per_request_price: 0.5,
+          sort_order: 0
+        }]
+      }]
+    }
+
+    const sections = apiToPlatformSections(embeddingChannel, embeddingGroups, ['embedding'])
+    expect(sections[0].model_pricing[0].input_price).toBe(0)
+    expect(sections[0].model_pricing[0].intervals[0].input_price).toBe(0)
+
+    const payload = formToChannelAPI(sections, {})
+    expect(payload.model_pricing[0]).toMatchObject({
+      platform: 'embedding',
+      billing_mode: 'token',
+      input_price: 0,
+      output_price: null,
+      cache_write_price: null,
+      cache_read_price: null,
+      image_output_price: null,
+      per_request_price: null,
+      intervals: [{
+        input_price: 0,
+        output_price: null,
+        cache_write_price: null,
+        cache_read_price: null,
+        per_request_price: null
+      }]
+    })
+  })
+
   it('includes capabilities in channel-level and account-stats save payloads', () => {
     const channelPayload = formToChannelAPI(baseSections, {})
     const rulesPayload = accountStatsRulesToAPI(baseSections)

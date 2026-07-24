@@ -18,17 +18,17 @@
         <input :value="interval.input_price" @input="emitField('input_price', ($event.target as HTMLInputElement).value)"
           type="number" step="any" min="0" class="input mt-0.5 text-xs" />
       </div>
-      <div class="flex-1">
+      <div v-if="!inputOnly" class="flex-1">
         <label class="text-xs text-gray-400">{{ t('admin.channels.form.outputPrice', '输出') }} <span v-if="isEmpty" class="text-red-500">*</span> <span class="text-gray-300">$/M</span></label>
         <input :value="interval.output_price" @input="emitField('output_price', ($event.target as HTMLInputElement).value)"
           type="number" step="any" min="0" class="input mt-0.5 text-xs" />
       </div>
-      <div class="flex-1">
+      <div v-if="!inputOnly" class="flex-1">
         <label class="text-xs text-gray-400">{{ t('admin.channels.form.cacheWritePrice', '缓存W') }} <span class="text-gray-300">$/M</span></label>
         <input :value="interval.cache_write_price" @input="emitField('cache_write_price', ($event.target as HTMLInputElement).value)"
           type="number" step="any" min="0" class="input mt-0.5 text-xs" />
       </div>
-      <div class="flex-1">
+      <div v-if="!inputOnly" class="flex-1">
         <label class="text-xs text-gray-400">{{ t('admin.channels.form.cacheReadPrice', '缓存R') }} <span class="text-gray-300">$/M</span></label>
         <input :value="interval.cache_read_price" @input="emitField('cache_read_price', ($event.target as HTMLInputElement).value)"
           type="number" step="any" min="0" class="input mt-0.5 text-xs" />
@@ -79,6 +79,7 @@ const { t } = useI18n()
 const props = defineProps<{
   interval: IntervalFormEntry
   mode: BillingMode
+  inputOnly?: boolean
 }>()
 
 const emit = defineEmits<{

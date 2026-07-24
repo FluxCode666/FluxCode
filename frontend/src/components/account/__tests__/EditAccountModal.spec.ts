@@ -90,7 +90,7 @@ const ModelWhitelistSelectorStub = defineComponent({
 })
 
 const SelectStub = defineComponent({
-  name: 'Select',
+  name: 'SelectStub',
   inheritAttrs: false,
   props: {
     modelValue: {
@@ -169,6 +169,62 @@ function mountModal(account = buildAccount()) {
 }
 
 describe('EditAccountModal', () => {
+  it('rehydrates and saves a legacy embedding model whitelist', async () => {
+    const account = {
+      ...buildAccount(),
+      name: 'Legacy Embedding Key',
+      platform: 'embedding',
+      credentials: {
+        api_key: 'sk-embed',
+        base_url: 'https://embedding.example.com/v1',
+        model_whitelist: ['legacy-embed']
+      }
+    }
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+    const wrapper = mountModal(account)
+
+    expect(wrapper.get('[data-testid="model-whitelist-value"]').text()).toBe('legacy-embed')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials).toMatchObject({
+      api_key: 'sk-embed',
+      base_url: 'https://embedding.example.com/v1',
+      model_mapping: { 'legacy-embed': 'legacy-embed' }
+    })
+  })
+
+  it('edits embedding credentials without preserving unsupported fields', async () => {
+    const account = {
+      ...buildAccount(),
+      name: 'Embedding Key',
+      platform: 'embedding',
+      credentials: {
+        api_key: 'sk-embed',
+        base_url: 'https://embedding.example.com/v1',
+        model_mapping: { 'text-embedding-3-small': 'upstream-embed' },
+        pool_mode: true,
+        custom_error_codes_enabled: true,
+        custom_error_codes: [429]
+      }
+    }
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+    const wrapper = mountModal(account)
+
+    expect(wrapper.text()).not.toContain('admin.accounts.poolMode')
+    expect(wrapper.text()).not.toContain('admin.accounts.customErrorCodes')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    const credentials = updateAccountMock.mock.calls[0]?.[1]?.credentials
+    expect(credentials).toMatchObject({
+      api_key: 'sk-embed',
+      base_url: 'https://embedding.example.com/v1',
+      model_mapping: { 'text-embedding-3-small': 'upstream-embed' }
+    })
+    expect(Object.keys(credentials).sort()).toEqual(['api_key', 'base_url', 'model_mapping'])
+  })
+
   it('reopening the same account rehydrates the OpenAI whitelist from props', async () => {
     const account = buildAccount()
     updateAccountMock.mockReset()

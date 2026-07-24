@@ -188,4 +188,19 @@ describe('AccountTestModal', () => {
     expect(wrapper.text()).toContain('Sending OpenAI image generation test request...')
     expect(wrapper.text()).not.toContain('Sending Gemini image generation test request...')
   })
+
+  it('embedding 账号测试直接选择显式公开模型首项', async () => {
+    getAvailableModels.mockResolvedValueOnce([
+      { id: 'public-embed-z', display_name: 'Public Z' },
+      { id: 'public-embed-a', display_name: 'Public A' }
+    ])
+    const wrapper = mountModal({ name: 'Embedding Test', platform: 'embedding' })
+    await wrapper.setProps({ show: true })
+    await flushPromises()
+    const startButton = wrapper.findAll('button').find(button => button.text().includes('admin.accounts.startTest'))
+    await startButton!.trigger('click')
+    await flushPromises()
+    const [, request] = (global.fetch as any).mock.calls[0]
+    expect(JSON.parse(request.body)).toEqual({ model_id: 'public-embed-z', prompt: '' })
+  })
 })
