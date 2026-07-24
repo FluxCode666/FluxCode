@@ -41,33 +41,37 @@ export function resolveCodexImageGenerationBridgeMode(
   return 'inherit'
 }
 
+function pricingEntryToAPI(entry: PricingFormEntry, platform: GroupPlatform): ChannelModelPricing {
+  const isEmbedding = platform === 'embedding'
+  return {
+    platform,
+    models: entry.models,
+    capabilities: normalizeCapabilities(entry.capabilities),
+    billing_mode: isEmbedding ? 'token' : entry.billing_mode,
+    input_price: mTokToPerToken(entry.input_price),
+    output_price: isEmbedding ? null : mTokToPerToken(entry.output_price),
+    cache_write_price: isEmbedding ? null : mTokToPerToken(entry.cache_write_price),
+    cache_read_price: isEmbedding ? null : mTokToPerToken(entry.cache_read_price),
+    image_output_price: isEmbedding ? null : mTokToPerToken(entry.image_output_price),
+    per_request_price: isEmbedding ? null : entry.per_request_price != null && entry.per_request_price !== '' ? Number(entry.per_request_price) : null,
+    intervals: formIntervalsToAPI(entry.intervals || []).map(interval => isEmbedding ? {
+      ...interval, output_price: null, cache_write_price: null, cache_read_price: null, per_request_price: null
+    } : interval)
+  }
+}
+
 export function accountStatsRulesToAPI(sections: PlatformSection[]): AccountStatsPricingRule[] {
   const rules: AccountStatsPricingRule[] = []
   for (const section of sections) {
     if (!section.enabled) continue
     for (const rule of section.account_stats_pricing_rules) {
-      const isEmbedding = section.platform === 'embedding'
       rules.push({
         name: rule.name,
         group_ids: rule.group_ids,
         account_ids: rule.account_ids,
         pricing: rule.pricing
           .filter(p => p.models.length > 0)
-          .map(p => ({
-            platform: section.platform,
-            models: p.models,
-            capabilities: normalizeCapabilities(p.capabilities),
-            billing_mode: isEmbedding ? 'token' : p.billing_mode,
-            input_price: mTokToPerToken(p.input_price),
-            output_price: isEmbedding ? null : mTokToPerToken(p.output_price),
-            cache_write_price: isEmbedding ? null : mTokToPerToken(p.cache_write_price),
-            cache_read_price: isEmbedding ? null : mTokToPerToken(p.cache_read_price),
-            image_output_price: isEmbedding ? null : mTokToPerToken(p.image_output_price),
-            per_request_price: isEmbedding ? null : p.per_request_price != null && p.per_request_price !== '' ? Number(p.per_request_price) : null,
-            intervals: formIntervalsToAPI(p.intervals || []).map(interval => isEmbedding ? {
-              ...interval, output_price: null, cache_write_price: null, cache_read_price: null, per_request_price: null
-            } : interval)
-          }))
+          .map(p => pricingEntryToAPI(p, section.platform))
       })
     }
   }
@@ -95,22 +99,7 @@ export function formToChannelAPI(
 
     for (const entry of section.model_pricing) {
       if (entry.models.length === 0) continue
-      const isEmbedding = section.platform === 'embedding'
-      model_pricing.push({
-        platform: section.platform,
-        models: entry.models,
-        capabilities: normalizeCapabilities(entry.capabilities),
-        billing_mode: isEmbedding ? 'token' : entry.billing_mode,
-        input_price: mTokToPerToken(entry.input_price),
-        output_price: isEmbedding ? null : mTokToPerToken(entry.output_price),
-        cache_write_price: isEmbedding ? null : mTokToPerToken(entry.cache_write_price),
-        cache_read_price: isEmbedding ? null : mTokToPerToken(entry.cache_read_price),
-        image_output_price: isEmbedding ? null : mTokToPerToken(entry.image_output_price),
-        per_request_price: isEmbedding ? null : entry.per_request_price != null && entry.per_request_price !== '' ? Number(entry.per_request_price) : null,
-        intervals: formIntervalsToAPI(entry.intervals || []).map(interval => isEmbedding ? {
-          ...interval, output_price: null, cache_write_price: null, cache_read_price: null, per_request_price: null
-        } : interval)
-      })
+      model_pricing.push(pricingEntryToAPI(entry, section.platform))
     }
   }
 

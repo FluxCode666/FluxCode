@@ -38,7 +38,7 @@ type EmbeddingUpstreamPolicy struct {
 // Production HTTPUpstream implementations should support it; tests may provide
 // a narrow fake for this port.
 type EmbeddingHTTPUpstream interface {
-	DoEmbedding(req *http.Request, accountID int64, accountConcurrency int, policy EmbeddingUpstreamPolicy) (*http.Response, error)
+	DoEmbedding(req *http.Request, policy EmbeddingUpstreamPolicy) (*http.Response, error)
 }
 
 // EmbeddingTransportError reports only whether the HTTP transport can prove

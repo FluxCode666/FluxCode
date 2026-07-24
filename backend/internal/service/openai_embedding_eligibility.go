@@ -45,13 +45,17 @@ func (s *OpenAIGatewayService) ListAvailableEmbeddingModels(ctx context.Context,
 		return nil, err
 	}
 
-	models := make(map[string]struct{})
+	configuredModels := make(map[string]struct{})
 	for i := range accounts {
 		for publicModel := range embeddingAccountModelMappings(&accounts[i]) {
-			candidates := s.resolveEmbeddingModelEligibilityFromAccounts(ctx, groupID, publicModel, accounts)
-			if len(candidates) > 0 {
-				models[publicModel] = struct{}{}
-			}
+			configuredModels[publicModel] = struct{}{}
+		}
+	}
+
+	models := make(map[string]struct{}, len(configuredModels))
+	for publicModel := range configuredModels {
+		if len(s.resolveEmbeddingModelEligibilityFromAccounts(ctx, groupID, publicModel, accounts)) > 0 {
+			models[publicModel] = struct{}{}
 		}
 	}
 
@@ -156,8 +160,6 @@ func embeddingBillingModel(mapping ChannelMappingResult, publicModel, upstreamMo
 		return publicModel
 	case BillingModelSourceUpstream:
 		return upstreamModel
-	case BillingModelSourceChannelMapped, "":
-		return strings.TrimSpace(mapping.MappedModel)
 	default:
 		return strings.TrimSpace(mapping.MappedModel)
 	}

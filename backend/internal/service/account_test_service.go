@@ -235,14 +235,14 @@ func (s *AccountTestService) testEmbeddingAccountConnection(c *gin.Context, acco
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Authorization", "Bearer "+account.GetEmbeddingAPIKey())
 	s.sendEvent(c, TestEvent{Type: "test_start", Model: publicModel})
-	resp, err := doer.DoEmbedding(req, account.ID, account.Concurrency, EmbeddingUpstreamPolicy{
+	resp, err := doer.DoEmbedding(req, EmbeddingUpstreamPolicy{
 		ValidatedIP: destinationIP, ResponseHeaderTimeout: limits.headerTimeout,
 	})
 	if err != nil || resp == nil || resp.Body == nil {
 		return s.sendEmbeddingTestError(c, "embedding_test_transport")
 	}
 	defer resp.Body.Close()
-	body, readErr := readEmbeddingResponseBody(resp.Body, limits.responseMaxBytes)
+	body, readErr := readUpstreamResponseBodyLimited(resp.Body, limits.responseMaxBytes)
 	if readErr != nil {
 		return s.sendEmbeddingTestError(c, "embedding_test_response")
 	}

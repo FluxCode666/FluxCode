@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"io"
 	"math"
 	"net"
 	"net/http"
@@ -257,7 +256,7 @@ func (s *OpenAIGatewayService) forwardEmbeddingCandidate(
 		return nil, &EmbeddingForwardError{Category: "secure_transport_unavailable"}
 	}
 	startedAt := time.Now()
-	resp, err := doer.DoEmbedding(req, candidate.Account.ID, candidate.Account.Concurrency, EmbeddingUpstreamPolicy{
+	resp, err := doer.DoEmbedding(req, EmbeddingUpstreamPolicy{
 		ValidatedIP:           destinationIP,
 		ResponseHeaderTimeout: limits.headerTimeout,
 	})
@@ -276,7 +275,7 @@ func (s *OpenAIGatewayService) forwardEmbeddingCandidate(
 	defer resp.Body.Close()
 
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		_, _ = readEmbeddingResponseBody(resp.Body, limits.responseMaxBytes)
+		_, _ = readUpstreamResponseBodyLimited(resp.Body, limits.responseMaxBytes)
 		return nil, &EmbeddingForwardError{
 			Category:   embeddingStatusCategory(resp.StatusCode),
 			StatusCode: resp.StatusCode,
@@ -284,7 +283,7 @@ func (s *OpenAIGatewayService) forwardEmbeddingCandidate(
 		}
 	}
 
-	responseBody, err := readEmbeddingResponseBody(resp.Body, limits.responseMaxBytes)
+	responseBody, err := readUpstreamResponseBodyLimited(resp.Body, limits.responseMaxBytes)
 	if err != nil {
 		return nil, &EmbeddingForwardError{Category: "response_read"}
 	}
@@ -556,20 +555,6 @@ func buildOpenAIEmbeddingsURL(base string) string {
 	parsed.RawQuery = ""
 	parsed.Fragment = ""
 	return parsed.String()
-}
-
-func readEmbeddingResponseBody(reader io.Reader, maxBytes int64) ([]byte, error) {
-	if reader == nil || maxBytes <= 0 {
-		return nil, errors.New("embedding response is invalid")
-	}
-	body, err := io.ReadAll(io.LimitReader(reader, maxBytes+1))
-	if err != nil {
-		return nil, err
-	}
-	if int64(len(body)) > maxBytes {
-		return nil, errors.New("embedding response exceeds the size limit")
-	}
-	return body, nil
 }
 
 func embeddingStatusCategory(statusCode int) string {

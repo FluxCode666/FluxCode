@@ -167,7 +167,7 @@ func (s *httpUpstreamService) Do(req *http.Request, proxyURL string, accountID i
 // whose DialContext is pinned to the IP validated by the service layer. This
 // intentionally rejects proxies and redirects: either would break the binding
 // between the checked destination and the TCP peer receiving the Bearer key.
-func (s *httpUpstreamService) DoEmbedding(req *http.Request, accountID int64, accountConcurrency int, policy service.EmbeddingUpstreamPolicy) (*http.Response, error) {
+func (s *httpUpstreamService) DoEmbedding(req *http.Request, policy service.EmbeddingUpstreamPolicy) (*http.Response, error) {
 	client, err := buildEmbeddingHTTPClient(req, policy)
 	if err != nil {
 		return nil, err

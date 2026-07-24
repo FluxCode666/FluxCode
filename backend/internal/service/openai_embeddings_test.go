@@ -24,10 +24,9 @@ type embeddingUpstreamStep struct {
 }
 
 type embeddingUpstreamCall struct {
-	body      []byte
-	header    http.Header
-	accountID int64
-	ip        net.IP
+	body   []byte
+	header http.Header
+	ip     net.IP
 }
 
 type embeddingUpstreamStub struct {
@@ -43,14 +42,13 @@ func (s *embeddingUpstreamStub) DoWithTLS(*http.Request, string, int64, int, *tl
 	return nil, errors.New("unexpected TLS upstream call")
 }
 
-func (s *embeddingUpstreamStub) DoEmbedding(req *http.Request, accountID int64, _ int, policy EmbeddingUpstreamPolicy) (*http.Response, error) {
+func (s *embeddingUpstreamStub) DoEmbedding(req *http.Request, policy EmbeddingUpstreamPolicy) (*http.Response, error) {
 	body, _ := io.ReadAll(req.Body)
 	headers := req.Header.Clone()
 	s.calls = append(s.calls, embeddingUpstreamCall{
-		body:      body,
-		header:    headers,
-		accountID: accountID,
-		ip:        append(net.IP(nil), policy.ValidatedIP...),
+		body:   body,
+		header: headers,
+		ip:     append(net.IP(nil), policy.ValidatedIP...),
 	})
 	step := embeddingUpstreamStep{status: http.StatusOK, body: `{"data":[],"usage":{"prompt_tokens":1}}`}
 	if len(s.steps) > 0 {

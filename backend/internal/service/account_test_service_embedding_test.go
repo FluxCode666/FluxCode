@@ -21,7 +21,7 @@ type embeddingAccountTestUpstream struct {
 	policy  EmbeddingUpstreamPolicy
 }
 
-func (u *embeddingAccountTestUpstream) DoEmbedding(req *http.Request, _ int64, _ int, policy EmbeddingUpstreamPolicy) (*http.Response, error) {
+func (u *embeddingAccountTestUpstream) DoEmbedding(req *http.Request, policy EmbeddingUpstreamPolicy) (*http.Response, error) {
 	u.request, u.policy = req, policy
 	if len(u.responses) == 0 {
 		return nil, &EmbeddingTransportError{}
