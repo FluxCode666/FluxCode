@@ -524,6 +524,8 @@ type OpenAIGatewayService struct {
 	openaiScheduler               OpenAIAccountScheduler
 	openaiWSPassthroughDialer     openAIWSClientDialer
 	openaiAccountStats            *openAIAccountRuntimeStats
+	embeddingForwardOnce          sync.Once
+	embeddingForwardSem           chan struct{}
 
 	openaiWSFallbackUntil sync.Map // key: int64(accountID), value: time.Time
 	openaiWSRetryMetrics  openAIWSRetryMetrics

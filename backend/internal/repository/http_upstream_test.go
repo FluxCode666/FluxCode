@@ -1,16 +1,55 @@
 package repository
 
 import (
+	"context"
+	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 )
+
+func TestBuildEmbeddingHTTPClientBindsValidatedIPAndDisablesRedirect(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = listener.Close() })
+	port := listener.Addr().(*net.TCPAddr).Port
+	req, err := http.NewRequest(http.MethodPost, "https://embedding.example.test:"+fmt.Sprint(port)+"/v1/embeddings", nil)
+	require.NoError(t, err)
+
+	client, err := buildEmbeddingHTTPClient(req, service.EmbeddingUpstreamPolicy{
+		ValidatedIP:           net.ParseIP("127.0.0.1"),
+		ResponseHeaderTimeout: time.Second,
+	})
+	require.NoError(t, err)
+	transport, ok := client.Transport.(*http.Transport)
+	require.True(t, ok)
+	require.Equal(t, "embedding.example.test", transport.TLSClientConfig.ServerName)
+
+	accepted := make(chan error, 1)
+	go func() {
+		conn, acceptErr := listener.Accept()
+		if conn != nil {
+			_ = conn.Close()
+		}
+		accepted <- acceptErr
+	}()
+	conn, err := transport.DialContext(context.Background(), "tcp", "attacker.example:443")
+	require.NoError(t, err)
+	_ = conn.Close()
+	require.NoError(t, <-accepted)
+
+	redirectReq, err := http.NewRequest(http.MethodGet, "https://other.example.test", nil)
+	require.NoError(t, err)
+	require.Error(t, client.CheckRedirect(redirectReq, []*http.Request{req}))
+}
 
 // HTTPUpstreamSuite HTTP 上游服务测试套件
 // 使用 testify/suite 组织测试，支持 SetupTest 初始化

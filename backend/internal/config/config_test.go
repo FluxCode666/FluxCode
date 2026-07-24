@@ -265,6 +265,29 @@ func TestLoadDefaultSecurityToggles(t *testing.T) {
 	}
 }
 
+func TestLoadDefaultEmbeddingGatewayLimits(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.Equal(t, int64(1024*1024), cfg.Gateway.Embedding.RequestMaxBytes)
+	require.Equal(t, int64(8*1024*1024), cfg.Gateway.Embedding.ResponseMaxBytes)
+	require.Equal(t, 32, cfg.Gateway.Embedding.MaxJSONDepth)
+	require.Equal(t, 2048, cfg.Gateway.Embedding.MaxInputItems)
+	require.Equal(t, 64*1024, cfg.Gateway.Embedding.MaxInputItemBytes)
+	require.Equal(t, int64(2147483647), cfg.Gateway.Embedding.MaxTokenValue)
+	require.Equal(t, 60, cfg.Gateway.Embedding.UpstreamTimeoutSeconds)
+	require.Equal(t, 30, cfg.Gateway.Embedding.ResponseHeaderTimeoutSec)
+	require.Equal(t, 128, cfg.Gateway.Embedding.MaxConcurrentRequests)
+	require.Empty(t, cfg.Gateway.Embedding.AllowedHosts, "operators must opt in allowed embedding hosts")
+}
+
+func TestLoadRejectsInvalidEmbeddingPrivateCIDR(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	viper.Set("gateway.embedding.allowed_private_cidrs", []string{"not-a-cidr"})
+	_, err := Load()
+	require.ErrorContains(t, err, "gateway.embedding.allowed_private_cidrs contains invalid CIDR")
+}
+
 func TestLoadDefaultServerMode(t *testing.T) {
 	resetViperWithJWTSecret(t)
 

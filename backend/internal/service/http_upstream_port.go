@@ -1,7 +1,9 @@
 package service
 
 import (
+	"net"
 	"net/http"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 )
@@ -21,4 +23,31 @@ type HTTPUpstream interface {
 	// Profile 由调用方通过 TLSFingerprintProfileService 解析后传入，
 	// 支持按账号绑定的数据库 profile 或内置默认 profile。
 	DoWithTLS(req *http.Request, proxyURL string, accountID int64, accountConcurrency int, profile *tlsfingerprint.Profile) (*http.Response, error)
+}
+
+// EmbeddingUpstreamPolicy contains the service-validated destination for one
+// embedding request. ValidatedIP must be bound by the transport's actual dial;
+// merely resolving it before client.Do would leave a DNS-rebinding window.
+type EmbeddingUpstreamPolicy struct {
+	ValidatedIP           net.IP
+	ResponseHeaderTimeout time.Duration
+}
+
+// EmbeddingHTTPUpstream is deliberately separate from HTTPUpstream so the
+// legacy gateway does not inherit embedding's strict SSRF and redirect policy.
+// Production HTTPUpstream implementations should support it; tests may provide
+// a narrow fake for this port.
+type EmbeddingHTTPUpstream interface {
+	DoEmbedding(req *http.Request, accountID int64, accountConcurrency int, policy EmbeddingUpstreamPolicy) (*http.Response, error)
+}
+
+// EmbeddingTransportError reports only whether the HTTP transport can prove
+// the request was never assigned a connection. The wrapped network error is
+// intentionally discarded so upstream host or credential context cannot leak.
+type EmbeddingTransportError struct {
+	RequestNotWritten bool
+}
+
+func (e *EmbeddingTransportError) Error() string {
+	return "embedding transport failed"
 }
