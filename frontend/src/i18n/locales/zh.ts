@@ -2798,6 +2798,8 @@ export default {
         mappingCount: '条映射',
         pricingEntry: '定价配置',
         noModels: '未添加模型',
+        embeddingDisabled: '已停用',
+        embeddingDisabledWarning: '已停用：显式零输入价会覆盖默认价格，使该模型不可展示、不可调度。',
         applyPricingToAccountStats: '应用模型定价到账号统计',
         applyPricingToAccountStatsDesc: '启用后，未被自定义规则匹配的请求将使用模型定价文件中的标准价格计算账号统计费用',
         accountStatsPricingRules: '自定义账号统计定价规则',

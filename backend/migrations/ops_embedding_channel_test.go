@@ -16,12 +16,21 @@ func TestOpsEmbeddingChannelMigrationAddsSafeCorrelationOnly(t *testing.T) {
 	if !strings.Contains(sql, "add column if not exists channel_id bigint") {
 		t.Fatal("migration must add the channel correlation column")
 	}
-	if !strings.Contains(sql, "idx_ops_error_logs_channel_id_created_at") {
-		t.Fatal("migration must index channel correlation queries")
+	if strings.Contains(sql, "create index") {
+		t.Fatal("transactional column migration must not build an index on the hot Ops table")
 	}
 	for _, forbidden := range []string{"request_body", "response_body", "embedding_vector", "input_text"} {
 		if strings.Contains(sql, forbidden) {
 			t.Fatalf("migration must not add content storage: %s", forbidden)
 		}
+	}
+
+	indexBody, err := FS.ReadFile("132_ops_error_logs_channel_index_notx.sql")
+	if err != nil {
+		t.Fatalf("read ops embedding channel index migration: %v", err)
+	}
+	indexSQL := strings.ToLower(string(indexBody))
+	if !strings.Contains(indexSQL, "create index concurrently if not exists idx_ops_error_logs_channel_id_created_at") {
+		t.Fatal("channel correlation index must be created concurrently in a notx migration")
 	}
 }

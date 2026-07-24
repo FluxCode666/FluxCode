@@ -210,7 +210,9 @@ func (s *OpsService) prepareErrorLogInput(ctx context.Context, entry *OpsInsertE
 	// upstream payloads, and request headers are intentionally unavailable for
 	// replay or preview even when generic Ops capture is enabled.
 	if isEmbeddingOpsMetadata(entry.Platform, entry.RequestType, entry.RequestPath, entry.InboundEndpoint, entry.UpstreamEndpoint) {
-		entry.ErrorMessage = "embedding request failed"
+		category := normalizeEmbeddingOpsErrorCategory(entry.ErrorType)
+		entry.ErrorType = category
+		entry.ErrorMessage = category
 		entry.ErrorBody = ""
 		entry.UpstreamErrorMessage = nil
 		entry.UpstreamErrorDetail = nil
@@ -269,6 +271,35 @@ func (s *OpsService) prepareErrorLogInput(ctx context.Context, entry *OpsInsertE
 	}
 
 	return entry, true, nil
+}
+
+func normalizeEmbeddingOpsErrorCategory(category string) string {
+	category = strings.TrimSpace(category)
+	switch category {
+	case "invalid_request",
+		"model_unavailable",
+		"concurrency_limit",
+		"proxy_not_supported",
+		"unsafe_upstream",
+		"request_build",
+		"secure_transport_unavailable",
+		"transport_not_written",
+		"transport_unknown",
+		"empty_response",
+		"upstream_auth",
+		"upstream_rate_limited",
+		"upstream_server",
+		"upstream_rejected",
+		"response_read",
+		"invalid_usage",
+		"invalid_response",
+		"pricing_invalid",
+		"billing_failed",
+		"unsupported_mode":
+		return category
+	default:
+		return "embedding_request_failed"
+	}
 }
 
 func sanitizeOpsUpstreamErrors(entry *OpsInsertErrorLogInput) error {
@@ -406,7 +437,9 @@ func redactEmbeddingOpsLog(item *OpsErrorLog) {
 	if item == nil || !isEmbeddingOpsMetadata(item.Platform, item.RequestType, item.RequestPath, item.InboundEndpoint, item.UpstreamEndpoint) {
 		return
 	}
-	item.Message = "embedding request failed"
+	category := normalizeEmbeddingOpsErrorCategory(item.Type)
+	item.Type = category
+	item.Message = category
 	item.IsRetryable = false
 }
 

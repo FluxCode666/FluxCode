@@ -201,6 +201,7 @@ func buildEmbeddingHTTPClient(req *http.Request, policy service.EmbeddingUpstrea
 	transport := &http.Transport{
 		Proxy:                 nil,
 		ForceAttemptHTTP2:     true,
+		DisableKeepAlives:     true,
 		TLSClientConfig:       &tls.Config{ServerName: req.URL.Hostname(), MinVersion: tls.VersionTLS12},
 		ResponseHeaderTimeout: policy.ResponseHeaderTimeout,
 		DialContext: func(ctx context.Context, network, _ string) (net.Conn, error) {

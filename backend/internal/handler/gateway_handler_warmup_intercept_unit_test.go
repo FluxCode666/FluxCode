@@ -34,6 +34,10 @@ func (f *fakeSchedulerCache) GetSnapshot(_ context.Context, _ service.SchedulerB
 func (f *fakeSchedulerCache) SetSnapshot(_ context.Context, _ service.SchedulerBucket, _ []service.Account) error {
 	return nil
 }
+func (f *fakeSchedulerCache) SetSnapshotIndex(_ context.Context, _ service.SchedulerBucket, _ []service.Account) error {
+	return nil
+}
+func (f *fakeSchedulerCache) WriteAccounts(_ context.Context, _ []service.Account) error { return nil }
 func (f *fakeSchedulerCache) GetAccount(_ context.Context, id int64) (*service.Account, error) {
 	for _, account := range f.accounts {
 		if account != nil && account.ID == id {
@@ -134,6 +138,7 @@ func (f *fakeConcurrencyCache) GetAccountConcurrencyBatch(_ context.Context, acc
 	return result, nil
 }
 func (f *fakeConcurrencyCache) CleanupExpiredAccountSlots(context.Context, int64) error { return nil }
+func (f *fakeConcurrencyCache) CleanupExpiredSlotsByScan(context.Context) error         { return nil }
 func (f *fakeConcurrencyCache) CleanupStaleProcessSlots(context.Context, string) error  { return nil }
 
 func newTestGatewayHandler(t *testing.T, group *service.Group, accounts []*service.Account) (*GatewayHandler, func()) {

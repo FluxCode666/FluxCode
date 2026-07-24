@@ -5,6 +5,7 @@ package repository
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -133,4 +134,86 @@ func TestUsageBillingRepositoryApplyPersistsEmbeddingLedgerAtomically(t *testing
 	var usageRows int
 	require.NoError(t, integrationDB.QueryRowContext(ctx, "SELECT COUNT(*) FROM usage_logs WHERE request_id = $1 AND api_key_id = $2", requestID, apiKey.ID).Scan(&usageRows))
 	require.Equal(t, 1, usageRows)
+}
+
+func TestUsageBillingRepositoryApplyRollsBackEveryEmbeddingEffectWhenUsageInsertFails(t *testing.T) {
+	ctx := context.Background()
+	client := testEntClient(t)
+	repository := NewUsageBillingRepository(client, integrationDB)
+	user := mustCreateUser(t, client, &service.User{
+		Email: fmt.Sprintf("embedding-rollback-%d@example.com", time.Now().UnixNano()), PasswordHash: "hash", Balance: 100,
+	})
+	group := mustCreateGroup(t, client, &service.Group{
+		Name: "embedding-rollback-" + uuid.NewString(), Platform: service.PlatformEmbedding, SubscriptionType: service.SubscriptionTypeSubscription,
+	})
+	apiKey := mustCreateApiKey(t, client, &service.APIKey{
+		UserID: user.ID, GroupID: &group.ID, Key: "sk-embedding-rollback-" + uuid.NewString(), Name: "embedding-rollback", Quota: 100,
+	})
+	account := mustCreateAccount(t, client, &service.Account{
+		Name: "embedding-rollback-account-" + uuid.NewString(), Type: service.AccountTypeAPIKey, Platform: service.PlatformEmbedding,
+		Extra: map[string]any{"quota_limit": 100.0},
+	})
+	subscription := mustCreateSubscription(t, client, &service.UserSubscription{UserID: user.ID, GroupID: group.ID})
+	now := time.Now().UTC()
+	grant, err := client.SubscriptionGrant.Create().SetSubscriptionID(subscription.ID).SetStartsAt(now.Add(-time.Hour)).SetExpiresAt(now.Add(time.Hour)).Save(ctx)
+	require.NoError(t, err)
+
+	requestID := "embedding-rollback-" + uuid.NewString()
+	t.Cleanup(func() {
+		_, _ = integrationDB.ExecContext(context.Background(), "DELETE FROM usage_billing_dedup WHERE request_id = $1 AND api_key_id = $2", requestID, apiKey.ID)
+		_, _ = integrationDB.ExecContext(context.Background(), "DELETE FROM usage_logs WHERE request_id = $1 AND api_key_id = $2", requestID, apiKey.ID)
+		_, _ = integrationDB.ExecContext(context.Background(), "DELETE FROM subscription_grants WHERE id = $1", grant.ID)
+		_, _ = integrationDB.ExecContext(context.Background(), "DELETE FROM user_subscriptions WHERE id = $1", subscription.ID)
+		_, _ = integrationDB.ExecContext(context.Background(), "DELETE FROM api_keys WHERE id = $1", apiKey.ID)
+		_, _ = integrationDB.ExecContext(context.Background(), "DELETE FROM accounts WHERE id = $1", account.ID)
+		_, _ = integrationDB.ExecContext(context.Background(), "DELETE FROM groups WHERE id = $1", group.ID)
+		_, _ = integrationDB.ExecContext(context.Background(), "DELETE FROM users WHERE id = $1", user.ID)
+	})
+
+	usage := &service.UsageLog{
+		UserID: user.ID, APIKeyID: apiKey.ID, AccountID: account.ID, RequestID: requestID,
+		// model is VARCHAR(100); this forces the final usage insert to fail after
+		// every preceding billing effect has executed inside the transaction.
+		Model: strings.Repeat("x", 101), RequestedModel: "embed-public", GroupID: &group.ID,
+		InputTokens: 10, TotalCost: 1.5, ActualCost: 1.5,
+		BillingType: service.BillingTypeSubscription, RequestType: service.RequestTypeEmbedding, CreatedAt: now,
+	}
+	command := &service.UsageBillingCommand{
+		RequestID: requestID, RequestPayloadHash: "rollback-payload", APIKeyID: apiKey.ID,
+		UserID: user.ID, AccountID: account.ID, SubscriptionID: &subscription.ID,
+		AccountType: service.AccountTypeAPIKey, Model: "embed-public", BillingType: service.BillingTypeSubscription,
+		BalanceCost: 1.5, SubscriptionCost: 1.5, APIKeyQuotaCost: 1.5,
+		APIKeyRateLimitCost: 1.5, AccountQuotaCost: 1.5, UsageLog: usage,
+	}
+
+	result, err := repository.Apply(ctx, command)
+	require.Nil(t, result)
+	require.Error(t, err)
+
+	var balance, keyQuota, keyRate, accountQuota, subscriptionDaily, grantDaily float64
+	require.NoError(t, integrationDB.QueryRowContext(ctx, "SELECT balance FROM users WHERE id = $1", user.ID).Scan(&balance))
+	require.NoError(t, integrationDB.QueryRowContext(ctx, "SELECT quota_used, usage_5h FROM api_keys WHERE id = $1", apiKey.ID).Scan(&keyQuota, &keyRate))
+	require.NoError(t, integrationDB.QueryRowContext(ctx, "SELECT COALESCE((extra->>'quota_used')::numeric, 0) FROM accounts WHERE id = $1", account.ID).Scan(&accountQuota))
+	require.NoError(t, integrationDB.QueryRowContext(ctx, "SELECT daily_usage_usd FROM user_subscriptions WHERE id = $1", subscription.ID).Scan(&subscriptionDaily))
+	require.NoError(t, integrationDB.QueryRowContext(ctx, "SELECT daily_usage_usd FROM subscription_grants WHERE id = $1", grant.ID).Scan(&grantDaily))
+	require.InDelta(t, 100, balance, 1e-9)
+	require.Zero(t, keyQuota)
+	require.Zero(t, keyRate)
+	require.Zero(t, accountQuota)
+	require.Zero(t, subscriptionDaily)
+	require.Zero(t, grantDaily)
+
+	var dedupRows, usageRows int
+	require.NoError(t, integrationDB.QueryRowContext(ctx, "SELECT COUNT(*) FROM usage_billing_dedup WHERE request_id = $1 AND api_key_id = $2", requestID, apiKey.ID).Scan(&dedupRows))
+	require.NoError(t, integrationDB.QueryRowContext(ctx, "SELECT COUNT(*) FROM usage_logs WHERE request_id = $1 AND api_key_id = $2", requestID, apiKey.ID).Scan(&usageRows))
+	require.Zero(t, dedupRows)
+	require.Zero(t, usageRows)
+
+	usage.Model = "embed-public"
+	retry, err := repository.Apply(ctx, command)
+	require.NoError(t, err)
+	require.True(t, retry.Applied, "failed usage insert must roll back the dedup claim")
+	duplicate, err := repository.Apply(ctx, command)
+	require.NoError(t, err)
+	require.False(t, duplicate.Applied)
 }

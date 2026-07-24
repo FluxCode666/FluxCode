@@ -33,7 +33,7 @@ func (u *embeddingAccountTestUpstream) DoEmbedding(req *http.Request, policy Emb
 
 func TestAccountTestService_EmbeddingUsesBearerMappedModelAndDiscardsVector(t *testing.T) {
 	originalLookup := lookupEmbeddingHostIP
-	lookupEmbeddingHostIP = func(context.Context, string) ([]net.IP, error) { return []net.IP{net.ParseIP("203.0.113.10")}, nil }
+	lookupEmbeddingHostIP = func(context.Context, string) ([]net.IP, error) { return []net.IP{net.ParseIP("8.8.8.8")}, nil }
 	t.Cleanup(func() { lookupEmbeddingHostIP = originalLookup })
 
 	account := &Account{ID: 71, Platform: PlatformEmbedding, Type: AccountTypeAPIKey, Concurrency: 1, Credentials: map[string]any{
@@ -60,7 +60,7 @@ func TestAccountTestService_EmbeddingUsesBearerMappedModelAndDiscardsVector(t *t
 
 func TestAccountTestService_EmbeddingAcceptsBase64AndRejectsInvalidUsageWithoutBodyLeak(t *testing.T) {
 	originalLookup := lookupEmbeddingHostIP
-	lookupEmbeddingHostIP = func(context.Context, string) ([]net.IP, error) { return []net.IP{net.ParseIP("203.0.113.10")}, nil }
+	lookupEmbeddingHostIP = func(context.Context, string) ([]net.IP, error) { return []net.IP{net.ParseIP("8.8.8.8")}, nil }
 	t.Cleanup(func() { lookupEmbeddingHostIP = originalLookup })
 	account := &Account{ID: 72, Platform: PlatformEmbedding, Type: AccountTypeAPIKey, Concurrency: 1, Credentials: map[string]any{
 		"base_url": "https://embedding.example.com", "api_key": "secret", "model_whitelist": []any{"embed"},
@@ -108,7 +108,7 @@ func TestAccountTestService_EmbeddingRejectsUnsafeURLBeforeSendingBearer(t *test
 func TestAccountTestService_EmbeddingBackgroundResultStoresOnlyFixedCategory(t *testing.T) {
 	originalLookup := lookupEmbeddingHostIP
 	lookupEmbeddingHostIP = func(context.Context, string) ([]net.IP, error) {
-		return []net.IP{net.ParseIP("203.0.113.10")}, nil
+		return []net.IP{net.ParseIP("8.8.8.8")}, nil
 	}
 	t.Cleanup(func() { lookupEmbeddingHostIP = originalLookup })
 

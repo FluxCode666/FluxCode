@@ -9,7 +9,9 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
@@ -50,7 +52,7 @@ func (s *embeddingUpstreamStub) DoEmbedding(req *http.Request, policy EmbeddingU
 		header: headers,
 		ip:     append(net.IP(nil), policy.ValidatedIP...),
 	})
-	step := embeddingUpstreamStep{status: http.StatusOK, body: `{"data":[],"usage":{"prompt_tokens":1}}`}
+	step := embeddingUpstreamStep{status: http.StatusOK, body: `{"data":[{"embedding":[0.1],"index":0}],"usage":{"prompt_tokens":1}}`}
 	if len(s.steps) > 0 {
 		step = s.steps[0]
 		s.steps = s.steps[1:]
@@ -145,6 +147,58 @@ func TestForwardEmbeddingsFailsClosedForInvalidUsageWithoutFailover(t *testing.T
 	require.Len(t, upstream.calls, 1)
 }
 
+func TestForwardEmbeddingsRejectsMalformedEmbeddingDataWithoutFailover(t *testing.T) {
+	withEmbeddingDNS(t, net.ParseIP("8.8.8.8"))
+	tests := []struct {
+		name string
+		body string
+	}{
+		{name: "missing data", body: `{"usage":{"prompt_tokens":1}}`},
+		{name: "empty data", body: `{"data":[],"usage":{"prompt_tokens":1}}`},
+		{name: "missing embedding", body: `{"data":[{"index":0}],"usage":{"prompt_tokens":1}}`},
+		{name: "empty vector", body: `{"data":[{"embedding":[]}],"usage":{"prompt_tokens":1}}`},
+		{name: "invalid vector", body: `{"data":[{"embedding":[0.1,"bad"]}],"usage":{"prompt_tokens":1}}`},
+		{name: "empty base64", body: `{"data":[{"embedding":""}],"usage":{"prompt_tokens":1}}`},
+		{name: "invalid base64", body: `{"data":[{"embedding":"***"}],"usage":{"prompt_tokens":1}}`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			upstream := &embeddingUpstreamStub{steps: []embeddingUpstreamStep{{status: http.StatusOK, body: tt.body}}}
+			svc := newEmbeddingForwardTestService(t, []Account{
+				embeddingEligibilityAccount(1, map[string]any{"embed-public": "upstream-a"}),
+				embeddingEligibilityAccount(2, map[string]any{"embed-public": "upstream-b"}),
+			}, upstream)
+			groupID := embeddingEligibilityTestGroupID
+
+			result, err := svc.ForwardEmbeddings(context.Background(), EmbeddingForwardInput{GroupID: &groupID, Body: []byte(`{"model":"embed-public","input":"safe"}`)})
+			require.Nil(t, result)
+			var upstreamErr *EmbeddingForwardError
+			require.ErrorAs(t, err, &upstreamErr)
+			require.Equal(t, "invalid_response", upstreamErr.Category)
+			require.False(t, upstreamErr.Retryable)
+			require.Len(t, upstream.calls, 1)
+		})
+	}
+}
+
+func TestForwardEmbeddingsSkipsIneligibleAccountWithoutConsumingAttempt(t *testing.T) {
+	withEmbeddingDNS(t, net.ParseIP("8.8.8.8"))
+	ineligible := embeddingEligibilityAccount(1, map[string]any{"embed-public": "upstream-ineligible"})
+	ineligible.Type = AccountTypeOAuth
+	ineligible.Priority = 0
+	eligible := embeddingEligibilityAccount(2, map[string]any{"embed-public": "upstream-eligible"})
+	eligible.Priority = 100
+	upstream := &embeddingUpstreamStub{}
+	svc := newEmbeddingForwardTestService(t, []Account{ineligible, eligible}, upstream)
+	groupID := embeddingEligibilityTestGroupID
+
+	result, err := svc.ForwardEmbeddings(context.Background(), EmbeddingForwardInput{GroupID: &groupID, Body: []byte(`{"model":"embed-public","input":"safe"}`)})
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Len(t, upstream.calls, 1)
+	require.Equal(t, "upstream-eligible", gjson.GetBytes(upstream.calls[0].body, "model").String())
+}
+
 func TestForwardEmbeddingsFailsOverOnlyForExplicitRetryableStatus(t *testing.T) {
 	withEmbeddingDNS(t, net.ParseIP("8.8.8.8"))
 	upstream := &embeddingUpstreamStub{steps: []embeddingUpstreamStep{
@@ -236,6 +290,117 @@ func TestEmbeddingTargetValidationRejectsPrivateDNSAndBuildsEndpointOnce(t *test
 	require.Equal(t, "https://embedding.example.test/v1/embeddings", buildOpenAIEmbeddingsURL("https://embedding.example.test"))
 	require.Equal(t, "https://embedding.example.test/v1/embeddings", buildOpenAIEmbeddingsURL("https://embedding.example.test/v1/"))
 	require.Equal(t, "https://embedding.example.test/v1/embeddings", buildOpenAIEmbeddingsURL("https://embedding.example.test/v1/embeddings"))
+}
+
+func TestEmbeddingTargetValidationPrivateCIDRAndMixedDNS(t *testing.T) {
+	limits := embeddingForwardLimits{
+		allowedHosts:       []string{"embedding.example.test"},
+		allowedPrivateCIDR: []string{"10.10.0.0/16"},
+	}
+	previous := lookupEmbeddingHostIP
+	t.Cleanup(func() { lookupEmbeddingHostIP = previous })
+
+	lookupEmbeddingHostIP = func(context.Context, string) ([]net.IP, error) { return []net.IP{net.ParseIP("10.10.1.2")}, nil }
+	_, pinned, err := resolveEmbeddingUpstreamTarget(context.Background(), "https://embedding.example.test", limits)
+	require.NoError(t, err)
+	require.Equal(t, "10.10.1.2", pinned.String())
+
+	lookupEmbeddingHostIP = func(context.Context, string) ([]net.IP, error) { return []net.IP{net.ParseIP("10.11.1.2")}, nil }
+	_, _, err = resolveEmbeddingUpstreamTarget(context.Background(), "https://embedding.example.test", limits)
+	require.Error(t, err)
+
+	lookupEmbeddingHostIP = func(context.Context, string) ([]net.IP, error) {
+		return []net.IP{net.ParseIP("8.8.8.8"), net.ParseIP("127.0.0.1")}, nil
+	}
+	_, _, err = resolveEmbeddingUpstreamTarget(context.Background(), "https://embedding.example.test", limits)
+	require.Error(t, err)
+}
+
+func TestEmbeddingIPPolicyRejectsReservedAndMetadataRanges(t *testing.T) {
+	for _, raw := range []string{
+		"127.0.0.1",
+		"169.254.169.254",
+		"100.64.0.1",
+		"192.0.2.1",
+		"198.18.0.1",
+		"198.51.100.1",
+		"203.0.113.1",
+		"240.0.0.1",
+		"2001:db8::1",
+	} {
+		require.Falsef(t, isAllowedEmbeddingIP(net.ParseIP(raw), nil), "address %s must be blocked", raw)
+	}
+	require.True(t, isAllowedEmbeddingIP(net.ParseIP("8.8.8.8"), nil))
+}
+
+func TestForwardEmbeddingsBoundsDNSResolutionByAttemptTimeout(t *testing.T) {
+	previous := lookupEmbeddingHostIP
+	lookupEmbeddingHostIP = func(ctx context.Context, _ string) ([]net.IP, error) {
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}
+	t.Cleanup(func() { lookupEmbeddingHostIP = previous })
+	svc := newEmbeddingForwardTestService(t, []Account{
+		embeddingEligibilityAccount(1, map[string]any{"embed-public": "upstream"}),
+	}, &embeddingUpstreamStub{})
+	svc.cfg.Gateway.Embedding.UpstreamTimeoutSeconds = 1
+	groupID := embeddingEligibilityTestGroupID
+	started := time.Now()
+
+	result, err := svc.ForwardEmbeddings(context.Background(), EmbeddingForwardInput{GroupID: &groupID, Body: []byte(`{"model":"embed-public","input":"safe"}`)})
+	require.Nil(t, result)
+	var upstreamErr *EmbeddingForwardError
+	require.ErrorAs(t, err, &upstreamErr)
+	require.Equal(t, "unsafe_upstream", upstreamErr.Category)
+	require.Less(t, time.Since(started), 2*time.Second)
+}
+
+func TestEmbeddingLimitsClampValuesWhenConfigValidationIsBypassed(t *testing.T) {
+	svc := &OpenAIGatewayService{cfg: &config.Config{Gateway: config.GatewayConfig{Embedding: config.EmbeddingGatewayConfig{
+		RequestMaxBytes:          config.EmbeddingRequestMaxBytesHardLimit + 1,
+		ResponseMaxBytes:         config.EmbeddingResponseMaxBytesHardLimit + 1,
+		MaxJSONDepth:             config.EmbeddingMaxJSONDepthHardLimit + 1,
+		MaxInputItems:            config.EmbeddingMaxInputItemsHardLimit + 1,
+		MaxInputItemBytes:        config.EmbeddingMaxInputItemBytesHardLimit + 1,
+		MaxTokenValue:            config.EmbeddingMaxTokenValueHardLimit + 1,
+		UpstreamTimeoutSeconds:   config.EmbeddingUpstreamTimeoutSecondsHardLimit + 1,
+		ResponseHeaderTimeoutSec: config.EmbeddingResponseHeaderTimeoutSecHardLimit + 1,
+		MaxConcurrentRequests:    config.EmbeddingMaxConcurrentRequestsHardLimit + 1,
+	}}}}
+	limits := svc.embeddingLimits()
+	require.Equal(t, config.EmbeddingRequestMaxBytesHardLimit, limits.requestMaxBytes)
+	require.Equal(t, config.EmbeddingResponseMaxBytesHardLimit, limits.responseMaxBytes)
+	require.Equal(t, config.EmbeddingMaxJSONDepthHardLimit, limits.maxJSONDepth)
+	require.Equal(t, config.EmbeddingMaxInputItemsHardLimit, limits.maxInputItems)
+	require.Equal(t, config.EmbeddingMaxInputItemBytesHardLimit, limits.maxInputItemBytes)
+	require.Equal(t, config.EmbeddingMaxTokenValueHardLimit, limits.maxTokenValue)
+	require.Equal(t, time.Duration(config.EmbeddingUpstreamTimeoutSecondsHardLimit)*time.Second, limits.timeout)
+	require.Equal(t, time.Duration(config.EmbeddingResponseHeaderTimeoutSecHardLimit)*time.Second, limits.headerTimeout)
+	require.Equal(t, config.EmbeddingMaxConcurrentRequestsHardLimit, limits.maxConcurrent)
+}
+
+func TestForwardEmbeddingsReleasesGlobalSlotAfterResponseLimitFailure(t *testing.T) {
+	withEmbeddingDNS(t, net.ParseIP("8.8.8.8"))
+	upstream := &embeddingUpstreamStub{steps: []embeddingUpstreamStep{
+		{status: http.StatusOK, body: strings.Repeat("x", 5000)},
+		{status: http.StatusOK, body: `{"data":[{"embedding":[0.1]}],"usage":{"prompt_tokens":1}}`},
+	}}
+	svc := newEmbeddingForwardTestService(t, []Account{
+		embeddingEligibilityAccount(1, map[string]any{"embed-public": "upstream"}),
+	}, upstream)
+	svc.cfg.Gateway.Embedding.MaxConcurrentRequests = 1
+	groupID := embeddingEligibilityTestGroupID
+	input := EmbeddingForwardInput{GroupID: &groupID, Body: []byte(`{"model":"embed-public","input":"safe"}`)}
+
+	first, err := svc.ForwardEmbeddings(context.Background(), input)
+	require.Nil(t, first)
+	var forwardErr *EmbeddingForwardError
+	require.ErrorAs(t, err, &forwardErr)
+	require.Equal(t, "response_read", forwardErr.Category)
+
+	second, err := svc.ForwardEmbeddings(context.Background(), input)
+	require.NoError(t, err)
+	require.NotNil(t, second)
 }
 
 func TestParseEmbeddingPromptTokensRequiresPositiveInteger(t *testing.T) {

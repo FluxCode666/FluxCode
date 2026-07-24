@@ -27,11 +27,11 @@ func (h *OpenAIGatewayHandler) EmbeddingModels(c *gin.Context) {
 		h.errorResponse(c, http.StatusForbidden, "permission_error", "This API key cannot access embeddings")
 		return
 	}
-	if h.gatewayService == nil {
+	if h.embeddingGateway == nil {
 		h.errorResponse(c, http.StatusServiceUnavailable, "api_error", "Embedding service is unavailable")
 		return
 	}
-	models, err := h.gatewayService.ListAvailableEmbeddingModels(c.Request.Context(), apiKey.GroupID)
+	models, err := h.embeddingGateway.ListAvailableEmbeddingModels(c.Request.Context(), apiKey.GroupID)
 	if err != nil {
 		h.handleEmbeddingError(c, err)
 		return
@@ -69,27 +69,11 @@ func (h *OpenAIGatewayHandler) Embeddings(c *gin.Context) {
 		h.errorResponse(c, http.StatusInternalServerError, "api_error", "User context not found")
 		return
 	}
-	if h.gatewayService == nil || h.billingCacheService == nil || h.concurrencyHelper == nil || h.concurrencyHelper.concurrencyService == nil {
+	if h.embeddingGateway == nil || h.embeddingBillingChecker == nil || h.concurrencyHelper == nil || h.concurrencyHelper.concurrencyService == nil {
 		h.errorResponse(c, http.StatusServiceUnavailable, "api_error", "Embedding service is unavailable")
 		return
 	}
 
-	limit := defaultEmbeddingHandlerBodyLimit
-	if h.cfg != nil && h.cfg.Gateway.Embedding.RequestMaxBytes > 0 {
-		limit = h.cfg.Gateway.Embedding.RequestMaxBytes
-	}
-	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, limit)
-	body, err := pkghttputil.ReadRequestBodyWithPrealloc(c.Request)
-	if err != nil {
-		if maxErr, ok := extractMaxBytesError(err); ok {
-			h.errorResponse(c, http.StatusRequestEntityTooLarge, "invalid_request_error", buildBodyTooLargeMessage(maxErr.Limit))
-			return
-		}
-		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to read request body")
-		return
-	}
-	model := strings.TrimSpace(gjson.GetBytes(body, "model").String())
-	setOpsRequestContext(c, model, false, nil)
 	setOpsEndpointContext(c, "", int16(service.RequestTypeEmbedding))
 
 	ctx := c.Request.Context()
@@ -107,14 +91,31 @@ func (h *OpenAIGatewayHandler) Embeddings(c *gin.Context) {
 		defer release()
 	}
 
+	limit := defaultEmbeddingHandlerBodyLimit
+	if h.cfg != nil && h.cfg.Gateway.Embedding.RequestMaxBytes > 0 {
+		limit = min(h.cfg.Gateway.Embedding.RequestMaxBytes, config.EmbeddingRequestMaxBytesHardLimit)
+	}
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, limit)
+	body, err := pkghttputil.ReadRequestBodyWithPrealloc(c.Request)
+	if err != nil {
+		if maxErr, ok := extractMaxBytesError(err); ok {
+			h.errorResponse(c, http.StatusRequestEntityTooLarge, "invalid_request_error", buildBodyTooLargeMessage(maxErr.Limit))
+			return
+		}
+		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to read request body")
+		return
+	}
+	model := strings.TrimSpace(gjson.GetBytes(body, "model").String())
+	setOpsRequestContext(c, model, false, nil)
+
 	subscription, _ := middleware2.GetSubscriptionFromContext(c)
-	if err := h.billingCacheService.CheckBillingEligibility(ctx, apiKey.User, apiKey, apiKey.Group, subscription); err != nil {
+	if err := h.embeddingBillingChecker.CheckBillingEligibility(ctx, apiKey.User, apiKey, apiKey.Group, subscription); err != nil {
 		status, code, message := billingErrorDetails(err)
 		h.errorResponse(c, status, code, message)
 		return
 	}
 
-	result, err := h.gatewayService.ForwardEmbeddings(ctx, service.EmbeddingForwardInput{
+	result, err := h.embeddingGateway.ForwardEmbeddings(ctx, service.EmbeddingForwardInput{
 		GroupID: apiKey.GroupID,
 		Body:    body,
 	})
@@ -126,7 +127,7 @@ func (h *OpenAIGatewayHandler) Embeddings(c *gin.Context) {
 	setOpsChannelContext(c, result.Eligibility.ChannelMapping.ChannelID)
 	setOpsEndpointContext(c, result.Eligibility.UpstreamModel, int16(service.RequestTypeEmbedding))
 
-	if err := h.gatewayService.BillEmbedding(ctx, &service.EmbeddingBillingInput{
+	if err := h.embeddingGateway.BillEmbedding(ctx, &service.EmbeddingBillingInput{
 		Result:             result,
 		APIKey:             apiKey,
 		User:               apiKey.User,
@@ -159,26 +160,51 @@ func (h *OpenAIGatewayHandler) embeddingSimpleMode() bool {
 func (h *OpenAIGatewayHandler) handleEmbeddingBillingError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, service.ErrEmbeddingUnsupportedMode):
+		setEmbeddingOpsErrorCategory(c, "unsupported_mode")
 		h.errorResponse(c, http.StatusServiceUnavailable, "unsupported_mode", "Embeddings are unavailable in simple run mode")
 	case errors.Is(err, service.ErrEmbeddingPricingInvalid):
+		setEmbeddingOpsErrorCategory(c, "pricing_invalid")
 		h.errorResponse(c, http.StatusBadGateway, "api_error", "Embedding usage could not be priced")
 	default:
+		setEmbeddingOpsErrorCategory(c, "billing_failed")
 		h.errorResponse(c, http.StatusInternalServerError, "api_error", "Embedding billing failed")
 	}
 }
 
 func (h *OpenAIGatewayHandler) handleEmbeddingError(c *gin.Context, err error) {
 	var forwardErr *service.EmbeddingForwardError
+	if errors.As(err, &forwardErr) {
+		setEmbeddingOpsErrorCategory(c, forwardErr.Category)
+		if forwardErr.AccountID > 0 {
+			setOpsSelectedAccount(c, forwardErr.AccountID, service.PlatformEmbedding)
+		}
+		if forwardErr.ChannelID > 0 {
+			setOpsChannelContext(c, forwardErr.ChannelID)
+		}
+		if strings.TrimSpace(forwardErr.UpstreamModel) != "" {
+			setOpsEndpointContext(c, forwardErr.UpstreamModel, int16(service.RequestTypeEmbedding))
+		}
+	}
 	switch {
 	case errors.Is(err, service.ErrEmbeddingUnsupportedMode):
+		setEmbeddingOpsErrorCategory(c, "unsupported_mode")
 		h.errorResponse(c, http.StatusServiceUnavailable, "unsupported_mode", "Embeddings are unavailable in simple run mode")
 	case errors.Is(err, service.ErrEmbeddingRequestInvalid):
+		setEmbeddingOpsErrorCategory(c, "invalid_request")
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Invalid embedding request")
 	case errors.Is(err, service.ErrEmbeddingUnavailable):
+		setEmbeddingOpsErrorCategory(c, "model_unavailable")
 		h.errorResponse(c, http.StatusNotFound, "invalid_request_error", "Embedding model is unavailable")
 	case errors.As(err, &forwardErr) && forwardErr.Category == "concurrency_limit":
 		h.errorResponse(c, http.StatusTooManyRequests, "rate_limit_error", "Too many concurrent embedding requests")
 	default:
 		h.errorResponse(c, http.StatusBadGateway, "api_error", "Embedding upstream request failed")
 	}
+}
+
+func setEmbeddingOpsErrorCategory(c *gin.Context, category string) {
+	if c == nil {
+		return
+	}
+	c.Set(service.OpsEmbeddingErrorCategoryKey, strings.TrimSpace(category))
 }

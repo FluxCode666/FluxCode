@@ -456,6 +456,21 @@ type EmbeddingGatewayConfig struct {
 	MaxConcurrentRequests    int   `mapstructure:"max_concurrent_requests"`
 }
 
+// Embedding resource budgets are operator-tunable only below these process
+// safety ceilings. Defaults intentionally equal the ceilings so a missing or
+// bypassed config validation can never enlarge the public attack surface.
+const (
+	EmbeddingRequestMaxBytesHardLimit          int64 = 1 * 1024 * 1024
+	EmbeddingResponseMaxBytesHardLimit         int64 = 8 * 1024 * 1024
+	EmbeddingMaxJSONDepthHardLimit                   = 32
+	EmbeddingMaxInputItemsHardLimit                  = 2048
+	EmbeddingMaxInputItemBytesHardLimit              = 64 * 1024
+	EmbeddingMaxTokenValueHardLimit            int64 = 2147483647
+	EmbeddingUpstreamTimeoutSecondsHardLimit         = 60
+	EmbeddingResponseHeaderTimeoutSecHardLimit       = 30
+	EmbeddingMaxConcurrentRequestsHardLimit          = 128
+)
+
 // UserMessageQueueConfig 用户消息串行队列配置
 // 用于 Anthropic OAuth/SetupToken 账号的用户消息串行化发送
 type UserMessageQueueConfig struct {
@@ -1993,32 +2008,32 @@ func (c *Config) Validate() error {
 	if c.Gateway.UpstreamResponseReadMaxBytes <= 0 {
 		return fmt.Errorf("gateway.upstream_response_read_max_bytes must be positive")
 	}
-	if c.Gateway.Embedding.RequestMaxBytes <= 0 {
-		return fmt.Errorf("gateway.embedding.request_max_bytes must be positive")
+	if c.Gateway.Embedding.RequestMaxBytes <= 0 || c.Gateway.Embedding.RequestMaxBytes > EmbeddingRequestMaxBytesHardLimit {
+		return fmt.Errorf("gateway.embedding.request_max_bytes must be between 1 and %d", EmbeddingRequestMaxBytesHardLimit)
 	}
-	if c.Gateway.Embedding.ResponseMaxBytes <= 0 {
-		return fmt.Errorf("gateway.embedding.response_max_bytes must be positive")
+	if c.Gateway.Embedding.ResponseMaxBytes <= 0 || c.Gateway.Embedding.ResponseMaxBytes > EmbeddingResponseMaxBytesHardLimit {
+		return fmt.Errorf("gateway.embedding.response_max_bytes must be between 1 and %d", EmbeddingResponseMaxBytesHardLimit)
 	}
-	if c.Gateway.Embedding.MaxJSONDepth <= 0 {
-		return fmt.Errorf("gateway.embedding.max_json_depth must be positive")
+	if c.Gateway.Embedding.MaxJSONDepth <= 0 || c.Gateway.Embedding.MaxJSONDepth > EmbeddingMaxJSONDepthHardLimit {
+		return fmt.Errorf("gateway.embedding.max_json_depth must be between 1 and %d", EmbeddingMaxJSONDepthHardLimit)
 	}
-	if c.Gateway.Embedding.MaxInputItems <= 0 {
-		return fmt.Errorf("gateway.embedding.max_input_items must be positive")
+	if c.Gateway.Embedding.MaxInputItems <= 0 || c.Gateway.Embedding.MaxInputItems > EmbeddingMaxInputItemsHardLimit {
+		return fmt.Errorf("gateway.embedding.max_input_items must be between 1 and %d", EmbeddingMaxInputItemsHardLimit)
 	}
-	if c.Gateway.Embedding.MaxInputItemBytes <= 0 {
-		return fmt.Errorf("gateway.embedding.max_input_item_bytes must be positive")
+	if c.Gateway.Embedding.MaxInputItemBytes <= 0 || c.Gateway.Embedding.MaxInputItemBytes > EmbeddingMaxInputItemBytesHardLimit {
+		return fmt.Errorf("gateway.embedding.max_input_item_bytes must be between 1 and %d", EmbeddingMaxInputItemBytesHardLimit)
 	}
-	if c.Gateway.Embedding.MaxTokenValue <= 0 || c.Gateway.Embedding.MaxTokenValue > 2147483647 {
-		return fmt.Errorf("gateway.embedding.max_token_value must be between 1 and 2147483647")
+	if c.Gateway.Embedding.MaxTokenValue <= 0 || c.Gateway.Embedding.MaxTokenValue > EmbeddingMaxTokenValueHardLimit {
+		return fmt.Errorf("gateway.embedding.max_token_value must be between 1 and %d", EmbeddingMaxTokenValueHardLimit)
 	}
-	if c.Gateway.Embedding.UpstreamTimeoutSeconds <= 0 {
-		return fmt.Errorf("gateway.embedding.upstream_timeout_seconds must be positive")
+	if c.Gateway.Embedding.UpstreamTimeoutSeconds <= 0 || c.Gateway.Embedding.UpstreamTimeoutSeconds > EmbeddingUpstreamTimeoutSecondsHardLimit {
+		return fmt.Errorf("gateway.embedding.upstream_timeout_seconds must be between 1 and %d", EmbeddingUpstreamTimeoutSecondsHardLimit)
 	}
-	if c.Gateway.Embedding.ResponseHeaderTimeoutSec <= 0 {
-		return fmt.Errorf("gateway.embedding.response_header_timeout_seconds must be positive")
+	if c.Gateway.Embedding.ResponseHeaderTimeoutSec <= 0 || c.Gateway.Embedding.ResponseHeaderTimeoutSec > EmbeddingResponseHeaderTimeoutSecHardLimit {
+		return fmt.Errorf("gateway.embedding.response_header_timeout_seconds must be between 1 and %d", EmbeddingResponseHeaderTimeoutSecHardLimit)
 	}
-	if c.Gateway.Embedding.MaxConcurrentRequests <= 0 {
-		return fmt.Errorf("gateway.embedding.max_concurrent_requests must be positive")
+	if c.Gateway.Embedding.MaxConcurrentRequests <= 0 || c.Gateway.Embedding.MaxConcurrentRequests > EmbeddingMaxConcurrentRequestsHardLimit {
+		return fmt.Errorf("gateway.embedding.max_concurrent_requests must be between 1 and %d", EmbeddingMaxConcurrentRequestsHardLimit)
 	}
 	for _, rawCIDR := range c.Gateway.Embedding.AllowedPrivateCIDRs {
 		if _, _, err := net.ParseCIDR(strings.TrimSpace(rawCIDR)); err != nil {

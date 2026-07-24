@@ -32,6 +32,7 @@ func TestBuildEmbeddingHTTPClientBindsValidatedIPAndDisablesRedirect(t *testing.
 	transport, ok := client.Transport.(*http.Transport)
 	require.True(t, ok)
 	require.Equal(t, "embedding.example.test", transport.TLSClientConfig.ServerName)
+	require.True(t, transport.DisableKeepAlives, "one-shot embedding transports must not retain idle connections")
 
 	accepted := make(chan error, 1)
 	go func() {

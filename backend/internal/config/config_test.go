@@ -78,6 +78,38 @@ func TestLoadDefaultSchedulingConfig(t *testing.T) {
 	}
 }
 
+func TestValidateEmbeddingResourceHardLimits(t *testing.T) {
+	mutations := []struct {
+		name string
+		set  func(*Config)
+	}{
+		{"request bytes", func(c *Config) { c.Gateway.Embedding.RequestMaxBytes = EmbeddingRequestMaxBytesHardLimit + 1 }},
+		{"response bytes", func(c *Config) { c.Gateway.Embedding.ResponseMaxBytes = EmbeddingResponseMaxBytesHardLimit + 1 }},
+		{"json depth", func(c *Config) { c.Gateway.Embedding.MaxJSONDepth = EmbeddingMaxJSONDepthHardLimit + 1 }},
+		{"input items", func(c *Config) { c.Gateway.Embedding.MaxInputItems = EmbeddingMaxInputItemsHardLimit + 1 }},
+		{"input item bytes", func(c *Config) { c.Gateway.Embedding.MaxInputItemBytes = EmbeddingMaxInputItemBytesHardLimit + 1 }},
+		{"token value", func(c *Config) { c.Gateway.Embedding.MaxTokenValue = EmbeddingMaxTokenValueHardLimit + 1 }},
+		{"upstream timeout", func(c *Config) {
+			c.Gateway.Embedding.UpstreamTimeoutSeconds = EmbeddingUpstreamTimeoutSecondsHardLimit + 1
+		}},
+		{"header timeout", func(c *Config) {
+			c.Gateway.Embedding.ResponseHeaderTimeoutSec = EmbeddingResponseHeaderTimeoutSecHardLimit + 1
+		}},
+		{"concurrency", func(c *Config) {
+			c.Gateway.Embedding.MaxConcurrentRequests = EmbeddingMaxConcurrentRequestsHardLimit + 1
+		}},
+	}
+	for _, tt := range mutations {
+		t.Run(tt.name, func(t *testing.T) {
+			resetViperWithJWTSecret(t)
+			cfg, err := Load()
+			require.NoError(t, err)
+			tt.set(cfg)
+			require.Error(t, cfg.Validate())
+		})
+	}
+}
+
 func TestLoadDefaultOpenAIWSConfig(t *testing.T) {
 	resetViperWithJWTSecret(t)
 

@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -77,5 +78,37 @@ func TestUsageBillingRepositoryApplyRollsBackWhenEmbeddingUsageInsertFails(t *te
 
 	_, err := repo.Apply(context.Background(), cmd)
 	require.ErrorIs(t, err, context.DeadlineExceeded)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestUsageBillingRepositoryApplyReturnsFailureWhenCommitFailsAfterEmbeddingEffects(t *testing.T) {
+	t.Parallel()
+
+	db, mock := newSQLMock(t)
+	repo := &usageBillingRepository{db: db}
+	usage := &service.UsageLog{RequestID: "embedding-commit", APIKeyID: 2, RequestType: service.RequestTypeEmbedding, CreatedAt: time.Now()}
+	cmd := &service.UsageBillingCommand{
+		RequestID: "embedding-commit", APIKeyID: 2, APIKeyQuotaCost: 1.25, UsageLog: usage,
+	}
+	commitErr := errors.New("commit failed")
+
+	mock.ExpectBegin()
+	mock.ExpectQuery("INSERT INTO usage_billing_dedup").
+		WithArgs(cmd.RequestID, cmd.APIKeyID, sqlmock.AnyArg()).
+		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(int64(10)))
+	mock.ExpectQuery("SELECT request_fingerprint[[:space:]]+FROM usage_billing_dedup_archive").
+		WithArgs(cmd.RequestID, cmd.APIKeyID).
+		WillReturnRows(sqlmock.NewRows([]string{"request_fingerprint"}))
+	mock.ExpectQuery("UPDATE api_keys[[:space:]]+SET quota_used").
+		WithArgs(cmd.APIKeyQuotaCost, cmd.APIKeyID, service.StatusAPIKeyActive, service.StatusAPIKeyQuotaExhausted).
+		WillReturnRows(sqlmock.NewRows([]string{"exhausted"}).AddRow(false))
+	mock.ExpectExec("INSERT INTO usage_logs").
+		WithArgs(anySliceToDriverValues(prepareUsageLogInsert(usage).args)...).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectCommit().WillReturnError(commitErr)
+
+	result, err := repo.Apply(context.Background(), cmd)
+	require.Nil(t, result)
+	require.ErrorIs(t, err, commitErr)
 	require.NoError(t, mock.ExpectationsWereMet())
 }

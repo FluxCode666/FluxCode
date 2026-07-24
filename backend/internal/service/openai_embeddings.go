@@ -3,6 +3,7 @@ package service
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"math"
@@ -18,15 +19,15 @@ import (
 )
 
 const (
-	defaultEmbeddingRequestMaxBytes   int64 = 1 * 1024 * 1024
-	defaultEmbeddingResponseMaxBytes  int64 = 8 * 1024 * 1024
-	defaultEmbeddingMaxJSONDepth            = 32
-	defaultEmbeddingMaxInputItems           = 2048
-	defaultEmbeddingMaxInputItemBytes       = 64 * 1024
-	defaultEmbeddingMaxTokenValue     int64 = 2147483647
-	defaultEmbeddingTimeout                 = 60 * time.Second
-	defaultEmbeddingHeaderTimeout           = 30 * time.Second
-	defaultEmbeddingMaxConcurrent           = 128
+	defaultEmbeddingRequestMaxBytes   int64 = config.EmbeddingRequestMaxBytesHardLimit
+	defaultEmbeddingResponseMaxBytes  int64 = config.EmbeddingResponseMaxBytesHardLimit
+	defaultEmbeddingMaxJSONDepth            = config.EmbeddingMaxJSONDepthHardLimit
+	defaultEmbeddingMaxInputItems           = config.EmbeddingMaxInputItemsHardLimit
+	defaultEmbeddingMaxInputItemBytes       = config.EmbeddingMaxInputItemBytesHardLimit
+	defaultEmbeddingMaxTokenValue     int64 = config.EmbeddingMaxTokenValueHardLimit
+	defaultEmbeddingTimeout                 = config.EmbeddingUpstreamTimeoutSecondsHardLimit * time.Second
+	defaultEmbeddingHeaderTimeout           = config.EmbeddingResponseHeaderTimeoutSecHardLimit * time.Second
+	defaultEmbeddingMaxConcurrent           = config.EmbeddingMaxConcurrentRequestsHardLimit
 )
 
 var lookupEmbeddingHostIP = func(ctx context.Context, host string) ([]net.IP, error) {
@@ -44,9 +45,12 @@ var (
 // status. The upstream response body, headers, credentials and vectors never
 // cross this error boundary.
 type EmbeddingForwardError struct {
-	Category   string
-	StatusCode int
-	Retryable  bool
+	Category      string
+	StatusCode    int
+	Retryable     bool
+	AccountID     int64
+	ChannelID     int64
+	UpstreamModel string
 }
 
 func (e *EmbeddingForwardError) Error() string {
@@ -86,6 +90,13 @@ type embeddingForwardLimits struct {
 }
 
 func (s *OpenAIGatewayService) embeddingLimits() embeddingForwardLimits {
+	if s == nil {
+		return embeddingLimitsFromConfig(nil)
+	}
+	return embeddingLimitsFromConfig(s.cfg)
+}
+
+func embeddingLimitsFromConfig(cfg *config.Config) embeddingForwardLimits {
 	limits := embeddingForwardLimits{
 		requestMaxBytes:   defaultEmbeddingRequestMaxBytes,
 		responseMaxBytes:  defaultEmbeddingResponseMaxBytes,
@@ -97,36 +108,36 @@ func (s *OpenAIGatewayService) embeddingLimits() embeddingForwardLimits {
 		headerTimeout:     defaultEmbeddingHeaderTimeout,
 		maxConcurrent:     defaultEmbeddingMaxConcurrent,
 	}
-	if s == nil || s.cfg == nil {
+	if cfg == nil {
 		return limits
 	}
-	configured := s.cfg.Gateway.Embedding
+	configured := cfg.Gateway.Embedding
 	if configured.RequestMaxBytes > 0 {
-		limits.requestMaxBytes = configured.RequestMaxBytes
+		limits.requestMaxBytes = min(configured.RequestMaxBytes, config.EmbeddingRequestMaxBytesHardLimit)
 	}
 	if configured.ResponseMaxBytes > 0 {
-		limits.responseMaxBytes = configured.ResponseMaxBytes
+		limits.responseMaxBytes = min(configured.ResponseMaxBytes, config.EmbeddingResponseMaxBytesHardLimit)
 	}
 	if configured.MaxJSONDepth > 0 {
-		limits.maxJSONDepth = configured.MaxJSONDepth
+		limits.maxJSONDepth = min(configured.MaxJSONDepth, config.EmbeddingMaxJSONDepthHardLimit)
 	}
 	if configured.MaxInputItems > 0 {
-		limits.maxInputItems = configured.MaxInputItems
+		limits.maxInputItems = min(configured.MaxInputItems, config.EmbeddingMaxInputItemsHardLimit)
 	}
 	if configured.MaxInputItemBytes > 0 {
-		limits.maxInputItemBytes = configured.MaxInputItemBytes
+		limits.maxInputItemBytes = min(configured.MaxInputItemBytes, config.EmbeddingMaxInputItemBytesHardLimit)
 	}
-	if configured.MaxTokenValue > 0 && configured.MaxTokenValue <= defaultEmbeddingMaxTokenValue {
-		limits.maxTokenValue = configured.MaxTokenValue
+	if configured.MaxTokenValue > 0 {
+		limits.maxTokenValue = min(configured.MaxTokenValue, config.EmbeddingMaxTokenValueHardLimit)
 	}
 	if configured.UpstreamTimeoutSeconds > 0 {
-		limits.timeout = time.Duration(configured.UpstreamTimeoutSeconds) * time.Second
+		limits.timeout = time.Duration(min(configured.UpstreamTimeoutSeconds, config.EmbeddingUpstreamTimeoutSecondsHardLimit)) * time.Second
 	}
 	if configured.ResponseHeaderTimeoutSec > 0 {
-		limits.headerTimeout = time.Duration(configured.ResponseHeaderTimeoutSec) * time.Second
+		limits.headerTimeout = time.Duration(min(configured.ResponseHeaderTimeoutSec, config.EmbeddingResponseHeaderTimeoutSecHardLimit)) * time.Second
 	}
 	if configured.MaxConcurrentRequests > 0 {
-		limits.maxConcurrent = configured.MaxConcurrentRequests
+		limits.maxConcurrent = min(configured.MaxConcurrentRequests, config.EmbeddingMaxConcurrentRequestsHardLimit)
 	}
 	limits.allowedHosts = append([]string(nil), configured.AllowedHosts...)
 	limits.allowedPrivateCIDR = append([]string(nil), configured.AllowedPrivateCIDRs...)
@@ -179,9 +190,13 @@ func (s *OpenAIGatewayService) ForwardEmbeddings(ctx context.Context, input Embe
 	if s.cfg != nil && s.cfg.Gateway.MaxAccountSwitches > 0 && s.cfg.Gateway.MaxAccountSwitches+1 < maxAttempts {
 		maxAttempts = s.cfg.Gateway.MaxAccountSwitches + 1
 	}
+	eligibleAccountIDs := make(map[int64]struct{}, len(candidates))
+	for i := range candidates {
+		eligibleAccountIDs[candidates[i].Account.ID] = struct{}{}
+	}
 	excluded := make(map[int64]struct{}, len(candidates))
 	var lastErr error
-	for attempts := 0; attempts < maxAttempts; attempts++ {
+	for attempts := 0; attempts < maxAttempts; {
 		selection, selectErr := s.SelectAccountWithLoadAwarenessForPlatform(
 			ctx,
 			PlatformEmbedding,
@@ -193,6 +208,15 @@ func (s *OpenAIGatewayService) ForwardEmbeddings(ctx context.Context, input Embe
 		if selectErr != nil || selection == nil || selection.Account == nil || !selection.Acquired || selection.ReleaseFunc == nil {
 			break
 		}
+		if _, alreadyExcluded := excluded[selection.Account.ID]; alreadyExcluded {
+			selection.ReleaseFunc()
+			break
+		}
+		if _, eligible := eligibleAccountIDs[selection.Account.ID]; !eligible {
+			selection.ReleaseFunc()
+			excluded[selection.Account.ID] = struct{}{}
+			continue
+		}
 
 		freshCandidates := s.resolveEmbeddingModelEligibilityFromAccounts(ctx, input.GroupID, publicModel, []Account{*selection.Account})
 		if len(freshCandidates) != 1 {
@@ -201,10 +225,16 @@ func (s *OpenAIGatewayService) ForwardEmbeddings(ctx context.Context, input Embe
 			continue
 		}
 		candidate := freshCandidates[0]
+		attempts++
 		result, forwardErr := s.forwardEmbeddingCandidate(ctx, input.Body, candidate, limits)
 		selection.ReleaseFunc()
 		if forwardErr == nil {
 			return result, nil
+		}
+		if typed, ok := forwardErr.(*EmbeddingForwardError); ok {
+			typed.AccountID = candidate.Account.ID
+			typed.ChannelID = candidate.ChannelMapping.ChannelID
+			typed.UpstreamModel = candidate.UpstreamModel
 		}
 		lastErr = forwardErr
 		upstreamErr, retryable := forwardErr.(*EmbeddingForwardError)
@@ -225,10 +255,13 @@ func (s *OpenAIGatewayService) forwardEmbeddingCandidate(
 	candidate EmbeddingModelEligibility,
 	limits embeddingForwardLimits,
 ) (*EmbeddingForwardResult, error) {
+	attemptCtx, cancel := context.WithTimeout(ctx, limits.timeout)
+	defer cancel()
+	startedAt := time.Now()
 	if strings.TrimSpace(candidate.Account.EffectiveProxyURL()) != "" {
 		return nil, &EmbeddingForwardError{Category: "proxy_not_supported", Retryable: true}
 	}
-	targetURL, destinationIP, err := resolveEmbeddingUpstreamTarget(ctx, candidate.Account.GetEmbeddingBaseURL(), limits)
+	targetURL, destinationIP, err := resolveEmbeddingUpstreamTarget(attemptCtx, candidate.Account.GetEmbeddingBaseURL(), limits)
 	if err != nil {
 		return nil, &EmbeddingForwardError{Category: "unsafe_upstream", Retryable: true}
 	}
@@ -237,9 +270,7 @@ func (s *OpenAIGatewayService) forwardEmbeddingCandidate(
 	if err != nil {
 		return nil, ErrEmbeddingRequestInvalid
 	}
-	timeoutCtx, cancel := context.WithTimeout(ctx, limits.timeout)
-	defer cancel()
-	req, err := http.NewRequestWithContext(timeoutCtx, http.MethodPost, targetURL, bytes.NewReader(outboundBody))
+	req, err := http.NewRequestWithContext(attemptCtx, http.MethodPost, targetURL, bytes.NewReader(outboundBody))
 	if err != nil {
 		return nil, &EmbeddingForwardError{Category: "request_build"}
 	}
@@ -255,7 +286,6 @@ func (s *OpenAIGatewayService) forwardEmbeddingCandidate(
 	if !ok || doer == nil {
 		return nil, &EmbeddingForwardError{Category: "secure_transport_unavailable"}
 	}
-	startedAt := time.Now()
 	resp, err := doer.DoEmbedding(req, EmbeddingUpstreamPolicy{
 		ValidatedIP:           destinationIP,
 		ResponseHeaderTimeout: limits.headerTimeout,
@@ -292,6 +322,9 @@ func (s *OpenAIGatewayService) forwardEmbeddingCandidate(
 		// A malformed 2xx has an uncertain semantic result. Do not fail over or
 		// return the vector, because the upstream may already have charged it.
 		return nil, &EmbeddingForwardError{Category: "invalid_usage"}
+	}
+	if err := validateEmbeddingResponseData(responseBody); err != nil {
+		return nil, &EmbeddingForwardError{Category: "invalid_response"}
 	}
 	publicResponse, err := sjson.SetBytes(responseBody, "model", candidate.PublicModel)
 	if err != nil {
@@ -438,6 +471,46 @@ func parseEmbeddingPromptTokens(body []byte, maxDepth int) (int, error) {
 	return int(promptTokens), nil
 }
 
+func validateEmbeddingResponseData(body []byte) error {
+	var envelope struct {
+		Data []struct {
+			Embedding json.RawMessage `json:"embedding"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(body, &envelope); err != nil || len(envelope.Data) == 0 {
+		return errors.New("embedding data is required")
+	}
+	for _, item := range envelope.Data {
+		raw := bytes.TrimSpace(item.Embedding)
+		if len(raw) == 0 {
+			return errors.New("embedding value is required")
+		}
+		switch raw[0] {
+		case '[':
+			var vector []float64
+			if err := json.Unmarshal(raw, &vector); err != nil || len(vector) == 0 {
+				return errors.New("embedding vector is invalid")
+			}
+			for _, value := range vector {
+				if math.IsNaN(value) || math.IsInf(value, 0) {
+					return errors.New("embedding vector is invalid")
+				}
+			}
+		case '"':
+			var encoded string
+			if err := json.Unmarshal(raw, &encoded); err != nil || encoded == "" {
+				return errors.New("embedding base64 is invalid")
+			}
+			if _, err := base64.StdEncoding.Strict().DecodeString(encoded); err != nil {
+				return errors.New("embedding base64 is invalid")
+			}
+		default:
+			return errors.New("embedding value has an unsupported format")
+		}
+	}
+	return nil
+}
+
 func validateEmbeddingJSONDepth(body []byte, maxDepth int) error {
 	depth := 0
 	inString := false
@@ -524,6 +597,11 @@ func isAllowedEmbeddingIP(ip net.IP, allowedPrivateNets []*net.IPNet) bool {
 	if ip == nil || ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsUnspecified() || ip.IsMulticast() || !ip.IsGlobalUnicast() {
 		return false
 	}
+	for _, blocked := range blockedEmbeddingNetworks {
+		if blocked.Contains(ip) {
+			return false
+		}
+	}
 	if !ip.IsPrivate() {
 		return true
 	}
@@ -533,6 +611,29 @@ func isAllowedEmbeddingIP(ip net.IP, allowedPrivateNets []*net.IPNet) bool {
 		}
 	}
 	return false
+}
+
+var blockedEmbeddingNetworks = mustParseEmbeddingNetworks(
+	"100.64.0.0/10",   // carrier-grade NAT/shared address space
+	"192.0.0.0/24",    // IETF protocol assignments
+	"192.0.2.0/24",    // documentation
+	"198.18.0.0/15",   // benchmarking
+	"198.51.100.0/24", // documentation
+	"203.0.113.0/24",  // documentation
+	"240.0.0.0/4",     // reserved
+	"2001:db8::/32",   // documentation
+)
+
+func mustParseEmbeddingNetworks(rawCIDRs ...string) []*net.IPNet {
+	networks := make([]*net.IPNet, 0, len(rawCIDRs))
+	for _, raw := range rawCIDRs {
+		_, network, err := net.ParseCIDR(raw)
+		if err != nil {
+			panic("invalid built-in embedding CIDR: " + raw)
+		}
+		networks = append(networks, network)
+	}
+	return networks
 }
 
 // buildOpenAIEmbeddingsURL accepts an upstream root, /v1 root, or a complete

@@ -212,7 +212,9 @@ func (s *AccountTestService) testEmbeddingAccountConnection(c *gin.Context, acco
 		return s.sendEmbeddingTestError(c, "embedding_test_configuration")
 	}
 	limits := (&OpenAIGatewayService{cfg: s.cfg}).embeddingLimits()
-	targetURL, destinationIP, err := resolveEmbeddingUpstreamTarget(c.Request.Context(), account.GetEmbeddingBaseURL(), limits)
+	ctx, cancel := context.WithTimeout(c.Request.Context(), limits.timeout)
+	defer cancel()
+	targetURL, destinationIP, err := resolveEmbeddingUpstreamTarget(ctx, account.GetEmbeddingBaseURL(), limits)
 	if err != nil {
 		return s.sendEmbeddingTestError(c, "embedding_test_unsafe_upstream")
 	}
@@ -224,8 +226,6 @@ func (s *AccountTestService) testEmbeddingAccountConnection(c *gin.Context, acco
 	if err != nil {
 		return s.sendEmbeddingTestError(c, "embedding_test_request")
 	}
-	ctx, cancel := context.WithTimeout(c.Request.Context(), limits.timeout)
-	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, targetURL, bytes.NewReader(payload))
 	if err != nil {
 		return s.sendEmbeddingTestError(c, "embedding_test_request")
@@ -252,42 +252,11 @@ func (s *AccountTestService) testEmbeddingAccountConnection(c *gin.Context, acco
 	if _, err := parseEmbeddingPromptTokens(body, limits.maxJSONDepth); err != nil {
 		return s.sendEmbeddingTestError(c, "embedding_test_invalid_usage")
 	}
-	var envelope struct {
-		Data []struct {
-			Embedding json.RawMessage `json:"embedding"`
-		} `json:"data"`
-	}
-	if err := json.Unmarshal(body, &envelope); err != nil || len(envelope.Data) == 0 || !validEmbeddingTestVector(envelope.Data[0].Embedding) {
+	if err := validateEmbeddingResponseData(body); err != nil {
 		return s.sendEmbeddingTestError(c, "embedding_test_invalid_response")
 	}
 	s.sendEvent(c, TestEvent{Type: "test_complete", Model: publicModel, Success: true})
 	return nil
-}
-
-func validEmbeddingTestVector(raw json.RawMessage) bool {
-	if len(raw) == 0 {
-		return false
-	}
-	var encoded string
-	if json.Unmarshal(raw, &encoded) == nil {
-		if strings.TrimSpace(encoded) == "" {
-			return false
-		}
-		_, err := base64.StdEncoding.DecodeString(encoded)
-		return err == nil
-	}
-	var vector []json.Number
-	decoder := json.NewDecoder(bytes.NewReader(raw))
-	decoder.UseNumber()
-	if err := decoder.Decode(&vector); err != nil || len(vector) == 0 {
-		return false
-	}
-	for _, value := range vector {
-		if _, err := value.Float64(); err != nil {
-			return false
-		}
-	}
-	return true
 }
 
 func (s *AccountTestService) sendEmbeddingTestError(c *gin.Context, category string) error {

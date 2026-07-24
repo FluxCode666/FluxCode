@@ -1,12 +1,22 @@
 import { mount } from '@vue/test-utils'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import PricingEntryCard from '../PricingEntryCard.vue'
 import IntervalRow from '../IntervalRow.vue'
 import type { PricingFormEntry } from '../types'
 
+const i18nState = vi.hoisted(() => ({ locale: 'zh' }))
+
 vi.mock('vue-i18n', () => ({
-  useI18n: () => ({ t: (_key: string, fallback?: string) => fallback || _key })
+  useI18n: () => ({
+    t: (key: string, fallback?: string) => {
+      if (i18nState.locale === 'en' && key === 'admin.channels.form.embeddingDisabled') return 'Disabled'
+      if (i18nState.locale === 'en' && key === 'admin.channels.form.embeddingDisabledWarning') {
+        return 'Disabled: an explicit zero input price overrides the default price, so this model cannot be listed or scheduled.'
+      }
+      return fallback || key
+    }
+  })
 }))
 
 vi.mock('@/api/admin/channels', () => ({
@@ -29,6 +39,9 @@ const baseEntry: PricingFormEntry = {
 }
 
 describe('PricingEntryCard capabilities', () => {
+  afterEach(() => {
+    i18nState.locale = 'zh'
+  })
 
   it('input-only 区间仅渲染范围与输入价格', () => {
     const wrapper = mount(IntervalRow, {
@@ -59,6 +72,16 @@ describe('PricingEntryCard capabilities', () => {
     expect(wrapper.find('[data-testid="embedding-input-price"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="embedding-output-price"]').exists()).toBe(false)
     expect(wrapper.find('.select-stub').exists()).toBe(false)
+  })
+
+  it('renders the embedding disabled warning in English locale', () => {
+    i18nState.locale = 'en'
+    const wrapper = mount(PricingEntryCard, {
+      props: { entry: { ...baseEntry, models: ['embed'], input_price: 0 }, platform: 'embedding' },
+      global: { stubs: { Icon: true, Select: true, ModelTagInput: true, IntervalRow: true } }
+    })
+    expect(wrapper.get('[data-testid="embedding-disabled-warning"]').text()).toContain('Disabled:')
+    expect(wrapper.text()).not.toContain('已停用')
   })
   it('renders model capability checkboxes', () => {
     const wrapper = mount(PricingEntryCard, {

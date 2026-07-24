@@ -39,7 +39,7 @@ func TestOpsGetErrorLogs_RedactsEmbeddingSummary(t *testing.T) {
 
 	repo := &opsRepoMock{ListErrorLogsFn: func(context.Context, *OpsErrorLogFilter) (*OpsErrorLogList, error) {
 		return &OpsErrorLogList{Errors: []*OpsErrorLog{{
-			Platform: PlatformEmbedding, Message: "summary-canary", IsRetryable: true,
+			Platform: PlatformEmbedding, Type: "upstream_auth", Message: "summary-canary", IsRetryable: true,
 		}}}, nil
 	}}
 	svc := &OpsService{opsRepo: repo}
@@ -47,7 +47,8 @@ func TestOpsGetErrorLogs_RedactsEmbeddingSummary(t *testing.T) {
 	result, err := svc.GetErrorLogs(context.Background(), &OpsErrorLogFilter{})
 	require.NoError(t, err)
 	require.Len(t, result.Errors, 1)
-	require.Equal(t, "embedding request failed", result.Errors[0].Message)
+	require.Equal(t, "upstream_auth", result.Errors[0].Type)
+	require.Equal(t, "upstream_auth", result.Errors[0].Message)
 	require.False(t, result.Errors[0].IsRetryable)
 }
 
@@ -65,7 +66,7 @@ func TestOpsPrepareErrorLogInput_DropsEmbeddingContentBeforePersistence(t *testi
 	headers := "header-canary"
 	entry := &OpsInsertErrorLogInput{
 		Platform: PlatformEmbedding, RequestPath: "/v1/embeddings", RequestType: ptrInt16(int16(RequestTypeEmbedding)),
-		ErrorMessage: "message-canary", ErrorBody: "vector-canary", UserAgent: "agent-canary", IsRetryable: true,
+		ErrorType: "invalid_response", ErrorMessage: "message-canary", ErrorBody: "vector-canary", UserAgent: "agent-canary", IsRetryable: true,
 		UpstreamErrorMessage: &message, UpstreamErrorDetail: &detail,
 		UpstreamErrors:  []*OpsUpstreamErrorEvent{{Message: "event-canary", Detail: "event-detail-canary", UpstreamRequestBody: "event-input-canary"}},
 		RequestBodyJSON: &requestBody, RequestHeadersJSON: &headers,
@@ -75,7 +76,8 @@ func TestOpsPrepareErrorLogInput_DropsEmbeddingContentBeforePersistence(t *testi
 	prepared, ok, err := svc.prepareErrorLogInput(context.Background(), entry, []byte(`{"input":"raw-input-canary"}`))
 	require.NoError(t, err)
 	require.True(t, ok)
-	require.Equal(t, "embedding request failed", prepared.ErrorMessage)
+	require.Equal(t, "invalid_response", prepared.ErrorType)
+	require.Equal(t, "invalid_response", prepared.ErrorMessage)
 	require.Empty(t, prepared.ErrorBody)
 	require.Empty(t, prepared.UserAgent)
 	require.Nil(t, prepared.UpstreamErrorMessage)

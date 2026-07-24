@@ -2730,6 +2730,8 @@ export default {
         mappingCount: 'mappings',
         pricingEntry: 'Pricing Entry',
         noModels: 'No models added',
+        embeddingDisabled: 'Disabled',
+        embeddingDisabledWarning: 'Disabled: an explicit zero input price overrides the default price, so this model cannot be listed or scheduled.',
         applyPricingToAccountStats: 'Apply Pricing to Account Stats',
         applyPricingToAccountStatsDesc: 'When enabled, requests not matched by custom rules will use standard model pricing for account stats calculation',
         accountStatsPricingRules: 'Custom Account Stats Pricing Rules',

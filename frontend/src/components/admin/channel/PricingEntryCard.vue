@@ -44,7 +44,9 @@
         >
           {{ billingModeLabel }}
         </span>
-        <span v-if="embeddingDisabled" class="flex-shrink-0 rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700 dark:bg-red-900/30 dark:text-red-300">已停用</span>
+        <span v-if="embeddingDisabled" class="flex-shrink-0 rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700 dark:bg-red-900/30 dark:text-red-300">
+          {{ t('admin.channels.form.embeddingDisabled', '已停用') }}
+        </span>
       </div>
 
       <!-- Expanded: show the label "Pricing Entry" or similar -->
@@ -120,7 +122,7 @@
         <!-- Token mode -->
         <div v-if="effectiveBillingMode === 'token'">
           <div v-if="embeddingDisabled" data-testid="embedding-disabled-warning" class="mt-3 rounded border border-red-200 bg-red-50 p-2 text-xs text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-300">
-            已停用：显式零输入价会覆盖默认价格，使该模型不可展示、不可调度。
+            {{ t('admin.channels.form.embeddingDisabledWarning', '已停用：显式零输入价会覆盖默认价格，使该模型不可展示、不可调度。') }}
           </div>
           <!-- Default prices (fallback when no interval matches) -->
           <label class="mt-3 block text-xs font-medium text-gray-500 dark:text-gray-400">

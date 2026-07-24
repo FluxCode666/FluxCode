@@ -11,6 +11,7 @@ import (
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/httpclient"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
@@ -475,6 +476,7 @@ type adminServiceImpl struct {
 	defaultSubAssigner   DefaultSubscriptionAssigner
 	userSubRepo          UserSubscriptionRepository
 	privacyClientFactory PrivacyClientFactory
+	cfg                  *config.Config
 }
 
 type userGroupRateBatchReader interface {
@@ -499,6 +501,7 @@ func NewAdminService(
 	defaultSubAssigner DefaultSubscriptionAssigner,
 	userSubRepo UserSubscriptionRepository,
 	privacyClientFactory PrivacyClientFactory,
+	cfg *config.Config,
 ) AdminService {
 	return &adminServiceImpl{
 		userRepo:             userRepo,
@@ -517,6 +520,7 @@ func NewAdminService(
 		defaultSubAssigner:   defaultSubAssigner,
 		userSubRepo:          userSubRepo,
 		privacyClientFactory: privacyClientFactory,
+		cfg:                  cfg,
 	}
 }
 
@@ -1861,7 +1865,7 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 	if err := validateCodex2APIAccount(account); err != nil {
 		return nil, err
 	}
-	if err := validateEmbeddingAccount(account); err != nil {
+	if err := validateEmbeddingAccountForWrite(ctx, account, s.cfg); err != nil {
 		return nil, err
 	}
 	if err := s.accountRepo.Create(ctx, account); err != nil {
@@ -2008,7 +2012,7 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 	if err := validateCodex2APIAccount(account); err != nil {
 		return nil, err
 	}
-	if err := validateEmbeddingAccount(account); err != nil {
+	if err := validateEmbeddingAccountForWrite(ctx, account, s.cfg); err != nil {
 		return nil, err
 	}
 
@@ -2065,33 +2069,38 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 
 	needMixedChannelCheck := input.GroupIDs != nil && !input.SkipMixedChannelCheck
 
-	// 预加载账号信息：分组校验与 embedding 凭证合并后复验都必须发生在写入前。
+	// 预加载账号信息：分组校验与 embedding 凭证/代理合并后的网络策略复验都必须发生在写入前。
 	platformByID := map[int64]string{}
-	if input.GroupIDs != nil || len(input.Credentials) > 0 {
-		accounts, err := s.accountRepo.GetByIDs(ctx, input.AccountIDs)
-		if err != nil {
-			return nil, err
-		}
-		for _, account := range accounts {
-			if account != nil {
-				platformByID[account.ID] = account.Platform
-				if input.GroupIDs != nil {
-					if err := validateAccountGroupBindings(ctx, s.groupRepo, account.Platform, account.Type, *input.GroupIDs); err != nil {
-						return nil, err
+	accounts, err := s.accountRepo.GetByIDs(ctx, input.AccountIDs)
+	if err != nil {
+		return nil, err
+	}
+	for _, account := range accounts {
+		if account != nil {
+			platformByID[account.ID] = account.Platform
+			if input.GroupIDs != nil {
+				if err := validateAccountGroupBindings(ctx, s.groupRepo, account.Platform, account.Type, *input.GroupIDs); err != nil {
+					return nil, err
+				}
+			}
+			if account.Platform == PlatformEmbedding {
+				candidate := *account
+				candidate.Credentials = cloneCredentials(account.Credentials)
+				if candidate.Credentials == nil {
+					candidate.Credentials = make(map[string]any)
+				}
+				for key, value := range input.Credentials {
+					candidate.Credentials[key] = value
+				}
+				if input.ProxyID != nil {
+					if *input.ProxyID <= 0 {
+						candidate.ProxyID = nil
+					} else {
+						candidate.ProxyID = input.ProxyID
 					}
 				}
-				if len(input.Credentials) > 0 && account.Platform == PlatformEmbedding {
-					candidate := *account
-					candidate.Credentials = cloneCredentials(account.Credentials)
-					if candidate.Credentials == nil {
-						candidate.Credentials = make(map[string]any)
-					}
-					for key, value := range input.Credentials {
-						candidate.Credentials[key] = value
-					}
-					if err := validateEmbeddingAccount(&candidate); err != nil {
-						return nil, err
-					}
+				if err := validateEmbeddingAccountForWrite(ctx, &candidate, s.cfg); err != nil {
+					return nil, err
 				}
 			}
 		}

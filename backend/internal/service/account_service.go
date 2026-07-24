@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 )
@@ -49,6 +50,22 @@ func validateEmbeddingAccount(account *Account) error {
 	}
 	if !account.HasEmbeddingModelConfiguration() {
 		return fmt.Errorf("embedding model whitelist or mapping is required")
+	}
+	return nil
+}
+
+func validateEmbeddingAccountForWrite(ctx context.Context, account *Account, cfg *config.Config) error {
+	if err := validateEmbeddingAccount(account); err != nil || account == nil || account.Platform != PlatformEmbedding {
+		return err
+	}
+	if account.ProxyID != nil && *account.ProxyID > 0 || strings.TrimSpace(account.EffectiveProxyURL()) != "" {
+		return fmt.Errorf("embedding accounts do not support proxies")
+	}
+	limits := embeddingLimitsFromConfig(cfg)
+	validationCtx, cancel := context.WithTimeout(ctx, limits.timeout)
+	defer cancel()
+	if _, _, err := resolveEmbeddingUpstreamTarget(validationCtx, account.GetEmbeddingBaseURL(), limits); err != nil {
+		return fmt.Errorf("embedding base_url violates the configured network policy: %w", err)
 	}
 	return nil
 }
@@ -208,6 +225,7 @@ type UpdateAccountRequest struct {
 type AccountService struct {
 	accountRepo AccountRepository
 	groupRepo   GroupRepository
+	cfg         *config.Config
 }
 
 type groupExistenceBatchChecker interface {
@@ -215,10 +233,11 @@ type groupExistenceBatchChecker interface {
 }
 
 // NewAccountService 创建账号服务实例
-func NewAccountService(accountRepo AccountRepository, groupRepo GroupRepository) *AccountService {
+func NewAccountService(accountRepo AccountRepository, groupRepo GroupRepository, cfg *config.Config) *AccountService {
 	return &AccountService{
 		accountRepo: accountRepo,
 		groupRepo:   groupRepo,
+		cfg:         cfg,
 	}
 }
 
@@ -246,7 +265,7 @@ func (s *AccountService) Create(ctx context.Context, req CreateAccountRequest) (
 	if err := validateCodex2APIAccount(account); err != nil {
 		return nil, err
 	}
-	if err := validateEmbeddingAccount(account); err != nil {
+	if err := validateEmbeddingAccountForWrite(ctx, account, s.cfg); err != nil {
 		return nil, err
 	}
 	if err := validateAccountGroupBindings(ctx, s.groupRepo, account.Platform, account.Type, req.GroupIDs); err != nil {
@@ -352,7 +371,7 @@ func (s *AccountService) Update(ctx context.Context, id int64, req UpdateAccount
 	if err := validateCodex2APIAccount(account); err != nil {
 		return nil, err
 	}
-	if err := validateEmbeddingAccount(account); err != nil {
+	if err := validateEmbeddingAccountForWrite(ctx, account, s.cfg); err != nil {
 		return nil, err
 	}
 	if req.GroupIDs != nil {
