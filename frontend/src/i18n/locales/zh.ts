@@ -5997,6 +5997,17 @@ export default {
         cchSigning: 'CCH 签名',
         cchSigningHint: '对转发请求的 billing header 进行 CCH 哈希签名。关闭时保留原始占位符。',
       },
+      successfulRequestRecords: {
+        title: '成功请求正文记录',
+        description: '异步保存已鉴权且最终返回 2xx 的网关 POST 请求体和响应体，用于员工数据分析。',
+        sensitiveWarning: '该功能会保存原始请求与响应正文，当前不做脱敏。请严格限制数据库与后台访问权限，并由管理员手动处理正文数据生命周期。',
+        enabled: '启用成功请求正文记录',
+        enabledHint: '开关变更会动态生效；关闭后不再采集新正文，已进入队列的数据仍会继续落库。',
+        encryptionKeyRequired: '启用前必须先在所有服务实例中配置相同且固定的 TOTP_ENCRYPTION_KEY。',
+        maxBodyKB: '单侧正文上限（KB）',
+        maxBodyHint: '请求体和响应体分别计算，允许范围 1 KB–16 MB；超限时只记录大小和截断标记。',
+        maxBodyRangeError: '单侧正文上限必须在 1 KB 到 16 MB 之间。'
+      },
       systemPrompt: {
         title: '平台系统提示词',
         description: '按平台配置全局默认系统提示词。运行时优先级：API Key > 分组 > 系统配置（当前平台默认）。',
