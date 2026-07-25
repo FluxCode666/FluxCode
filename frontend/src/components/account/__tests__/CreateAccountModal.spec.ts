@@ -158,6 +158,7 @@ describe('CreateAccountModal', () => {
     const wrapper = mountModal()
 
     await wrapper.get('[data-testid="platform-embedding"]').trigger('click')
+    expect(wrapper.get('[data-testid="platform-embedding"]').classes()).toContain('text-rose-600')
     expect(wrapper.text()).toContain('admin.accounts.modelRestriction')
     expect(wrapper.text()).toContain('admin.accounts.poolMode')
     expect(wrapper.text()).not.toContain('admin.accounts.customErrorCodes')

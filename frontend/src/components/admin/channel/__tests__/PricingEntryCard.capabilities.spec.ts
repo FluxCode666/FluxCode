@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import PricingEntryCard from '../PricingEntryCard.vue'
 import IntervalRow from '../IntervalRow.vue'
-import type { PricingFormEntry } from '../types'
+import { getPlatformTagClass, type PricingFormEntry } from '../types'
 
 const i18nState = vi.hoisted(() => ({ locale: 'zh' }))
 
@@ -41,6 +41,11 @@ const baseEntry: PricingFormEntry = {
 describe('PricingEntryCard capabilities', () => {
   afterEach(() => {
     i18nState.locale = 'zh'
+  })
+
+  it('uses the shared rose identity for embedding platform tags', () => {
+    expect(getPlatformTagClass('embedding')).toContain('rose')
+    expect(getPlatformTagClass('embedding')).not.toContain('indigo')
   })
 
   it('input-only 区间仅渲染范围与输入价格', () => {

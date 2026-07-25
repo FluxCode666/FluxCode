@@ -14,7 +14,7 @@ const BADGE: Record<Platform, string> = {
   codex2api: 'bg-cyan-500/10 text-cyan-600 border-cyan-500/30 dark:text-cyan-400',
   antigravity: 'bg-purple-500/10 text-purple-600 border-purple-500/30 dark:text-purple-400',
   gemini: 'bg-blue-500/10 text-blue-600 border-blue-500/30 dark:text-blue-400',
-  embedding: 'bg-indigo-500/10 text-indigo-600 border-indigo-500/30 dark:text-indigo-400',
+  embedding: 'bg-rose-500/10 text-rose-600 border-rose-500/30 dark:text-rose-400',
 }
 const BADGE_DEFAULT = 'bg-slate-500/10 text-slate-600 border-slate-500/30 dark:text-slate-400'
 
@@ -25,7 +25,7 @@ const BADGE_LIGHT: Record<Platform, string> = {
   codex2api: 'bg-cyan-500/10 text-cyan-600 dark:bg-cyan-500/10 dark:text-cyan-300',
   antigravity: 'bg-purple-500/10 text-purple-600 dark:bg-purple-500/10 dark:text-purple-300',
   gemini: 'bg-blue-500/10 text-blue-600 dark:bg-blue-500/10 dark:text-blue-300',
-  embedding: 'bg-indigo-500/10 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-300',
+  embedding: 'bg-rose-500/10 text-rose-600 dark:bg-rose-500/10 dark:text-rose-300',
 }
 
 // ── Border ──────────────────────────────────────────────────────────
@@ -35,7 +35,7 @@ const BORDER: Record<Platform, string> = {
   codex2api: 'border-cyan-500/20 dark:border-cyan-500/20',
   antigravity: 'border-purple-500/20 dark:border-purple-500/20',
   gemini: 'border-blue-500/20 dark:border-blue-500/20',
-  embedding: 'border-indigo-500/20 dark:border-indigo-500/20',
+  embedding: 'border-rose-500/20 dark:border-rose-500/20',
 }
 const BORDER_DEFAULT = 'border-gray-200 dark:border-dark-700'
 
@@ -46,7 +46,7 @@ const ACCENT_BAR: Record<Platform, string> = {
   codex2api: 'bg-gradient-to-r from-cyan-400 to-cyan-500',
   antigravity: 'bg-gradient-to-r from-purple-400 to-purple-500',
   gemini: 'bg-gradient-to-r from-blue-400 to-blue-500',
-  embedding: 'bg-gradient-to-r from-indigo-400 to-indigo-500',
+  embedding: 'bg-gradient-to-r from-rose-400 to-rose-500',
 }
 const ACCENT_BAR_DEFAULT = 'bg-gradient-to-r from-primary-400 to-primary-500'
 
@@ -57,7 +57,7 @@ const TEXT: Record<Platform, string> = {
   codex2api: 'text-cyan-600 dark:text-cyan-400',
   antigravity: 'text-purple-600 dark:text-purple-400',
   gemini: 'text-blue-600 dark:text-blue-400',
-  embedding: 'text-indigo-600 dark:text-indigo-400',
+  embedding: 'text-rose-600 dark:text-rose-400',
 }
 const TEXT_DEFAULT = 'text-primary-600 dark:text-primary-400'
 
@@ -68,7 +68,7 @@ const ICON: Record<Platform, string> = {
   codex2api: 'text-cyan-500 dark:text-cyan-400',
   antigravity: 'text-purple-500 dark:text-purple-400',
   gemini: 'text-blue-500 dark:text-blue-400',
-  embedding: 'text-indigo-500 dark:text-indigo-400',
+  embedding: 'text-rose-500 dark:text-rose-400',
 }
 const ICON_DEFAULT = 'text-primary-500 dark:text-primary-400'
 
@@ -79,7 +79,7 @@ const BUTTON: Record<Platform, string> = {
   codex2api: 'bg-cyan-600 text-white hover:bg-cyan-700 active:bg-cyan-800 dark:bg-cyan-600/80 dark:hover:bg-cyan-600',
   antigravity: 'bg-purple-500 text-white hover:bg-purple-600 active:bg-purple-700 dark:bg-purple-500/80 dark:hover:bg-purple-500',
   gemini: 'bg-blue-500 text-white hover:bg-blue-600 active:bg-blue-700 dark:bg-blue-500/80 dark:hover:bg-blue-500',
-  embedding: 'bg-indigo-500 text-white hover:bg-indigo-600 active:bg-indigo-700 dark:bg-indigo-500/80 dark:hover:bg-indigo-500',
+  embedding: 'bg-rose-500 text-white hover:bg-rose-600 active:bg-rose-700 dark:bg-rose-500/80 dark:hover:bg-rose-500',
 }
 const BUTTON_DEFAULT = 'bg-primary-500 text-white hover:bg-primary-600 dark:bg-primary-600 dark:hover:bg-primary-500'
 
@@ -90,7 +90,7 @@ const DISCOUNT: Record<Platform, string> = {
   codex2api: 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-300',
   antigravity: 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300',
   gemini: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
-  embedding: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300',
+  embedding: 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300',
 }
 const DISCOUNT_DEFAULT = 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300'
 
@@ -101,7 +101,7 @@ const GRADIENT: Record<Platform, string> = {
   codex2api: 'from-cyan-500 to-cyan-600',
   antigravity: 'from-purple-500 to-purple-600',
   gemini: 'from-blue-500 to-blue-600',
-  embedding: 'from-indigo-500 to-indigo-600',
+  embedding: 'from-rose-500 to-rose-600',
 }
 const GRADIENT_DEFAULT = 'from-primary-500 to-primary-600'
 
@@ -112,7 +112,7 @@ const GRADIENT_TEXT: Record<Platform, string> = {
   codex2api: 'text-cyan-100',
   antigravity: 'text-purple-100',
   gemini: 'text-blue-100',
-  embedding: 'text-indigo-100',
+  embedding: 'text-rose-100',
 }
 const GRADIENT_TEXT_DEFAULT = 'text-primary-100'
 
@@ -122,7 +122,7 @@ const GRADIENT_SUBTEXT: Record<Platform, string> = {
   codex2api: 'text-cyan-200',
   antigravity: 'text-purple-200',
   gemini: 'text-blue-200',
-  embedding: 'text-indigo-200',
+  embedding: 'text-rose-200',
 }
 const GRADIENT_SUBTEXT_DEFAULT = 'text-primary-200'
 

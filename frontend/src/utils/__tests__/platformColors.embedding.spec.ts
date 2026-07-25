@@ -4,7 +4,8 @@ import { platformBadgeClass, platformLabel, platformIconClass } from '@/utils/pl
 describe('embedding platform presentation', () => {
   it('has an explicit label and non-default classes', () => {
     expect(platformLabel('embedding')).toBe('Embedding')
-    expect(platformBadgeClass('embedding')).not.toContain('slate')
-    expect(platformIconClass('embedding')).not.toContain('primary')
+    expect(platformBadgeClass('embedding')).toContain('rose')
+    expect(platformBadgeClass('embedding')).not.toContain('indigo')
+    expect(platformIconClass('embedding')).toContain('rose')
   })
 })

@@ -20,5 +20,7 @@ describe('embedding platform presentation', () => {
     })
     expect(wrapper.text()).toContain('Embedding')
     expect(wrapper.text()).toContain('Key')
+    expect(wrapper.findAll('.bg-rose-100')).toHaveLength(2)
+    expect(wrapper.html()).not.toContain('indigo')
   })
 })
