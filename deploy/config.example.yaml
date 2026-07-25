@@ -160,19 +160,12 @@ gateway:
   # Max bytes to read for non-stream upstream responses (default: 8MB)
   # 非流式上游响应体读取上限（默认 8MB）
   upstream_response_read_max_bytes: 8388608
-  # Embedding is fail-closed: replace this host with every HTTPS upstream host
-  # you explicitly trust before creating embedding accounts. Empty means all
-  # embedding account tests and requests are rejected.
-  # Embedding 默认拒绝全部上游：创建账号前请替换为明确可信的 HTTPS 主机；
-  # 留空时账号测试和用户请求都会被拒绝。
+  # Embedding accepts any public HTTPS upstream. Private upstreams require an
+  # explicit CIDR; loopback, link-local, metadata, shared, documentation and
+  # reserved ranges are always blocked.
+  # Embedding 允许任意公网 HTTPS 上游。私网上游需要显式配置 CIDR；回环、
+  # 链路本地、元数据、shared、documentation 与保留地址始终禁止。
   embedding:
-    allowed_hosts:
-      - "api.openai.com"
-    # Private upstreams require both an allowed host above and an explicit CIDR.
-    # Loopback, link-local, metadata, shared, documentation and reserved ranges
-    # remain blocked even when listed here.
-    # 私网上游必须同时命中上方主机和显式 CIDR；回环、链路本地、元数据、
-    # shared、documentation 与保留地址始终禁止。
     allowed_private_cidrs: []
     request_max_bytes: 1048576
     response_max_bytes: 8388608

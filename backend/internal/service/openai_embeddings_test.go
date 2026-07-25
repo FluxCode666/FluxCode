@@ -76,7 +76,6 @@ func newEmbeddingForwardTestService(t *testing.T, accounts []Account, upstream *
 		InputPrice: &price,
 	}}}, nil)
 	svc.cfg.Gateway.Embedding = config.EmbeddingGatewayConfig{
-		AllowedHosts:             []string{"embedding.example.test"},
 		RequestMaxBytes:          4096,
 		ResponseMaxBytes:         4096,
 		MaxJSONDepth:             16,
@@ -349,7 +348,7 @@ func TestEmbeddingInputValidationAcceptsOpenAIShapesAndRejectsUnsafeValues(t *te
 }
 
 func TestEmbeddingTargetValidationRejectsPrivateDNSAndBuildsEndpointOnce(t *testing.T) {
-	limits := embeddingForwardLimits{allowedHosts: []string{"embedding.example.test"}}
+	limits := embeddingForwardLimits{}
 	previous := lookupEmbeddingHostIP
 	lookupEmbeddingHostIP = func(context.Context, string) ([]net.IP, error) { return []net.IP{net.ParseIP("10.0.0.1")}, nil }
 	t.Cleanup(func() { lookupEmbeddingHostIP = previous })
@@ -363,7 +362,6 @@ func TestEmbeddingTargetValidationRejectsPrivateDNSAndBuildsEndpointOnce(t *test
 
 func TestEmbeddingTargetValidationPrivateCIDRAndMixedDNS(t *testing.T) {
 	limits := embeddingForwardLimits{
-		allowedHosts:       []string{"embedding.example.test"},
 		allowedPrivateCIDR: []string{"10.10.0.0/16"},
 	}
 	previous := lookupEmbeddingHostIP

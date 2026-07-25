@@ -45,7 +45,7 @@ func TestAccountTestService_EmbeddingUsesBearerMappedModelAndDiscardsVector(t *t
 		StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"application/json"}},
 		Body: io.NopCloser(strings.NewReader(`{"object":"list","data":[{"embedding":[0.1,0.2],"index":0}],"usage":{"prompt_tokens":1}}`)),
 	}}}}
-	svc := &AccountTestService{accountRepo: repo, httpUpstream: upstream, cfg: &config.Config{Gateway: config.GatewayConfig{Embedding: config.EmbeddingGatewayConfig{AllowedHosts: []string{"embedding.example.com"}}}}}
+	svc := &AccountTestService{accountRepo: repo, httpUpstream: upstream, cfg: &config.Config{}}
 	c, recorder := newTestContext()
 	require.NoError(t, svc.TestAccountConnection(c, 71, "public-embed", "user-content-canary"))
 	require.Equal(t, "Bearer upstream-canary", upstream.request.Header.Get("Authorization"))
@@ -75,7 +75,7 @@ func TestAccountTestService_EmbeddingAcceptsBase64AndRejectsInvalidUsageWithoutB
 		t.Run(tc.name, func(t *testing.T) {
 			repo := &mockAccountRepoForGemini{accountsByID: map[int64]*Account{72: account}}
 			upstream := &embeddingAccountTestUpstream{queuedHTTPUpstream: queuedHTTPUpstream{responses: []*http.Response{{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(tc.body))}}}}
-			svc := &AccountTestService{accountRepo: repo, httpUpstream: upstream, cfg: &config.Config{Gateway: config.GatewayConfig{Embedding: config.EmbeddingGatewayConfig{AllowedHosts: []string{"embedding.example.com"}}}}}
+			svc := &AccountTestService{accountRepo: repo, httpUpstream: upstream, cfg: &config.Config{}}
 			c, recorder := newTestContext()
 			err := svc.TestAccountConnection(c, 72, "embed", "")
 			if tc.success {
@@ -97,7 +97,7 @@ func TestAccountTestService_EmbeddingRejectsUnsafeURLBeforeSendingBearer(t *test
 	}}
 	repo := &mockAccountRepoForGemini{accountsByID: map[int64]*Account{73: account}}
 	upstream := &embeddingAccountTestUpstream{}
-	svc := &AccountTestService{accountRepo: repo, httpUpstream: upstream, cfg: &config.Config{Gateway: config.GatewayConfig{Embedding: config.EmbeddingGatewayConfig{AllowedHosts: []string{"127.0.0.1"}}}}}
+	svc := &AccountTestService{accountRepo: repo, httpUpstream: upstream, cfg: &config.Config{}}
 	c, recorder := newTestContext()
 	require.Error(t, svc.TestAccountConnection(c, 73, "embed", ""))
 	require.Nil(t, upstream.request)
@@ -124,9 +124,7 @@ func TestAccountTestService_EmbeddingBackgroundResultStoresOnlyFixedCategory(t *
 	svc := &AccountTestService{
 		accountRepo:  repo,
 		httpUpstream: upstream,
-		cfg: &config.Config{Gateway: config.GatewayConfig{Embedding: config.EmbeddingGatewayConfig{
-			AllowedHosts: []string{"embedding.example.com"},
-		}}},
+		cfg:          &config.Config{},
 	}
 
 	result, err := svc.RunTestBackground(context.Background(), 74, "embed")

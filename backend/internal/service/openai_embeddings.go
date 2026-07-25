@@ -86,7 +86,6 @@ type embeddingForwardLimits struct {
 	timeout            time.Duration
 	headerTimeout      time.Duration
 	maxConcurrent      int
-	allowedHosts       []string
 	allowedPrivateCIDR []string
 }
 
@@ -140,7 +139,6 @@ func embeddingLimitsFromConfig(cfg *config.Config) embeddingForwardLimits {
 	if configured.MaxConcurrentRequests > 0 {
 		limits.maxConcurrent = min(configured.MaxConcurrentRequests, config.EmbeddingMaxConcurrentRequestsHardLimit)
 	}
-	limits.allowedHosts = append([]string(nil), configured.AllowedHosts...)
 	limits.allowedPrivateCIDR = append([]string(nil), configured.AllowedPrivateCIDRs...)
 	return limits
 }
@@ -582,13 +580,8 @@ func validateEmbeddingJSONDepth(body []byte, maxDepth int) error {
 }
 
 func resolveEmbeddingUpstreamTarget(ctx context.Context, rawBaseURL string, limits embeddingForwardLimits) (string, net.IP, error) {
-	if len(limits.allowedHosts) == 0 {
-		return "", nil, errors.New("embedding allowed_hosts is not configured")
-	}
 	normalized, err := urlvalidator.ValidateHTTPSURL(rawBaseURL, urlvalidator.ValidationOptions{
-		AllowedHosts:     limits.allowedHosts,
-		RequireAllowlist: true,
-		AllowPrivate:     true,
+		AllowPrivate: true,
 	})
 	if err != nil {
 		return "", nil, err

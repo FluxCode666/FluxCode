@@ -310,7 +310,7 @@ func TestLoadDefaultEmbeddingGatewayLimits(t *testing.T) {
 	require.Equal(t, 60, cfg.Gateway.Embedding.UpstreamTimeoutSeconds)
 	require.Equal(t, 30, cfg.Gateway.Embedding.ResponseHeaderTimeoutSec)
 	require.Equal(t, 128, cfg.Gateway.Embedding.MaxConcurrentRequests)
-	require.Empty(t, cfg.Gateway.Embedding.AllowedHosts, "operators must opt in allowed embedding hosts")
+	require.Empty(t, cfg.Gateway.Embedding.AllowedPrivateCIDRs)
 }
 
 func TestLoadRejectsInvalidEmbeddingPrivateCIDR(t *testing.T) {

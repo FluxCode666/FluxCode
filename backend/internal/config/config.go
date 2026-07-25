@@ -442,7 +442,6 @@ type GatewayConfig struct {
 // EmbeddingGatewayConfig keeps embedding's resource and SSRF policy separate
 // from the more permissive legacy gateway defaults.
 type EmbeddingGatewayConfig struct {
-	AllowedHosts        []string `mapstructure:"allowed_hosts"`
 	AllowedPrivateCIDRs []string `mapstructure:"allowed_private_cidrs"`
 
 	RequestMaxBytes          int64 `mapstructure:"request_max_bytes"`
