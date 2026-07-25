@@ -28,6 +28,8 @@ import (
 // OpenAIGatewayHandler handles OpenAI API gateway requests
 type OpenAIGatewayHandler struct {
 	gatewayService          *service.OpenAIGatewayService
+	embeddingGateway        embeddingGatewayService
+	embeddingBillingChecker embeddingBillingEligibilityChecker
 	billingCacheService     *service.BillingCacheService
 	apiKeyService           *service.APIKeyService
 	usageRecordWorkerPool   *service.UsageRecordWorkerPool
@@ -35,6 +37,16 @@ type OpenAIGatewayHandler struct {
 	concurrencyHelper       *ConcurrencyHelper
 	maxAccountSwitches      int
 	cfg                     *config.Config
+}
+
+type embeddingGatewayService interface {
+	ListAvailableEmbeddingModels(context.Context, *int64) ([]string, error)
+	ForwardEmbeddings(context.Context, service.EmbeddingForwardInput) (*service.EmbeddingForwardResult, error)
+	BillEmbedding(context.Context, *service.EmbeddingBillingInput) error
+}
+
+type embeddingBillingEligibilityChecker interface {
+	CheckBillingEligibility(context.Context, *service.User, *service.APIKey, *service.Group, *service.UserSubscription) error
 }
 
 func resolveOpenAIForwardDefaultMappedModel(apiKey *service.APIKey, fallbackModel string) string {
@@ -249,8 +261,18 @@ func NewOpenAIGatewayHandler(
 			maxAccountSwitches = cfg.Gateway.MaxAccountSwitches
 		}
 	}
+	var embeddingGateway embeddingGatewayService
+	if gatewayService != nil {
+		embeddingGateway = gatewayService
+	}
+	var embeddingBillingChecker embeddingBillingEligibilityChecker
+	if billingCacheService != nil {
+		embeddingBillingChecker = billingCacheService
+	}
 	return &OpenAIGatewayHandler{
 		gatewayService:          gatewayService,
+		embeddingGateway:        embeddingGateway,
+		embeddingBillingChecker: embeddingBillingChecker,
 		billingCacheService:     billingCacheService,
 		apiKeyService:           apiKeyService,
 		usageRecordWorkerPool:   usageRecordWorkerPool,

@@ -24,6 +24,7 @@ INSERT INTO ops_error_logs (
   api_key_id,
   account_id,
   group_id,
+  channel_id,
   client_ip,
   platform,
   model,
@@ -62,7 +63,7 @@ INSERT INTO ops_error_logs (
   retry_count,
   created_at
 ) VALUES (
-  $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40,$41,$42,$43
+  $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40,$41,$42,$43,$44
 )`
 
 func NewOpsRepository(db *sql.DB) service.OpsRepository {
@@ -140,6 +141,7 @@ func opsInsertErrorLogArgs(input *service.OpsInsertErrorLogInput) []any {
 		opsNullInt64(input.APIKeyID),
 		opsNullInt64(input.AccountID),
 		opsNullInt64(input.GroupID),
+		opsNullInt64(input.ChannelID),
 		opsNullString(input.ClientIP),
 		opsNullString(input.Platform),
 		opsNullString(input.Model),
@@ -239,6 +241,8 @@ SELECT
   COALESCE(a.name, ''),
   e.group_id,
   COALESCE(g.name, ''),
+  e.channel_id,
+  COALESCE(ch.name, ''),
   CASE WHEN e.client_ip IS NULL THEN NULL ELSE e.client_ip::text END,
   COALESCE(e.request_path, ''),
   e.stream,
@@ -250,6 +254,7 @@ SELECT
 FROM ops_error_logs e
 LEFT JOIN accounts a ON e.account_id = a.id
 LEFT JOIN groups g ON e.group_id = g.id
+LEFT JOIN channels ch ON e.channel_id = ch.id
 LEFT JOIN users u ON e.user_id = u.id
 LEFT JOIN users u2 ON e.resolved_by_user_id = u2.id
 ` + where + `
@@ -273,6 +278,8 @@ LIMIT $` + itoa(len(args)+1) + ` OFFSET $` + itoa(len(args)+2)
 		var accountName string
 		var groupID sql.NullInt64
 		var groupName string
+		var channelID sql.NullInt64
+		var channelName string
 		var userEmail string
 		var resolvedAt sql.NullTime
 		var resolvedBy sql.NullInt64
@@ -307,6 +314,8 @@ LIMIT $` + itoa(len(args)+1) + ` OFFSET $` + itoa(len(args)+2)
 			&accountName,
 			&groupID,
 			&groupName,
+			&channelID,
+			&channelName,
 			&clientIP,
 			&item.RequestPath,
 			&item.Stream,
@@ -355,6 +364,11 @@ LIMIT $` + itoa(len(args)+1) + ` OFFSET $` + itoa(len(args)+2)
 			item.GroupID = &v
 		}
 		item.GroupName = groupName
+		if channelID.Valid {
+			v := channelID.Int64
+			item.ChannelID = &v
+		}
+		item.ChannelName = channelName
 		if requestType.Valid {
 			v := int16(requestType.Int64)
 			item.RequestType = &v
@@ -415,6 +429,8 @@ SELECT
   COALESCE(a.name, ''),
   e.group_id,
   COALESCE(g.name, ''),
+  e.channel_id,
+  COALESCE(ch.name, ''),
   CASE WHEN e.client_ip IS NULL THEN NULL ELSE e.client_ip::text END,
   COALESCE(e.request_path, ''),
   e.stream,
@@ -437,6 +453,7 @@ FROM ops_error_logs e
 LEFT JOIN users u ON e.user_id = u.id
 LEFT JOIN accounts a ON e.account_id = a.id
 LEFT JOIN groups g ON e.group_id = g.id
+LEFT JOIN channels ch ON e.channel_id = ch.id
 WHERE e.id = $1
 LIMIT 1`
 
@@ -451,6 +468,7 @@ LIMIT 1`
 	var apiKeyID sql.NullInt64
 	var accountID sql.NullInt64
 	var groupID sql.NullInt64
+	var channelID sql.NullInt64
 	var authLatency sql.NullInt64
 	var routingLatency sql.NullInt64
 	var upstreamLatency sql.NullInt64
@@ -492,6 +510,8 @@ LIMIT 1`
 		&out.AccountName,
 		&groupID,
 		&out.GroupName,
+		&channelID,
+		&out.ChannelName,
 		&clientIP,
 		&out.RequestPath,
 		&out.Stream,
@@ -551,6 +571,10 @@ LIMIT 1`
 	if groupID.Valid {
 		v := groupID.Int64
 		out.GroupID = &v
+	}
+	if channelID.Valid {
+		v := channelID.Int64
+		out.ChannelID = &v
 	}
 	if authLatency.Valid {
 		v := authLatency.Int64

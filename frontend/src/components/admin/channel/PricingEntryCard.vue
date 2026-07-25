@@ -44,6 +44,9 @@
         >
           {{ billingModeLabel }}
         </span>
+        <span v-if="embeddingDisabled" class="flex-shrink-0 rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700 dark:bg-red-900/30 dark:text-red-300">
+          {{ t('admin.channels.form.embeddingDisabled', '已停用') }}
+        </span>
       </div>
 
       <!-- Expanded: show the label "Pricing Entry" or similar -->
@@ -81,7 +84,7 @@
               class="mt-1"
             />
           </div>
-          <div class="w-40">
+          <div v-if="!isEmbedding" class="w-40">
             <label class="text-xs font-medium text-gray-500 dark:text-gray-400">
               {{ t('admin.channels.form.billingMode', '计费模式') }}
             </label>
@@ -94,7 +97,7 @@
           </div>
         </div>
 
-        <div class="mt-3">
+        <div v-if="!isEmbedding" class="mt-3">
           <label class="text-xs font-medium text-gray-500 dark:text-gray-400">
             {{ t('admin.channels.form.capabilities', '能力标签') }}
           </label>
@@ -117,7 +120,10 @@
         </div>
 
         <!-- Token mode -->
-        <div v-if="entry.billing_mode === 'token'">
+        <div v-if="effectiveBillingMode === 'token'">
+          <div v-if="embeddingDisabled" data-testid="embedding-disabled-warning" class="mt-3 rounded border border-red-200 bg-red-50 p-2 text-xs text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-300">
+            {{ t('admin.channels.form.embeddingDisabledWarning', '已停用：显式零输入价会覆盖默认价格，使该模型不可展示、不可调度。') }}
+          </div>
           <!-- Default prices (fallback when no interval matches) -->
           <label class="mt-3 block text-xs font-medium text-gray-500 dark:text-gray-400">
             {{ t('admin.channels.form.defaultPrices', '默认价格（未命中区间时使用）') }}
@@ -127,24 +133,24 @@
             <div>
               <label class="text-xs text-gray-400">{{ t('admin.channels.form.inputPrice', '输入') }}</label>
               <input :value="entry.input_price" @input="emitField('input_price', ($event.target as HTMLInputElement).value)"
-                type="number" step="any" min="0" class="input mt-0.5 text-sm" :placeholder="t('admin.channels.form.pricePlaceholder', '默认')" />
+                data-testid="embedding-input-price" type="number" step="any" min="0" class="input mt-0.5 text-sm" :placeholder="t('admin.channels.form.pricePlaceholder', '默认')" />
             </div>
-            <div>
+            <div v-if="!isEmbedding">
               <label class="text-xs text-gray-400">{{ t('admin.channels.form.outputPrice', '输出') }}</label>
-              <input :value="entry.output_price" @input="emitField('output_price', ($event.target as HTMLInputElement).value)"
+              <input data-testid="embedding-output-price" :value="entry.output_price" @input="emitField('output_price', ($event.target as HTMLInputElement).value)"
                 type="number" step="any" min="0" class="input mt-0.5 text-sm" :placeholder="t('admin.channels.form.pricePlaceholder', '默认')" />
             </div>
-            <div>
+            <div v-if="!isEmbedding">
               <label class="text-xs text-gray-400">{{ t('admin.channels.form.cacheWritePrice', '缓存写入') }}</label>
               <input :value="entry.cache_write_price" @input="emitField('cache_write_price', ($event.target as HTMLInputElement).value)"
                 type="number" step="any" min="0" class="input mt-0.5 text-sm" :placeholder="t('admin.channels.form.pricePlaceholder', '默认')" />
             </div>
-            <div>
+            <div v-if="!isEmbedding">
               <label class="text-xs text-gray-400">{{ t('admin.channels.form.cacheReadPrice', '缓存读取') }}</label>
               <input :value="entry.cache_read_price" @input="emitField('cache_read_price', ($event.target as HTMLInputElement).value)"
                 type="number" step="any" min="0" class="input mt-0.5 text-sm" :placeholder="t('admin.channels.form.pricePlaceholder', '默认')" />
             </div>
-            <div>
+            <div v-if="!isEmbedding">
               <label class="text-xs text-gray-400">{{ t('admin.channels.form.imageTokenPrice', '图片输出') }}</label>
               <input :value="entry.image_output_price" @input="emitField('image_output_price', ($event.target as HTMLInputElement).value)"
                 type="number" step="any" min="0" class="input mt-0.5 text-sm" :placeholder="t('admin.channels.form.pricePlaceholder', '默认')" />
@@ -167,7 +173,8 @@
                 v-for="(iv, idx) in entry.intervals"
                 :key="idx"
                 :interval="iv"
-                :mode="entry.billing_mode"
+                :mode="effectiveBillingMode"
+                :input-only="isEmbedding"
                 @update="updateInterval(idx, $event)"
                 @remove="removeInterval(idx)"
               />
@@ -274,6 +281,12 @@ const emit = defineEmits<{
 
 // Collapse state: entries with existing models default to collapsed
 const collapsed = ref(props.entry.models.length > 0)
+const isEmbedding = computed(() => props.platform === 'embedding')
+const effectiveBillingMode = computed<BillingMode>(() => isEmbedding.value ? 'token' : props.entry.billing_mode)
+const embeddingDisabled = computed(() => isEmbedding.value && (
+  Number(props.entry.input_price) === 0 && props.entry.input_price !== null && props.entry.input_price !== '' ||
+  (props.entry.intervals || []).some(interval => interval.input_price !== null && interval.input_price !== '' && Number(interval.input_price) === 0)
+))
 
 const billingModeOptions = computed(() => [
   { value: 'token', label: 'Token' },
@@ -284,6 +297,7 @@ const capabilityOptions = MODEL_CAPABILITY_OPTIONS
 const normalizedCapabilities = computed(() => normalizeCapabilities(props.entry.capabilities))
 
 const billingModeLabel = computed(() => {
+  if (isEmbedding.value) return 'Token'
   const opt = billingModeOptions.value.find(o => o.value === props.entry.billing_mode)
   return opt ? opt.label : props.entry.billing_mode
 })

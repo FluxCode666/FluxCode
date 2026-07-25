@@ -107,7 +107,7 @@ const ModelWhitelistSelectorStub = defineComponent({
     }
   },
   emits: ['update:modelValue'],
-  template: '<div />'
+  template: '<button type="button" data-testid="select-embedding-model" @click="$emit(\'update:modelValue\', [\'text-embedding-3-small\'])">model</button>'
 })
 
 const OAuthAuthorizationFlowStub = defineComponent({
@@ -152,6 +152,48 @@ function mountModal() {
 }
 
 describe('CreateAccountModal', () => {
+  it('creates embedding as API key with model config and pool mode', async () => {
+    createAccountMock.mockReset().mockResolvedValue({})
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+    const wrapper = mountModal()
+
+    await wrapper.get('[data-testid="platform-embedding"]').trigger('click')
+    expect(wrapper.get('[data-testid="platform-embedding"]').classes()).toContain('text-rose-600')
+    expect(wrapper.text()).toContain('admin.accounts.modelRestriction')
+    expect(wrapper.text()).toContain('admin.accounts.poolMode')
+    expect(wrapper.text()).not.toContain('admin.accounts.customErrorCodes')
+
+    const poolSection = wrapper
+      .findAll('div.border-t')
+      .find((section) => section.text().includes('admin.accounts.poolModeHint'))
+    expect(poolSection).toBeDefined()
+    await poolSection!.get('button').trigger('click')
+    await poolSection!.get<HTMLInputElement>('input[type="number"]').setValue('99')
+
+    const name = wrapper.get<HTMLInputElement>('[data-tour="account-form-name"]')
+    await name.setValue('Embedding Key')
+    await wrapper.get<HTMLInputElement>('[data-testid="create-apikey-base-url"]').setValue('https://embedding.example.com/v1')
+    await wrapper.get<HTMLInputElement>('[data-testid="create-apikey-value"]').setValue('sk-embed')
+    await wrapper.get('[data-testid="select-embedding-model"]').trigger('click')
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+
+    expect(createAccountMock).toHaveBeenCalledTimes(1)
+    expect(createAccountMock.mock.calls[0]?.[0]).toMatchObject({
+      platform: 'embedding',
+      type: 'apikey',
+      credentials: {
+        base_url: 'https://embedding.example.com/v1',
+        api_key: 'sk-embed',
+        model_mapping: { 'text-embedding-3-small': 'text-embedding-3-small' },
+        pool_mode: true,
+        pool_mode_retry_count: 10
+      }
+    })
+    expect(Object.keys(createAccountMock.mock.calls[0]?.[0]?.credentials || {}).sort()).toEqual([
+      'api_key', 'base_url', 'model_mapping', 'pool_mode', 'pool_mode_retry_count'
+    ])
+  })
+
   it('creates OpenAI API Key accounts with HTTP image response URLs by default', async () => {
     createAccountMock.mockReset()
     checkMixedChannelRiskMock.mockReset()

@@ -9,6 +9,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/handler"
 	servermiddleware "github.com/Wei-Shaw/sub2api/internal/server/middleware"
+	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
@@ -47,4 +48,64 @@ func TestGatewayRoutesOpenAIResponsesCompactPathIsRegistered(t *testing.T) {
 		router.ServeHTTP(w, req)
 		require.NotEqual(t, http.StatusNotFound, w.Code, "path=%s should hit OpenAI responses handler", path)
 	}
+}
+
+func TestEmbeddingPlatformAllowedEndpoints(t *testing.T) {
+	t.Parallel()
+
+	allowed := []struct {
+		method string
+		path   string
+	}{
+		{http.MethodPost, "/v1/embeddings"},
+		{http.MethodGet, "/v1/models"},
+		{http.MethodGet, "/v1/usage"},
+	}
+	for _, tc := range allowed {
+		require.True(t, isEmbeddingPlatformEndpointAllowed(tc.method, tc.path), "%s %s", tc.method, tc.path)
+	}
+
+	rejected := []struct {
+		method string
+		path   string
+	}{
+		{http.MethodGet, "/v1/embeddings"},
+		{http.MethodPost, "/embeddings"},
+		{http.MethodPost, "/v1/chat/completions"},
+		{http.MethodPost, "/v1/responses"},
+		{http.MethodPost, "/v1/responses/compact"},
+		{http.MethodGet, "/v1/responses"},
+		{http.MethodPost, "/v1/messages"},
+		{http.MethodPost, "/v1/images/generations"},
+		{http.MethodPost, "/v1beta/models/embed:generateContent"},
+		{http.MethodPost, "/antigravity/v1/messages"},
+		{http.MethodGet, "/antigravity/models"},
+	}
+	for _, tc := range rejected {
+		require.False(t, isEmbeddingPlatformEndpointAllowed(tc.method, tc.path), "%s %s", tc.method, tc.path)
+	}
+}
+
+func TestEmbeddingPlatformGuardRejectsBeforeDownstreamHandler(t *testing.T) {
+	t.Parallel()
+
+	router := gin.New()
+	downstreamCalls := 0
+	router.Use(func(c *gin.Context) {
+		c.Set(string(servermiddleware.ContextKeyAPIKey), &service.APIKey{
+			Group: &service.Group{Platform: service.PlatformEmbedding},
+		})
+		c.Next()
+	})
+	router.Use(embeddingPlatformGuard())
+	router.POST("/v1/chat/completions", func(c *gin.Context) {
+		downstreamCalls++
+		c.Status(http.StatusOK)
+	})
+
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil))
+
+	require.Equal(t, http.StatusNotFound, recorder.Code)
+	require.Zero(t, downstreamCalls)
 }

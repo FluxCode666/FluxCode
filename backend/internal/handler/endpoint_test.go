@@ -25,6 +25,7 @@ func TestNormalizeInboundEndpoint(t *testing.T) {
 		{"/v1/messages", EndpointMessages},
 		{"/v1/chat/completions", EndpointChatCompletions},
 		{"/v1/responses", EndpointResponses},
+		{"/v1/embeddings", EndpointEmbeddings},
 		{"/v1beta/models", EndpointGeminiModels},
 
 		// Prefixed paths (antigravity, openai).
@@ -38,7 +39,6 @@ func TestNormalizeInboundEndpoint(t *testing.T) {
 		{"/v1/responses/*subpath", EndpointResponses},
 
 		// Unknown path is returned as-is.
-		{"/v1/embeddings", "/v1/embeddings"},
 		{"", ""},
 		{"  /v1/messages  ", EndpointMessages},
 	}
@@ -77,6 +77,7 @@ func TestDeriveUpstreamEndpoint(t *testing.T) {
 		{"codex2api responses compact", EndpointResponses, "/v1/responses/compact", service.PlatformCodex2API, "/v1/responses/compact"},
 		{"codex2api from messages", EndpointMessages, "/v1/messages", service.PlatformCodex2API, EndpointResponses},
 		{"codex2api from completions", EndpointChatCompletions, "/v1/chat/completions", service.PlatformCodex2API, EndpointResponses},
+		{"embedding", EndpointEmbeddings, "/v1/embeddings", service.PlatformEmbedding, EndpointEmbeddings},
 
 		// Antigravity — uses inbound to pick Claude vs Gemini upstream.
 		{"antigravity claude", EndpointMessages, "/antigravity/v1/messages", service.PlatformAntigravity, EndpointMessages},

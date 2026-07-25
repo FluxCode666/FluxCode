@@ -1,11 +1,22 @@
 import { mount } from '@vue/test-utils'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import PricingEntryCard from '../PricingEntryCard.vue'
-import type { PricingFormEntry } from '../types'
+import IntervalRow from '../IntervalRow.vue'
+import { getPlatformTagClass, type PricingFormEntry } from '../types'
+
+const i18nState = vi.hoisted(() => ({ locale: 'zh' }))
 
 vi.mock('vue-i18n', () => ({
-  useI18n: () => ({ t: (_key: string, fallback?: string) => fallback || _key })
+  useI18n: () => ({
+    t: (key: string, fallback?: string) => {
+      if (i18nState.locale === 'en' && key === 'admin.channels.form.embeddingDisabled') return 'Disabled'
+      if (i18nState.locale === 'en' && key === 'admin.channels.form.embeddingDisabledWarning') {
+        return 'Disabled: an explicit zero input price overrides the default price, so this model cannot be listed or scheduled.'
+      }
+      return fallback || key
+    }
+  })
 }))
 
 vi.mock('@/api/admin/channels', () => ({
@@ -28,6 +39,55 @@ const baseEntry: PricingFormEntry = {
 }
 
 describe('PricingEntryCard capabilities', () => {
+  afterEach(() => {
+    i18nState.locale = 'zh'
+  })
+
+  it('uses the shared rose identity for embedding platform tags', () => {
+    expect(getPlatformTagClass('embedding')).toContain('rose')
+    expect(getPlatformTagClass('embedding')).not.toContain('indigo')
+  })
+
+  it('input-only 区间仅渲染范围与输入价格', () => {
+    const wrapper = mount(IntervalRow, {
+      props: {
+        mode: 'token',
+        inputOnly: true,
+        interval: {
+          min_tokens: 0, max_tokens: 1000, tier_label: '', input_price: 0,
+          output_price: 2, cache_write_price: 3, cache_read_price: 4,
+          per_request_price: null, sort_order: 0
+        }
+      },
+      global: { stubs: { Icon: true } }
+    })
+    expect(wrapper.text()).toContain('输入')
+    expect(wrapper.text()).not.toContain('输出')
+    expect(wrapper.text()).not.toContain('缓存W')
+    expect(wrapper.text()).not.toContain('缓存R')
+    expect(wrapper.findAll('input')).toHaveLength(3)
+  })
+
+  it('embedding 固定 token 输入计价并显示显式零价停用警告', () => {
+    const wrapper = mount(PricingEntryCard, {
+      props: { entry: { ...baseEntry, models: ['embed'], billing_mode: 'per_request', input_price: 0 }, platform: 'embedding' },
+      global: { stubs: { Icon: true, Select: true, ModelTagInput: true, IntervalRow: true } }
+    })
+    expect(wrapper.text()).toContain('已停用')
+    expect(wrapper.find('[data-testid="embedding-input-price"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="embedding-output-price"]').exists()).toBe(false)
+    expect(wrapper.find('.select-stub').exists()).toBe(false)
+  })
+
+  it('renders the embedding disabled warning in English locale', () => {
+    i18nState.locale = 'en'
+    const wrapper = mount(PricingEntryCard, {
+      props: { entry: { ...baseEntry, models: ['embed'], input_price: 0 }, platform: 'embedding' },
+      global: { stubs: { Icon: true, Select: true, ModelTagInput: true, IntervalRow: true } }
+    })
+    expect(wrapper.get('[data-testid="embedding-disabled-warning"]').text()).toContain('Disabled:')
+    expect(wrapper.text()).not.toContain('已停用')
+  })
   it('renders model capability checkboxes', () => {
     const wrapper = mount(PricingEntryCard, {
       props: { entry: baseEntry, platform: 'anthropic' },

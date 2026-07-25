@@ -584,12 +584,48 @@ go generate ./cmd/server
 
 ---
 
+## Embedding 接口
+
+Embedding 是独立的 OpenAI 兼容平台。请创建绑定到 `embedding` 分组的专用用户 API Key；聊天 Key 不能调用这些接口。
+
+- `GET /v1/models` 只返回可调度且输入 Token 价格为正的 embedding 模型。
+- `POST /v1/embeddings` 使用 OpenAI Embeddings 请求格式，并要求 `Authorization: Bearer <embedding-key>`。
+- Embedding 上游账号只能使用 API Key，并通过 `Authorization: Bearer <upstream-key>` 鉴权；不支持 OAuth 或自定义鉴权头。
+- 成功响应必须包含正整数 `usage.prompt_tokens`，且存在正输入价格后才会提交扣费。
+- 输入文本、向量和上游响应体不会写入用量、Ops、trace 或重试预览。
+
+Embedding 账号允许使用任意公网 HTTPS 上游，无需配置域名白名单。私网上游必须命中 `gateway.embedding.allowed_private_cidrs`；回环、链路本地、元数据、shared、documentation 与保留地址始终禁止。Embedding 账号不能使用代理。完整且有硬上界的资源配置见 [`deploy/config.example.yaml`](deploy/config.example.yaml)。
+
+Ops 仅保留 `invalid_usage`、`invalid_response`、`pricing_invalid`、`upstream_auth`、`upstream_rate_limited` 等安全分类及最终账号、渠道、上游模型元数据；不会保留输入文本、Bearer Key、请求头、上游正文或向量。
+
+```bash
+curl "$FLUXCODE_URL/v1/models" -H "Authorization: Bearer $EMBEDDING_KEY"
+curl "$FLUXCODE_URL/v1/embeddings" \
+  -H "Authorization: Bearer $EMBEDDING_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"YOUR_EMBEDDING_MODEL","input":"Text to embed"}'
+```
+
+```python
+import os
+
+from openai import OpenAI
+
+client = OpenAI(
+    api_key=os.environ["EMBEDDING_KEY"],
+    base_url=f'{os.environ["FLUXCODE_URL"].rstrip("/")}/v1',
+)
+models = client.models.list()
+result = client.embeddings.create(model="YOUR_EMBEDDING_MODEL", input="Text to embed")
+```
+
 ## 简易模式
 
 简易模式适合个人开发者或内部团队快速使用，不依赖完整 SaaS 功能。
 
 - 启用方式：设置环境变量 `RUN_MODE=simple`
 - 功能差异：隐藏 SaaS 相关功能，跳过计费流程
+- 简易模式不支持 Embedding；`/v1/models` 和 `/v1/embeddings` 会在模型调度或请求上游前拒绝。
 - 安全注意事项：生产环境需同时设置 `SIMPLE_MODE_CONFIRM=true` 才允许启动
 
 ---

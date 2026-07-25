@@ -520,12 +520,48 @@ go generate ./cmd/server
 
 ---
 
+## Embedding API
+
+Embedding is an independent OpenAI-compatible platform. Create a dedicated user API Key bound to an `embedding` group; chat Keys cannot call these endpoints.
+
+- `GET /v1/models` lists only schedulable embedding models with a positive input-token price.
+- `POST /v1/embeddings` accepts the OpenAI Embeddings request format and requires `Authorization: Bearer <embedding-key>`.
+- Upstream embedding accounts are API-key only and use `Authorization: Bearer <upstream-key>`; OAuth and custom auth headers are not supported.
+- A successful response must include a positive integer `usage.prompt_tokens` and a positive input price before billing is committed.
+- Input text, vectors, and upstream response bodies are not stored in usage, Ops, traces, or retry previews.
+
+Embedding accounts accept any public HTTPS upstream without a host allowlist. Private upstreams require a matching `gateway.embedding.allowed_private_cidrs` entry; loopback, link-local, metadata, shared, documentation, and reserved ranges are always blocked. Embedding accounts cannot use a proxy. See [`deploy/config.example.yaml`](deploy/config.example.yaml) for all bounded resource settings.
+
+Ops records retain only safe categories such as `invalid_usage`, `invalid_response`, `pricing_invalid`, `upstream_auth`, and `upstream_rate_limited`, plus the selected account/channel/model metadata. They never retain input text, Bearer keys, headers, upstream bodies, or vectors.
+
+```bash
+curl "$FLUXCODE_URL/v1/models" -H "Authorization: Bearer $EMBEDDING_KEY"
+curl "$FLUXCODE_URL/v1/embeddings" \
+  -H "Authorization: Bearer $EMBEDDING_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"YOUR_EMBEDDING_MODEL","input":"Text to embed"}'
+```
+
+```python
+import os
+
+from openai import OpenAI
+
+client = OpenAI(
+    api_key=os.environ["EMBEDDING_KEY"],
+    base_url=f'{os.environ["FLUXCODE_URL"].rstrip("/")}/v1',
+)
+models = client.models.list()
+result = client.embeddings.create(model="YOUR_EMBEDDING_MODEL", input="Text to embed")
+```
+
 ## Simple Mode
 
 Simple Mode is designed for individual developers or internal teams who want quick access without full SaaS features.
 
 - Enable: Set environment variable `RUN_MODE=simple`
 - Difference: Hides SaaS-related features and skips billing process
+- Embedding is not supported in simple mode; `/v1/models` and `/v1/embeddings` reject before model scheduling or upstream calls.
 - Security note: In production, you must also set `SIMPLE_MODE_CONFIRM=true` to allow startup
 
 ---

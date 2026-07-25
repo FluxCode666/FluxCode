@@ -41,6 +41,11 @@ type UsageBillingCommand struct {
 	APIKeyQuotaCost     float64
 	APIKeyRateLimitCost float64
 	AccountQuotaCost    float64
+
+	// UsageLog, when present, is inserted in the same transaction as every
+	// billing side effect. Embedding uses this to ensure vectors are never
+	// delivered unless the request_type=4 usage row has committed.
+	UsageLog *UsageLog
 }
 
 func (c *UsageBillingCommand) Normalize() {

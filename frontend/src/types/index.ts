@@ -505,7 +505,7 @@ export interface PaginationConfig {
 
 // ==================== API Key & Group Types ====================
 
-export type GroupPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity'
+export type GroupPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity' | 'embedding'
 
 export type SubscriptionType = 'standard' | 'subscription'
 
@@ -703,7 +703,7 @@ export interface UpdateGroupRequest {
 
 // ==================== Account & Proxy Types ====================
 
-export type AccountPlatform = 'anthropic' | 'openai' | 'codex2api' | 'gemini' | 'antigravity'
+export type AccountPlatform = 'anthropic' | 'openai' | 'codex2api' | 'gemini' | 'antigravity' | 'embedding'
 export type AccountType = 'oauth' | 'setup-token' | 'apikey' | 'upstream' | 'bedrock'
 export type OAuthAddMethod = 'oauth' | 'setup-token'
 export type ProxyProtocol = 'http' | 'https' | 'socks5' | 'socks5h'
@@ -1135,20 +1135,17 @@ export interface AdminDataImportResult {
 // ==================== Usage & Redeem Types ====================
 
 export type RedeemCodeType = 'balance' | 'concurrency' | 'subscription' | 'invitation'
-export type UsageRequestType = 'unknown' | 'sync' | 'stream' | 'ws_v2'
+export type UsageRequestType = 'unknown' | 'sync' | 'stream' | 'ws_v2' | 'embedding'
 
 export interface UsageLog {
   id: number
   user_id: number
   api_key_id: number
-  account_id: number | null
-  trace_id?: string | null
   request_id: string
   model: string
   service_tier?: string | null
   reasoning_effort?: string | null
   inbound_endpoint?: string | null
-  upstream_endpoint?: string | null
 
   group_id: number | null
   original_group_id?: number | null
@@ -1204,6 +1201,9 @@ export interface UsageLogAccountSummary {
 }
 
 export interface AdminUsageLog extends UsageLog {
+  account_id?: number | null
+  trace_id?: string | null
+  upstream_endpoint?: string | null
   upstream_model?: string | null
   model_mapping_chain?: string | null
 

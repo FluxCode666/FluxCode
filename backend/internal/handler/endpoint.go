@@ -18,6 +18,7 @@ const (
 	EndpointMessages        = "/v1/messages"
 	EndpointChatCompletions = "/v1/chat/completions"
 	EndpointResponses       = "/v1/responses"
+	EndpointEmbeddings      = "/v1/embeddings"
 	EndpointGeminiModels    = "/v1beta/models"
 )
 
@@ -46,6 +47,8 @@ func NormalizeInboundEndpoint(path string) string {
 		return EndpointMessages
 	case strings.Contains(path, EndpointResponses):
 		return EndpointResponses
+	case strings.Contains(path, EndpointEmbeddings):
+		return EndpointEmbeddings
 	case strings.Contains(path, EndpointGeminiModels):
 		return EndpointGeminiModels
 	default:
@@ -88,6 +91,9 @@ func DeriveUpstreamEndpoint(inbound, rawRequestPath, platform string) string {
 			return EndpointGeminiModels
 		}
 		return EndpointMessages
+
+	case service.PlatformEmbedding:
+		return EndpointEmbeddings
 	}
 
 	// Unknown platform — fall back to inbound.

@@ -964,6 +964,10 @@ export default {
         modelComment: 'If you have Gemini 3 access, you can use: gemini-3-pro-preview',
         note: 'These environment variables will be active in the current terminal session. For permanent configuration, add them to ~/.bashrc, ~/.zshrc, or the appropriate configuration file.',
       },
+      embedding: {
+        description: 'Embedding uses a dedicated API key and exposes only OpenAI-compatible model discovery and vector APIs. Start with GET /v1/models to discover available models.',
+        note: 'Embedding keys are limited to /v1/models and /v1/embeddings. Upstream requests use Bearer API keys only; input text and vectors are never recorded.',
+      },
       opencode: {
         title: 'OpenCode Example',
         subtitle: 'opencode.json',
@@ -1097,6 +1101,7 @@ export default {
     ws: 'WS',
     stream: 'Stream',
     sync: 'Sync',
+    embedding: 'Embedding',
     unknown: 'Unknown',
     in: 'In',
     out: 'Out',
@@ -2492,6 +2497,7 @@ export default {
         codex2api: 'Codex2api',
         gemini: 'Gemini',
         antigravity: 'Antigravity',
+        embedding: 'Embedding',
         sora: 'Sora',
       },
       deleteConfirm:
@@ -2724,6 +2730,8 @@ export default {
         mappingCount: 'mappings',
         pricingEntry: 'Pricing Entry',
         noModels: 'No models added',
+        embeddingDisabled: 'Disabled',
+        embeddingDisabledWarning: 'Disabled: an explicit zero input price overrides the default price, so this model cannot be listed or scheduled.',
         applyPricingToAccountStats: 'Apply Pricing to Account Stats',
         applyPricingToAccountStatsDesc: 'When enabled, requests not matched by custom rules will use standard model pricing for account stats calculation',
         accountStatsPricingRules: 'Custom Account Stats Pricing Rules',
@@ -3117,6 +3125,7 @@ export default {
         codex2api: 'Codex2api',
         gemini: 'Gemini',
         antigravity: 'Antigravity',
+        embedding: 'Embedding',
         sora: 'Sora',
       },
       types: {
@@ -3417,6 +3426,12 @@ export default {
         baseUrlHint: 'Codex2api endpoint Base URL is required, e.g. https://xxx',
         apiKeyHint: 'Your Codex2api API Key',
         pleaseEnterBaseUrl: 'Please enter Codex2api Base URL'
+      },
+      embedding: {
+        baseUrlHint: 'Enter an HTTPS OpenAI-compatible embedding endpoint',
+        apiKeyHint: 'Upstream requests use Bearer API Key authentication only',
+        baseUrlRequired: 'Embedding Base URL is required',
+        modelRequired: 'Embedding requires at least one model whitelist entry or mapping'
       },
       anthropic: {
         apiKeyPassthrough: 'Auto passthrough (auth only)',
@@ -5027,7 +5042,8 @@ export default {
         requestType: 'Type',
         requestTypeSync: 'Sync',
         requestTypeStream: 'Stream',
-        requestTypeWs: 'WS'
+        requestTypeWs: 'WS',
+        requestTypeEmbedding: 'Embedding'
       },
       // Error Details Modal
       errorDetails: {
@@ -5108,6 +5124,7 @@ export default {
         platform: 'Platform',
         model: 'Model',
         group: 'Group',
+        channel: 'Channel',
         user: 'User',
         account: 'Account',
         latency: 'Request Duration',
@@ -5122,6 +5139,7 @@ export default {
         requestTypeSync: 'Sync',
         requestTypeStream: 'Stream',
         requestTypeWs: 'WebSocket',
+        requestTypeEmbedding: 'Embedding',
         modelMapping: 'Model Mapping',
         timings: 'Timings',
         auth: 'Auth',
@@ -5163,6 +5181,7 @@ export default {
         tabRequest: 'Request',
         tabResponse: 'Response',
         responseBody: 'Response',
+        contentPreviewUnavailable: 'Embedding content previews are unavailable.',
         compareA: 'Compare A',
         compareB: 'Compare B',
         retrySummary: 'Retry Summary',

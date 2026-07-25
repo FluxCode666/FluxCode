@@ -112,7 +112,8 @@ const platformOptions = computed(() => [
   { value: 'codex2api', label: t('admin.accounts.platforms.codex2api') },
   { value: 'anthropic', label: t('admin.accounts.platforms.anthropic') },
   { value: 'gemini', label: t('admin.accounts.platforms.gemini') },
-  { value: 'antigravity', label: t('admin.accounts.platforms.antigravity') }
+  { value: 'antigravity', label: t('admin.accounts.platforms.antigravity') },
+  { value: 'embedding', label: t('admin.accounts.platforms.embedding') }
 ])
 
 const timeRangeOptions = computed(() => [

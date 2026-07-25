@@ -103,3 +103,36 @@ func TestAccountHandlerGetAvailableModels_OpenAIOAuthPassthroughFallsBackToDefau
 	require.NotEmpty(t, resp.Data)
 	require.NotEqual(t, "gpt-5", resp.Data[0].ID)
 }
+
+func TestAccountHandlerGetAvailableModels_EmbeddingUsesExplicitConfiguration(t *testing.T) {
+	svc := &availableModelsAdminService{
+		stubAdminService: newStubAdminService(),
+		account: service.Account{
+			ID: 44, Platform: service.PlatformEmbedding, Type: service.AccountTypeAPIKey,
+			Credentials: map[string]any{
+				"model_mapping": map[string]any{"public-embed": "upstream-embed"},
+			},
+		},
+	}
+	rec := httptest.NewRecorder()
+	setupAvailableModelsRouter(svc).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/admin/accounts/44/models", nil))
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Contains(t, rec.Body.String(), "public-embed")
+	require.NotContains(t, rec.Body.String(), "claude-")
+}
+
+func TestAccountHandlerGetAvailableModels_EmbeddingNeverFallsBack(t *testing.T) {
+	svc := &availableModelsAdminService{
+		stubAdminService: newStubAdminService(),
+		account:          service.Account{ID: 45, Platform: service.PlatformEmbedding, Type: service.AccountTypeAPIKey},
+	}
+	rec := httptest.NewRecorder()
+	setupAvailableModelsRouter(svc).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/admin/accounts/45/models", nil))
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.NotContains(t, rec.Body.String(), "claude-")
+	var resp struct {
+		Data []any `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.Empty(t, resp.Data)
+}

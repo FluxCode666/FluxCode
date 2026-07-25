@@ -965,6 +965,10 @@ export default {
         modelComment: '如果你有 Gemini 3 权限可以填：gemini-3-pro-preview',
         note: '这些环境变量将在当前终端会话中生效。如需永久配置，请将其添加到 ~/.bashrc、~/.zshrc 或相应的配置文件中。'
       },
+      embedding: {
+        description: 'Embedding 使用独立 API Key，仅提供 OpenAI 兼容的模型发现和向量接口。请先调用 GET /v1/models 获取可用模型。',
+        note: 'Embedding Key 只能用于 /v1/models 和 /v1/embeddings；服务端仅通过 Bearer API Key 请求上游，不会记录输入文本或向量。'
+      },
       opencode: {
         title: 'OpenCode 配置示例',
         subtitle: 'opencode.json',
@@ -1099,6 +1103,7 @@ export default {
     ws: 'WS',
     stream: '流式',
     sync: '同步',
+    embedding: 'Embedding',
     unknown: '未知',
     in: '输入',
     out: '输出',
@@ -2511,6 +2516,7 @@ export default {
         codex2api: 'Codex2api',
         gemini: 'Gemini',
         antigravity: 'Antigravity',
+        embedding: 'Embedding',
         sora: 'Sora',
       },
       saving: '保存中...',
@@ -2792,6 +2798,8 @@ export default {
         mappingCount: '条映射',
         pricingEntry: '定价配置',
         noModels: '未添加模型',
+        embeddingDisabled: '已停用',
+        embeddingDisabledWarning: '已停用：显式零输入价会覆盖默认价格，使该模型不可展示、不可调度。',
         applyPricingToAccountStats: '应用模型定价到账号统计',
         applyPricingToAccountStatsDesc: '启用后，未被自定义规则匹配的请求将使用模型定价文件中的标准价格计算账号统计费用',
         accountStatsPricingRules: '自定义账号统计定价规则',
@@ -3293,6 +3301,7 @@ export default {
         codex2api: 'Codex2api',
         gemini: 'Gemini',
         antigravity: 'Antigravity',
+        embedding: 'Embedding',
         sora: 'Sora',
       },
       types: {
@@ -3565,6 +3574,12 @@ export default {
         baseUrlHint: 'Codex2api 接入地址必填，例如：https://xxx',
         apiKeyHint: '您的 Codex2api API Key',
         pleaseEnterBaseUrl: '请输入 Codex2api Base URL'
+      },
+      embedding: {
+        baseUrlHint: '必须填写 HTTPS 的 OpenAI-compatible embedding 地址',
+        apiKeyHint: '仅使用 Bearer API Key 请求上游',
+        baseUrlRequired: 'Embedding Base URL 为必填项',
+        modelRequired: 'Embedding 至少需要一个模型白名单或映射'
       },
       anthropic: {
         apiKeyPassthrough: '自动透传（仅替换认证）',
@@ -5158,7 +5173,8 @@ export default {
         requestType: '类型',
         requestTypeSync: '同步',
         requestTypeStream: '流式',
-        requestTypeWs: 'WS'
+        requestTypeWs: 'WS',
+        requestTypeEmbedding: 'Embedding'
       },
       // Error Details Modal
       errorDetails: {
@@ -5239,6 +5255,7 @@ export default {
         platform: '平台',
         model: '模型',
         group: '分组',
+        channel: '渠道',
         user: '用户',
         account: '账号',
         latency: '请求时长',
@@ -5253,6 +5270,7 @@ export default {
         requestTypeSync: '同步',
         requestTypeStream: '流式',
         requestTypeWs: 'WebSocket',
+        requestTypeEmbedding: 'Embedding',
         modelMapping: '模型映射',
         timings: '时序信息',
         auth: '认证',
@@ -5294,6 +5312,7 @@ export default {
         tabRequest: '请求详情',
         tabResponse: '响应详情',
         responseBody: '响应详情',
+        contentPreviewUnavailable: 'Embedding 内容预览不可用。',
         compareA: '对比 A',
         compareB: '对比 B',
         retrySummary: '重试摘要',

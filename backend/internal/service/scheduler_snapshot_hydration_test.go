@@ -6,6 +6,8 @@ import (
 	"context"
 	"testing"
 	"time"
+
+	"github.com/Wei-Shaw/sub2api/internal/config"
 )
 
 type snapshotHydrationCache struct {
@@ -62,6 +64,21 @@ func (c *snapshotHydrationCache) GetOutboxWatermark(ctx context.Context) (int64,
 
 func (c *snapshotHydrationCache) SetOutboxWatermark(ctx context.Context, id int64) error {
 	return nil
+}
+
+func TestSchedulerSnapshotDefaultBucketsIncludeEmbedding(t *testing.T) {
+	svc := NewSchedulerSnapshotService(nil, nil, nil, nil, &config.Config{RunMode: config.RunModeSimple})
+	buckets, err := svc.defaultBuckets(context.Background())
+	if err != nil {
+		t.Fatalf("defaultBuckets() error = %v", err)
+	}
+
+	for _, bucket := range buckets {
+		if bucket.GroupID == 0 && bucket.Platform == PlatformEmbedding && bucket.Mode == SchedulerModeSingle {
+			return
+		}
+	}
+	t.Fatal("default scheduler buckets must include the embedding platform")
 }
 
 func TestOpenAISelectAccountWithLoadAwareness_HydratesSelectedAccountFromSchedulerSnapshot(t *testing.T) {

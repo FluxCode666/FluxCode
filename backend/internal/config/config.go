@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/url"
 	"os"
 	"strings"
@@ -434,7 +435,40 @@ type GatewayConfig struct {
 	// UserMessageQueue: 用户消息串行队列配置
 	// 对 role:"user" 的真实用户消息实施账号级串行化 + RPM 自适应延迟
 	UserMessageQueue UserMessageQueueConfig `mapstructure:"user_message_queue"`
+	// Embedding: 专用 embedding 上游的安全边界和资源预算。
+	Embedding EmbeddingGatewayConfig `mapstructure:"embedding"`
 }
+
+// EmbeddingGatewayConfig keeps embedding's resource and SSRF policy separate
+// from the more permissive legacy gateway defaults.
+type EmbeddingGatewayConfig struct {
+	AllowedPrivateCIDRs []string `mapstructure:"allowed_private_cidrs"`
+
+	RequestMaxBytes          int64 `mapstructure:"request_max_bytes"`
+	ResponseMaxBytes         int64 `mapstructure:"response_max_bytes"`
+	MaxJSONDepth             int   `mapstructure:"max_json_depth"`
+	MaxInputItems            int   `mapstructure:"max_input_items"`
+	MaxInputItemBytes        int   `mapstructure:"max_input_item_bytes"`
+	MaxTokenValue            int64 `mapstructure:"max_token_value"`
+	UpstreamTimeoutSeconds   int   `mapstructure:"upstream_timeout_seconds"`
+	ResponseHeaderTimeoutSec int   `mapstructure:"response_header_timeout_seconds"`
+	MaxConcurrentRequests    int   `mapstructure:"max_concurrent_requests"`
+}
+
+// Embedding resource budgets are operator-tunable only below these process
+// safety ceilings. Defaults intentionally equal the ceilings so a missing or
+// bypassed config validation can never enlarge the public attack surface.
+const (
+	EmbeddingRequestMaxBytesHardLimit          int64 = 1 * 1024 * 1024
+	EmbeddingResponseMaxBytesHardLimit         int64 = 8 * 1024 * 1024
+	EmbeddingMaxJSONDepthHardLimit                   = 32
+	EmbeddingMaxInputItemsHardLimit                  = 2048
+	EmbeddingMaxInputItemBytesHardLimit              = 64 * 1024
+	EmbeddingMaxTokenValueHardLimit            int64 = 2147483647
+	EmbeddingUpstreamTimeoutSecondsHardLimit         = 60
+	EmbeddingResponseHeaderTimeoutSecHardLimit       = 30
+	EmbeddingMaxConcurrentRequestsHardLimit          = 128
+)
 
 // UserMessageQueueConfig 用户消息串行队列配置
 // 用于 Anthropic OAuth/SetupToken 账号的用户消息串行化发送
@@ -1438,6 +1472,15 @@ func setDefaults() {
 	viper.SetDefault("gateway.antigravity_extra_retries", 10)
 	viper.SetDefault("gateway.max_body_size", int64(256*1024*1024))
 	viper.SetDefault("gateway.upstream_response_read_max_bytes", int64(8*1024*1024))
+	viper.SetDefault("gateway.embedding.request_max_bytes", int64(1*1024*1024))
+	viper.SetDefault("gateway.embedding.response_max_bytes", int64(8*1024*1024))
+	viper.SetDefault("gateway.embedding.max_json_depth", 32)
+	viper.SetDefault("gateway.embedding.max_input_items", 2048)
+	viper.SetDefault("gateway.embedding.max_input_item_bytes", 64*1024)
+	viper.SetDefault("gateway.embedding.max_token_value", int64(2147483647))
+	viper.SetDefault("gateway.embedding.upstream_timeout_seconds", 60)
+	viper.SetDefault("gateway.embedding.response_header_timeout_seconds", 30)
+	viper.SetDefault("gateway.embedding.max_concurrent_requests", 128)
 	viper.SetDefault("gateway.proxy_probe_response_read_max_bytes", int64(1024*1024))
 	viper.SetDefault("gateway.gemini_debug_response_headers", false)
 	viper.SetDefault("gateway.connection_pool_isolation", ConnectionPoolIsolationAccountProxy)
@@ -1963,6 +2006,38 @@ func (c *Config) Validate() error {
 	}
 	if c.Gateway.UpstreamResponseReadMaxBytes <= 0 {
 		return fmt.Errorf("gateway.upstream_response_read_max_bytes must be positive")
+	}
+	if c.Gateway.Embedding.RequestMaxBytes <= 0 || c.Gateway.Embedding.RequestMaxBytes > EmbeddingRequestMaxBytesHardLimit {
+		return fmt.Errorf("gateway.embedding.request_max_bytes must be between 1 and %d", EmbeddingRequestMaxBytesHardLimit)
+	}
+	if c.Gateway.Embedding.ResponseMaxBytes <= 0 || c.Gateway.Embedding.ResponseMaxBytes > EmbeddingResponseMaxBytesHardLimit {
+		return fmt.Errorf("gateway.embedding.response_max_bytes must be between 1 and %d", EmbeddingResponseMaxBytesHardLimit)
+	}
+	if c.Gateway.Embedding.MaxJSONDepth <= 0 || c.Gateway.Embedding.MaxJSONDepth > EmbeddingMaxJSONDepthHardLimit {
+		return fmt.Errorf("gateway.embedding.max_json_depth must be between 1 and %d", EmbeddingMaxJSONDepthHardLimit)
+	}
+	if c.Gateway.Embedding.MaxInputItems <= 0 || c.Gateway.Embedding.MaxInputItems > EmbeddingMaxInputItemsHardLimit {
+		return fmt.Errorf("gateway.embedding.max_input_items must be between 1 and %d", EmbeddingMaxInputItemsHardLimit)
+	}
+	if c.Gateway.Embedding.MaxInputItemBytes <= 0 || c.Gateway.Embedding.MaxInputItemBytes > EmbeddingMaxInputItemBytesHardLimit {
+		return fmt.Errorf("gateway.embedding.max_input_item_bytes must be between 1 and %d", EmbeddingMaxInputItemBytesHardLimit)
+	}
+	if c.Gateway.Embedding.MaxTokenValue <= 0 || c.Gateway.Embedding.MaxTokenValue > EmbeddingMaxTokenValueHardLimit {
+		return fmt.Errorf("gateway.embedding.max_token_value must be between 1 and %d", EmbeddingMaxTokenValueHardLimit)
+	}
+	if c.Gateway.Embedding.UpstreamTimeoutSeconds <= 0 || c.Gateway.Embedding.UpstreamTimeoutSeconds > EmbeddingUpstreamTimeoutSecondsHardLimit {
+		return fmt.Errorf("gateway.embedding.upstream_timeout_seconds must be between 1 and %d", EmbeddingUpstreamTimeoutSecondsHardLimit)
+	}
+	if c.Gateway.Embedding.ResponseHeaderTimeoutSec <= 0 || c.Gateway.Embedding.ResponseHeaderTimeoutSec > EmbeddingResponseHeaderTimeoutSecHardLimit {
+		return fmt.Errorf("gateway.embedding.response_header_timeout_seconds must be between 1 and %d", EmbeddingResponseHeaderTimeoutSecHardLimit)
+	}
+	if c.Gateway.Embedding.MaxConcurrentRequests <= 0 || c.Gateway.Embedding.MaxConcurrentRequests > EmbeddingMaxConcurrentRequestsHardLimit {
+		return fmt.Errorf("gateway.embedding.max_concurrent_requests must be between 1 and %d", EmbeddingMaxConcurrentRequestsHardLimit)
+	}
+	for _, rawCIDR := range c.Gateway.Embedding.AllowedPrivateCIDRs {
+		if _, _, err := net.ParseCIDR(strings.TrimSpace(rawCIDR)); err != nil {
+			return fmt.Errorf("gateway.embedding.allowed_private_cidrs contains invalid CIDR %q", rawCIDR)
+		}
 	}
 	if c.Gateway.ProxyProbeResponseReadMaxBytes <= 0 {
 		return fmt.Errorf("gateway.proxy_probe_response_read_max_bytes must be positive")

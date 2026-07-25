@@ -34,6 +34,31 @@ func TestBuildSchedulerMetadataAccount_KeepsOpenAIWSFlags(t *testing.T) {
 	require.Nil(t, got.Extra["unused_large_field"])
 }
 
+func TestBuildSchedulerMetadataAccount_KeepsEmbeddingEligibilityCredentials(t *testing.T) {
+	account := service.Account{
+		ID:       43,
+		Platform: service.PlatformEmbedding,
+		Type:     service.AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"base_url":        "https://embedding.example.test/v1",
+			"api_key":         "upstream-key",
+			"model_mapping":   map[string]any{"embed-public": "embed-upstream"},
+			"model_whitelist": []any{"legacy-embed"},
+			"pool_mode":       true,
+			"unused_secret":   "drop-me",
+		},
+	}
+
+	got := buildSchedulerMetadataAccount(account)
+
+	require.Equal(t, "https://embedding.example.test/v1", got.GetCredential("base_url"))
+	require.Equal(t, "upstream-key", got.GetCredential("api_key"))
+	require.Equal(t, map[string]any{"embed-public": "embed-upstream"}, got.Credentials["model_mapping"])
+	require.Equal(t, []any{"legacy-embed"}, got.Credentials["model_whitelist"])
+	require.Nil(t, got.Credentials["pool_mode"])
+	require.Nil(t, got.Credentials["unused_secret"])
+}
+
 // ---------------------------------------------------------------------------
 // 一、元数据序列化层 — buildSchedulerMetadataAccount 代理字段保留
 // ---------------------------------------------------------------------------

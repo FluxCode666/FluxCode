@@ -24,6 +24,7 @@ const (
 	PlatformCodex2API   = "codex2api"
 	PlatformGemini      = "gemini"
 	PlatformAntigravity = "antigravity"
+	PlatformEmbedding   = "embedding"
 )
 
 // Account type constants

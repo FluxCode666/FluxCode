@@ -43,6 +43,8 @@
                     ? 'https://generativelanguage.googleapis.com'
                     : account.platform === 'antigravity'
                       ? 'https://cloudcode-pa.googleapis.com'
+                      : account.platform === 'embedding'
+                        ? 'https://embedding.example.com/v1'
                       : 'https://api.anthropic.com'
             "
           />
@@ -308,7 +310,7 @@
         </div>
 
         <!-- Custom Error Codes Section -->
-        <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
+        <div v-if="account.platform !== 'embedding'" class="border-t border-gray-200 pt-4 dark:border-dark-600">
           <div class="mb-3 flex items-center justify-between">
             <div>
               <label class="input-label mb-0">{{ t('admin.accounts.customErrorCodes') }}</label>
@@ -2191,6 +2193,7 @@ const defaultBaseUrl = computed(() => {
   if (props.account?.platform === 'openai') return 'https://api.openai.com'
   if (props.account?.platform === 'codex2api') return ''
   if (props.account?.platform === 'gemini') return 'https://generativelanguage.googleapis.com'
+  if (props.account?.platform === 'embedding') return ''
   return 'https://api.anthropic.com'
 })
 
@@ -2394,18 +2397,25 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   // Initialize API Key fields for apikey type
   if (newAccount.type === 'apikey' && newAccount.credentials) {
     const credentials = newAccount.credentials as Record<string, unknown>
-    const platformDefaultUrl =
+      const platformDefaultUrl =
       newAccount.platform === 'openai'
         ? 'https://api.openai.com'
         : newAccount.platform === 'codex2api'
           ? ''
           : newAccount.platform === 'gemini'
             ? 'https://generativelanguage.googleapis.com'
+            : newAccount.platform === 'embedding'
+              ? ''
             : 'https://api.anthropic.com'
     editBaseUrl.value = (credentials.base_url as string) || platformDefaultUrl
 
     // Load model mappings and detect mode
     const existingMappings = credentials.model_mapping as Record<string, string> | undefined
+    const legacyWhitelist = Array.isArray(credentials.model_whitelist)
+      ? credentials.model_whitelist
+          .map(value => String(value).trim())
+          .filter(value => value.length > 0)
+      : []
     if (existingMappings && typeof existingMappings === 'object') {
       const entries = Object.entries(existingMappings)
 
@@ -2423,6 +2433,10 @@ const syncFormFromAccount = (newAccount: Account | null) => {
         modelMappings.value = entries.map(([from, to]) => ({ from, to }))
         allowedModels.value = []
       }
+    } else if (legacyWhitelist.length > 0) {
+      modelRestrictionMode.value = 'whitelist'
+      modelMappings.value = []
+      allowedModels.value = legacyWhitelist
     } else {
       // No mappings: default to whitelist mode with empty selection (allow all)
       modelRestrictionMode.value = 'whitelist'
@@ -2998,6 +3012,10 @@ const handleSubmit = async () => {
         appStore.showError(t('admin.accounts.codex2api.pleaseEnterBaseUrl'))
         return
       }
+      if (props.account.platform === 'embedding' && !editBaseUrl.value.trim()) {
+        appStore.showError(t('admin.accounts.embedding.baseUrlRequired', 'Embedding Base URL 为必填项'))
+        return
+      }
       const newBaseUrl = editBaseUrl.value.trim() || defaultBaseUrl.value
       const shouldApplyModelMapping = !(props.account.platform === 'openai' && openaiPassthroughEnabled.value)
 
@@ -3024,11 +3042,31 @@ const handleSubmit = async () => {
         const modelMapping = buildModelMappingObject(modelRestrictionMode.value, allowedModels.value, modelMappings.value)
         if (modelMapping) {
           newCredentials.model_mapping = modelMapping
+          delete newCredentials.model_whitelist
         } else {
           delete newCredentials.model_mapping
         }
       } else if (currentCredentials.model_mapping) {
         newCredentials.model_mapping = currentCredentials.model_mapping
+      }
+
+      if (props.account.platform === 'embedding' && !newCredentials.model_mapping) {
+        appStore.showError(t('admin.accounts.embedding.modelRequired', 'Embedding 至少需要一个模型白名单或映射'))
+        return
+      }
+
+      if (props.account.platform === 'embedding') {
+        const allowed = new Set([
+          'base_url',
+          'api_key',
+          'model_mapping',
+          'model_whitelist',
+          'pool_mode',
+          'pool_mode_retry_count'
+        ])
+        for (const key of Object.keys(newCredentials)) {
+          if (!allowed.has(key)) delete newCredentials[key]
+        }
       }
 
       // Add pool mode if enabled
@@ -3041,7 +3079,7 @@ const handleSubmit = async () => {
       }
 
       // Add custom error codes if enabled
-      if (customErrorCodesEnabled.value) {
+      if (props.account.platform !== 'embedding' && customErrorCodesEnabled.value) {
         newCredentials.custom_error_codes_enabled = true
         newCredentials.custom_error_codes = [...selectedErrorCodes.value]
       } else {
@@ -3050,9 +3088,11 @@ const handleSubmit = async () => {
       }
 
       // Add intercept warmup requests setting
-      applyInterceptWarmup(newCredentials, interceptWarmupRequests.value, 'edit')
-      if (!applyTempUnschedConfig(newCredentials)) {
-        return
+      if (props.account.platform !== 'embedding') {
+        applyInterceptWarmup(newCredentials, interceptWarmupRequests.value, 'edit')
+        if (!applyTempUnschedConfig(newCredentials)) {
+          return
+        }
       }
 
       updatePayload.credentials = newCredentials

@@ -160,6 +160,22 @@ gateway:
   # Max bytes to read for non-stream upstream responses (default: 8MB)
   # 非流式上游响应体读取上限（默认 8MB）
   upstream_response_read_max_bytes: 8388608
+  # Embedding accepts any public HTTPS upstream. Private upstreams require an
+  # explicit CIDR; loopback, link-local, metadata, shared, documentation and
+  # reserved ranges are always blocked.
+  # Embedding 允许任意公网 HTTPS 上游。私网上游需要显式配置 CIDR；回环、
+  # 链路本地、元数据、shared、documentation 与保留地址始终禁止。
+  embedding:
+    allowed_private_cidrs: []
+    request_max_bytes: 1048576
+    response_max_bytes: 8388608
+    max_json_depth: 32
+    max_input_items: 2048
+    max_input_item_bytes: 65536
+    max_token_value: 2147483647
+    upstream_timeout_seconds: 60
+    response_header_timeout_seconds: 30
+    max_concurrent_requests: 128
   # Max bytes to read for proxy probe responses (default: 1MB)
   # 代理探测响应体读取上限（默认 1MB）
   proxy_probe_response_read_max_bytes: 1048576

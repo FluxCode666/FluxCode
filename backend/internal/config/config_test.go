@@ -78,6 +78,38 @@ func TestLoadDefaultSchedulingConfig(t *testing.T) {
 	}
 }
 
+func TestValidateEmbeddingResourceHardLimits(t *testing.T) {
+	mutations := []struct {
+		name string
+		set  func(*Config)
+	}{
+		{"request bytes", func(c *Config) { c.Gateway.Embedding.RequestMaxBytes = EmbeddingRequestMaxBytesHardLimit + 1 }},
+		{"response bytes", func(c *Config) { c.Gateway.Embedding.ResponseMaxBytes = EmbeddingResponseMaxBytesHardLimit + 1 }},
+		{"json depth", func(c *Config) { c.Gateway.Embedding.MaxJSONDepth = EmbeddingMaxJSONDepthHardLimit + 1 }},
+		{"input items", func(c *Config) { c.Gateway.Embedding.MaxInputItems = EmbeddingMaxInputItemsHardLimit + 1 }},
+		{"input item bytes", func(c *Config) { c.Gateway.Embedding.MaxInputItemBytes = EmbeddingMaxInputItemBytesHardLimit + 1 }},
+		{"token value", func(c *Config) { c.Gateway.Embedding.MaxTokenValue = EmbeddingMaxTokenValueHardLimit + 1 }},
+		{"upstream timeout", func(c *Config) {
+			c.Gateway.Embedding.UpstreamTimeoutSeconds = EmbeddingUpstreamTimeoutSecondsHardLimit + 1
+		}},
+		{"header timeout", func(c *Config) {
+			c.Gateway.Embedding.ResponseHeaderTimeoutSec = EmbeddingResponseHeaderTimeoutSecHardLimit + 1
+		}},
+		{"concurrency", func(c *Config) {
+			c.Gateway.Embedding.MaxConcurrentRequests = EmbeddingMaxConcurrentRequestsHardLimit + 1
+		}},
+	}
+	for _, tt := range mutations {
+		t.Run(tt.name, func(t *testing.T) {
+			resetViperWithJWTSecret(t)
+			cfg, err := Load()
+			require.NoError(t, err)
+			tt.set(cfg)
+			require.Error(t, cfg.Validate())
+		})
+	}
+}
+
 func TestLoadDefaultOpenAIWSConfig(t *testing.T) {
 	resetViperWithJWTSecret(t)
 
@@ -263,6 +295,29 @@ func TestLoadDefaultSecurityToggles(t *testing.T) {
 	if !cfg.Security.ResponseHeaders.Enabled {
 		t.Fatalf("ResponseHeaders.Enabled = false, want true")
 	}
+}
+
+func TestLoadDefaultEmbeddingGatewayLimits(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.Equal(t, int64(1024*1024), cfg.Gateway.Embedding.RequestMaxBytes)
+	require.Equal(t, int64(8*1024*1024), cfg.Gateway.Embedding.ResponseMaxBytes)
+	require.Equal(t, 32, cfg.Gateway.Embedding.MaxJSONDepth)
+	require.Equal(t, 2048, cfg.Gateway.Embedding.MaxInputItems)
+	require.Equal(t, 64*1024, cfg.Gateway.Embedding.MaxInputItemBytes)
+	require.Equal(t, int64(2147483647), cfg.Gateway.Embedding.MaxTokenValue)
+	require.Equal(t, 60, cfg.Gateway.Embedding.UpstreamTimeoutSeconds)
+	require.Equal(t, 30, cfg.Gateway.Embedding.ResponseHeaderTimeoutSec)
+	require.Equal(t, 128, cfg.Gateway.Embedding.MaxConcurrentRequests)
+	require.Empty(t, cfg.Gateway.Embedding.AllowedPrivateCIDRs)
+}
+
+func TestLoadRejectsInvalidEmbeddingPrivateCIDR(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	viper.Set("gateway.embedding.allowed_private_cidrs", []string{"not-a-cidr"})
+	_, err := Load()
+	require.ErrorContains(t, err, "gateway.embedding.allowed_private_cidrs contains invalid CIDR")
 }
 
 func TestLoadDefaultServerMode(t *testing.T) {

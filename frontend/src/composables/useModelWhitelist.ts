@@ -37,6 +37,16 @@ const openaiModels = [
   'gpt-4o-audio-preview', 'gpt-4o-realtime-preview'
 ]
 
+// 常见 OpenAI-compatible embedding 模型；管理员仍可通过自定义输入添加任意模型。
+const embeddingModels = [
+  'text-embedding-3-small',
+  'text-embedding-3-large',
+  'text-embedding-ada-002',
+  'bge-m3',
+  'bge-large-en-v1.5',
+  'multilingual-e5-large'
+]
+
 // Anthropic Claude
 export const claudeModels = [
   'claude-3-5-sonnet-20241022', 'claude-3-5-sonnet-20240620',
@@ -225,6 +235,7 @@ const perplexityModels = [
 // 所有模型（去重）
 const allModelsList: string[] = [
   ...openaiModels,
+  ...embeddingModels,
   ...claudeModels,
   ...geminiModels,
   ...zhipuModels,
@@ -383,6 +394,7 @@ export function getModelsByPlatform(platform: string): string[] {
     case 'claude': return claudeModels
     case 'gemini': return geminiModels
     case 'antigravity': return antigravityModels
+    case 'embedding': return embeddingModels
     case 'zhipu': return zhipuModels
     case 'qwen': return qwenModels
     case 'deepseek': return deepseekModels
@@ -404,6 +416,7 @@ export function getModelsByPlatform(platform: string): string[] {
 
 // 按平台获取预设映射
 export function getPresetMappingsByPlatform(platform: string) {
+  if (platform === 'embedding') return []
   if (platform === 'openai' || platform === 'codex2api') return openaiPresetMappings
   if (platform === 'gemini') return geminiPresetMappings
   if (platform === 'antigravity') return antigravityPresetMappings

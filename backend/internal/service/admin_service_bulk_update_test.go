@@ -139,6 +139,24 @@ func TestAdminService_BulkUpdateAccounts_NilGroupRepoReturnsError(t *testing.T) 
 	require.Contains(t, err.Error(), "group repository not configured")
 }
 
+func TestAdminServiceBulkUpdateEmbeddingRejectsInvalidCredentials(t *testing.T) {
+	repo := &accountRepoStubForBulkUpdate{getByIDsAccounts: []*Account{{
+		ID: 7, Platform: PlatformEmbedding, Type: AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"base_url":      "https://embedding.example.com/v1",
+			"api_key":       "secret",
+			"model_mapping": map[string]any{"embed": "embed-v1"},
+		},
+	}}}
+	svc := &adminServiceImpl{accountRepo: repo}
+	result, err := svc.BulkUpdateAccounts(context.Background(), &BulkUpdateAccountsInput{
+		AccountIDs: []int64{7}, Credentials: map[string]any{"model_mapping": map[string]any{}},
+	})
+	require.Nil(t, result)
+	require.ErrorContains(t, err, "embedding model whitelist or mapping is required")
+	require.Empty(t, repo.bulkUpdateIDs)
+}
+
 // TestAdminService_BulkUpdateAccounts_MixedChannelPreCheckBlocksOnExistingConflict verifies
 // that the global pre-check detects a conflict with existing group members and returns an
 // error before any DB write is performed.

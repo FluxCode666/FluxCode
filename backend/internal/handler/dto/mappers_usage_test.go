@@ -92,14 +92,11 @@ func TestUsageLogFromService_IncludesServiceTierForUserAndAdmin(t *testing.T) {
 	userDTO := UsageLogFromService(log)
 	adminDTO := UsageLogFromServiceAdmin(log)
 
-	require.Equal(t, "trace-dto-1", userDTO.TraceID)
 	require.Equal(t, "trace-dto-1", adminDTO.TraceID)
 	require.NotNil(t, userDTO.ServiceTier)
 	require.Equal(t, serviceTier, *userDTO.ServiceTier)
 	require.NotNil(t, userDTO.InboundEndpoint)
 	require.Equal(t, inboundEndpoint, *userDTO.InboundEndpoint)
-	require.NotNil(t, userDTO.UpstreamEndpoint)
-	require.Equal(t, upstreamEndpoint, *userDTO.UpstreamEndpoint)
 	require.NotNil(t, adminDTO.ServiceTier)
 	require.Equal(t, serviceTier, *adminDTO.ServiceTier)
 	require.NotNil(t, adminDTO.InboundEndpoint)
@@ -108,6 +105,34 @@ func TestUsageLogFromService_IncludesServiceTierForUserAndAdmin(t *testing.T) {
 	require.Equal(t, upstreamEndpoint, *adminDTO.UpstreamEndpoint)
 	require.NotNil(t, adminDTO.AccountRateMultiplier)
 	require.InDelta(t, 1.5, *adminDTO.AccountRateMultiplier, 1e-12)
+}
+
+func TestUsageLogFromService_UserJSONExcludesInternalRoutingMetadata(t *testing.T) {
+	t.Parallel()
+
+	upstreamEndpoint := "/v1/embeddings"
+	traceID := "trace-canary"
+	accountID := int64(77)
+	log := &service.UsageLog{
+		RequestID:        "req-embedding-dto",
+		TraceID:          traceID,
+		AccountID:        accountID,
+		Model:            "text-embedding-3-small",
+		UpstreamEndpoint: &upstreamEndpoint,
+		RequestType:      service.RequestTypeEmbedding,
+	}
+
+	userJSON, err := json.Marshal(UsageLogFromService(log))
+	require.NoError(t, err)
+	for _, field := range []string{"account_id", "trace_id", "upstream_endpoint", "upstream_model", "channel_id", "model_mapping_chain"} {
+		require.NotContains(t, string(userJSON), `"`+field+`"`)
+	}
+
+	adminJSON, err := json.Marshal(UsageLogFromServiceAdmin(log))
+	require.NoError(t, err)
+	require.Contains(t, string(adminJSON), `"account_id":77`)
+	require.Contains(t, string(adminJSON), `"trace_id":"trace-canary"`)
+	require.Contains(t, string(adminJSON), `"upstream_endpoint":"/v1/embeddings"`)
 }
 
 func TestUsageLogFromService_UsesRequestedModelAndKeepsUpstreamAdminOnly(t *testing.T) {

@@ -457,6 +457,7 @@ const getRequestTypeLabel = (log: AdminUsageLog): string => {
   if (requestType === 'ws_v2') return t('usage.ws')
   if (requestType === 'stream') return t('usage.stream')
   if (requestType === 'sync') return t('usage.sync')
+  if (requestType === 'embedding') return t('usage.embedding')
   return t('usage.unknown')
 }
 

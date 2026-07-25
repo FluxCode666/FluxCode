@@ -19,6 +19,9 @@ const (
 	OpsUpstreamErrorMessageKey = "ops_upstream_error_message"
 	OpsUpstreamErrorDetailKey  = "ops_upstream_error_detail"
 	OpsUpstreamErrorsKey       = "ops_upstream_errors"
+	// OpsEmbeddingErrorCategoryKey carries only a stable allowlisted category;
+	// request/response bodies and credentials never use this context path.
+	OpsEmbeddingErrorCategoryKey = "ops_embedding_error_category"
 
 	// Best-effort capture of the current upstream request body so ops can
 	// retry the specific upstream attempt (not just the client request).

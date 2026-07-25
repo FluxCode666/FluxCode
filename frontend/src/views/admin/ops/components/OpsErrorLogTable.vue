@@ -258,6 +258,7 @@ function formatRequestType(type: number | null | undefined): string {
     case 1: return t('admin.ops.errorLog.requestTypeSync')
     case 2: return t('admin.ops.errorLog.requestTypeStream')
     case 3: return t('admin.ops.errorLog.requestTypeWs')
+    case 4: return t('admin.ops.errorLog.requestTypeEmbedding')
     default: return ''
   }
 }

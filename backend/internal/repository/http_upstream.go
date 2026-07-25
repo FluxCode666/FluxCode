@@ -3,12 +3,15 @@ package repository
 import (
 	"compress/flate"
 	"compress/gzip"
+	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"net"
 	"net/http"
+	"net/http/httptrace"
 	"net/url"
 	"strings"
 	"sync"
@@ -158,6 +161,60 @@ func (s *httpUpstreamService) Do(req *http.Request, proxyURL string, accountID i
 	})
 
 	return resp, nil
+}
+
+// DoEmbedding executes one embedding request through a one-shot transport
+// whose DialContext is pinned to the IP validated by the service layer. This
+// intentionally rejects proxies and redirects: either would break the binding
+// between the checked destination and the TCP peer receiving the Bearer key.
+func (s *httpUpstreamService) DoEmbedding(req *http.Request, policy service.EmbeddingUpstreamPolicy) (*http.Response, error) {
+	client, err := buildEmbeddingHTTPClient(req, policy)
+	if err != nil {
+		return nil, err
+	}
+	var gotConnection atomic.Bool
+	trace := &httptrace.ClientTrace{
+		GotConn: func(httptrace.GotConnInfo) { gotConnection.Store(true) },
+	}
+	tracedRequest := req.Clone(httptrace.WithClientTrace(req.Context(), trace))
+	resp, err := client.Do(tracedRequest)
+	if err != nil {
+		return nil, &service.EmbeddingTransportError{RequestNotWritten: !gotConnection.Load()}
+	}
+	return resp, nil
+}
+
+func buildEmbeddingHTTPClient(req *http.Request, policy service.EmbeddingUpstreamPolicy) (*http.Client, error) {
+	if req == nil || req.URL == nil || req.URL.Scheme != "https" || req.URL.Hostname() == "" {
+		return nil, errors.New("invalid embedding request URL")
+	}
+	if len(policy.ValidatedIP) == 0 {
+		return nil, errors.New("embedding request has no validated destination IP")
+	}
+
+	port := req.URL.Port()
+	if port == "" {
+		port = "443"
+	}
+	dialAddress := net.JoinHostPort(policy.ValidatedIP.String(), port)
+	dialer := &net.Dialer{}
+	transport := &http.Transport{
+		Proxy:                 nil,
+		ForceAttemptHTTP2:     true,
+		DisableKeepAlives:     true,
+		TLSClientConfig:       &tls.Config{ServerName: req.URL.Hostname(), MinVersion: tls.VersionTLS12},
+		ResponseHeaderTimeout: policy.ResponseHeaderTimeout,
+		DialContext: func(ctx context.Context, network, _ string) (net.Conn, error) {
+			return dialer.DialContext(ctx, network, dialAddress)
+		},
+	}
+	client := &http.Client{
+		Transport: transport,
+		CheckRedirect: func(*http.Request, []*http.Request) error {
+			return errors.New("embedding upstream redirects are not allowed")
+		},
+	}
+	return client, nil
 }
 
 // DoWithTLS 执行带 TLS 指纹伪装的 HTTP 请求

@@ -347,7 +347,7 @@
       </div>
 
       <!-- Custom error codes -->
-      <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
+      <div v-if="!allEmbedding" class="border-t border-gray-200 pt-4 dark:border-dark-600">
         <div class="mb-3 flex items-center justify-between">
           <div>
             <label
@@ -445,7 +445,7 @@
       </div>
 
       <!-- Intercept warmup requests (Anthropic only) -->
-      <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
+      <div v-if="!allEmbedding" class="border-t border-gray-200 pt-4 dark:border-dark-600">
         <div class="flex items-center justify-between">
           <div class="flex-1 pr-4">
             <label
@@ -948,6 +948,12 @@ const appStore = useAppStore()
 
 // Platform awareness
 const isMixedPlatform = computed(() => props.selectedPlatforms.length > 1)
+const allEmbedding = computed(() =>
+  props.selectedPlatforms.length === 1 &&
+  props.selectedPlatforms[0] === 'embedding' &&
+  props.selectedTypes.length > 0 &&
+  props.selectedTypes.every(type => type === 'apikey')
+)
 
 const allOpenAIPassthroughCapable = computed(() => {
   return (
@@ -1202,6 +1208,9 @@ const buildUpdatePayload = (): Record<string, unknown> | null => {
       credentials.base_url = baseUrlValue
       credentialsChanged = true
     }
+    if (allEmbedding.value && !baseUrlValue) {
+      return null
+    }
   }
 
   if (enableOpenAIPassthrough.value) {
@@ -1228,6 +1237,9 @@ const buildUpdatePayload = (): Record<string, unknown> | null => {
       const modelMapping = buildModelMappingObject()
       credentials.model_mapping = modelMapping ?? {}
       credentialsChanged = true
+    }
+    if (allEmbedding.value && Object.keys(credentials.model_mapping as Record<string, string>).length === 0) {
+      return null
     }
   }
 
@@ -1350,6 +1362,16 @@ const handleSubmit = async () => {
   if (!hasAnyFieldEnabled) {
     appStore.showError(t('admin.accounts.bulkEdit.noFieldsSelected'))
     return
+  }
+
+  if (allEmbedding.value && enableModelRestriction.value) {
+    const mapping = modelRestrictionMode.value === 'whitelist'
+      ? allowedModels.value
+      : modelMappings.value.filter(item => item.from.trim() && item.to.trim())
+    if (mapping.length === 0) {
+      appStore.showError(t('admin.accounts.embedding.modelRequired', 'Embedding 至少需要一个模型白名单或映射'))
+      return
+    }
   }
 
   const built = buildUpdatePayload()

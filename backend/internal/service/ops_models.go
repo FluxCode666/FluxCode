@@ -58,6 +58,8 @@ type OpsErrorLog struct {
 	AccountName string `json:"account_name"`
 	GroupID     *int64 `json:"group_id"`
 	GroupName   string `json:"group_name"`
+	ChannelID   *int64 `json:"channel_id"`
+	ChannelName string `json:"channel_name"`
 
 	ClientIP    *string `json:"client_ip"`
 	RequestPath string  `json:"request_path"`
