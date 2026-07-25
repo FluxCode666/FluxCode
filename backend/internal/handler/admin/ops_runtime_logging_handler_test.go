@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
@@ -16,6 +17,7 @@ import (
 )
 
 type testSettingRepo struct {
+	mu     sync.RWMutex
 	values map[string]string
 }
 
@@ -31,6 +33,8 @@ func (s *testSettingRepo) Get(ctx context.Context, key string) (*service.Setting
 	return &service.Setting{Key: key, Value: v}, nil
 }
 func (s *testSettingRepo) GetValue(ctx context.Context, key string) (string, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	v, ok := s.values[key]
 	if !ok {
 		return "", service.ErrSettingNotFound
@@ -38,10 +42,14 @@ func (s *testSettingRepo) GetValue(ctx context.Context, key string) (string, err
 	return v, nil
 }
 func (s *testSettingRepo) Set(ctx context.Context, key, value string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.values[key] = value
 	return nil
 }
 func (s *testSettingRepo) GetMultiple(ctx context.Context, keys []string) (map[string]string, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	out := make(map[string]string, len(keys))
 	for _, k := range keys {
 		if v, ok := s.values[k]; ok {
@@ -51,12 +59,16 @@ func (s *testSettingRepo) GetMultiple(ctx context.Context, keys []string) (map[s
 	return out, nil
 }
 func (s *testSettingRepo) SetMultiple(ctx context.Context, settings map[string]string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	for k, v := range settings {
 		s.values[k] = v
 	}
 	return nil
 }
 func (s *testSettingRepo) GetAll(ctx context.Context) (map[string]string, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	out := make(map[string]string, len(s.values))
 	for k, v := range s.values {
 		out[k] = v
@@ -64,6 +76,8 @@ func (s *testSettingRepo) GetAll(ctx context.Context) (map[string]string, error)
 	return out, nil
 }
 func (s *testSettingRepo) Delete(ctx context.Context, key string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	delete(s.values, key)
 	return nil
 }

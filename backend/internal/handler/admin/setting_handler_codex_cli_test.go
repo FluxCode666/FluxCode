@@ -100,3 +100,56 @@ func TestSettingsCodexImageGenerationBridgeRoundTrip(t *testing.T) {
 	require.Equal(t, false, putEnvelope.Data["codex_image_generation_bridge_enabled"])
 	require.Equal(t, "false", repo.values[service.SettingKeyCodexImageGenerationBridgeEnabled])
 }
+
+func TestUpdateSettingsSuccessfulRequestRecordsRequiresEncryptionKey(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	repo := newTestSettingRepo()
+	settingService := service.NewSettingService(repo, &config.Config{})
+	handler := NewSettingHandler(settingService, nil, nil, nil, nil, nil)
+	router := gin.New()
+	router.PUT("/settings", handler.UpdateSettings)
+
+	body := bytes.NewBufferString(`{
+		"successful_request_records_enabled": true,
+		"successful_request_records_max_body_bytes": 1048576
+	}`)
+	req := httptest.NewRequest(http.MethodPut, "/settings", body)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	require.Contains(t, rec.Body.String(), "TOTP_ENCRYPTION_KEY")
+}
+
+func TestSettingsSuccessfulRequestRecordsRoundTrip(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	repo := newTestSettingRepo()
+	settingService := service.NewSettingService(repo, &config.Config{
+		Totp: config.TotpConfig{EncryptionKeyConfigured: true},
+	})
+	handler := NewSettingHandler(settingService, nil, nil, nil, nil, nil)
+	router := gin.New()
+	router.PUT("/settings", handler.UpdateSettings)
+
+	body := bytes.NewBufferString(`{
+		"successful_request_records_enabled": true,
+		"successful_request_records_max_body_bytes": 2097152
+	}`)
+	req := httptest.NewRequest(http.MethodPut, "/settings", body)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var envelope struct {
+		Data map[string]any `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &envelope))
+	require.Equal(t, true, envelope.Data["successful_request_records_enabled"])
+	require.Equal(t, float64(2097152), envelope.Data["successful_request_records_max_body_bytes"])
+	require.Equal(t, "true", repo.values[service.SettingKeySuccessfulRequestRecordsEnabled])
+	require.Equal(t, "2097152", repo.values[service.SettingKeySuccessfulRequestRecordsMaxBodyBytes])
+}

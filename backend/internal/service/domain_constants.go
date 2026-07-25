@@ -419,6 +419,10 @@ const (
 	SettingKeyCodexPassthroughUAVersion = "codex_official_client_passthrough_ua_version"
 	// SettingKeyOpenAIUsageDebugLogEnabled 开启后打印 OpenAI 上游 usage 原始响应和计费拆分调试日志（默认 false）
 	SettingKeyOpenAIUsageDebugLogEnabled = "openai_usage_debug_log_enabled"
+
+	// Successful request/response payload recording. 原始正文默认关闭，密钥仍由环境变量提供。
+	SettingKeySuccessfulRequestRecordsEnabled      = "successful_request_records_enabled"
+	SettingKeySuccessfulRequestRecordsMaxBodyBytes = "successful_request_records_max_body_bytes"
 )
 
 // AdminAPIKeyPrefix is the prefix for admin API keys (distinct from user "sk-" keys).

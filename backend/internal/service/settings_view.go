@@ -157,6 +157,10 @@ type SystemSettings struct {
 	CodexPassthroughUAVersion  bool   // 官方 Codex 客户端是否保留入站 UA/Version（默认 true）
 	OpenAIUsageDebugLogEnabled bool   // 是否打印 OpenAI usage 原始响应与计费拆分调试日志（默认 false）
 
+	// Successful request/response payload recording（默认关闭；正文保留原文）
+	SuccessfulRequestRecordsEnabled      bool
+	SuccessfulRequestRecordsMaxBodyBytes int64
+
 	// Web Search Emulation
 	WebSearchEmulationEnabled bool // 是否启用 web search 模拟
 

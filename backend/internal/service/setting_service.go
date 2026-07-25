@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -40,6 +41,18 @@ const DefaultQiniuPrefix = "openai/generated-images"
 const DefaultQiniuUploadTimeoutSeconds = 30
 const DefaultQiniuTokenTTLSeconds = 3600
 const DefaultDashboardFireworksThreshold = 20.0
+
+const (
+	DefaultSuccessfulRequestRecordsMaxBodyBytes int64 = 1024 * 1024
+	MinSuccessfulRequestRecordsMaxBodyBytes     int64 = 1024
+	MaxSuccessfulRequestRecordsMaxBodyBytes     int64 = 16 * 1024 * 1024
+)
+
+// SuccessfulRequestRecordRuntimeSettings 是成功请求正文记录的动态运行时设置。
+type SuccessfulRequestRecordRuntimeSettings struct {
+	Enabled      bool
+	MaxBodyBytes int64
+}
 
 type SettingRepository interface {
 	Get(ctx context.Context, key string) (*Setting, error)
@@ -158,7 +171,8 @@ type SettingService struct {
 	proxyRepo               ProxyRepository // for resolving websearch provider proxy URLs
 	cfg                     *config.Config
 	onUpdateCallbacks       []func() // Callbacks when settings are updated (cache invalidation, runtime refresh)
-	version                 string   // Application version
+	onUpdateCallbacksMu     sync.RWMutex
+	version                 string // Application version
 	webSearchManagerBuilder WebSearchManagerBuilder
 }
 
@@ -345,7 +359,37 @@ func (s *SettingService) SetOnUpdateCallback(callback func()) {
 	if callback == nil {
 		return
 	}
+	s.onUpdateCallbacksMu.Lock()
 	s.onUpdateCallbacks = append(s.onUpdateCallbacks, callback)
+	s.onUpdateCallbacksMu.Unlock()
+}
+
+// GetSuccessfulRequestRecordRuntimeSettings 读取成功请求正文记录的动态设置。
+// 请求热路径不调用此方法；采集服务只在启动、设置变更和周期刷新时读取。
+func (s *SettingService) GetSuccessfulRequestRecordRuntimeSettings(ctx context.Context) (SuccessfulRequestRecordRuntimeSettings, error) {
+	result := SuccessfulRequestRecordRuntimeSettings{
+		Enabled:      false,
+		MaxBodyBytes: DefaultSuccessfulRequestRecordsMaxBodyBytes,
+	}
+	if s == nil || s.settingRepo == nil {
+		return result, nil
+	}
+	values, err := s.settingRepo.GetMultiple(ctx, []string{
+		SettingKeySuccessfulRequestRecordsEnabled,
+		SettingKeySuccessfulRequestRecordsMaxBodyBytes,
+	})
+	if err != nil {
+		return result, fmt.Errorf("get successful request record settings: %w", err)
+	}
+	if raw, ok := values[SettingKeySuccessfulRequestRecordsEnabled]; ok {
+		result.Enabled, _ = strconv.ParseBool(strings.TrimSpace(raw))
+	}
+	if raw, ok := values[SettingKeySuccessfulRequestRecordsMaxBodyBytes]; ok {
+		if parsed, parseErr := strconv.ParseInt(strings.TrimSpace(raw), 10, 64); parseErr == nil && parsed >= MinSuccessfulRequestRecordsMaxBodyBytes && parsed <= MaxSuccessfulRequestRecordsMaxBodyBytes {
+			result.MaxBodyBytes = parsed
+		}
+	}
+	return result, nil
 }
 
 // SetVersion sets the application version for injection into public settings
@@ -738,6 +782,19 @@ func parseCustomMenuItemURLs(raw string) []string {
 
 // UpdateSettings 更新系统设置
 func (s *SettingService) UpdateSettings(ctx context.Context, settings *SystemSettings) error {
+	if settings == nil {
+		return infraerrors.BadRequest("INVALID_SETTINGS", "settings must not be nil")
+	}
+	if settings.SuccessfulRequestRecordsEnabled {
+		if !s.IsTotpEncryptionKeyConfigured() {
+			return infraerrors.BadRequest("SUCCESSFUL_REQUEST_RECORDS_KEY_REQUIRED", "TOTP_ENCRYPTION_KEY environment variable must be configured before enabling successful request records")
+		}
+		if settings.SuccessfulRequestRecordsMaxBodyBytes < MinSuccessfulRequestRecordsMaxBodyBytes || settings.SuccessfulRequestRecordsMaxBodyBytes > MaxSuccessfulRequestRecordsMaxBodyBytes {
+			return infraerrors.BadRequest("INVALID_SUCCESSFUL_REQUEST_RECORDS_MAX_BODY_BYTES", fmt.Sprintf("successful request record body limit must be between %d and %d bytes", MinSuccessfulRequestRecordsMaxBodyBytes, MaxSuccessfulRequestRecordsMaxBodyBytes))
+		}
+	} else if settings.SuccessfulRequestRecordsMaxBodyBytes <= 0 {
+		settings.SuccessfulRequestRecordsMaxBodyBytes = DefaultSuccessfulRequestRecordsMaxBodyBytes
+	}
 	if err := s.validateDefaultSubscriptionGroups(ctx, settings.DefaultSubscriptions); err != nil {
 		return err
 	}
@@ -991,6 +1048,8 @@ func (s *SettingService) UpdateSettings(ctx context.Context, settings *SystemSet
 	updates[SettingKeyCodexCLIVersion] = settings.CodexCLIVersion
 	updates[SettingKeyCodexPassthroughUAVersion] = strconv.FormatBool(settings.CodexPassthroughUAVersion)
 	updates[SettingKeyOpenAIUsageDebugLogEnabled] = strconv.FormatBool(settings.OpenAIUsageDebugLogEnabled)
+	updates[SettingKeySuccessfulRequestRecordsEnabled] = strconv.FormatBool(settings.SuccessfulRequestRecordsEnabled)
+	updates[SettingKeySuccessfulRequestRecordsMaxBodyBytes] = strconv.FormatInt(settings.SuccessfulRequestRecordsMaxBodyBytes, 10)
 
 	err = s.settingRepo.SetMultiple(ctx, updates)
 	if err == nil {
@@ -1022,7 +1081,10 @@ func (s *SettingService) UpdateSettings(ctx context.Context, settings *SystemSet
 			expiresAt:            time.Now().Add(codexCLICfgCacheTTL).UnixNano(),
 		})
 		refreshSystemPromptSettingsCache(settings)
-		for _, callback := range s.onUpdateCallbacks {
+		s.onUpdateCallbacksMu.RLock()
+		callbacks := append([]func(){}, s.onUpdateCallbacks...)
+		s.onUpdateCallbacksMu.RUnlock()
+		for _, callback := range callbacks {
 			callback() // Invalidate caches / refresh runtime state after settings update
 		}
 	}
@@ -1517,7 +1579,7 @@ func (s *SettingService) IsTotpEnabled(ctx context.Context) bool {
 // IsTotpEncryptionKeyConfigured 检查 TOTP 加密密钥是否已手动配置
 // 只有手动配置了密钥才允许在管理后台启用 TOTP 功能
 func (s *SettingService) IsTotpEncryptionKeyConfigured() bool {
-	return s.cfg.Totp.EncryptionKeyConfigured
+	return s != nil && s.cfg != nil && s.cfg.Totp.EncryptionKeyConfigured
 }
 
 // GetSiteName 获取网站名称
@@ -1646,8 +1708,10 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyAllowUngroupedKeyScheduling: "false",
 
 		// Dashboard fireworks
-		SettingKeyDashboardFireworksEnabled:   "true",
-		SettingKeyDashboardFireworksThreshold: strconv.FormatFloat(DefaultDashboardFireworksThreshold, 'f', -1, 64),
+		SettingKeyDashboardFireworksEnabled:            "true",
+		SettingKeyDashboardFireworksThreshold:          strconv.FormatFloat(DefaultDashboardFireworksThreshold, 'f', -1, 64),
+		SettingKeySuccessfulRequestRecordsEnabled:      "false",
+		SettingKeySuccessfulRequestRecordsMaxBodyBytes: strconv.FormatInt(DefaultSuccessfulRequestRecordsMaxBodyBytes, 10),
 	}
 
 	return s.settingRepo.SetMultiple(ctx, defaults)
@@ -2000,6 +2064,13 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	}
 	if raw := strings.TrimSpace(settings[SettingKeyOpenAIUsageDebugLogEnabled]); raw != "" {
 		result.OpenAIUsageDebugLogEnabled = raw == "true"
+	}
+	result.SuccessfulRequestRecordsEnabled = strings.TrimSpace(settings[SettingKeySuccessfulRequestRecordsEnabled]) == "true"
+	result.SuccessfulRequestRecordsMaxBodyBytes = DefaultSuccessfulRequestRecordsMaxBodyBytes
+	if raw := strings.TrimSpace(settings[SettingKeySuccessfulRequestRecordsMaxBodyBytes]); raw != "" {
+		if parsed, err := strconv.ParseInt(raw, 10, 64); err == nil && parsed >= MinSuccessfulRequestRecordsMaxBodyBytes && parsed <= MaxSuccessfulRequestRecordsMaxBodyBytes {
+			result.SuccessfulRequestRecordsMaxBodyBytes = parsed
+		}
 	}
 
 	// Web search emulation: quick enabled check from the JSON config
