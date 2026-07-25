@@ -14,5 +14,7 @@ describe('GroupsView embedding release contract', () => {
     expect(viewSource.match(/value: 'embedding'/g)).toHaveLength(2)
     expect(viewSource).toContain("label: t('admin.groups.platforms.embedding', 'Embedding')")
     expect(viewSource).toContain("{ value: 'embedding', label: t('admin.groups.platforms.embedding', 'Embedding') }")
+    expect(viewSource.match(/group\.platform === 'embedding'|value === 'embedding'/g)).toHaveLength(2)
+    expect(viewSource.match(/bg-rose-100 text-rose-700/g)).toHaveLength(2)
   })
 })
