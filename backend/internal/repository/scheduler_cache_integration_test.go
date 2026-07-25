@@ -36,11 +36,15 @@ func TestSchedulerCacheSnapshotUsesSlimMetadataButKeepsFullAccount(t *testing.T)
 		LastUsedAt:  &now,
 		Credentials: map[string]any{
 			"api_key":       "gemini-api-key",
+			"base_url":      "https://embedding.example.test/v1",
 			"access_token":  "secret-access-token",
 			"project_id":    "proj-1",
 			"oauth_type":    "ai_studio",
 			"model_mapping": map[string]any{"gemini-2.5-pro": "gemini-2.5-pro"},
-			"huge_blob":     strings.Repeat("x", 4096),
+			"model_whitelist": []any{
+				"legacy-embedding-model",
+			},
+			"huge_blob": strings.Repeat("x", 4096),
 		},
 		Extra: map[string]any{
 			"mixed_scheduling":             true,
@@ -68,9 +72,11 @@ func TestSchedulerCacheSnapshotUsesSlimMetadataButKeepsFullAccount(t *testing.T)
 	got := snapshot[0]
 	require.NotNil(t, got)
 	require.Equal(t, "gemini-api-key", got.GetCredential("api_key"))
+	require.Equal(t, "https://embedding.example.test/v1", got.GetCredential("base_url"))
 	require.Equal(t, "proj-1", got.GetCredential("project_id"))
 	require.Equal(t, "ai_studio", got.GetCredential("oauth_type"))
 	require.NotEmpty(t, got.GetModelMapping())
+	require.Equal(t, []any{"legacy-embedding-model"}, got.Credentials["model_whitelist"])
 	require.Empty(t, got.GetCredential("access_token"))
 	require.Empty(t, got.GetCredential("huge_blob"))
 	require.Equal(t, true, got.Extra["mixed_scheduling"])
