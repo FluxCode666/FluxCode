@@ -152,15 +152,22 @@ function mountModal() {
 }
 
 describe('CreateAccountModal', () => {
-  it('creates embedding as API key with explicit model config only', async () => {
+  it('creates embedding as API key with model config and pool mode', async () => {
     createAccountMock.mockReset().mockResolvedValue({})
     checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
     const wrapper = mountModal()
 
     await wrapper.get('[data-testid="platform-embedding"]').trigger('click')
     expect(wrapper.text()).toContain('admin.accounts.modelRestriction')
-    expect(wrapper.text()).not.toContain('admin.accounts.poolMode')
+    expect(wrapper.text()).toContain('admin.accounts.poolMode')
     expect(wrapper.text()).not.toContain('admin.accounts.customErrorCodes')
+
+    const poolSection = wrapper
+      .findAll('div.border-t')
+      .find((section) => section.text().includes('admin.accounts.poolModeHint'))
+    expect(poolSection).toBeDefined()
+    await poolSection!.get('button').trigger('click')
+    await poolSection!.get<HTMLInputElement>('input[type="number"]').setValue('99')
 
     const name = wrapper.get<HTMLInputElement>('[data-tour="account-form-name"]')
     await name.setValue('Embedding Key')
@@ -176,11 +183,13 @@ describe('CreateAccountModal', () => {
       credentials: {
         base_url: 'https://embedding.example.com/v1',
         api_key: 'sk-embed',
-        model_mapping: { 'text-embedding-3-small': 'text-embedding-3-small' }
+        model_mapping: { 'text-embedding-3-small': 'text-embedding-3-small' },
+        pool_mode: true,
+        pool_mode_retry_count: 10
       }
     })
     expect(Object.keys(createAccountMock.mock.calls[0]?.[0]?.credentials || {}).sort()).toEqual([
-      'api_key', 'base_url', 'model_mapping'
+      'api_key', 'base_url', 'model_mapping', 'pool_mode', 'pool_mode_retry_count'
     ])
   })
 

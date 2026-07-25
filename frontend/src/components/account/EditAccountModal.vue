@@ -258,7 +258,7 @@
         </div>
 
         <!-- Pool Mode Section -->
-        <div v-if="account.platform !== 'embedding'" class="border-t border-gray-200 pt-4 dark:border-dark-600">
+        <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
           <div class="mb-3 flex items-center justify-between">
             <div>
               <label class="input-label mb-0">{{ t('admin.accounts.poolMode') }}</label>
@@ -3056,14 +3056,21 @@ const handleSubmit = async () => {
       }
 
       if (props.account.platform === 'embedding') {
-        const allowed = new Set(['base_url', 'api_key', 'model_mapping', 'model_whitelist'])
+        const allowed = new Set([
+          'base_url',
+          'api_key',
+          'model_mapping',
+          'model_whitelist',
+          'pool_mode',
+          'pool_mode_retry_count'
+        ])
         for (const key of Object.keys(newCredentials)) {
           if (!allowed.has(key)) delete newCredentials[key]
         }
       }
 
       // Add pool mode if enabled
-      if (props.account.platform !== 'embedding' && poolModeEnabled.value) {
+      if (poolModeEnabled.value) {
         newCredentials.pool_mode = true
         newCredentials.pool_mode_retry_count = normalizePoolModeRetryCount(poolModeRetryCount.value)
       } else {

@@ -194,7 +194,7 @@ describe('EditAccountModal', () => {
     })
   })
 
-  it('edits embedding credentials without preserving unsupported fields', async () => {
+  it('edits embedding credentials while preserving pool mode only', async () => {
     const account = {
       ...buildAccount(),
       name: 'Embedding Key',
@@ -204,6 +204,7 @@ describe('EditAccountModal', () => {
         base_url: 'https://embedding.example.com/v1',
         model_mapping: { 'text-embedding-3-small': 'upstream-embed' },
         pool_mode: true,
+        pool_mode_retry_count: 7,
         custom_error_codes_enabled: true,
         custom_error_codes: [429]
       }
@@ -212,17 +213,27 @@ describe('EditAccountModal', () => {
     checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
     const wrapper = mountModal(account)
 
-    expect(wrapper.text()).not.toContain('admin.accounts.poolMode')
+    expect(wrapper.text()).toContain('admin.accounts.poolMode')
     expect(wrapper.text()).not.toContain('admin.accounts.customErrorCodes')
+
+    const poolSection = wrapper
+      .findAll('div.border-t')
+      .find((section) => section.text().includes('admin.accounts.poolModeHint'))
+    expect(poolSection).toBeDefined()
+    expect(poolSection!.get<HTMLInputElement>('input[type="number"]').element.value).toBe('7')
     await wrapper.get('form#edit-account-form').trigger('submit.prevent')
 
     const credentials = updateAccountMock.mock.calls[0]?.[1]?.credentials
     expect(credentials).toMatchObject({
       api_key: 'sk-embed',
       base_url: 'https://embedding.example.com/v1',
-      model_mapping: { 'text-embedding-3-small': 'upstream-embed' }
+      model_mapping: { 'text-embedding-3-small': 'upstream-embed' },
+      pool_mode: true,
+      pool_mode_retry_count: 7
     })
-    expect(Object.keys(credentials).sort()).toEqual(['api_key', 'base_url', 'model_mapping'])
+    expect(Object.keys(credentials).sort()).toEqual([
+      'api_key', 'base_url', 'model_mapping', 'pool_mode', 'pool_mode_retry_count'
+    ])
   })
 
   it('reopening the same account rehydrates the OpenAI whitelist from props', async () => {

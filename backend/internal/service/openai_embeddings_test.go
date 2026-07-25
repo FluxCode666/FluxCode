@@ -98,6 +98,13 @@ func withEmbeddingDNS(t *testing.T, ips ...net.IP) {
 	t.Cleanup(func() { lookupEmbeddingHostIP = previous })
 }
 
+func embeddingPoolAccount(id int64, modelMapping map[string]any, retryCount int) Account {
+	account := embeddingEligibilityAccount(id, modelMapping)
+	account.Credentials["pool_mode"] = true
+	account.Credentials["pool_mode_retry_count"] = retryCount
+	return account
+}
+
 func TestForwardEmbeddingsMapsOnlyOutboundModelAndRestoresPublicModel(t *testing.T) {
 	withEmbeddingDNS(t, net.ParseIP("8.8.8.8"))
 	upstream := &embeddingUpstreamStub{steps: []embeddingUpstreamStep{{
@@ -132,8 +139,8 @@ func TestForwardEmbeddingsFailsClosedForInvalidUsageWithoutFailover(t *testing.T
 		body:   `{"data":[{"embedding":[0.1]}],"model":"upstream","usage":{"prompt_tokens":0}}`,
 	}}}
 	svc := newEmbeddingForwardTestService(t, []Account{
-		embeddingEligibilityAccount(1, map[string]any{"embed-public": "upstream-a"}),
-		embeddingEligibilityAccount(2, map[string]any{"embed-public": "upstream-b"}),
+		embeddingPoolAccount(1, map[string]any{"embed-public": "upstream-a"}, 3),
+		embeddingPoolAccount(2, map[string]any{"embed-public": "upstream-b"}, 3),
 	}, upstream)
 	groupID := embeddingEligibilityTestGroupID
 
@@ -165,8 +172,8 @@ func TestForwardEmbeddingsRejectsMalformedEmbeddingDataWithoutFailover(t *testin
 		t.Run(tt.name, func(t *testing.T) {
 			upstream := &embeddingUpstreamStub{steps: []embeddingUpstreamStep{{status: http.StatusOK, body: tt.body}}}
 			svc := newEmbeddingForwardTestService(t, []Account{
-				embeddingEligibilityAccount(1, map[string]any{"embed-public": "upstream-a"}),
-				embeddingEligibilityAccount(2, map[string]any{"embed-public": "upstream-b"}),
+				embeddingPoolAccount(1, map[string]any{"embed-public": "upstream-a"}, 3),
+				embeddingPoolAccount(2, map[string]any{"embed-public": "upstream-b"}, 3),
 			}, upstream)
 			groupID := embeddingEligibilityTestGroupID
 
@@ -221,12 +228,74 @@ func TestForwardEmbeddingsFailsOverOnlyForExplicitRetryableStatus(t *testing.T) 
 	require.Equal(t, "embed-public", gjson.GetBytes(result.Body, "model").String())
 }
 
+func TestForwardEmbeddingsPoolModeRetriesSameAccountBeforeSwitching(t *testing.T) {
+	withEmbeddingDNS(t, net.ParseIP("8.8.8.8"))
+	upstream := &embeddingUpstreamStub{steps: []embeddingUpstreamStep{
+		{status: http.StatusTooManyRequests, body: `{"error":"rate limited"}`},
+		{status: http.StatusOK, body: `{"data":[{"embedding":[0.1]}],"usage":{"prompt_tokens":3}}`},
+	}}
+	svc := newEmbeddingForwardTestService(t, []Account{
+		embeddingPoolAccount(1, map[string]any{"embed-public": "upstream-a"}, 2),
+		embeddingPoolAccount(2, map[string]any{"embed-public": "upstream-b"}, 2),
+	}, upstream)
+	groupID := embeddingEligibilityTestGroupID
+
+	result, err := svc.ForwardEmbeddings(context.Background(), EmbeddingForwardInput{GroupID: &groupID, Body: []byte(`{"model":"embed-public","input":"safe"}`)})
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Len(t, upstream.calls, 2)
+	require.Equal(t, gjson.GetBytes(upstream.calls[0].body, "model").String(), gjson.GetBytes(upstream.calls[1].body, "model").String())
+}
+
+func TestForwardEmbeddingsPoolModeSwitchesOnlyAfterRetryLimit(t *testing.T) {
+	withEmbeddingDNS(t, net.ParseIP("8.8.8.8"))
+	upstream := &embeddingUpstreamStub{steps: []embeddingUpstreamStep{
+		{status: http.StatusTooManyRequests, body: `{"error":"rate limited"}`},
+		{status: http.StatusTooManyRequests, body: `{"error":"rate limited"}`},
+		{status: http.StatusTooManyRequests, body: `{"error":"rate limited"}`},
+		{status: http.StatusOK, body: `{"data":[{"embedding":[0.1]}],"usage":{"prompt_tokens":3}}`},
+	}}
+	svc := newEmbeddingForwardTestService(t, []Account{
+		embeddingPoolAccount(1, map[string]any{"embed-public": "upstream-a"}, 2),
+		embeddingPoolAccount(2, map[string]any{"embed-public": "upstream-b"}, 2),
+	}, upstream)
+	groupID := embeddingEligibilityTestGroupID
+
+	result, err := svc.ForwardEmbeddings(context.Background(), EmbeddingForwardInput{GroupID: &groupID, Body: []byte(`{"model":"embed-public","input":"safe"}`)})
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Len(t, upstream.calls, 4)
+	firstModel := gjson.GetBytes(upstream.calls[0].body, "model").String()
+	require.Equal(t, firstModel, gjson.GetBytes(upstream.calls[1].body, "model").String())
+	require.Equal(t, firstModel, gjson.GetBytes(upstream.calls[2].body, "model").String())
+	require.NotEqual(t, firstModel, gjson.GetBytes(upstream.calls[3].body, "model").String())
+}
+
+func TestForwardEmbeddingsPoolModeDoesNotRetrySameAccountForServerErrors(t *testing.T) {
+	withEmbeddingDNS(t, net.ParseIP("8.8.8.8"))
+	upstream := &embeddingUpstreamStub{steps: []embeddingUpstreamStep{
+		{status: http.StatusInternalServerError, body: `{"error":"unavailable"}`},
+		{status: http.StatusOK, body: `{"data":[{"embedding":[0.1]}],"usage":{"prompt_tokens":3}}`},
+	}}
+	svc := newEmbeddingForwardTestService(t, []Account{
+		embeddingPoolAccount(1, map[string]any{"embed-public": "upstream-a"}, 2),
+		embeddingPoolAccount(2, map[string]any{"embed-public": "upstream-b"}, 2),
+	}, upstream)
+	groupID := embeddingEligibilityTestGroupID
+
+	result, err := svc.ForwardEmbeddings(context.Background(), EmbeddingForwardInput{GroupID: &groupID, Body: []byte(`{"model":"embed-public","input":"safe"}`)})
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Len(t, upstream.calls, 2)
+	require.NotEqual(t, gjson.GetBytes(upstream.calls[0].body, "model").String(), gjson.GetBytes(upstream.calls[1].body, "model").String())
+}
+
 func TestForwardEmbeddingsNeverFailsOverAfterUnknownTransportWrite(t *testing.T) {
 	withEmbeddingDNS(t, net.ParseIP("8.8.8.8"))
 	upstream := &embeddingUpstreamStub{steps: []embeddingUpstreamStep{{err: errors.New("connection reset")}}}
 	svc := newEmbeddingForwardTestService(t, []Account{
-		embeddingEligibilityAccount(1, map[string]any{"embed-public": "upstream-a"}),
-		embeddingEligibilityAccount(2, map[string]any{"embed-public": "upstream-b"}),
+		embeddingPoolAccount(1, map[string]any{"embed-public": "upstream-a"}, 3),
+		embeddingPoolAccount(2, map[string]any{"embed-public": "upstream-b"}, 3),
 	}, upstream)
 	groupID := embeddingEligibilityTestGroupID
 

@@ -28,6 +28,7 @@ const (
 	defaultEmbeddingTimeout                 = config.EmbeddingUpstreamTimeoutSecondsHardLimit * time.Second
 	defaultEmbeddingHeaderTimeout           = config.EmbeddingResponseHeaderTimeoutSecHardLimit * time.Second
 	defaultEmbeddingMaxConcurrent           = config.EmbeddingMaxConcurrentRequestsHardLimit
+	embeddingPoolModeRetryDelay             = 500 * time.Millisecond
 )
 
 var lookupEmbeddingHostIP = func(ctx context.Context, host string) ([]net.IP, error) {
@@ -226,15 +227,34 @@ func (s *OpenAIGatewayService) ForwardEmbeddings(ctx context.Context, input Embe
 		}
 		candidate := freshCandidates[0]
 		attempts++
-		result, forwardErr := s.forwardEmbeddingCandidate(ctx, input.Body, candidate, limits)
+		poolRetryLimit := 0
+		if candidate.Account.IsPoolMode() {
+			poolRetryLimit = candidate.Account.GetPoolModeRetryCount()
+		}
+		var result *EmbeddingForwardResult
+		var forwardErr error
+		for poolRetryCount := 0; ; poolRetryCount++ {
+			result, forwardErr = s.forwardEmbeddingCandidate(ctx, input.Body, candidate, limits)
+			if forwardErr == nil {
+				break
+			}
+			if typed, ok := forwardErr.(*EmbeddingForwardError); ok {
+				typed.AccountID = candidate.Account.ID
+				typed.ChannelID = candidate.ChannelMapping.ChannelID
+				typed.UpstreamModel = candidate.UpstreamModel
+			}
+			upstreamErr, ok := forwardErr.(*EmbeddingForwardError)
+			if !ok || !upstreamErr.Retryable || !isPoolModeRetryableStatus(upstreamErr.StatusCode) || poolRetryCount >= poolRetryLimit {
+				break
+			}
+			if !waitEmbeddingPoolRetry(ctx) {
+				selection.ReleaseFunc()
+				return nil, ctx.Err()
+			}
+		}
 		selection.ReleaseFunc()
 		if forwardErr == nil {
 			return result, nil
-		}
-		if typed, ok := forwardErr.(*EmbeddingForwardError); ok {
-			typed.AccountID = candidate.Account.ID
-			typed.ChannelID = candidate.ChannelMapping.ChannelID
-			typed.UpstreamModel = candidate.UpstreamModel
 		}
 		lastErr = forwardErr
 		upstreamErr, retryable := forwardErr.(*EmbeddingForwardError)
@@ -247,6 +267,17 @@ func (s *OpenAIGatewayService) ForwardEmbeddings(ctx context.Context, input Embe
 		return nil, lastErr
 	}
 	return nil, ErrEmbeddingUnavailable
+}
+
+func waitEmbeddingPoolRetry(ctx context.Context) bool {
+	timer := time.NewTimer(embeddingPoolModeRetryDelay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-timer.C:
+		return true
+	}
 }
 
 func (s *OpenAIGatewayService) forwardEmbeddingCandidate(

@@ -1125,7 +1125,7 @@
         </div>
 
         <!-- Pool Mode Section -->
-        <div v-if="form.platform !== 'embedding'" class="border-t border-gray-200 pt-4 dark:border-dark-600">
+        <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
           <div class="mb-3 flex items-center justify-between">
             <div>
               <label class="input-label mb-0">{{ t('admin.accounts.poolMode') }}</label>
@@ -4287,7 +4287,7 @@ const handleSubmit = async () => {
   }
 
   // Add pool mode if enabled
-  if (form.platform !== 'embedding' && poolModeEnabled.value) {
+  if (poolModeEnabled.value) {
     credentials.pool_mode = true
     credentials.pool_mode_retry_count = normalizePoolModeRetryCount(poolModeRetryCount.value)
   }
