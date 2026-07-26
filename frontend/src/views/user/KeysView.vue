@@ -332,33 +332,36 @@
                 <Icon name="terminal" size="sm" />
                 <span class="text-xs">{{ t('keys.useKey') }}</span>
               </button>
-              <!-- Import to CC Switch Button -->
-              <button
-                v-if="!publicSettings?.hide_ccs_import_button"
-                @click="importToClient(row, 'ccswitch')"
-                class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-blue-900/20 dark:hover:text-blue-400"
+              <!-- Client Import Menu Trigger -->
+              <div
+                v-if="hasClientImportTargets(row)"
+                class="relative"
+                @mouseenter="openClientImportMenu(row)"
+                @mouseleave="scheduleClientImportMenuClose"
               >
-                <Icon name="upload" size="sm" />
-                <span class="text-xs">{{ t('keys.importToCcSwitch') }}</span>
-              </button>
-              <!-- Import to Cherry Studio Button -->
-              <button
-                v-if="row.group?.platform !== 'embedding'"
-                @click="importToClient(row, 'cherryStudio')"
-                class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400"
-              >
-                <Icon name="upload" size="sm" />
-                <span class="whitespace-nowrap text-xs">{{ t('keys.importToCherryStudio') }}</span>
-              </button>
-              <!-- Import to Chatbox Button -->
-              <button
-                v-if="row.group?.platform !== 'embedding'"
-                @click="importToClient(row, 'chatbox')"
-                class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-purple-50 hover:text-purple-600 dark:hover:bg-purple-900/20 dark:hover:text-purple-400"
-              >
-                <Icon name="upload" size="sm" />
-                <span class="whitespace-nowrap text-xs">{{ t('keys.importToChatbox') }}</span>
-              </button>
+                <button
+                  :ref="(el) => setClientImportButtonRef(row.id, el)"
+                  type="button"
+                  aria-haspopup="menu"
+                  :aria-expanded="clientImportMenuRow?.id === row.id"
+                  :aria-controls="`client-import-menu-${row.id}`"
+                  @click.stop="openClientImportMenu(row, true)"
+                  @keydown.arrow-down.prevent="openClientImportMenu(row, true)"
+                  @keydown.esc.stop="closeClientImportMenu(true)"
+                  class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-blue-50 hover:text-blue-600 focus-visible:bg-blue-50 focus-visible:text-blue-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 dark:hover:bg-blue-900/20 dark:hover:text-blue-400 dark:focus-visible:bg-blue-900/20 dark:focus-visible:text-blue-400"
+                >
+                  <span class="flex items-center gap-0.5">
+                    <Icon name="upload" size="sm" />
+                    <Icon
+                      name="chevronDown"
+                      size="xs"
+                      class="transition-transform duration-150"
+                      :class="clientImportMenuRow?.id === row.id ? 'rotate-180' : ''"
+                    />
+                  </span>
+                  <span class="text-xs">{{ t('common.import') }}</span>
+                </button>
+              </div>
               <!-- Toggle Status Button -->
               <button
                 @click="toggleKeyStatus(row)"
@@ -1025,6 +1028,68 @@
       </template>
     </BaseDialog>
 
+    <!-- Client import menu (teleported to avoid table overflow clipping) -->
+    <Teleport to="body">
+      <div
+        v-if="clientImportMenuRow && clientImportMenuPosition && hasClientImportTargets(clientImportMenuRow)"
+        :id="`client-import-menu-${clientImportMenuRow.id}`"
+        ref="clientImportMenuRef"
+        role="menu"
+        :aria-label="t('common.import')"
+        class="fixed z-[100000020] w-52 overflow-hidden rounded-xl border border-gray-200 bg-white p-1.5 shadow-lg ring-1 ring-black/5 dark:border-dark-700 dark:bg-dark-800 dark:ring-white/10"
+        :style="{
+          top: clientImportMenuPosition.top !== undefined ? clientImportMenuPosition.top + 'px' : undefined,
+          bottom: clientImportMenuPosition.bottom !== undefined ? clientImportMenuPosition.bottom + 'px' : undefined,
+          left: clientImportMenuPosition.left + 'px'
+        }"
+        @mouseenter="cancelClientImportMenuClose"
+        @mouseleave="scheduleClientImportMenuClose"
+        @focusout="handleClientImportMenuFocusOut"
+        @keydown.down.prevent="focusAdjacentClientImportMenuItem(1)"
+        @keydown.up.prevent="focusAdjacentClientImportMenuItem(-1)"
+        @keydown.home.prevent="focusClientImportMenuBoundary('first')"
+        @keydown.end.prevent="focusClientImportMenuBoundary('last')"
+        @keydown.esc.stop="closeClientImportMenu(true)"
+      >
+        <button
+          v-if="!publicSettings?.hide_ccs_import_button"
+          type="button"
+          role="menuitem"
+          class="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm text-gray-700 transition-colors hover:bg-gray-100 focus-visible:bg-gray-100 focus-visible:outline-none dark:text-gray-200 dark:hover:bg-dark-700 dark:focus-visible:bg-dark-700"
+          @click="selectClientImportTarget('ccswitch')"
+        >
+          <span class="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400">
+            <Icon name="sync" size="sm" />
+          </span>
+          <span class="font-medium">{{ t('keys.importToCcSwitch') }}</span>
+        </button>
+        <button
+          v-if="clientImportMenuRow.group?.platform !== 'embedding'"
+          type="button"
+          role="menuitem"
+          class="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm text-gray-700 transition-colors hover:bg-gray-100 focus-visible:bg-gray-100 focus-visible:outline-none dark:text-gray-200 dark:hover:bg-dark-700 dark:focus-visible:bg-dark-700"
+          @click="selectClientImportTarget('cherryStudio')"
+        >
+          <span class="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-red-50 text-red-600 dark:bg-red-900/30 dark:text-red-400">
+            <Icon name="sparkles" size="sm" />
+          </span>
+          <span class="font-medium">{{ t('keys.importToCherryStudio') }}</span>
+        </button>
+        <button
+          v-if="clientImportMenuRow.group?.platform !== 'embedding'"
+          type="button"
+          role="menuitem"
+          class="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm text-gray-700 transition-colors hover:bg-gray-100 focus-visible:bg-gray-100 focus-visible:outline-none dark:text-gray-200 dark:hover:bg-dark-700 dark:focus-visible:bg-dark-700"
+          @click="selectClientImportTarget('chatbox')"
+        >
+          <span class="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400">
+            <Icon name="chat" size="sm" />
+          </span>
+          <span class="font-medium">{{ t('keys.importToChatbox') }}</span>
+        </button>
+      </div>
+    </Teleport>
+
     <!-- Group Selector Dropdown (Teleported to body to avoid overflow clipping) -->
     <Teleport to="body">
       <div
@@ -1093,7 +1158,7 @@
 </template>
 
 <script setup lang="ts">
-	import { ref, computed, onMounted, onUnmounted, type ComponentPublicInstance } from 'vue'
+	import { ref, computed, nextTick, onMounted, onUnmounted, type ComponentPublicInstance } from 'vue'
 	import { useI18n } from 'vue-i18n'
 	import { useAppStore } from '@/stores/app'
 	import { useAuthStore } from '@/stores/auth'
@@ -1207,6 +1272,11 @@ const publicSettings = ref<PublicSettings | null>(null)
 const dropdownRef = ref<HTMLElement | null>(null)
 const dropdownPosition = ref<{ top?: number; bottom?: number; left: number } | null>(null)
 const groupButtonRefs = ref<Map<number, HTMLElement>>(new Map())
+const clientImportMenuRow = ref<ApiKey | null>(null)
+const clientImportMenuRef = ref<HTMLElement | null>(null)
+const clientImportMenuPosition = ref<{ top?: number; bottom?: number; left: number } | null>(null)
+const clientImportButtonRefs = ref<Map<number, HTMLElement>>(new Map())
+let clientImportMenuCloseTimer: number | null = null
 let abortController: AbortController | null = null
 
 // Get the currently selected key for group change
@@ -1220,6 +1290,17 @@ const setGroupButtonRef = (keyId: number, el: Element | ComponentPublicInstance 
     groupButtonRefs.value.set(keyId, el)
   } else {
     groupButtonRefs.value.delete(keyId)
+  }
+}
+
+const setClientImportButtonRef = (
+  keyId: number,
+  el: Element | ComponentPublicInstance | null
+) => {
+  if (el instanceof HTMLElement) {
+    clientImportButtonRefs.value.set(keyId, el)
+  } else {
+    clientImportButtonRefs.value.delete(keyId)
   }
 }
 
@@ -1509,7 +1590,128 @@ const toggleKeyStatus = async (key: ApiKey) => {
   }
 }
 
+const hasClientImportTargets = (row: ApiKey) => {
+  return !publicSettings.value?.hide_ccs_import_button || row.group?.platform !== 'embedding'
+}
+
+const cancelClientImportMenuClose = () => {
+  if (clientImportMenuCloseTimer !== null) {
+    window.clearTimeout(clientImportMenuCloseTimer)
+    clientImportMenuCloseTimer = null
+  }
+}
+
+const closeClientImportMenu = (returnFocus = false) => {
+  const keyId = clientImportMenuRow.value?.id
+  cancelClientImportMenuClose()
+  clientImportMenuRow.value = null
+  clientImportMenuPosition.value = null
+
+  if (returnFocus && keyId !== undefined) {
+    clientImportButtonRefs.value.get(keyId)?.focus()
+  }
+}
+
+const scheduleClientImportMenuClose = () => {
+  cancelClientImportMenuClose()
+  clientImportMenuCloseTimer = window.setTimeout(() => {
+    closeClientImportMenu()
+  }, 150)
+}
+
+const openClientImportMenu = (row: ApiKey, focusFirstItem = false) => {
+  if (!hasClientImportTargets(row)) return
+
+  cancelClientImportMenuClose()
+  groupSelectorKeyId.value = null
+  dropdownPosition.value = null
+
+  const buttonEl = clientImportButtonRefs.value.get(row.id)
+  if (!buttonEl) return
+
+  const rect = buttonEl.getBoundingClientRect()
+  const menuWidth = 208
+  const optionCount = (publicSettings.value?.hide_ccs_import_button ? 0 : 1) +
+    (row.group?.platform === 'embedding' ? 0 : 2)
+  const menuEstimatedHeight = optionCount * 48 + 12
+  const viewportPadding = 8
+  const maxLeft = Math.max(viewportPadding, window.innerWidth - menuWidth - viewportPadding)
+  const left = Math.min(Math.max(viewportPadding, rect.right - menuWidth), maxLeft)
+  const spaceBelow = window.innerHeight - rect.bottom
+  const spaceAbove = rect.top
+
+  clientImportMenuPosition.value = spaceBelow < menuEstimatedHeight && spaceAbove > spaceBelow
+    ? { bottom: window.innerHeight - rect.top + 4, left }
+    : { top: rect.bottom + 4, left }
+  clientImportMenuRow.value = row
+
+  if (focusFirstItem) {
+    void nextTick(() => {
+      clientImportMenuRef.value?.querySelector<HTMLButtonElement>('[role="menuitem"]')?.focus()
+    })
+  }
+}
+
+const handleClientImportMenuFocusOut = (event: FocusEvent) => {
+  const nextTarget = event.relatedTarget
+  if (!(nextTarget instanceof Node)) {
+    scheduleClientImportMenuClose()
+    return
+  }
+
+  const activeButton = clientImportMenuRow.value
+    ? clientImportButtonRefs.value.get(clientImportMenuRow.value.id)
+    : null
+  if (clientImportMenuRef.value?.contains(nextTarget) || activeButton?.contains(nextTarget)) {
+    return
+  }
+
+  scheduleClientImportMenuClose()
+}
+
+const getClientImportMenuItems = () => {
+  return Array.from(
+    clientImportMenuRef.value?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]') ?? []
+  )
+}
+
+const focusAdjacentClientImportMenuItem = (offset: 1 | -1) => {
+  const items = getClientImportMenuItems()
+  if (items.length === 0) return
+
+  const currentIndex = items.findIndex(item => item === document.activeElement)
+  const nextIndex = currentIndex < 0
+    ? (offset > 0 ? 0 : items.length - 1)
+    : (currentIndex + offset + items.length) % items.length
+  items[nextIndex]?.focus()
+}
+
+const focusClientImportMenuBoundary = (boundary: 'first' | 'last') => {
+  const items = getClientImportMenuItems()
+  const target = boundary === 'first' ? items[0] : items[items.length - 1]
+  target?.focus()
+}
+
+const closeClientImportMenuOnOutsideClick = (event: MouseEvent) => {
+  const target = event.target
+  if (!(target instanceof Node)) return
+
+  const activeButton = clientImportMenuRow.value
+    ? clientImportButtonRefs.value.get(clientImportMenuRow.value.id)
+    : null
+  if (clientImportMenuRef.value?.contains(target) || activeButton?.contains(target)) {
+    return
+  }
+
+  closeClientImportMenu()
+}
+
+const handleClientImportViewportChange = () => {
+  closeClientImportMenu()
+}
+
 const openGroupSelector = (key: ApiKey) => {
+  closeClientImportMenu()
   if (groupSelectorKeyId.value === key.id) {
     groupSelectorKeyId.value = null
     dropdownPosition.value = null
@@ -1795,6 +1997,14 @@ const importToClient = (row: ApiKey, target: ClientImportTarget) => {
   executeClientImport(row, target, providerType)
 }
 
+const selectClientImportTarget = (target: ClientImportTarget) => {
+  const row = clientImportMenuRow.value
+  closeClientImportMenu()
+  if (row) {
+    importToClient(row, target)
+  }
+}
+
 const executeClientImport = (
   row: ApiKey,
   target: ClientImportTarget,
@@ -1951,11 +2161,18 @@ onMounted(() => {
   loadUserGroupRates()
   loadPublicSettings()
   document.addEventListener('click', closeGroupSelector)
+  document.addEventListener('click', closeClientImportMenuOnOutsideClick)
+  document.addEventListener('scroll', handleClientImportViewportChange, true)
+  window.addEventListener('resize', handleClientImportViewportChange)
   resetTimer = setInterval(() => { now.value = new Date() }, 60000)
 })
 
 onUnmounted(() => {
   document.removeEventListener('click', closeGroupSelector)
+  document.removeEventListener('click', closeClientImportMenuOnOutsideClick)
+  document.removeEventListener('scroll', handleClientImportViewportChange, true)
+  window.removeEventListener('resize', handleClientImportViewportChange)
+  cancelClientImportMenuClose()
   if (resetTimer) clearInterval(resetTimer)
 })
 </script>
