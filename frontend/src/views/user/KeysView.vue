@@ -335,11 +335,29 @@
               <!-- Import to CC Switch Button -->
               <button
                 v-if="!publicSettings?.hide_ccs_import_button"
-                @click="importToCcswitch(row)"
+                @click="importToClient(row, 'ccswitch')"
                 class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-blue-900/20 dark:hover:text-blue-400"
               >
                 <Icon name="upload" size="sm" />
                 <span class="text-xs">{{ t('keys.importToCcSwitch') }}</span>
+              </button>
+              <!-- Import to Cherry Studio Button -->
+              <button
+                v-if="row.group?.platform !== 'embedding'"
+                @click="importToClient(row, 'cherryStudio')"
+                class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400"
+              >
+                <Icon name="upload" size="sm" />
+                <span class="whitespace-nowrap text-xs">{{ t('keys.importToCherryStudio') }}</span>
+              </button>
+              <!-- Import to Chatbox Button -->
+              <button
+                v-if="row.group?.platform !== 'embedding'"
+                @click="importToClient(row, 'chatbox')"
+                class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-purple-50 hover:text-purple-600 dark:hover:bg-purple-900/20 dark:hover:text-purple-400"
+              >
+                <Icon name="upload" size="sm" />
+                <span class="whitespace-nowrap text-xs">{{ t('keys.importToChatbox') }}</span>
               </button>
               <!-- Toggle Status Button -->
               <button
@@ -960,47 +978,47 @@
       @close="closeUseKeyModal"
     />
 
-    <!-- CCS Client Selection Dialog for Antigravity -->
+    <!-- API type selection dialog for Antigravity client imports -->
     <BaseDialog
-      :show="showCcsClientSelect"
-      :title="t('keys.ccsClientSelect.title')"
+      :show="showClientTypeSelect"
+      :title="t('keys.clientTypeSelect.title')"
       width="narrow"
-      @close="closeCcsClientSelect"
+      @close="closeClientTypeSelect"
     >
       <div class="space-y-4">
         <p class="text-sm text-gray-600 dark:text-gray-400">
-          {{ t('keys.ccsClientSelect.description') }}
-	        </p>
-	        <div class="grid grid-cols-2 gap-3">
-	          <button
-	            @click="handleCcsClientSelect('claude')"
-	            class="flex flex-col items-center gap-2 p-4 rounded-xl border-2 border-gray-200 dark:border-dark-600 hover:border-primary-500 dark:hover:border-primary-500 hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-all"
-	          >
-	            <Icon name="terminal" size="xl" class="text-gray-600 dark:text-gray-400" />
-	            <span class="font-medium text-gray-900 dark:text-white">{{
-	              t('keys.ccsClientSelect.claudeCode')
-	            }}</span>
-	            <span class="text-xs text-gray-500 dark:text-gray-400">{{
-	              t('keys.ccsClientSelect.claudeCodeDesc')
-	            }}</span>
-	          </button>
-	          <button
-	            @click="handleCcsClientSelect('gemini')"
-	            class="flex flex-col items-center gap-2 p-4 rounded-xl border-2 border-gray-200 dark:border-dark-600 hover:border-primary-500 dark:hover:border-primary-500 hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-all"
-	          >
-	            <Icon name="sparkles" size="xl" class="text-gray-600 dark:text-gray-400" />
-	            <span class="font-medium text-gray-900 dark:text-white">{{
-	              t('keys.ccsClientSelect.geminiCli')
-	            }}</span>
-	            <span class="text-xs text-gray-500 dark:text-gray-400">{{
-	              t('keys.ccsClientSelect.geminiCliDesc')
-	            }}</span>
-	          </button>
-	        </div>
-	      </div>
+          {{ t('keys.clientTypeSelect.description') }}
+        </p>
+        <div class="grid grid-cols-2 gap-3">
+          <button
+            @click="handleClientTypeSelect('claude')"
+            class="flex flex-col items-center gap-2 rounded-xl border-2 border-gray-200 p-4 transition-all hover:border-primary-500 hover:bg-primary-50 dark:border-dark-600 dark:hover:border-primary-500 dark:hover:bg-primary-900/20"
+          >
+            <Icon name="terminal" size="xl" class="text-gray-600 dark:text-gray-400" />
+            <span class="font-medium text-gray-900 dark:text-white">{{
+              t('keys.clientTypeSelect.claude')
+            }}</span>
+            <span class="text-xs text-gray-500 dark:text-gray-400">{{
+              t('keys.clientTypeSelect.claudeDesc')
+            }}</span>
+          </button>
+          <button
+            @click="handleClientTypeSelect('gemini')"
+            class="flex flex-col items-center gap-2 rounded-xl border-2 border-gray-200 p-4 transition-all hover:border-primary-500 hover:bg-primary-50 dark:border-dark-600 dark:hover:border-primary-500 dark:hover:bg-primary-900/20"
+          >
+            <Icon name="sparkles" size="xl" class="text-gray-600 dark:text-gray-400" />
+            <span class="font-medium text-gray-900 dark:text-white">{{
+              t('keys.clientTypeSelect.gemini')
+            }}</span>
+            <span class="text-xs text-gray-500 dark:text-gray-400">{{
+              t('keys.clientTypeSelect.geminiDesc')
+            }}</span>
+          </button>
+        </div>
+      </div>
       <template #footer>
         <div class="flex justify-end">
-          <button @click="closeCcsClientSelect" class="btn btn-secondary">
+          <button @click="closeClientTypeSelect" class="btn btn-secondary">
             {{ t('common.cancel') }}
           </button>
         </div>
@@ -1105,6 +1123,11 @@ import { isSelectableApiKeyGroup } from './KeysView.groups'
 import type { Column } from '@/components/common/types'
 import type { BatchApiKeyUsageStats } from '@/api/usage'
 import { buildCcswitchProviderDeepLink, type CcswitchProviderApp } from '@/utils/ccswitchDeepLink'
+import {
+  buildChatboxDeepLink,
+  buildCherryStudioDeepLink,
+  type ClientImportProviderType
+} from '@/utils/clientImportDeepLink'
 import { formatDateTime } from '@/utils/format'
 
 // Helper to format date for datetime-local input
@@ -1174,8 +1197,9 @@ const showDeleteDialog = ref(false)
 const showResetQuotaDialog = ref(false)
 const showResetRateLimitDialog = ref(false)
 const showUseKeyModal = ref(false)
-const showCcsClientSelect = ref(false)
-const pendingCcsRow = ref<ApiKey | null>(null)
+const showClientTypeSelect = ref(false)
+type ClientImportTarget = 'ccswitch' | 'cherryStudio' | 'chatbox'
+const pendingClientImport = ref<{ row: ApiKey; target: ClientImportTarget } | null>(null)
 const selectedKey = ref<ApiKey | null>(null)
 const copiedKeyId = ref<number | null>(null)
 const groupSelectorKeyId = ref<number | null>(null)
@@ -1753,22 +1777,85 @@ const resetRateLimitUsage = async () => {
   }
 }
 
-const importToCcswitch = (row: ApiKey) => {
+const importToClient = (row: ApiKey, target: ClientImportTarget) => {
   const platform = row.group?.platform || 'anthropic'
 
-  // For antigravity platform, show client selection dialog
+  // Antigravity exposes both Claude and Gemini native APIs.
   if (platform === 'antigravity') {
-    pendingCcsRow.value = row
-    showCcsClientSelect.value = true
+    pendingClientImport.value = { row, target }
+    showClientTypeSelect.value = true
     return
   }
 
-  // For other platforms, execute directly
-  executeCcsImport(row, platform === 'gemini' ? 'gemini' : 'claude')
+  const providerType: ClientImportProviderType = platform === 'openai'
+    ? 'openai'
+    : platform === 'gemini'
+      ? 'gemini'
+      : 'anthropic'
+  executeClientImport(row, target, providerType)
+}
+
+const executeClientImport = (
+  row: ApiKey,
+  target: ClientImportTarget,
+  providerType: ClientImportProviderType
+) => {
+  switch (target) {
+    case 'cherryStudio':
+      executeCherryStudioImport(row, providerType)
+      break
+    case 'chatbox':
+      executeChatboxImport(row, providerType)
+      break
+    default:
+      executeCcsImport(row, providerType === 'gemini' ? 'gemini' : 'claude')
+  }
+}
+
+const getClientImportOptions = (row: ApiKey, providerType: ClientImportProviderType) => {
+  const baseUrl = publicSettings.value?.api_base_url || window.location.origin
+  const platform = row.group?.platform || 'anthropic'
+  const baseRoot = baseUrl.trim().replace(/\/(?:v1beta|v1)\/?$/i, '').replace(/\/+$/, '')
+  const endpoint = platform === 'antigravity'
+    ? `${baseRoot}/antigravity`
+    : baseUrl
+
+  return {
+    name: publicSettings.value?.site_name || 'FluxCode',
+    baseUrl: endpoint,
+    apiKey: row.key,
+    providerType,
+    openaiModelId: publicSettings.value?.openai_use_key_model_id
+  }
+}
+
+const openClientDeepLink = (deeplink: string, errorMessageKey: string) => {
+  try {
+    window.open(deeplink, '_self')
+
+    setTimeout(() => {
+      if (document.hasFocus()) {
+        appStore.showError(t(errorMessageKey))
+      }
+    }, 100)
+  } catch (error) {
+    appStore.showError(t(errorMessageKey))
+  }
+}
+
+const executeCherryStudioImport = (row: ApiKey, providerType: ClientImportProviderType) => {
+  const deeplink = buildCherryStudioDeepLink(getClientImportOptions(row, providerType))
+  openClientDeepLink(deeplink, 'keys.cherryStudioNotInstalled')
+}
+
+const executeChatboxImport = (row: ApiKey, providerType: ClientImportProviderType) => {
+  const deeplink = buildChatboxDeepLink(getClientImportOptions(row, providerType))
+  openClientDeepLink(deeplink, 'keys.chatboxNotInstalled')
 }
 
 const executeCcsImport = (row: ApiKey, clientType: 'claude' | 'gemini') => {
   const baseUrl = publicSettings.value?.api_base_url || window.location.origin
+  const baseRoot = baseUrl.trim().replace(/\/(?:v1beta|v1)\/?$/i, '').replace(/\/+$/, '')
   const platform = row.group?.platform || 'anthropic'
 
   // Determine app name and endpoint based on platform and client type
@@ -1778,7 +1865,7 @@ const executeCcsImport = (row: ApiKey, clientType: 'claude' | 'gemini') => {
   if (platform === 'antigravity') {
     // Antigravity always uses /antigravity suffix
     app = clientType === 'gemini' ? 'gemini' : 'claude'
-    endpoint = `${baseUrl}/antigravity`
+    endpoint = `${baseRoot}/antigravity`
   } else {
     switch (platform) {
       case 'openai':
@@ -1823,32 +1910,24 @@ const executeCcsImport = (row: ApiKey, clientType: 'claude' | 'gemini') => {
     openaiModelId: publicSettings.value?.openai_use_key_model_id
   })
 
-  try {
-    window.open(deeplink, '_self')
-
-    // Check if the protocol handler worked by detecting if we're still focused
-    setTimeout(() => {
-      if (document.hasFocus()) {
-        // Still focused means the protocol handler likely failed
-        appStore.showError(t('keys.ccSwitchNotInstalled'))
-      }
-    }, 100)
-  } catch (error) {
-    appStore.showError(t('keys.ccSwitchNotInstalled'))
-  }
+  openClientDeepLink(deeplink, 'keys.ccSwitchNotInstalled')
 }
 
-const handleCcsClientSelect = (clientType: 'claude' | 'gemini') => {
-  if (pendingCcsRow.value) {
-    executeCcsImport(pendingCcsRow.value, clientType)
+const handleClientTypeSelect = (clientType: 'claude' | 'gemini') => {
+  if (pendingClientImport.value) {
+    executeClientImport(
+      pendingClientImport.value.row,
+      pendingClientImport.value.target,
+      clientType === 'gemini' ? 'gemini' : 'anthropic'
+    )
   }
-  showCcsClientSelect.value = false
-  pendingCcsRow.value = null
+  showClientTypeSelect.value = false
+  pendingClientImport.value = null
 }
 
-const closeCcsClientSelect = () => {
-  showCcsClientSelect.value = false
-  pendingCcsRow.value = null
+const closeClientTypeSelect = () => {
+  showClientTypeSelect.value = false
+  pendingClientImport.value = null
 }
 
 function formatResetTime(resetAt: string | null): string {
