@@ -891,6 +891,8 @@ export default {
     copyToClipboard: '复制到剪贴板',
     copied: '已复制！',
     importToCcSwitch: '导入到 CCS',
+    importToCherryStudio: '导入 Cherry Studio',
+    importToChatbox: '导入 Chatbox',
     enable: '启用',
     disable: '禁用',
     nameLabel: '名称',
@@ -997,13 +999,17 @@ export default {
     ipRestrictionEnabled: '已配置 IP 限制',
     ccSwitchNotInstalled:
       'CC-Switch 未安装或协议处理程序未注册。请先安装 CC-Switch 或手动复制 API 密钥。',
-    ccsClientSelect: {
-      title: '选择客户端',
-      description: '请选择您要导入到 CC-Switch 的客户端类型：',
-      claudeCode: 'Claude Code',
-      claudeCodeDesc: '导入为 Claude Code 配置',
-      geminiCli: 'Gemini CLI',
-      geminiCliDesc: '导入为 Gemini CLI 配置'
+    cherryStudioNotInstalled:
+      'Cherry Studio 未安装、版本不支持或协议处理程序未注册。请升级或安装 Cherry Studio，也可手动配置 API 密钥。',
+    chatboxNotInstalled:
+      'Chatbox 未安装、版本不支持或协议处理程序未注册。请升级或安装 Chatbox，也可手动配置 API 密钥。',
+    clientTypeSelect: {
+      title: '选择接口类型',
+      description: '该分组同时支持 Claude 和 Gemini，请选择要导入的接口类型：',
+      claude: 'Claude',
+      claudeDesc: '导入 Claude API 配置',
+      gemini: 'Gemini',
+      geminiDesc: '导入 Gemini API 配置'
     },
     // 配额和有效期
     quotaLimit: '额度限制',
