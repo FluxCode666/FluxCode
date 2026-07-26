@@ -1852,6 +1852,67 @@
             </div>
           </div>
         </div>
+
+        <!-- Successful request/response payload recording -->
+        <div class="card">
+          <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+              {{ t('admin.settings.successfulRequestRecords.title') }}
+            </h2>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              {{ t('admin.settings.successfulRequestRecords.description') }}
+            </p>
+          </div>
+          <div class="space-y-5 p-6">
+            <div class="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-800/60 dark:bg-amber-900/20 dark:text-amber-200">
+              {{ t('admin.settings.successfulRequestRecords.sensitiveWarning') }}
+            </div>
+
+            <div class="flex items-center justify-between gap-4">
+              <div>
+                <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {{ t('admin.settings.successfulRequestRecords.enabled') }}
+                </label>
+                <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                  {{ t('admin.settings.successfulRequestRecords.enabledHint') }}
+                </p>
+              </div>
+              <Toggle
+                v-model="form.successful_request_records_enabled"
+                :disabled="!form.totp_encryption_key_configured && !form.successful_request_records_enabled"
+                :aria-label="t('admin.settings.successfulRequestRecords.enabled')"
+              />
+            </div>
+
+            <p
+              v-if="!form.totp_encryption_key_configured"
+              class="text-sm text-amber-700 dark:text-amber-300"
+            >
+              {{ t('admin.settings.successfulRequestRecords.encryptionKeyRequired') }}
+            </p>
+
+            <div v-if="form.successful_request_records_enabled">
+              <label
+                for="successful-request-records-max-body-kb"
+                class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+              >
+                {{ t('admin.settings.successfulRequestRecords.maxBodyKB') }}
+              </label>
+              <input
+                id="successful-request-records-max-body-kb"
+                v-model.number="successfulRequestRecordsMaxBodyKB"
+                type="number"
+                min="1"
+                max="16384"
+                step="1"
+                class="input w-full max-w-xs"
+              />
+              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.settings.successfulRequestRecords.maxBodyHint') }}
+              </p>
+            </div>
+          </div>
+        </div>
         <!-- Codex CLI User-Agent -->
         <div class="card">
           <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
@@ -4031,12 +4092,24 @@ const form = reactive<SettingsForm>({
   codex_cli_version: '',
   codex_official_client_passthrough_ua_version: true,
   openai_usage_debug_log_enabled: false,
+  successful_request_records_enabled: false,
+  successful_request_records_max_body_bytes: 1024 * 1024,
   // Balance & quota notification
   balance_low_notify_enabled: false,
   balance_low_notify_threshold: 0,
   balance_low_notify_recharge_url: '',
   account_quota_notify_enabled: false,
   account_quota_notify_emails: [] as NotifyEmailEntry[]
+})
+
+const successfulRequestRecordsMaxBodyKB = computed({
+  get: () => form.successful_request_records_max_body_bytes / 1024,
+  set: (value: number) => {
+    const normalized = Number(value)
+    if (Number.isFinite(normalized)) {
+      form.successful_request_records_max_body_bytes = Math.round(normalized * 1024)
+    }
+  }
 })
 
 function setGeneratedImageStorageSource(source: GeneratedImageStorageSource) {
@@ -4571,6 +4644,26 @@ async function saveSettings() {
         ? normalizedDashboardFireworksThreshold
         : 20
 
+    const successfulRequestRecordsMaxBodyBytes = Math.floor(
+      Number(form.successful_request_records_max_body_bytes)
+    )
+    if (
+      !Number.isInteger(successfulRequestRecordsMaxBodyBytes) ||
+      successfulRequestRecordsMaxBodyBytes < 1024 ||
+      successfulRequestRecordsMaxBodyBytes > 16 * 1024 * 1024
+    ) {
+      appStore.showError(t('admin.settings.successfulRequestRecords.maxBodyRangeError'))
+      return
+    }
+    if (
+      form.successful_request_records_enabled &&
+      !form.totp_encryption_key_configured
+    ) {
+      appStore.showError(t('admin.settings.successfulRequestRecords.encryptionKeyRequired'))
+      return
+    }
+    form.successful_request_records_max_body_bytes = successfulRequestRecordsMaxBodyBytes
+
     const payload: UpdateSettingsRequest = {
       registration_enabled: form.registration_enabled,
       email_verify_enabled: form.email_verify_enabled,
@@ -4690,6 +4783,8 @@ async function saveSettings() {
       codex_cli_version: form.codex_cli_version,
       codex_official_client_passthrough_ua_version: form.codex_official_client_passthrough_ua_version,
       openai_usage_debug_log_enabled: form.openai_usage_debug_log_enabled,
+      successful_request_records_enabled: form.successful_request_records_enabled,
+      successful_request_records_max_body_bytes: form.successful_request_records_max_body_bytes,
       // Payment configuration
       payment_enabled: form.payment_enabled,
       payment_min_amount: Number(form.payment_min_amount) || 0,

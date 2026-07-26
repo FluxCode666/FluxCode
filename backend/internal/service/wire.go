@@ -659,6 +659,18 @@ func ProvideAPIKeyAuthCacheInvalidator(apiKeyService *APIKeyService) APIKeyAuthC
 	return apiKeyService
 }
 
+// ProvideSuccessfulRequestRecordService 创建并启动成功请求 Redis Stream 消费者。
+func ProvideSuccessfulRequestRecordService(
+	repo SuccessfulRequestRecordRepository,
+	redisClient *redis.Client,
+	encryptor SecretEncryptor,
+	settingService *SettingService,
+) *SuccessfulRequestRecordService {
+	svc := NewSuccessfulRequestRecordService(repo, redisClient, encryptor, settingService)
+	svc.Start()
+	return svc
+}
+
 // ProvideBackupService creates and starts BackupService
 func ProvideBackupService(
 	settingRepo SettingRepository,
@@ -741,6 +753,7 @@ var ProviderSet = wire.NewSet(
 	ProvideConcurrencyService,
 	ProvideUserMessageQueueService,
 	NewUsageRecordWorkerPool,
+	ProvideSuccessfulRequestRecordService,
 	ProvideSchedulerSnapshotService,
 	NewIdentityService,
 	NewCRSSyncService,

@@ -178,6 +178,10 @@ export interface SystemSettings {
   codex_official_client_passthrough_ua_version: boolean
   openai_usage_debug_log_enabled: boolean
 
+  // Successful request/response payload recording
+  successful_request_records_enabled: boolean
+  successful_request_records_max_body_bytes: number
+
   web_search_emulation_enabled?: boolean
 
   // Payment configuration
@@ -340,6 +344,8 @@ export interface UpdateSettingsRequest {
   codex_cli_version?: string
   codex_official_client_passthrough_ua_version?: boolean
   openai_usage_debug_log_enabled?: boolean
+  successful_request_records_enabled?: boolean
+  successful_request_records_max_body_bytes?: number
 
   // Payment configuration
   payment_enabled?: boolean

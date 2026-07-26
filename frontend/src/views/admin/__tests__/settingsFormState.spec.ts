@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { SystemSettings, UpdateSettingsRequest } from '@/api/admin/settings'
-import { resolveSettingsUpdateForForm } from '../settingsFormState'
+import { applyDefinedSettingsToForm, resolveSettingsUpdateForForm } from '../settingsFormState'
 
 describe('settings form state helpers', () => {
   it('keeps submitted Codex CLI values when the update response returns empty strings', () => {
@@ -50,5 +50,20 @@ describe('settings form state helpers', () => {
 
     expect(result.codex_cli_user_agent).toBe('codex_cli_rs/server')
     expect(result.codex_cli_version).toBe('server')
+  })
+
+  it('applies successful request recording settings from the server', () => {
+    const form = {
+      successful_request_records_enabled: false,
+      successful_request_records_max_body_bytes: 1024 * 1024,
+    }
+
+    applyDefinedSettingsToForm(form, {
+      successful_request_records_enabled: true,
+      successful_request_records_max_body_bytes: 2 * 1024 * 1024,
+    })
+
+    expect(form.successful_request_records_enabled).toBe(true)
+    expect(form.successful_request_records_max_body_bytes).toBe(2 * 1024 * 1024)
   })
 })

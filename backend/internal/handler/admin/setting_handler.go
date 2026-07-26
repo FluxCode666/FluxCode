@@ -215,6 +215,8 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		CodexCLIVersion:                      settings.CodexCLIVersion,
 		CodexPassthroughUAVersion:            settings.CodexPassthroughUAVersion,
 		OpenAIUsageDebugLogEnabled:           settings.OpenAIUsageDebugLogEnabled,
+		SuccessfulRequestRecordsEnabled:      settings.SuccessfulRequestRecordsEnabled,
+		SuccessfulRequestRecordsMaxBodyBytes: settings.SuccessfulRequestRecordsMaxBodyBytes,
 		WebSearchEmulationEnabled:            settings.WebSearchEmulationEnabled,
 		BalanceLowNotifyEnabled:              settings.BalanceLowNotifyEnabled,
 		BalanceLowNotifyThreshold:            settings.BalanceLowNotifyThreshold,
@@ -395,10 +397,12 @@ type UpdateSettingsRequest struct {
 	CodexImageGenerationBridgeEnabled *bool `json:"codex_image_generation_bridge_enabled"`
 
 	// Codex CLI User-Agent
-	CodexCLIUserAgent          *string `json:"codex_cli_user_agent"`
-	CodexCLIVersion            *string `json:"codex_cli_version"`
-	CodexPassthroughUAVersion  *bool   `json:"codex_official_client_passthrough_ua_version"`
-	OpenAIUsageDebugLogEnabled *bool   `json:"openai_usage_debug_log_enabled"`
+	CodexCLIUserAgent                    *string `json:"codex_cli_user_agent"`
+	CodexCLIVersion                      *string `json:"codex_cli_version"`
+	CodexPassthroughUAVersion            *bool   `json:"codex_official_client_passthrough_ua_version"`
+	OpenAIUsageDebugLogEnabled           *bool   `json:"openai_usage_debug_log_enabled"`
+	SuccessfulRequestRecordsEnabled      *bool   `json:"successful_request_records_enabled"`
+	SuccessfulRequestRecordsMaxBodyBytes *int64  `json:"successful_request_records_max_body_bytes"`
 
 	// Balance low notification
 	BalanceLowNotifyEnabled     *bool                   `json:"balance_low_notify_enabled"`
@@ -549,6 +553,27 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			response.BadRequest(c, "Cannot enable TOTP: TOTP_ENCRYPTION_KEY environment variable must be configured first. Generate a key with 'openssl rand -hex 32' and set it in your environment.")
 			return
 		}
+	}
+
+	successfulRequestRecordsEnabled := previousSettings.SuccessfulRequestRecordsEnabled
+	if req.SuccessfulRequestRecordsEnabled != nil {
+		successfulRequestRecordsEnabled = *req.SuccessfulRequestRecordsEnabled
+	}
+	successfulRequestRecordsMaxBodyBytes := previousSettings.SuccessfulRequestRecordsMaxBodyBytes
+	if req.SuccessfulRequestRecordsMaxBodyBytes != nil {
+		successfulRequestRecordsMaxBodyBytes = *req.SuccessfulRequestRecordsMaxBodyBytes
+	}
+	if successfulRequestRecordsMaxBodyBytes < service.MinSuccessfulRequestRecordsMaxBodyBytes || successfulRequestRecordsMaxBodyBytes > service.MaxSuccessfulRequestRecordsMaxBodyBytes {
+		response.BadRequest(c, fmt.Sprintf(
+			"Successful request record body limit must be between %d and %d bytes",
+			service.MinSuccessfulRequestRecordsMaxBodyBytes,
+			service.MaxSuccessfulRequestRecordsMaxBodyBytes,
+		))
+		return
+	}
+	if successfulRequestRecordsEnabled && !h.settingService.IsTotpEncryptionKeyConfigured() {
+		response.BadRequest(c, "Cannot enable successful request records: TOTP_ENCRYPTION_KEY environment variable must be configured first.")
+		return
 	}
 
 	// LinuxDo Connect 参数验证
@@ -1204,6 +1229,8 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.OpenAIUsageDebugLogEnabled
 		}(),
+		SuccessfulRequestRecordsEnabled:      successfulRequestRecordsEnabled,
+		SuccessfulRequestRecordsMaxBodyBytes: successfulRequestRecordsMaxBodyBytes,
 		BalanceLowNotifyEnabled: func() bool {
 			if req.BalanceLowNotifyEnabled != nil {
 				return *req.BalanceLowNotifyEnabled
@@ -1423,6 +1450,8 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		CodexCLIVersion:                      updatedSettings.CodexCLIVersion,
 		CodexPassthroughUAVersion:            updatedSettings.CodexPassthroughUAVersion,
 		OpenAIUsageDebugLogEnabled:           updatedSettings.OpenAIUsageDebugLogEnabled,
+		SuccessfulRequestRecordsEnabled:      updatedSettings.SuccessfulRequestRecordsEnabled,
+		SuccessfulRequestRecordsMaxBodyBytes: updatedSettings.SuccessfulRequestRecordsMaxBodyBytes,
 		BalanceLowNotifyEnabled:              updatedSettings.BalanceLowNotifyEnabled,
 		BalanceLowNotifyThreshold:            updatedSettings.BalanceLowNotifyThreshold,
 		BalanceLowNotifyRechargeURL:          updatedSettings.BalanceLowNotifyRechargeURL,
@@ -1801,6 +1830,12 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	}
 	if before.EnableCCHSigning != after.EnableCCHSigning {
 		changed = append(changed, "enable_cch_signing")
+	}
+	if before.SuccessfulRequestRecordsEnabled != after.SuccessfulRequestRecordsEnabled {
+		changed = append(changed, "successful_request_records_enabled")
+	}
+	if before.SuccessfulRequestRecordsMaxBodyBytes != after.SuccessfulRequestRecordsMaxBodyBytes {
+		changed = append(changed, "successful_request_records_max_body_bytes")
 	}
 	// Balance & quota notification
 	if before.BalanceLowNotifyEnabled != after.BalanceLowNotifyEnabled {

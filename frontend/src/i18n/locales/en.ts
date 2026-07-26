@@ -5872,6 +5872,17 @@ export default {
         cchSigning: 'CCH Signing',
         cchSigningHint: 'Sign the billing header in forwarded requests with CCH hash. When disabled, the placeholder is preserved.',
       },
+      successfulRequestRecords: {
+        title: 'Successful Request Payload Recording',
+        description: 'Asynchronously store request and response bodies for authenticated gateway POST requests that finish with a 2xx response, for employee analytics.',
+        sensitiveWarning: 'This stores raw request and response bodies without redaction. Restrict database and admin access, and have administrators manage the payload data lifecycle manually.',
+        enabled: 'Enable successful request payload recording',
+        enabledHint: 'Changes take effect dynamically. Disabling stops new captures while already queued records continue to be persisted.',
+        encryptionKeyRequired: 'Configure the same fixed TOTP_ENCRYPTION_KEY on every service instance before enabling this feature.',
+        maxBodyKB: 'Per-body limit (KB)',
+        maxBodyHint: 'Request and response bodies are limited separately from 1 KB to 16 MB. Oversized bodies retain only size and truncation metadata.',
+        maxBodyRangeError: 'The per-body limit must be between 1 KB and 16 MB.'
+      },
       systemPrompt: {
         title: 'Platform System Prompts',
         description:
