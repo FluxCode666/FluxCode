@@ -1,8 +1,9 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import {
   buildChatboxDeepLink,
-  buildCherryStudioDeepLink
+  buildCherryStudioDeepLink,
+  fetchClientImportModelIds
 } from '../clientImportDeepLink'
 import { DEFAULT_CCSWITCH_CLAUDE_MODEL_ID } from '../ccswitchDeepLink'
 
@@ -21,11 +22,75 @@ const baseOptions = {
   apiKey: 'sk-test'
 }
 
-describe('buildCherryStudioDeepLink', () => {
-  it('imports an OpenAI provider with UTF-8 metadata and a normalized v1 endpoint', () => {
-    const link = buildCherryStudioDeepLink({
+describe('fetchClientImportModelIds', () => {
+  it('loads and deduplicates OpenAI-compatible models with bearer authentication', async () => {
+    const fetcher = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        data: [
+          { id: 'gpt-5.5-pro' },
+          { id: 'gpt-5.5-mini' },
+          { id: 'gpt-5.5-pro' }
+        ]
+      })
+    })
+
+    const modelIds = await fetchClientImportModelIds({
       ...baseOptions,
       providerType: 'openai'
+    }, fetcher as unknown as typeof fetch)
+
+    expect(modelIds).toEqual(['gpt-5.5-pro', 'gpt-5.5-mini'])
+    expect(fetcher).toHaveBeenCalledWith(
+      'https://flux.example/api/v1/models',
+      expect.objectContaining({
+        method: 'GET',
+        headers: {
+          Accept: 'application/json',
+          Authorization: 'Bearer sk-test'
+        }
+      })
+    )
+  })
+
+  it('normalizes Gemini model names and uses Google API key authentication', async () => {
+    const fetcher = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        models: [
+          { name: 'models/gemini-2.5-pro' },
+          { name: 'models/gemini-2.5-flash' }
+        ]
+      })
+    })
+
+    const modelIds = await fetchClientImportModelIds({
+      ...baseOptions,
+      baseUrl: 'https://flux.example/api/antigravity/v1beta',
+      providerType: 'gemini'
+    }, fetcher as unknown as typeof fetch)
+
+    expect(modelIds).toEqual(['gemini-2.5-pro', 'gemini-2.5-flash'])
+    expect(fetcher).toHaveBeenCalledWith(
+      'https://flux.example/api/antigravity/v1beta/models',
+      expect.objectContaining({
+        headers: {
+          Accept: 'application/json',
+          'x-goog-api-key': 'sk-test'
+        }
+      })
+    )
+  })
+})
+
+describe('buildCherryStudioDeepLink', () => {
+  it('imports an OpenAI provider with UTF-8 metadata and the available model list', () => {
+    const link = buildCherryStudioDeepLink({
+      ...baseOptions,
+      providerType: 'openai',
+      modelIds: ['gpt-5.5-pro', 'gpt-5.5-mini', 'gpt-5.5-pro']
     })
     const config = decodeConfig(link, 'data')
 
@@ -37,6 +102,20 @@ describe('buildCherryStudioDeepLink', () => {
       apiKey: 'sk-test'
     })
     expect(config.id).toMatch(/^fluxcode-openai-/)
+    expect(config.models).toEqual([
+      {
+        id: 'gpt-5.5-pro',
+        provider: config.id,
+        name: 'gpt-5.5-pro',
+        group: '测试站点 (OpenAI)'
+      },
+      {
+        id: 'gpt-5.5-mini',
+        provider: config.id,
+        name: 'gpt-5.5-mini',
+        group: '测试站点 (OpenAI)'
+      }
+    ])
   })
 
   it('uses the native Gemini v1beta endpoint for Antigravity imports', () => {
@@ -52,11 +131,11 @@ describe('buildCherryStudioDeepLink', () => {
 })
 
 describe('buildChatboxDeepLink', () => {
-  it('imports a custom OpenAI provider with the configured default model', () => {
+  it('imports a custom OpenAI provider with all available models', () => {
     const config = decodeConfig(buildChatboxDeepLink({
       ...baseOptions,
       providerType: 'openai',
-      openaiModelId: 'gpt-5.5-pro'
+      modelIds: ['gpt-5.5-pro', 'gpt-5.5-mini']
     }), 'config')
 
     expect(config).toMatchObject({
@@ -66,7 +145,10 @@ describe('buildChatboxDeepLink', () => {
       settings: {
         apiHost: 'https://flux.example/api/v1',
         apiKey: 'sk-test',
-        models: [{ modelId: 'gpt-5.5-pro', nickname: 'gpt-5.5-pro' }]
+        models: [
+          { modelId: 'gpt-5.5-pro', nickname: 'gpt-5.5-pro' },
+          { modelId: 'gpt-5.5-mini', nickname: 'gpt-5.5-mini' }
+        ]
       }
     })
     expect(config.id).toMatch(/^custom-provider-fluxcode-openai-/)
@@ -86,14 +168,19 @@ describe('buildChatboxDeepLink', () => {
     const config = decodeConfig(buildChatboxDeepLink({
       ...baseOptions,
       baseUrl: 'https://flux.example/api/antigravity/v1beta',
-      providerType: 'gemini'
+      providerType: 'gemini',
+      modelIds: ['gemini-2.5-pro', 'models/gemini-2.5-flash']
     }), 'config')
 
     expect(config).toEqual({
       id: 'gemini',
       settings: {
         apiHost: 'https://flux.example/api/antigravity',
-        apiKey: 'sk-test'
+        apiKey: 'sk-test',
+        models: [
+          { modelId: 'gemini-2.5-pro', nickname: 'gemini-2.5-pro' },
+          { modelId: 'gemini-2.5-flash', nickname: 'gemini-2.5-flash' }
+        ]
       }
     })
   })

@@ -1191,6 +1191,8 @@ import { buildCcswitchProviderDeepLink, type CcswitchProviderApp } from '@/utils
 import {
   buildChatboxDeepLink,
   buildCherryStudioDeepLink,
+  fetchClientImportModelIds,
+  type ClientImportDeepLinkOptions,
   type ClientImportProviderType
 } from '@/utils/clientImportDeepLink'
 import { formatDateTime } from '@/utils/format'
@@ -1994,7 +1996,7 @@ const importToClient = (row: ApiKey, target: ClientImportTarget) => {
     : platform === 'gemini'
       ? 'gemini'
       : 'anthropic'
-  executeClientImport(row, target, providerType)
+  void executeClientImport(row, target, providerType)
 }
 
 const selectClientImportTarget = (target: ClientImportTarget) => {
@@ -2005,24 +2007,36 @@ const selectClientImportTarget = (target: ClientImportTarget) => {
   }
 }
 
-const executeClientImport = (
+const executeClientImport = async (
   row: ApiKey,
   target: ClientImportTarget,
   providerType: ClientImportProviderType
 ) => {
-  switch (target) {
-    case 'cherryStudio':
-      executeCherryStudioImport(row, providerType)
-      break
-    case 'chatbox':
-      executeChatboxImport(row, providerType)
-      break
-    default:
-      executeCcsImport(row, providerType === 'gemini' ? 'gemini' : 'claude')
+  if (target === 'ccswitch') {
+    executeCcsImport(row, providerType === 'gemini' ? 'gemini' : 'claude')
+    return
+  }
+
+  const options = getClientImportOptions(row, providerType)
+  try {
+    const modelIds = await fetchClientImportModelIds(options)
+    const importOptions = { ...options, modelIds }
+
+    if (target === 'cherryStudio') {
+      executeCherryStudioImport(importOptions)
+    } else {
+      executeChatboxImport(importOptions)
+    }
+  } catch (error) {
+    console.error('Failed to load models for client import:', error)
+    appStore.showError(t('keys.clientImportModelsFailed'))
   }
 }
 
-const getClientImportOptions = (row: ApiKey, providerType: ClientImportProviderType) => {
+const getClientImportOptions = (
+  row: ApiKey,
+  providerType: ClientImportProviderType
+): ClientImportDeepLinkOptions => {
   const baseUrl = publicSettings.value?.api_base_url || window.location.origin
   const platform = row.group?.platform || 'anthropic'
   const baseRoot = baseUrl.trim().replace(/\/(?:v1beta|v1)\/?$/i, '').replace(/\/+$/, '')
@@ -2053,13 +2067,13 @@ const openClientDeepLink = (deeplink: string, errorMessageKey: string) => {
   }
 }
 
-const executeCherryStudioImport = (row: ApiKey, providerType: ClientImportProviderType) => {
-  const deeplink = buildCherryStudioDeepLink(getClientImportOptions(row, providerType))
+const executeCherryStudioImport = (options: ClientImportDeepLinkOptions) => {
+  const deeplink = buildCherryStudioDeepLink(options)
   openClientDeepLink(deeplink, 'keys.cherryStudioNotInstalled')
 }
 
-const executeChatboxImport = (row: ApiKey, providerType: ClientImportProviderType) => {
-  const deeplink = buildChatboxDeepLink(getClientImportOptions(row, providerType))
+const executeChatboxImport = (options: ClientImportDeepLinkOptions) => {
+  const deeplink = buildChatboxDeepLink(options)
   openClientDeepLink(deeplink, 'keys.chatboxNotInstalled')
 }
 
@@ -2125,7 +2139,7 @@ const executeCcsImport = (row: ApiKey, clientType: 'claude' | 'gemini') => {
 
 const handleClientTypeSelect = (clientType: 'claude' | 'gemini') => {
   if (pendingClientImport.value) {
-    executeClientImport(
+    void executeClientImport(
       pendingClientImport.value.row,
       pendingClientImport.value.target,
       clientType === 'gemini' ? 'gemini' : 'anthropic'

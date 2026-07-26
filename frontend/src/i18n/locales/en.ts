@@ -999,6 +999,7 @@ export default {
     ccSwitchNotInstalled: 'CC-Switch is not installed or the protocol handler is not registered. Please install CC-Switch first or manually copy the API key.',
     cherryStudioNotInstalled: 'Cherry Studio is not installed, is outdated, or its protocol handler is not registered. Please install or update Cherry Studio, or configure the API key manually.',
     chatboxNotInstalled: 'Chatbox is not installed, is outdated, or its protocol handler is not registered. Please install or update Chatbox, or configure the API key manually.',
+    clientImportModelsFailed: 'Failed to load the available model list. The import was cancelled; please try again later.',
     clientTypeSelect: {
       title: 'Select API Type',
       description: 'This group supports both Claude and Gemini. Select the API type to import:',

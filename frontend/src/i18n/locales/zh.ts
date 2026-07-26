@@ -1003,6 +1003,7 @@ export default {
       'Cherry Studio 未安装、版本不支持或协议处理程序未注册。请升级或安装 Cherry Studio，也可手动配置 API 密钥。',
     chatboxNotInstalled:
       'Chatbox 未安装、版本不支持或协议处理程序未注册。请升级或安装 Chatbox，也可手动配置 API 密钥。',
+    clientImportModelsFailed: '获取可用模型列表失败，已取消导入，请稍后重试。',
     clientTypeSelect: {
       title: '选择接口类型',
       description: '该分组同时支持 Claude 和 Gemini，请选择要导入的接口类型：',

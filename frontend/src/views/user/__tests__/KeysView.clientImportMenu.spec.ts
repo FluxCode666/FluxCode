@@ -19,6 +19,8 @@ describe('KeysView client import menu', () => {
     expect(keysViewSource).toContain("selectClientImportTarget('ccswitch')")
     expect(keysViewSource).toContain("selectClientImportTarget('cherryStudio')")
     expect(keysViewSource).toContain("selectClientImportTarget('chatbox')")
+    expect(keysViewSource).toContain('await fetchClientImportModelIds(options)')
+    expect(keysViewSource).toContain('const importOptions = { ...options, modelIds }')
   })
 
   it('supports hover, keyboard navigation, and a teleported unclipped menu', () => {
