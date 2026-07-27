@@ -110,6 +110,45 @@ FluxCode 是一个 AI API 网关平台，用于分发和管理 AI 产品订阅�
 
 ---
 
+## 本地开发环境（Docker 中间件 + 本机前后端）
+
+当前开发机已准备一套**仅供本地测试**的环境。后端和前端应以本机进程运行；Docker 只用于 PostgreSQL 和 Redis。
+
+| 组件 | 本地地址 / 容器 | 测试配置 |
+|------|-----------------|----------|
+| PostgreSQL | `fluxcode-local-postgres`，`127.0.0.1:5432` | 数据库 `fluxcode`，用户 `fluxcode`，密码 `123456` |
+| Redis | 复用已有 `fluxmedia-local-redis`，`127.0.0.1:6379` | 已启用认证；不要新建重复容器，也不要把密码提交到仓库 |
+| 后端 | `http://127.0.0.1:8080` | 运行时配置位于被 Git 忽略的 `backend/.dev/local-runtime` |
+| 前端 | `http://127.0.0.1:3001` | 经 Vite 代理访问本机后端 |
+
+本地管理员账号：
+
+```text
+邮箱：admin@fluxcode.local
+密码：FluxCode_Local_2026
+```
+
+手动启动：
+
+```bash
+# 仅在容器已停止时启动；Redis 是复用的现有容器
+docker start fluxcode-local-postgres
+docker start fluxmedia-local-redis
+
+# 终端 1：后端（本机进程）
+cd backend
+DATA_DIR="$PWD/.dev/local-runtime" go run ./cmd/server/
+
+# 终端 2：前端（本机进程）
+cd frontend
+pnpm install --frozen-lockfile
+VITE_DEV_PROXY_TARGET=http://127.0.0.1:8080 pnpm dev -- --host 127.0.0.1 --port 3001
+```
+
+此配置仅用于开发，不得用于生产；`backend/.dev/local-runtime` 中包含 Redis 凭据等敏感配置，必须保持忽略且不得提交。
+
+---
+
 ## Nginx 反向代理注意事项
 
 通过 Nginx 反向代理 FluxCode（或 CRS 服务）并搭配 Codex CLI 使用时，需要在 Nginx 配置的 `http` 块中添加：

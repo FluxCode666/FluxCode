@@ -24,6 +24,11 @@ services:
     #   dockerfile: deploy/backend/Dockerfile
     container_name: fluxcode-backend
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "${DOCKER_LOG_MAX_SIZE:-100m}"
+        max-file: "${DOCKER_LOG_MAX_FILE:-5}"
     networks:
       - flux-code
     ulimits:
