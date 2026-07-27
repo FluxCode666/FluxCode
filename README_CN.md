@@ -116,7 +116,7 @@ FluxCode 是一个 AI API 网关平台，用于分发和管理 AI 产品订阅�
 
 | 组件 | 本地地址 / 容器 | 测试配置 |
 |------|-----------------|----------|
-| PostgreSQL | `fluxcode-local-postgres`，`127.0.0.1:5432` | 数据库 `fluxcode`，用户 `fluxcode`，密码 `fluxcode_local_dev` |
+| PostgreSQL | `fluxcode-local-postgres`，`127.0.0.1:5432` | 数据库 `fluxcode`，用户 `fluxcode`，密码 `123456` |
 | Redis | 复用已有 `fluxmedia-local-redis`，`127.0.0.1:6379` | 已启用认证；不要新建重复容器，也不要把密码提交到仓库 |
 | 后端 | `http://127.0.0.1:8080` | 运行时配置位于被 Git 忽略的 `backend/.dev/local-runtime` |
 | 前端 | `http://127.0.0.1:3001` | 经 Vite 代理访问本机后端 |
