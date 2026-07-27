@@ -64,6 +64,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
+      - name: Verify Docker Go versions
+        run: sh tools/check_go_version_sync.sh
+
       - name: Set image metadata
         id: meta
         run: |
