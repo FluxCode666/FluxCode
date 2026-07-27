@@ -157,6 +157,87 @@ func TestModelPricingPageServiceListModelsAggregatesConcreteEnabledChannelModels
 	require.InEpsilon(t, 0.000018, models[0].LowestGroupPrice.OutputPrice, 0.000001)
 }
 
+func TestModelPricingPageServiceUsesManualPricingWhenOfficialPricingIsMissing(t *testing.T) {
+	input := floatPtr(0.000001)
+	output := floatPtr(0.000004)
+	svc := NewModelPricingPageServiceForTest(
+		&modelPricingChannelListerStub{channels: []Channel{{
+			ID:       10,
+			Status:   StatusActive,
+			GroupIDs: []int64{1},
+			ModelPricing: []ChannelModelPricing{{
+				Platform:     "anthropic",
+				Models:       []string{"oai-glm-5.2"},
+				Capabilities: []string{"streaming"},
+				BillingMode:  BillingModeToken,
+				InputPrice:   input,
+				OutputPrice:  output,
+			}},
+		}}},
+		&modelPricingGroupListerStub{groups: []Group{{
+			ID: 1, Name: "Anthropic 组", Platform: "anthropic", Status: StatusActive, RateMultiplier: 1.5,
+		}}},
+		&modelPricingBillingStub{},
+	)
+
+	models, err := svc.ListModels(context.Background(), ModelPricingQuery{})
+	require.NoError(t, err)
+	require.Len(t, models, 1)
+	require.Equal(t, "oai-glm-5.2", models[0].ID)
+	require.Zero(t, models[0].OfficialPrice.InputPrice)
+	require.Equal(t, 0.0000015, models[0].LowestGroupPrice.InputPrice)
+	require.Equal(t, 0.000006, models[0].LowestGroupPrice.OutputPrice)
+
+	detail, err := svc.GetModel(context.Background(), "oai-glm-5.2")
+	require.NoError(t, err)
+	require.Len(t, detail.Groups, 1)
+	require.Equal(t, 0.0000015, detail.Groups[0].Price.InputPrice)
+	require.Equal(t, 0.000006, detail.Groups[0].Price.OutputPrice)
+}
+
+func TestModelPricingPageServiceSkipsModelWithoutOfficialOrManualPricing(t *testing.T) {
+	svc := NewModelPricingPageServiceForTest(
+		&modelPricingChannelListerStub{channels: []Channel{{
+			ID:       10,
+			Status:   StatusActive,
+			GroupIDs: []int64{1},
+			ModelPricing: []ChannelModelPricing{{
+				Platform:    "anthropic",
+				Models:      []string{"unpriced-model"},
+				BillingMode: BillingModeToken,
+			}},
+		}}},
+		&modelPricingGroupListerStub{groups: []Group{{
+			ID: 1, Name: "Anthropic 组", Platform: "anthropic", Status: StatusActive,
+		}}},
+		&modelPricingBillingStub{},
+	)
+
+	models, err := svc.ListModels(context.Background(), ModelPricingQuery{})
+	require.NoError(t, err)
+	require.Empty(t, models)
+}
+
+func TestHasManualModelPricing(t *testing.T) {
+	tests := []struct {
+		name    string
+		pricing ChannelModelPricing
+		want    bool
+	}{
+		{name: "no manual price"},
+		{name: "flat token price", pricing: ChannelModelPricing{InputPrice: floatPtr(0.000001)}, want: true},
+		{name: "per request price", pricing: ChannelModelPricing{PerRequestPrice: floatPtr(0.02)}, want: true},
+		{name: "interval price", pricing: ChannelModelPricing{Intervals: []PricingInterval{{OutputPrice: floatPtr(0.000004)}}}, want: true},
+		{name: "empty interval", pricing: ChannelModelPricing{Intervals: []PricingInterval{{MinTokens: 0}}}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, hasManualModelPricing(tt.pricing))
+		})
+	}
+}
+
 func TestModelPricingPageServiceListModelsUsesLowestGroupPrice(t *testing.T) {
 	input := floatPtr(0.000006)
 	output := floatPtr(0.000012)
