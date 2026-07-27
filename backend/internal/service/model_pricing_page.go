@@ -133,11 +133,12 @@ type ModelPricingModelDetail struct {
 var ErrModelPricingNotFound = errors.New("model pricing not found")
 
 type modelCatalogItem struct {
-	ID           string
-	Platforms    map[string]struct{}
-	Capabilities map[string]struct{}
-	Official     *ModelPricing
-	Groups       []modelCatalogGroup
+	ID                 string
+	Platforms          map[string]struct{}
+	Capabilities       map[string]struct{}
+	Official           *ModelPricing
+	HasOfficialPricing bool
+	Groups             []modelCatalogGroup
 }
 
 type modelCatalogGroup struct {
@@ -336,18 +337,26 @@ func (s *ModelPricingPageService) buildCatalog(ctx context.Context) (map[string]
 					continue
 				}
 				official, err := s.billing.GetModelPricing(model)
-				if err != nil || official == nil {
-					continue
+				hasOfficialPricing := err == nil && official != nil
+				if !hasOfficialPricing {
+					if !hasManualModelPricing(pricing) {
+						continue
+					}
+					official = &ModelPricing{}
 				}
 				item := catalog[model]
 				if item == nil {
 					item = &modelCatalogItem{
-						ID:           model,
-						Platforms:    map[string]struct{}{},
-						Capabilities: map[string]struct{}{},
-						Official:     official,
+						ID:                 model,
+						Platforms:          map[string]struct{}{},
+						Capabilities:       map[string]struct{}{},
+						Official:           official,
+						HasOfficialPricing: hasOfficialPricing,
 					}
 					catalog[model] = item
+				} else if hasOfficialPricing && !item.HasOfficialPricing {
+					item.Official = official
+					item.HasOfficialPricing = true
 				}
 				item.addPlatform(pricing.Platform)
 				capabilities := capabilitiesSet(pricing.Capabilities)
@@ -489,6 +498,15 @@ func resolveDisplayPricing(official ModelPricing, pricing ChannelModelPricing) M
 	return base
 }
 
+func hasManualModelPricing(pricing ChannelModelPricing) bool {
+	if pricing.InputPrice != nil || pricing.OutputPrice != nil ||
+		pricing.CacheWritePrice != nil || pricing.CacheReadPrice != nil ||
+		pricing.ImageOutputPrice != nil || pricing.PerRequestPrice != nil {
+		return true
+	}
+	return len(filterValidIntervals(pricing.Intervals)) > 0
+}
+
 func modelPricingToAmount(pricing *ModelPricing) ModelPricingAmount {
 	if pricing == nil {
 		return ModelPricingAmount{}
@@ -623,6 +641,9 @@ func attachWildcardSupportedGroups(item *modelCatalogItem, channels []Channel, g
 		}
 		for _, pricing := range channel.ModelPricing {
 			if !wildcardPricingMatchesModel(pricing, item.ID) {
+				continue
+			}
+			if !item.HasOfficialPricing && !hasManualModelPricing(pricing) {
 				continue
 			}
 			contributed := false

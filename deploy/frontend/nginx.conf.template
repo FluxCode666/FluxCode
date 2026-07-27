@@ -9,6 +9,7 @@
 # =============================================================================
 
 worker_processes auto;
+worker_rlimit_nofile 65535;
 error_log /var/log/nginx/error.log warn;
 pid /var/run/nginx.pid;
 
@@ -104,10 +105,10 @@ http {
             proxy_pass http://backend;
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-For $remote_addr;
             proxy_set_header X-Forwarded-Proto $scheme;
             proxy_set_header X-Forwarded-Host $host;
-            proxy_set_header CF-Connecting-IP $http_cf_connecting_ip;
+            proxy_set_header CF-Connecting-IP "";
 
             # WebSocket support (for /api/v1/admin/ops/ws/qps)
             proxy_http_version 1.1;
@@ -121,19 +122,40 @@ http {
             proxy_send_timeout 300s;
         }
 
+        # /v1/responses - OpenAI Responses API with long-lived HTTP/WebSocket streams
+        location = /v1/responses {
+            proxy_pass http://backend;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $remote_addr;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_set_header CF-Connecting-IP "";
+
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection $connection_upgrade;
+
+            proxy_buffering off;
+            proxy_request_buffering off;
+            proxy_cache off;
+            proxy_read_timeout 3600s;
+            proxy_send_timeout 3600s;
+        }
+
         # /v1/ - OpenAI-compatible gateway API
         location /v1/ {
             proxy_pass http://backend;
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-For $remote_addr;
             proxy_set_header X-Forwarded-Proto $scheme;
-            proxy_set_header CF-Connecting-IP $http_cf_connecting_ip;
+            proxy_set_header CF-Connecting-IP "";
 
             proxy_http_version 1.1;
             proxy_set_header Connection "";
 
             proxy_buffering off;
+            proxy_request_buffering off;
             proxy_cache off;
             proxy_read_timeout 300s;
             proxy_send_timeout 300s;
@@ -144,9 +166,9 @@ http {
             proxy_pass http://backend;
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-For $remote_addr;
             proxy_set_header X-Forwarded-Proto $scheme;
-            proxy_set_header CF-Connecting-IP $http_cf_connecting_ip;
+            proxy_set_header CF-Connecting-IP "";
 
             proxy_http_version 1.1;
             proxy_set_header Connection "";
@@ -162,9 +184,9 @@ http {
             proxy_pass http://backend;
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-For $remote_addr;
             proxy_set_header X-Forwarded-Proto $scheme;
-            proxy_set_header CF-Connecting-IP $http_cf_connecting_ip;
+            proxy_set_header CF-Connecting-IP "";
 
             # WebSocket upgrade support
             proxy_http_version 1.1;
@@ -172,6 +194,7 @@ http {
             proxy_set_header Connection $connection_upgrade;
 
             proxy_buffering off;
+            proxy_request_buffering off;
             proxy_cache off;
             proxy_read_timeout 3600s;
             proxy_send_timeout 3600s;
@@ -182,9 +205,9 @@ http {
             proxy_pass http://backend;
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-For $remote_addr;
             proxy_set_header X-Forwarded-Proto $scheme;
-            proxy_set_header CF-Connecting-IP $http_cf_connecting_ip;
+            proxy_set_header CF-Connecting-IP "";
 
             proxy_http_version 1.1;
             proxy_set_header Connection "";
@@ -200,9 +223,9 @@ http {
             proxy_pass http://backend;
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-For $remote_addr;
             proxy_set_header X-Forwarded-Proto $scheme;
-            proxy_set_header CF-Connecting-IP $http_cf_connecting_ip;
+            proxy_set_header CF-Connecting-IP "";
 
             proxy_http_version 1.1;
             proxy_set_header Connection "";
@@ -218,9 +241,9 @@ http {
             proxy_pass http://backend;
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-For $remote_addr;
             proxy_set_header X-Forwarded-Proto $scheme;
-            proxy_set_header CF-Connecting-IP $http_cf_connecting_ip;
+            proxy_set_header CF-Connecting-IP "";
 
             proxy_http_version 1.1;
             proxy_set_header Connection "";
@@ -236,8 +259,9 @@ http {
             proxy_pass http://backend;
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-For $remote_addr;
             proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_set_header CF-Connecting-IP "";
 
             proxy_http_version 1.1;
             proxy_set_header Connection "";
@@ -247,6 +271,9 @@ http {
         location = /health {
             proxy_pass http://backend;
             proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $remote_addr;
+            proxy_set_header CF-Connecting-IP "";
             proxy_http_version 1.1;
             proxy_set_header Connection "";
         }
