@@ -31,6 +31,7 @@ const (
 	ModelCapabilityVideoGeneration  ModelCapability = "video_generation"
 	ModelCapabilityAudioInput       ModelCapability = "audio_input"
 	ModelCapabilityAudioOutput      ModelCapability = "audio_output"
+	ModelCapabilityEmbedding        ModelCapability = "embedding"
 )
 
 var allowedModelCapabilities = map[string]struct{}{
@@ -46,6 +47,7 @@ var allowedModelCapabilities = map[string]struct{}{
 	string(ModelCapabilityVideoGeneration):  {},
 	string(ModelCapabilityAudioInput):       {},
 	string(ModelCapabilityAudioOutput):      {},
+	string(ModelCapabilityEmbedding):        {},
 }
 
 func NormalizeModelCapabilities(input []string) []string {

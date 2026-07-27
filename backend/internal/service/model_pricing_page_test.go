@@ -297,18 +297,21 @@ func TestModelPricingPageServiceListModelsFiltersSearchPlatformAndCapability(t *
 		&modelPricingChannelListerStub{channels: []Channel{{
 			ID:       10,
 			Status:   StatusActive,
-			GroupIDs: []int64{1},
+			GroupIDs: []int64{1, 2},
 			ModelPricing: []ChannelModelPricing{
 				{Platform: "anthropic", Models: []string{"claude-sonnet-4"}, Capabilities: []string{"streaming"}, BillingMode: BillingModeToken},
 				{Platform: "openai", Models: []string{"gpt-image-1"}, Capabilities: []string{"tools"}, BillingMode: BillingModeToken},
+				{Platform: "embedding", Models: []string{"text-embedding-3-small"}, Capabilities: []string{"embedding"}, BillingMode: BillingModeToken},
 			},
 		}}},
 		&modelPricingGroupListerStub{groups: []Group{
 			{ID: 1, Name: "基础组", Platform: "anthropic", Status: StatusActive, RateMultiplier: 1},
+			{ID: 2, Name: "嵌入组", Platform: "embedding", Status: StatusActive, RateMultiplier: 1},
 		}},
 		&modelPricingBillingStub{prices: map[string]*ModelPricing{
-			"claude-sonnet-4": {InputPricePerToken: 0.000003},
-			"gpt-image-1":     {InputPricePerToken: 0.000001},
+			"claude-sonnet-4":        {InputPricePerToken: 0.000003},
+			"gpt-image-1":            {InputPricePerToken: 0.000001},
+			"text-embedding-3-small": {InputPricePerToken: 0.00000002},
 		}},
 	)
 
@@ -316,6 +319,12 @@ func TestModelPricingPageServiceListModelsFiltersSearchPlatformAndCapability(t *
 	require.NoError(t, err)
 	require.Len(t, models, 1)
 	require.Equal(t, "claude-sonnet-4", models[0].ID)
+
+	models, err = svc.ListModels(context.Background(), ModelPricingQuery{Platform: "embedding", Capability: "embedding"})
+	require.NoError(t, err)
+	require.Len(t, models, 1)
+	require.Equal(t, "text-embedding-3-small", models[0].ID)
+	require.Equal(t, []string{"embedding"}, models[0].Capabilities)
 }
 
 func TestModelPricingPageServiceListGroupsReturnsVisibleStandardGroupsOnly(t *testing.T) {

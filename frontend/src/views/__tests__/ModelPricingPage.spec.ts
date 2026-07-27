@@ -235,6 +235,23 @@ describe('ModelPricingPage', () => {
     expect(wrapper.text()).not.toContain('$6.00000/M · 2.00x')
   })
 
+  it('提供文本嵌入能力筛选项', async () => {
+    const wrapper = mount(ModelPricingPage, {
+      global: {
+        stubs: {
+          PublicHeader: true,
+          BaseDialog: BaseDialogStub,
+          Select: SelectStub
+        }
+      }
+    })
+
+    await flushPromises()
+
+    const capabilitySelect = wrapper.findAllComponents(SelectStub)[1]
+    expect(capabilitySelect.props('options')).toContainEqual({ value: 'embedding', label: '文本嵌入' })
+  })
+
   it('copies model id from list cards and detail modal', async () => {
     const wrapper = mount(ModelPricingPage, {
       global: {

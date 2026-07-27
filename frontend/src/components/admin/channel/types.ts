@@ -37,7 +37,8 @@ export const MODEL_CAPABILITY_OPTIONS: { value: ModelCapability; label: string }
   { value: 'image_generation', label: '图片生成' },
   { value: 'video_generation', label: '视频生成' },
   { value: 'audio_input', label: '音频输入' },
-  { value: 'audio_output', label: '音频输出' }
+  { value: 'audio_output', label: '音频输出' },
+  { value: 'embedding', label: '文本嵌入' }
 ]
 
 export function normalizeCapabilities(input: unknown): ModelCapability[] {

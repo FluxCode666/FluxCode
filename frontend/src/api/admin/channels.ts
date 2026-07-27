@@ -19,6 +19,7 @@ export type ModelCapability =
   | 'video_generation'
   | 'audio_input'
   | 'audio_output'
+  | 'embedding'
 
 export interface PricingInterval {
   id?: number

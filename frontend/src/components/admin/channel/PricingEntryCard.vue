@@ -97,7 +97,7 @@
           </div>
         </div>
 
-        <div v-if="!isEmbedding" class="mt-3">
+        <div class="mt-3">
           <label class="text-xs font-medium text-gray-500 dark:text-gray-400">
             {{ t('admin.channels.form.capabilities', '能力标签') }}
           </label>
@@ -293,7 +293,9 @@ const billingModeOptions = computed(() => [
   { value: 'per_request', label: t('admin.channels.billingMode.perRequest', '按次') },
   { value: 'image', label: t('admin.channels.billingMode.image', '图片（按次）') }
 ])
-const capabilityOptions = MODEL_CAPABILITY_OPTIONS
+const capabilityOptions = computed(() => MODEL_CAPABILITY_OPTIONS.filter((option) =>
+  isEmbedding.value ? option.value === 'embedding' : option.value !== 'embedding'
+))
 const normalizedCapabilities = computed(() => normalizeCapabilities(props.entry.capabilities))
 
 const billingModeLabel = computed(() => {
@@ -303,7 +305,8 @@ const billingModeLabel = computed(() => {
 })
 
 function capabilityLabel(value: ModelCapability): string {
-  return capabilityOptions.find((option) => option.value === value)?.label || value
+  const fallback = capabilityOptions.value.find((option) => option.value === value)?.label || value
+  return t(`modelPricing.capabilities.${value}`, fallback)
 }
 
 function toggleCapability(value: ModelCapability, checked: boolean) {

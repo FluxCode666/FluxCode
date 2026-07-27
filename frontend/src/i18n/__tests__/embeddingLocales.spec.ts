@@ -10,5 +10,6 @@ describe('embedding locale coverage', () => {
     expect(locale.admin.ops.errorLog.requestTypeEmbedding).toBeTruthy()
     expect(locale.admin.ops.errorDetail.requestTypeEmbedding).toBeTruthy()
     expect(locale.admin.ops.errorDetail.contentPreviewUnavailable).toBeTruthy()
+    expect(locale.modelPricing.capabilities.embedding).toBeTruthy()
   })
 })

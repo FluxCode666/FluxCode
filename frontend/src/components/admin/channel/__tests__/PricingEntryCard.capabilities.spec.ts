@@ -79,6 +79,24 @@ describe('PricingEntryCard capabilities', () => {
     expect(wrapper.find('.select-stub').exists()).toBe(false)
   })
 
+  it('embedding 平台显示并可更新文本嵌入能力标签', async () => {
+    const wrapper = mount(PricingEntryCard, {
+      props: {
+        entry: { ...baseEntry, models: ['text-embedding-3-small'], capabilities: [] },
+        platform: 'embedding'
+      },
+      global: { stubs: { Icon: true, Select: true, ModelTagInput: true, IntervalRow: true } }
+    })
+
+    expect(wrapper.find('[data-testid="capability-embedding"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="capability-streaming"]').exists()).toBe(false)
+
+    await wrapper.get('[data-testid="capability-embedding"]').setValue(true)
+
+    const updates = wrapper.emitted('update') || []
+    expect(updates.at(-1)?.[0]).toMatchObject({ capabilities: ['embedding'] })
+  })
+
   it('renders the embedding disabled warning in English locale', () => {
     i18nState.locale = 'en'
     const wrapper = mount(PricingEntryCard, {

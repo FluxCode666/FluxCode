@@ -383,7 +383,8 @@ const capabilityOptions = computed(() => [
   { value: 'image_generation', label: t('modelPricing.capabilities.image_generation', '图片生成') },
   { value: 'video_generation', label: t('modelPricing.capabilities.video_generation', '视频生成') },
   { value: 'audio_input', label: t('modelPricing.capabilities.audio_input', '音频输入') },
-  { value: 'audio_output', label: t('modelPricing.capabilities.audio_output', '音频输出') }
+  { value: 'audio_output', label: t('modelPricing.capabilities.audio_output', '音频输出') },
+  { value: 'embedding', label: t('modelPricing.capabilities.embedding', '文本嵌入') }
 ])
 
 const groupOptions = computed(() => [
@@ -586,6 +587,7 @@ function capabilityLabel(capability: string): string {
   if (capability === 'video_generation') return t('modelPricing.capabilities.video_generation', '视频生成')
   if (capability === 'audio_input') return t('modelPricing.capabilities.audio_input', '音频输入')
   if (capability === 'audio_output') return t('modelPricing.capabilities.audio_output', '音频输出')
+  if (capability === 'embedding') return t('modelPricing.capabilities.embedding', '文本嵌入')
   return capability
 }
 

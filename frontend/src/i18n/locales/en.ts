@@ -257,7 +257,8 @@ export default {
       image_generation: 'Image Generation',
       video_generation: 'Video Generation',
       audio_input: 'Audio Input',
-      audio_output: 'Audio Output'
+      audio_output: 'Audio Output',
+      embedding: 'Embedding'
     }
   },
 

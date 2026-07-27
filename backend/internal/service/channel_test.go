@@ -222,6 +222,7 @@ func TestNormalizeModelCapabilities(t *testing.T) {
 		"video_generation",
 		"audio_input",
 		"audio_output",
+		" Embedding ",
 	})
 	require.Equal(t, []string{
 		"streaming",
@@ -232,6 +233,7 @@ func TestNormalizeModelCapabilities(t *testing.T) {
 		"video_generation",
 		"audio_input",
 		"audio_output",
+		"embedding",
 	}, got)
 }
 

@@ -13,6 +13,7 @@ export type ModelCapability =
   | 'video_generation'
   | 'audio_input'
   | 'audio_output'
+  | 'embedding'
 
 /** 公开模型性能数据支持的固定观察范围。 */
 export type ModelPerformanceRange = '24h' | '7d'

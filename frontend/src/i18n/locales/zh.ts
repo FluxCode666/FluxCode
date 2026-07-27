@@ -255,7 +255,8 @@ export default {
       image_generation: '图片生成',
       video_generation: '视频生成',
       audio_input: '音频输入',
-      audio_output: '音频输出'
+      audio_output: '音频输出',
+      embedding: '文本嵌入'
     }
   },
 

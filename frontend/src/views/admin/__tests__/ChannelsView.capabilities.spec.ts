@@ -125,7 +125,7 @@ describe('ChannelsView capabilities mapping', () => {
       model_pricing: [{
         platform: 'embedding',
         models: ['embed-model'],
-        capabilities: ['streaming'],
+        capabilities: ['embedding', 'embedding'],
         billing_mode: 'per_request',
         input_price: 0,
         output_price: 0.000015,
@@ -154,6 +154,7 @@ describe('ChannelsView capabilities mapping', () => {
     const payload = formToChannelAPI(sections, {})
     expect(payload.model_pricing[0]).toMatchObject({
       platform: 'embedding',
+      capabilities: ['embedding'],
       billing_mode: 'token',
       input_price: 0,
       output_price: null,
