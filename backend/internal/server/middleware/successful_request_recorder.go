@@ -54,11 +54,15 @@ func SuccessfulRequestRecorder(publisher SuccessfulRequestRecordPublisher) gin.H
 		}
 
 		responseCapture := newLimitedBodyCapture(maxBodyBytes)
+		originalWriter := c.Writer
 		capturedWriter := &successfulRequestCaptureWriter{
-			ResponseWriter: c.Writer,
+			ResponseWriter: originalWriter,
 			capture:        responseCapture,
 		}
 		c.Writer = capturedWriter
+		defer func() {
+			c.Writer = originalWriter
+		}()
 
 		c.Next()
 

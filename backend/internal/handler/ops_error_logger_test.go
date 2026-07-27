@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -11,6 +12,23 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
+
+type successfulRequestPublisherForOpsTest struct{}
+
+type innerOpsWriterForTest struct {
+	gin.ResponseWriter
+}
+
+func (successfulRequestPublisherForOpsTest) Enabled() bool { return true }
+
+func (successfulRequestPublisherForOpsTest) MaxBodyBytes() int64 { return 1024 }
+
+func (successfulRequestPublisherForOpsTest) Publish(
+	_ context.Context,
+	_ *service.SuccessfulRequestRecord,
+) error {
+	return nil
+}
 
 func resetOpsErrorLoggerStateForTest(t *testing.T) {
 	t.Helper()
@@ -213,6 +231,59 @@ func TestOpsErrorLoggerMiddleware_DoesNotBreakOuterMiddlewares(t *testing.T) {
 		r.ServeHTTP(rec, req)
 	})
 	require.Equal(t, http.StatusNoContent, rec.Code)
+}
+
+func TestOpsErrorLoggerMiddleware_RestoresWriterWhenInnerMiddlewareWrapsIt(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	r := gin.New()
+	r.Use(middleware2.Recovery())
+	r.Use(middleware2.RequestLogger())
+	r.Use(middleware2.Logger())
+	r.GET(
+		"/v1/messages",
+		OpsErrorLoggerMiddleware(nil),
+		func(c *gin.Context) {
+			c.Writer = &innerOpsWriterForTest{ResponseWriter: c.Writer}
+			c.Next()
+		},
+		func(c *gin.Context) {
+			c.Status(http.StatusNoContent)
+		},
+	)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/v1/messages", nil)
+
+	require.NotPanics(t, func() {
+		r.ServeHTTP(rec, req)
+	})
+	require.Equal(t, http.StatusNoContent, rec.Code)
+}
+
+func TestOpsErrorLoggerMiddleware_WithSuccessfulRequestRecorderDoesNotBreakOuterMiddlewares(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	r := gin.New()
+	r.Use(middleware2.Recovery())
+	r.Use(middleware2.RequestLogger())
+	r.Use(middleware2.Logger())
+	r.POST(
+		"/v1/messages",
+		OpsErrorLoggerMiddleware(nil),
+		middleware2.SuccessfulRequestRecorder(successfulRequestPublisherForOpsTest{}),
+		func(c *gin.Context) {
+			c.JSON(http.StatusOK, gin.H{"ok": true})
+		},
+	)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+
+	require.NotPanics(t, func() {
+		r.ServeHTTP(rec, req)
+	})
+	require.Equal(t, http.StatusOK, rec.Code)
 }
 
 func TestIsKnownOpsErrorType(t *testing.T) {

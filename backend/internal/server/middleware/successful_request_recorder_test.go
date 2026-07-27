@@ -91,6 +91,31 @@ func TestSuccessfulRequestRecorderCapturesSuccessfulJSONWithoutConsumingHandlerB
 	require.Equal(t, "trace-1", record.TraceID)
 }
 
+func TestSuccessfulRequestRecorderRestoresWriterForOuterMiddleware(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	publisher := &successfulRequestPublisherStub{enabled: true, maxBody: 1024}
+	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		originalWriter := c.Writer
+		c.Next()
+		require.Same(t, originalWriter, c.Writer)
+	})
+	router.POST(
+		"/v1/messages",
+		SuccessfulRequestRecorder(publisher),
+		func(c *gin.Context) {
+			c.JSON(http.StatusOK, gin.H{"ok": true})
+		},
+	)
+
+	response := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+
+	router.ServeHTTP(response, request)
+
+	require.Equal(t, http.StatusOK, response.Code)
+}
+
 func TestSuccessfulRequestRecorderSkipsNon2xxResponse(t *testing.T) {
 	publisher := &successfulRequestPublisherStub{enabled: true, maxBody: 1024}
 	router := newSuccessfulRequestRecorderTestRouter(t, publisher, func(c *gin.Context) {
