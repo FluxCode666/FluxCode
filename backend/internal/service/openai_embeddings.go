@@ -77,16 +77,15 @@ type EmbeddingForwardResult struct {
 }
 
 type embeddingForwardLimits struct {
-	requestMaxBytes    int64
-	responseMaxBytes   int64
-	maxJSONDepth       int
-	maxInputItems      int
-	maxInputItemBytes  int
-	maxTokenValue      int64
-	timeout            time.Duration
-	headerTimeout      time.Duration
-	maxConcurrent      int
-	allowedPrivateCIDR []string
+	requestMaxBytes   int64
+	responseMaxBytes  int64
+	maxJSONDepth      int
+	maxInputItems     int
+	maxInputItemBytes int
+	maxTokenValue     int64
+	timeout           time.Duration
+	headerTimeout     time.Duration
+	maxConcurrent     int
 }
 
 func (s *OpenAIGatewayService) embeddingLimits() embeddingForwardLimits {
@@ -139,7 +138,6 @@ func embeddingLimitsFromConfig(cfg *config.Config) embeddingForwardLimits {
 	if configured.MaxConcurrentRequests > 0 {
 		limits.maxConcurrent = min(configured.MaxConcurrentRequests, config.EmbeddingMaxConcurrentRequestsHardLimit)
 	}
-	limits.allowedPrivateCIDR = append([]string(nil), configured.AllowedPrivateCIDRs...)
 	return limits
 }
 
@@ -290,7 +288,7 @@ func (s *OpenAIGatewayService) forwardEmbeddingCandidate(
 	if strings.TrimSpace(candidate.Account.EffectiveProxyURL()) != "" {
 		return nil, &EmbeddingForwardError{Category: "proxy_not_supported", Retryable: true}
 	}
-	targetURL, destinationIP, err := resolveEmbeddingUpstreamTarget(attemptCtx, candidate.Account.GetEmbeddingBaseURL(), limits)
+	targetURL, destinationIP, err := resolveEmbeddingUpstreamTarget(attemptCtx, candidate.Account.GetEmbeddingBaseURL())
 	if err != nil {
 		return nil, &EmbeddingForwardError{Category: "unsafe_upstream", Retryable: true}
 	}
@@ -579,7 +577,7 @@ func validateEmbeddingJSONDepth(body []byte, maxDepth int) error {
 	return nil
 }
 
-func resolveEmbeddingUpstreamTarget(ctx context.Context, rawBaseURL string, limits embeddingForwardLimits) (string, net.IP, error) {
+func resolveEmbeddingUpstreamTarget(ctx context.Context, rawBaseURL string) (string, net.IP, error) {
 	normalized, err := urlvalidator.ValidateHTTPURL(rawBaseURL, true, urlvalidator.ValidationOptions{
 		AllowPrivate: true,
 	})
@@ -594,31 +592,15 @@ func resolveEmbeddingUpstreamTarget(ctx context.Context, rawBaseURL string, limi
 	if err != nil || len(ips) == 0 {
 		return "", nil, errors.New("embedding upstream DNS resolution failed")
 	}
-	allowedPrivateNets, err := parseEmbeddingPrivateCIDRs(limits.allowedPrivateCIDR)
-	if err != nil {
-		return "", nil, err
-	}
 	for _, ip := range ips {
-		if !isAllowedEmbeddingIP(ip, allowedPrivateNets) {
+		if !isAllowedEmbeddingIP(ip) {
 			return "", nil, errors.New("embedding upstream resolved to a blocked address")
 		}
 	}
 	return buildOpenAIEmbeddingsURL(normalized), ips[0], nil
 }
 
-func parseEmbeddingPrivateCIDRs(rawCIDRs []string) ([]*net.IPNet, error) {
-	result := make([]*net.IPNet, 0, len(rawCIDRs))
-	for _, raw := range rawCIDRs {
-		_, cidr, err := net.ParseCIDR(strings.TrimSpace(raw))
-		if err != nil {
-			return nil, errors.New("embedding private CIDR is invalid")
-		}
-		result = append(result, cidr)
-	}
-	return result, nil
-}
-
-func isAllowedEmbeddingIP(ip net.IP, allowedPrivateNets []*net.IPNet) bool {
+func isAllowedEmbeddingIP(ip net.IP) bool {
 	if ip == nil || ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsUnspecified() || ip.IsMulticast() || !ip.IsGlobalUnicast() {
 		return false
 	}
@@ -627,15 +609,7 @@ func isAllowedEmbeddingIP(ip net.IP, allowedPrivateNets []*net.IPNet) bool {
 			return false
 		}
 	}
-	if !ip.IsPrivate() {
-		return true
-	}
-	for _, cidr := range allowedPrivateNets {
-		if cidr.Contains(ip) {
-			return true
-		}
-	}
-	return false
+	return true
 }
 
 var blockedEmbeddingNetworks = mustParseEmbeddingNetworks(

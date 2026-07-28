@@ -11,10 +11,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func embeddingWriteTestConfig(privateCIDRs ...string) *config.Config {
-	return &config.Config{Gateway: config.GatewayConfig{Embedding: config.EmbeddingGatewayConfig{
-		AllowedPrivateCIDRs: privateCIDRs,
-	}}}
+func embeddingWriteTestConfig() *config.Config {
+	return &config.Config{Gateway: config.GatewayConfig{Embedding: config.EmbeddingGatewayConfig{}}}
 }
 
 func embeddingWriteTestAccount(baseURL string) *Account {
@@ -66,17 +64,17 @@ func TestValidateEmbeddingAccountForWriteEnforcesNetworkPolicy(t *testing.T) {
 	proxied.ProxyID = &proxyID
 	require.ErrorContains(t, validateEmbeddingAccountForWrite(context.Background(), proxied, embeddingWriteTestConfig()), "do not support proxies")
 
-	lookupEmbeddingHostIP = func(context.Context, string) ([]net.IP, error) {
-		return []net.IP{net.ParseIP("10.10.1.2")}, nil
+	lookupEmbeddingHostIP = func(_ context.Context, host string) ([]net.IP, error) {
+		require.Equal(t, "silicon-pool", host)
+		return []net.IP{net.ParseIP("172.18.0.8")}, nil
 	}
-	require.Error(t, validateEmbeddingAccountForWrite(context.Background(), embeddingWriteTestAccount("https://embedding.example.com"), embeddingWriteTestConfig()))
-	require.NoError(t, validateEmbeddingAccountForWrite(context.Background(), embeddingWriteTestAccount("http://embedding.example.com"), embeddingWriteTestConfig("10.10.0.0/16")))
+	require.NoError(t, validateEmbeddingAccountForWrite(context.Background(), embeddingWriteTestAccount("http://silicon-pool:7898/v1"), embeddingWriteTestConfig()))
 }
 
 func TestAdminEmbeddingWriteEntrypointsEnforceNetworkPolicyBeforePersistence(t *testing.T) {
 	originalLookup := lookupEmbeddingHostIP
 	lookupEmbeddingHostIP = func(context.Context, string) ([]net.IP, error) {
-		return []net.IP{net.ParseIP("8.8.8.8")}, nil
+		return []net.IP{net.ParseIP("172.18.0.8")}, nil
 	}
 	t.Cleanup(func() { lookupEmbeddingHostIP = originalLookup })
 
@@ -85,13 +83,13 @@ func TestAdminEmbeddingWriteEntrypointsEnforceNetworkPolicyBeforePersistence(t *
 		svc := &adminServiceImpl{accountRepo: repo, cfg: embeddingWriteTestConfig()}
 		result, err := svc.CreateAccount(context.Background(), &CreateAccountInput{
 			Name: "internal", Platform: PlatformEmbedding, Type: AccountTypeAPIKey,
-			Credentials:          embeddingWriteTestAccount("http://embedding.example.com").Credentials,
+			Credentials:          embeddingWriteTestAccount("http://silicon-pool:7898/v1").Credentials,
 			SkipDefaultGroupBind: true,
 		})
 		require.NoError(t, err)
 		require.NotNil(t, result)
 		require.Same(t, result, repo.created)
-		require.Equal(t, "http://embedding.example.com", result.GetEmbeddingBaseURL())
+		require.Equal(t, "http://silicon-pool:7898/v1", result.GetEmbeddingBaseURL())
 	})
 
 	t.Run("update accepts an unlisted public host", func(t *testing.T) {

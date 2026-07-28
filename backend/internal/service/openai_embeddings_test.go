@@ -347,13 +347,17 @@ func TestEmbeddingInputValidationAcceptsOpenAIShapesAndRejectsUnsafeValues(t *te
 	}
 }
 
-func TestEmbeddingTargetValidationRejectsPrivateDNSAndBuildsEndpointOnce(t *testing.T) {
-	limits := embeddingForwardLimits{}
+func TestEmbeddingTargetValidationAcceptsDockerPrivateDNSAndBuildsEndpointOnce(t *testing.T) {
 	previous := lookupEmbeddingHostIP
-	lookupEmbeddingHostIP = func(context.Context, string) ([]net.IP, error) { return []net.IP{net.ParseIP("10.0.0.1")}, nil }
+	lookupEmbeddingHostIP = func(_ context.Context, host string) ([]net.IP, error) {
+		require.Equal(t, "silicon-pool", host)
+		return []net.IP{net.ParseIP("172.18.0.8")}, nil
+	}
 	t.Cleanup(func() { lookupEmbeddingHostIP = previous })
-	_, _, err := resolveEmbeddingUpstreamTarget(context.Background(), "https://embedding.example.test/v1", limits)
-	require.Error(t, err)
+	target, pinned, err := resolveEmbeddingUpstreamTarget(context.Background(), "http://silicon-pool:7898/v1")
+	require.NoError(t, err)
+	require.Equal(t, "http://silicon-pool:7898/v1/embeddings", target)
+	require.Equal(t, "172.18.0.8", pinned.String())
 
 	require.Equal(t, "https://embedding.example.test/v1/embeddings", buildOpenAIEmbeddingsURL("https://embedding.example.test"))
 	require.Equal(t, "http://embedding.example.test/v1/embeddings", buildOpenAIEmbeddingsURL("http://embedding.example.test"))
@@ -361,27 +365,24 @@ func TestEmbeddingTargetValidationRejectsPrivateDNSAndBuildsEndpointOnce(t *test
 	require.Equal(t, "https://embedding.example.test/v1/embeddings", buildOpenAIEmbeddingsURL("https://embedding.example.test/v1/embeddings"))
 }
 
-func TestEmbeddingTargetValidationPrivateCIDRAndMixedDNS(t *testing.T) {
-	limits := embeddingForwardLimits{
-		allowedPrivateCIDR: []string{"10.10.0.0/16"},
-	}
+func TestEmbeddingTargetValidationAllowsPrivateDNSAndRejectsMixedBlockedDNS(t *testing.T) {
 	previous := lookupEmbeddingHostIP
 	t.Cleanup(func() { lookupEmbeddingHostIP = previous })
 
 	lookupEmbeddingHostIP = func(context.Context, string) ([]net.IP, error) { return []net.IP{net.ParseIP("10.10.1.2")}, nil }
-	target, pinned, err := resolveEmbeddingUpstreamTarget(context.Background(), "http://embedding.example.test", limits)
+	target, pinned, err := resolveEmbeddingUpstreamTarget(context.Background(), "http://embedding.example.test")
 	require.NoError(t, err)
 	require.Equal(t, "http://embedding.example.test/v1/embeddings", target)
 	require.Equal(t, "10.10.1.2", pinned.String())
 
 	lookupEmbeddingHostIP = func(context.Context, string) ([]net.IP, error) { return []net.IP{net.ParseIP("10.11.1.2")}, nil }
-	_, _, err = resolveEmbeddingUpstreamTarget(context.Background(), "https://embedding.example.test", limits)
-	require.Error(t, err)
+	_, _, err = resolveEmbeddingUpstreamTarget(context.Background(), "https://embedding.example.test")
+	require.NoError(t, err)
 
 	lookupEmbeddingHostIP = func(context.Context, string) ([]net.IP, error) {
 		return []net.IP{net.ParseIP("8.8.8.8"), net.ParseIP("127.0.0.1")}, nil
 	}
-	_, _, err = resolveEmbeddingUpstreamTarget(context.Background(), "https://embedding.example.test", limits)
+	_, _, err = resolveEmbeddingUpstreamTarget(context.Background(), "https://embedding.example.test")
 	require.Error(t, err)
 }
 
@@ -397,9 +398,12 @@ func TestEmbeddingIPPolicyRejectsReservedAndMetadataRanges(t *testing.T) {
 		"240.0.0.1",
 		"2001:db8::1",
 	} {
-		require.Falsef(t, isAllowedEmbeddingIP(net.ParseIP(raw), nil), "address %s must be blocked", raw)
+		require.Falsef(t, isAllowedEmbeddingIP(net.ParseIP(raw)), "address %s must be blocked", raw)
 	}
-	require.True(t, isAllowedEmbeddingIP(net.ParseIP("8.8.8.8"), nil))
+	require.True(t, isAllowedEmbeddingIP(net.ParseIP("8.8.8.8")))
+	require.True(t, isAllowedEmbeddingIP(net.ParseIP("10.0.0.1")))
+	require.True(t, isAllowedEmbeddingIP(net.ParseIP("172.18.0.8")))
+	require.True(t, isAllowedEmbeddingIP(net.ParseIP("192.168.1.10")))
 }
 
 func TestForwardEmbeddingsBoundsDNSResolutionByAttemptTimeout(t *testing.T) {

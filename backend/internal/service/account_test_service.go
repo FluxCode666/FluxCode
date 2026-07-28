@@ -214,7 +214,7 @@ func (s *AccountTestService) testEmbeddingAccountConnection(c *gin.Context, acco
 	limits := (&OpenAIGatewayService{cfg: s.cfg}).embeddingLimits()
 	ctx, cancel := context.WithTimeout(c.Request.Context(), limits.timeout)
 	defer cancel()
-	targetURL, destinationIP, err := resolveEmbeddingUpstreamTarget(ctx, account.GetEmbeddingBaseURL(), limits)
+	targetURL, destinationIP, err := resolveEmbeddingUpstreamTarget(ctx, account.GetEmbeddingBaseURL())
 	if err != nil {
 		return s.sendEmbeddingTestError(c, "embedding_test_unsafe_upstream")
 	}

@@ -64,8 +64,8 @@ func validateEmbeddingAccountForWrite(ctx context.Context, account *Account, cfg
 	limits := embeddingLimitsFromConfig(cfg)
 	validationCtx, cancel := context.WithTimeout(ctx, limits.timeout)
 	defer cancel()
-	if _, _, err := resolveEmbeddingUpstreamTarget(validationCtx, account.GetEmbeddingBaseURL(), limits); err != nil {
-		return fmt.Errorf("embedding base_url violates the configured network policy: %w", err)
+	if _, _, err := resolveEmbeddingUpstreamTarget(validationCtx, account.GetEmbeddingBaseURL()); err != nil {
+		return fmt.Errorf("embedding base_url is invalid or resolves to a blocked address: %w", err)
 	}
 	return nil
 }

@@ -530,7 +530,7 @@ Embedding is an independent OpenAI-compatible platform. Create a dedicated user 
 - A successful response must include a positive integer `usage.prompt_tokens` and a positive input price before billing is committed.
 - Input text, vectors, and upstream response bodies are not stored in usage, Ops, traces, or retry previews.
 
-Embedding accounts accept HTTP and HTTPS upstreams without a host allowlist. Private upstreams require a matching `gateway.embedding.allowed_private_cidrs` entry; loopback, link-local, metadata, shared, documentation, and reserved ranges are always blocked. Embedding accounts cannot use a proxy. See [`deploy/config.example.yaml`](deploy/config.example.yaml) for all bounded resource settings.
+Embedding accounts accept public and private HTTP/HTTPS upstreams without a host or CIDR allowlist. Loopback, link-local, metadata, shared, documentation, and reserved ranges remain blocked. Embedding accounts cannot use a proxy. See [`deploy/config.example.yaml`](deploy/config.example.yaml) for all bounded resource settings.
 
 Ops records retain only safe categories such as `invalid_usage`, `invalid_response`, `pricing_invalid`, `upstream_auth`, and `upstream_rate_limited`, plus the selected account/channel/model metadata. They never retain input text, Bearer keys, headers, upstream bodies, or vectors.
 

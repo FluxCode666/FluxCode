@@ -160,13 +160,11 @@ gateway:
   # Max bytes to read for non-stream upstream responses (default: 8MB)
   # 非流式上游响应体读取上限（默认 8MB）
   upstream_response_read_max_bytes: 8388608
-  # Embedding accepts HTTP and HTTPS upstreams. Private upstreams require an
-  # explicit CIDR; loopback, link-local, metadata, shared, documentation and
-  # reserved ranges are always blocked.
-  # Embedding 允许 HTTP 和 HTTPS 上游。私网上游需要显式配置 CIDR；回环、
-  # 链路本地、元数据、shared、documentation 与保留地址始终禁止。
+  # Embedding accepts public and private HTTP/HTTPS upstreams. Loopback,
+  # link-local, metadata, shared, documentation and reserved ranges are blocked.
+  # Embedding 允许公网和私网 HTTP/HTTPS 上游；回环、链路本地、元数据、
+  # shared、documentation 与保留地址仍会被阻止。
   embedding:
-    allowed_private_cidrs: []
     request_max_bytes: 1048576
     response_max_bytes: 8388608
     max_json_depth: 32

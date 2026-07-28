@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log/slog"
-	"net"
 	"net/url"
 	"os"
 	"strings"
@@ -439,11 +438,9 @@ type GatewayConfig struct {
 	Embedding EmbeddingGatewayConfig `mapstructure:"embedding"`
 }
 
-// EmbeddingGatewayConfig keeps embedding's resource and SSRF policy separate
-// from the more permissive legacy gateway defaults.
+// EmbeddingGatewayConfig keeps embedding's resource budgets separate from the
+// more permissive legacy gateway defaults.
 type EmbeddingGatewayConfig struct {
-	AllowedPrivateCIDRs []string `mapstructure:"allowed_private_cidrs"`
-
 	RequestMaxBytes          int64 `mapstructure:"request_max_bytes"`
 	ResponseMaxBytes         int64 `mapstructure:"response_max_bytes"`
 	MaxJSONDepth             int   `mapstructure:"max_json_depth"`
@@ -2033,11 +2030,6 @@ func (c *Config) Validate() error {
 	}
 	if c.Gateway.Embedding.MaxConcurrentRequests <= 0 || c.Gateway.Embedding.MaxConcurrentRequests > EmbeddingMaxConcurrentRequestsHardLimit {
 		return fmt.Errorf("gateway.embedding.max_concurrent_requests must be between 1 and %d", EmbeddingMaxConcurrentRequestsHardLimit)
-	}
-	for _, rawCIDR := range c.Gateway.Embedding.AllowedPrivateCIDRs {
-		if _, _, err := net.ParseCIDR(strings.TrimSpace(rawCIDR)); err != nil {
-			return fmt.Errorf("gateway.embedding.allowed_private_cidrs contains invalid CIDR %q", rawCIDR)
-		}
 	}
 	if c.Gateway.ProxyProbeResponseReadMaxBytes <= 0 {
 		return fmt.Errorf("gateway.proxy_probe_response_read_max_bytes must be positive")

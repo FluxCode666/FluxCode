@@ -310,14 +310,6 @@ func TestLoadDefaultEmbeddingGatewayLimits(t *testing.T) {
 	require.Equal(t, 60, cfg.Gateway.Embedding.UpstreamTimeoutSeconds)
 	require.Equal(t, 30, cfg.Gateway.Embedding.ResponseHeaderTimeoutSec)
 	require.Equal(t, 128, cfg.Gateway.Embedding.MaxConcurrentRequests)
-	require.Empty(t, cfg.Gateway.Embedding.AllowedPrivateCIDRs)
-}
-
-func TestLoadRejectsInvalidEmbeddingPrivateCIDR(t *testing.T) {
-	resetViperWithJWTSecret(t)
-	viper.Set("gateway.embedding.allowed_private_cidrs", []string{"not-a-cidr"})
-	_, err := Load()
-	require.ErrorContains(t, err, "gateway.embedding.allowed_private_cidrs contains invalid CIDR")
 }
 
 func TestLoadDefaultServerMode(t *testing.T) {
