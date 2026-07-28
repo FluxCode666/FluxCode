@@ -185,7 +185,8 @@ func (s *httpUpstreamService) DoEmbedding(req *http.Request, policy service.Embe
 }
 
 func buildEmbeddingHTTPClient(req *http.Request, policy service.EmbeddingUpstreamPolicy) (*http.Client, error) {
-	if req == nil || req.URL == nil || req.URL.Scheme != "https" || req.URL.Hostname() == "" {
+	if req == nil || req.URL == nil || req.URL.Hostname() == "" ||
+		(req.URL.Scheme != "http" && req.URL.Scheme != "https") {
 		return nil, errors.New("invalid embedding request URL")
 	}
 	if len(policy.ValidatedIP) == 0 {
@@ -194,7 +195,11 @@ func buildEmbeddingHTTPClient(req *http.Request, policy service.EmbeddingUpstrea
 
 	port := req.URL.Port()
 	if port == "" {
-		port = "443"
+		if req.URL.Scheme == "http" {
+			port = "80"
+		} else {
+			port = "443"
+		}
 	}
 	dialAddress := net.JoinHostPort(policy.ValidatedIP.String(), port)
 	dialer := &net.Dialer{}
@@ -202,11 +207,13 @@ func buildEmbeddingHTTPClient(req *http.Request, policy service.EmbeddingUpstrea
 		Proxy:                 nil,
 		ForceAttemptHTTP2:     true,
 		DisableKeepAlives:     true,
-		TLSClientConfig:       &tls.Config{ServerName: req.URL.Hostname(), MinVersion: tls.VersionTLS12},
 		ResponseHeaderTimeout: policy.ResponseHeaderTimeout,
 		DialContext: func(ctx context.Context, network, _ string) (net.Conn, error) {
 			return dialer.DialContext(ctx, network, dialAddress)
 		},
+	}
+	if req.URL.Scheme == "https" {
+		transport.TLSClientConfig = &tls.Config{ServerName: req.URL.Hostname(), MinVersion: tls.VersionTLS12}
 	}
 	client := &http.Client{
 		Transport: transport,

@@ -902,7 +902,9 @@
                   ? 'https://xxx'
                   : form.platform === 'gemini'
                     ? 'https://generativelanguage.googleapis.com'
-                    : 'https://api.anthropic.com'
+                    : form.platform === 'embedding'
+                      ? 'http://embedding.internal:8080/v1'
+                      : 'https://api.anthropic.com'
             "
           />
           <p class="input-hint">{{ baseUrlHint }}</p>
@@ -3081,7 +3083,7 @@ const oauthStepTitle = computed(() => {
 
 // Platform-specific hints for API Key type
 const baseUrlHint = computed(() => {
-  if (form.platform === 'embedding') return t('admin.accounts.embedding.baseUrlHint', '必须填写 HTTPS 的 OpenAI-compatible embedding 地址')
+  if (form.platform === 'embedding') return t('admin.accounts.embedding.baseUrlHint', '填写 HTTP 或 HTTPS 的 OpenAI-compatible embedding 地址')
   if (form.platform === 'openai') return t('admin.accounts.openai.baseUrlHint')
   if (form.platform === 'codex2api') return t('admin.accounts.codex2api.baseUrlHint')
   if (form.platform === 'gemini') return t('admin.accounts.gemini.baseUrlHint')

@@ -356,6 +356,7 @@ func TestEmbeddingTargetValidationRejectsPrivateDNSAndBuildsEndpointOnce(t *test
 	require.Error(t, err)
 
 	require.Equal(t, "https://embedding.example.test/v1/embeddings", buildOpenAIEmbeddingsURL("https://embedding.example.test"))
+	require.Equal(t, "http://embedding.example.test/v1/embeddings", buildOpenAIEmbeddingsURL("http://embedding.example.test"))
 	require.Equal(t, "https://embedding.example.test/v1/embeddings", buildOpenAIEmbeddingsURL("https://embedding.example.test/v1/"))
 	require.Equal(t, "https://embedding.example.test/v1/embeddings", buildOpenAIEmbeddingsURL("https://embedding.example.test/v1/embeddings"))
 }
@@ -368,8 +369,9 @@ func TestEmbeddingTargetValidationPrivateCIDRAndMixedDNS(t *testing.T) {
 	t.Cleanup(func() { lookupEmbeddingHostIP = previous })
 
 	lookupEmbeddingHostIP = func(context.Context, string) ([]net.IP, error) { return []net.IP{net.ParseIP("10.10.1.2")}, nil }
-	_, pinned, err := resolveEmbeddingUpstreamTarget(context.Background(), "https://embedding.example.test", limits)
+	target, pinned, err := resolveEmbeddingUpstreamTarget(context.Background(), "http://embedding.example.test", limits)
 	require.NoError(t, err)
+	require.Equal(t, "http://embedding.example.test/v1/embeddings", target)
 	require.Equal(t, "10.10.1.2", pinned.String())
 
 	lookupEmbeddingHostIP = func(context.Context, string) ([]net.IP, error) { return []net.IP{net.ParseIP("10.11.1.2")}, nil }

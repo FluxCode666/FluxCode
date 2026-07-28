@@ -176,7 +176,7 @@ describe('EditAccountModal', () => {
       platform: 'embedding',
       credentials: {
         api_key: 'sk-embed',
-        base_url: 'https://embedding.example.com/v1',
+        base_url: 'http://embedding.internal:8080/v1',
         model_whitelist: ['legacy-embed']
       }
     }
@@ -189,7 +189,7 @@ describe('EditAccountModal', () => {
 
     expect(updateAccountMock.mock.calls[0]?.[1]?.credentials).toMatchObject({
       api_key: 'sk-embed',
-      base_url: 'https://embedding.example.com/v1',
+      base_url: 'http://embedding.internal:8080/v1',
       model_mapping: { 'legacy-embed': 'legacy-embed' }
     })
   })

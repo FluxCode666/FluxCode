@@ -33,6 +33,17 @@ type embeddingUpdateRepoStub struct {
 	updated *Account
 }
 
+type embeddingCreateRepoStub struct {
+	accountRepoStubForBulkUpdate
+	created *Account
+}
+
+func (s *embeddingCreateRepoStub) Create(_ context.Context, account *Account) error {
+	account.ID = 7
+	s.created = account
+	return nil
+}
+
 func (s *embeddingUpdateRepoStub) Update(_ context.Context, account *Account) error {
 	s.updated = account
 	s.getByIDAccounts[account.ID] = account
@@ -47,7 +58,7 @@ func TestValidateEmbeddingAccountForWriteEnforcesNetworkPolicy(t *testing.T) {
 	}
 
 	require.NoError(t, validateEmbeddingAccountForWrite(context.Background(), embeddingWriteTestAccount("https://embedding.example.com/v1"), embeddingWriteTestConfig()))
-	require.Error(t, validateEmbeddingAccountForWrite(context.Background(), embeddingWriteTestAccount("http://embedding.example.com"), embeddingWriteTestConfig()))
+	require.NoError(t, validateEmbeddingAccountForWrite(context.Background(), embeddingWriteTestAccount("http://embedding.example.com"), embeddingWriteTestConfig()))
 	require.NoError(t, validateEmbeddingAccountForWrite(context.Background(), embeddingWriteTestAccount("https://other.example.com"), embeddingWriteTestConfig()))
 
 	proxied := embeddingWriteTestAccount("https://embedding.example.com")
@@ -59,26 +70,28 @@ func TestValidateEmbeddingAccountForWriteEnforcesNetworkPolicy(t *testing.T) {
 		return []net.IP{net.ParseIP("10.10.1.2")}, nil
 	}
 	require.Error(t, validateEmbeddingAccountForWrite(context.Background(), embeddingWriteTestAccount("https://embedding.example.com"), embeddingWriteTestConfig()))
-	require.NoError(t, validateEmbeddingAccountForWrite(context.Background(), embeddingWriteTestAccount("https://embedding.example.com"), embeddingWriteTestConfig("10.10.0.0/16")))
+	require.NoError(t, validateEmbeddingAccountForWrite(context.Background(), embeddingWriteTestAccount("http://embedding.example.com"), embeddingWriteTestConfig("10.10.0.0/16")))
 }
 
-func TestAdminEmbeddingWriteEntrypointsRejectUnsafeConfigurationBeforePersistence(t *testing.T) {
+func TestAdminEmbeddingWriteEntrypointsEnforceNetworkPolicyBeforePersistence(t *testing.T) {
 	originalLookup := lookupEmbeddingHostIP
 	lookupEmbeddingHostIP = func(context.Context, string) ([]net.IP, error) {
 		return []net.IP{net.ParseIP("8.8.8.8")}, nil
 	}
 	t.Cleanup(func() { lookupEmbeddingHostIP = originalLookup })
 
-	t.Run("create rejects http", func(t *testing.T) {
-		repo := &accountRepoStubForBulkUpdate{}
+	t.Run("create accepts http", func(t *testing.T) {
+		repo := &embeddingCreateRepoStub{}
 		svc := &adminServiceImpl{accountRepo: repo, cfg: embeddingWriteTestConfig()}
 		result, err := svc.CreateAccount(context.Background(), &CreateAccountInput{
-			Name: "unsafe", Platform: PlatformEmbedding, Type: AccountTypeAPIKey,
+			Name: "internal", Platform: PlatformEmbedding, Type: AccountTypeAPIKey,
 			Credentials:          embeddingWriteTestAccount("http://embedding.example.com").Credentials,
 			SkipDefaultGroupBind: true,
 		})
-		require.Nil(t, result)
-		require.ErrorContains(t, err, "network policy")
+		require.NoError(t, err)
+		require.NotNil(t, result)
+		require.Same(t, result, repo.created)
+		require.Equal(t, "http://embedding.example.com", result.GetEmbeddingBaseURL())
 	})
 
 	t.Run("update accepts an unlisted public host", func(t *testing.T) {

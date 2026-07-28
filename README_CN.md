@@ -633,7 +633,7 @@ Embedding 是独立的 OpenAI 兼容平台。请创建绑定到 `embedding` 分�
 - 成功响应必须包含正整数 `usage.prompt_tokens`，且存在正输入价格后才会提交扣费。
 - 输入文本、向量和上游响应体不会写入用量、Ops、trace 或重试预览。
 
-Embedding 账号允许使用任意公网 HTTPS 上游，无需配置域名白名单。私网上游必须命中 `gateway.embedding.allowed_private_cidrs`；回环、链路本地、元数据、shared、documentation 与保留地址始终禁止。Embedding 账号不能使用代理。完整且有硬上界的资源配置见 [`deploy/config.example.yaml`](deploy/config.example.yaml)。
+Embedding 账号允许使用 HTTP 或 HTTPS 上游，无需配置域名白名单。私网上游必须命中 `gateway.embedding.allowed_private_cidrs`；例如上游为 `10.10.1.20` 时可配置 `allowed_private_cidrs: ["10.10.0.0/16"]`。回环、链路本地、元数据、shared、documentation 与保留地址始终禁止，Embedding 账号也不能使用代理。完整且有硬上界的资源配置见 [`deploy/config.example.yaml`](deploy/config.example.yaml)。
 
 Ops 仅保留 `invalid_usage`、`invalid_response`、`pricing_invalid`、`upstream_auth`、`upstream_rate_limited` 等安全分类及最终账号、渠道、上游模型元数据；不会保留输入文本、Bearer Key、请求头、上游正文或向量。
 

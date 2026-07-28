@@ -44,8 +44,8 @@
                     : account.platform === 'antigravity'
                       ? 'https://cloudcode-pa.googleapis.com'
                       : account.platform === 'embedding'
-                        ? 'https://embedding.example.com/v1'
-                      : 'https://api.anthropic.com'
+                        ? 'http://embedding.internal:8080/v1'
+                        : 'https://api.anthropic.com'
             "
           />
           <p class="input-hint">{{ baseUrlHint }}</p>
@@ -1975,6 +1975,7 @@ const baseUrlHint = computed(() => {
   if (props.account.platform === 'openai') return t('admin.accounts.openai.baseUrlHint')
   if (props.account.platform === 'codex2api') return t('admin.accounts.codex2api.baseUrlHint')
   if (props.account.platform === 'gemini') return t('admin.accounts.gemini.baseUrlHint')
+  if (props.account.platform === 'embedding') return t('admin.accounts.embedding.baseUrlHint')
   return t('admin.accounts.baseUrlHint')
 })
 

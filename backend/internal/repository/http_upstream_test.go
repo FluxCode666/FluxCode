@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"io"
@@ -50,6 +51,51 @@ func TestBuildEmbeddingHTTPClientBindsValidatedIPAndDisablesRedirect(t *testing.
 	redirectReq, err := http.NewRequest(http.MethodGet, "https://other.example.test", nil)
 	require.NoError(t, err)
 	require.Error(t, client.CheckRedirect(redirectReq, []*http.Request{req}))
+}
+
+func TestBuildEmbeddingHTTPClientAllowsPlainHTTP(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = listener.Close() })
+	port := listener.Addr().(*net.TCPAddr).Port
+	req, err := http.NewRequest(http.MethodPost, "http://embedding.internal:"+fmt.Sprint(port)+"/v1/embeddings", nil)
+	require.NoError(t, err)
+
+	client, err := buildEmbeddingHTTPClient(req, service.EmbeddingUpstreamPolicy{
+		ValidatedIP:           net.ParseIP("127.0.0.1"),
+		ResponseHeaderTimeout: time.Second,
+	})
+	require.NoError(t, err)
+	transport, ok := client.Transport.(*http.Transport)
+	require.True(t, ok)
+	require.Nil(t, transport.TLSClientConfig)
+
+	done := make(chan error, 1)
+	go func() {
+		conn, acceptErr := listener.Accept()
+		if acceptErr != nil {
+			done <- acceptErr
+			return
+		}
+		defer func() { _ = conn.Close() }()
+		request, readErr := http.ReadRequest(bufio.NewReader(conn))
+		if readErr != nil {
+			done <- readErr
+			return
+		}
+		if request.Host != req.URL.Host {
+			done <- fmt.Errorf("unexpected Host header: %s", request.Host)
+			return
+		}
+		_, writeErr := io.WriteString(conn, "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n{}")
+		done <- writeErr
+	}()
+
+	resp, err := client.Do(req)
+	require.NoError(t, err)
+	require.NoError(t, <-done)
+	defer func() { _ = resp.Body.Close() }()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
 }
 
 // HTTPUpstreamSuite HTTP 上游服务测试套件

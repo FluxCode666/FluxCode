@@ -3584,7 +3584,7 @@ export default {
         pleaseEnterBaseUrl: '请输入 Codex2api Base URL'
       },
       embedding: {
-        baseUrlHint: '必须填写 HTTPS 的 OpenAI-compatible embedding 地址',
+        baseUrlHint: '填写 HTTP 或 HTTPS 的 OpenAI-compatible embedding 地址；私网地址需在服务端配置允许的 CIDR',
         apiKeyHint: '仅使用 Bearer API Key 请求上游',
         baseUrlRequired: 'Embedding Base URL 为必填项',
         modelRequired: 'Embedding 至少需要一个模型白名单或映射'

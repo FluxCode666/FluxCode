@@ -3434,7 +3434,7 @@ export default {
         pleaseEnterBaseUrl: 'Please enter Codex2api Base URL'
       },
       embedding: {
-        baseUrlHint: 'Enter an HTTPS OpenAI-compatible embedding endpoint',
+        baseUrlHint: 'Enter an HTTP or HTTPS OpenAI-compatible embedding endpoint; private addresses require an allowed CIDR on the server',
         apiKeyHint: 'Upstream requests use Bearer API Key authentication only',
         baseUrlRequired: 'Embedding Base URL is required',
         modelRequired: 'Embedding requires at least one model whitelist entry or mapping'

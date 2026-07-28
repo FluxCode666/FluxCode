@@ -172,7 +172,7 @@ describe('CreateAccountModal', () => {
 
     const name = wrapper.get<HTMLInputElement>('[data-tour="account-form-name"]')
     await name.setValue('Embedding Key')
-    await wrapper.get<HTMLInputElement>('[data-testid="create-apikey-base-url"]').setValue('https://embedding.example.com/v1')
+    await wrapper.get<HTMLInputElement>('[data-testid="create-apikey-base-url"]').setValue('http://embedding.internal:8080/v1')
     await wrapper.get<HTMLInputElement>('[data-testid="create-apikey-value"]').setValue('sk-embed')
     await wrapper.get('[data-testid="select-embedding-model"]').trigger('click')
     await wrapper.get('form#create-account-form').trigger('submit.prevent')
@@ -182,7 +182,7 @@ describe('CreateAccountModal', () => {
       platform: 'embedding',
       type: 'apikey',
       credentials: {
-        base_url: 'https://embedding.example.com/v1',
+        base_url: 'http://embedding.internal:8080/v1',
         api_key: 'sk-embed',
         model_mapping: { 'text-embedding-3-small': 'text-embedding-3-small' },
         pool_mode: true,

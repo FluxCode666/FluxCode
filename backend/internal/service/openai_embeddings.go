@@ -580,7 +580,7 @@ func validateEmbeddingJSONDepth(body []byte, maxDepth int) error {
 }
 
 func resolveEmbeddingUpstreamTarget(ctx context.Context, rawBaseURL string, limits embeddingForwardLimits) (string, net.IP, error) {
-	normalized, err := urlvalidator.ValidateHTTPSURL(rawBaseURL, urlvalidator.ValidationOptions{
+	normalized, err := urlvalidator.ValidateHTTPURL(rawBaseURL, true, urlvalidator.ValidationOptions{
 		AllowPrivate: true,
 	})
 	if err != nil {
