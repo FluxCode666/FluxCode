@@ -698,6 +698,7 @@ var ProviderSet = wire.NewSet(
 	// Core services
 	ProvideAuthService,
 	NewUserService,
+	NewUserAccessKeyService,
 	NewUserUIPreferencesService,
 	ProvideAPIKeyService,
 	ProvideAPIKeyAuthCacheInvalidator,

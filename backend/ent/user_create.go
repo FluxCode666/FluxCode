@@ -281,6 +281,48 @@ func (_c *UserCreate) SetNillableTotalRecharged(v *float64) *UserCreate {
 	return _c
 }
 
+// SetUserAccessKeyHash sets the "user_access_key_hash" field.
+func (_c *UserCreate) SetUserAccessKeyHash(v string) *UserCreate {
+	_c.mutation.SetUserAccessKeyHash(v)
+	return _c
+}
+
+// SetNillableUserAccessKeyHash sets the "user_access_key_hash" field if the given value is not nil.
+func (_c *UserCreate) SetNillableUserAccessKeyHash(v *string) *UserCreate {
+	if v != nil {
+		_c.SetUserAccessKeyHash(*v)
+	}
+	return _c
+}
+
+// SetUserAccessKeyEncrypted sets the "user_access_key_encrypted" field.
+func (_c *UserCreate) SetUserAccessKeyEncrypted(v string) *UserCreate {
+	_c.mutation.SetUserAccessKeyEncrypted(v)
+	return _c
+}
+
+// SetNillableUserAccessKeyEncrypted sets the "user_access_key_encrypted" field if the given value is not nil.
+func (_c *UserCreate) SetNillableUserAccessKeyEncrypted(v *string) *UserCreate {
+	if v != nil {
+		_c.SetUserAccessKeyEncrypted(*v)
+	}
+	return _c
+}
+
+// SetUserAccessKeyCreatedAt sets the "user_access_key_created_at" field.
+func (_c *UserCreate) SetUserAccessKeyCreatedAt(v time.Time) *UserCreate {
+	_c.mutation.SetUserAccessKeyCreatedAt(v)
+	return _c
+}
+
+// SetNillableUserAccessKeyCreatedAt sets the "user_access_key_created_at" field if the given value is not nil.
+func (_c *UserCreate) SetNillableUserAccessKeyCreatedAt(v *time.Time) *UserCreate {
+	if v != nil {
+		_c.SetUserAccessKeyCreatedAt(*v)
+	}
+	return _c
+}
+
 // SetIsSales sets the "is_sales" field.
 func (_c *UserCreate) SetIsSales(v bool) *UserCreate {
 	_c.mutation.SetIsSales(v)
@@ -705,6 +747,11 @@ func (_c *UserCreate) check() error {
 	if _, ok := _c.mutation.TotalRecharged(); !ok {
 		return &ValidationError{Name: "total_recharged", err: errors.New(`ent: missing required field "User.total_recharged"`)}
 	}
+	if v, ok := _c.mutation.UserAccessKeyHash(); ok {
+		if err := user.UserAccessKeyHashValidator(v); err != nil {
+			return &ValidationError{Name: "user_access_key_hash", err: fmt.Errorf(`ent: validator failed for field "User.user_access_key_hash": %w`, err)}
+		}
+	}
 	if _, ok := _c.mutation.IsSales(); !ok {
 		return &ValidationError{Name: "is_sales", err: errors.New(`ent: missing required field "User.is_sales"`)}
 	}
@@ -837,6 +884,18 @@ func (_c *UserCreate) createSpec() (*User, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.TotalRecharged(); ok {
 		_spec.SetField(user.FieldTotalRecharged, field.TypeFloat64, value)
 		_node.TotalRecharged = value
+	}
+	if value, ok := _c.mutation.UserAccessKeyHash(); ok {
+		_spec.SetField(user.FieldUserAccessKeyHash, field.TypeString, value)
+		_node.UserAccessKeyHash = &value
+	}
+	if value, ok := _c.mutation.UserAccessKeyEncrypted(); ok {
+		_spec.SetField(user.FieldUserAccessKeyEncrypted, field.TypeString, value)
+		_node.UserAccessKeyEncrypted = &value
+	}
+	if value, ok := _c.mutation.UserAccessKeyCreatedAt(); ok {
+		_spec.SetField(user.FieldUserAccessKeyCreatedAt, field.TypeTime, value)
+		_node.UserAccessKeyCreatedAt = &value
 	}
 	if value, ok := _c.mutation.IsSales(); ok {
 		_spec.SetField(user.FieldIsSales, field.TypeBool, value)
@@ -1342,6 +1401,60 @@ func (u *UserUpsert) AddTotalRecharged(v float64) *UserUpsert {
 	return u
 }
 
+// SetUserAccessKeyHash sets the "user_access_key_hash" field.
+func (u *UserUpsert) SetUserAccessKeyHash(v string) *UserUpsert {
+	u.Set(user.FieldUserAccessKeyHash, v)
+	return u
+}
+
+// UpdateUserAccessKeyHash sets the "user_access_key_hash" field to the value that was provided on create.
+func (u *UserUpsert) UpdateUserAccessKeyHash() *UserUpsert {
+	u.SetExcluded(user.FieldUserAccessKeyHash)
+	return u
+}
+
+// ClearUserAccessKeyHash clears the value of the "user_access_key_hash" field.
+func (u *UserUpsert) ClearUserAccessKeyHash() *UserUpsert {
+	u.SetNull(user.FieldUserAccessKeyHash)
+	return u
+}
+
+// SetUserAccessKeyEncrypted sets the "user_access_key_encrypted" field.
+func (u *UserUpsert) SetUserAccessKeyEncrypted(v string) *UserUpsert {
+	u.Set(user.FieldUserAccessKeyEncrypted, v)
+	return u
+}
+
+// UpdateUserAccessKeyEncrypted sets the "user_access_key_encrypted" field to the value that was provided on create.
+func (u *UserUpsert) UpdateUserAccessKeyEncrypted() *UserUpsert {
+	u.SetExcluded(user.FieldUserAccessKeyEncrypted)
+	return u
+}
+
+// ClearUserAccessKeyEncrypted clears the value of the "user_access_key_encrypted" field.
+func (u *UserUpsert) ClearUserAccessKeyEncrypted() *UserUpsert {
+	u.SetNull(user.FieldUserAccessKeyEncrypted)
+	return u
+}
+
+// SetUserAccessKeyCreatedAt sets the "user_access_key_created_at" field.
+func (u *UserUpsert) SetUserAccessKeyCreatedAt(v time.Time) *UserUpsert {
+	u.Set(user.FieldUserAccessKeyCreatedAt, v)
+	return u
+}
+
+// UpdateUserAccessKeyCreatedAt sets the "user_access_key_created_at" field to the value that was provided on create.
+func (u *UserUpsert) UpdateUserAccessKeyCreatedAt() *UserUpsert {
+	u.SetExcluded(user.FieldUserAccessKeyCreatedAt)
+	return u
+}
+
+// ClearUserAccessKeyCreatedAt clears the value of the "user_access_key_created_at" field.
+func (u *UserUpsert) ClearUserAccessKeyCreatedAt() *UserUpsert {
+	u.SetNull(user.FieldUserAccessKeyCreatedAt)
+	return u
+}
+
 // SetIsSales sets the "is_sales" field.
 func (u *UserUpsert) SetIsSales(v bool) *UserUpsert {
 	u.Set(user.FieldIsSales, v)
@@ -1788,6 +1901,69 @@ func (u *UserUpsertOne) AddTotalRecharged(v float64) *UserUpsertOne {
 func (u *UserUpsertOne) UpdateTotalRecharged() *UserUpsertOne {
 	return u.Update(func(s *UserUpsert) {
 		s.UpdateTotalRecharged()
+	})
+}
+
+// SetUserAccessKeyHash sets the "user_access_key_hash" field.
+func (u *UserUpsertOne) SetUserAccessKeyHash(v string) *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.SetUserAccessKeyHash(v)
+	})
+}
+
+// UpdateUserAccessKeyHash sets the "user_access_key_hash" field to the value that was provided on create.
+func (u *UserUpsertOne) UpdateUserAccessKeyHash() *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateUserAccessKeyHash()
+	})
+}
+
+// ClearUserAccessKeyHash clears the value of the "user_access_key_hash" field.
+func (u *UserUpsertOne) ClearUserAccessKeyHash() *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.ClearUserAccessKeyHash()
+	})
+}
+
+// SetUserAccessKeyEncrypted sets the "user_access_key_encrypted" field.
+func (u *UserUpsertOne) SetUserAccessKeyEncrypted(v string) *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.SetUserAccessKeyEncrypted(v)
+	})
+}
+
+// UpdateUserAccessKeyEncrypted sets the "user_access_key_encrypted" field to the value that was provided on create.
+func (u *UserUpsertOne) UpdateUserAccessKeyEncrypted() *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateUserAccessKeyEncrypted()
+	})
+}
+
+// ClearUserAccessKeyEncrypted clears the value of the "user_access_key_encrypted" field.
+func (u *UserUpsertOne) ClearUserAccessKeyEncrypted() *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.ClearUserAccessKeyEncrypted()
+	})
+}
+
+// SetUserAccessKeyCreatedAt sets the "user_access_key_created_at" field.
+func (u *UserUpsertOne) SetUserAccessKeyCreatedAt(v time.Time) *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.SetUserAccessKeyCreatedAt(v)
+	})
+}
+
+// UpdateUserAccessKeyCreatedAt sets the "user_access_key_created_at" field to the value that was provided on create.
+func (u *UserUpsertOne) UpdateUserAccessKeyCreatedAt() *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateUserAccessKeyCreatedAt()
+	})
+}
+
+// ClearUserAccessKeyCreatedAt clears the value of the "user_access_key_created_at" field.
+func (u *UserUpsertOne) ClearUserAccessKeyCreatedAt() *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.ClearUserAccessKeyCreatedAt()
 	})
 }
 
@@ -2419,6 +2595,69 @@ func (u *UserUpsertBulk) AddTotalRecharged(v float64) *UserUpsertBulk {
 func (u *UserUpsertBulk) UpdateTotalRecharged() *UserUpsertBulk {
 	return u.Update(func(s *UserUpsert) {
 		s.UpdateTotalRecharged()
+	})
+}
+
+// SetUserAccessKeyHash sets the "user_access_key_hash" field.
+func (u *UserUpsertBulk) SetUserAccessKeyHash(v string) *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.SetUserAccessKeyHash(v)
+	})
+}
+
+// UpdateUserAccessKeyHash sets the "user_access_key_hash" field to the value that was provided on create.
+func (u *UserUpsertBulk) UpdateUserAccessKeyHash() *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateUserAccessKeyHash()
+	})
+}
+
+// ClearUserAccessKeyHash clears the value of the "user_access_key_hash" field.
+func (u *UserUpsertBulk) ClearUserAccessKeyHash() *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.ClearUserAccessKeyHash()
+	})
+}
+
+// SetUserAccessKeyEncrypted sets the "user_access_key_encrypted" field.
+func (u *UserUpsertBulk) SetUserAccessKeyEncrypted(v string) *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.SetUserAccessKeyEncrypted(v)
+	})
+}
+
+// UpdateUserAccessKeyEncrypted sets the "user_access_key_encrypted" field to the value that was provided on create.
+func (u *UserUpsertBulk) UpdateUserAccessKeyEncrypted() *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateUserAccessKeyEncrypted()
+	})
+}
+
+// ClearUserAccessKeyEncrypted clears the value of the "user_access_key_encrypted" field.
+func (u *UserUpsertBulk) ClearUserAccessKeyEncrypted() *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.ClearUserAccessKeyEncrypted()
+	})
+}
+
+// SetUserAccessKeyCreatedAt sets the "user_access_key_created_at" field.
+func (u *UserUpsertBulk) SetUserAccessKeyCreatedAt(v time.Time) *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.SetUserAccessKeyCreatedAt(v)
+	})
+}
+
+// UpdateUserAccessKeyCreatedAt sets the "user_access_key_created_at" field to the value that was provided on create.
+func (u *UserUpsertBulk) UpdateUserAccessKeyCreatedAt() *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateUserAccessKeyCreatedAt()
+	})
+}
+
+// ClearUserAccessKeyCreatedAt clears the value of the "user_access_key_created_at" field.
+func (u *UserUpsertBulk) ClearUserAccessKeyCreatedAt() *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.ClearUserAccessKeyCreatedAt()
 	})
 }
 

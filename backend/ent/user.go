@@ -55,6 +55,12 @@ type User struct {
 	BalanceNotifyExtraEmails string `json:"balance_notify_extra_emails,omitempty"`
 	// TotalRecharged holds the value of the "total_recharged" field.
 	TotalRecharged float64 `json:"total_recharged,omitempty"`
+	// UserAccessKeyHash holds the value of the "user_access_key_hash" field.
+	UserAccessKeyHash *string `json:"user_access_key_hash,omitempty"`
+	// UserAccessKeyEncrypted holds the value of the "user_access_key_encrypted" field.
+	UserAccessKeyEncrypted *string `json:"user_access_key_encrypted,omitempty"`
+	// UserAccessKeyCreatedAt holds the value of the "user_access_key_created_at" field.
+	UserAccessKeyCreatedAt *time.Time `json:"user_access_key_created_at,omitempty"`
 	// IsSales holds the value of the "is_sales" field.
 	IsSales bool `json:"is_sales,omitempty"`
 	// SalesCommissionRate holds the value of the "sales_commission_rate" field.
@@ -212,9 +218,9 @@ func (*User) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullFloat64)
 		case user.FieldID, user.FieldConcurrency, user.FieldReferredBy:
 			values[i] = new(sql.NullInt64)
-		case user.FieldEmail, user.FieldPasswordHash, user.FieldRole, user.FieldStatus, user.FieldUsername, user.FieldNotes, user.FieldTotpSecretEncrypted, user.FieldBalanceNotifyThresholdType, user.FieldBalanceNotifyExtraEmails, user.FieldSalesCommissionMode, user.FieldReferralCode:
+		case user.FieldEmail, user.FieldPasswordHash, user.FieldRole, user.FieldStatus, user.FieldUsername, user.FieldNotes, user.FieldTotpSecretEncrypted, user.FieldBalanceNotifyThresholdType, user.FieldBalanceNotifyExtraEmails, user.FieldUserAccessKeyHash, user.FieldUserAccessKeyEncrypted, user.FieldSalesCommissionMode, user.FieldReferralCode:
 			values[i] = new(sql.NullString)
-		case user.FieldCreatedAt, user.FieldUpdatedAt, user.FieldDeletedAt, user.FieldTotpEnabledAt:
+		case user.FieldCreatedAt, user.FieldUpdatedAt, user.FieldDeletedAt, user.FieldTotpEnabledAt, user.FieldUserAccessKeyCreatedAt:
 			values[i] = new(sql.NullTime)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -354,6 +360,27 @@ func (_m *User) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field total_recharged", values[i])
 			} else if value.Valid {
 				_m.TotalRecharged = value.Float64
+			}
+		case user.FieldUserAccessKeyHash:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field user_access_key_hash", values[i])
+			} else if value.Valid {
+				_m.UserAccessKeyHash = new(string)
+				*_m.UserAccessKeyHash = value.String
+			}
+		case user.FieldUserAccessKeyEncrypted:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field user_access_key_encrypted", values[i])
+			} else if value.Valid {
+				_m.UserAccessKeyEncrypted = new(string)
+				*_m.UserAccessKeyEncrypted = value.String
+			}
+		case user.FieldUserAccessKeyCreatedAt:
+			if value, ok := values[i].(*sql.NullTime); !ok {
+				return fmt.Errorf("unexpected type %T for field user_access_key_created_at", values[i])
+			} else if value.Valid {
+				_m.UserAccessKeyCreatedAt = new(time.Time)
+				*_m.UserAccessKeyCreatedAt = value.Time
 			}
 		case user.FieldIsSales:
 			if value, ok := values[i].(*sql.NullBool); !ok {
@@ -547,6 +574,21 @@ func (_m *User) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("total_recharged=")
 	builder.WriteString(fmt.Sprintf("%v", _m.TotalRecharged))
+	builder.WriteString(", ")
+	if v := _m.UserAccessKeyHash; v != nil {
+		builder.WriteString("user_access_key_hash=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.UserAccessKeyEncrypted; v != nil {
+		builder.WriteString("user_access_key_encrypted=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.UserAccessKeyCreatedAt; v != nil {
+		builder.WriteString("user_access_key_created_at=")
+		builder.WriteString(v.Format(time.ANSIC))
+	}
 	builder.WriteString(", ")
 	builder.WriteString("is_sales=")
 	builder.WriteString(fmt.Sprintf("%v", _m.IsSales))

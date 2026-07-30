@@ -105,6 +105,7 @@ func ProvideSettingHandler(settingService *service.SettingService, buildInfo Bui
 func ProvideHandlers(
 	authHandler *AuthHandler,
 	userHandler *UserHandler,
+	userAccessKeyHandler *UserAccessKeyHandler,
 	apiKeyHandler *APIKeyHandler,
 	usageHandler *UsageHandler,
 	redeemHandler *RedeemHandler,
@@ -127,6 +128,7 @@ func ProvideHandlers(
 	return &Handlers{
 		Auth:            authHandler,
 		User:            userHandler,
+		UserAccessKey:   userAccessKeyHandler,
 		APIKey:          apiKeyHandler,
 		Usage:           usageHandler,
 		Redeem:          redeemHandler,
@@ -151,6 +153,7 @@ var ProviderSet = wire.NewSet(
 	// Top-level handlers
 	NewAuthHandler,
 	NewUserHandler,
+	NewUserAccessKeyHandler,
 	NewAPIKeyHandler,
 	NewUsageHandler,
 	NewRedeemHandler,

@@ -46754,6 +46754,9 @@ type UserMutation struct {
 	balance_notify_extra_emails           *string
 	total_recharged                       *float64
 	addtotal_recharged                    *float64
+	user_access_key_hash                  *string
+	user_access_key_encrypted             *string
+	user_access_key_created_at            *time.Time
 	is_sales                              *bool
 	sales_commission_rate                 *float64
 	addsales_commission_rate              *float64
@@ -47714,6 +47717,153 @@ func (m *UserMutation) ResetTotalRecharged() {
 	m.addtotal_recharged = nil
 }
 
+// SetUserAccessKeyHash sets the "user_access_key_hash" field.
+func (m *UserMutation) SetUserAccessKeyHash(s string) {
+	m.user_access_key_hash = &s
+}
+
+// UserAccessKeyHash returns the value of the "user_access_key_hash" field in the mutation.
+func (m *UserMutation) UserAccessKeyHash() (r string, exists bool) {
+	v := m.user_access_key_hash
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUserAccessKeyHash returns the old "user_access_key_hash" field's value of the User entity.
+// If the User object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserMutation) OldUserAccessKeyHash(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUserAccessKeyHash is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUserAccessKeyHash requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUserAccessKeyHash: %w", err)
+	}
+	return oldValue.UserAccessKeyHash, nil
+}
+
+// ClearUserAccessKeyHash clears the value of the "user_access_key_hash" field.
+func (m *UserMutation) ClearUserAccessKeyHash() {
+	m.user_access_key_hash = nil
+	m.clearedFields[user.FieldUserAccessKeyHash] = struct{}{}
+}
+
+// UserAccessKeyHashCleared returns if the "user_access_key_hash" field was cleared in this mutation.
+func (m *UserMutation) UserAccessKeyHashCleared() bool {
+	_, ok := m.clearedFields[user.FieldUserAccessKeyHash]
+	return ok
+}
+
+// ResetUserAccessKeyHash resets all changes to the "user_access_key_hash" field.
+func (m *UserMutation) ResetUserAccessKeyHash() {
+	m.user_access_key_hash = nil
+	delete(m.clearedFields, user.FieldUserAccessKeyHash)
+}
+
+// SetUserAccessKeyEncrypted sets the "user_access_key_encrypted" field.
+func (m *UserMutation) SetUserAccessKeyEncrypted(s string) {
+	m.user_access_key_encrypted = &s
+}
+
+// UserAccessKeyEncrypted returns the value of the "user_access_key_encrypted" field in the mutation.
+func (m *UserMutation) UserAccessKeyEncrypted() (r string, exists bool) {
+	v := m.user_access_key_encrypted
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUserAccessKeyEncrypted returns the old "user_access_key_encrypted" field's value of the User entity.
+// If the User object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserMutation) OldUserAccessKeyEncrypted(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUserAccessKeyEncrypted is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUserAccessKeyEncrypted requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUserAccessKeyEncrypted: %w", err)
+	}
+	return oldValue.UserAccessKeyEncrypted, nil
+}
+
+// ClearUserAccessKeyEncrypted clears the value of the "user_access_key_encrypted" field.
+func (m *UserMutation) ClearUserAccessKeyEncrypted() {
+	m.user_access_key_encrypted = nil
+	m.clearedFields[user.FieldUserAccessKeyEncrypted] = struct{}{}
+}
+
+// UserAccessKeyEncryptedCleared returns if the "user_access_key_encrypted" field was cleared in this mutation.
+func (m *UserMutation) UserAccessKeyEncryptedCleared() bool {
+	_, ok := m.clearedFields[user.FieldUserAccessKeyEncrypted]
+	return ok
+}
+
+// ResetUserAccessKeyEncrypted resets all changes to the "user_access_key_encrypted" field.
+func (m *UserMutation) ResetUserAccessKeyEncrypted() {
+	m.user_access_key_encrypted = nil
+	delete(m.clearedFields, user.FieldUserAccessKeyEncrypted)
+}
+
+// SetUserAccessKeyCreatedAt sets the "user_access_key_created_at" field.
+func (m *UserMutation) SetUserAccessKeyCreatedAt(t time.Time) {
+	m.user_access_key_created_at = &t
+}
+
+// UserAccessKeyCreatedAt returns the value of the "user_access_key_created_at" field in the mutation.
+func (m *UserMutation) UserAccessKeyCreatedAt() (r time.Time, exists bool) {
+	v := m.user_access_key_created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUserAccessKeyCreatedAt returns the old "user_access_key_created_at" field's value of the User entity.
+// If the User object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserMutation) OldUserAccessKeyCreatedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUserAccessKeyCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUserAccessKeyCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUserAccessKeyCreatedAt: %w", err)
+	}
+	return oldValue.UserAccessKeyCreatedAt, nil
+}
+
+// ClearUserAccessKeyCreatedAt clears the value of the "user_access_key_created_at" field.
+func (m *UserMutation) ClearUserAccessKeyCreatedAt() {
+	m.user_access_key_created_at = nil
+	m.clearedFields[user.FieldUserAccessKeyCreatedAt] = struct{}{}
+}
+
+// UserAccessKeyCreatedAtCleared returns if the "user_access_key_created_at" field was cleared in this mutation.
+func (m *UserMutation) UserAccessKeyCreatedAtCleared() bool {
+	_, ok := m.clearedFields[user.FieldUserAccessKeyCreatedAt]
+	return ok
+}
+
+// ResetUserAccessKeyCreatedAt resets all changes to the "user_access_key_created_at" field.
+func (m *UserMutation) ResetUserAccessKeyCreatedAt() {
+	m.user_access_key_created_at = nil
+	delete(m.clearedFields, user.FieldUserAccessKeyCreatedAt)
+}
+
 // SetIsSales sets the "is_sales" field.
 func (m *UserMutation) SetIsSales(b bool) {
 	m.is_sales = &b
@@ -48578,7 +48728,7 @@ func (m *UserMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *UserMutation) Fields() []string {
-	fields := make([]string, 0, 25)
+	fields := make([]string, 0, 28)
 	if m.created_at != nil {
 		fields = append(fields, user.FieldCreatedAt)
 	}
@@ -48635,6 +48785,15 @@ func (m *UserMutation) Fields() []string {
 	}
 	if m.total_recharged != nil {
 		fields = append(fields, user.FieldTotalRecharged)
+	}
+	if m.user_access_key_hash != nil {
+		fields = append(fields, user.FieldUserAccessKeyHash)
+	}
+	if m.user_access_key_encrypted != nil {
+		fields = append(fields, user.FieldUserAccessKeyEncrypted)
+	}
+	if m.user_access_key_created_at != nil {
+		fields = append(fields, user.FieldUserAccessKeyCreatedAt)
 	}
 	if m.is_sales != nil {
 		fields = append(fields, user.FieldIsSales)
@@ -48700,6 +48859,12 @@ func (m *UserMutation) Field(name string) (ent.Value, bool) {
 		return m.BalanceNotifyExtraEmails()
 	case user.FieldTotalRecharged:
 		return m.TotalRecharged()
+	case user.FieldUserAccessKeyHash:
+		return m.UserAccessKeyHash()
+	case user.FieldUserAccessKeyEncrypted:
+		return m.UserAccessKeyEncrypted()
+	case user.FieldUserAccessKeyCreatedAt:
+		return m.UserAccessKeyCreatedAt()
 	case user.FieldIsSales:
 		return m.IsSales()
 	case user.FieldSalesCommissionRate:
@@ -48759,6 +48924,12 @@ func (m *UserMutation) OldField(ctx context.Context, name string) (ent.Value, er
 		return m.OldBalanceNotifyExtraEmails(ctx)
 	case user.FieldTotalRecharged:
 		return m.OldTotalRecharged(ctx)
+	case user.FieldUserAccessKeyHash:
+		return m.OldUserAccessKeyHash(ctx)
+	case user.FieldUserAccessKeyEncrypted:
+		return m.OldUserAccessKeyEncrypted(ctx)
+	case user.FieldUserAccessKeyCreatedAt:
+		return m.OldUserAccessKeyCreatedAt(ctx)
 	case user.FieldIsSales:
 		return m.OldIsSales(ctx)
 	case user.FieldSalesCommissionRate:
@@ -48912,6 +49083,27 @@ func (m *UserMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetTotalRecharged(v)
+		return nil
+	case user.FieldUserAccessKeyHash:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUserAccessKeyHash(v)
+		return nil
+	case user.FieldUserAccessKeyEncrypted:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUserAccessKeyEncrypted(v)
+		return nil
+	case user.FieldUserAccessKeyCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUserAccessKeyCreatedAt(v)
 		return nil
 	case user.FieldIsSales:
 		v, ok := value.(bool)
@@ -49084,6 +49276,15 @@ func (m *UserMutation) ClearedFields() []string {
 	if m.FieldCleared(user.FieldBalanceNotifyThreshold) {
 		fields = append(fields, user.FieldBalanceNotifyThreshold)
 	}
+	if m.FieldCleared(user.FieldUserAccessKeyHash) {
+		fields = append(fields, user.FieldUserAccessKeyHash)
+	}
+	if m.FieldCleared(user.FieldUserAccessKeyEncrypted) {
+		fields = append(fields, user.FieldUserAccessKeyEncrypted)
+	}
+	if m.FieldCleared(user.FieldUserAccessKeyCreatedAt) {
+		fields = append(fields, user.FieldUserAccessKeyCreatedAt)
+	}
 	if m.FieldCleared(user.FieldReferredBy) {
 		fields = append(fields, user.FieldReferredBy)
 	}
@@ -49112,6 +49313,15 @@ func (m *UserMutation) ClearField(name string) error {
 		return nil
 	case user.FieldBalanceNotifyThreshold:
 		m.ClearBalanceNotifyThreshold()
+		return nil
+	case user.FieldUserAccessKeyHash:
+		m.ClearUserAccessKeyHash()
+		return nil
+	case user.FieldUserAccessKeyEncrypted:
+		m.ClearUserAccessKeyEncrypted()
+		return nil
+	case user.FieldUserAccessKeyCreatedAt:
+		m.ClearUserAccessKeyCreatedAt()
 		return nil
 	case user.FieldReferredBy:
 		m.ClearReferredBy()
@@ -49180,6 +49390,15 @@ func (m *UserMutation) ResetField(name string) error {
 		return nil
 	case user.FieldTotalRecharged:
 		m.ResetTotalRecharged()
+		return nil
+	case user.FieldUserAccessKeyHash:
+		m.ResetUserAccessKeyHash()
+		return nil
+	case user.FieldUserAccessKeyEncrypted:
+		m.ResetUserAccessKeyEncrypted()
+		return nil
+	case user.FieldUserAccessKeyCreatedAt:
+		m.ResetUserAccessKeyCreatedAt()
 		return nil
 	case user.FieldIsSales:
 		m.ResetIsSales()

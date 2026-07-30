@@ -1,3 +1,6 @@
+# API-only development image. It intentionally does not embed the Vue SPA;
+# use the repository-root Dockerfile or deploy/frontend Nginx/Caddy for
+# browser routes such as /api-docs.
 FROM golang:1.25.7-alpine
 
 WORKDIR /app

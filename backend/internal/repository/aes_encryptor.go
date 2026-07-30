@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -20,16 +21,28 @@ type AESEncryptor struct {
 
 // NewAESEncryptor creates a new AES encryptor
 func NewAESEncryptor(cfg *config.Config) (service.SecretEncryptor, error) {
-	key, err := hex.DecodeString(cfg.Totp.EncryptionKey)
-	if err != nil {
-		return nil, fmt.Errorf("invalid totp encryption key: %w", err)
+	if cfg == nil {
+		return nil, fmt.Errorf("nil config")
 	}
-
-	if len(key) != 32 {
-		return nil, fmt.Errorf("totp encryption key must be 32 bytes (64 hex chars), got %d bytes", len(key))
+	key, err := decodeTOTPEncryptionKey(cfg.Totp.EncryptionKey)
+	if err != nil {
+		return nil, err
 	}
 
 	return &AESEncryptor{key: key}, nil
+}
+
+// decodeTOTPEncryptionKey validates the persisted AES-256 key before it is used
+// for any recoverable secret, including TOTP and user developer access keys.
+func decodeTOTPEncryptionKey(encoded string) ([]byte, error) {
+	key, err := hex.DecodeString(strings.TrimSpace(encoded))
+	if err != nil {
+		return nil, fmt.Errorf("invalid totp encryption key: %w", err)
+	}
+	if len(key) != 32 {
+		return nil, fmt.Errorf("totp encryption key must be 32 bytes (64 hex chars), got %d bytes", len(key))
+	}
+	return key, nil
 }
 
 // Encrypt encrypts plaintext using AES-256-GCM

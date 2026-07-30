@@ -333,6 +333,66 @@ func (_u *UserUpdate) AddTotalRecharged(v float64) *UserUpdate {
 	return _u
 }
 
+// SetUserAccessKeyHash sets the "user_access_key_hash" field.
+func (_u *UserUpdate) SetUserAccessKeyHash(v string) *UserUpdate {
+	_u.mutation.SetUserAccessKeyHash(v)
+	return _u
+}
+
+// SetNillableUserAccessKeyHash sets the "user_access_key_hash" field if the given value is not nil.
+func (_u *UserUpdate) SetNillableUserAccessKeyHash(v *string) *UserUpdate {
+	if v != nil {
+		_u.SetUserAccessKeyHash(*v)
+	}
+	return _u
+}
+
+// ClearUserAccessKeyHash clears the value of the "user_access_key_hash" field.
+func (_u *UserUpdate) ClearUserAccessKeyHash() *UserUpdate {
+	_u.mutation.ClearUserAccessKeyHash()
+	return _u
+}
+
+// SetUserAccessKeyEncrypted sets the "user_access_key_encrypted" field.
+func (_u *UserUpdate) SetUserAccessKeyEncrypted(v string) *UserUpdate {
+	_u.mutation.SetUserAccessKeyEncrypted(v)
+	return _u
+}
+
+// SetNillableUserAccessKeyEncrypted sets the "user_access_key_encrypted" field if the given value is not nil.
+func (_u *UserUpdate) SetNillableUserAccessKeyEncrypted(v *string) *UserUpdate {
+	if v != nil {
+		_u.SetUserAccessKeyEncrypted(*v)
+	}
+	return _u
+}
+
+// ClearUserAccessKeyEncrypted clears the value of the "user_access_key_encrypted" field.
+func (_u *UserUpdate) ClearUserAccessKeyEncrypted() *UserUpdate {
+	_u.mutation.ClearUserAccessKeyEncrypted()
+	return _u
+}
+
+// SetUserAccessKeyCreatedAt sets the "user_access_key_created_at" field.
+func (_u *UserUpdate) SetUserAccessKeyCreatedAt(v time.Time) *UserUpdate {
+	_u.mutation.SetUserAccessKeyCreatedAt(v)
+	return _u
+}
+
+// SetNillableUserAccessKeyCreatedAt sets the "user_access_key_created_at" field if the given value is not nil.
+func (_u *UserUpdate) SetNillableUserAccessKeyCreatedAt(v *time.Time) *UserUpdate {
+	if v != nil {
+		_u.SetUserAccessKeyCreatedAt(*v)
+	}
+	return _u
+}
+
+// ClearUserAccessKeyCreatedAt clears the value of the "user_access_key_created_at" field.
+func (_u *UserUpdate) ClearUserAccessKeyCreatedAt() *UserUpdate {
+	_u.mutation.ClearUserAccessKeyCreatedAt()
+	return _u
+}
+
 // SetIsSales sets the "is_sales" field.
 func (_u *UserUpdate) SetIsSales(v bool) *UserUpdate {
 	_u.mutation.SetIsSales(v)
@@ -878,6 +938,11 @@ func (_u *UserUpdate) check() error {
 			return &ValidationError{Name: "username", err: fmt.Errorf(`ent: validator failed for field "User.username": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.UserAccessKeyHash(); ok {
+		if err := user.UserAccessKeyHashValidator(v); err != nil {
+			return &ValidationError{Name: "user_access_key_hash", err: fmt.Errorf(`ent: validator failed for field "User.user_access_key_hash": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.SalesCommissionRate(); ok {
 		if err := user.SalesCommissionRateValidator(v); err != nil {
 			return &ValidationError{Name: "sales_commission_rate", err: fmt.Errorf(`ent: validator failed for field "User.sales_commission_rate": %w`, err)}
@@ -985,6 +1050,24 @@ func (_u *UserUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.AddedTotalRecharged(); ok {
 		_spec.AddField(user.FieldTotalRecharged, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.UserAccessKeyHash(); ok {
+		_spec.SetField(user.FieldUserAccessKeyHash, field.TypeString, value)
+	}
+	if _u.mutation.UserAccessKeyHashCleared() {
+		_spec.ClearField(user.FieldUserAccessKeyHash, field.TypeString)
+	}
+	if value, ok := _u.mutation.UserAccessKeyEncrypted(); ok {
+		_spec.SetField(user.FieldUserAccessKeyEncrypted, field.TypeString, value)
+	}
+	if _u.mutation.UserAccessKeyEncryptedCleared() {
+		_spec.ClearField(user.FieldUserAccessKeyEncrypted, field.TypeString)
+	}
+	if value, ok := _u.mutation.UserAccessKeyCreatedAt(); ok {
+		_spec.SetField(user.FieldUserAccessKeyCreatedAt, field.TypeTime, value)
+	}
+	if _u.mutation.UserAccessKeyCreatedAtCleared() {
+		_spec.ClearField(user.FieldUserAccessKeyCreatedAt, field.TypeTime)
 	}
 	if value, ok := _u.mutation.IsSales(); ok {
 		_spec.SetField(user.FieldIsSales, field.TypeBool, value)
@@ -1794,6 +1877,66 @@ func (_u *UserUpdateOne) AddTotalRecharged(v float64) *UserUpdateOne {
 	return _u
 }
 
+// SetUserAccessKeyHash sets the "user_access_key_hash" field.
+func (_u *UserUpdateOne) SetUserAccessKeyHash(v string) *UserUpdateOne {
+	_u.mutation.SetUserAccessKeyHash(v)
+	return _u
+}
+
+// SetNillableUserAccessKeyHash sets the "user_access_key_hash" field if the given value is not nil.
+func (_u *UserUpdateOne) SetNillableUserAccessKeyHash(v *string) *UserUpdateOne {
+	if v != nil {
+		_u.SetUserAccessKeyHash(*v)
+	}
+	return _u
+}
+
+// ClearUserAccessKeyHash clears the value of the "user_access_key_hash" field.
+func (_u *UserUpdateOne) ClearUserAccessKeyHash() *UserUpdateOne {
+	_u.mutation.ClearUserAccessKeyHash()
+	return _u
+}
+
+// SetUserAccessKeyEncrypted sets the "user_access_key_encrypted" field.
+func (_u *UserUpdateOne) SetUserAccessKeyEncrypted(v string) *UserUpdateOne {
+	_u.mutation.SetUserAccessKeyEncrypted(v)
+	return _u
+}
+
+// SetNillableUserAccessKeyEncrypted sets the "user_access_key_encrypted" field if the given value is not nil.
+func (_u *UserUpdateOne) SetNillableUserAccessKeyEncrypted(v *string) *UserUpdateOne {
+	if v != nil {
+		_u.SetUserAccessKeyEncrypted(*v)
+	}
+	return _u
+}
+
+// ClearUserAccessKeyEncrypted clears the value of the "user_access_key_encrypted" field.
+func (_u *UserUpdateOne) ClearUserAccessKeyEncrypted() *UserUpdateOne {
+	_u.mutation.ClearUserAccessKeyEncrypted()
+	return _u
+}
+
+// SetUserAccessKeyCreatedAt sets the "user_access_key_created_at" field.
+func (_u *UserUpdateOne) SetUserAccessKeyCreatedAt(v time.Time) *UserUpdateOne {
+	_u.mutation.SetUserAccessKeyCreatedAt(v)
+	return _u
+}
+
+// SetNillableUserAccessKeyCreatedAt sets the "user_access_key_created_at" field if the given value is not nil.
+func (_u *UserUpdateOne) SetNillableUserAccessKeyCreatedAt(v *time.Time) *UserUpdateOne {
+	if v != nil {
+		_u.SetUserAccessKeyCreatedAt(*v)
+	}
+	return _u
+}
+
+// ClearUserAccessKeyCreatedAt clears the value of the "user_access_key_created_at" field.
+func (_u *UserUpdateOne) ClearUserAccessKeyCreatedAt() *UserUpdateOne {
+	_u.mutation.ClearUserAccessKeyCreatedAt()
+	return _u
+}
+
 // SetIsSales sets the "is_sales" field.
 func (_u *UserUpdateOne) SetIsSales(v bool) *UserUpdateOne {
 	_u.mutation.SetIsSales(v)
@@ -2352,6 +2495,11 @@ func (_u *UserUpdateOne) check() error {
 			return &ValidationError{Name: "username", err: fmt.Errorf(`ent: validator failed for field "User.username": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.UserAccessKeyHash(); ok {
+		if err := user.UserAccessKeyHashValidator(v); err != nil {
+			return &ValidationError{Name: "user_access_key_hash", err: fmt.Errorf(`ent: validator failed for field "User.user_access_key_hash": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.SalesCommissionRate(); ok {
 		if err := user.SalesCommissionRateValidator(v); err != nil {
 			return &ValidationError{Name: "sales_commission_rate", err: fmt.Errorf(`ent: validator failed for field "User.sales_commission_rate": %w`, err)}
@@ -2476,6 +2624,24 @@ func (_u *UserUpdateOne) sqlSave(ctx context.Context) (_node *User, err error) {
 	}
 	if value, ok := _u.mutation.AddedTotalRecharged(); ok {
 		_spec.AddField(user.FieldTotalRecharged, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.UserAccessKeyHash(); ok {
+		_spec.SetField(user.FieldUserAccessKeyHash, field.TypeString, value)
+	}
+	if _u.mutation.UserAccessKeyHashCleared() {
+		_spec.ClearField(user.FieldUserAccessKeyHash, field.TypeString)
+	}
+	if value, ok := _u.mutation.UserAccessKeyEncrypted(); ok {
+		_spec.SetField(user.FieldUserAccessKeyEncrypted, field.TypeString, value)
+	}
+	if _u.mutation.UserAccessKeyEncryptedCleared() {
+		_spec.ClearField(user.FieldUserAccessKeyEncrypted, field.TypeString)
+	}
+	if value, ok := _u.mutation.UserAccessKeyCreatedAt(); ok {
+		_spec.SetField(user.FieldUserAccessKeyCreatedAt, field.TypeTime, value)
+	}
+	if _u.mutation.UserAccessKeyCreatedAtCleared() {
+		_spec.ClearField(user.FieldUserAccessKeyCreatedAt, field.TypeTime)
 	}
 	if value, ok := _u.mutation.IsSales(); ok {
 		_spec.SetField(user.FieldIsSales, field.TypeBool, value)

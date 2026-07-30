@@ -111,7 +111,8 @@ export default defineConfig(({ mode }) => {
       host: '0.0.0.0',
       port: devPort,
       proxy: {
-        '/api': {
+        // 使用精确的路径边界，避免把前端页面路由（例如 /api-docs）误代理到后端。
+        '^/api(?:/|$)': {
           target: backendUrl,
           changeOrigin: true
         },

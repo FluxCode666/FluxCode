@@ -2055,28 +2055,32 @@ func init() {
 	userDescTotalRecharged := userFields[15].Descriptor()
 	// user.DefaultTotalRecharged holds the default value on creation for the total_recharged field.
 	user.DefaultTotalRecharged = userDescTotalRecharged.Default.(float64)
+	// userDescUserAccessKeyHash is the schema descriptor for user_access_key_hash field.
+	userDescUserAccessKeyHash := userFields[16].Descriptor()
+	// user.UserAccessKeyHashValidator is a validator for the "user_access_key_hash" field. It is called by the builders before save.
+	user.UserAccessKeyHashValidator = userDescUserAccessKeyHash.Validators[0].(func(string) error)
 	// userDescIsSales is the schema descriptor for is_sales field.
-	userDescIsSales := userFields[16].Descriptor()
+	userDescIsSales := userFields[19].Descriptor()
 	// user.DefaultIsSales holds the default value on creation for the is_sales field.
 	user.DefaultIsSales = userDescIsSales.Default.(bool)
 	// userDescSalesCommissionRate is the schema descriptor for sales_commission_rate field.
-	userDescSalesCommissionRate := userFields[17].Descriptor()
+	userDescSalesCommissionRate := userFields[20].Descriptor()
 	// user.DefaultSalesCommissionRate holds the default value on creation for the sales_commission_rate field.
 	user.DefaultSalesCommissionRate = userDescSalesCommissionRate.Default.(float64)
 	// user.SalesCommissionRateValidator is a validator for the "sales_commission_rate" field. It is called by the builders before save.
 	user.SalesCommissionRateValidator = userDescSalesCommissionRate.Validators[0].(func(float64) error)
 	// userDescSalesCommissionMode is the schema descriptor for sales_commission_mode field.
-	userDescSalesCommissionMode := userFields[18].Descriptor()
+	userDescSalesCommissionMode := userFields[21].Descriptor()
 	// user.DefaultSalesCommissionMode holds the default value on creation for the sales_commission_mode field.
 	user.DefaultSalesCommissionMode = userDescSalesCommissionMode.Default.(string)
 	// user.SalesCommissionModeValidator is a validator for the "sales_commission_mode" field. It is called by the builders before save.
 	user.SalesCommissionModeValidator = userDescSalesCommissionMode.Validators[0].(func(string) error)
 	// userDescSalesCommissionMinMonthlySales is the schema descriptor for sales_commission_min_monthly_sales field.
-	userDescSalesCommissionMinMonthlySales := userFields[19].Descriptor()
+	userDescSalesCommissionMinMonthlySales := userFields[22].Descriptor()
 	// user.DefaultSalesCommissionMinMonthlySales holds the default value on creation for the sales_commission_min_monthly_sales field.
 	user.DefaultSalesCommissionMinMonthlySales = userDescSalesCommissionMinMonthlySales.Default.(float64)
 	// userDescReferralCode is the schema descriptor for referral_code field.
-	userDescReferralCode := userFields[20].Descriptor()
+	userDescReferralCode := userFields[23].Descriptor()
 	// user.DefaultReferralCode holds the default value on creation for the referral_code field.
 	user.DefaultReferralCode = userDescReferralCode.Default.(string)
 	// user.ReferralCodeValidator is a validator for the "referral_code" field. It is called by the builders before save.

@@ -203,6 +203,153 @@ export default {
     }
   },
 
+  apiDocs: {
+    eyebrow: '开发者工具',
+    title: 'API 文档',
+    description: '通过开发者 API 安全管理用户密钥、账户、使用记录与 API 密钥。',
+    authenticatedOnly: '仅限用户密钥调用',
+    endpoint: '接口地址',
+    method: '请求方法',
+    operation: '操作',
+    baseUrl: '接口地址',
+    authHeader: '鉴权 Header',
+    authHint: '所有请求均需通过 X-User-Access-Key Header 携带用户密钥。',
+    navigation: {
+      title: '接口目录',
+      hint: '按模块浏览，或直接定位到具体接口。',
+      accessKey: '访问密钥',
+      account: '账户',
+      usage: '使用记录',
+      apiKeys: 'API Key 管理',
+      goToEndpoint: '定位到接口：{endpoint}',
+      toggleModule: '{action}{module}接口目录'
+    },
+    sections: {
+      expand: '展开',
+      collapse: '收起',
+      toggleLabel: '{action}{section}模块'
+    },
+    endpointDocumentation: {
+      requestParameters: '请求参数',
+      requestDescription: '请求说明',
+      responseParameters: '响应参数',
+      parameter: '参数',
+      location: '位置',
+      required: '必填',
+      type: '类型',
+      defaultValueLabel: '默认值',
+      description: '说明',
+      yes: '是',
+      no: '否',
+      exampleValue: '示例：{value}',
+      requestExample: '请求示例',
+      responseExample: '响应示例',
+      locations: {
+        header: 'Header',
+        query: 'Query',
+        path: 'Path',
+        body: 'JSON Body'
+      }
+    },
+    authentication: {
+      title: '鉴权方式',
+      baseUrl: '接口根地址',
+      header: '请求 Header',
+      hint: '开发者接口只接受用户密钥；请勿使用登录 JWT 或模型 API Key。'
+    },
+    accessKey: {
+      title: '用户密钥',
+      description: '用于调用本页所列接口的专属用户密钥。',
+      loading: '正在加载用户密钥...',
+      generated: '用户密钥已生成',
+      ready: '密钥已就绪',
+      notGenerated: '尚未生成用户密钥',
+      configurationRequiredStatus: '需要安全配置',
+      unavailable: '暂不可用',
+      generate: '生成用户密钥',
+      generating: '生成中...',
+      copy: '复制密钥',
+      copied: '用户密钥已复制',
+      valueLabel: '密钥值',
+      maskedValueLabel: '脱敏密钥',
+      emptyHint: '生成密钥后即可用于调用下方接口。',
+      createdAt: '生成于 {date}',
+      securityHint: '请妥善保管此密钥；生成后可随时再次复制。',
+      configurationRequired: '管理员需要先配置 TOTP_ENCRYPTION_KEY，才能安全地生成和保存可恢复的用户密钥。',
+      loadFailed: '加载用户密钥失败',
+      generateFailed: '生成用户密钥失败'
+    },
+    balance: {
+      title: '查询余额',
+      description: '获取当前用户的账户余额。'
+    },
+    account: {
+      title: '账户',
+      description: '查看当前账户可用余额，并使用同一把用户密钥发起调用。'
+    },
+    usage: {
+      title: '使用记录',
+      description: '按分页、日期、API Key 和排序条件检索当前用户的调用使用记录。',
+      endpointTitle: '获取使用记录',
+      endpointDescription: '仅返回当前用户及其 API Key 产生的记录，支持组合筛选和排序。',
+      relatedEndpointsTitle: '使用记录接口',
+      list: '获取使用记录列表',
+      stats: '获取使用统计',
+      get: '获取使用记录详情',
+      parametersTitle: '查询参数',
+      parametersDescription: '以下参数均通过 URL Query 传递，未传时使用接口默认值。',
+      parameter: '参数',
+      type: '类型',
+      descriptionLabel: '说明',
+      defaultValue: '默认值：{value}',
+      parameters: {
+        page: '页码，从 1 开始。',
+        pageSize: '每页返回的记录数。',
+        startDate: '开始日期，格式为 YYYY-MM-DD，包含当天。',
+        endDate: '结束日期，格式为 YYYY-MM-DD，包含当天。',
+        apiKeyId: '仅查询指定的、归属于当前用户的 API Key 使用记录。',
+        sortBy: '排序字段，例如 created_at。',
+        sortOrder: '排序方向，可选 asc 或 desc。'
+      }
+    },
+    apiKeys: {
+      title: 'API 密钥管理',
+      description: '管理当前用户的 API 密钥。',
+      list: '获取 API 密钥列表',
+      get: '获取 API 密钥详情',
+      create: '创建 API 密钥',
+      update: '更新 API 密钥',
+      delete: '删除 API 密钥',
+      availableGroups: '获取可用分组'
+    },
+    examples: {
+      balance: 'cURL · GET /balance',
+      usage: 'cURL · GET /usage',
+      listApiKeys: 'cURL · GET /keys',
+      createApiKey: 'cURL · POST /keys',
+      readAndUpdateApiKey: 'cURL · GET /keys/:id · PUT /keys/:id',
+      deleteApiKey: 'cURL · DELETE /keys/:id',
+      availableGroups: 'cURL · GET /groups/available'
+    },
+    labels: {
+      endpoint: '接口地址',
+      method: '请求方法',
+      requestExample: '请求示例',
+      responseExample: '响应示例',
+      parameters: '请求参数',
+      required: '必填',
+      optional: '可选',
+      keyName: '密钥名称',
+      groupId: '分组 ID',
+      apiKeyId: 'API 密钥 ID'
+    },
+    notes: {
+      title: '使用说明',
+      item1: '请勿将用户密钥暴露在浏览器、客户端代码或公共仓库中。',
+      item2: 'API 密钥管理接口仅可操作当前登录用户所属的密钥。'
+    }
+  },
+
   modelPricing: {
     title: '模型定价',
     description: '按模型查看不同分组的调用价格',
@@ -547,6 +694,7 @@ export default {
     dashboard: '仪表盘',
     announcements: '公告',
     apiKeys: 'API 密钥',
+    apiDocs: 'API 文档',
     usage: '使用记录',
     redeem: '兑换',
     referral: '推广中心',

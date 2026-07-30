@@ -28,27 +28,37 @@ function fallbackCopy(text: string): boolean {
   }
 }
 
+interface ClipboardOptions {
+  /**
+   * Whether the legacy `execCommand` fallback may be used. Sensitive values
+   * must keep this disabled so their plaintext never gets mounted in a DOM node.
+   */
+  allowFallback?: boolean
+}
+
 export function useClipboard() {
   const appStore = useAppStore()
   const copied = ref(false)
 
   const copyToClipboard = async (
     text: string,
-    successMessage?: string
+    successMessage?: string,
+    options: ClipboardOptions = {}
   ): Promise<boolean> => {
     if (!text) return false
 
     let success = false
+    const allowFallback = options.allowFallback !== false
 
     if (isClipboardSupported()) {
       try {
         await navigator.clipboard.writeText(text)
         success = true
       } catch {
-        success = fallbackCopy(text)
+        success = allowFallback ? fallbackCopy(text) : false
       }
     } else {
-      success = fallbackCopy(text)
+      success = allowFallback ? fallbackCopy(text) : false
     }
 
     if (success) {
@@ -64,5 +74,15 @@ export function useClipboard() {
     return success
   }
 
-  return { copied, copyToClipboard }
+  /**
+   * Copies credentials without the textarea fallback used for ordinary text.
+   * This keeps the plaintext outside the DOM even when Clipboard API access
+   * is unavailable or rejected by the browser.
+   */
+  const copySensitiveToClipboard = (
+    text: string,
+    successMessage?: string
+  ): Promise<boolean> => copyToClipboard(text, successMessage, { allowFallback: false })
+
+  return { copied, copyToClipboard, copySensitiveToClipboard }
 }

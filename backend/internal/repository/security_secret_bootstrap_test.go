@@ -64,6 +64,72 @@ func TestEnsureBootstrapSecretsGenerateAndPersistJWTSecret(t *testing.T) {
 	require.Equal(t, cfg.JWT.Secret, stored.Value)
 }
 
+func TestEnsureBootstrapSecretsKeepsGeneratedTOTPEncryptionKeyAcrossRestarts(t *testing.T) {
+	client := newSecuritySecretTestClient(t)
+
+	firstConfig := &config.Config{}
+	require.NoError(t, ensureBootstrapSecrets(context.Background(), client, firstConfig))
+	firstKey := firstConfig.Totp.EncryptionKey
+	require.Len(t, firstKey, 64)
+	require.False(t, firstConfig.Totp.EncryptionKeyConfigured)
+
+	firstEncryptor, err := NewAESEncryptor(firstConfig)
+	require.NoError(t, err)
+	ciphertext, err := firstEncryptor.Encrypt("recoverable-secret-canary")
+	require.NoError(t, err)
+
+	// A fresh config represents the next process, which would otherwise choose
+	// another random fallback key before connecting to the database.
+	secondConfig := &config.Config{}
+	require.NoError(t, ensureBootstrapSecrets(context.Background(), client, secondConfig))
+	require.Equal(t, firstKey, secondConfig.Totp.EncryptionKey)
+
+	secondEncryptor, err := NewAESEncryptor(secondConfig)
+	require.NoError(t, err)
+	plaintext, err := secondEncryptor.Decrypt(ciphertext)
+	require.NoError(t, err)
+	require.Equal(t, "recoverable-secret-canary", plaintext)
+
+	stored, err := client.SecuritySecret.Query().Where(securitysecret.KeyEQ(securitySecretKeyTOTP)).Only(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, firstKey, stored.Value)
+}
+
+func TestEnsureBootstrapSecretsUsesConfiguredTOTPKeyWithoutPersistingIt(t *testing.T) {
+	client := newSecuritySecretTestClient(t)
+	configuredKey := strings.Repeat("ab", 32)
+	cfg := &config.Config{Totp: config.TotpConfig{
+		EncryptionKey:           configuredKey,
+		EncryptionKeyConfigured: true,
+	}}
+
+	require.NoError(t, ensureBootstrapSecrets(context.Background(), client, cfg))
+	require.Equal(t, configuredKey, cfg.Totp.EncryptionKey)
+
+	count, err := client.SecuritySecret.Query().Where(securitysecret.KeyEQ(securitySecretKeyTOTP)).Count(context.Background())
+	require.NoError(t, err)
+	require.Zero(t, count, "configured encryption key must not be copied into the application database")
+}
+
+func TestEnsureBootstrapSecretsDoesNotOverrideConfiguredTOTPKeyWithFallback(t *testing.T) {
+	client := newSecuritySecretTestClient(t)
+	fallbackKey := strings.Repeat("cd", 32)
+	_, err := client.SecuritySecret.Create().
+		SetKey(securitySecretKeyTOTP).
+		SetValue(fallbackKey).
+		Save(context.Background())
+	require.NoError(t, err)
+
+	configuredKey := strings.Repeat("ef", 32)
+	cfg := &config.Config{Totp: config.TotpConfig{
+		EncryptionKey:           configuredKey,
+		EncryptionKeyConfigured: true,
+	}}
+
+	require.NoError(t, ensureBootstrapSecrets(context.Background(), client, cfg))
+	require.Equal(t, configuredKey, cfg.Totp.EncryptionKey)
+}
+
 func TestEnsureBootstrapSecretsLoadExistingJWTSecret(t *testing.T) {
 	client := newSecuritySecretTestClient(t)
 	_, err := client.SecuritySecret.Create().SetKey(securitySecretKeyJWT).SetValue("existing-jwt-secret-32bytes-long!!!!").Save(context.Background())

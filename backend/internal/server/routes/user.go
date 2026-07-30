@@ -14,6 +14,7 @@ func RegisterUserRoutes(
 	h *handler.Handlers,
 	jwtAuth middleware.JWTAuthMiddleware,
 	settingService *service.SettingService,
+	userAccessKeyAuth ...middleware.UserAccessKeyAuthMiddleware,
 ) {
 	// 官网渠道状态页使用这组只读接口，允许未登录访问。
 	monitors := v1.Group("/channel-monitors")
@@ -30,6 +31,8 @@ func RegisterUserRoutes(
 		user := authenticated.Group("/user")
 		{
 			user.GET("/profile", h.User.GetProfile)
+			user.GET("/access-key", h.UserAccessKey.GetAccessKey)
+			user.POST("/access-key", h.UserAccessKey.CreateAccessKey)
 			user.PUT("/password", h.User.ChangePassword)
 			user.PUT("", h.User.UpdateProfile)
 			user.GET("/ui-preferences", h.User.GetUIPreferences)
@@ -133,6 +136,33 @@ func RegisterUserRoutes(
 			subscriptions.GET("/progress", h.Subscription.GetProgress)
 			subscriptions.GET("/summary", h.Subscription.GetSummary)
 			subscriptions.GET("/:id/grants", h.Subscription.GetMyGrants)
+		}
+	}
+
+	// 用户级开发者接口：仅接受专用用户访问密钥，不复用 JWT 或模型 API Key。
+	// 保持该组最小权限，只公开当前用户自己的资源。
+	if len(userAccessKeyAuth) > 0 && userAccessKeyAuth[0] != nil && h.UserAccessKey != nil && h.APIKey != nil {
+		developer := v1.Group("/openapi")
+		developer.Use(gin.HandlerFunc(userAccessKeyAuth[0]))
+		developer.Use(middleware.BackendModeUserGuard(settingService))
+		{
+			developer.GET("/balance", h.UserAccessKey.GetBalance)
+			developer.GET("/keys", h.APIKey.List)
+			developer.GET("/keys/:id", h.APIKey.GetByID)
+			developer.POST("/keys", h.APIKey.Create)
+			developer.PUT("/keys/:id", h.APIKey.Update)
+			developer.DELETE("/keys/:id", h.APIKey.Delete)
+			developer.GET("/groups/available", h.APIKey.GetAvailableGroups)
+
+			// 使用记录沿用用户端同一处理器，确保分页、筛选和所有权校验完全一致。
+			if h.Usage != nil {
+				usage := developer.Group("/usage")
+				{
+					usage.GET("", h.Usage.List)
+					usage.GET("/stats", h.Usage.Stats)
+					usage.GET("/:id", h.Usage.GetByID)
+				}
+			}
 		}
 	}
 }

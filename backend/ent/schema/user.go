@@ -89,6 +89,20 @@ func (User) Fields() []ent.Field {
 			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"}).
 			Default(0),
 
+		// 用户访问密钥用于开发者接口。密钥原文以 AES-GCM 加密保存，
+		// 同时保留 SHA-256 摘要，以便在不解密整张用户表的情况下完成鉴权。
+		field.String("user_access_key_hash").
+			MaxLen(64).
+			Optional().
+			Nillable(),
+		field.String("user_access_key_encrypted").
+			SchemaType(map[string]string{dialect.Postgres: "text"}).
+			Optional().
+			Nillable(),
+		field.Time("user_access_key_created_at").
+			Optional().
+			Nillable(),
+
 		// 销售佣金
 		field.Bool("is_sales").
 			Default(false),
