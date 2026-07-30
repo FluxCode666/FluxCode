@@ -108,6 +108,10 @@ func TestClassifyOpenAIWSErrorEvent(t *testing.T) {
 	reason, recoverable = classifyOpenAIWSErrorEvent([]byte(`{"type":"error","error":{"code":"previous_response_not_found","message":"not found"}}`))
 	require.Equal(t, "previous_response_not_found", reason)
 	require.True(t, recoverable)
+
+	reason, recoverable = classifyOpenAIWSErrorEvent([]byte(`{"type":"error","error":{"code":"invalid_request","message":"Selected model is at capacity. Please try a different model."}}`))
+	require.Equal(t, "selected_model_at_capacity", reason)
+	require.True(t, recoverable)
 }
 
 func TestClassifyOpenAIWSReconnectReason(t *testing.T) {
@@ -129,6 +133,17 @@ func TestOpenAIWSErrorHTTPStatus(t *testing.T) {
 }
 
 func TestResolveOpenAIWSFallbackErrorResponse(t *testing.T) {
+	t.Run("selected_model_at_capacity", func(t *testing.T) {
+		statusCode, errType, clientMessage, upstreamMessage, ok := resolveOpenAIWSFallbackErrorResponse(
+			wrapOpenAIWSFallback("selected_model_at_capacity", errors.New("Selected model is at capacity. Please try a different model.")),
+		)
+		require.True(t, ok)
+		require.Equal(t, http.StatusBadRequest, statusCode)
+		require.Equal(t, "invalid_request_error", errType)
+		require.Equal(t, "Selected model is at capacity. Please try a different model.", clientMessage)
+		require.Equal(t, clientMessage, upstreamMessage)
+	})
+
 	t.Run("previous_response_not_found", func(t *testing.T) {
 		statusCode, errType, clientMessage, upstreamMessage, ok := resolveOpenAIWSFallbackErrorResponse(
 			wrapOpenAIWSFallback("previous_response_not_found", errors.New("previous response not found")),

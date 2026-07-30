@@ -4114,6 +4114,10 @@ func classifyOpenAIWSErrorEventFromRaw(codeRaw, errTypeRaw, msgRaw string) (stri
 	code := strings.ToLower(strings.TrimSpace(codeRaw))
 	errType := strings.ToLower(strings.TrimSpace(errTypeRaw))
 	msg := strings.ToLower(strings.TrimSpace(msgRaw))
+	if isSelectedModelAtCapacityError(msgRaw) {
+		// 当前账号的模型容量不足；让调用方在尚未向下游写入时切换账号。
+		return "selected_model_at_capacity", true
+	}
 
 	switch code {
 	case "upgrade_required":

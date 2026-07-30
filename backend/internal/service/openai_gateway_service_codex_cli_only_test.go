@@ -332,3 +332,45 @@ func TestOpenAIGatewayService_Forward_TransientProcessingErrorTriggersFailover(t
 	require.Contains(t, string(failoverErr.ResponseBody), "An error occurred while processing your request")
 	require.False(t, c.Writer.Written(), "service 层应返回 failover 错误给上层换号，而不是直接向客户端写响应")
 }
+
+func TestOpenAIGatewayService_Forward_SelectedModelAtCapacityTriggersAccountFailover(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(nil))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	respBody := `{"error":{"message":"Selected model is at capacity. Please try a different model.","type":"invalid_request_error"}}`
+	svc := &OpenAIGatewayService{
+		cfg: &config.Config{
+			Gateway: config.GatewayConfig{ForceCodexCLI: false},
+		},
+		httpUpstream: &httpUpstreamRecorder{resp: &http.Response{
+			StatusCode: http.StatusBadRequest,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body:       io.NopCloser(strings.NewReader(respBody)),
+		}},
+	}
+	account := &Account{
+		ID:             1002,
+		Name:           "codex-capacity",
+		Platform:       PlatformOpenAI,
+		Type:           AccountTypeAPIKey,
+		Concurrency:    1,
+		Credentials:    map[string]any{"api_key": "sk-test"},
+		Status:         StatusActive,
+		Schedulable:    true,
+		RateMultiplier: f64p(1),
+	}
+	body := []byte(`{"model":"gpt-5.1-codex","stream":false,"input":[{"type":"text","text":"hello"}]}`)
+
+	result, err := svc.Forward(context.Background(), c, account, body)
+	require.Nil(t, result)
+	var failoverErr *UpstreamFailoverError
+	require.ErrorAs(t, err, &failoverErr)
+	require.Equal(t, http.StatusBadRequest, failoverErr.StatusCode)
+	require.False(t, failoverErr.RetryableOnSameAccount)
+	require.JSONEq(t, respBody, string(failoverErr.ResponseBody))
+	require.False(t, c.Writer.Written(), "服务层应在换号前保持下游未写入")
+}

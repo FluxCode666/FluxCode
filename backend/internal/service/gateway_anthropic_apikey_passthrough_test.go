@@ -97,6 +97,102 @@ func (w *failWriteResponseWriter) WriteString(_ string) (int, error) {
 	return 0, errors.New("client disconnected")
 }
 
+func TestGatewayService_SelectedModelAtCapacityTriggersAccountFailover(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+
+	respBody := []byte(`{"error":{"message":"Selected model is at capacity. Please try a different model."}}`)
+	resp := &http.Response{
+		StatusCode: http.StatusBadRequest,
+		Header:     http.Header{"X-Request-Id": []string{"req-capacity-claude"}},
+		Body:       io.NopCloser(bytes.NewReader(respBody)),
+	}
+	account := newAnthropicAPIKeyAccountForTest()
+
+	failoverErr := (&GatewayService{}).selectedModelAtCapacityFailover(context.Background(), c, resp, account, respBody, true)
+	require.NotNil(t, failoverErr)
+	require.Equal(t, http.StatusBadRequest, failoverErr.StatusCode)
+	require.False(t, failoverErr.RetryableOnSameAccount)
+	require.JSONEq(t, string(respBody), string(failoverErr.ResponseBody))
+	require.Empty(t, rec.Body.String())
+
+	raw, ok := c.Get(OpsUpstreamErrorsKey)
+	require.True(t, ok)
+	events, ok := raw.([]*OpsUpstreamErrorEvent)
+	require.True(t, ok)
+	require.Len(t, events, 1)
+	require.True(t, events[0].Passthrough)
+	require.Equal(t, "failover", events[0].Kind)
+}
+
+func TestGatewayService_AnthropicAPIKeyPassthrough_SelectedModelAtCapacityDoesNotWriteDownstream(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+
+	body := []byte(`{"model":"claude-3-7-sonnet-20250219","max_tokens":16,"messages":[{"role":"user","content":"hello"}]}`)
+	parsed := &ParsedRequest{
+		Body:  body,
+		Model: "claude-3-7-sonnet-20250219",
+	}
+	respBody := []byte(`{"error":{"message":"Selected model is at capacity. Please try a different model."}}`)
+	upstream := &anthropicHTTPUpstreamRecorder{
+		resp: &http.Response{
+			StatusCode: http.StatusBadRequest,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body:       io.NopCloser(bytes.NewReader(respBody)),
+		},
+	}
+	svc := &GatewayService{
+		cfg:              &config.Config{Gateway: config.GatewayConfig{MaxLineSize: defaultMaxLineSize}},
+		httpUpstream:     upstream,
+		rateLimitService: &RateLimitService{},
+	}
+
+	result, err := svc.Forward(context.Background(), c, newAnthropicAPIKeyAccountForTest(), parsed)
+	require.Nil(t, result)
+	var failoverErr *UpstreamFailoverError
+	require.ErrorAs(t, err, &failoverErr)
+	require.Equal(t, http.StatusBadRequest, failoverErr.StatusCode)
+	require.False(t, failoverErr.RetryableOnSameAccount)
+	require.Empty(t, rec.Body.String())
+}
+
+func TestGatewayService_ClaudeAPIKey_SelectedModelAtCapacityDoesNotWriteDownstream(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+
+	body := []byte(`{"model":"claude-3-7-sonnet-20250219","max_tokens":16,"messages":[{"role":"user","content":"hello"}]}`)
+	parsed := &ParsedRequest{Body: body, Model: "claude-3-7-sonnet-20250219"}
+	respBody := []byte(`{"error":{"message":"Selected model is at capacity. Please try a different model."}}`)
+	cfg := &config.Config{Gateway: config.GatewayConfig{MaxLineSize: defaultMaxLineSize}}
+	svc := &GatewayService{
+		cfg:            cfg,
+		settingService: NewSettingService(&antigravitySettingRepoStub{}, cfg),
+		httpUpstream: &anthropicHTTPUpstreamRecorder{resp: &http.Response{
+			StatusCode: http.StatusBadRequest,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body:       io.NopCloser(bytes.NewReader(respBody)),
+		}},
+		rateLimitService: &RateLimitService{},
+	}
+	account := newAnthropicAPIKeyAccountForTest()
+	account.Extra = nil // 非透传 Claude API Key 链路
+
+	result, err := svc.Forward(context.Background(), c, account, parsed)
+	require.Nil(t, result)
+	var failoverErr *UpstreamFailoverError
+	require.ErrorAs(t, err, &failoverErr)
+	require.Equal(t, http.StatusBadRequest, failoverErr.StatusCode)
+	require.False(t, failoverErr.RetryableOnSameAccount)
+	require.Empty(t, rec.Body.String())
+}
+
 func TestGatewayService_AnthropicAPIKeyPassthrough_ForwardStreamPreservesBodyAndAuthReplacement(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

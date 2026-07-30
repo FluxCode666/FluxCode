@@ -864,6 +864,11 @@ func resolveOpenAIWSFallbackErrorResponse(err error) (statusCode int, errType st
 	}
 
 	switch reason {
+	case "selected_model_at_capacity":
+		if statusCode == 0 {
+			statusCode = http.StatusBadRequest
+		}
+		errType = "invalid_request_error"
 	case "invalid_encrypted_content":
 		if statusCode == 0 {
 			statusCode = http.StatusBadRequest
@@ -2144,6 +2149,10 @@ func (s *OpenAIGatewayService) shouldFailoverUpstreamError(statusCode int) bool 
 }
 
 func (s *OpenAIGatewayService) shouldFailoverOpenAIUpstreamResponse(statusCode int, upstreamMsg string, upstreamBody []byte) bool {
+	// 当前账号上的已选模型无容量时，直接切换账号；不要受通用 400 策略限制。
+	if isSelectedModelAtCapacityError(upstreamMsg) || isSelectedModelAtCapacityResponse(upstreamBody) {
+		return true
+	}
 	if isOpenAIContextWindowError(upstreamMsg, upstreamBody) {
 		return false
 	}
@@ -2825,6 +2834,20 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			wsResult.UpstreamModel = upstreamModel
 			return wsResult, nil
 		}
+		if _, _, _, upstreamMsg, ok := resolveOpenAIWSFallbackErrorResponse(wsErr); ok && isSelectedModelAtCapacityError(upstreamMsg) {
+			appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+				Platform:           account.Platform,
+				AccountID:          account.ID,
+				AccountName:        account.Name,
+				UpstreamStatusCode: http.StatusBadRequest,
+				Kind:               "failover",
+				Message:            upstreamMsg,
+			})
+			return nil, &UpstreamFailoverError{
+				StatusCode:   http.StatusBadRequest,
+				ResponseBody: []byte(`{"error":{"message":"Selected model is at capacity. Please try a different model."}}`),
+			}
+		}
 		s.writeOpenAIWSFallbackErrorResponse(c, account, wsErr)
 		return nil, wsErr
 	}
@@ -3145,7 +3168,8 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		probeBody = s.redactAgentIdentitySensitiveBody(ctx, account, probeBody)
 		resp.Body = io.NopCloser(bytes.NewReader(probeBody))
 		s.recordProxyUsageMetric(ctx, account, proxyURL, false, startTime)
-		if shouldFailoverOpenAIPassthroughResponse(resp.StatusCode) {
+		upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(probeBody))
+		if shouldFailoverOpenAIPassthroughResponse(resp.StatusCode, upstreamMsg, probeBody) {
 			return nil, s.handleFailoverErrorResponsePassthrough(ctx, resp, c, account, body)
 		}
 		return nil, s.handleErrorResponsePassthrough(ctx, resp, c, account, body)
@@ -3343,7 +3367,10 @@ func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthrough(
 	return req, nil
 }
 
-func shouldFailoverOpenAIPassthroughResponse(statusCode int) bool {
+func shouldFailoverOpenAIPassthroughResponse(statusCode int, upstreamMsg string, upstreamBody []byte) bool {
+	if isSelectedModelAtCapacityError(upstreamMsg) || isSelectedModelAtCapacityResponse(upstreamBody) {
+		return true
+	}
 	switch statusCode {
 	case http.StatusTooManyRequests, 529:
 		return true
