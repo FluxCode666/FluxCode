@@ -3,298 +3,124 @@
     <PublicHeader :site-name="siteName" :site-logo="siteLogo" />
 
     <main class="pt-24">
-      <section class="mx-auto max-w-6xl px-6 py-16">
-        <div class="max-w-3xl">
-          <h1 class="text-4xl font-semibold tracking-tight text-gray-900 dark:text-white sm:text-5xl">
-            {{ t('home.sections.docsTitle') }}
-          </h1>
-          <p class="mt-4 text-base leading-relaxed text-gray-600 dark:text-dark-300">
-            {{ t('home.sections.docsSubtitle') }}
-          </p>
-        </div>
+      <section class="mx-auto max-w-7xl px-5 py-10 sm:px-6 sm:py-14">
+        <header class="relative overflow-hidden rounded-[32px] border border-black/5 bg-white/70 px-6 py-8 shadow-sm backdrop-blur dark:border-white/10 dark:bg-dark-900/40 sm:px-9 sm:py-10">
+          <div class="pointer-events-none absolute inset-0 opacity-70 dark:opacity-40" aria-hidden="true">
+            <div class="absolute -right-20 -top-20 h-64 w-64 rounded-full bg-cyan-200/50 blur-3xl dark:bg-cyan-400/15"></div>
+            <div class="absolute bottom-0 left-1/3 h-28 w-2/3 bg-[linear-gradient(90deg,transparent,rgba(20,184,166,0.13),transparent)]"></div>
+          </div>
+          <div class="relative max-w-3xl">
+            <div class="flex items-center gap-3 text-xs font-semibold uppercase tracking-[0.18em] text-teal-700 dark:text-teal-300">
+              <span class="h-px w-8 bg-current"></span>
+              客户端配置中心
+            </div>
+            <h1 class="mt-4 text-4xl font-semibold tracking-tight text-gray-950 dark:text-white sm:text-5xl">{{ t('home.sections.docsTitle') }}</h1>
+            <p class="mt-4 max-w-2xl text-base leading-7 text-gray-600 dark:text-dark-300">
+              为常用 AI 客户端生成与当前站点匹配的接入配置。选择客户端后即可复制安装命令、配置文件和排查步骤。
+            </p>
+          </div>
+        </header>
 
-        <div class="mt-12 grid gap-6 text-base">
-          <div class="rounded-3xl border border-black/5 bg-white/70 p-6 shadow-sm backdrop-blur dark:border-white/10 dark:bg-dark-900/40">
-            <div class="border-b border-black/5 dark:border-white/10">
-              <nav class="-mb-px flex space-x-4" aria-label="Tabs">
-                <button
-                  v-for="tab in osTabs"
-                  :key="tab.id"
-                  type="button"
-                  @click="activeOsTab = tab.id"
+        <section class="mt-7" aria-labelledby="client-picker-title">
+          <div class="mb-3 flex items-end justify-between gap-4">
+            <div>
+              <h2 id="client-picker-title" class="text-base font-semibold text-gray-950 dark:text-white">选择客户端</h2>
+              <p class="mt-1 text-sm text-gray-500 dark:text-dark-400">已收录 {{ clientDocs.length }} 个客户端；后续新增文档会自动出现在这里。</p>
+            </div>
+            <span class="hidden rounded-full bg-black/[0.04] px-3 py-1.5 text-xs font-medium text-gray-500 dark:bg-white/[0.07] dark:text-dark-300 sm:inline">可分享链接</span>
+          </div>
+
+          <div class="grid gap-3 md:grid-cols-2">
+            <router-link
+              v-for="client in clientDocs"
+              :key="client.id"
+              :to="{ name: 'Docs', params: { clientId: client.id } }"
+              :class="[
+                'group relative overflow-hidden rounded-2xl border p-4 transition-[border-color,background-color,box-shadow,transform] duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400',
+                isActiveClient(client.id)
+                  ? 'border-teal-500/45 bg-teal-50/70 shadow-sm shadow-teal-900/5 dark:border-teal-400/40 dark:bg-teal-400/[0.08]'
+                  : 'border-black/5 bg-white/65 hover:-translate-y-0.5 hover:border-teal-400/30 hover:bg-white hover:shadow-md hover:shadow-slate-900/5 dark:border-white/10 dark:bg-dark-900/35 dark:hover:bg-dark-900/60'
+              ]"
+            >
+              <div class="flex items-start gap-4">
+                <div
                   :class="[
-                    'whitespace-nowrap py-2.5 px-1 border-b-2 font-medium text-base transition-colors',
-                    activeOsTab === tab.id
-                      ? 'border-primary-500 text-primary-600 dark:text-primary-400'
-                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
+                    'flex h-11 w-11 shrink-0 items-center justify-center rounded-xl font-mono text-xl font-semibold transition-colors',
+                    isActiveClient(client.id)
+                      ? 'bg-teal-700 text-white dark:bg-teal-300 dark:text-teal-950'
+                      : 'bg-slate-100 text-slate-700 group-hover:bg-teal-100 group-hover:text-teal-800 dark:bg-white/[0.07] dark:text-slate-200 dark:group-hover:bg-teal-400/15 dark:group-hover:text-teal-100'
+                  ]"
+                  aria-hidden="true"
+                >
+                  {{ client.icon }}
+                </div>
+                <div class="min-w-0 flex-1">
+                  <div class="flex items-center justify-between gap-3">
+                    <h3 class="font-semibold text-slate-950 dark:text-white">{{ client.name }}</h3>
+                    <svg class="h-4 w-4 shrink-0 text-slate-400 transition-transform group-hover:translate-x-0.5 group-hover:text-teal-600 dark:group-hover:text-teal-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14m-6-6 6 6-6 6" />
+                    </svg>
+                  </div>
+                  <p class="mt-1.5 text-sm leading-6 text-slate-600 dark:text-slate-300">{{ client.description }}</p>
+                  <span class="mt-3 inline-flex rounded-full bg-black/[0.045] px-2.5 py-1 font-mono text-[11px] font-medium text-slate-500 dark:bg-white/[0.08] dark:text-slate-300">{{ client.protocol }}</span>
+                </div>
+              </div>
+            </router-link>
+          </div>
+        </section>
+
+        <div class="mt-7 grid gap-6 lg:grid-cols-[224px_minmax(0,1fr)]">
+          <aside class="hidden lg:block">
+            <div class="sticky top-24 rounded-2xl border border-black/5 bg-white/55 p-3 shadow-sm backdrop-blur dark:border-white/10 dark:bg-dark-900/35">
+              <p class="px-2.5 pb-2 text-xs font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-dark-400">客户端目录</p>
+              <nav class="space-y-1" aria-label="客户端文档目录">
+                <router-link
+                  v-for="client in clientDocs"
+                  :key="client.id"
+                  :to="{ name: 'Docs', params: { clientId: client.id } }"
+                  :class="[
+                    'flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-colors',
+                    isActiveClient(client.id)
+                      ? 'bg-teal-700 text-white shadow-sm dark:bg-teal-300 dark:text-teal-950'
+                      : 'text-slate-600 hover:bg-black/[0.045] hover:text-slate-950 dark:text-slate-300 dark:hover:bg-white/[0.07] dark:hover:text-white'
                   ]"
                 >
-                  {{ tab.label }}
-                </button>
+                  <span class="font-mono text-base leading-none">{{ client.icon }}</span>
+                  <span class="font-medium">{{ client.shortName }}</span>
+                </router-link>
               </nav>
-            </div>
-
-            <p class="mt-4 text-gray-700 dark:text-dark-300">以下步骤会根据你的操作系统展示对应文档。</p>
-          </div>
-
-          <div
-            class="rounded-3xl border border-black/5 bg-white/70 p-6 shadow-sm backdrop-blur dark:border-white/10 dark:bg-dark-900/40"
-          >
-            <h3 class="text-base font-semibold text-gray-900 dark:text-white">1. 安装 Node.js</h3>
-            <ul class="mt-4 list-disc space-y-2 pl-5 text-gray-700 dark:text-dark-300">
-              <li>
-                打开浏览器访问
-                <a
-                  class="underline underline-offset-4 hover:text-gray-900 dark:hover:text-white"
-                  href="https://nodejs.org/"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  >https://nodejs.org/</a
-                >
-              </li>
-              <li>推荐下载 LTS 版本</li>
-              <template v-if="activeOsTab === 'windows'">
-                <li>下载完成后双击 .msi 文件</li>
-                <li>按照安装向导完成安装，保持默认设置即可</li>
-                <li>如果遇到权限问题，尝试以管理员身份运行</li>
-                <li>某些杀毒软件可能会误报，需要添加白名单</li>
-              </template>
-              <template v-else-if="activeOsTab === 'mac'">
-                <li>可直接下载 macOS 安装包并按向导安装（保持默认设置即可）</li>
-                <li>也可使用 Homebrew 安装（如果你已经在用 brew 管理开发环境）</li>
-              </template>
-              <template v-else>
-                <li>可使用系统包管理器或 nvm 安装（建议 LTS）</li>
-                <li>如果遇到权限问题，检查是否需要 sudo/管理员权限</li>
-              </template>
-            </ul>
-
-            <div class="mt-5 space-y-3">
-              <div class="rounded-2xl bg-slate-900 p-4 text-[15px] text-slate-100">
-                <pre class="overflow-x-auto font-mono leading-relaxed"><code>node --version</code></pre>
-              </div>
-              <div class="rounded-2xl bg-slate-900 p-4 text-[15px] text-slate-100">
-                <pre class="overflow-x-auto font-mono leading-relaxed"><code>npm --version</code></pre>
+              <div class="mt-4 rounded-xl border border-dashed border-black/10 px-3 py-3 text-xs leading-5 text-slate-500 dark:border-white/15 dark:text-slate-400">
+                新客户端只需注册一个指南组件，即可自动加入卡片与目录。
               </div>
             </div>
-          </div>
+          </aside>
 
-          <div class="rounded-3xl border border-black/5 bg-white/70 p-6 shadow-sm backdrop-blur dark:border-white/10 dark:bg-dark-900/40">
-            <h3 class="text-base font-semibold text-gray-900 dark:text-white">2. 安装 Codex CLI</h3>
-            <div class="mt-4 rounded-2xl bg-slate-900 p-4 text-[15px] text-slate-100">
-              <pre class="overflow-x-auto font-mono leading-relaxed"><code>npm install -g @openai/codex</code></pre>
-            </div>
-            <p class="mt-3 text-gray-700 dark:text-dark-300">
-              <span v-if="activeOsTab === 'windows'">可在 CMD 或 PowerShell 中执行。安装完成后，可通过以下命令验证安装是否成功：</span>
-              <span v-else>可在终端中执行。安装完成后，可通过以下命令验证安装是否成功：</span>
-            </p>
-            <div class="mt-4 rounded-2xl bg-slate-900 p-4 text-[15px] text-slate-100">
-              <pre class="overflow-x-auto font-mono leading-relaxed"><code>codex --version</code></pre>
-            </div>
-          </div>
+          <div>
+            <component
+              :is="activeClient.component"
+              v-if="activeClient"
+              data-testid="client-guide"
+              :site-name="siteName"
+              :gateway-base-url="gatewayBaseUrl"
+              :api-endpoint="apiEndpoint"
+              :suggested-model-id="suggestedModelId"
+            />
 
-          <div class="rounded-3xl border border-black/5 bg-white/70 p-6 shadow-sm backdrop-blur dark:border-white/10 dark:bg-dark-900/40">
-            <h3 class="text-base font-semibold text-gray-900 dark:text-white">3. 配置 FluxCode 中转</h3>
-            <div class="mt-4 rounded-2xl bg-neutral-50 p-4 text-gray-700 dark:bg-dark-950/40 dark:text-dark-300">
-              <div class="font-medium text-gray-900 dark:text-white">配置路径与打开方式</div>
-
-              <ol class="mt-3 list-decimal space-y-2 pl-5">
-                <template v-if="activeOsTab === 'windows'">
-                  <li>
-                    切换到配置目录：终端执行
-                    <code class="rounded bg-black/5 px-1 py-0.5 font-mono text-[0.9em] dark:bg-white/10">cd %USERPROFILE%\.codex</code>
-                    （如果提示不存在，可先运行一下 codex，然后新开终端即可）
-                    <div class="mt-2 text-sm text-gray-600 dark:text-dark-400">
-                      PowerShell 也可使用：
-                      <code class="rounded bg-black/5 px-1 py-0.5 font-mono text-[0.9em] dark:bg-white/10"
-                        >cd $env:USERPROFILE\.codex</code
-                      >
-                    </div>
-                  </li>
-                </template>
-                <template v-else>
-                  <li>
-                    切换到配置目录：终端执行
-                    <code class="rounded bg-black/5 px-1 py-0.5 font-mono text-[0.9em] dark:bg-white/10">cd ~/.codex</code>
-                    （如果提示不存在，可先运行一下 codex，然后新开终端即可）
-                  </li>
-                </template>
-
-                <li>
-                  打开目录：有 VS Code 执行
-                  <code class="rounded bg-black/5 px-1 py-0.5 font-mono text-[0.9em] dark:bg-white/10">code .</code>
-                  （注意空格）；有 Cursor 执行
-                  <code class="rounded bg-black/5 px-1 py-0.5 font-mono text-[0.9em] dark:bg-white/10">cursor .</code>
-                  会自动打开该文件夹
-                </li>
-                <li>
-                  编辑
-                  <code class="rounded bg-black/5 px-1 py-0.5 font-mono text-[0.9em] dark:bg-white/10">config.toml</code>
-                  与
-                  <code class="rounded bg-black/5 px-1 py-0.5 font-mono text-[0.9em] dark:bg-white/10">auth.json</code>
-                  ：复制下方内容（文件不存在就新建）
-                </li>
-              </ol>
-
-              <div
-                class="mt-4 rounded-2xl border border-black/5 bg-white/70 p-4 text-gray-700 dark:border-white/10 dark:bg-dark-900/40 dark:text-dark-300"
+            <section
+              v-else
+              data-testid="unknown-client-guide"
+              class="rounded-[24px] border border-dashed border-amber-400/50 bg-amber-50/70 p-8 text-center dark:border-amber-300/30 dark:bg-amber-400/[0.08]"
+            >
+              <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-100 text-xl text-amber-800 dark:bg-amber-300/15 dark:text-amber-200">?</div>
+              <h2 class="mt-4 text-xl font-semibold text-slate-950 dark:text-white">未找到该客户端文档</h2>
+              <p class="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-600 dark:text-slate-300">“{{ requestedClientId }}” 还没有收录。请从已支持的客户端中选择一个继续查看。</p>
+              <router-link
+                :to="{ name: 'Docs', params: { clientId: defaultClientId } }"
+                class="mt-5 inline-flex rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-slate-700 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-200"
               >
-                <div class="font-medium text-gray-900 dark:text-white">Codex 中文配置（可选）</div>
-                <p class="mt-2 text-gray-600 dark:text-dark-400">
-                  让 Codex CLI 始终输出中文提示：在 <code class="rounded bg-black/5 px-1 py-0.5 font-mono text-[0.9em] dark:bg-white/10">.codex</code>
-                  目录下创建 <code class="rounded bg-black/5 px-1 py-0.5 font-mono text-[0.9em] dark:bg-white/10">AGENTS.md</code>，写入
-                  <code class="rounded bg-black/5 px-1 py-0.5 font-mono text-[0.9em] dark:bg-white/10">Always respond in Chinese-simplified</code>。
-                </p>
-
-                <template v-if="activeOsTab === 'windows'">
-                  <ol class="mt-3 list-decimal space-y-2 pl-5">
-                    <li>
-                      进入配置目录：
-                      <code class="rounded bg-black/5 px-1 py-0.5 font-mono text-[0.9em] dark:bg-white/10">cd %USERPROFILE%\.codex</code>
-                    </li>
-                    <li>
-                      创建/覆盖文件：
-                      <code class="rounded bg-black/5 px-1 py-0.5 font-mono text-[0.9em] dark:bg-white/10"
-                        >echo Always respond in Chinese-simplified &gt; AGENTS.md</code
-                      >
-                    </li>
-                  </ol>
-                </template>
-                <template v-else-if="activeOsTab === 'mac'">
-                  <ol class="mt-3 list-decimal space-y-2 pl-5">
-                    <li>
-                      进入配置目录：
-                      <code class="rounded bg-black/5 px-1 py-0.5 font-mono text-[0.9em] dark:bg-white/10">cd ~/.codex</code>
-                    </li>
-                    <li>
-                      写入文件：
-                      <code class="rounded bg-black/5 px-1 py-0.5 font-mono text-[0.9em] dark:bg-white/10"
-                        >printf "Always respond in Chinese-simplified\n" &gt; AGENTS.md</code
-                      >
-                    </li>
-                  </ol>
-                </template>
-                <template v-else>
-                  <ol class="mt-3 list-decimal space-y-2 pl-5">
-                    <li>
-                      进入配置目录：
-                      <code class="rounded bg-black/5 px-1 py-0.5 font-mono text-[0.9em] dark:bg-white/10">cd ~/.codex</code>
-                    </li>
-                    <li>
-                      如果系统未启用中文 locale，可先执行
-                      <code class="rounded bg-black/5 px-1 py-0.5 font-mono text-[0.9em] dark:bg-white/10">sudo locale-gen zh_CN.UTF-8</code>
-                    </li>
-                    <li>
-                      创建文件：
-                      <code class="rounded bg-black/5 px-1 py-0.5 font-mono text-[0.9em] dark:bg-white/10"
-                        >printf "Always respond in Chinese-simplified\n" &gt; AGENTS.md</code
-                      >
-                    </li>
-                  </ol>
-                </template>
-
-                <div class="mt-3 rounded-2xl bg-slate-900 p-4 text-[15px] text-slate-100">
-                  <pre class="overflow-x-auto font-mono leading-relaxed"><code>Always respond in Chinese-simplified</code></pre>
-                </div>
-                <p class="mt-3 text-sm text-gray-600 dark:text-dark-400">
-                  保存后重新打开 Codex CLI 会读取该文件，始终以简体中文回应；若要恢复默认，可删除
-                  <code class="rounded bg-black/5 px-1 py-0.5 font-mono text-[0.9em] dark:bg-white/10">AGENTS.md</code>。
-                </p>
-              </div>
-            </div>
-
-            <div class="mt-5 space-y-4">
-              <div>
-                <div class="mb-2 text-sm font-medium text-gray-900 dark:text-white">config.toml 文件</div>
-                <div class="rounded-2xl bg-slate-900 p-4 text-[15px] text-slate-100">
-                  <pre class="overflow-x-auto font-mono leading-relaxed"><code v-text="configTomlContent"></code></pre>
-                </div>
-              </div>
-
-              <div>
-                <div class="mb-2 text-sm font-medium text-gray-900 dark:text-white">auth.json 文件</div>
-                <div class="rounded-2xl bg-slate-900 p-4 text-[15px] text-slate-100">
-                  <pre class="overflow-x-auto font-mono leading-relaxed"><code v-text="authJsonContent"></code></pre>
-                </div>
-                <p class="mt-3 text-sm text-gray-600 dark:text-dark-400">
-                  提示：这里填写的是 FluxCode 的 API Key（在控制台创建/复制），字段名保持为 OPENAI_API_KEY 以兼容 Codex。
-                </p>
-              </div>
-            </div>
-
-            <ul class="mt-5 list-disc space-y-2 pl-5 text-gray-700 dark:text-dark-300">
-              <li>model 为使用的模型，可在 CLI 或插件中再自定义</li>
-              <li>model_reasoning_effort 表示推理强度，可选 high/medium/low</li>
-              <li>model_provider 与 <code class="rounded bg-black/5 px-1 py-0.5 font-mono text-[0.9em] dark:bg-white/10">[model_providers.*]</code> 需与中转服务一致</li>
-            </ul>
-          </div>
-
-          <div class="rounded-3xl border border-black/5 bg-white/70 p-6 shadow-sm backdrop-blur dark:border-white/10 dark:bg-dark-900/40">
-            <h3 class="text-base font-semibold text-gray-900 dark:text-white">4. 常见问题 / 排错</h3>
-
-            <div class="mt-4 space-y-3 text-gray-700 dark:text-dark-300">
-              <details class="rounded-2xl border border-black/5 bg-white/60 p-4 dark:border-white/10 dark:bg-dark-950/30">
-                <summary class="cursor-pointer select-none font-medium text-gray-900 dark:text-white">
-                  提示找不到 node/npm（node: command not found）
-                </summary>
-                <div class="mt-3 space-y-2">
-                  <p>确认已安装 Node.js，并重新打开终端/命令行。</p>
-                  <p>Windows 建议重启终端；macOS/Linux 检查是否把 Node 安装到了 PATH。</p>
-                </div>
-              </details>
-
-              <details class="rounded-2xl border border-black/5 bg-white/60 p-4 dark:border-white/10 dark:bg-dark-950/30">
-                <summary class="cursor-pointer select-none font-medium text-gray-900 dark:text-white">
-                  Windows 下 npm 全局安装失败（权限/EPERM/EACCES）
-                </summary>
-                <div class="mt-3 space-y-2">
-                  <p>优先尝试以管理员权限打开 PowerShell/CMD 后重试。</p>
-                  <p>如果你不希望用管理员权限，可将 npm 全局目录配置到用户目录后再安装。</p>
-                </div>
-              </details>
-
-              <details class="rounded-2xl border border-black/5 bg-white/60 p-4 dark:border-white/10 dark:bg-dark-950/30">
-                <summary class="cursor-pointer select-none font-medium text-gray-900 dark:text-white">
-                  找不到配置目录/文件（~/.codex 不存在）
-                </summary>
-                <div class="mt-3 space-y-2">
-                  <p>
-                    先运行一次 codex（例如
-                    <code class="rounded bg-black/5 px-1 py-0.5 font-mono text-[0.9em] dark:bg-white/10">codex --version</code>），再重新打开终端。
-                  </p>
-                  <p>文件不存在可以手动创建：<code class="rounded bg-black/5 px-1 py-0.5 font-mono text-[0.9em] dark:bg-white/10">config.toml</code> 与 <code class="rounded bg-black/5 px-1 py-0.5 font-mono text-[0.9em] dark:bg-white/10">auth.json</code>。</p>
-                </div>
-              </details>
-
-              <details class="rounded-2xl border border-black/5 bg-white/60 p-4 dark:border-white/10 dark:bg-dark-950/30">
-                <summary class="cursor-pointer select-none font-medium text-gray-900 dark:text-white">报 401/Unauthorized</summary>
-                <div class="mt-3 space-y-2">
-                  <p>检查
-                    <code class="rounded bg-black/5 px-1 py-0.5 font-mono text-[0.9em] dark:bg-white/10">auth.json</code> 
-                    中的 key 是否为 FluxCode 控制台生成的 API Key。
-                  </p>
-                  <p>检查
-                    <code  class="rounded bg-black/5 px-1 py-0.5 font-mono text-[0.9em] dark:bg-white/10">config.toml</code>
-                     中的 
-                    <code class="rounded bg-black/5 px-1 py-0.5 font-mono text-[0.9em] dark:bg-white/10">base_url</code> 
-                    是否指向 FluxCode 官网地址
-                  </p>
-                </div>
-              </details>
-
-              <details class="rounded-2xl border border-black/5 bg-white/60 p-4 dark:border-white/10 dark:bg-dark-950/30">
-                <summary class="cursor-pointer select-none font-medium text-gray-900 dark:text-white">
-                  model_provider / [model_providers.*] 不匹配
-                </summary>
-                <div class="mt-3 space-y-2">
-                  <p>
-                    确保 <code class="rounded bg-black/5 px-1 py-0.5 font-mono text-[0.9em] dark:bg-white/10">model_provider</code> 与
-                    <code class="rounded bg-black/5 px-1 py-0.5 font-mono text-[0.9em] dark:bg-white/10">[model_providers.&lt;同名&gt;]</code>
-                    的名字一致（这里建议使用 <code class="rounded bg-black/5 px-1 py-0.5 font-mono text-[0.9em] dark:bg-white/10">fluxcode</code>）。
-                  </p>
-                </div>
-              </details>
-            </div>
+                查看 {{ defaultClient.shortName }} 配置
+              </router-link>
+            </section>
           </div>
         </div>
       </section>
@@ -303,56 +129,45 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useRoute } from 'vue-router'
 import { useAppStore } from '@/stores'
 import PublicHeader from '@/components/layout/PublicHeader.vue'
+import { clientDocs, findClientDoc } from '@/docs/clientRegistry'
 import { resolveOpenAIUseKeyModelId } from '@/utils/openaiUseKeyModel'
 
 const { t } = useI18n()
-
+const route = useRoute()
 const appStore = useAppStore()
 
-// Site settings
+const defaultClientId = 'codex'
+const defaultClient = clientDocs.find((client) => client.id === defaultClientId) ?? clientDocs[0]
+
 const siteName = computed(() => appStore.siteName || 'FluxCode')
 const siteLogo = computed(() => appStore.siteLogo || '')
+const requestedClientId = computed(() => {
+  const param = route.params.clientId
+  return typeof param === 'string' ? param : undefined
+})
+const selectedClientId = computed(() => requestedClientId.value || defaultClient.id)
+const activeClient = computed(() => findClientDoc(selectedClientId.value))
 
-type OsTabId = 'windows' | 'mac' | 'linux'
-const osTabs = [
-  { id: 'windows' as const, label: 'Windows' },
-  { id: 'mac' as const, label: 'macOS' },
-  { id: 'linux' as const, label: 'Linux' }
-]
-const activeOsTab = ref<OsTabId>('windows')
-
-const suggestedBaseUrl = computed(() => {
+const gatewayBaseUrl = computed(() => {
   const raw = (appStore.apiBaseUrl || '').trim()
   const origin = typeof window !== 'undefined' ? window.location.origin : ''
-  const base = (raw || origin).replace(/\/api\/v1\/?$/, '')
-  return base.replace(/\/+$/, '')
+  const candidate = raw || origin
+  return candidate.replace(/\/(?:api\/)?v1\/?$/, '').replace(/\/+$/, '')
 })
 
+const apiEndpoint = computed(() => `${gatewayBaseUrl.value}/v1`)
 const suggestedModelId = computed(() => resolveOpenAIUseKeyModelId(appStore.openaiUseKeyModelId))
 
-const configTomlContent = computed(() => `model_provider = "fluxcode"
-model = "${suggestedModelId.value}"
-model_reasoning_effort = "medium"
-
-[model_providers.fluxcode]
-name = "fluxcode"
-base_url = "${suggestedBaseUrl.value}"
-wire_api = "responses"
-requires_openai_auth = true`)
-
-const authJsonContent = `{
-  "OPENAI_API_KEY": "粘贴你的 API 密钥"
-}`
+function isActiveClient(clientId: string): boolean {
+  return selectedClientId.value === clientId
+}
 
 onMounted(() => {
   appStore.fetchPublicSettings()
-  const ua = navigator.userAgent || ''
-  if (/Macintosh|Mac OS X/i.test(ua)) activeOsTab.value = 'mac'
-  else if (/Linux/i.test(ua)) activeOsTab.value = 'linux'
-  else if (/Windows/i.test(ua)) activeOsTab.value = 'windows'
 })
 </script>
