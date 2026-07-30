@@ -150,6 +150,21 @@ func TotalRecharged(v float64) predicate.User {
 	return predicate.User(sql.FieldEQ(FieldTotalRecharged, v))
 }
 
+// UserAccessKeyHash applies equality check predicate on the "user_access_key_hash" field. It's identical to UserAccessKeyHashEQ.
+func UserAccessKeyHash(v string) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldUserAccessKeyHash, v))
+}
+
+// UserAccessKeyEncrypted applies equality check predicate on the "user_access_key_encrypted" field. It's identical to UserAccessKeyEncryptedEQ.
+func UserAccessKeyEncrypted(v string) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldUserAccessKeyEncrypted, v))
+}
+
+// UserAccessKeyCreatedAt applies equality check predicate on the "user_access_key_created_at" field. It's identical to UserAccessKeyCreatedAtEQ.
+func UserAccessKeyCreatedAt(v time.Time) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldUserAccessKeyCreatedAt, v))
+}
+
 // IsSales applies equality check predicate on the "is_sales" field. It's identical to IsSalesEQ.
 func IsSales(v bool) predicate.User {
 	return predicate.User(sql.FieldEQ(FieldIsSales, v))
@@ -1143,6 +1158,206 @@ func TotalRechargedLT(v float64) predicate.User {
 // TotalRechargedLTE applies the LTE predicate on the "total_recharged" field.
 func TotalRechargedLTE(v float64) predicate.User {
 	return predicate.User(sql.FieldLTE(FieldTotalRecharged, v))
+}
+
+// UserAccessKeyHashEQ applies the EQ predicate on the "user_access_key_hash" field.
+func UserAccessKeyHashEQ(v string) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldUserAccessKeyHash, v))
+}
+
+// UserAccessKeyHashNEQ applies the NEQ predicate on the "user_access_key_hash" field.
+func UserAccessKeyHashNEQ(v string) predicate.User {
+	return predicate.User(sql.FieldNEQ(FieldUserAccessKeyHash, v))
+}
+
+// UserAccessKeyHashIn applies the In predicate on the "user_access_key_hash" field.
+func UserAccessKeyHashIn(vs ...string) predicate.User {
+	return predicate.User(sql.FieldIn(FieldUserAccessKeyHash, vs...))
+}
+
+// UserAccessKeyHashNotIn applies the NotIn predicate on the "user_access_key_hash" field.
+func UserAccessKeyHashNotIn(vs ...string) predicate.User {
+	return predicate.User(sql.FieldNotIn(FieldUserAccessKeyHash, vs...))
+}
+
+// UserAccessKeyHashGT applies the GT predicate on the "user_access_key_hash" field.
+func UserAccessKeyHashGT(v string) predicate.User {
+	return predicate.User(sql.FieldGT(FieldUserAccessKeyHash, v))
+}
+
+// UserAccessKeyHashGTE applies the GTE predicate on the "user_access_key_hash" field.
+func UserAccessKeyHashGTE(v string) predicate.User {
+	return predicate.User(sql.FieldGTE(FieldUserAccessKeyHash, v))
+}
+
+// UserAccessKeyHashLT applies the LT predicate on the "user_access_key_hash" field.
+func UserAccessKeyHashLT(v string) predicate.User {
+	return predicate.User(sql.FieldLT(FieldUserAccessKeyHash, v))
+}
+
+// UserAccessKeyHashLTE applies the LTE predicate on the "user_access_key_hash" field.
+func UserAccessKeyHashLTE(v string) predicate.User {
+	return predicate.User(sql.FieldLTE(FieldUserAccessKeyHash, v))
+}
+
+// UserAccessKeyHashContains applies the Contains predicate on the "user_access_key_hash" field.
+func UserAccessKeyHashContains(v string) predicate.User {
+	return predicate.User(sql.FieldContains(FieldUserAccessKeyHash, v))
+}
+
+// UserAccessKeyHashHasPrefix applies the HasPrefix predicate on the "user_access_key_hash" field.
+func UserAccessKeyHashHasPrefix(v string) predicate.User {
+	return predicate.User(sql.FieldHasPrefix(FieldUserAccessKeyHash, v))
+}
+
+// UserAccessKeyHashHasSuffix applies the HasSuffix predicate on the "user_access_key_hash" field.
+func UserAccessKeyHashHasSuffix(v string) predicate.User {
+	return predicate.User(sql.FieldHasSuffix(FieldUserAccessKeyHash, v))
+}
+
+// UserAccessKeyHashIsNil applies the IsNil predicate on the "user_access_key_hash" field.
+func UserAccessKeyHashIsNil() predicate.User {
+	return predicate.User(sql.FieldIsNull(FieldUserAccessKeyHash))
+}
+
+// UserAccessKeyHashNotNil applies the NotNil predicate on the "user_access_key_hash" field.
+func UserAccessKeyHashNotNil() predicate.User {
+	return predicate.User(sql.FieldNotNull(FieldUserAccessKeyHash))
+}
+
+// UserAccessKeyHashEqualFold applies the EqualFold predicate on the "user_access_key_hash" field.
+func UserAccessKeyHashEqualFold(v string) predicate.User {
+	return predicate.User(sql.FieldEqualFold(FieldUserAccessKeyHash, v))
+}
+
+// UserAccessKeyHashContainsFold applies the ContainsFold predicate on the "user_access_key_hash" field.
+func UserAccessKeyHashContainsFold(v string) predicate.User {
+	return predicate.User(sql.FieldContainsFold(FieldUserAccessKeyHash, v))
+}
+
+// UserAccessKeyEncryptedEQ applies the EQ predicate on the "user_access_key_encrypted" field.
+func UserAccessKeyEncryptedEQ(v string) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldUserAccessKeyEncrypted, v))
+}
+
+// UserAccessKeyEncryptedNEQ applies the NEQ predicate on the "user_access_key_encrypted" field.
+func UserAccessKeyEncryptedNEQ(v string) predicate.User {
+	return predicate.User(sql.FieldNEQ(FieldUserAccessKeyEncrypted, v))
+}
+
+// UserAccessKeyEncryptedIn applies the In predicate on the "user_access_key_encrypted" field.
+func UserAccessKeyEncryptedIn(vs ...string) predicate.User {
+	return predicate.User(sql.FieldIn(FieldUserAccessKeyEncrypted, vs...))
+}
+
+// UserAccessKeyEncryptedNotIn applies the NotIn predicate on the "user_access_key_encrypted" field.
+func UserAccessKeyEncryptedNotIn(vs ...string) predicate.User {
+	return predicate.User(sql.FieldNotIn(FieldUserAccessKeyEncrypted, vs...))
+}
+
+// UserAccessKeyEncryptedGT applies the GT predicate on the "user_access_key_encrypted" field.
+func UserAccessKeyEncryptedGT(v string) predicate.User {
+	return predicate.User(sql.FieldGT(FieldUserAccessKeyEncrypted, v))
+}
+
+// UserAccessKeyEncryptedGTE applies the GTE predicate on the "user_access_key_encrypted" field.
+func UserAccessKeyEncryptedGTE(v string) predicate.User {
+	return predicate.User(sql.FieldGTE(FieldUserAccessKeyEncrypted, v))
+}
+
+// UserAccessKeyEncryptedLT applies the LT predicate on the "user_access_key_encrypted" field.
+func UserAccessKeyEncryptedLT(v string) predicate.User {
+	return predicate.User(sql.FieldLT(FieldUserAccessKeyEncrypted, v))
+}
+
+// UserAccessKeyEncryptedLTE applies the LTE predicate on the "user_access_key_encrypted" field.
+func UserAccessKeyEncryptedLTE(v string) predicate.User {
+	return predicate.User(sql.FieldLTE(FieldUserAccessKeyEncrypted, v))
+}
+
+// UserAccessKeyEncryptedContains applies the Contains predicate on the "user_access_key_encrypted" field.
+func UserAccessKeyEncryptedContains(v string) predicate.User {
+	return predicate.User(sql.FieldContains(FieldUserAccessKeyEncrypted, v))
+}
+
+// UserAccessKeyEncryptedHasPrefix applies the HasPrefix predicate on the "user_access_key_encrypted" field.
+func UserAccessKeyEncryptedHasPrefix(v string) predicate.User {
+	return predicate.User(sql.FieldHasPrefix(FieldUserAccessKeyEncrypted, v))
+}
+
+// UserAccessKeyEncryptedHasSuffix applies the HasSuffix predicate on the "user_access_key_encrypted" field.
+func UserAccessKeyEncryptedHasSuffix(v string) predicate.User {
+	return predicate.User(sql.FieldHasSuffix(FieldUserAccessKeyEncrypted, v))
+}
+
+// UserAccessKeyEncryptedIsNil applies the IsNil predicate on the "user_access_key_encrypted" field.
+func UserAccessKeyEncryptedIsNil() predicate.User {
+	return predicate.User(sql.FieldIsNull(FieldUserAccessKeyEncrypted))
+}
+
+// UserAccessKeyEncryptedNotNil applies the NotNil predicate on the "user_access_key_encrypted" field.
+func UserAccessKeyEncryptedNotNil() predicate.User {
+	return predicate.User(sql.FieldNotNull(FieldUserAccessKeyEncrypted))
+}
+
+// UserAccessKeyEncryptedEqualFold applies the EqualFold predicate on the "user_access_key_encrypted" field.
+func UserAccessKeyEncryptedEqualFold(v string) predicate.User {
+	return predicate.User(sql.FieldEqualFold(FieldUserAccessKeyEncrypted, v))
+}
+
+// UserAccessKeyEncryptedContainsFold applies the ContainsFold predicate on the "user_access_key_encrypted" field.
+func UserAccessKeyEncryptedContainsFold(v string) predicate.User {
+	return predicate.User(sql.FieldContainsFold(FieldUserAccessKeyEncrypted, v))
+}
+
+// UserAccessKeyCreatedAtEQ applies the EQ predicate on the "user_access_key_created_at" field.
+func UserAccessKeyCreatedAtEQ(v time.Time) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldUserAccessKeyCreatedAt, v))
+}
+
+// UserAccessKeyCreatedAtNEQ applies the NEQ predicate on the "user_access_key_created_at" field.
+func UserAccessKeyCreatedAtNEQ(v time.Time) predicate.User {
+	return predicate.User(sql.FieldNEQ(FieldUserAccessKeyCreatedAt, v))
+}
+
+// UserAccessKeyCreatedAtIn applies the In predicate on the "user_access_key_created_at" field.
+func UserAccessKeyCreatedAtIn(vs ...time.Time) predicate.User {
+	return predicate.User(sql.FieldIn(FieldUserAccessKeyCreatedAt, vs...))
+}
+
+// UserAccessKeyCreatedAtNotIn applies the NotIn predicate on the "user_access_key_created_at" field.
+func UserAccessKeyCreatedAtNotIn(vs ...time.Time) predicate.User {
+	return predicate.User(sql.FieldNotIn(FieldUserAccessKeyCreatedAt, vs...))
+}
+
+// UserAccessKeyCreatedAtGT applies the GT predicate on the "user_access_key_created_at" field.
+func UserAccessKeyCreatedAtGT(v time.Time) predicate.User {
+	return predicate.User(sql.FieldGT(FieldUserAccessKeyCreatedAt, v))
+}
+
+// UserAccessKeyCreatedAtGTE applies the GTE predicate on the "user_access_key_created_at" field.
+func UserAccessKeyCreatedAtGTE(v time.Time) predicate.User {
+	return predicate.User(sql.FieldGTE(FieldUserAccessKeyCreatedAt, v))
+}
+
+// UserAccessKeyCreatedAtLT applies the LT predicate on the "user_access_key_created_at" field.
+func UserAccessKeyCreatedAtLT(v time.Time) predicate.User {
+	return predicate.User(sql.FieldLT(FieldUserAccessKeyCreatedAt, v))
+}
+
+// UserAccessKeyCreatedAtLTE applies the LTE predicate on the "user_access_key_created_at" field.
+func UserAccessKeyCreatedAtLTE(v time.Time) predicate.User {
+	return predicate.User(sql.FieldLTE(FieldUserAccessKeyCreatedAt, v))
+}
+
+// UserAccessKeyCreatedAtIsNil applies the IsNil predicate on the "user_access_key_created_at" field.
+func UserAccessKeyCreatedAtIsNil() predicate.User {
+	return predicate.User(sql.FieldIsNull(FieldUserAccessKeyCreatedAt))
+}
+
+// UserAccessKeyCreatedAtNotNil applies the NotNil predicate on the "user_access_key_created_at" field.
+func UserAccessKeyCreatedAtNotNil() predicate.User {
+	return predicate.User(sql.FieldNotNull(FieldUserAccessKeyCreatedAt))
 }
 
 // IsSalesEQ applies the EQ predicate on the "is_sales" field.

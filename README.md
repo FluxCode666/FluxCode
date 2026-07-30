@@ -252,7 +252,7 @@ POSTGRES_PASSWORD=your_secure_password_here
 # JWT Secret (RECOMMENDED - keeps users logged in after restart)
 JWT_SECRET=your_jwt_secret_here
 
-# TOTP Encryption Key (RECOMMENDED - preserves 2FA after restart)
+# TOTP Encryption Key (REQUIRED in production - preserves 2FA and user access keys)
 TOTP_ENCRYPTION_KEY=your_totp_key_here
 
 # Optional: Admin account

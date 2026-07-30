@@ -30,6 +30,12 @@ type User struct {
 	TotpEnabled         bool       // 是否启用 TOTP
 	TotpEnabledAt       *time.Time // TOTP 启用时间
 
+	// UserAccessKey* 是用户级开发者接口的访问密钥元数据。
+	// 密钥原文只在专用服务中解密，绝不能出现在普通用户 DTO 中。
+	UserAccessKeyHash      *string
+	UserAccessKeyEncrypted *string
+	UserAccessKeyCreatedAt *time.Time
+
 	// 余额不足通知
 	BalanceNotifyEnabled       bool
 	BalanceNotifyThresholdType string // "fixed" (default) | "percentage"

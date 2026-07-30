@@ -18,6 +18,7 @@ import (
 
 const (
 	securitySecretKeyJWT        = "jwt_secret"
+	securitySecretKeyTOTP       = "totp_encryption_key"
 	securitySecretReadRetryMax  = 5
 	securitySecretReadRetryWait = 10 * time.Millisecond
 )
@@ -42,17 +43,53 @@ func ensureBootstrapSecrets(ctx context.Context, client *ent.Client, cfg *config
 			log.Println("Warning: configured JWT secret mismatches persisted value; using persisted secret for cross-instance consistency.")
 		}
 		cfg.JWT.Secret = storedSecret
+	} else {
+		secret, created, err := getOrCreateGeneratedSecuritySecret(ctx, client, securitySecretKeyJWT, 32)
+		if err != nil {
+			return fmt.Errorf("ensure jwt secret: %w", err)
+		}
+		cfg.JWT.Secret = secret
+
+		if created {
+			log.Println("Warning: JWT secret auto-generated and persisted to database. Consider rotating to a managed secret for production.")
+		}
+	}
+
+	if err := ensureTOTPEncryptionKey(ctx, client, cfg); err != nil {
+		return fmt.Errorf("ensure totp encryption key: %w", err)
+	}
+	return nil
+}
+
+// ensureTOTPEncryptionKey makes the legacy TOTP fallback stable across restarts
+// and replicas. Recoverable user access keys are deliberately unavailable on
+// this fallback and require an explicitly configured external key instead.
+func ensureTOTPEncryptionKey(ctx context.Context, client *ent.Client, cfg *config.Config) error {
+	configuredKey := strings.TrimSpace(cfg.Totp.EncryptionKey)
+	if cfg.Totp.EncryptionKeyConfigured {
+		// A configured key is an externally managed root secret. Never mirror it
+		// into the application database: a database backup must not contain both
+		// the encrypted payload and the key required to decrypt it.
+		if _, err := decodeTOTPEncryptionKey(configuredKey); err != nil {
+			return err
+		}
+		cfg.Totp.EncryptionKey = configuredKey
 		return nil
 	}
 
-	secret, created, err := getOrCreateGeneratedSecuritySecret(ctx, client, securitySecretKeyJWT, 32)
+	// The configuration loader generated a process-local fallback. Persist one
+	// fallback for unconfigured development deployments so legacy TOTP encryption
+	// survives a restart. User access keys require the configured branch above.
+	storedKey, created, err := getOrCreateGeneratedSecuritySecret(ctx, client, securitySecretKeyTOTP, 32)
 	if err != nil {
-		return fmt.Errorf("ensure jwt secret: %w", err)
+		return err
 	}
-	cfg.JWT.Secret = secret
-
+	if _, err := decodeTOTPEncryptionKey(storedKey); err != nil {
+		return err
+	}
+	cfg.Totp.EncryptionKey = storedKey
 	if created {
-		log.Println("Warning: JWT secret auto-generated and persisted to database. Consider rotating to a managed secret for production.")
+		log.Println("Warning: TOTP encryption key fallback auto-generated and persisted for development. Configure a managed TOTP_ENCRYPTION_KEY in production.")
 	}
 	return nil
 }

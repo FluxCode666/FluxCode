@@ -53,6 +53,12 @@ const (
 	FieldBalanceNotifyExtraEmails = "balance_notify_extra_emails"
 	// FieldTotalRecharged holds the string denoting the total_recharged field in the database.
 	FieldTotalRecharged = "total_recharged"
+	// FieldUserAccessKeyHash holds the string denoting the user_access_key_hash field in the database.
+	FieldUserAccessKeyHash = "user_access_key_hash"
+	// FieldUserAccessKeyEncrypted holds the string denoting the user_access_key_encrypted field in the database.
+	FieldUserAccessKeyEncrypted = "user_access_key_encrypted"
+	// FieldUserAccessKeyCreatedAt holds the string denoting the user_access_key_created_at field in the database.
+	FieldUserAccessKeyCreatedAt = "user_access_key_created_at"
 	// FieldIsSales holds the string denoting the is_sales field in the database.
 	FieldIsSales = "is_sales"
 	// FieldSalesCommissionRate holds the string denoting the sales_commission_rate field in the database.
@@ -188,6 +194,9 @@ var Columns = []string{
 	FieldBalanceNotifyThreshold,
 	FieldBalanceNotifyExtraEmails,
 	FieldTotalRecharged,
+	FieldUserAccessKeyHash,
+	FieldUserAccessKeyEncrypted,
+	FieldUserAccessKeyCreatedAt,
 	FieldIsSales,
 	FieldSalesCommissionRate,
 	FieldSalesCommissionMode,
@@ -258,6 +267,8 @@ var (
 	DefaultBalanceNotifyExtraEmails string
 	// DefaultTotalRecharged holds the default value on creation for the "total_recharged" field.
 	DefaultTotalRecharged float64
+	// UserAccessKeyHashValidator is a validator for the "user_access_key_hash" field. It is called by the builders before save.
+	UserAccessKeyHashValidator func(string) error
 	// DefaultIsSales holds the default value on creation for the "is_sales" field.
 	DefaultIsSales bool
 	// DefaultSalesCommissionRate holds the default value on creation for the "sales_commission_rate" field.
@@ -377,6 +388,21 @@ func ByBalanceNotifyExtraEmails(opts ...sql.OrderTermOption) OrderOption {
 // ByTotalRecharged orders the results by the total_recharged field.
 func ByTotalRecharged(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldTotalRecharged, opts...).ToFunc()
+}
+
+// ByUserAccessKeyHash orders the results by the user_access_key_hash field.
+func ByUserAccessKeyHash(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldUserAccessKeyHash, opts...).ToFunc()
+}
+
+// ByUserAccessKeyEncrypted orders the results by the user_access_key_encrypted field.
+func ByUserAccessKeyEncrypted(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldUserAccessKeyEncrypted, opts...).ToFunc()
+}
+
+// ByUserAccessKeyCreatedAt orders the results by the user_access_key_created_at field.
+func ByUserAccessKeyCreatedAt(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldUserAccessKeyCreatedAt, opts...).ToFunc()
 }
 
 // ByIsSales orders the results by the is_sales field.

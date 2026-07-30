@@ -55,6 +55,7 @@ func newEmbeddingGatewayContractRouter() *gin.Engine {
 		nil,
 		nil,
 		nil,
+		nil,
 		cfg,
 	)
 	return router

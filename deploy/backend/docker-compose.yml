@@ -36,7 +36,10 @@ services:
         soft: 100000
         hard: 100000
     ports:
-      # Expose to host so frontend/LB machine can reach this backend
+      # Expose to host so frontend/LB machine can reach this backend.
+      # This is an API-only image: browser routes such as /api-docs must go
+      # through the standalone frontend Nginx/Caddy deployment, which serves
+      # index.html as the SPA History fallback.
       - "${BIND_HOST:-0.0.0.0}:${SERVER_PORT:-8080}:8080"
     volumes:
       - fluxcode-data:/app/data

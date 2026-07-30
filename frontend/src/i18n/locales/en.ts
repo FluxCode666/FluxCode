@@ -205,6 +205,153 @@ export default {
     }
   },
 
+  apiDocs: {
+    eyebrow: 'Developer tools',
+    title: 'API Documentation',
+    description: 'Securely manage your access key, account, usage records, and API keys through the developer API.',
+    authenticatedOnly: 'User key only',
+    endpoint: 'Endpoint',
+    method: 'Method',
+    operation: 'Operation',
+    baseUrl: 'Base URL',
+    authHeader: 'Authentication Header',
+    authHint: 'Include your user access key in the X-User-Access-Key header for every request.',
+    navigation: {
+      title: 'Documentation index',
+      hint: 'Browse by module or jump directly to an endpoint.',
+      accessKey: 'Access Key',
+      account: 'Account',
+      usage: 'Usage Records',
+      apiKeys: 'API Key Management',
+      goToEndpoint: 'Go to endpoint: {endpoint}',
+      toggleModule: '{action} {module} endpoint list'
+    },
+    sections: {
+      expand: 'Expand',
+      collapse: 'Collapse',
+      toggleLabel: '{action} {section} section'
+    },
+    endpointDocumentation: {
+      requestParameters: 'Request parameters',
+      requestDescription: 'Request notes',
+      responseParameters: 'Response parameters',
+      parameter: 'Parameter',
+      location: 'Location',
+      required: 'Required',
+      type: 'Type',
+      defaultValueLabel: 'Default',
+      description: 'Description',
+      yes: 'Yes',
+      no: 'No',
+      exampleValue: 'Example: {value}',
+      requestExample: 'Request example',
+      responseExample: 'Response example',
+      locations: {
+        header: 'Header',
+        query: 'Query',
+        path: 'Path',
+        body: 'JSON Body'
+      }
+    },
+    authentication: {
+      title: 'Authentication',
+      baseUrl: 'Base URL',
+      header: 'Request Header',
+      hint: 'Developer endpoints accept only your user access key, not a login JWT or model API key.'
+    },
+    accessKey: {
+      title: 'User Access Key',
+      description: 'Your personal key for calling the APIs listed on this page.',
+      loading: 'Loading user access key...',
+      generated: 'User access key generated',
+      ready: 'Key ready',
+      notGenerated: 'No user access key generated',
+      configurationRequiredStatus: 'Security configuration required',
+      unavailable: 'Unavailable',
+      generate: 'Generate User Access Key',
+      generating: 'Generating...',
+      copy: 'Copy Key',
+      copied: 'User access key copied',
+      valueLabel: 'Key value',
+      maskedValueLabel: 'Masked key',
+      emptyHint: 'Generate a key to call the endpoints below.',
+      createdAt: 'Created {date}',
+      securityHint: 'Keep this key secure. Once generated, you can copy it again at any time.',
+      configurationRequired: 'An administrator must configure TOTP_ENCRYPTION_KEY before recoverable user access keys can be generated safely.',
+      loadFailed: 'Failed to load user access key',
+      generateFailed: 'Failed to generate user access key'
+    },
+    balance: {
+      title: 'Get Balance',
+      description: 'Retrieve the current user\'s account balance.'
+    },
+    account: {
+      title: 'Account',
+      description: 'Check your available balance and use the same user access key for each request.'
+    },
+    usage: {
+      title: 'Usage Records',
+      description: 'Retrieve your API usage records by page, date, API key, and sort settings.',
+      endpointTitle: 'List Usage Records',
+      endpointDescription: 'Returns only records created by the current user and their API keys, with filtering and sorting support.',
+      relatedEndpointsTitle: 'Usage Endpoints',
+      list: 'List Usage Records',
+      stats: 'Get Usage Statistics',
+      get: 'Get Usage Record Details',
+      parametersTitle: 'Query Parameters',
+      parametersDescription: 'Pass all parameters through the URL query string. The endpoint applies its defaults when a parameter is omitted.',
+      parameter: 'Parameter',
+      type: 'Type',
+      descriptionLabel: 'Description',
+      defaultValue: 'Default: {value}',
+      parameters: {
+        page: 'Page number, starting at 1.',
+        pageSize: 'Number of records returned per page.',
+        startDate: 'Inclusive start date in YYYY-MM-DD format.',
+        endDate: 'Inclusive end date in YYYY-MM-DD format.',
+        apiKeyId: 'Only return records for an API key owned by the current user.',
+        sortBy: 'Sort field, for example created_at.',
+        sortOrder: 'Sort direction: asc or desc.'
+      }
+    },
+    apiKeys: {
+      title: 'API Key Management',
+      description: 'Manage API keys for the current user.',
+      list: 'List API Keys',
+      get: 'Get API Key',
+      create: 'Create API Key',
+      update: 'Update API Key',
+      delete: 'Delete API Key',
+      availableGroups: 'List Available Groups'
+    },
+    examples: {
+      balance: 'cURL · GET /balance',
+      usage: 'cURL · GET /usage',
+      listApiKeys: 'cURL · GET /keys',
+      createApiKey: 'cURL · POST /keys',
+      readAndUpdateApiKey: 'cURL · GET /keys/:id · PUT /keys/:id',
+      deleteApiKey: 'cURL · DELETE /keys/:id',
+      availableGroups: 'cURL · GET /groups/available'
+    },
+    labels: {
+      endpoint: 'Endpoint',
+      method: 'Method',
+      requestExample: 'Request Example',
+      responseExample: 'Response Example',
+      parameters: 'Parameters',
+      required: 'Required',
+      optional: 'Optional',
+      keyName: 'Key Name',
+      groupId: 'Group ID',
+      apiKeyId: 'API Key ID'
+    },
+    notes: {
+      title: 'Notes',
+      item1: 'Do not expose your user access key in browsers, client-side code, or public repositories.',
+      item2: 'API key management endpoints can only operate on keys owned by the current user.'
+    }
+  },
+
   modelPricing: {
     title: 'Model Pricing',
     description: 'Browse model prices across available groups',
@@ -549,6 +696,7 @@ export default {
     dashboard: 'Dashboard',
     announcements: 'Announcements',
     apiKeys: 'API Keys',
+    apiDocs: 'API Documentation',
     usage: 'Usage',
     redeem: 'Redeem',
     referral: 'Referral',

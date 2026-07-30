@@ -111,6 +111,23 @@ describe('useClipboard', () => {
     expect(document.execCommand).toHaveBeenCalledWith('copy')
   })
 
+  it('敏感内容在 Clipboard API 失败时不降级到 DOM', async () => {
+    const writeTextMock = navigator.clipboard.writeText as any
+    writeTextMock.mockRejectedValue(new Error('API failed'))
+
+    const documentAny = document as any
+    documentAny.execCommand = vi.fn().mockReturnValue(true)
+
+    const { copySensitiveToClipboard, copied } = useClipboard()
+    const result = await copySensitiveToClipboard('secret-value')
+
+    expect(result).toBe(false)
+    expect(copied.value).toBe(false)
+    expect(document.execCommand).not.toHaveBeenCalled()
+    expect(document.body.querySelector('textarea')).toBeNull()
+    expect(mockShowError).toHaveBeenCalledWith('common.copyFailed')
+  })
+
   it('非安全上下文使用 fallback', async () => {
     Object.defineProperty(window, 'isSecureContext', { value: false, writable: true })
 
