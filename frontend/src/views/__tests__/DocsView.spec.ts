@@ -11,6 +11,14 @@ const registry = vi.hoisted(() => {
     props: ['siteName', 'gatewayBaseUrl', 'apiEndpoint', 'suggestedModelId'],
     template: '<div data-testid="pi-guide">{{ siteName }}|{{ gatewayBaseUrl }}|{{ apiEndpoint }}|{{ suggestedModelId }}</div>'
   }
+  const ClaudeCodeGuide = {
+    props: ['siteName', 'gatewayBaseUrl', 'apiEndpoint', 'suggestedModelId'],
+    template: '<div data-testid="claude-code-guide">Claude Code|{{ siteName }}|{{ gatewayBaseUrl }}|{{ apiEndpoint }}</div>'
+  }
+  const OpenCodeGuide = {
+    props: ['siteName', 'gatewayBaseUrl', 'apiEndpoint', 'suggestedModelId'],
+    template: '<div data-testid="opencode-guide">OpenCode|{{ siteName }}|{{ gatewayBaseUrl }}|{{ apiEndpoint }}|{{ suggestedModelId }}</div>'
+  }
   const clientDocs = [
     {
       id: 'codex',
@@ -29,6 +37,24 @@ const registry = vi.hoisted(() => {
       protocol: 'Chat Completions',
       icon: 'π',
       component: PiAgentGuide
+    },
+    {
+      id: 'claude-code',
+      name: 'Claude Code CLI',
+      shortName: 'Claude Code',
+      description: 'Claude Code 说明',
+      protocol: 'Anthropic Messages',
+      icon: '◆',
+      component: ClaudeCodeGuide
+    },
+    {
+      id: 'opencode',
+      name: 'OpenCode',
+      shortName: 'OpenCode',
+      description: 'OpenCode 说明',
+      protocol: 'OpenAI Compatible',
+      icon: '◈',
+      component: OpenCodeGuide
     }
   ]
 
@@ -110,6 +136,8 @@ describe('DocsView', () => {
       'FluxCode 测试站|https://gateway.example.com|https://gateway.example.com/v1|gpt-5.6-terra'
     )
     expect(wrapper.find('a[href="/docs/pi-agent"]').exists()).toBe(true)
+    expect(wrapper.find('a[href="/docs/claude-code"]').exists()).toBe(true)
+    expect(wrapper.find('a[href="/docs/opencode"]').exists()).toBe(true)
     expect(fetchPublicSettings).toHaveBeenCalledTimes(1)
   })
 
@@ -117,6 +145,14 @@ describe('DocsView', () => {
     const { wrapper } = await mountAt('/docs/pi-agent')
 
     expect(wrapper.get('[data-testid="client-guide"]').text()).toContain('https://gateway.example.com/v1')
+  })
+
+  it('根据路由参数展示 Claude Code 和 OpenCode 指南', async () => {
+    const claude = await mountAt('/docs/claude-code')
+    expect(claude.wrapper.get('[data-testid="client-guide"]').text()).toContain('Claude Code|FluxCode 测试站|https://gateway.example.com|https://gateway.example.com/v1')
+
+    const opencode = await mountAt('/docs/opencode')
+    expect(opencode.wrapper.get('[data-testid="client-guide"]').text()).toContain('OpenCode|FluxCode 测试站|https://gateway.example.com|https://gateway.example.com/v1|gpt-5.6-terra')
   })
 
   it('对未知客户端显示明确的恢复入口', async () => {

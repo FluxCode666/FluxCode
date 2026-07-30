@@ -1,5 +1,7 @@
 import type { Component } from 'vue'
+import ClaudeCodeGuide from '@/components/docs/ClaudeCodeGuide.vue'
 import CodexGuide from '@/components/docs/CodexGuide.vue'
+import OpenCodeGuide from '@/components/docs/OpenCodeGuide.vue'
 import PiAgentGuide from '@/components/docs/PiAgentGuide.vue'
 
 export type ClientDoc = {
@@ -34,6 +36,24 @@ export const clientDocs: ClientDoc[] = [
     protocol: 'Chat Completions',
     icon: 'π',
     component: PiAgentGuide
+  },
+  {
+    id: 'claude-code',
+    name: 'Claude Code CLI',
+    shortName: 'Claude Code',
+    description: '通过 Anthropic Messages 协议设置 Claude Code 的网关、认证与全局配置。',
+    protocol: 'Anthropic Messages',
+    icon: '◆',
+    component: ClaudeCodeGuide
+  },
+  {
+    id: 'opencode',
+    name: 'OpenCode',
+    shortName: 'OpenCode',
+    description: '使用 OpenAI Compatible provider 与环境变量接入 OpenCode。',
+    protocol: 'OpenAI Compatible',
+    icon: '◈',
+    component: OpenCodeGuide
   }
 ]
 
