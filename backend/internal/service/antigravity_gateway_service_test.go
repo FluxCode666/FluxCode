@@ -122,6 +122,14 @@ func TestIsPromptTooLongError(t *testing.T) {
 	require.False(t, isPromptTooLongError([]byte(`{"error":{"message":"other"}}`)))
 }
 
+func TestIsSelectedModelAtCapacityError(t *testing.T) {
+	require.True(t, isSelectedModelAtCapacityError("Selected model is at capacity. Please try a different model."))
+	require.True(t, isSelectedModelAtCapacityError("  selected model is at capacity. please try a different model.  "))
+	require.True(t, isSelectedModelAtCapacityResponse([]byte("Selected model is at capacity. Please try a different model.")))
+	require.False(t, isSelectedModelAtCapacityError("Selected model is at capacity."))
+	require.False(t, isSelectedModelAtCapacityError("Please try a different model."))
+}
+
 type httpUpstreamStub struct {
 	resp *http.Response
 	err  error
@@ -268,6 +276,101 @@ func TestAntigravityGatewayService_Forward_PromptTooLong(t *testing.T) {
 	require.True(t, ok)
 	require.Len(t, events, 1)
 	require.Equal(t, "prompt_too_long", events[0].Kind)
+}
+
+func TestAntigravityGatewayService_Forward_SelectedModelAtCapacityTriggersAccountFailover(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	writer := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(writer)
+
+	body := []byte(`{"model":"claude-opus-4-6","messages":[{"role":"user","content":"hi"}],"max_tokens":1,"stream":false}`)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", bytes.NewReader(body))
+
+	respBody := []byte(`{"error":{"message":"Selected model is at capacity. Please try a different model."}}`)
+	svc := &AntigravityGatewayService{
+		settingService: NewSettingService(&antigravitySettingRepoStub{}, &config.Config{Gateway: config.GatewayConfig{MaxLineSize: defaultMaxLineSize}}),
+		tokenProvider:  &AntigravityTokenProvider{},
+		httpUpstream: &httpUpstreamStub{resp: &http.Response{
+			StatusCode: http.StatusBadRequest,
+			Header:     http.Header{"X-Request-Id": []string{"req-capacity-claude"}},
+			Body:       io.NopCloser(bytes.NewReader(respBody)),
+		}},
+	}
+	account := &Account{
+		ID:          11,
+		Name:        "acc-capacity-claude",
+		Platform:    PlatformAntigravity,
+		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
+		Concurrency: 1,
+		Credentials: map[string]any{"access_token": "token"},
+	}
+
+	result, err := svc.Forward(context.Background(), c, account, body, false)
+	require.Nil(t, result)
+
+	var failoverErr *UpstreamFailoverError
+	require.ErrorAs(t, err, &failoverErr)
+	require.Equal(t, http.StatusBadRequest, failoverErr.StatusCode)
+	require.False(t, failoverErr.RetryableOnSameAccount)
+	require.JSONEq(t, string(respBody), string(failoverErr.ResponseBody))
+	require.Empty(t, writer.Body.String(), "服务层不应在切换账号前向下游写入该错误")
+
+	raw, ok := c.Get(OpsUpstreamErrorsKey)
+	require.True(t, ok)
+	events, ok := raw.([]*OpsUpstreamErrorEvent)
+	require.True(t, ok)
+	require.Len(t, events, 1)
+	require.Equal(t, "failover", events[0].Kind)
+}
+
+func TestAntigravityGatewayService_ForwardGemini_SelectedModelAtCapacityTriggersAccountFailover(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	writer := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(writer)
+
+	body := []byte(`{"contents":[{"role":"user","parts":[{"text":"hi"}]}]}`)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1beta/models/gemini-2.5-flash:generateContent", bytes.NewReader(body))
+
+	respBody := []byte(`{"response":{"error":{"code":400,"message":"Selected model is at capacity. Please try a different model.","status":"INVALID_ARGUMENT"}}}`)
+	svc := &AntigravityGatewayService{
+		settingService: NewSettingService(&antigravitySettingRepoStub{}, &config.Config{Gateway: config.GatewayConfig{MaxLineSize: defaultMaxLineSize}}),
+		tokenProvider:  &AntigravityTokenProvider{},
+		httpUpstream: &httpUpstreamStub{resp: &http.Response{
+			StatusCode: http.StatusBadRequest,
+			Header: http.Header{
+				"Content-Type": []string{"application/json"},
+				"X-Request-Id": []string{"req-capacity-gemini"},
+			},
+			Body: io.NopCloser(bytes.NewReader(respBody)),
+		}},
+	}
+	account := &Account{
+		ID:          12,
+		Name:        "acc-capacity-gemini",
+		Platform:    PlatformAntigravity,
+		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
+		Concurrency: 1,
+		Credentials: map[string]any{"access_token": "token"},
+	}
+
+	result, err := svc.ForwardGemini(context.Background(), c, account, "gemini-2.5-flash", "generateContent", false, body, false)
+	require.Nil(t, result)
+
+	var failoverErr *UpstreamFailoverError
+	require.ErrorAs(t, err, &failoverErr)
+	require.Equal(t, http.StatusBadRequest, failoverErr.StatusCode)
+	require.False(t, failoverErr.RetryableOnSameAccount)
+	require.JSONEq(t, `{"error":{"code":400,"message":"Selected model is at capacity. Please try a different model.","status":"INVALID_ARGUMENT"}}`, string(failoverErr.ResponseBody))
+	require.Empty(t, writer.Body.String(), "服务层不应在切换账号前向下游写入该错误")
+
+	raw, ok := c.Get(OpsUpstreamErrorsKey)
+	require.True(t, ok)
+	events, ok := raw.([]*OpsUpstreamErrorEvent)
+	require.True(t, ok)
+	require.Len(t, events, 1)
+	require.Equal(t, "failover", events[0].Kind)
 }
 
 // TestAntigravityGatewayService_Forward_ModelRateLimitTriggersFailover

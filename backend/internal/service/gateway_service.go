@@ -3581,6 +3581,11 @@ const (
 	// 最大重试耗时（包含请求本身耗时 + 退避等待时间）。
 	// 用于防止极端情况下 goroutine 长时间堆积导致资源耗尽。
 	maxRetryElapsed = 10 * time.Second
+
+	// selectedModelAtCapacityMessage 是当前账号的上游模型容量不足提示。
+	// 它不同于共享模型池的容量耗尽：切换账号可能恢复，因此应由 Handler
+	// 走既有的有界账号切换流程，而不是立即返回下游。
+	selectedModelAtCapacityMessage = "Selected model is at capacity. Please try a different model."
 )
 
 func (s *GatewayService) shouldRetryUpstreamError(account *Account, statusCode int) bool {
@@ -4452,6 +4457,19 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 	}
 	defer func() { _ = resp.Body.Close() }()
 
+	// 当前账号的模型容量错误必须优先于通用重试/错误处理：API Key 账号的
+	// 错误码配置可能会让 400 进入重试耗尽分支，否则会跳过账号切换。
+	if resp.StatusCode == http.StatusBadRequest {
+		respBody, readErr := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+		if readErr == nil {
+			_ = resp.Body.Close()
+			resp.Body = io.NopCloser(bytes.NewReader(respBody))
+			if failoverErr := s.selectedModelAtCapacityFailover(ctx, c, resp, account, respBody, false); failoverErr != nil {
+				return nil, failoverErr
+			}
+		}
+	}
+
 	// 处理重试耗尽的情况
 	if resp.StatusCode >= 400 && s.shouldRetryUpstreamError(account, resp.StatusCode) {
 		if s.shouldFailoverUpstreamError(resp.StatusCode) {
@@ -4520,8 +4538,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 		}
 	}
 	if resp.StatusCode >= 400 {
-		// 可选：对部分 400 触发 failover（默认关闭以保持语义）
-		if resp.StatusCode == 400 && s.cfg != nil && s.cfg.Gateway.FailoverOn400 {
+		if resp.StatusCode == http.StatusBadRequest {
 			respBody, readErr := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
 			if readErr != nil {
 				// ReadAll failed, fall back to normal error handling without consuming the stream
@@ -4530,7 +4547,8 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 			_ = resp.Body.Close()
 			resp.Body = io.NopCloser(bytes.NewReader(respBody))
 
-			if s.shouldFailoverOn400(respBody) {
+			// 可选：对其他部分 400 触发 failover（默认关闭以保持语义）
+			if s.cfg != nil && s.cfg.Gateway.FailoverOn400 && s.shouldFailoverOn400(respBody) {
 				upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(respBody))
 				upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
 				upstreamDetail := ""
@@ -4759,6 +4777,18 @@ func (s *GatewayService) forwardAnthropicAPIKeyPassthroughWithInput(
 		return nil, errors.New("upstream request failed: empty response")
 	}
 	defer func() { _ = resp.Body.Close() }()
+
+	// 与非透传 Claude 链路一致，优先将当前账号的模型容量错误转换为换号信号。
+	if resp.StatusCode == http.StatusBadRequest {
+		respBody, readErr := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+		if readErr == nil {
+			_ = resp.Body.Close()
+			resp.Body = io.NopCloser(bytes.NewReader(respBody))
+			if failoverErr := s.selectedModelAtCapacityFailover(ctx, c, resp, account, respBody, true); failoverErr != nil {
+				return nil, failoverErr
+			}
+		}
+	}
 
 	if resp.StatusCode >= 400 && s.shouldRetryUpstreamError(account, resp.StatusCode) {
 		if s.shouldFailoverUpstreamError(resp.StatusCode) {
@@ -5474,6 +5504,18 @@ func (s *GatewayService) handleBedrockUpstreamErrors(
 	c *gin.Context,
 	account *Account,
 ) (*ForwardResult, error) {
+	if resp.StatusCode == http.StatusBadRequest {
+		respBody, readErr := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+		if readErr != nil {
+			return s.handleErrorResponse(ctx, resp, c, account)
+		}
+		_ = resp.Body.Close()
+		resp.Body = io.NopCloser(bytes.NewReader(respBody))
+		if failoverErr := s.selectedModelAtCapacityFailover(ctx, c, resp, account, respBody, false); failoverErr != nil {
+			return nil, failoverErr
+		}
+	}
+
 	// retry exhausted + failover
 	if s.shouldRetryUpstreamError(account, resp.StatusCode) {
 		if s.shouldFailoverUpstreamError(resp.StatusCode) {
@@ -6339,6 +6381,64 @@ func (s *GatewayService) shouldFailoverOn400(respBody []byte) bool {
 	}
 
 	return false
+}
+
+// isSelectedModelAtCapacityError 判断上游是否明确表示当前账号的已选模型容量不足。
+// 使用精确匹配，避免把其他客户端请求错误误判为账号故障。
+func isSelectedModelAtCapacityError(message string) bool {
+	return strings.EqualFold(strings.TrimSpace(message), selectedModelAtCapacityMessage)
+}
+
+// isSelectedModelAtCapacityResponse 支持标准错误对象、v1internal 包装和纯文本响应。
+func isSelectedModelAtCapacityResponse(respBody []byte) bool {
+	return isSelectedModelAtCapacityError(extractUpstreamErrorMessage(respBody)) ||
+		isSelectedModelAtCapacityError(gjson.GetBytes(respBody, "response.error.message").String()) ||
+		isSelectedModelAtCapacityError(string(respBody))
+}
+
+// selectedModelAtCapacityFailover 将当前账号特有的模型容量错误转换为账号切换信号。
+// 调用方需先保留响应体副本；该错误不应走同账号重试。
+func (s *GatewayService) selectedModelAtCapacityFailover(
+	ctx context.Context,
+	c *gin.Context,
+	resp *http.Response,
+	account *Account,
+	respBody []byte,
+	passthrough bool,
+) *UpstreamFailoverError {
+	if resp == nil || account == nil || !isSelectedModelAtCapacityResponse(respBody) {
+		return nil
+	}
+
+	upstreamMsg := sanitizeUpstreamErrorMessage(strings.TrimSpace(extractUpstreamErrorMessage(respBody)))
+	upstreamDetail := ""
+	if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
+		maxBytes := s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes
+		if maxBytes <= 0 {
+			maxBytes = 2048
+		}
+		upstreamDetail = truncateString(string(respBody), maxBytes)
+	}
+	logger.LegacyPrintfContext(ctx, "service.gateway", "account=%d status=%d selected_model_at_capacity failover=true", account.ID, resp.StatusCode)
+	if s.rateLimitService != nil {
+		s.handleFailoverSideEffects(ctx, resp, account, respBody)
+	}
+	appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+		Platform:           account.Platform,
+		AccountID:          account.ID,
+		AccountName:        account.Name,
+		UpstreamStatusCode: resp.StatusCode,
+		UpstreamRequestID:  resp.Header.Get("x-request-id"),
+		Passthrough:        passthrough,
+		Kind:               "failover",
+		Message:            upstreamMsg,
+		Detail:             upstreamDetail,
+	})
+	return &UpstreamFailoverError{
+		StatusCode:      resp.StatusCode,
+		ResponseBody:    respBody,
+		ResponseHeaders: resp.Header.Clone(),
+	}
 }
 
 // ExtractUpstreamErrorMessage 从上游响应体中提取错误消息

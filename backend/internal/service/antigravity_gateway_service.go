@@ -1689,6 +1689,25 @@ func (s *AntigravityGatewayService) Forward(ctx context.Context, c *gin.Context,
 
 			s.handleUpstreamError(ctx, prefix, account, resp.StatusCode, resp.Header, respBody, originalModel, 0, "", isStickySession)
 
+			// 当前账号上的已选模型无容量时，切换账号重试。不要标记为同账号重试，
+			// 以免在同一账号上重复请求；外层 Handler 会按最大切换次数收敛。
+			if isSelectedModelAtCapacityResponse(respBody) {
+				upstreamMsg := sanitizeUpstreamErrorMessage(strings.TrimSpace(extractAntigravityErrorMessage(respBody)))
+				upstreamDetail := s.getUpstreamErrorDetail(respBody)
+				logger.LegacyPrintfContext(ctx, "service.antigravity_gateway", "%s status=%d selected_model_at_capacity failover=true upstream_message=%q account=%d", prefix, resp.StatusCode, upstreamMsg, account.ID)
+				appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+					Platform:           account.Platform,
+					AccountID:          account.ID,
+					AccountName:        account.Name,
+					UpstreamStatusCode: resp.StatusCode,
+					UpstreamRequestID:  resp.Header.Get("x-request-id"),
+					Kind:               "failover",
+					Message:            upstreamMsg,
+					Detail:             upstreamDetail,
+				})
+				return nil, &UpstreamFailoverError{StatusCode: resp.StatusCode, ResponseBody: respBody}
+			}
+
 			// 精确匹配服务端配置类 400 错误，触发同账号重试 + failover
 			if resp.StatusCode == http.StatusBadRequest {
 				msg := strings.ToLower(strings.TrimSpace(extractAntigravityErrorMessage(respBody)))
@@ -2366,6 +2385,23 @@ func (s *AntigravityGatewayService) ForwardGemini(ctx context.Context, c *gin.Co
 
 		// Always record upstream context for Ops error logs, even when we will failover.
 		setOpsUpstreamError(c, resp.StatusCode, upstreamMsg, upstreamDetail)
+
+		// 当前账号上的已选模型无容量时，切换账号重试。不要标记为同账号重试，
+		// 以免在同一账号上重复请求；外层 Handler 会按最大切换次数收敛。
+		if isSelectedModelAtCapacityResponse(unwrappedForOps) {
+			logger.LegacyPrintfContext(ctx, "service.antigravity_gateway", "%s status=%d selected_model_at_capacity failover=true upstream_message=%q account=%d", prefix, resp.StatusCode, upstreamMsg, account.ID)
+			appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+				Platform:           account.Platform,
+				AccountID:          account.ID,
+				AccountName:        account.Name,
+				UpstreamStatusCode: resp.StatusCode,
+				UpstreamRequestID:  requestID,
+				Kind:               "failover",
+				Message:            upstreamMsg,
+				Detail:             upstreamDetail,
+			})
+			return nil, &UpstreamFailoverError{StatusCode: resp.StatusCode, ResponseBody: unwrappedForOps}
+		}
 
 		// 精确匹配服务端配置类 400 错误，触发同账号重试 + failover
 		if resp.StatusCode == http.StatusBadRequest && isGoogleProjectConfigError(strings.ToLower(upstreamMsg)) {
