@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -506,7 +507,9 @@ func TestSettingServiceOpenAIImageURLCacheTTLHoursDefaultsAndUpdates(t *testing.
 	settings.OpenAIImageURLCacheTTLHours = 24
 	require.NoError(t, svc.UpdateSettings(context.Background(), settings))
 
-	require.Equal(t, "24", repo.values[SettingKeyOpenAIImageURLCacheTTLHours])
+	value, err := repo.GetValue(context.Background(), SettingKeyOpenAIImageURLCacheTTLHours)
+	require.NoError(t, err)
+	require.Equal(t, "24", value)
 }
 
 type openAIImagesFakeImageCache struct {
@@ -545,10 +548,14 @@ func (c *openAIImagesFakeImageCache) GetImage(ctx context.Context, id string) ([
 }
 
 type openAIImagesSettingRepoStub struct {
+	mu     sync.RWMutex
 	values map[string]string
 }
 
 func (r *openAIImagesSettingRepoStub) Get(ctx context.Context, key string) (*Setting, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
 	if value, ok := r.values[key]; ok {
 		return &Setting{Key: key, Value: value}, nil
 	}
@@ -556,6 +563,9 @@ func (r *openAIImagesSettingRepoStub) Get(ctx context.Context, key string) (*Set
 }
 
 func (r *openAIImagesSettingRepoStub) GetValue(ctx context.Context, key string) (string, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
 	if value, ok := r.values[key]; ok {
 		return value, nil
 	}
@@ -563,6 +573,9 @@ func (r *openAIImagesSettingRepoStub) GetValue(ctx context.Context, key string) 
 }
 
 func (r *openAIImagesSettingRepoStub) Set(ctx context.Context, key, value string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
 	if r.values == nil {
 		r.values = make(map[string]string)
 	}
@@ -571,6 +584,9 @@ func (r *openAIImagesSettingRepoStub) Set(ctx context.Context, key, value string
 }
 
 func (r *openAIImagesSettingRepoStub) GetMultiple(ctx context.Context, keys []string) (map[string]string, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
 	out := make(map[string]string, len(keys))
 	for _, key := range keys {
 		out[key] = r.values[key]
@@ -579,6 +595,9 @@ func (r *openAIImagesSettingRepoStub) GetMultiple(ctx context.Context, keys []st
 }
 
 func (r *openAIImagesSettingRepoStub) SetMultiple(ctx context.Context, settings map[string]string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
 	if r.values == nil {
 		r.values = make(map[string]string)
 	}
@@ -589,6 +608,9 @@ func (r *openAIImagesSettingRepoStub) SetMultiple(ctx context.Context, settings 
 }
 
 func (r *openAIImagesSettingRepoStub) GetAll(ctx context.Context) (map[string]string, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
 	out := make(map[string]string, len(r.values))
 	for key, value := range r.values {
 		out[key] = value
@@ -597,6 +619,9 @@ func (r *openAIImagesSettingRepoStub) GetAll(ctx context.Context) (map[string]st
 }
 
 func (r *openAIImagesSettingRepoStub) Delete(ctx context.Context, key string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
 	delete(r.values, key)
 	return nil
 }

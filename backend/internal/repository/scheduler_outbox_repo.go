@@ -45,6 +45,10 @@ func schedulerOutboxEventSupportsDedup(eventType string) bool {
 	case service.SchedulerOutboxEventAccountChanged,
 		service.SchedulerOutboxEventAccountGroupsChanged,
 		service.SchedulerOutboxEventGroupChanged,
+		service.SchedulerOutboxEventProviderChanged,
+		service.SchedulerOutboxEventCapabilityChanged,
+		service.SchedulerOutboxEventLogicalModelChanged,
+		service.SchedulerOutboxEventAdapterChanged,
 		service.SchedulerOutboxEventFullRebuild:
 		return true
 	default:

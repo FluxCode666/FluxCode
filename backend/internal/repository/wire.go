@@ -84,6 +84,12 @@ var ProviderSet = wire.NewSet(
 	NewAPIKeyRepository,
 	NewGroupRepository,
 	NewAccountRepository,
+	NewProviderRepository,
+	wire.Bind(new(service.ProviderRepository), new(*providerRepository)),
+	wire.Bind(new(service.ProviderAdminRepository), new(*providerRepository)),
+	NewProviderRouteAttemptRepository,
+	wire.Bind(new(service.ProviderRouteAttemptRecorder), new(*providerRouteAttemptRepository)),
+	wire.Bind(new(service.ProviderRouteAttemptReader), new(*providerRouteAttemptRepository)),
 	NewScheduledTestPlanRepository,   // 定时测试计划仓储
 	NewScheduledTestResultRepository, // 定时测试结果仓储
 	NewProxyRepository,
@@ -126,6 +132,7 @@ var ProviderSet = wire.NewSet(
 
 	// Cache implementations
 	NewGatewayCache,
+	NewProviderRouteStateStore,
 	NewBillingCache,
 	NewAPIKeyCache,
 	NewTempUnschedCache,

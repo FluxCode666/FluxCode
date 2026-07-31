@@ -3,6 +3,7 @@
 package ent
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -38,6 +39,22 @@ type UsageLog struct {
 	RequestedModel *string `json:"requested_model,omitempty"`
 	// UpstreamModel holds the value of the "upstream_model" field.
 	UpstreamModel *string `json:"upstream_model,omitempty"`
+	// LogicalModel holds the value of the "logical_model" field.
+	LogicalModel *string `json:"logical_model,omitempty"`
+	// IngressProtocol holds the value of the "ingress_protocol" field.
+	IngressProtocol *string `json:"ingress_protocol,omitempty"`
+	// UpstreamProtocol holds the value of the "upstream_protocol" field.
+	UpstreamProtocol *string `json:"upstream_protocol,omitempty"`
+	// RouteIdentity holds the value of the "route_identity" field.
+	RouteIdentity *string `json:"route_identity,omitempty"`
+	// WireProfile holds the value of the "wire_profile" field.
+	WireProfile *string `json:"wire_profile,omitempty"`
+	// ConversionUsed holds the value of the "conversion_used" field.
+	ConversionUsed bool `json:"conversion_used,omitempty"`
+	// RawUpstreamUsage holds the value of the "raw_upstream_usage" field.
+	RawUpstreamUsage map[string]interface{} `json:"raw_upstream_usage,omitempty"`
+	// UsageCompleteness holds the value of the "usage_completeness" field.
+	UsageCompleteness string `json:"usage_completeness,omitempty"`
 	// 渠道 ID
 	ChannelID *int64 `json:"channel_id,omitempty"`
 	// 模型映射链
@@ -181,13 +198,15 @@ func (*UsageLog) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case usagelog.FieldStream, usagelog.FieldCacheTTLOverridden:
+		case usagelog.FieldRawUpstreamUsage:
+			values[i] = new([]byte)
+		case usagelog.FieldConversionUsed, usagelog.FieldStream, usagelog.FieldCacheTTLOverridden:
 			values[i] = new(sql.NullBool)
 		case usagelog.FieldInputCost, usagelog.FieldOutputCost, usagelog.FieldCacheCreationCost, usagelog.FieldCacheReadCost, usagelog.FieldTotalCost, usagelog.FieldActualCost, usagelog.FieldRateMultiplier, usagelog.FieldAccountRateMultiplier:
 			values[i] = new(sql.NullFloat64)
 		case usagelog.FieldID, usagelog.FieldUserID, usagelog.FieldAPIKeyID, usagelog.FieldAccountID, usagelog.FieldChannelID, usagelog.FieldGroupID, usagelog.FieldSubscriptionID, usagelog.FieldInputTokens, usagelog.FieldOutputTokens, usagelog.FieldCacheCreationTokens, usagelog.FieldCacheReadTokens, usagelog.FieldCacheCreation5mTokens, usagelog.FieldCacheCreation1hTokens, usagelog.FieldBillingType, usagelog.FieldDurationMs, usagelog.FieldFirstTokenMs, usagelog.FieldImageCount:
 			values[i] = new(sql.NullInt64)
-		case usagelog.FieldTraceID, usagelog.FieldRequestID, usagelog.FieldModel, usagelog.FieldRequestedModel, usagelog.FieldUpstreamModel, usagelog.FieldModelMappingChain, usagelog.FieldBillingTier, usagelog.FieldBillingMode, usagelog.FieldUserAgent, usagelog.FieldIPAddress, usagelog.FieldImageSize:
+		case usagelog.FieldTraceID, usagelog.FieldRequestID, usagelog.FieldModel, usagelog.FieldRequestedModel, usagelog.FieldUpstreamModel, usagelog.FieldLogicalModel, usagelog.FieldIngressProtocol, usagelog.FieldUpstreamProtocol, usagelog.FieldRouteIdentity, usagelog.FieldWireProfile, usagelog.FieldUsageCompleteness, usagelog.FieldModelMappingChain, usagelog.FieldBillingTier, usagelog.FieldBillingMode, usagelog.FieldUserAgent, usagelog.FieldIPAddress, usagelog.FieldImageSize:
 			values[i] = new(sql.NullString)
 		case usagelog.FieldCreatedAt:
 			values[i] = new(sql.NullTime)
@@ -262,6 +281,61 @@ func (_m *UsageLog) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.UpstreamModel = new(string)
 				*_m.UpstreamModel = value.String
+			}
+		case usagelog.FieldLogicalModel:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field logical_model", values[i])
+			} else if value.Valid {
+				_m.LogicalModel = new(string)
+				*_m.LogicalModel = value.String
+			}
+		case usagelog.FieldIngressProtocol:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field ingress_protocol", values[i])
+			} else if value.Valid {
+				_m.IngressProtocol = new(string)
+				*_m.IngressProtocol = value.String
+			}
+		case usagelog.FieldUpstreamProtocol:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field upstream_protocol", values[i])
+			} else if value.Valid {
+				_m.UpstreamProtocol = new(string)
+				*_m.UpstreamProtocol = value.String
+			}
+		case usagelog.FieldRouteIdentity:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field route_identity", values[i])
+			} else if value.Valid {
+				_m.RouteIdentity = new(string)
+				*_m.RouteIdentity = value.String
+			}
+		case usagelog.FieldWireProfile:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field wire_profile", values[i])
+			} else if value.Valid {
+				_m.WireProfile = new(string)
+				*_m.WireProfile = value.String
+			}
+		case usagelog.FieldConversionUsed:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field conversion_used", values[i])
+			} else if value.Valid {
+				_m.ConversionUsed = value.Bool
+			}
+		case usagelog.FieldRawUpstreamUsage:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field raw_upstream_usage", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &_m.RawUpstreamUsage); err != nil {
+					return fmt.Errorf("unmarshal field raw_upstream_usage: %w", err)
+				}
+			}
+		case usagelog.FieldUsageCompleteness:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field usage_completeness", values[i])
+			} else if value.Valid {
+				_m.UsageCompleteness = value.String
 			}
 		case usagelog.FieldChannelID:
 			if value, ok := values[i].(*sql.NullInt64); !ok {
@@ -545,6 +619,40 @@ func (_m *UsageLog) String() string {
 		builder.WriteString("upstream_model=")
 		builder.WriteString(*v)
 	}
+	builder.WriteString(", ")
+	if v := _m.LogicalModel; v != nil {
+		builder.WriteString("logical_model=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.IngressProtocol; v != nil {
+		builder.WriteString("ingress_protocol=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.UpstreamProtocol; v != nil {
+		builder.WriteString("upstream_protocol=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.RouteIdentity; v != nil {
+		builder.WriteString("route_identity=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.WireProfile; v != nil {
+		builder.WriteString("wire_profile=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	builder.WriteString("conversion_used=")
+	builder.WriteString(fmt.Sprintf("%v", _m.ConversionUsed))
+	builder.WriteString(", ")
+	builder.WriteString("raw_upstream_usage=")
+	builder.WriteString(fmt.Sprintf("%v", _m.RawUpstreamUsage))
+	builder.WriteString(", ")
+	builder.WriteString("usage_completeness=")
+	builder.WriteString(_m.UsageCompleteness)
 	builder.WriteString(", ")
 	if v := _m.ChannelID; v != nil {
 		builder.WriteString("channel_id=")

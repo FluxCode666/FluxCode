@@ -481,6 +481,34 @@ func (_c *GroupCreate) SetNillableMessagesDispatchModelConfig(v *domain.OpenAIMe
 	return _c
 }
 
+// SetActiveRouteSnapshotVersion sets the "active_route_snapshot_version" field.
+func (_c *GroupCreate) SetActiveRouteSnapshotVersion(v int64) *GroupCreate {
+	_c.mutation.SetActiveRouteSnapshotVersion(v)
+	return _c
+}
+
+// SetNillableActiveRouteSnapshotVersion sets the "active_route_snapshot_version" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableActiveRouteSnapshotVersion(v *int64) *GroupCreate {
+	if v != nil {
+		_c.SetActiveRouteSnapshotVersion(*v)
+	}
+	return _c
+}
+
+// SetPreviousRouteSnapshotVersion sets the "previous_route_snapshot_version" field.
+func (_c *GroupCreate) SetPreviousRouteSnapshotVersion(v int64) *GroupCreate {
+	_c.mutation.SetPreviousRouteSnapshotVersion(v)
+	return _c
+}
+
+// SetNillablePreviousRouteSnapshotVersion sets the "previous_route_snapshot_version" field if the given value is not nil.
+func (_c *GroupCreate) SetNillablePreviousRouteSnapshotVersion(v *int64) *GroupCreate {
+	if v != nil {
+		_c.SetPreviousRouteSnapshotVersion(*v)
+	}
+	return _c
+}
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by IDs.
 func (_c *GroupCreate) AddAPIKeyIDs(ids ...int64) *GroupCreate {
 	_c.mutation.AddAPIKeyIDs(ids...)
@@ -968,6 +996,14 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.MessagesDispatchModelConfig(); ok {
 		_spec.SetField(group.FieldMessagesDispatchModelConfig, field.TypeJSON, value)
 		_node.MessagesDispatchModelConfig = value
+	}
+	if value, ok := _c.mutation.ActiveRouteSnapshotVersion(); ok {
+		_spec.SetField(group.FieldActiveRouteSnapshotVersion, field.TypeInt64, value)
+		_node.ActiveRouteSnapshotVersion = &value
+	}
+	if value, ok := _c.mutation.PreviousRouteSnapshotVersion(); ok {
+		_spec.SetField(group.FieldPreviousRouteSnapshotVersion, field.TypeInt64, value)
+		_node.PreviousRouteSnapshotVersion = &value
 	}
 	if nodes := _c.mutation.APIKeysIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
@@ -1653,6 +1689,54 @@ func (u *GroupUpsert) UpdateMessagesDispatchModelConfig() *GroupUpsert {
 	return u
 }
 
+// SetActiveRouteSnapshotVersion sets the "active_route_snapshot_version" field.
+func (u *GroupUpsert) SetActiveRouteSnapshotVersion(v int64) *GroupUpsert {
+	u.Set(group.FieldActiveRouteSnapshotVersion, v)
+	return u
+}
+
+// UpdateActiveRouteSnapshotVersion sets the "active_route_snapshot_version" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateActiveRouteSnapshotVersion() *GroupUpsert {
+	u.SetExcluded(group.FieldActiveRouteSnapshotVersion)
+	return u
+}
+
+// AddActiveRouteSnapshotVersion adds v to the "active_route_snapshot_version" field.
+func (u *GroupUpsert) AddActiveRouteSnapshotVersion(v int64) *GroupUpsert {
+	u.Add(group.FieldActiveRouteSnapshotVersion, v)
+	return u
+}
+
+// ClearActiveRouteSnapshotVersion clears the value of the "active_route_snapshot_version" field.
+func (u *GroupUpsert) ClearActiveRouteSnapshotVersion() *GroupUpsert {
+	u.SetNull(group.FieldActiveRouteSnapshotVersion)
+	return u
+}
+
+// SetPreviousRouteSnapshotVersion sets the "previous_route_snapshot_version" field.
+func (u *GroupUpsert) SetPreviousRouteSnapshotVersion(v int64) *GroupUpsert {
+	u.Set(group.FieldPreviousRouteSnapshotVersion, v)
+	return u
+}
+
+// UpdatePreviousRouteSnapshotVersion sets the "previous_route_snapshot_version" field to the value that was provided on create.
+func (u *GroupUpsert) UpdatePreviousRouteSnapshotVersion() *GroupUpsert {
+	u.SetExcluded(group.FieldPreviousRouteSnapshotVersion)
+	return u
+}
+
+// AddPreviousRouteSnapshotVersion adds v to the "previous_route_snapshot_version" field.
+func (u *GroupUpsert) AddPreviousRouteSnapshotVersion(v int64) *GroupUpsert {
+	u.Add(group.FieldPreviousRouteSnapshotVersion, v)
+	return u
+}
+
+// ClearPreviousRouteSnapshotVersion clears the value of the "previous_route_snapshot_version" field.
+func (u *GroupUpsert) ClearPreviousRouteSnapshotVersion() *GroupUpsert {
+	u.SetNull(group.FieldPreviousRouteSnapshotVersion)
+	return u
+}
+
 // UpdateNewValues updates the mutable fields using the new values that were set on create.
 // Using this option is equivalent to using:
 //
@@ -2311,6 +2395,62 @@ func (u *GroupUpsertOne) SetMessagesDispatchModelConfig(v domain.OpenAIMessagesD
 func (u *GroupUpsertOne) UpdateMessagesDispatchModelConfig() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateMessagesDispatchModelConfig()
+	})
+}
+
+// SetActiveRouteSnapshotVersion sets the "active_route_snapshot_version" field.
+func (u *GroupUpsertOne) SetActiveRouteSnapshotVersion(v int64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetActiveRouteSnapshotVersion(v)
+	})
+}
+
+// AddActiveRouteSnapshotVersion adds v to the "active_route_snapshot_version" field.
+func (u *GroupUpsertOne) AddActiveRouteSnapshotVersion(v int64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddActiveRouteSnapshotVersion(v)
+	})
+}
+
+// UpdateActiveRouteSnapshotVersion sets the "active_route_snapshot_version" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateActiveRouteSnapshotVersion() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateActiveRouteSnapshotVersion()
+	})
+}
+
+// ClearActiveRouteSnapshotVersion clears the value of the "active_route_snapshot_version" field.
+func (u *GroupUpsertOne) ClearActiveRouteSnapshotVersion() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearActiveRouteSnapshotVersion()
+	})
+}
+
+// SetPreviousRouteSnapshotVersion sets the "previous_route_snapshot_version" field.
+func (u *GroupUpsertOne) SetPreviousRouteSnapshotVersion(v int64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetPreviousRouteSnapshotVersion(v)
+	})
+}
+
+// AddPreviousRouteSnapshotVersion adds v to the "previous_route_snapshot_version" field.
+func (u *GroupUpsertOne) AddPreviousRouteSnapshotVersion(v int64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddPreviousRouteSnapshotVersion(v)
+	})
+}
+
+// UpdatePreviousRouteSnapshotVersion sets the "previous_route_snapshot_version" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdatePreviousRouteSnapshotVersion() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdatePreviousRouteSnapshotVersion()
+	})
+}
+
+// ClearPreviousRouteSnapshotVersion clears the value of the "previous_route_snapshot_version" field.
+func (u *GroupUpsertOne) ClearPreviousRouteSnapshotVersion() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearPreviousRouteSnapshotVersion()
 	})
 }
 
@@ -3138,6 +3278,62 @@ func (u *GroupUpsertBulk) SetMessagesDispatchModelConfig(v domain.OpenAIMessages
 func (u *GroupUpsertBulk) UpdateMessagesDispatchModelConfig() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateMessagesDispatchModelConfig()
+	})
+}
+
+// SetActiveRouteSnapshotVersion sets the "active_route_snapshot_version" field.
+func (u *GroupUpsertBulk) SetActiveRouteSnapshotVersion(v int64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetActiveRouteSnapshotVersion(v)
+	})
+}
+
+// AddActiveRouteSnapshotVersion adds v to the "active_route_snapshot_version" field.
+func (u *GroupUpsertBulk) AddActiveRouteSnapshotVersion(v int64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddActiveRouteSnapshotVersion(v)
+	})
+}
+
+// UpdateActiveRouteSnapshotVersion sets the "active_route_snapshot_version" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateActiveRouteSnapshotVersion() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateActiveRouteSnapshotVersion()
+	})
+}
+
+// ClearActiveRouteSnapshotVersion clears the value of the "active_route_snapshot_version" field.
+func (u *GroupUpsertBulk) ClearActiveRouteSnapshotVersion() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearActiveRouteSnapshotVersion()
+	})
+}
+
+// SetPreviousRouteSnapshotVersion sets the "previous_route_snapshot_version" field.
+func (u *GroupUpsertBulk) SetPreviousRouteSnapshotVersion(v int64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetPreviousRouteSnapshotVersion(v)
+	})
+}
+
+// AddPreviousRouteSnapshotVersion adds v to the "previous_route_snapshot_version" field.
+func (u *GroupUpsertBulk) AddPreviousRouteSnapshotVersion(v int64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddPreviousRouteSnapshotVersion(v)
+	})
+}
+
+// UpdatePreviousRouteSnapshotVersion sets the "previous_route_snapshot_version" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdatePreviousRouteSnapshotVersion() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdatePreviousRouteSnapshotVersion()
+	})
+}
+
+// ClearPreviousRouteSnapshotVersion clears the value of the "previous_route_snapshot_version" field.
+func (u *GroupUpsertBulk) ClearPreviousRouteSnapshotVersion() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearPreviousRouteSnapshotVersion()
 	})
 }
 

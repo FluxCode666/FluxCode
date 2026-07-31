@@ -682,6 +682,8 @@ var (
 		{Name: "require_privacy_set", Type: field.TypeBool, Default: false},
 		{Name: "default_mapped_model", Type: field.TypeString, Size: 100, Default: ""},
 		{Name: "messages_dispatch_model_config", Type: field.TypeJSON, SchemaType: map[string]string{"postgres": "jsonb"}},
+		{Name: "active_route_snapshot_version", Type: field.TypeInt64, Nullable: true},
+		{Name: "previous_route_snapshot_version", Type: field.TypeInt64, Nullable: true},
 	}
 	// GroupsTable holds the schema information for the "groups" table.
 	GroupsTable = &schema.Table{
@@ -726,6 +728,37 @@ var (
 			},
 		},
 	}
+	// GroupRouteSnapshotsColumns holds the columns for the "group_route_snapshots" table.
+	GroupRouteSnapshotsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "group_id", Type: field.TypeInt64},
+		{Name: "version", Type: field.TypeInt64},
+		{Name: "status", Type: field.TypeString, Size: 32, Default: "draft"},
+		{Name: "manifest", Type: field.TypeJSON, SchemaType: map[string]string{"postgres": "jsonb"}},
+		{Name: "shadow_diff", Type: field.TypeJSON, SchemaType: map[string]string{"postgres": "jsonb"}},
+		{Name: "approved_by", Type: field.TypeInt64, Nullable: true},
+		{Name: "approved_at", Type: field.TypeTime, Nullable: true},
+	}
+	// GroupRouteSnapshotsTable holds the schema information for the "group_route_snapshots" table.
+	GroupRouteSnapshotsTable = &schema.Table{
+		Name:       "group_route_snapshots",
+		Columns:    GroupRouteSnapshotsColumns,
+		PrimaryKey: []*schema.Column{GroupRouteSnapshotsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "grouproutesnapshot_group_id_version",
+				Unique:  true,
+				Columns: []*schema.Column{GroupRouteSnapshotsColumns[3], GroupRouteSnapshotsColumns[4]},
+			},
+			{
+				Name:    "grouproutesnapshot_group_id_status",
+				Unique:  false,
+				Columns: []*schema.Column{GroupRouteSnapshotsColumns[3], GroupRouteSnapshotsColumns[5]},
+			},
+		},
+	}
 	// IdempotencyRecordsColumns holds the columns for the "idempotency_records" table.
 	IdempotencyRecordsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt64, Increment: true},
@@ -761,6 +794,34 @@ var (
 				Name:    "idempotencyrecord_status_locked_until",
 				Unique:  false,
 				Columns: []*schema.Column{IdempotencyRecordsColumns[6], IdempotencyRecordsColumns[10]},
+			},
+		},
+	}
+	// LogicalModelsColumns holds the columns for the "logical_models" table.
+	LogicalModelsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "name", Type: field.TypeString, Size: 100},
+		{Name: "display_name", Type: field.TypeString, Size: 100, Default: ""},
+		{Name: "enabled", Type: field.TypeBool, Default: true},
+		{Name: "version", Type: field.TypeInt64, Default: 1},
+	}
+	// LogicalModelsTable holds the schema information for the "logical_models" table.
+	LogicalModelsTable = &schema.Table{
+		Name:       "logical_models",
+		Columns:    LogicalModelsColumns,
+		PrimaryKey: []*schema.Column{LogicalModelsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "logicalmodel_name",
+				Unique:  true,
+				Columns: []*schema.Column{LogicalModelsColumns[3]},
+			},
+			{
+				Name:    "logicalmodel_enabled",
+				Unique:  false,
+				Columns: []*schema.Column{LogicalModelsColumns[5]},
 			},
 		},
 	}
@@ -1112,6 +1173,204 @@ var (
 				Name:    "promotionusage_order_id",
 				Unique:  false,
 				Columns: []*schema.Column{PromotionUsagesColumns[3]},
+			},
+		},
+	}
+	// ProviderMigrationReviewsColumns holds the columns for the "provider_migration_reviews" table.
+	ProviderMigrationReviewsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "provider_id", Type: field.TypeInt64},
+		{Name: "group_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "status", Type: field.TypeString, Size: 32, Default: "pending"},
+		{Name: "reason", Type: field.TypeString, Default: "", SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "evidence", Type: field.TypeJSON, SchemaType: map[string]string{"postgres": "jsonb"}},
+		{Name: "snapshot_version", Type: field.TypeInt64, Default: 1},
+		{Name: "reviewed_by", Type: field.TypeInt64, Nullable: true},
+		{Name: "reviewed_at", Type: field.TypeTime, Nullable: true},
+	}
+	// ProviderMigrationReviewsTable holds the schema information for the "provider_migration_reviews" table.
+	ProviderMigrationReviewsTable = &schema.Table{
+		Name:       "provider_migration_reviews",
+		Columns:    ProviderMigrationReviewsColumns,
+		PrimaryKey: []*schema.Column{ProviderMigrationReviewsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "providermigrationreview_provider_id_group_id_snapshot_version",
+				Unique:  true,
+				Columns: []*schema.Column{ProviderMigrationReviewsColumns[3], ProviderMigrationReviewsColumns[4], ProviderMigrationReviewsColumns[8]},
+			},
+			{
+				Name:    "providermigrationreview_status",
+				Unique:  false,
+				Columns: []*schema.Column{ProviderMigrationReviewsColumns[5]},
+			},
+		},
+	}
+	// ProviderModelCapabilitiesColumns holds the columns for the "provider_model_capabilities" table.
+	ProviderModelCapabilitiesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "provider_id", Type: field.TypeInt64},
+		{Name: "logical_model_id", Type: field.TypeInt64},
+		{Name: "endpoint_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "protocol_family", Type: field.TypeString, Size: 32},
+		{Name: "upstream_model", Type: field.TypeString, Size: 200},
+		{Name: "wire_profile", Type: field.TypeString, Size: 64, Default: "canonical_v1"},
+		{Name: "feature_profile", Type: field.TypeString, Size: 64},
+		{Name: "enabled", Type: field.TypeBool, Default: true},
+		{Name: "legacy_compatibility", Type: field.TypeBool, Default: false},
+		{Name: "version", Type: field.TypeInt64, Default: 1},
+	}
+	// ProviderModelCapabilitiesTable holds the schema information for the "provider_model_capabilities" table.
+	ProviderModelCapabilitiesTable = &schema.Table{
+		Name:       "provider_model_capabilities",
+		Columns:    ProviderModelCapabilitiesColumns,
+		PrimaryKey: []*schema.Column{ProviderModelCapabilitiesColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "providermodelcapability_provider_id_logical_model_id_protocol_family",
+				Unique:  true,
+				Columns: []*schema.Column{ProviderModelCapabilitiesColumns[3], ProviderModelCapabilitiesColumns[4], ProviderModelCapabilitiesColumns[6]},
+			},
+			{
+				Name:    "providermodelcapability_logical_model_id_protocol_family_enabled",
+				Unique:  false,
+				Columns: []*schema.Column{ProviderModelCapabilitiesColumns[4], ProviderModelCapabilitiesColumns[6], ProviderModelCapabilitiesColumns[10]},
+			},
+			{
+				Name:    "providermodelcapability_provider_id_enabled",
+				Unique:  false,
+				Columns: []*schema.Column{ProviderModelCapabilitiesColumns[3], ProviderModelCapabilitiesColumns[10]},
+			},
+		},
+	}
+	// ProviderProfilesColumns holds the columns for the "provider_profiles" table.
+	ProviderProfilesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "display_name", Type: field.TypeString, Size: 100},
+		{Name: "status", Type: field.TypeString, Size: 32, Default: "draft"},
+		{Name: "allow_protocol_conversion", Type: field.TypeBool, Default: false},
+		{Name: "base_url", Type: field.TypeString, Nullable: true, Size: 500},
+		{Name: "auth_type", Type: field.TypeString, Nullable: true, Size: 32},
+		{Name: "default_headers", Type: field.TypeJSON, SchemaType: map[string]string{"postgres": "jsonb"}},
+		{Name: "version", Type: field.TypeInt64, Default: 1},
+	}
+	// ProviderProfilesTable holds the schema information for the "provider_profiles" table.
+	ProviderProfilesTable = &schema.Table{
+		Name:       "provider_profiles",
+		Columns:    ProviderProfilesColumns,
+		PrimaryKey: []*schema.Column{ProviderProfilesColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "providerprofile_status",
+				Unique:  false,
+				Columns: []*schema.Column{ProviderProfilesColumns[4]},
+			},
+			{
+				Name:    "providerprofile_version",
+				Unique:  false,
+				Columns: []*schema.Column{ProviderProfilesColumns[9]},
+			},
+		},
+	}
+	// ProviderProtocolEndpointsColumns holds the columns for the "provider_protocol_endpoints" table.
+	ProviderProtocolEndpointsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "provider_id", Type: field.TypeInt64},
+		{Name: "protocol_family", Type: field.TypeString, Size: 32},
+		{Name: "wire_profile", Type: field.TypeString, Size: 64, Default: "canonical_v1"},
+		{Name: "base_url", Type: field.TypeString, Nullable: true, Size: 500},
+		{Name: "path", Type: field.TypeString, Size: 255},
+		{Name: "auth_type", Type: field.TypeString, Nullable: true, Size: 32},
+		{Name: "headers", Type: field.TypeJSON, SchemaType: map[string]string{"postgres": "jsonb"}},
+		{Name: "enabled", Type: field.TypeBool, Default: true},
+		{Name: "version", Type: field.TypeInt64, Default: 1},
+	}
+	// ProviderProtocolEndpointsTable holds the schema information for the "provider_protocol_endpoints" table.
+	ProviderProtocolEndpointsTable = &schema.Table{
+		Name:       "provider_protocol_endpoints",
+		Columns:    ProviderProtocolEndpointsColumns,
+		PrimaryKey: []*schema.Column{ProviderProtocolEndpointsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "providerprotocolendpoint_provider_id_protocol_family",
+				Unique:  true,
+				Columns: []*schema.Column{ProviderProtocolEndpointsColumns[3], ProviderProtocolEndpointsColumns[4]},
+			},
+			{
+				Name:    "providerprotocolendpoint_protocol_family_enabled",
+				Unique:  false,
+				Columns: []*schema.Column{ProviderProtocolEndpointsColumns[4], ProviderProtocolEndpointsColumns[10]},
+			},
+		},
+	}
+	// ProviderRouteAttemptsColumns holds the columns for the "provider_route_attempts" table.
+	ProviderRouteAttemptsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "trace_id", Type: field.TypeString, Size: 64},
+		{Name: "group_id", Type: field.TypeInt64},
+		{Name: "provider_id", Type: field.TypeInt64},
+		{Name: "capability_id", Type: field.TypeInt64},
+		{Name: "endpoint_id", Type: field.TypeInt64, Default: 0},
+		{Name: "route_identity", Type: field.TypeString, Size: 512},
+		{Name: "logical_model", Type: field.TypeString, Size: 100},
+		{Name: "upstream_model", Type: field.TypeString, Size: 200, Default: ""},
+		{Name: "ingress_protocol", Type: field.TypeString, Size: 32},
+		{Name: "upstream_protocol", Type: field.TypeString, Size: 32},
+		{Name: "wire_profile", Type: field.TypeString, Size: 64, Default: ""},
+		{Name: "route_tier", Type: field.TypeString, Size: 16},
+		{Name: "conversion_used", Type: field.TypeBool, Default: false},
+		{Name: "outcome", Type: field.TypeString, Size: 16},
+		{Name: "status_code", Type: field.TypeInt, Default: 0},
+		{Name: "failure_category", Type: field.TypeString, Size: 64, Default: ""},
+		{Name: "upstream_request_id", Type: field.TypeString, Size: 255, Default: ""},
+		{Name: "duration_ms", Type: field.TypeInt64, Default: 0},
+		{Name: "bytes_committed", Type: field.TypeInt64, Default: 0},
+		{Name: "final_reason", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+	}
+	// ProviderRouteAttemptsTable holds the schema information for the "provider_route_attempts" table.
+	ProviderRouteAttemptsTable = &schema.Table{
+		Name:       "provider_route_attempts",
+		Columns:    ProviderRouteAttemptsColumns,
+		PrimaryKey: []*schema.Column{ProviderRouteAttemptsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "providerrouteattempt_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{ProviderRouteAttemptsColumns[21]},
+			},
+			{
+				Name:    "providerrouteattempt_trace_id_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{ProviderRouteAttemptsColumns[1], ProviderRouteAttemptsColumns[21]},
+			},
+			{
+				Name:    "providerrouteattempt_group_id_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{ProviderRouteAttemptsColumns[2], ProviderRouteAttemptsColumns[21]},
+			},
+			{
+				Name:    "providerrouteattempt_provider_id_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{ProviderRouteAttemptsColumns[3], ProviderRouteAttemptsColumns[21]},
+			},
+			{
+				Name:    "providerrouteattempt_ingress_protocol_upstream_protocol_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{ProviderRouteAttemptsColumns[9], ProviderRouteAttemptsColumns[10], ProviderRouteAttemptsColumns[21]},
+			},
+			{
+				Name:    "providerrouteattempt_outcome_failure_category_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{ProviderRouteAttemptsColumns[14], ProviderRouteAttemptsColumns[16], ProviderRouteAttemptsColumns[21]},
 			},
 		},
 	}
@@ -1576,6 +1835,14 @@ var (
 		{Name: "model", Type: field.TypeString, Size: 100},
 		{Name: "requested_model", Type: field.TypeString, Nullable: true, Size: 100},
 		{Name: "upstream_model", Type: field.TypeString, Nullable: true, Size: 100},
+		{Name: "logical_model", Type: field.TypeString, Nullable: true, Size: 100},
+		{Name: "ingress_protocol", Type: field.TypeString, Nullable: true, Size: 32},
+		{Name: "upstream_protocol", Type: field.TypeString, Nullable: true, Size: 32},
+		{Name: "route_identity", Type: field.TypeString, Nullable: true, Size: 255},
+		{Name: "wire_profile", Type: field.TypeString, Nullable: true, Size: 64},
+		{Name: "conversion_used", Type: field.TypeBool, Default: false},
+		{Name: "raw_upstream_usage", Type: field.TypeJSON, Nullable: true, SchemaType: map[string]string{"postgres": "jsonb"}},
+		{Name: "usage_completeness", Type: field.TypeString, Size: 16, Default: "complete"},
 		{Name: "channel_id", Type: field.TypeInt64, Nullable: true},
 		{Name: "model_mapping_chain", Type: field.TypeString, Nullable: true, Size: 500},
 		{Name: "billing_tier", Type: field.TypeString, Nullable: true, Size: 50},
@@ -1618,31 +1885,31 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "usage_logs_api_keys_usage_logs",
-				Columns:    []*schema.Column{UsageLogsColumns[34]},
+				Columns:    []*schema.Column{UsageLogsColumns[42]},
 				RefColumns: []*schema.Column{APIKeysColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
 			{
 				Symbol:     "usage_logs_accounts_usage_logs",
-				Columns:    []*schema.Column{UsageLogsColumns[35]},
+				Columns:    []*schema.Column{UsageLogsColumns[43]},
 				RefColumns: []*schema.Column{AccountsColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
 			{
 				Symbol:     "usage_logs_groups_usage_logs",
-				Columns:    []*schema.Column{UsageLogsColumns[36]},
+				Columns:    []*schema.Column{UsageLogsColumns[44]},
 				RefColumns: []*schema.Column{GroupsColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
 			{
 				Symbol:     "usage_logs_users_usage_logs",
-				Columns:    []*schema.Column{UsageLogsColumns[37]},
+				Columns:    []*schema.Column{UsageLogsColumns[45]},
 				RefColumns: []*schema.Column{UsersColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
 			{
 				Symbol:     "usage_logs_user_subscriptions_usage_logs",
-				Columns:    []*schema.Column{UsageLogsColumns[38]},
+				Columns:    []*schema.Column{UsageLogsColumns[46]},
 				RefColumns: []*schema.Column{UserSubscriptionsColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
@@ -1651,32 +1918,32 @@ var (
 			{
 				Name:    "usagelog_user_id",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[37]},
+				Columns: []*schema.Column{UsageLogsColumns[45]},
 			},
 			{
 				Name:    "usagelog_api_key_id",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[34]},
+				Columns: []*schema.Column{UsageLogsColumns[42]},
 			},
 			{
 				Name:    "usagelog_account_id",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[35]},
+				Columns: []*schema.Column{UsageLogsColumns[43]},
 			},
 			{
 				Name:    "usagelog_group_id",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[36]},
+				Columns: []*schema.Column{UsageLogsColumns[44]},
 			},
 			{
 				Name:    "usagelog_subscription_id",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[38]},
+				Columns: []*schema.Column{UsageLogsColumns[46]},
 			},
 			{
 				Name:    "usagelog_created_at",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[33]},
+				Columns: []*schema.Column{UsageLogsColumns[41]},
 			},
 			{
 				Name:    "usagelog_model",
@@ -1701,17 +1968,17 @@ var (
 			{
 				Name:    "usagelog_user_id_created_at",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[37], UsageLogsColumns[33]},
+				Columns: []*schema.Column{UsageLogsColumns[45], UsageLogsColumns[41]},
 			},
 			{
 				Name:    "usagelog_api_key_id_created_at",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[34], UsageLogsColumns[33]},
+				Columns: []*schema.Column{UsageLogsColumns[42], UsageLogsColumns[41]},
 			},
 			{
 				Name:    "usagelog_group_id_created_at",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[36], UsageLogsColumns[33]},
+				Columns: []*schema.Column{UsageLogsColumns[44], UsageLogsColumns[41]},
 			},
 		},
 	}
@@ -2018,7 +2285,9 @@ var (
 		GeneratedImagesTable,
 		GiftBalanceRecordsTable,
 		GroupsTable,
+		GroupRouteSnapshotsTable,
 		IdempotencyRecordsTable,
+		LogicalModelsTable,
 		PaymentAuditLogsTable,
 		PaymentOrdersTable,
 		PaymentProviderInstancesTable,
@@ -2027,6 +2296,11 @@ var (
 		PromotionsTable,
 		PromotionPlanRulesTable,
 		PromotionUsagesTable,
+		ProviderMigrationReviewsTable,
+		ProviderModelCapabilitiesTable,
+		ProviderProfilesTable,
+		ProviderProtocolEndpointsTable,
+		ProviderRouteAttemptsTable,
 		ProxiesTable,
 		RedeemCodesTable,
 		ReferralsTable,
@@ -2101,8 +2375,14 @@ func init() {
 	GroupsTable.Annotation = &entsql.Annotation{
 		Table: "groups",
 	}
+	GroupRouteSnapshotsTable.Annotation = &entsql.Annotation{
+		Table: "group_route_snapshots",
+	}
 	IdempotencyRecordsTable.Annotation = &entsql.Annotation{
 		Table: "idempotency_records",
+	}
+	LogicalModelsTable.Annotation = &entsql.Annotation{
+		Table: "logical_models",
 	}
 	PaymentAuditLogsTable.Annotation = &entsql.Annotation{
 		Table: "payment_audit_logs",
@@ -2132,6 +2412,21 @@ func init() {
 	PromotionUsagesTable.ForeignKeys[0].RefTable = PromotionsTable
 	PromotionUsagesTable.Annotation = &entsql.Annotation{
 		Table: "promotion_usages",
+	}
+	ProviderMigrationReviewsTable.Annotation = &entsql.Annotation{
+		Table: "provider_migration_reviews",
+	}
+	ProviderModelCapabilitiesTable.Annotation = &entsql.Annotation{
+		Table: "provider_model_capabilities",
+	}
+	ProviderProfilesTable.Annotation = &entsql.Annotation{
+		Table: "provider_profiles",
+	}
+	ProviderProtocolEndpointsTable.Annotation = &entsql.Annotation{
+		Table: "provider_protocol_endpoints",
+	}
+	ProviderRouteAttemptsTable.Annotation = &entsql.Annotation{
+		Table: "provider_route_attempts",
 	}
 	ProxiesTable.Annotation = &entsql.Annotation{
 		Table: "proxies",

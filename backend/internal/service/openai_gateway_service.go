@@ -1506,9 +1506,9 @@ func (s *OpenAIGatewayService) selectAccountForModelWithExclusionsForPlatform(ct
 
 	if selected == nil {
 		if requestedModel != "" {
-			return nil, fmt.Errorf("no available %s accounts supporting model: %s", platform, requestedModel)
+			return nil, fmt.Errorf("%w: no available %s accounts supporting model: %s", ErrNoAvailableAccounts, platform, requestedModel)
 		}
-		return nil, fmt.Errorf("no available %s accounts", platform)
+		return nil, fmt.Errorf("%w: no available %s accounts", ErrNoAvailableAccounts, platform)
 	}
 
 	// 4. 设置粘性会话绑定

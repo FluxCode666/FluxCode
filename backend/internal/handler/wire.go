@@ -42,6 +42,7 @@ func ProvideAdminHandlers(
 	referralHandler *admin.ReferralHandler,
 	salesCommissionHandler *admin.SalesCommissionHandler,
 	promotionHandler *admin.PromotionHandler,
+	providerHandler *admin.ProviderHandler,
 ) *AdminHandlers {
 	return &AdminHandlers{
 		Dashboard:              dashboardHandler,
@@ -77,6 +78,7 @@ func ProvideAdminHandlers(
 		Referral:               referralHandler,
 		SalesCommission:        salesCommissionHandler,
 		Promotion:              promotionHandler,
+		Provider:               providerHandler,
 	}
 }
 
@@ -114,6 +116,7 @@ func ProvideHandlers(
 	adminHandlers *AdminHandlers,
 	gatewayHandler *GatewayHandler,
 	openaiGatewayHandler *OpenAIGatewayHandler,
+	providerGatewayHandler *ProviderGatewayHandler,
 	settingHandler *SettingHandler,
 	totpHandler *TotpHandler,
 	modelPricingHandler *ModelPricingHandler,
@@ -137,6 +140,7 @@ func ProvideHandlers(
 		Admin:           adminHandlers,
 		Gateway:         gatewayHandler,
 		OpenAIGateway:   openaiGatewayHandler,
+		ProviderGateway: providerGatewayHandler,
 		Setting:         settingHandler,
 		Totp:            totpHandler,
 		ModelPricing:    modelPricingHandler,
@@ -161,6 +165,7 @@ var ProviderSet = wire.NewSet(
 	NewAnnouncementHandler,
 	NewGatewayHandler,
 	NewOpenAIGatewayHandler,
+	NewProviderGatewayHandler,
 	NewTotpHandler,
 	ProvideSettingHandler,
 	NewModelPricingHandler,
@@ -204,6 +209,7 @@ var ProviderSet = wire.NewSet(
 	NewReferralHandler,
 	NewSalesCommissionHandler,
 	admin.NewPromotionHandler,
+	admin.NewProviderHandler,
 
 	// AdminHandlers and Handlers constructors
 	ProvideAdminHandlers,

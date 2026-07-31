@@ -25,7 +25,9 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/generatedimage"
 	"github.com/Wei-Shaw/sub2api/ent/giftbalancerecord"
 	"github.com/Wei-Shaw/sub2api/ent/group"
+	"github.com/Wei-Shaw/sub2api/ent/grouproutesnapshot"
 	"github.com/Wei-Shaw/sub2api/ent/idempotencyrecord"
+	"github.com/Wei-Shaw/sub2api/ent/logicalmodel"
 	"github.com/Wei-Shaw/sub2api/ent/paymentauditlog"
 	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
 	"github.com/Wei-Shaw/sub2api/ent/paymentproviderinstance"
@@ -34,6 +36,11 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/promotion"
 	"github.com/Wei-Shaw/sub2api/ent/promotionplanrule"
 	"github.com/Wei-Shaw/sub2api/ent/promotionusage"
+	"github.com/Wei-Shaw/sub2api/ent/providermigrationreview"
+	"github.com/Wei-Shaw/sub2api/ent/providermodelcapability"
+	"github.com/Wei-Shaw/sub2api/ent/providerprofile"
+	"github.com/Wei-Shaw/sub2api/ent/providerprotocolendpoint"
+	"github.com/Wei-Shaw/sub2api/ent/providerrouteattempt"
 	"github.com/Wei-Shaw/sub2api/ent/proxy"
 	"github.com/Wei-Shaw/sub2api/ent/redeemcode"
 	"github.com/Wei-Shaw/sub2api/ent/referral"
@@ -128,7 +135,9 @@ func checkColumn(t, c string) error {
 			generatedimage.Table:                 generatedimage.ValidColumn,
 			giftbalancerecord.Table:              giftbalancerecord.ValidColumn,
 			group.Table:                          group.ValidColumn,
+			grouproutesnapshot.Table:             grouproutesnapshot.ValidColumn,
 			idempotencyrecord.Table:              idempotencyrecord.ValidColumn,
+			logicalmodel.Table:                   logicalmodel.ValidColumn,
 			paymentauditlog.Table:                paymentauditlog.ValidColumn,
 			paymentorder.Table:                   paymentorder.ValidColumn,
 			paymentproviderinstance.Table:        paymentproviderinstance.ValidColumn,
@@ -137,6 +146,11 @@ func checkColumn(t, c string) error {
 			promotion.Table:                      promotion.ValidColumn,
 			promotionplanrule.Table:              promotionplanrule.ValidColumn,
 			promotionusage.Table:                 promotionusage.ValidColumn,
+			providermigrationreview.Table:        providermigrationreview.ValidColumn,
+			providermodelcapability.Table:        providermodelcapability.ValidColumn,
+			providerprofile.Table:                providerprofile.ValidColumn,
+			providerprotocolendpoint.Table:       providerprotocolendpoint.ValidColumn,
+			providerrouteattempt.Table:           providerrouteattempt.ValidColumn,
 			proxy.Table:                          proxy.ValidColumn,
 			redeemcode.Table:                     redeemcode.ValidColumn,
 			referral.Table:                       referral.ValidColumn,

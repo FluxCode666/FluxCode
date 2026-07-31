@@ -435,8 +435,12 @@ func (s *SchedulerSnapshotService) handleOutboxEvent(ctx context.Context, event 
 		return s.handleAccountEvent(ctx, event.AccountID, event.Payload, seen)
 	case SchedulerOutboxEventAccountChanged:
 		return s.handleAccountEvent(ctx, event.AccountID, event.Payload, seen)
+	case SchedulerOutboxEventProviderChanged, SchedulerOutboxEventCapabilityChanged:
+		return s.handleAccountEvent(ctx, event.AccountID, event.Payload, seen)
 	case SchedulerOutboxEventGroupChanged:
 		return s.handleGroupEvent(ctx, event.GroupID, seen)
+	case SchedulerOutboxEventLogicalModelChanged, SchedulerOutboxEventAdapterChanged:
+		return s.triggerFullRebuild(event.EventType)
 	case SchedulerOutboxEventFullRebuild:
 		return s.triggerFullRebuild("outbox")
 	default:
@@ -1182,7 +1186,10 @@ func coalesceOutboxEvents(events []SchedulerOutboxEvent) []SchedulerOutboxEvent 
 
 	for _, event := range events {
 		switch event.EventType {
-		case SchedulerOutboxEventAccountChanged, SchedulerOutboxEventAccountGroupsChanged:
+		case SchedulerOutboxEventAccountChanged,
+			SchedulerOutboxEventAccountGroupsChanged,
+			SchedulerOutboxEventProviderChanged,
+			SchedulerOutboxEventCapabilityChanged:
 			if event.AccountID == nil || *event.AccountID <= 0 {
 				result = append(result, event)
 				continue

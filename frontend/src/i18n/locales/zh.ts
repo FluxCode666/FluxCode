@@ -705,6 +705,7 @@ export default {
     channels: '渠道管理',
     subscriptions: '订阅管理',
     accounts: '账号管理',
+    providers: '供应商管理',
     proxies: 'IP管理',
     poolMonitor: '号池监控',
     redeemCodes: '兑换码',
@@ -1896,6 +1897,10 @@ export default {
 
   // Admin
   admin: {
+    providers: {
+      title: '供应商管理',
+      description: '管理上游账号、协议端点、模型能力与协议转换开关'
+    },
     // Dashboard
     dashboard: {
       title: '管理控制台',

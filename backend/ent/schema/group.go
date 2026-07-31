@@ -159,6 +159,15 @@ func (Group) Fields() []ent.Field {
 			Default(domain.OpenAIMessagesDispatchModelConfig{}).
 			SchemaType(map[string]string{dialect.Postgres: "jsonb"}).
 			Comment("OpenAI Messages 调度模型配置：按 Claude 系列/精确模型映射到目标 GPT 模型"),
+
+		// Provider capability routing snapshot pointers. Legacy platform fields
+		// remain for routes outside the four-protocol provider pool.
+		field.Int64("active_route_snapshot_version").
+			Optional().
+			Nillable(),
+		field.Int64("previous_route_snapshot_version").
+			Optional().
+			Nillable(),
 	}
 }
 

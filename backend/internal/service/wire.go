@@ -13,6 +13,31 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
+func ProvideProviderRouteResolver(repo ProviderRepository) *ProviderRouteResolver {
+	return NewProviderRouteResolver(repo, nil)
+}
+
+func ProvideProviderScheduler(concurrency *ConcurrencyService) *ProviderScheduler {
+	return NewProviderScheduler(concurrency)
+}
+
+func ProvideProviderForwarder(httpUpstream HTTPUpstream) *ProviderForwarder {
+	return NewProviderForwarder(httpUpstream, ProviderForwarderOptions{})
+}
+
+func ProvideProviderGatewayService(
+	resolver *ProviderRouteResolver,
+	scheduler *ProviderScheduler,
+	forwarder *ProviderForwarder,
+	state ProviderRouteStateStore,
+	recorder ProviderRouteAttemptRecorder,
+	reader ProviderRouteAttemptReader,
+) *ProviderGatewayService {
+	service := NewProviderGatewayService(resolver, scheduler, forwarder, state, recorder)
+	service.SetRouteAttemptReader(reader)
+	return service
+}
+
 // BuildInfo contains build information
 type BuildInfo struct {
 	Version   string
@@ -702,6 +727,7 @@ var ProviderSet = wire.NewSet(
 	NewUserUIPreferencesService,
 	ProvideAPIKeyService,
 	ProvideAPIKeyAuthCacheInvalidator,
+	wire.Bind(new(ProviderAuthCacheInvalidator), new(*APIKeyService)),
 	NewGroupService,
 	NewAccountService,
 	NewProxyService,
@@ -717,6 +743,11 @@ var ProviderSet = wire.NewSet(
 	NewAnnouncementService,
 	NewAdminService,
 	ProvideGatewayService,
+	ProvideProviderRouteResolver,
+	ProvideProviderScheduler,
+	ProvideProviderForwarder,
+	NewProviderService,
+	ProvideProviderGatewayService,
 	ProvideOpenAIGatewayService,
 	NewOAuthService,
 	ProvideOpenAIOAuthService,

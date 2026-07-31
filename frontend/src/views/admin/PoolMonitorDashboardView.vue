@@ -70,6 +70,27 @@
           </div>
         </div>
       </div>
+
+      <div class="card overflow-hidden">
+        <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+          <h2 class="text-lg font-semibold text-gray-900 dark:text-white">供应商路由诊断</h2>
+          <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">仅展示脱敏路由元数据，不保存请求正文或凭证。</p>
+        </div>
+        <div class="space-y-4 p-6">
+          <div class="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
+            <input v-model.number="routeFilters.group_id" type="number" min="1" class="input" placeholder="Group ID" />
+            <input v-model.number="routeFilters.provider_id" type="number" min="1" class="input" placeholder="Provider ID" />
+            <input v-model="routeFilters.logical_model" class="input" placeholder="逻辑模型" />
+            <select v-model="routeFilters.ingress_protocol" class="input"><option value="">全部入站协议</option><option v-for="protocol in protocols" :key="protocol" :value="protocol">{{ protocol }}</option></select>
+            <select v-model="routeFilters.upstream_protocol" class="input"><option value="">全部上游协议</option><option v-for="protocol in protocols" :key="protocol" :value="protocol">{{ protocol }}</option></select>
+            <select v-model="routeFilters.tier" class="input"><option value="">全部层级</option><option value="native">native</option><option value="conversion">conversion</option></select>
+          </div>
+          <div class="flex justify-end"><button type="button" class="btn btn-secondary" :disabled="routesLoading" @click="loadRouteAttempts">{{ routesLoading ? '加载中…' : '查询路由' }}</button></div>
+          <div class="overflow-x-auto rounded-xl border border-gray-100 dark:border-dark-700">
+            <table class="min-w-full text-left text-sm"><thead class="bg-gray-50 text-xs text-gray-500 dark:bg-dark-800"><tr><th class="px-3 py-2">时间</th><th class="px-3 py-2">Group / Provider</th><th class="px-3 py-2">模型</th><th class="px-3 py-2">协议路径</th><th class="px-3 py-2">层级</th><th class="px-3 py-2">结果</th><th class="px-3 py-2">耗时</th></tr></thead><tbody><tr v-for="item in routeAttempts" :key="`${item.trace_id}-${item.route_identity}-${item.started_at}`" class="border-t border-gray-100 dark:border-dark-700"><td class="whitespace-nowrap px-3 py-2">{{ new Date(item.started_at).toLocaleString() }}</td><td class="px-3 py-2">{{ item.group_id }} / {{ item.provider_id }}</td><td class="px-3 py-2">{{ item.logical_model }}<div class="text-xs text-gray-400">{{ item.upstream_model }}</div></td><td class="px-3 py-2">{{ item.ingress_protocol }} → {{ item.upstream_protocol }}</td><td class="px-3 py-2">{{ item.tier }}</td><td class="px-3 py-2" :class="item.outcome === 'succeeded' ? 'text-emerald-600' : 'text-red-600'">{{ item.outcome }}<span v-if="item.status_code"> · {{ item.status_code }}</span><div v-if="item.failure_category" class="text-xs">{{ item.failure_category }}</div></td><td class="px-3 py-2">{{ item.duration_ms }} ms</td></tr><tr v-if="routeAttempts.length === 0"><td colspan="7" class="px-3 py-8 text-center text-gray-500">暂无 Provider 路由记录</td></tr></tbody></table>
+          </div>
+        </div>
+      </div>
     </div>
   </AppLayout>
 </template>
@@ -94,6 +115,7 @@ import StatCard from '@/components/common/StatCard.vue'
 import { adminAPI } from '@/api/admin'
 import type { AccountSummaryCounts, AccountSummaryResponse } from '@/types'
 import { useAppStore } from '@/stores'
+import { PROVIDER_PROTOCOLS, type ProviderProtocol, type ProviderRouteAttempt } from '@/api/admin/providers'
 
 const { t } = useI18n()
 const appStore = useAppStore()
@@ -101,6 +123,10 @@ const loading = ref(false)
 const loadError = ref('')
 const summary = ref<AccountSummaryResponse | null>(null)
 const selectedPlatform = ref('__all__')
+const protocols = PROVIDER_PROTOCOLS
+const routeAttempts = ref<ProviderRouteAttempt[]>([])
+const routesLoading = ref(false)
+const routeFilters = ref<{ group_id?: number; provider_id?: number; logical_model?: string; ingress_protocol: ProviderProtocol | ''; upstream_protocol: ProviderProtocol | ''; tier: 'native' | 'conversion' | '' }>({ ingress_protocol: '', upstream_protocol: '', tier: '' })
 
 const emptyCounts: AccountSummaryCounts = {
   all: 0,
@@ -116,7 +142,7 @@ const emptyCounts: AccountSummaryCounts = {
   overloaded: 0
 }
 
-const knownPlatforms = ['anthropic', 'kiro', 'openai', 'codex2api', 'gemini', 'antigravity'] as const
+const knownPlatforms = ['provider', 'anthropic', 'kiro', 'openai', 'codex2api', 'gemini', 'antigravity'] as const
 
 const platformLabel = (platform: string) => {
   if (platform === '__all__') return t('admin.poolMonitorDashboard.allPlatforms')
@@ -177,7 +203,19 @@ const loadSummary = async () => {
   }
 }
 
+const loadRouteAttempts = async () => {
+  routesLoading.value = true
+  try {
+    routeAttempts.value = await adminAPI.providers.listRouteAttempts({ ...routeFilters.value, limit: 100 })
+  } catch (error: any) {
+    appStore.showError(error?.message || '加载供应商路由诊断失败')
+  } finally {
+    routesLoading.value = false
+  }
+}
+
 onMounted(() => {
   loadSummary()
+  loadRouteAttempts()
 })
 </script>

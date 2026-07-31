@@ -165,6 +165,18 @@ func (f GroupFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.GroupMutation", m)
 }
 
+// The GroupRouteSnapshotFunc type is an adapter to allow the use of ordinary
+// function as GroupRouteSnapshot mutator.
+type GroupRouteSnapshotFunc func(context.Context, *ent.GroupRouteSnapshotMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f GroupRouteSnapshotFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.GroupRouteSnapshotMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.GroupRouteSnapshotMutation", m)
+}
+
 // The IdempotencyRecordFunc type is an adapter to allow the use of ordinary
 // function as IdempotencyRecord mutator.
 type IdempotencyRecordFunc func(context.Context, *ent.IdempotencyRecordMutation) (ent.Value, error)
@@ -175,6 +187,18 @@ func (f IdempotencyRecordFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.
 		return f(ctx, mv)
 	}
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.IdempotencyRecordMutation", m)
+}
+
+// The LogicalModelFunc type is an adapter to allow the use of ordinary
+// function as LogicalModel mutator.
+type LogicalModelFunc func(context.Context, *ent.LogicalModelMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f LogicalModelFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.LogicalModelMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.LogicalModelMutation", m)
 }
 
 // The PaymentAuditLogFunc type is an adapter to allow the use of ordinary
@@ -271,6 +295,66 @@ func (f PromotionUsageFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Val
 		return f(ctx, mv)
 	}
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.PromotionUsageMutation", m)
+}
+
+// The ProviderMigrationReviewFunc type is an adapter to allow the use of ordinary
+// function as ProviderMigrationReview mutator.
+type ProviderMigrationReviewFunc func(context.Context, *ent.ProviderMigrationReviewMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f ProviderMigrationReviewFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.ProviderMigrationReviewMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ProviderMigrationReviewMutation", m)
+}
+
+// The ProviderModelCapabilityFunc type is an adapter to allow the use of ordinary
+// function as ProviderModelCapability mutator.
+type ProviderModelCapabilityFunc func(context.Context, *ent.ProviderModelCapabilityMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f ProviderModelCapabilityFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.ProviderModelCapabilityMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ProviderModelCapabilityMutation", m)
+}
+
+// The ProviderProfileFunc type is an adapter to allow the use of ordinary
+// function as ProviderProfile mutator.
+type ProviderProfileFunc func(context.Context, *ent.ProviderProfileMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f ProviderProfileFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.ProviderProfileMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ProviderProfileMutation", m)
+}
+
+// The ProviderProtocolEndpointFunc type is an adapter to allow the use of ordinary
+// function as ProviderProtocolEndpoint mutator.
+type ProviderProtocolEndpointFunc func(context.Context, *ent.ProviderProtocolEndpointMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f ProviderProtocolEndpointFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.ProviderProtocolEndpointMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ProviderProtocolEndpointMutation", m)
+}
+
+// The ProviderRouteAttemptFunc type is an adapter to allow the use of ordinary
+// function as ProviderRouteAttempt mutator.
+type ProviderRouteAttemptFunc func(context.Context, *ent.ProviderRouteAttemptMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f ProviderRouteAttemptFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.ProviderRouteAttemptMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ProviderRouteAttemptMutation", m)
 }
 
 // The ProxyFunc type is an adapter to allow the use of ordinary

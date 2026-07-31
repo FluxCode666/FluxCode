@@ -99,6 +99,110 @@ func (_c *UsageLogCreate) SetNillableUpstreamModel(v *string) *UsageLogCreate {
 	return _c
 }
 
+// SetLogicalModel sets the "logical_model" field.
+func (_c *UsageLogCreate) SetLogicalModel(v string) *UsageLogCreate {
+	_c.mutation.SetLogicalModel(v)
+	return _c
+}
+
+// SetNillableLogicalModel sets the "logical_model" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableLogicalModel(v *string) *UsageLogCreate {
+	if v != nil {
+		_c.SetLogicalModel(*v)
+	}
+	return _c
+}
+
+// SetIngressProtocol sets the "ingress_protocol" field.
+func (_c *UsageLogCreate) SetIngressProtocol(v string) *UsageLogCreate {
+	_c.mutation.SetIngressProtocol(v)
+	return _c
+}
+
+// SetNillableIngressProtocol sets the "ingress_protocol" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableIngressProtocol(v *string) *UsageLogCreate {
+	if v != nil {
+		_c.SetIngressProtocol(*v)
+	}
+	return _c
+}
+
+// SetUpstreamProtocol sets the "upstream_protocol" field.
+func (_c *UsageLogCreate) SetUpstreamProtocol(v string) *UsageLogCreate {
+	_c.mutation.SetUpstreamProtocol(v)
+	return _c
+}
+
+// SetNillableUpstreamProtocol sets the "upstream_protocol" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableUpstreamProtocol(v *string) *UsageLogCreate {
+	if v != nil {
+		_c.SetUpstreamProtocol(*v)
+	}
+	return _c
+}
+
+// SetRouteIdentity sets the "route_identity" field.
+func (_c *UsageLogCreate) SetRouteIdentity(v string) *UsageLogCreate {
+	_c.mutation.SetRouteIdentity(v)
+	return _c
+}
+
+// SetNillableRouteIdentity sets the "route_identity" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableRouteIdentity(v *string) *UsageLogCreate {
+	if v != nil {
+		_c.SetRouteIdentity(*v)
+	}
+	return _c
+}
+
+// SetWireProfile sets the "wire_profile" field.
+func (_c *UsageLogCreate) SetWireProfile(v string) *UsageLogCreate {
+	_c.mutation.SetWireProfile(v)
+	return _c
+}
+
+// SetNillableWireProfile sets the "wire_profile" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableWireProfile(v *string) *UsageLogCreate {
+	if v != nil {
+		_c.SetWireProfile(*v)
+	}
+	return _c
+}
+
+// SetConversionUsed sets the "conversion_used" field.
+func (_c *UsageLogCreate) SetConversionUsed(v bool) *UsageLogCreate {
+	_c.mutation.SetConversionUsed(v)
+	return _c
+}
+
+// SetNillableConversionUsed sets the "conversion_used" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableConversionUsed(v *bool) *UsageLogCreate {
+	if v != nil {
+		_c.SetConversionUsed(*v)
+	}
+	return _c
+}
+
+// SetRawUpstreamUsage sets the "raw_upstream_usage" field.
+func (_c *UsageLogCreate) SetRawUpstreamUsage(v map[string]interface{}) *UsageLogCreate {
+	_c.mutation.SetRawUpstreamUsage(v)
+	return _c
+}
+
+// SetUsageCompleteness sets the "usage_completeness" field.
+func (_c *UsageLogCreate) SetUsageCompleteness(v string) *UsageLogCreate {
+	_c.mutation.SetUsageCompleteness(v)
+	return _c
+}
+
+// SetNillableUsageCompleteness sets the "usage_completeness" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableUsageCompleteness(v *string) *UsageLogCreate {
+	if v != nil {
+		_c.SetUsageCompleteness(*v)
+	}
+	return _c
+}
+
 // SetChannelID sets the "channel_id" field.
 func (_c *UsageLogCreate) SetChannelID(v int64) *UsageLogCreate {
 	_c.mutation.SetChannelID(v)
@@ -579,6 +683,14 @@ func (_c *UsageLogCreate) ExecX(ctx context.Context) {
 
 // defaults sets the default values of the builder before save.
 func (_c *UsageLogCreate) defaults() {
+	if _, ok := _c.mutation.ConversionUsed(); !ok {
+		v := usagelog.DefaultConversionUsed
+		_c.mutation.SetConversionUsed(v)
+	}
+	if _, ok := _c.mutation.UsageCompleteness(); !ok {
+		v := usagelog.DefaultUsageCompleteness
+		_c.mutation.SetUsageCompleteness(v)
+	}
 	if _, ok := _c.mutation.InputTokens(); !ok {
 		v := usagelog.DefaultInputTokens
 		_c.mutation.SetInputTokens(v)
@@ -693,6 +805,42 @@ func (_c *UsageLogCreate) check() error {
 	if v, ok := _c.mutation.UpstreamModel(); ok {
 		if err := usagelog.UpstreamModelValidator(v); err != nil {
 			return &ValidationError{Name: "upstream_model", err: fmt.Errorf(`ent: validator failed for field "UsageLog.upstream_model": %w`, err)}
+		}
+	}
+	if v, ok := _c.mutation.LogicalModel(); ok {
+		if err := usagelog.LogicalModelValidator(v); err != nil {
+			return &ValidationError{Name: "logical_model", err: fmt.Errorf(`ent: validator failed for field "UsageLog.logical_model": %w`, err)}
+		}
+	}
+	if v, ok := _c.mutation.IngressProtocol(); ok {
+		if err := usagelog.IngressProtocolValidator(v); err != nil {
+			return &ValidationError{Name: "ingress_protocol", err: fmt.Errorf(`ent: validator failed for field "UsageLog.ingress_protocol": %w`, err)}
+		}
+	}
+	if v, ok := _c.mutation.UpstreamProtocol(); ok {
+		if err := usagelog.UpstreamProtocolValidator(v); err != nil {
+			return &ValidationError{Name: "upstream_protocol", err: fmt.Errorf(`ent: validator failed for field "UsageLog.upstream_protocol": %w`, err)}
+		}
+	}
+	if v, ok := _c.mutation.RouteIdentity(); ok {
+		if err := usagelog.RouteIdentityValidator(v); err != nil {
+			return &ValidationError{Name: "route_identity", err: fmt.Errorf(`ent: validator failed for field "UsageLog.route_identity": %w`, err)}
+		}
+	}
+	if v, ok := _c.mutation.WireProfile(); ok {
+		if err := usagelog.WireProfileValidator(v); err != nil {
+			return &ValidationError{Name: "wire_profile", err: fmt.Errorf(`ent: validator failed for field "UsageLog.wire_profile": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.ConversionUsed(); !ok {
+		return &ValidationError{Name: "conversion_used", err: errors.New(`ent: missing required field "UsageLog.conversion_used"`)}
+	}
+	if _, ok := _c.mutation.UsageCompleteness(); !ok {
+		return &ValidationError{Name: "usage_completeness", err: errors.New(`ent: missing required field "UsageLog.usage_completeness"`)}
+	}
+	if v, ok := _c.mutation.UsageCompleteness(); ok {
+		if err := usagelog.UsageCompletenessValidator(v); err != nil {
+			return &ValidationError{Name: "usage_completeness", err: fmt.Errorf(`ent: validator failed for field "UsageLog.usage_completeness": %w`, err)}
 		}
 	}
 	if v, ok := _c.mutation.ModelMappingChain(); ok {
@@ -834,6 +982,38 @@ func (_c *UsageLogCreate) createSpec() (*UsageLog, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.UpstreamModel(); ok {
 		_spec.SetField(usagelog.FieldUpstreamModel, field.TypeString, value)
 		_node.UpstreamModel = &value
+	}
+	if value, ok := _c.mutation.LogicalModel(); ok {
+		_spec.SetField(usagelog.FieldLogicalModel, field.TypeString, value)
+		_node.LogicalModel = &value
+	}
+	if value, ok := _c.mutation.IngressProtocol(); ok {
+		_spec.SetField(usagelog.FieldIngressProtocol, field.TypeString, value)
+		_node.IngressProtocol = &value
+	}
+	if value, ok := _c.mutation.UpstreamProtocol(); ok {
+		_spec.SetField(usagelog.FieldUpstreamProtocol, field.TypeString, value)
+		_node.UpstreamProtocol = &value
+	}
+	if value, ok := _c.mutation.RouteIdentity(); ok {
+		_spec.SetField(usagelog.FieldRouteIdentity, field.TypeString, value)
+		_node.RouteIdentity = &value
+	}
+	if value, ok := _c.mutation.WireProfile(); ok {
+		_spec.SetField(usagelog.FieldWireProfile, field.TypeString, value)
+		_node.WireProfile = &value
+	}
+	if value, ok := _c.mutation.ConversionUsed(); ok {
+		_spec.SetField(usagelog.FieldConversionUsed, field.TypeBool, value)
+		_node.ConversionUsed = value
+	}
+	if value, ok := _c.mutation.RawUpstreamUsage(); ok {
+		_spec.SetField(usagelog.FieldRawUpstreamUsage, field.TypeJSON, value)
+		_node.RawUpstreamUsage = value
+	}
+	if value, ok := _c.mutation.UsageCompleteness(); ok {
+		_spec.SetField(usagelog.FieldUsageCompleteness, field.TypeString, value)
+		_node.UsageCompleteness = value
 	}
 	if value, ok := _c.mutation.ChannelID(); ok {
 		_spec.SetField(usagelog.FieldChannelID, field.TypeInt64, value)
@@ -1195,6 +1375,138 @@ func (u *UsageLogUpsert) UpdateUpstreamModel() *UsageLogUpsert {
 // ClearUpstreamModel clears the value of the "upstream_model" field.
 func (u *UsageLogUpsert) ClearUpstreamModel() *UsageLogUpsert {
 	u.SetNull(usagelog.FieldUpstreamModel)
+	return u
+}
+
+// SetLogicalModel sets the "logical_model" field.
+func (u *UsageLogUpsert) SetLogicalModel(v string) *UsageLogUpsert {
+	u.Set(usagelog.FieldLogicalModel, v)
+	return u
+}
+
+// UpdateLogicalModel sets the "logical_model" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateLogicalModel() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldLogicalModel)
+	return u
+}
+
+// ClearLogicalModel clears the value of the "logical_model" field.
+func (u *UsageLogUpsert) ClearLogicalModel() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldLogicalModel)
+	return u
+}
+
+// SetIngressProtocol sets the "ingress_protocol" field.
+func (u *UsageLogUpsert) SetIngressProtocol(v string) *UsageLogUpsert {
+	u.Set(usagelog.FieldIngressProtocol, v)
+	return u
+}
+
+// UpdateIngressProtocol sets the "ingress_protocol" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateIngressProtocol() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldIngressProtocol)
+	return u
+}
+
+// ClearIngressProtocol clears the value of the "ingress_protocol" field.
+func (u *UsageLogUpsert) ClearIngressProtocol() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldIngressProtocol)
+	return u
+}
+
+// SetUpstreamProtocol sets the "upstream_protocol" field.
+func (u *UsageLogUpsert) SetUpstreamProtocol(v string) *UsageLogUpsert {
+	u.Set(usagelog.FieldUpstreamProtocol, v)
+	return u
+}
+
+// UpdateUpstreamProtocol sets the "upstream_protocol" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateUpstreamProtocol() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldUpstreamProtocol)
+	return u
+}
+
+// ClearUpstreamProtocol clears the value of the "upstream_protocol" field.
+func (u *UsageLogUpsert) ClearUpstreamProtocol() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldUpstreamProtocol)
+	return u
+}
+
+// SetRouteIdentity sets the "route_identity" field.
+func (u *UsageLogUpsert) SetRouteIdentity(v string) *UsageLogUpsert {
+	u.Set(usagelog.FieldRouteIdentity, v)
+	return u
+}
+
+// UpdateRouteIdentity sets the "route_identity" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateRouteIdentity() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldRouteIdentity)
+	return u
+}
+
+// ClearRouteIdentity clears the value of the "route_identity" field.
+func (u *UsageLogUpsert) ClearRouteIdentity() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldRouteIdentity)
+	return u
+}
+
+// SetWireProfile sets the "wire_profile" field.
+func (u *UsageLogUpsert) SetWireProfile(v string) *UsageLogUpsert {
+	u.Set(usagelog.FieldWireProfile, v)
+	return u
+}
+
+// UpdateWireProfile sets the "wire_profile" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateWireProfile() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldWireProfile)
+	return u
+}
+
+// ClearWireProfile clears the value of the "wire_profile" field.
+func (u *UsageLogUpsert) ClearWireProfile() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldWireProfile)
+	return u
+}
+
+// SetConversionUsed sets the "conversion_used" field.
+func (u *UsageLogUpsert) SetConversionUsed(v bool) *UsageLogUpsert {
+	u.Set(usagelog.FieldConversionUsed, v)
+	return u
+}
+
+// UpdateConversionUsed sets the "conversion_used" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateConversionUsed() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldConversionUsed)
+	return u
+}
+
+// SetRawUpstreamUsage sets the "raw_upstream_usage" field.
+func (u *UsageLogUpsert) SetRawUpstreamUsage(v map[string]interface{}) *UsageLogUpsert {
+	u.Set(usagelog.FieldRawUpstreamUsage, v)
+	return u
+}
+
+// UpdateRawUpstreamUsage sets the "raw_upstream_usage" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateRawUpstreamUsage() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldRawUpstreamUsage)
+	return u
+}
+
+// ClearRawUpstreamUsage clears the value of the "raw_upstream_usage" field.
+func (u *UsageLogUpsert) ClearRawUpstreamUsage() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldRawUpstreamUsage)
+	return u
+}
+
+// SetUsageCompleteness sets the "usage_completeness" field.
+func (u *UsageLogUpsert) SetUsageCompleteness(v string) *UsageLogUpsert {
+	u.Set(usagelog.FieldUsageCompleteness, v)
+	return u
+}
+
+// UpdateUsageCompleteness sets the "usage_completeness" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateUsageCompleteness() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldUsageCompleteness)
 	return u
 }
 
@@ -1907,6 +2219,160 @@ func (u *UsageLogUpsertOne) UpdateUpstreamModel() *UsageLogUpsertOne {
 func (u *UsageLogUpsertOne) ClearUpstreamModel() *UsageLogUpsertOne {
 	return u.Update(func(s *UsageLogUpsert) {
 		s.ClearUpstreamModel()
+	})
+}
+
+// SetLogicalModel sets the "logical_model" field.
+func (u *UsageLogUpsertOne) SetLogicalModel(v string) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetLogicalModel(v)
+	})
+}
+
+// UpdateLogicalModel sets the "logical_model" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateLogicalModel() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateLogicalModel()
+	})
+}
+
+// ClearLogicalModel clears the value of the "logical_model" field.
+func (u *UsageLogUpsertOne) ClearLogicalModel() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearLogicalModel()
+	})
+}
+
+// SetIngressProtocol sets the "ingress_protocol" field.
+func (u *UsageLogUpsertOne) SetIngressProtocol(v string) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetIngressProtocol(v)
+	})
+}
+
+// UpdateIngressProtocol sets the "ingress_protocol" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateIngressProtocol() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateIngressProtocol()
+	})
+}
+
+// ClearIngressProtocol clears the value of the "ingress_protocol" field.
+func (u *UsageLogUpsertOne) ClearIngressProtocol() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearIngressProtocol()
+	})
+}
+
+// SetUpstreamProtocol sets the "upstream_protocol" field.
+func (u *UsageLogUpsertOne) SetUpstreamProtocol(v string) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetUpstreamProtocol(v)
+	})
+}
+
+// UpdateUpstreamProtocol sets the "upstream_protocol" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateUpstreamProtocol() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateUpstreamProtocol()
+	})
+}
+
+// ClearUpstreamProtocol clears the value of the "upstream_protocol" field.
+func (u *UsageLogUpsertOne) ClearUpstreamProtocol() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearUpstreamProtocol()
+	})
+}
+
+// SetRouteIdentity sets the "route_identity" field.
+func (u *UsageLogUpsertOne) SetRouteIdentity(v string) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetRouteIdentity(v)
+	})
+}
+
+// UpdateRouteIdentity sets the "route_identity" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateRouteIdentity() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateRouteIdentity()
+	})
+}
+
+// ClearRouteIdentity clears the value of the "route_identity" field.
+func (u *UsageLogUpsertOne) ClearRouteIdentity() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearRouteIdentity()
+	})
+}
+
+// SetWireProfile sets the "wire_profile" field.
+func (u *UsageLogUpsertOne) SetWireProfile(v string) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetWireProfile(v)
+	})
+}
+
+// UpdateWireProfile sets the "wire_profile" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateWireProfile() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateWireProfile()
+	})
+}
+
+// ClearWireProfile clears the value of the "wire_profile" field.
+func (u *UsageLogUpsertOne) ClearWireProfile() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearWireProfile()
+	})
+}
+
+// SetConversionUsed sets the "conversion_used" field.
+func (u *UsageLogUpsertOne) SetConversionUsed(v bool) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetConversionUsed(v)
+	})
+}
+
+// UpdateConversionUsed sets the "conversion_used" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateConversionUsed() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateConversionUsed()
+	})
+}
+
+// SetRawUpstreamUsage sets the "raw_upstream_usage" field.
+func (u *UsageLogUpsertOne) SetRawUpstreamUsage(v map[string]interface{}) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetRawUpstreamUsage(v)
+	})
+}
+
+// UpdateRawUpstreamUsage sets the "raw_upstream_usage" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateRawUpstreamUsage() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateRawUpstreamUsage()
+	})
+}
+
+// ClearRawUpstreamUsage clears the value of the "raw_upstream_usage" field.
+func (u *UsageLogUpsertOne) ClearRawUpstreamUsage() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearRawUpstreamUsage()
+	})
+}
+
+// SetUsageCompleteness sets the "usage_completeness" field.
+func (u *UsageLogUpsertOne) SetUsageCompleteness(v string) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetUsageCompleteness(v)
+	})
+}
+
+// UpdateUsageCompleteness sets the "usage_completeness" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateUsageCompleteness() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateUsageCompleteness()
 	})
 }
 
@@ -2874,6 +3340,160 @@ func (u *UsageLogUpsertBulk) UpdateUpstreamModel() *UsageLogUpsertBulk {
 func (u *UsageLogUpsertBulk) ClearUpstreamModel() *UsageLogUpsertBulk {
 	return u.Update(func(s *UsageLogUpsert) {
 		s.ClearUpstreamModel()
+	})
+}
+
+// SetLogicalModel sets the "logical_model" field.
+func (u *UsageLogUpsertBulk) SetLogicalModel(v string) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetLogicalModel(v)
+	})
+}
+
+// UpdateLogicalModel sets the "logical_model" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateLogicalModel() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateLogicalModel()
+	})
+}
+
+// ClearLogicalModel clears the value of the "logical_model" field.
+func (u *UsageLogUpsertBulk) ClearLogicalModel() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearLogicalModel()
+	})
+}
+
+// SetIngressProtocol sets the "ingress_protocol" field.
+func (u *UsageLogUpsertBulk) SetIngressProtocol(v string) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetIngressProtocol(v)
+	})
+}
+
+// UpdateIngressProtocol sets the "ingress_protocol" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateIngressProtocol() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateIngressProtocol()
+	})
+}
+
+// ClearIngressProtocol clears the value of the "ingress_protocol" field.
+func (u *UsageLogUpsertBulk) ClearIngressProtocol() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearIngressProtocol()
+	})
+}
+
+// SetUpstreamProtocol sets the "upstream_protocol" field.
+func (u *UsageLogUpsertBulk) SetUpstreamProtocol(v string) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetUpstreamProtocol(v)
+	})
+}
+
+// UpdateUpstreamProtocol sets the "upstream_protocol" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateUpstreamProtocol() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateUpstreamProtocol()
+	})
+}
+
+// ClearUpstreamProtocol clears the value of the "upstream_protocol" field.
+func (u *UsageLogUpsertBulk) ClearUpstreamProtocol() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearUpstreamProtocol()
+	})
+}
+
+// SetRouteIdentity sets the "route_identity" field.
+func (u *UsageLogUpsertBulk) SetRouteIdentity(v string) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetRouteIdentity(v)
+	})
+}
+
+// UpdateRouteIdentity sets the "route_identity" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateRouteIdentity() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateRouteIdentity()
+	})
+}
+
+// ClearRouteIdentity clears the value of the "route_identity" field.
+func (u *UsageLogUpsertBulk) ClearRouteIdentity() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearRouteIdentity()
+	})
+}
+
+// SetWireProfile sets the "wire_profile" field.
+func (u *UsageLogUpsertBulk) SetWireProfile(v string) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetWireProfile(v)
+	})
+}
+
+// UpdateWireProfile sets the "wire_profile" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateWireProfile() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateWireProfile()
+	})
+}
+
+// ClearWireProfile clears the value of the "wire_profile" field.
+func (u *UsageLogUpsertBulk) ClearWireProfile() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearWireProfile()
+	})
+}
+
+// SetConversionUsed sets the "conversion_used" field.
+func (u *UsageLogUpsertBulk) SetConversionUsed(v bool) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetConversionUsed(v)
+	})
+}
+
+// UpdateConversionUsed sets the "conversion_used" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateConversionUsed() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateConversionUsed()
+	})
+}
+
+// SetRawUpstreamUsage sets the "raw_upstream_usage" field.
+func (u *UsageLogUpsertBulk) SetRawUpstreamUsage(v map[string]interface{}) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetRawUpstreamUsage(v)
+	})
+}
+
+// UpdateRawUpstreamUsage sets the "raw_upstream_usage" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateRawUpstreamUsage() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateRawUpstreamUsage()
+	})
+}
+
+// ClearRawUpstreamUsage clears the value of the "raw_upstream_usage" field.
+func (u *UsageLogUpsertBulk) ClearRawUpstreamUsage() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearRawUpstreamUsage()
+	})
+}
+
+// SetUsageCompleteness sets the "usage_completeness" field.
+func (u *UsageLogUpsertBulk) SetUsageCompleteness(v string) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetUsageCompleteness(v)
+	})
+}
+
+// UpdateUsageCompleteness sets the "usage_completeness" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateUsageCompleteness() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateUsageCompleteness()
 	})
 }
 

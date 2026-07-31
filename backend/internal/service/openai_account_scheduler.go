@@ -633,7 +633,7 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 		return nil, 0, 0, 0, err
 	}
 	if len(accounts) == 0 {
-		return nil, 0, 0, 0, fmt.Errorf("no available %s accounts", platform)
+		return nil, 0, 0, 0, fmt.Errorf("%w: no available %s accounts", ErrNoAvailableAccounts, platform)
 	}
 
 	// require_privacy_set: 获取分组信息
@@ -676,7 +676,7 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 		})
 	}
 	if len(filtered) == 0 {
-		return nil, 0, 0, 0, fmt.Errorf("no available %s accounts", platform)
+		return nil, 0, 0, 0, fmt.Errorf("%w: no available %s accounts", ErrNoAvailableAccounts, platform)
 	}
 
 	// 大号池优化：仅对前 loadBatchQueryCap 个候选查询 Redis 负载，

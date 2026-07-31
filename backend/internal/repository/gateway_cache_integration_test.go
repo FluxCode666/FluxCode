@@ -104,6 +104,58 @@ func (s *GatewayCacheSuite) TestGetSessionAccountID_CorruptedValue() {
 	require.False(s.T(), errors.Is(err, redis.Nil), "expected parsing error, not redis.Nil")
 }
 
+func (s *GatewayCacheSuite) TestProviderStickyRouteRoundTripIsScopedByTier() {
+	nativeRoute := service.RouteIdentity{
+		ProviderID: 1, ProviderVersion: 2, CapabilityID: 3, CapabilityVersion: 4,
+		IngressProtocol: service.ProtocolResponses, UpstreamProtocol: service.ProtocolResponses,
+	}
+	conversionRoute := service.RouteIdentity{
+		ProviderID: 5, ProviderVersion: 6, CapabilityID: 7, CapabilityVersion: 8,
+		IngressProtocol: service.ProtocolResponses, UpstreamProtocol: service.ProtocolChatCompletions,
+		Adapter: "responses_to_chat", AdapterVersion: "v1",
+	}
+
+	require.NoError(s.T(), s.cache.(service.ProviderRouteStateStore).SetProviderStickyRoute(
+		s.ctx, 9, "deepseek-chat", service.ProtocolResponses, service.RouteTierNative,
+		"session", nativeRoute, time.Minute,
+	))
+	require.NoError(s.T(), s.cache.(service.ProviderRouteStateStore).SetProviderStickyRoute(
+		s.ctx, 9, "deepseek-chat", service.ProtocolResponses, service.RouteTierConversion,
+		"session", conversionRoute, time.Minute,
+	))
+
+	gotNative, err := s.cache.(service.ProviderRouteStateStore).GetProviderStickyRoute(
+		s.ctx, 9, "deepseek-chat", service.ProtocolResponses, service.RouteTierNative, "session",
+	)
+	require.NoError(s.T(), err)
+	require.Equal(s.T(), nativeRoute, *gotNative)
+
+	gotConversion, err := s.cache.(service.ProviderRouteStateStore).GetProviderStickyRoute(
+		s.ctx, 9, "deepseek-chat", service.ProtocolResponses, service.RouteTierConversion, "session",
+	)
+	require.NoError(s.T(), err)
+	require.Equal(s.T(), conversionRoute, *gotConversion)
+}
+
+func (s *GatewayCacheSuite) TestProviderRouteBindingRoundTrip() {
+	route := service.RouteIdentity{
+		ProviderID: 11, ProviderVersion: 12, CapabilityID: 13, CapabilityVersion: 14,
+		EndpointID: 15, EndpointVersion: 16,
+		IngressProtocol: service.ProtocolResponses, UpstreamProtocol: service.ProtocolResponses,
+	}
+	store := s.cache.(service.ProviderRouteStateStore)
+
+	binding := service.ProviderRouteBinding{Route: route, UserID: 1, APIKeyID: 2, GroupID: 3, LogicalModel: "model-a"}
+	require.NoError(s.T(), store.SetProviderRouteBinding(s.ctx, "resp_123", binding, time.Minute))
+	got, err := store.GetProviderRouteBinding(s.ctx, "resp_123")
+	require.NoError(s.T(), err)
+	require.Equal(s.T(), binding, *got)
+
+	missing, err := store.GetProviderRouteBinding(s.ctx, "resp_missing")
+	require.NoError(s.T(), err)
+	require.Nil(s.T(), missing)
+}
+
 func TestGatewayCacheSuite(t *testing.T) {
 	suite.Run(t, new(GatewayCacheSuite))
 }

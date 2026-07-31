@@ -223,13 +223,19 @@ func AccountFromServiceShallow(a *service.Account) *Account {
 	if a == nil {
 		return nil
 	}
+	credentials := redactAgentIdentityPrivateKey(a.Credentials)
+	if a.Platform == service.PlatformProvider {
+		// Provider credentials are write-only through the dedicated Provider API.
+		// Never expose either plaintext or ciphertext through the legacy account API.
+		credentials = map[string]any{}
+	}
 	out := &Account{
 		ID:                      a.ID,
 		Name:                    a.Name,
 		Notes:                   a.Notes,
 		Platform:                a.Platform,
 		Type:                    a.Type,
-		Credentials:             redactAgentIdentityPrivateKey(a.Credentials),
+		Credentials:             credentials,
 		Extra:                   a.Extra,
 		ProxyID:                 a.ProxyID,
 		Concurrency:             a.Concurrency,

@@ -30,6 +30,22 @@ const (
 	FieldRequestedModel = "requested_model"
 	// FieldUpstreamModel holds the string denoting the upstream_model field in the database.
 	FieldUpstreamModel = "upstream_model"
+	// FieldLogicalModel holds the string denoting the logical_model field in the database.
+	FieldLogicalModel = "logical_model"
+	// FieldIngressProtocol holds the string denoting the ingress_protocol field in the database.
+	FieldIngressProtocol = "ingress_protocol"
+	// FieldUpstreamProtocol holds the string denoting the upstream_protocol field in the database.
+	FieldUpstreamProtocol = "upstream_protocol"
+	// FieldRouteIdentity holds the string denoting the route_identity field in the database.
+	FieldRouteIdentity = "route_identity"
+	// FieldWireProfile holds the string denoting the wire_profile field in the database.
+	FieldWireProfile = "wire_profile"
+	// FieldConversionUsed holds the string denoting the conversion_used field in the database.
+	FieldConversionUsed = "conversion_used"
+	// FieldRawUpstreamUsage holds the string denoting the raw_upstream_usage field in the database.
+	FieldRawUpstreamUsage = "raw_upstream_usage"
+	// FieldUsageCompleteness holds the string denoting the usage_completeness field in the database.
+	FieldUsageCompleteness = "usage_completeness"
 	// FieldChannelID holds the string denoting the channel_id field in the database.
 	FieldChannelID = "channel_id"
 	// FieldModelMappingChain holds the string denoting the model_mapping_chain field in the database.
@@ -150,6 +166,14 @@ var Columns = []string{
 	FieldModel,
 	FieldRequestedModel,
 	FieldUpstreamModel,
+	FieldLogicalModel,
+	FieldIngressProtocol,
+	FieldUpstreamProtocol,
+	FieldRouteIdentity,
+	FieldWireProfile,
+	FieldConversionUsed,
+	FieldRawUpstreamUsage,
+	FieldUsageCompleteness,
 	FieldChannelID,
 	FieldModelMappingChain,
 	FieldBillingTier,
@@ -203,6 +227,22 @@ var (
 	RequestedModelValidator func(string) error
 	// UpstreamModelValidator is a validator for the "upstream_model" field. It is called by the builders before save.
 	UpstreamModelValidator func(string) error
+	// LogicalModelValidator is a validator for the "logical_model" field. It is called by the builders before save.
+	LogicalModelValidator func(string) error
+	// IngressProtocolValidator is a validator for the "ingress_protocol" field. It is called by the builders before save.
+	IngressProtocolValidator func(string) error
+	// UpstreamProtocolValidator is a validator for the "upstream_protocol" field. It is called by the builders before save.
+	UpstreamProtocolValidator func(string) error
+	// RouteIdentityValidator is a validator for the "route_identity" field. It is called by the builders before save.
+	RouteIdentityValidator func(string) error
+	// WireProfileValidator is a validator for the "wire_profile" field. It is called by the builders before save.
+	WireProfileValidator func(string) error
+	// DefaultConversionUsed holds the default value on creation for the "conversion_used" field.
+	DefaultConversionUsed bool
+	// DefaultUsageCompleteness holds the default value on creation for the "usage_completeness" field.
+	DefaultUsageCompleteness string
+	// UsageCompletenessValidator is a validator for the "usage_completeness" field. It is called by the builders before save.
+	UsageCompletenessValidator func(string) error
 	// ModelMappingChainValidator is a validator for the "model_mapping_chain" field. It is called by the builders before save.
 	ModelMappingChainValidator func(string) error
 	// BillingTierValidator is a validator for the "billing_tier" field. It is called by the builders before save.
@@ -299,6 +339,41 @@ func ByRequestedModel(opts ...sql.OrderTermOption) OrderOption {
 // ByUpstreamModel orders the results by the upstream_model field.
 func ByUpstreamModel(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldUpstreamModel, opts...).ToFunc()
+}
+
+// ByLogicalModel orders the results by the logical_model field.
+func ByLogicalModel(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldLogicalModel, opts...).ToFunc()
+}
+
+// ByIngressProtocol orders the results by the ingress_protocol field.
+func ByIngressProtocol(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldIngressProtocol, opts...).ToFunc()
+}
+
+// ByUpstreamProtocol orders the results by the upstream_protocol field.
+func ByUpstreamProtocol(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldUpstreamProtocol, opts...).ToFunc()
+}
+
+// ByRouteIdentity orders the results by the route_identity field.
+func ByRouteIdentity(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldRouteIdentity, opts...).ToFunc()
+}
+
+// ByWireProfile orders the results by the wire_profile field.
+func ByWireProfile(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldWireProfile, opts...).ToFunc()
+}
+
+// ByConversionUsed orders the results by the conversion_used field.
+func ByConversionUsed(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldConversionUsed, opts...).ToFunc()
+}
+
+// ByUsageCompleteness orders the results by the usage_completeness field.
+func ByUsageCompleteness(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldUsageCompleteness, opts...).ToFunc()
 }
 
 // ByChannelID orders the results by the channel_id field.

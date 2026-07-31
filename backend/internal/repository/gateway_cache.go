@@ -2,7 +2,10 @@ package repository
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -11,11 +14,20 @@ import (
 
 const stickySessionPrefix = "sticky_session:"
 
+const (
+	providerStickyRoutePrefix  = "provider_route_sticky:"
+	providerRouteBindingPrefix = "provider_route_binding:"
+)
+
 type gatewayCache struct {
 	rdb *redis.Client
 }
 
 func NewGatewayCache(rdb *redis.Client) service.GatewayCache {
+	return &gatewayCache{rdb: rdb}
+}
+
+func NewProviderRouteStateStore(rdb *redis.Client) service.ProviderRouteStateStore {
 	return &gatewayCache{rdb: rdb}
 }
 
@@ -51,3 +63,96 @@ func (c *gatewayCache) DeleteSessionAccountID(ctx context.Context, groupID int64
 	key := buildSessionKey(groupID, sessionHash)
 	return c.rdb.Del(ctx, key).Err()
 }
+
+func buildProviderStickyRouteKey(
+	groupID int64,
+	logicalModel string,
+	protocol service.ProtocolFamily,
+	tier service.RouteTier,
+	sessionHash string,
+) string {
+	digest := service.HashUsageRequestPayload([]byte(strings.Join([]string{
+		strings.TrimSpace(logicalModel), string(protocol), string(tier), strings.TrimSpace(sessionHash),
+	}, "\x00")))
+	return fmt.Sprintf("%s%d:%s", providerStickyRoutePrefix, groupID, digest)
+}
+
+func buildProviderRouteBindingKey(responseID string) string {
+	digest := sha256.Sum256([]byte(strings.TrimSpace(responseID)))
+	return fmt.Sprintf("%s%x", providerRouteBindingPrefix, digest)
+}
+
+func (c *gatewayCache) GetProviderStickyRoute(
+	ctx context.Context,
+	groupID int64,
+	logicalModel string,
+	protocol service.ProtocolFamily,
+	tier service.RouteTier,
+	sessionHash string,
+) (*service.RouteIdentity, error) {
+	encoded, err := c.rdb.Get(ctx, buildProviderStickyRouteKey(groupID, logicalModel, protocol, tier, sessionHash)).Bytes()
+	if err == redis.Nil {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var route service.RouteIdentity
+	if err := json.Unmarshal(encoded, &route); err != nil {
+		return nil, err
+	}
+	return &route, nil
+}
+
+func (c *gatewayCache) SetProviderStickyRoute(
+	ctx context.Context,
+	groupID int64,
+	logicalModel string,
+	protocol service.ProtocolFamily,
+	tier service.RouteTier,
+	sessionHash string,
+	route service.RouteIdentity,
+	ttl time.Duration,
+) error {
+	encoded, err := json.Marshal(route)
+	if err != nil {
+		return err
+	}
+	return c.rdb.Set(ctx, buildProviderStickyRouteKey(groupID, logicalModel, protocol, tier, sessionHash), encoded, ttl).Err()
+}
+
+func (c *gatewayCache) GetProviderRouteBinding(ctx context.Context, responseID string) (*service.ProviderRouteBinding, error) {
+	if strings.TrimSpace(responseID) == "" {
+		return nil, nil
+	}
+	encoded, err := c.rdb.Get(ctx, buildProviderRouteBindingKey(responseID)).Bytes()
+	if err == redis.Nil {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var binding service.ProviderRouteBinding
+	if err := json.Unmarshal(encoded, &binding); err != nil {
+		return nil, err
+	}
+	return &binding, nil
+}
+
+func (c *gatewayCache) SetProviderRouteBinding(
+	ctx context.Context,
+	responseID string,
+	binding service.ProviderRouteBinding,
+	ttl time.Duration,
+) error {
+	if strings.TrimSpace(responseID) == "" {
+		return nil
+	}
+	encoded, err := json.Marshal(binding)
+	if err != nil {
+		return err
+	}
+	return c.rdb.Set(ctx, buildProviderRouteBindingKey(responseID), encoded, ttl).Err()
+}
+
+var _ service.ProviderRouteStateStore = (*gatewayCache)(nil)

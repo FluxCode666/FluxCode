@@ -40,8 +40,12 @@ type Tx struct {
 	GiftBalanceRecord *GiftBalanceRecordClient
 	// Group is the client for interacting with the Group builders.
 	Group *GroupClient
+	// GroupRouteSnapshot is the client for interacting with the GroupRouteSnapshot builders.
+	GroupRouteSnapshot *GroupRouteSnapshotClient
 	// IdempotencyRecord is the client for interacting with the IdempotencyRecord builders.
 	IdempotencyRecord *IdempotencyRecordClient
+	// LogicalModel is the client for interacting with the LogicalModel builders.
+	LogicalModel *LogicalModelClient
 	// PaymentAuditLog is the client for interacting with the PaymentAuditLog builders.
 	PaymentAuditLog *PaymentAuditLogClient
 	// PaymentOrder is the client for interacting with the PaymentOrder builders.
@@ -58,6 +62,16 @@ type Tx struct {
 	PromotionPlanRule *PromotionPlanRuleClient
 	// PromotionUsage is the client for interacting with the PromotionUsage builders.
 	PromotionUsage *PromotionUsageClient
+	// ProviderMigrationReview is the client for interacting with the ProviderMigrationReview builders.
+	ProviderMigrationReview *ProviderMigrationReviewClient
+	// ProviderModelCapability is the client for interacting with the ProviderModelCapability builders.
+	ProviderModelCapability *ProviderModelCapabilityClient
+	// ProviderProfile is the client for interacting with the ProviderProfile builders.
+	ProviderProfile *ProviderProfileClient
+	// ProviderProtocolEndpoint is the client for interacting with the ProviderProtocolEndpoint builders.
+	ProviderProtocolEndpoint *ProviderProtocolEndpointClient
+	// ProviderRouteAttempt is the client for interacting with the ProviderRouteAttempt builders.
+	ProviderRouteAttempt *ProviderRouteAttemptClient
 	// Proxy is the client for interacting with the Proxy builders.
 	Proxy *ProxyClient
 	// RedeemCode is the client for interacting with the RedeemCode builders.
@@ -244,7 +258,9 @@ func (tx *Tx) init() {
 	tx.GeneratedImage = NewGeneratedImageClient(tx.config)
 	tx.GiftBalanceRecord = NewGiftBalanceRecordClient(tx.config)
 	tx.Group = NewGroupClient(tx.config)
+	tx.GroupRouteSnapshot = NewGroupRouteSnapshotClient(tx.config)
 	tx.IdempotencyRecord = NewIdempotencyRecordClient(tx.config)
+	tx.LogicalModel = NewLogicalModelClient(tx.config)
 	tx.PaymentAuditLog = NewPaymentAuditLogClient(tx.config)
 	tx.PaymentOrder = NewPaymentOrderClient(tx.config)
 	tx.PaymentProviderInstance = NewPaymentProviderInstanceClient(tx.config)
@@ -253,6 +269,11 @@ func (tx *Tx) init() {
 	tx.Promotion = NewPromotionClient(tx.config)
 	tx.PromotionPlanRule = NewPromotionPlanRuleClient(tx.config)
 	tx.PromotionUsage = NewPromotionUsageClient(tx.config)
+	tx.ProviderMigrationReview = NewProviderMigrationReviewClient(tx.config)
+	tx.ProviderModelCapability = NewProviderModelCapabilityClient(tx.config)
+	tx.ProviderProfile = NewProviderProfileClient(tx.config)
+	tx.ProviderProtocolEndpoint = NewProviderProtocolEndpointClient(tx.config)
+	tx.ProviderRouteAttempt = NewProviderRouteAttemptClient(tx.config)
 	tx.Proxy = NewProxyClient(tx.config)
 	tx.RedeemCode = NewRedeemCodeClient(tx.config)
 	tx.Referral = NewReferralClient(tx.config)

@@ -707,6 +707,7 @@ export default {
     channels: 'Channels',
     subscriptions: 'Subscriptions',
     accounts: 'Accounts',
+    providers: 'Providers',
     proxies: 'Proxies',
     poolMonitor: 'Pool Monitor',
     redeemCodes: 'Redeem Codes',
@@ -1899,6 +1900,10 @@ export default {
 
   // Admin
   admin: {
+    providers: {
+      title: 'Provider Management',
+      description: 'Manage upstream accounts, protocol endpoints, model capabilities and conversion'
+    },
     // Dashboard
     dashboard: {
       title: 'Admin Dashboard',

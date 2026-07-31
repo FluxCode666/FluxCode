@@ -57,6 +57,34 @@ func (UsageLog) Fields() []ent.Field {
 			MaxLen(100).
 			Optional().
 			Nillable(),
+		field.String("logical_model").
+			MaxLen(100).
+			Optional().
+			Nillable(),
+		field.String("ingress_protocol").
+			MaxLen(32).
+			Optional().
+			Nillable(),
+		field.String("upstream_protocol").
+			MaxLen(32).
+			Optional().
+			Nillable(),
+		field.String("route_identity").
+			MaxLen(255).
+			Optional().
+			Nillable(),
+		field.String("wire_profile").
+			MaxLen(64).
+			Optional().
+			Nillable(),
+		field.Bool("conversion_used").
+			Default(false),
+		field.JSON("raw_upstream_usage", map[string]any{}).
+			Optional().
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}),
+		field.String("usage_completeness").
+			MaxLen(16).
+			Default("complete"),
 		field.Int64("channel_id").Optional().Nillable().Comment("渠道 ID"),
 		field.String("model_mapping_chain").MaxLen(500).Optional().Nillable().Comment("模型映射链"),
 		field.String("billing_tier").MaxLen(50).Optional().Nillable().Comment("计费层级标签"),

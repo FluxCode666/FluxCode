@@ -39,6 +39,7 @@ type AdminHandlers struct {
 	Referral               *admin.ReferralHandler
 	SalesCommission        *admin.SalesCommissionHandler
 	Promotion              *admin.PromotionHandler
+	Provider               *admin.ProviderHandler
 }
 
 // Handlers contains all HTTP handlers
@@ -54,6 +55,7 @@ type Handlers struct {
 	Admin           *AdminHandlers
 	Gateway         *GatewayHandler
 	OpenAIGateway   *OpenAIGatewayHandler
+	ProviderGateway *ProviderGatewayHandler
 	Setting         *SettingHandler
 	Totp            *TotpHandler
 	ModelPricing    *ModelPricingHandler

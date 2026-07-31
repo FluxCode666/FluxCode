@@ -87,6 +87,10 @@ type Group struct {
 	DefaultMappedModel string `json:"default_mapped_model,omitempty"`
 	// OpenAI Messages 调度模型配置：按 Claude 系列/精确模型映射到目标 GPT 模型
 	MessagesDispatchModelConfig domain.OpenAIMessagesDispatchModelConfig `json:"messages_dispatch_model_config,omitempty"`
+	// ActiveRouteSnapshotVersion holds the value of the "active_route_snapshot_version" field.
+	ActiveRouteSnapshotVersion *int64 `json:"active_route_snapshot_version,omitempty"`
+	// PreviousRouteSnapshotVersion holds the value of the "previous_route_snapshot_version" field.
+	PreviousRouteSnapshotVersion *int64 `json:"previous_route_snapshot_version,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
 	// The values are being populated by the GroupQuery when eager-loading is set.
 	Edges        GroupEdges `json:"edges"`
@@ -199,7 +203,7 @@ func (*Group) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullBool)
 		case group.FieldRateMultiplier, group.FieldDailyLimitUsd, group.FieldWeeklyLimitUsd, group.FieldMonthlyLimitUsd, group.FieldImagePrice1k, group.FieldImagePrice2k, group.FieldImagePrice4k:
 			values[i] = new(sql.NullFloat64)
-		case group.FieldID, group.FieldDefaultValidityDays, group.FieldFallbackGroupID, group.FieldFallbackGroupIDOnInvalidRequest, group.FieldSortOrder:
+		case group.FieldID, group.FieldDefaultValidityDays, group.FieldFallbackGroupID, group.FieldFallbackGroupIDOnInvalidRequest, group.FieldSortOrder, group.FieldActiveRouteSnapshotVersion, group.FieldPreviousRouteSnapshotVersion:
 			values[i] = new(sql.NullInt64)
 		case group.FieldName, group.FieldDescription, group.FieldStatus, group.FieldSystemPrompt, group.FieldSystemPromptMode, group.FieldPlatform, group.FieldSubscriptionType, group.FieldDefaultMappedModel:
 			values[i] = new(sql.NullString)
@@ -446,6 +450,20 @@ func (_m *Group) assignValues(columns []string, values []any) error {
 					return fmt.Errorf("unmarshal field messages_dispatch_model_config: %w", err)
 				}
 			}
+		case group.FieldActiveRouteSnapshotVersion:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field active_route_snapshot_version", values[i])
+			} else if value.Valid {
+				_m.ActiveRouteSnapshotVersion = new(int64)
+				*_m.ActiveRouteSnapshotVersion = value.Int64
+			}
+		case group.FieldPreviousRouteSnapshotVersion:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field previous_route_snapshot_version", values[i])
+			} else if value.Valid {
+				_m.PreviousRouteSnapshotVersion = new(int64)
+				*_m.PreviousRouteSnapshotVersion = value.Int64
+			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
 		}
@@ -643,6 +661,16 @@ func (_m *Group) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("messages_dispatch_model_config=")
 	builder.WriteString(fmt.Sprintf("%v", _m.MessagesDispatchModelConfig))
+	builder.WriteString(", ")
+	if v := _m.ActiveRouteSnapshotVersion; v != nil {
+		builder.WriteString("active_route_snapshot_version=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
+	if v := _m.PreviousRouteSnapshotVersion; v != nil {
+		builder.WriteString("previous_route_snapshot_version=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
 	builder.WriteByte(')')
 	return builder.String()
 }

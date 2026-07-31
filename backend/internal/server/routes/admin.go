@@ -29,6 +29,9 @@ func RegisterAdminRoutes(
 		// 账号管理
 		registerAccountRoutes(admin, h)
 
+		// 供应商协议能力管理
+		registerProviderRoutes(admin, h)
+
 		// 公告管理
 		registerAnnouncementRoutes(admin, h)
 
@@ -105,6 +108,27 @@ func RegisterAdminRoutes(
 		// 销售佣金管理
 		registerSalesCommissionRoutes(admin, h)
 	}
+}
+
+func registerProviderRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	providers := admin.Group("/providers")
+	{
+		providers.GET("", h.Admin.Provider.List)
+		providers.POST("", h.Admin.Provider.Create)
+		providers.GET("/route-attempts", h.Admin.Provider.ListRouteAttempts)
+		providers.GET("/:id", h.Admin.Provider.GetByID)
+		providers.PUT("/:id", h.Admin.Provider.Update)
+		providers.POST("/:id/test", h.Admin.Provider.Test)
+		providers.POST("/:id/activate", h.Admin.Provider.Activate)
+		providers.POST("/:id/disable", h.Admin.Provider.Disable)
+	}
+	groups := admin.Group("/groups")
+	groups.GET("/:id/provider-capabilities", h.Admin.Provider.ListGroupCapabilities)
+	groups.GET("/:id/provider-route-snapshots", h.Admin.Provider.ListGroupRouteSnapshots)
+	groups.POST("/:id/provider-route-snapshots/shadow", h.Admin.Provider.CreateGroupShadowSnapshot)
+	groups.POST("/:id/provider-route-snapshots/:version/approve", h.Admin.Provider.ApproveGroupRouteSnapshot)
+	groups.POST("/:id/provider-route-snapshots/:version/activate", h.Admin.Provider.ActivateGroupRouteSnapshot)
+	groups.POST("/:id/provider-route-snapshots/rollback", h.Admin.Provider.RollbackGroupRouteSnapshot)
 }
 
 func registerGeneratedImageRoutes(admin *gin.RouterGroup, h *handler.Handlers) {

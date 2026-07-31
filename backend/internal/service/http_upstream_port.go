@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"net"
 	"net/http"
 	"time"
@@ -40,6 +41,28 @@ type EmbeddingUpstreamPolicy struct {
 type EmbeddingHTTPUpstream interface {
 	DoEmbedding(req *http.Request, policy EmbeddingUpstreamPolicy) (*http.Response, error)
 }
+
+// ProviderUpstreamPolicy binds a provider request to a destination that was
+// resolved and validated immediately before dispatch. Redirects are rejected;
+// callers must resolve and validate a new destination explicitly.
+type ProviderUpstreamPolicy struct {
+	ValidatedIP           net.IP
+	ResponseHeaderTimeout time.Duration
+}
+
+type ProviderHTTPUpstream interface {
+	DoProvider(req *http.Request, policy ProviderUpstreamPolicy) (*http.Response, error)
+}
+
+type ProviderTransportError struct {
+	RequestNotWritten bool
+}
+
+func (e *ProviderTransportError) Error() string {
+	return "provider transport failed"
+}
+
+type providerHostLookup func(context.Context, string) ([]net.IP, error)
 
 // EmbeddingTransportError reports only whether the HTTP transport can prove
 // the request was never assigned a connection. The wrapped network error is

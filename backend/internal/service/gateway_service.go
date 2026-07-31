@@ -7503,15 +7503,15 @@ type postUsageBillingParams struct {
 }
 
 func (p *postUsageBillingParams) shouldDeductAPIKeyQuota() bool {
-	return p.Cost.ActualCost > 0 && p.APIKey.Quota > 0 && p.APIKeyService != nil
+	return p != nil && p.Cost != nil && p.APIKey != nil && p.Cost.ActualCost > 0 && p.APIKey.Quota > 0 && p.APIKeyService != nil
 }
 
 func (p *postUsageBillingParams) shouldUpdateRateLimits() bool {
-	return p.Cost.ActualCost > 0 && p.APIKey.HasRateLimits() && p.APIKeyService != nil
+	return p != nil && p.Cost != nil && p.APIKey != nil && p.Cost.ActualCost > 0 && p.APIKey.HasRateLimits() && p.APIKeyService != nil
 }
 
 func (p *postUsageBillingParams) shouldUpdateAccountQuota() bool {
-	return p.Cost.TotalCost > 0 && p.Account.IsAPIKeyOrBedrock() && p.Account.HasAnyQuotaLimit()
+	return p != nil && p.Cost != nil && p.Account != nil && p.Cost.TotalCost > 0 && p.Account.IsAPIKeyOrBedrock() && p.Account.HasAnyQuotaLimit()
 }
 
 // postUsageBilling is the legacy fallback billing path used when the unified
@@ -7529,7 +7529,7 @@ func postUsageBilling(ctx context.Context, p *postUsageBillingParams, deps *bill
 			if billedAt.IsZero() {
 				billedAt = time.Now()
 			}
-			if deps.billingCacheService != nil && deps.billingCacheService.grantRepo != nil && p.Subscription != nil {
+			if deps.billingCacheService != nil && deps.billingCacheService.grantRepo != nil && p.Subscription != nil && p.APIKey != nil {
 				if err := deps.billingCacheService.grantRepo.AllocateUsageToActiveGrants(billingCtx, p.Subscription.ID, p.APIKey.Group, billedAt, cost.TotalCost); err != nil {
 					slog.Error("allocate subscription grant usage failed", "subscription_id", p.Subscription.ID, "error", err)
 				}
@@ -7544,7 +7544,7 @@ func postUsageBilling(ctx context.Context, p *postUsageBillingParams, deps *bill
 			}
 		}
 	} else {
-		if cost.ActualCost > 0 {
+		if cost.ActualCost > 0 && p.User != nil {
 			remainingCost := cost.ActualCost
 			// 优先从赠送余额扣减
 			if deps.giftBalanceRepo != nil {
@@ -7556,7 +7556,7 @@ func postUsageBilling(ctx context.Context, p *postUsageBillingParams, deps *bill
 				}
 			}
 			// 不足部分从正常余额扣减
-			if remainingCost > 0.0001 {
+			if remainingCost > 0 && deps.userRepo != nil {
 				if err := deps.userRepo.DeductBalance(billingCtx, p.User.ID, remainingCost); err != nil {
 					slog.Error("deduct balance failed", "user_id", p.User.ID, "error", err)
 				}

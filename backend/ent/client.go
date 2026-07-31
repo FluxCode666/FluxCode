@@ -28,7 +28,9 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/generatedimage"
 	"github.com/Wei-Shaw/sub2api/ent/giftbalancerecord"
 	"github.com/Wei-Shaw/sub2api/ent/group"
+	"github.com/Wei-Shaw/sub2api/ent/grouproutesnapshot"
 	"github.com/Wei-Shaw/sub2api/ent/idempotencyrecord"
+	"github.com/Wei-Shaw/sub2api/ent/logicalmodel"
 	"github.com/Wei-Shaw/sub2api/ent/paymentauditlog"
 	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
 	"github.com/Wei-Shaw/sub2api/ent/paymentproviderinstance"
@@ -37,6 +39,11 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/promotion"
 	"github.com/Wei-Shaw/sub2api/ent/promotionplanrule"
 	"github.com/Wei-Shaw/sub2api/ent/promotionusage"
+	"github.com/Wei-Shaw/sub2api/ent/providermigrationreview"
+	"github.com/Wei-Shaw/sub2api/ent/providermodelcapability"
+	"github.com/Wei-Shaw/sub2api/ent/providerprofile"
+	"github.com/Wei-Shaw/sub2api/ent/providerprotocolendpoint"
+	"github.com/Wei-Shaw/sub2api/ent/providerrouteattempt"
 	"github.com/Wei-Shaw/sub2api/ent/proxy"
 	"github.com/Wei-Shaw/sub2api/ent/redeemcode"
 	"github.com/Wei-Shaw/sub2api/ent/referral"
@@ -93,8 +100,12 @@ type Client struct {
 	GiftBalanceRecord *GiftBalanceRecordClient
 	// Group is the client for interacting with the Group builders.
 	Group *GroupClient
+	// GroupRouteSnapshot is the client for interacting with the GroupRouteSnapshot builders.
+	GroupRouteSnapshot *GroupRouteSnapshotClient
 	// IdempotencyRecord is the client for interacting with the IdempotencyRecord builders.
 	IdempotencyRecord *IdempotencyRecordClient
+	// LogicalModel is the client for interacting with the LogicalModel builders.
+	LogicalModel *LogicalModelClient
 	// PaymentAuditLog is the client for interacting with the PaymentAuditLog builders.
 	PaymentAuditLog *PaymentAuditLogClient
 	// PaymentOrder is the client for interacting with the PaymentOrder builders.
@@ -111,6 +122,16 @@ type Client struct {
 	PromotionPlanRule *PromotionPlanRuleClient
 	// PromotionUsage is the client for interacting with the PromotionUsage builders.
 	PromotionUsage *PromotionUsageClient
+	// ProviderMigrationReview is the client for interacting with the ProviderMigrationReview builders.
+	ProviderMigrationReview *ProviderMigrationReviewClient
+	// ProviderModelCapability is the client for interacting with the ProviderModelCapability builders.
+	ProviderModelCapability *ProviderModelCapabilityClient
+	// ProviderProfile is the client for interacting with the ProviderProfile builders.
+	ProviderProfile *ProviderProfileClient
+	// ProviderProtocolEndpoint is the client for interacting with the ProviderProtocolEndpoint builders.
+	ProviderProtocolEndpoint *ProviderProtocolEndpointClient
+	// ProviderRouteAttempt is the client for interacting with the ProviderRouteAttempt builders.
+	ProviderRouteAttempt *ProviderRouteAttemptClient
 	// Proxy is the client for interacting with the Proxy builders.
 	Proxy *ProxyClient
 	// RedeemCode is the client for interacting with the RedeemCode builders.
@@ -177,7 +198,9 @@ func (c *Client) init() {
 	c.GeneratedImage = NewGeneratedImageClient(c.config)
 	c.GiftBalanceRecord = NewGiftBalanceRecordClient(c.config)
 	c.Group = NewGroupClient(c.config)
+	c.GroupRouteSnapshot = NewGroupRouteSnapshotClient(c.config)
 	c.IdempotencyRecord = NewIdempotencyRecordClient(c.config)
+	c.LogicalModel = NewLogicalModelClient(c.config)
 	c.PaymentAuditLog = NewPaymentAuditLogClient(c.config)
 	c.PaymentOrder = NewPaymentOrderClient(c.config)
 	c.PaymentProviderInstance = NewPaymentProviderInstanceClient(c.config)
@@ -186,6 +209,11 @@ func (c *Client) init() {
 	c.Promotion = NewPromotionClient(c.config)
 	c.PromotionPlanRule = NewPromotionPlanRuleClient(c.config)
 	c.PromotionUsage = NewPromotionUsageClient(c.config)
+	c.ProviderMigrationReview = NewProviderMigrationReviewClient(c.config)
+	c.ProviderModelCapability = NewProviderModelCapabilityClient(c.config)
+	c.ProviderProfile = NewProviderProfileClient(c.config)
+	c.ProviderProtocolEndpoint = NewProviderProtocolEndpointClient(c.config)
+	c.ProviderRouteAttempt = NewProviderRouteAttemptClient(c.config)
 	c.Proxy = NewProxyClient(c.config)
 	c.RedeemCode = NewRedeemCodeClient(c.config)
 	c.Referral = NewReferralClient(c.config)
@@ -312,7 +340,9 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		GeneratedImage:                 NewGeneratedImageClient(cfg),
 		GiftBalanceRecord:              NewGiftBalanceRecordClient(cfg),
 		Group:                          NewGroupClient(cfg),
+		GroupRouteSnapshot:             NewGroupRouteSnapshotClient(cfg),
 		IdempotencyRecord:              NewIdempotencyRecordClient(cfg),
+		LogicalModel:                   NewLogicalModelClient(cfg),
 		PaymentAuditLog:                NewPaymentAuditLogClient(cfg),
 		PaymentOrder:                   NewPaymentOrderClient(cfg),
 		PaymentProviderInstance:        NewPaymentProviderInstanceClient(cfg),
@@ -321,6 +351,11 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		Promotion:                      NewPromotionClient(cfg),
 		PromotionPlanRule:              NewPromotionPlanRuleClient(cfg),
 		PromotionUsage:                 NewPromotionUsageClient(cfg),
+		ProviderMigrationReview:        NewProviderMigrationReviewClient(cfg),
+		ProviderModelCapability:        NewProviderModelCapabilityClient(cfg),
+		ProviderProfile:                NewProviderProfileClient(cfg),
+		ProviderProtocolEndpoint:       NewProviderProtocolEndpointClient(cfg),
+		ProviderRouteAttempt:           NewProviderRouteAttemptClient(cfg),
 		Proxy:                          NewProxyClient(cfg),
 		RedeemCode:                     NewRedeemCodeClient(cfg),
 		Referral:                       NewReferralClient(cfg),
@@ -374,7 +409,9 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		GeneratedImage:                 NewGeneratedImageClient(cfg),
 		GiftBalanceRecord:              NewGiftBalanceRecordClient(cfg),
 		Group:                          NewGroupClient(cfg),
+		GroupRouteSnapshot:             NewGroupRouteSnapshotClient(cfg),
 		IdempotencyRecord:              NewIdempotencyRecordClient(cfg),
+		LogicalModel:                   NewLogicalModelClient(cfg),
 		PaymentAuditLog:                NewPaymentAuditLogClient(cfg),
 		PaymentOrder:                   NewPaymentOrderClient(cfg),
 		PaymentProviderInstance:        NewPaymentProviderInstanceClient(cfg),
@@ -383,6 +420,11 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		Promotion:                      NewPromotionClient(cfg),
 		PromotionPlanRule:              NewPromotionPlanRuleClient(cfg),
 		PromotionUsage:                 NewPromotionUsageClient(cfg),
+		ProviderMigrationReview:        NewProviderMigrationReviewClient(cfg),
+		ProviderModelCapability:        NewProviderModelCapabilityClient(cfg),
+		ProviderProfile:                NewProviderProfileClient(cfg),
+		ProviderProtocolEndpoint:       NewProviderProtocolEndpointClient(cfg),
+		ProviderRouteAttempt:           NewProviderRouteAttemptClient(cfg),
 		Proxy:                          NewProxyClient(cfg),
 		RedeemCode:                     NewRedeemCodeClient(cfg),
 		Referral:                       NewReferralClient(cfg),
@@ -436,15 +478,18 @@ func (c *Client) Use(hooks ...Hook) {
 		c.APIKey, c.Account, c.AccountGroup, c.Announcement, c.AnnouncementRead,
 		c.ChannelMonitor, c.ChannelMonitorDailyRollup, c.ChannelMonitorHistory,
 		c.ChannelMonitorRequestTemplate, c.ErrorPassthroughRule, c.GeneratedImage,
-		c.GiftBalanceRecord, c.Group, c.IdempotencyRecord, c.PaymentAuditLog,
-		c.PaymentOrder, c.PaymentProviderInstance, c.PromoCode, c.PromoCodeUsage,
-		c.Promotion, c.PromotionPlanRule, c.PromotionUsage, c.Proxy, c.RedeemCode,
-		c.Referral, c.SalesCommissionMonthlySnapshot, c.SalesCommissionRecord,
-		c.SalesCommissionSettlement, c.SalesCommissionSettlementItem,
-		c.SalesCommissionTier, c.SecuritySecret, c.Setting, c.SubscriptionGrant,
-		c.SubscriptionPlan, c.TLSFingerprintProfile, c.UsageCleanupTask, c.UsageLog,
-		c.User, c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
-		c.UserReferralConfig, c.UserSubscription,
+		c.GiftBalanceRecord, c.Group, c.GroupRouteSnapshot, c.IdempotencyRecord,
+		c.LogicalModel, c.PaymentAuditLog, c.PaymentOrder, c.PaymentProviderInstance,
+		c.PromoCode, c.PromoCodeUsage, c.Promotion, c.PromotionPlanRule,
+		c.PromotionUsage, c.ProviderMigrationReview, c.ProviderModelCapability,
+		c.ProviderProfile, c.ProviderProtocolEndpoint, c.ProviderRouteAttempt, c.Proxy,
+		c.RedeemCode, c.Referral, c.SalesCommissionMonthlySnapshot,
+		c.SalesCommissionRecord, c.SalesCommissionSettlement,
+		c.SalesCommissionSettlementItem, c.SalesCommissionTier, c.SecuritySecret,
+		c.Setting, c.SubscriptionGrant, c.SubscriptionPlan, c.TLSFingerprintProfile,
+		c.UsageCleanupTask, c.UsageLog, c.User, c.UserAllowedGroup,
+		c.UserAttributeDefinition, c.UserAttributeValue, c.UserReferralConfig,
+		c.UserSubscription,
 	} {
 		n.Use(hooks...)
 	}
@@ -457,15 +502,18 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 		c.APIKey, c.Account, c.AccountGroup, c.Announcement, c.AnnouncementRead,
 		c.ChannelMonitor, c.ChannelMonitorDailyRollup, c.ChannelMonitorHistory,
 		c.ChannelMonitorRequestTemplate, c.ErrorPassthroughRule, c.GeneratedImage,
-		c.GiftBalanceRecord, c.Group, c.IdempotencyRecord, c.PaymentAuditLog,
-		c.PaymentOrder, c.PaymentProviderInstance, c.PromoCode, c.PromoCodeUsage,
-		c.Promotion, c.PromotionPlanRule, c.PromotionUsage, c.Proxy, c.RedeemCode,
-		c.Referral, c.SalesCommissionMonthlySnapshot, c.SalesCommissionRecord,
-		c.SalesCommissionSettlement, c.SalesCommissionSettlementItem,
-		c.SalesCommissionTier, c.SecuritySecret, c.Setting, c.SubscriptionGrant,
-		c.SubscriptionPlan, c.TLSFingerprintProfile, c.UsageCleanupTask, c.UsageLog,
-		c.User, c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
-		c.UserReferralConfig, c.UserSubscription,
+		c.GiftBalanceRecord, c.Group, c.GroupRouteSnapshot, c.IdempotencyRecord,
+		c.LogicalModel, c.PaymentAuditLog, c.PaymentOrder, c.PaymentProviderInstance,
+		c.PromoCode, c.PromoCodeUsage, c.Promotion, c.PromotionPlanRule,
+		c.PromotionUsage, c.ProviderMigrationReview, c.ProviderModelCapability,
+		c.ProviderProfile, c.ProviderProtocolEndpoint, c.ProviderRouteAttempt, c.Proxy,
+		c.RedeemCode, c.Referral, c.SalesCommissionMonthlySnapshot,
+		c.SalesCommissionRecord, c.SalesCommissionSettlement,
+		c.SalesCommissionSettlementItem, c.SalesCommissionTier, c.SecuritySecret,
+		c.Setting, c.SubscriptionGrant, c.SubscriptionPlan, c.TLSFingerprintProfile,
+		c.UsageCleanupTask, c.UsageLog, c.User, c.UserAllowedGroup,
+		c.UserAttributeDefinition, c.UserAttributeValue, c.UserReferralConfig,
+		c.UserSubscription,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -500,8 +548,12 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.GiftBalanceRecord.mutate(ctx, m)
 	case *GroupMutation:
 		return c.Group.mutate(ctx, m)
+	case *GroupRouteSnapshotMutation:
+		return c.GroupRouteSnapshot.mutate(ctx, m)
 	case *IdempotencyRecordMutation:
 		return c.IdempotencyRecord.mutate(ctx, m)
+	case *LogicalModelMutation:
+		return c.LogicalModel.mutate(ctx, m)
 	case *PaymentAuditLogMutation:
 		return c.PaymentAuditLog.mutate(ctx, m)
 	case *PaymentOrderMutation:
@@ -518,6 +570,16 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.PromotionPlanRule.mutate(ctx, m)
 	case *PromotionUsageMutation:
 		return c.PromotionUsage.mutate(ctx, m)
+	case *ProviderMigrationReviewMutation:
+		return c.ProviderMigrationReview.mutate(ctx, m)
+	case *ProviderModelCapabilityMutation:
+		return c.ProviderModelCapability.mutate(ctx, m)
+	case *ProviderProfileMutation:
+		return c.ProviderProfile.mutate(ctx, m)
+	case *ProviderProtocolEndpointMutation:
+		return c.ProviderProtocolEndpoint.mutate(ctx, m)
+	case *ProviderRouteAttemptMutation:
+		return c.ProviderRouteAttempt.mutate(ctx, m)
 	case *ProxyMutation:
 		return c.Proxy.mutate(ctx, m)
 	case *RedeemCodeMutation:
@@ -2667,6 +2729,139 @@ func (c *GroupClient) mutate(ctx context.Context, m *GroupMutation) (Value, erro
 	}
 }
 
+// GroupRouteSnapshotClient is a client for the GroupRouteSnapshot schema.
+type GroupRouteSnapshotClient struct {
+	config
+}
+
+// NewGroupRouteSnapshotClient returns a client for the GroupRouteSnapshot from the given config.
+func NewGroupRouteSnapshotClient(c config) *GroupRouteSnapshotClient {
+	return &GroupRouteSnapshotClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `grouproutesnapshot.Hooks(f(g(h())))`.
+func (c *GroupRouteSnapshotClient) Use(hooks ...Hook) {
+	c.hooks.GroupRouteSnapshot = append(c.hooks.GroupRouteSnapshot, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `grouproutesnapshot.Intercept(f(g(h())))`.
+func (c *GroupRouteSnapshotClient) Intercept(interceptors ...Interceptor) {
+	c.inters.GroupRouteSnapshot = append(c.inters.GroupRouteSnapshot, interceptors...)
+}
+
+// Create returns a builder for creating a GroupRouteSnapshot entity.
+func (c *GroupRouteSnapshotClient) Create() *GroupRouteSnapshotCreate {
+	mutation := newGroupRouteSnapshotMutation(c.config, OpCreate)
+	return &GroupRouteSnapshotCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of GroupRouteSnapshot entities.
+func (c *GroupRouteSnapshotClient) CreateBulk(builders ...*GroupRouteSnapshotCreate) *GroupRouteSnapshotCreateBulk {
+	return &GroupRouteSnapshotCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *GroupRouteSnapshotClient) MapCreateBulk(slice any, setFunc func(*GroupRouteSnapshotCreate, int)) *GroupRouteSnapshotCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &GroupRouteSnapshotCreateBulk{err: fmt.Errorf("calling to GroupRouteSnapshotClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*GroupRouteSnapshotCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &GroupRouteSnapshotCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for GroupRouteSnapshot.
+func (c *GroupRouteSnapshotClient) Update() *GroupRouteSnapshotUpdate {
+	mutation := newGroupRouteSnapshotMutation(c.config, OpUpdate)
+	return &GroupRouteSnapshotUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *GroupRouteSnapshotClient) UpdateOne(_m *GroupRouteSnapshot) *GroupRouteSnapshotUpdateOne {
+	mutation := newGroupRouteSnapshotMutation(c.config, OpUpdateOne, withGroupRouteSnapshot(_m))
+	return &GroupRouteSnapshotUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *GroupRouteSnapshotClient) UpdateOneID(id int64) *GroupRouteSnapshotUpdateOne {
+	mutation := newGroupRouteSnapshotMutation(c.config, OpUpdateOne, withGroupRouteSnapshotID(id))
+	return &GroupRouteSnapshotUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for GroupRouteSnapshot.
+func (c *GroupRouteSnapshotClient) Delete() *GroupRouteSnapshotDelete {
+	mutation := newGroupRouteSnapshotMutation(c.config, OpDelete)
+	return &GroupRouteSnapshotDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *GroupRouteSnapshotClient) DeleteOne(_m *GroupRouteSnapshot) *GroupRouteSnapshotDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *GroupRouteSnapshotClient) DeleteOneID(id int64) *GroupRouteSnapshotDeleteOne {
+	builder := c.Delete().Where(grouproutesnapshot.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &GroupRouteSnapshotDeleteOne{builder}
+}
+
+// Query returns a query builder for GroupRouteSnapshot.
+func (c *GroupRouteSnapshotClient) Query() *GroupRouteSnapshotQuery {
+	return &GroupRouteSnapshotQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeGroupRouteSnapshot},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a GroupRouteSnapshot entity by its id.
+func (c *GroupRouteSnapshotClient) Get(ctx context.Context, id int64) (*GroupRouteSnapshot, error) {
+	return c.Query().Where(grouproutesnapshot.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *GroupRouteSnapshotClient) GetX(ctx context.Context, id int64) *GroupRouteSnapshot {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *GroupRouteSnapshotClient) Hooks() []Hook {
+	return c.hooks.GroupRouteSnapshot
+}
+
+// Interceptors returns the client interceptors.
+func (c *GroupRouteSnapshotClient) Interceptors() []Interceptor {
+	return c.inters.GroupRouteSnapshot
+}
+
+func (c *GroupRouteSnapshotClient) mutate(ctx context.Context, m *GroupRouteSnapshotMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&GroupRouteSnapshotCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&GroupRouteSnapshotUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&GroupRouteSnapshotUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&GroupRouteSnapshotDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown GroupRouteSnapshot mutation op: %q", m.Op())
+	}
+}
+
 // IdempotencyRecordClient is a client for the IdempotencyRecord schema.
 type IdempotencyRecordClient struct {
 	config
@@ -2797,6 +2992,139 @@ func (c *IdempotencyRecordClient) mutate(ctx context.Context, m *IdempotencyReco
 		return (&IdempotencyRecordDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown IdempotencyRecord mutation op: %q", m.Op())
+	}
+}
+
+// LogicalModelClient is a client for the LogicalModel schema.
+type LogicalModelClient struct {
+	config
+}
+
+// NewLogicalModelClient returns a client for the LogicalModel from the given config.
+func NewLogicalModelClient(c config) *LogicalModelClient {
+	return &LogicalModelClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `logicalmodel.Hooks(f(g(h())))`.
+func (c *LogicalModelClient) Use(hooks ...Hook) {
+	c.hooks.LogicalModel = append(c.hooks.LogicalModel, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `logicalmodel.Intercept(f(g(h())))`.
+func (c *LogicalModelClient) Intercept(interceptors ...Interceptor) {
+	c.inters.LogicalModel = append(c.inters.LogicalModel, interceptors...)
+}
+
+// Create returns a builder for creating a LogicalModel entity.
+func (c *LogicalModelClient) Create() *LogicalModelCreate {
+	mutation := newLogicalModelMutation(c.config, OpCreate)
+	return &LogicalModelCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of LogicalModel entities.
+func (c *LogicalModelClient) CreateBulk(builders ...*LogicalModelCreate) *LogicalModelCreateBulk {
+	return &LogicalModelCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *LogicalModelClient) MapCreateBulk(slice any, setFunc func(*LogicalModelCreate, int)) *LogicalModelCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &LogicalModelCreateBulk{err: fmt.Errorf("calling to LogicalModelClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*LogicalModelCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &LogicalModelCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for LogicalModel.
+func (c *LogicalModelClient) Update() *LogicalModelUpdate {
+	mutation := newLogicalModelMutation(c.config, OpUpdate)
+	return &LogicalModelUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *LogicalModelClient) UpdateOne(_m *LogicalModel) *LogicalModelUpdateOne {
+	mutation := newLogicalModelMutation(c.config, OpUpdateOne, withLogicalModel(_m))
+	return &LogicalModelUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *LogicalModelClient) UpdateOneID(id int64) *LogicalModelUpdateOne {
+	mutation := newLogicalModelMutation(c.config, OpUpdateOne, withLogicalModelID(id))
+	return &LogicalModelUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for LogicalModel.
+func (c *LogicalModelClient) Delete() *LogicalModelDelete {
+	mutation := newLogicalModelMutation(c.config, OpDelete)
+	return &LogicalModelDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *LogicalModelClient) DeleteOne(_m *LogicalModel) *LogicalModelDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *LogicalModelClient) DeleteOneID(id int64) *LogicalModelDeleteOne {
+	builder := c.Delete().Where(logicalmodel.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &LogicalModelDeleteOne{builder}
+}
+
+// Query returns a query builder for LogicalModel.
+func (c *LogicalModelClient) Query() *LogicalModelQuery {
+	return &LogicalModelQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeLogicalModel},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a LogicalModel entity by its id.
+func (c *LogicalModelClient) Get(ctx context.Context, id int64) (*LogicalModel, error) {
+	return c.Query().Where(logicalmodel.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *LogicalModelClient) GetX(ctx context.Context, id int64) *LogicalModel {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *LogicalModelClient) Hooks() []Hook {
+	return c.hooks.LogicalModel
+}
+
+// Interceptors returns the client interceptors.
+func (c *LogicalModelClient) Interceptors() []Interceptor {
+	return c.inters.LogicalModel
+}
+
+func (c *LogicalModelClient) mutate(ctx context.Context, m *LogicalModelMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&LogicalModelCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&LogicalModelUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&LogicalModelUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&LogicalModelDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown LogicalModel mutation op: %q", m.Op())
 	}
 }
 
@@ -3989,6 +4317,671 @@ func (c *PromotionUsageClient) mutate(ctx context.Context, m *PromotionUsageMuta
 		return (&PromotionUsageDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown PromotionUsage mutation op: %q", m.Op())
+	}
+}
+
+// ProviderMigrationReviewClient is a client for the ProviderMigrationReview schema.
+type ProviderMigrationReviewClient struct {
+	config
+}
+
+// NewProviderMigrationReviewClient returns a client for the ProviderMigrationReview from the given config.
+func NewProviderMigrationReviewClient(c config) *ProviderMigrationReviewClient {
+	return &ProviderMigrationReviewClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `providermigrationreview.Hooks(f(g(h())))`.
+func (c *ProviderMigrationReviewClient) Use(hooks ...Hook) {
+	c.hooks.ProviderMigrationReview = append(c.hooks.ProviderMigrationReview, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `providermigrationreview.Intercept(f(g(h())))`.
+func (c *ProviderMigrationReviewClient) Intercept(interceptors ...Interceptor) {
+	c.inters.ProviderMigrationReview = append(c.inters.ProviderMigrationReview, interceptors...)
+}
+
+// Create returns a builder for creating a ProviderMigrationReview entity.
+func (c *ProviderMigrationReviewClient) Create() *ProviderMigrationReviewCreate {
+	mutation := newProviderMigrationReviewMutation(c.config, OpCreate)
+	return &ProviderMigrationReviewCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of ProviderMigrationReview entities.
+func (c *ProviderMigrationReviewClient) CreateBulk(builders ...*ProviderMigrationReviewCreate) *ProviderMigrationReviewCreateBulk {
+	return &ProviderMigrationReviewCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *ProviderMigrationReviewClient) MapCreateBulk(slice any, setFunc func(*ProviderMigrationReviewCreate, int)) *ProviderMigrationReviewCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &ProviderMigrationReviewCreateBulk{err: fmt.Errorf("calling to ProviderMigrationReviewClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*ProviderMigrationReviewCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &ProviderMigrationReviewCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for ProviderMigrationReview.
+func (c *ProviderMigrationReviewClient) Update() *ProviderMigrationReviewUpdate {
+	mutation := newProviderMigrationReviewMutation(c.config, OpUpdate)
+	return &ProviderMigrationReviewUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *ProviderMigrationReviewClient) UpdateOne(_m *ProviderMigrationReview) *ProviderMigrationReviewUpdateOne {
+	mutation := newProviderMigrationReviewMutation(c.config, OpUpdateOne, withProviderMigrationReview(_m))
+	return &ProviderMigrationReviewUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *ProviderMigrationReviewClient) UpdateOneID(id int64) *ProviderMigrationReviewUpdateOne {
+	mutation := newProviderMigrationReviewMutation(c.config, OpUpdateOne, withProviderMigrationReviewID(id))
+	return &ProviderMigrationReviewUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for ProviderMigrationReview.
+func (c *ProviderMigrationReviewClient) Delete() *ProviderMigrationReviewDelete {
+	mutation := newProviderMigrationReviewMutation(c.config, OpDelete)
+	return &ProviderMigrationReviewDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *ProviderMigrationReviewClient) DeleteOne(_m *ProviderMigrationReview) *ProviderMigrationReviewDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *ProviderMigrationReviewClient) DeleteOneID(id int64) *ProviderMigrationReviewDeleteOne {
+	builder := c.Delete().Where(providermigrationreview.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &ProviderMigrationReviewDeleteOne{builder}
+}
+
+// Query returns a query builder for ProviderMigrationReview.
+func (c *ProviderMigrationReviewClient) Query() *ProviderMigrationReviewQuery {
+	return &ProviderMigrationReviewQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeProviderMigrationReview},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a ProviderMigrationReview entity by its id.
+func (c *ProviderMigrationReviewClient) Get(ctx context.Context, id int64) (*ProviderMigrationReview, error) {
+	return c.Query().Where(providermigrationreview.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *ProviderMigrationReviewClient) GetX(ctx context.Context, id int64) *ProviderMigrationReview {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *ProviderMigrationReviewClient) Hooks() []Hook {
+	return c.hooks.ProviderMigrationReview
+}
+
+// Interceptors returns the client interceptors.
+func (c *ProviderMigrationReviewClient) Interceptors() []Interceptor {
+	return c.inters.ProviderMigrationReview
+}
+
+func (c *ProviderMigrationReviewClient) mutate(ctx context.Context, m *ProviderMigrationReviewMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&ProviderMigrationReviewCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&ProviderMigrationReviewUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&ProviderMigrationReviewUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&ProviderMigrationReviewDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown ProviderMigrationReview mutation op: %q", m.Op())
+	}
+}
+
+// ProviderModelCapabilityClient is a client for the ProviderModelCapability schema.
+type ProviderModelCapabilityClient struct {
+	config
+}
+
+// NewProviderModelCapabilityClient returns a client for the ProviderModelCapability from the given config.
+func NewProviderModelCapabilityClient(c config) *ProviderModelCapabilityClient {
+	return &ProviderModelCapabilityClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `providermodelcapability.Hooks(f(g(h())))`.
+func (c *ProviderModelCapabilityClient) Use(hooks ...Hook) {
+	c.hooks.ProviderModelCapability = append(c.hooks.ProviderModelCapability, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `providermodelcapability.Intercept(f(g(h())))`.
+func (c *ProviderModelCapabilityClient) Intercept(interceptors ...Interceptor) {
+	c.inters.ProviderModelCapability = append(c.inters.ProviderModelCapability, interceptors...)
+}
+
+// Create returns a builder for creating a ProviderModelCapability entity.
+func (c *ProviderModelCapabilityClient) Create() *ProviderModelCapabilityCreate {
+	mutation := newProviderModelCapabilityMutation(c.config, OpCreate)
+	return &ProviderModelCapabilityCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of ProviderModelCapability entities.
+func (c *ProviderModelCapabilityClient) CreateBulk(builders ...*ProviderModelCapabilityCreate) *ProviderModelCapabilityCreateBulk {
+	return &ProviderModelCapabilityCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *ProviderModelCapabilityClient) MapCreateBulk(slice any, setFunc func(*ProviderModelCapabilityCreate, int)) *ProviderModelCapabilityCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &ProviderModelCapabilityCreateBulk{err: fmt.Errorf("calling to ProviderModelCapabilityClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*ProviderModelCapabilityCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &ProviderModelCapabilityCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for ProviderModelCapability.
+func (c *ProviderModelCapabilityClient) Update() *ProviderModelCapabilityUpdate {
+	mutation := newProviderModelCapabilityMutation(c.config, OpUpdate)
+	return &ProviderModelCapabilityUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *ProviderModelCapabilityClient) UpdateOne(_m *ProviderModelCapability) *ProviderModelCapabilityUpdateOne {
+	mutation := newProviderModelCapabilityMutation(c.config, OpUpdateOne, withProviderModelCapability(_m))
+	return &ProviderModelCapabilityUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *ProviderModelCapabilityClient) UpdateOneID(id int64) *ProviderModelCapabilityUpdateOne {
+	mutation := newProviderModelCapabilityMutation(c.config, OpUpdateOne, withProviderModelCapabilityID(id))
+	return &ProviderModelCapabilityUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for ProviderModelCapability.
+func (c *ProviderModelCapabilityClient) Delete() *ProviderModelCapabilityDelete {
+	mutation := newProviderModelCapabilityMutation(c.config, OpDelete)
+	return &ProviderModelCapabilityDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *ProviderModelCapabilityClient) DeleteOne(_m *ProviderModelCapability) *ProviderModelCapabilityDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *ProviderModelCapabilityClient) DeleteOneID(id int64) *ProviderModelCapabilityDeleteOne {
+	builder := c.Delete().Where(providermodelcapability.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &ProviderModelCapabilityDeleteOne{builder}
+}
+
+// Query returns a query builder for ProviderModelCapability.
+func (c *ProviderModelCapabilityClient) Query() *ProviderModelCapabilityQuery {
+	return &ProviderModelCapabilityQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeProviderModelCapability},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a ProviderModelCapability entity by its id.
+func (c *ProviderModelCapabilityClient) Get(ctx context.Context, id int64) (*ProviderModelCapability, error) {
+	return c.Query().Where(providermodelcapability.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *ProviderModelCapabilityClient) GetX(ctx context.Context, id int64) *ProviderModelCapability {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *ProviderModelCapabilityClient) Hooks() []Hook {
+	return c.hooks.ProviderModelCapability
+}
+
+// Interceptors returns the client interceptors.
+func (c *ProviderModelCapabilityClient) Interceptors() []Interceptor {
+	return c.inters.ProviderModelCapability
+}
+
+func (c *ProviderModelCapabilityClient) mutate(ctx context.Context, m *ProviderModelCapabilityMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&ProviderModelCapabilityCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&ProviderModelCapabilityUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&ProviderModelCapabilityUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&ProviderModelCapabilityDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown ProviderModelCapability mutation op: %q", m.Op())
+	}
+}
+
+// ProviderProfileClient is a client for the ProviderProfile schema.
+type ProviderProfileClient struct {
+	config
+}
+
+// NewProviderProfileClient returns a client for the ProviderProfile from the given config.
+func NewProviderProfileClient(c config) *ProviderProfileClient {
+	return &ProviderProfileClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `providerprofile.Hooks(f(g(h())))`.
+func (c *ProviderProfileClient) Use(hooks ...Hook) {
+	c.hooks.ProviderProfile = append(c.hooks.ProviderProfile, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `providerprofile.Intercept(f(g(h())))`.
+func (c *ProviderProfileClient) Intercept(interceptors ...Interceptor) {
+	c.inters.ProviderProfile = append(c.inters.ProviderProfile, interceptors...)
+}
+
+// Create returns a builder for creating a ProviderProfile entity.
+func (c *ProviderProfileClient) Create() *ProviderProfileCreate {
+	mutation := newProviderProfileMutation(c.config, OpCreate)
+	return &ProviderProfileCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of ProviderProfile entities.
+func (c *ProviderProfileClient) CreateBulk(builders ...*ProviderProfileCreate) *ProviderProfileCreateBulk {
+	return &ProviderProfileCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *ProviderProfileClient) MapCreateBulk(slice any, setFunc func(*ProviderProfileCreate, int)) *ProviderProfileCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &ProviderProfileCreateBulk{err: fmt.Errorf("calling to ProviderProfileClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*ProviderProfileCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &ProviderProfileCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for ProviderProfile.
+func (c *ProviderProfileClient) Update() *ProviderProfileUpdate {
+	mutation := newProviderProfileMutation(c.config, OpUpdate)
+	return &ProviderProfileUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *ProviderProfileClient) UpdateOne(_m *ProviderProfile) *ProviderProfileUpdateOne {
+	mutation := newProviderProfileMutation(c.config, OpUpdateOne, withProviderProfile(_m))
+	return &ProviderProfileUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *ProviderProfileClient) UpdateOneID(id int64) *ProviderProfileUpdateOne {
+	mutation := newProviderProfileMutation(c.config, OpUpdateOne, withProviderProfileID(id))
+	return &ProviderProfileUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for ProviderProfile.
+func (c *ProviderProfileClient) Delete() *ProviderProfileDelete {
+	mutation := newProviderProfileMutation(c.config, OpDelete)
+	return &ProviderProfileDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *ProviderProfileClient) DeleteOne(_m *ProviderProfile) *ProviderProfileDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *ProviderProfileClient) DeleteOneID(id int64) *ProviderProfileDeleteOne {
+	builder := c.Delete().Where(providerprofile.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &ProviderProfileDeleteOne{builder}
+}
+
+// Query returns a query builder for ProviderProfile.
+func (c *ProviderProfileClient) Query() *ProviderProfileQuery {
+	return &ProviderProfileQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeProviderProfile},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a ProviderProfile entity by its id.
+func (c *ProviderProfileClient) Get(ctx context.Context, id int64) (*ProviderProfile, error) {
+	return c.Query().Where(providerprofile.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *ProviderProfileClient) GetX(ctx context.Context, id int64) *ProviderProfile {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *ProviderProfileClient) Hooks() []Hook {
+	return c.hooks.ProviderProfile
+}
+
+// Interceptors returns the client interceptors.
+func (c *ProviderProfileClient) Interceptors() []Interceptor {
+	return c.inters.ProviderProfile
+}
+
+func (c *ProviderProfileClient) mutate(ctx context.Context, m *ProviderProfileMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&ProviderProfileCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&ProviderProfileUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&ProviderProfileUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&ProviderProfileDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown ProviderProfile mutation op: %q", m.Op())
+	}
+}
+
+// ProviderProtocolEndpointClient is a client for the ProviderProtocolEndpoint schema.
+type ProviderProtocolEndpointClient struct {
+	config
+}
+
+// NewProviderProtocolEndpointClient returns a client for the ProviderProtocolEndpoint from the given config.
+func NewProviderProtocolEndpointClient(c config) *ProviderProtocolEndpointClient {
+	return &ProviderProtocolEndpointClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `providerprotocolendpoint.Hooks(f(g(h())))`.
+func (c *ProviderProtocolEndpointClient) Use(hooks ...Hook) {
+	c.hooks.ProviderProtocolEndpoint = append(c.hooks.ProviderProtocolEndpoint, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `providerprotocolendpoint.Intercept(f(g(h())))`.
+func (c *ProviderProtocolEndpointClient) Intercept(interceptors ...Interceptor) {
+	c.inters.ProviderProtocolEndpoint = append(c.inters.ProviderProtocolEndpoint, interceptors...)
+}
+
+// Create returns a builder for creating a ProviderProtocolEndpoint entity.
+func (c *ProviderProtocolEndpointClient) Create() *ProviderProtocolEndpointCreate {
+	mutation := newProviderProtocolEndpointMutation(c.config, OpCreate)
+	return &ProviderProtocolEndpointCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of ProviderProtocolEndpoint entities.
+func (c *ProviderProtocolEndpointClient) CreateBulk(builders ...*ProviderProtocolEndpointCreate) *ProviderProtocolEndpointCreateBulk {
+	return &ProviderProtocolEndpointCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *ProviderProtocolEndpointClient) MapCreateBulk(slice any, setFunc func(*ProviderProtocolEndpointCreate, int)) *ProviderProtocolEndpointCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &ProviderProtocolEndpointCreateBulk{err: fmt.Errorf("calling to ProviderProtocolEndpointClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*ProviderProtocolEndpointCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &ProviderProtocolEndpointCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for ProviderProtocolEndpoint.
+func (c *ProviderProtocolEndpointClient) Update() *ProviderProtocolEndpointUpdate {
+	mutation := newProviderProtocolEndpointMutation(c.config, OpUpdate)
+	return &ProviderProtocolEndpointUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *ProviderProtocolEndpointClient) UpdateOne(_m *ProviderProtocolEndpoint) *ProviderProtocolEndpointUpdateOne {
+	mutation := newProviderProtocolEndpointMutation(c.config, OpUpdateOne, withProviderProtocolEndpoint(_m))
+	return &ProviderProtocolEndpointUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *ProviderProtocolEndpointClient) UpdateOneID(id int64) *ProviderProtocolEndpointUpdateOne {
+	mutation := newProviderProtocolEndpointMutation(c.config, OpUpdateOne, withProviderProtocolEndpointID(id))
+	return &ProviderProtocolEndpointUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for ProviderProtocolEndpoint.
+func (c *ProviderProtocolEndpointClient) Delete() *ProviderProtocolEndpointDelete {
+	mutation := newProviderProtocolEndpointMutation(c.config, OpDelete)
+	return &ProviderProtocolEndpointDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *ProviderProtocolEndpointClient) DeleteOne(_m *ProviderProtocolEndpoint) *ProviderProtocolEndpointDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *ProviderProtocolEndpointClient) DeleteOneID(id int64) *ProviderProtocolEndpointDeleteOne {
+	builder := c.Delete().Where(providerprotocolendpoint.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &ProviderProtocolEndpointDeleteOne{builder}
+}
+
+// Query returns a query builder for ProviderProtocolEndpoint.
+func (c *ProviderProtocolEndpointClient) Query() *ProviderProtocolEndpointQuery {
+	return &ProviderProtocolEndpointQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeProviderProtocolEndpoint},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a ProviderProtocolEndpoint entity by its id.
+func (c *ProviderProtocolEndpointClient) Get(ctx context.Context, id int64) (*ProviderProtocolEndpoint, error) {
+	return c.Query().Where(providerprotocolendpoint.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *ProviderProtocolEndpointClient) GetX(ctx context.Context, id int64) *ProviderProtocolEndpoint {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *ProviderProtocolEndpointClient) Hooks() []Hook {
+	return c.hooks.ProviderProtocolEndpoint
+}
+
+// Interceptors returns the client interceptors.
+func (c *ProviderProtocolEndpointClient) Interceptors() []Interceptor {
+	return c.inters.ProviderProtocolEndpoint
+}
+
+func (c *ProviderProtocolEndpointClient) mutate(ctx context.Context, m *ProviderProtocolEndpointMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&ProviderProtocolEndpointCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&ProviderProtocolEndpointUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&ProviderProtocolEndpointUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&ProviderProtocolEndpointDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown ProviderProtocolEndpoint mutation op: %q", m.Op())
+	}
+}
+
+// ProviderRouteAttemptClient is a client for the ProviderRouteAttempt schema.
+type ProviderRouteAttemptClient struct {
+	config
+}
+
+// NewProviderRouteAttemptClient returns a client for the ProviderRouteAttempt from the given config.
+func NewProviderRouteAttemptClient(c config) *ProviderRouteAttemptClient {
+	return &ProviderRouteAttemptClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `providerrouteattempt.Hooks(f(g(h())))`.
+func (c *ProviderRouteAttemptClient) Use(hooks ...Hook) {
+	c.hooks.ProviderRouteAttempt = append(c.hooks.ProviderRouteAttempt, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `providerrouteattempt.Intercept(f(g(h())))`.
+func (c *ProviderRouteAttemptClient) Intercept(interceptors ...Interceptor) {
+	c.inters.ProviderRouteAttempt = append(c.inters.ProviderRouteAttempt, interceptors...)
+}
+
+// Create returns a builder for creating a ProviderRouteAttempt entity.
+func (c *ProviderRouteAttemptClient) Create() *ProviderRouteAttemptCreate {
+	mutation := newProviderRouteAttemptMutation(c.config, OpCreate)
+	return &ProviderRouteAttemptCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of ProviderRouteAttempt entities.
+func (c *ProviderRouteAttemptClient) CreateBulk(builders ...*ProviderRouteAttemptCreate) *ProviderRouteAttemptCreateBulk {
+	return &ProviderRouteAttemptCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *ProviderRouteAttemptClient) MapCreateBulk(slice any, setFunc func(*ProviderRouteAttemptCreate, int)) *ProviderRouteAttemptCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &ProviderRouteAttemptCreateBulk{err: fmt.Errorf("calling to ProviderRouteAttemptClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*ProviderRouteAttemptCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &ProviderRouteAttemptCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for ProviderRouteAttempt.
+func (c *ProviderRouteAttemptClient) Update() *ProviderRouteAttemptUpdate {
+	mutation := newProviderRouteAttemptMutation(c.config, OpUpdate)
+	return &ProviderRouteAttemptUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *ProviderRouteAttemptClient) UpdateOne(_m *ProviderRouteAttempt) *ProviderRouteAttemptUpdateOne {
+	mutation := newProviderRouteAttemptMutation(c.config, OpUpdateOne, withProviderRouteAttempt(_m))
+	return &ProviderRouteAttemptUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *ProviderRouteAttemptClient) UpdateOneID(id int64) *ProviderRouteAttemptUpdateOne {
+	mutation := newProviderRouteAttemptMutation(c.config, OpUpdateOne, withProviderRouteAttemptID(id))
+	return &ProviderRouteAttemptUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for ProviderRouteAttempt.
+func (c *ProviderRouteAttemptClient) Delete() *ProviderRouteAttemptDelete {
+	mutation := newProviderRouteAttemptMutation(c.config, OpDelete)
+	return &ProviderRouteAttemptDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *ProviderRouteAttemptClient) DeleteOne(_m *ProviderRouteAttempt) *ProviderRouteAttemptDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *ProviderRouteAttemptClient) DeleteOneID(id int64) *ProviderRouteAttemptDeleteOne {
+	builder := c.Delete().Where(providerrouteattempt.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &ProviderRouteAttemptDeleteOne{builder}
+}
+
+// Query returns a query builder for ProviderRouteAttempt.
+func (c *ProviderRouteAttemptClient) Query() *ProviderRouteAttemptQuery {
+	return &ProviderRouteAttemptQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeProviderRouteAttempt},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a ProviderRouteAttempt entity by its id.
+func (c *ProviderRouteAttemptClient) Get(ctx context.Context, id int64) (*ProviderRouteAttempt, error) {
+	return c.Query().Where(providerrouteattempt.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *ProviderRouteAttemptClient) GetX(ctx context.Context, id int64) *ProviderRouteAttempt {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *ProviderRouteAttemptClient) Hooks() []Hook {
+	return c.hooks.ProviderRouteAttempt
+}
+
+// Interceptors returns the client interceptors.
+func (c *ProviderRouteAttemptClient) Interceptors() []Interceptor {
+	return c.inters.ProviderRouteAttempt
+}
+
+func (c *ProviderRouteAttemptClient) mutate(ctx context.Context, m *ProviderRouteAttemptMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&ProviderRouteAttemptCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&ProviderRouteAttemptUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&ProviderRouteAttemptUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&ProviderRouteAttemptDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown ProviderRouteAttempt mutation op: %q", m.Op())
 	}
 }
 
@@ -7232,9 +8225,11 @@ type (
 		APIKey, Account, AccountGroup, Announcement, AnnouncementRead, ChannelMonitor,
 		ChannelMonitorDailyRollup, ChannelMonitorHistory,
 		ChannelMonitorRequestTemplate, ErrorPassthroughRule, GeneratedImage,
-		GiftBalanceRecord, Group, IdempotencyRecord, PaymentAuditLog, PaymentOrder,
-		PaymentProviderInstance, PromoCode, PromoCodeUsage, Promotion,
-		PromotionPlanRule, PromotionUsage, Proxy, RedeemCode, Referral,
+		GiftBalanceRecord, Group, GroupRouteSnapshot, IdempotencyRecord, LogicalModel,
+		PaymentAuditLog, PaymentOrder, PaymentProviderInstance, PromoCode,
+		PromoCodeUsage, Promotion, PromotionPlanRule, PromotionUsage,
+		ProviderMigrationReview, ProviderModelCapability, ProviderProfile,
+		ProviderProtocolEndpoint, ProviderRouteAttempt, Proxy, RedeemCode, Referral,
 		SalesCommissionMonthlySnapshot, SalesCommissionRecord,
 		SalesCommissionSettlement, SalesCommissionSettlementItem, SalesCommissionTier,
 		SecuritySecret, Setting, SubscriptionGrant, SubscriptionPlan,
@@ -7246,9 +8241,11 @@ type (
 		APIKey, Account, AccountGroup, Announcement, AnnouncementRead, ChannelMonitor,
 		ChannelMonitorDailyRollup, ChannelMonitorHistory,
 		ChannelMonitorRequestTemplate, ErrorPassthroughRule, GeneratedImage,
-		GiftBalanceRecord, Group, IdempotencyRecord, PaymentAuditLog, PaymentOrder,
-		PaymentProviderInstance, PromoCode, PromoCodeUsage, Promotion,
-		PromotionPlanRule, PromotionUsage, Proxy, RedeemCode, Referral,
+		GiftBalanceRecord, Group, GroupRouteSnapshot, IdempotencyRecord, LogicalModel,
+		PaymentAuditLog, PaymentOrder, PaymentProviderInstance, PromoCode,
+		PromoCodeUsage, Promotion, PromotionPlanRule, PromotionUsage,
+		ProviderMigrationReview, ProviderModelCapability, ProviderProfile,
+		ProviderProtocolEndpoint, ProviderRouteAttempt, Proxy, RedeemCode, Referral,
 		SalesCommissionMonthlySnapshot, SalesCommissionRecord,
 		SalesCommissionSettlement, SalesCommissionSettlementItem, SalesCommissionTier,
 		SecuritySecret, Setting, SubscriptionGrant, SubscriptionPlan,

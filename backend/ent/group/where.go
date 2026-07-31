@@ -210,6 +210,16 @@ func DefaultMappedModel(v string) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldDefaultMappedModel, v))
 }
 
+// ActiveRouteSnapshotVersion applies equality check predicate on the "active_route_snapshot_version" field. It's identical to ActiveRouteSnapshotVersionEQ.
+func ActiveRouteSnapshotVersion(v int64) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldActiveRouteSnapshotVersion, v))
+}
+
+// PreviousRouteSnapshotVersion applies equality check predicate on the "previous_route_snapshot_version" field. It's identical to PreviousRouteSnapshotVersionEQ.
+func PreviousRouteSnapshotVersion(v int64) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldPreviousRouteSnapshotVersion, v))
+}
+
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldCreatedAt, v))
@@ -1488,6 +1498,106 @@ func DefaultMappedModelEqualFold(v string) predicate.Group {
 // DefaultMappedModelContainsFold applies the ContainsFold predicate on the "default_mapped_model" field.
 func DefaultMappedModelContainsFold(v string) predicate.Group {
 	return predicate.Group(sql.FieldContainsFold(FieldDefaultMappedModel, v))
+}
+
+// ActiveRouteSnapshotVersionEQ applies the EQ predicate on the "active_route_snapshot_version" field.
+func ActiveRouteSnapshotVersionEQ(v int64) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldActiveRouteSnapshotVersion, v))
+}
+
+// ActiveRouteSnapshotVersionNEQ applies the NEQ predicate on the "active_route_snapshot_version" field.
+func ActiveRouteSnapshotVersionNEQ(v int64) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldActiveRouteSnapshotVersion, v))
+}
+
+// ActiveRouteSnapshotVersionIn applies the In predicate on the "active_route_snapshot_version" field.
+func ActiveRouteSnapshotVersionIn(vs ...int64) predicate.Group {
+	return predicate.Group(sql.FieldIn(FieldActiveRouteSnapshotVersion, vs...))
+}
+
+// ActiveRouteSnapshotVersionNotIn applies the NotIn predicate on the "active_route_snapshot_version" field.
+func ActiveRouteSnapshotVersionNotIn(vs ...int64) predicate.Group {
+	return predicate.Group(sql.FieldNotIn(FieldActiveRouteSnapshotVersion, vs...))
+}
+
+// ActiveRouteSnapshotVersionGT applies the GT predicate on the "active_route_snapshot_version" field.
+func ActiveRouteSnapshotVersionGT(v int64) predicate.Group {
+	return predicate.Group(sql.FieldGT(FieldActiveRouteSnapshotVersion, v))
+}
+
+// ActiveRouteSnapshotVersionGTE applies the GTE predicate on the "active_route_snapshot_version" field.
+func ActiveRouteSnapshotVersionGTE(v int64) predicate.Group {
+	return predicate.Group(sql.FieldGTE(FieldActiveRouteSnapshotVersion, v))
+}
+
+// ActiveRouteSnapshotVersionLT applies the LT predicate on the "active_route_snapshot_version" field.
+func ActiveRouteSnapshotVersionLT(v int64) predicate.Group {
+	return predicate.Group(sql.FieldLT(FieldActiveRouteSnapshotVersion, v))
+}
+
+// ActiveRouteSnapshotVersionLTE applies the LTE predicate on the "active_route_snapshot_version" field.
+func ActiveRouteSnapshotVersionLTE(v int64) predicate.Group {
+	return predicate.Group(sql.FieldLTE(FieldActiveRouteSnapshotVersion, v))
+}
+
+// ActiveRouteSnapshotVersionIsNil applies the IsNil predicate on the "active_route_snapshot_version" field.
+func ActiveRouteSnapshotVersionIsNil() predicate.Group {
+	return predicate.Group(sql.FieldIsNull(FieldActiveRouteSnapshotVersion))
+}
+
+// ActiveRouteSnapshotVersionNotNil applies the NotNil predicate on the "active_route_snapshot_version" field.
+func ActiveRouteSnapshotVersionNotNil() predicate.Group {
+	return predicate.Group(sql.FieldNotNull(FieldActiveRouteSnapshotVersion))
+}
+
+// PreviousRouteSnapshotVersionEQ applies the EQ predicate on the "previous_route_snapshot_version" field.
+func PreviousRouteSnapshotVersionEQ(v int64) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldPreviousRouteSnapshotVersion, v))
+}
+
+// PreviousRouteSnapshotVersionNEQ applies the NEQ predicate on the "previous_route_snapshot_version" field.
+func PreviousRouteSnapshotVersionNEQ(v int64) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldPreviousRouteSnapshotVersion, v))
+}
+
+// PreviousRouteSnapshotVersionIn applies the In predicate on the "previous_route_snapshot_version" field.
+func PreviousRouteSnapshotVersionIn(vs ...int64) predicate.Group {
+	return predicate.Group(sql.FieldIn(FieldPreviousRouteSnapshotVersion, vs...))
+}
+
+// PreviousRouteSnapshotVersionNotIn applies the NotIn predicate on the "previous_route_snapshot_version" field.
+func PreviousRouteSnapshotVersionNotIn(vs ...int64) predicate.Group {
+	return predicate.Group(sql.FieldNotIn(FieldPreviousRouteSnapshotVersion, vs...))
+}
+
+// PreviousRouteSnapshotVersionGT applies the GT predicate on the "previous_route_snapshot_version" field.
+func PreviousRouteSnapshotVersionGT(v int64) predicate.Group {
+	return predicate.Group(sql.FieldGT(FieldPreviousRouteSnapshotVersion, v))
+}
+
+// PreviousRouteSnapshotVersionGTE applies the GTE predicate on the "previous_route_snapshot_version" field.
+func PreviousRouteSnapshotVersionGTE(v int64) predicate.Group {
+	return predicate.Group(sql.FieldGTE(FieldPreviousRouteSnapshotVersion, v))
+}
+
+// PreviousRouteSnapshotVersionLT applies the LT predicate on the "previous_route_snapshot_version" field.
+func PreviousRouteSnapshotVersionLT(v int64) predicate.Group {
+	return predicate.Group(sql.FieldLT(FieldPreviousRouteSnapshotVersion, v))
+}
+
+// PreviousRouteSnapshotVersionLTE applies the LTE predicate on the "previous_route_snapshot_version" field.
+func PreviousRouteSnapshotVersionLTE(v int64) predicate.Group {
+	return predicate.Group(sql.FieldLTE(FieldPreviousRouteSnapshotVersion, v))
+}
+
+// PreviousRouteSnapshotVersionIsNil applies the IsNil predicate on the "previous_route_snapshot_version" field.
+func PreviousRouteSnapshotVersionIsNil() predicate.Group {
+	return predicate.Group(sql.FieldIsNull(FieldPreviousRouteSnapshotVersion))
+}
+
+// PreviousRouteSnapshotVersionNotNil applies the NotNil predicate on the "previous_route_snapshot_version" field.
+func PreviousRouteSnapshotVersionNotNil() predicate.Group {
+	return predicate.Group(sql.FieldNotNull(FieldPreviousRouteSnapshotVersion))
 }
 
 // HasAPIKeys applies the HasEdge predicate on the "api_keys" edge.

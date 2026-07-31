@@ -45,8 +45,14 @@ type GiftBalanceRecord func(*sql.Selector)
 // Group is the predicate function for group builders.
 type Group func(*sql.Selector)
 
+// GroupRouteSnapshot is the predicate function for grouproutesnapshot builders.
+type GroupRouteSnapshot func(*sql.Selector)
+
 // IdempotencyRecord is the predicate function for idempotencyrecord builders.
 type IdempotencyRecord func(*sql.Selector)
+
+// LogicalModel is the predicate function for logicalmodel builders.
+type LogicalModel func(*sql.Selector)
 
 // PaymentAuditLog is the predicate function for paymentauditlog builders.
 type PaymentAuditLog func(*sql.Selector)
@@ -71,6 +77,21 @@ type PromotionPlanRule func(*sql.Selector)
 
 // PromotionUsage is the predicate function for promotionusage builders.
 type PromotionUsage func(*sql.Selector)
+
+// ProviderMigrationReview is the predicate function for providermigrationreview builders.
+type ProviderMigrationReview func(*sql.Selector)
+
+// ProviderModelCapability is the predicate function for providermodelcapability builders.
+type ProviderModelCapability func(*sql.Selector)
+
+// ProviderProfile is the predicate function for providerprofile builders.
+type ProviderProfile func(*sql.Selector)
+
+// ProviderProtocolEndpoint is the predicate function for providerprotocolendpoint builders.
+type ProviderProtocolEndpoint func(*sql.Selector)
+
+// ProviderRouteAttempt is the predicate function for providerrouteattempt builders.
+type ProviderRouteAttempt func(*sql.Selector)
 
 // Proxy is the predicate function for proxy builders.
 type Proxy func(*sql.Selector)

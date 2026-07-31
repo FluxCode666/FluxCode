@@ -184,6 +184,65 @@ func (s *httpUpstreamService) DoEmbedding(req *http.Request, policy service.Embe
 	return resp, nil
 }
 
+// DoProvider executes a provider request through a one-shot transport pinned to
+// the destination IP validated by the provider domain layer. Redirects are
+// rejected so credentials can never cross hosts without a fresh route check.
+func (s *httpUpstreamService) DoProvider(req *http.Request, policy service.ProviderUpstreamPolicy) (*http.Response, error) {
+	client, err := buildProviderHTTPClient(req, policy)
+	if err != nil {
+		return nil, err
+	}
+	var gotConnection atomic.Bool
+	trace := &httptrace.ClientTrace{
+		GotConn: func(httptrace.GotConnInfo) { gotConnection.Store(true) },
+	}
+	tracedRequest := req.Clone(httptrace.WithClientTrace(req.Context(), trace))
+	resp, err := client.Do(tracedRequest)
+	if err != nil {
+		return nil, &service.ProviderTransportError{RequestNotWritten: !gotConnection.Load()}
+	}
+	decompressResponseBody(resp)
+	return resp, nil
+}
+
+func buildProviderHTTPClient(req *http.Request, policy service.ProviderUpstreamPolicy) (*http.Client, error) {
+	if req == nil || req.URL == nil || (req.URL.Scheme != "https" && req.URL.Scheme != "http") || req.URL.Hostname() == "" {
+		return nil, errors.New("invalid provider request URL")
+	}
+	if len(policy.ValidatedIP) == 0 {
+		return nil, errors.New("provider request has no validated destination IP")
+	}
+
+	port := req.URL.Port()
+	if port == "" {
+		if req.URL.Scheme == "https" {
+			port = "443"
+		} else {
+			port = "80"
+		}
+	}
+	dialAddress := net.JoinHostPort(policy.ValidatedIP.String(), port)
+	dialer := &net.Dialer{}
+	transport := &http.Transport{
+		Proxy:                 nil,
+		ForceAttemptHTTP2:     req.URL.Scheme == "https",
+		DisableKeepAlives:     true,
+		ResponseHeaderTimeout: policy.ResponseHeaderTimeout,
+		DialContext: func(ctx context.Context, network, _ string) (net.Conn, error) {
+			return dialer.DialContext(ctx, network, dialAddress)
+		},
+	}
+	if req.URL.Scheme == "https" {
+		transport.TLSClientConfig = &tls.Config{ServerName: req.URL.Hostname(), MinVersion: tls.VersionTLS12}
+	}
+	return &http.Client{
+		Transport: transport,
+		CheckRedirect: func(*http.Request, []*http.Request) error {
+			return errors.New("provider upstream redirects are not allowed")
+		},
+	}, nil
+}
+
 func buildEmbeddingHTTPClient(req *http.Request, policy service.EmbeddingUpstreamPolicy) (*http.Client, error) {
 	if req == nil || req.URL == nil || req.URL.Hostname() == "" ||
 		(req.URL.Scheme != "http" && req.URL.Scheme != "https") {

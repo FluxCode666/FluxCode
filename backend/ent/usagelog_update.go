@@ -162,6 +162,146 @@ func (_u *UsageLogUpdate) ClearUpstreamModel() *UsageLogUpdate {
 	return _u
 }
 
+// SetLogicalModel sets the "logical_model" field.
+func (_u *UsageLogUpdate) SetLogicalModel(v string) *UsageLogUpdate {
+	_u.mutation.SetLogicalModel(v)
+	return _u
+}
+
+// SetNillableLogicalModel sets the "logical_model" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableLogicalModel(v *string) *UsageLogUpdate {
+	if v != nil {
+		_u.SetLogicalModel(*v)
+	}
+	return _u
+}
+
+// ClearLogicalModel clears the value of the "logical_model" field.
+func (_u *UsageLogUpdate) ClearLogicalModel() *UsageLogUpdate {
+	_u.mutation.ClearLogicalModel()
+	return _u
+}
+
+// SetIngressProtocol sets the "ingress_protocol" field.
+func (_u *UsageLogUpdate) SetIngressProtocol(v string) *UsageLogUpdate {
+	_u.mutation.SetIngressProtocol(v)
+	return _u
+}
+
+// SetNillableIngressProtocol sets the "ingress_protocol" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableIngressProtocol(v *string) *UsageLogUpdate {
+	if v != nil {
+		_u.SetIngressProtocol(*v)
+	}
+	return _u
+}
+
+// ClearIngressProtocol clears the value of the "ingress_protocol" field.
+func (_u *UsageLogUpdate) ClearIngressProtocol() *UsageLogUpdate {
+	_u.mutation.ClearIngressProtocol()
+	return _u
+}
+
+// SetUpstreamProtocol sets the "upstream_protocol" field.
+func (_u *UsageLogUpdate) SetUpstreamProtocol(v string) *UsageLogUpdate {
+	_u.mutation.SetUpstreamProtocol(v)
+	return _u
+}
+
+// SetNillableUpstreamProtocol sets the "upstream_protocol" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableUpstreamProtocol(v *string) *UsageLogUpdate {
+	if v != nil {
+		_u.SetUpstreamProtocol(*v)
+	}
+	return _u
+}
+
+// ClearUpstreamProtocol clears the value of the "upstream_protocol" field.
+func (_u *UsageLogUpdate) ClearUpstreamProtocol() *UsageLogUpdate {
+	_u.mutation.ClearUpstreamProtocol()
+	return _u
+}
+
+// SetRouteIdentity sets the "route_identity" field.
+func (_u *UsageLogUpdate) SetRouteIdentity(v string) *UsageLogUpdate {
+	_u.mutation.SetRouteIdentity(v)
+	return _u
+}
+
+// SetNillableRouteIdentity sets the "route_identity" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableRouteIdentity(v *string) *UsageLogUpdate {
+	if v != nil {
+		_u.SetRouteIdentity(*v)
+	}
+	return _u
+}
+
+// ClearRouteIdentity clears the value of the "route_identity" field.
+func (_u *UsageLogUpdate) ClearRouteIdentity() *UsageLogUpdate {
+	_u.mutation.ClearRouteIdentity()
+	return _u
+}
+
+// SetWireProfile sets the "wire_profile" field.
+func (_u *UsageLogUpdate) SetWireProfile(v string) *UsageLogUpdate {
+	_u.mutation.SetWireProfile(v)
+	return _u
+}
+
+// SetNillableWireProfile sets the "wire_profile" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableWireProfile(v *string) *UsageLogUpdate {
+	if v != nil {
+		_u.SetWireProfile(*v)
+	}
+	return _u
+}
+
+// ClearWireProfile clears the value of the "wire_profile" field.
+func (_u *UsageLogUpdate) ClearWireProfile() *UsageLogUpdate {
+	_u.mutation.ClearWireProfile()
+	return _u
+}
+
+// SetConversionUsed sets the "conversion_used" field.
+func (_u *UsageLogUpdate) SetConversionUsed(v bool) *UsageLogUpdate {
+	_u.mutation.SetConversionUsed(v)
+	return _u
+}
+
+// SetNillableConversionUsed sets the "conversion_used" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableConversionUsed(v *bool) *UsageLogUpdate {
+	if v != nil {
+		_u.SetConversionUsed(*v)
+	}
+	return _u
+}
+
+// SetRawUpstreamUsage sets the "raw_upstream_usage" field.
+func (_u *UsageLogUpdate) SetRawUpstreamUsage(v map[string]interface{}) *UsageLogUpdate {
+	_u.mutation.SetRawUpstreamUsage(v)
+	return _u
+}
+
+// ClearRawUpstreamUsage clears the value of the "raw_upstream_usage" field.
+func (_u *UsageLogUpdate) ClearRawUpstreamUsage() *UsageLogUpdate {
+	_u.mutation.ClearRawUpstreamUsage()
+	return _u
+}
+
+// SetUsageCompleteness sets the "usage_completeness" field.
+func (_u *UsageLogUpdate) SetUsageCompleteness(v string) *UsageLogUpdate {
+	_u.mutation.SetUsageCompleteness(v)
+	return _u
+}
+
+// SetNillableUsageCompleteness sets the "usage_completeness" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableUsageCompleteness(v *string) *UsageLogUpdate {
+	if v != nil {
+		_u.SetUsageCompleteness(*v)
+	}
+	return _u
+}
+
 // SetChannelID sets the "channel_id" field.
 func (_u *UsageLogUpdate) SetChannelID(v int64) *UsageLogUpdate {
 	_u.mutation.ResetChannelID()
@@ -887,6 +1027,36 @@ func (_u *UsageLogUpdate) check() error {
 			return &ValidationError{Name: "upstream_model", err: fmt.Errorf(`ent: validator failed for field "UsageLog.upstream_model": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.LogicalModel(); ok {
+		if err := usagelog.LogicalModelValidator(v); err != nil {
+			return &ValidationError{Name: "logical_model", err: fmt.Errorf(`ent: validator failed for field "UsageLog.logical_model": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.IngressProtocol(); ok {
+		if err := usagelog.IngressProtocolValidator(v); err != nil {
+			return &ValidationError{Name: "ingress_protocol", err: fmt.Errorf(`ent: validator failed for field "UsageLog.ingress_protocol": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.UpstreamProtocol(); ok {
+		if err := usagelog.UpstreamProtocolValidator(v); err != nil {
+			return &ValidationError{Name: "upstream_protocol", err: fmt.Errorf(`ent: validator failed for field "UsageLog.upstream_protocol": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.RouteIdentity(); ok {
+		if err := usagelog.RouteIdentityValidator(v); err != nil {
+			return &ValidationError{Name: "route_identity", err: fmt.Errorf(`ent: validator failed for field "UsageLog.route_identity": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.WireProfile(); ok {
+		if err := usagelog.WireProfileValidator(v); err != nil {
+			return &ValidationError{Name: "wire_profile", err: fmt.Errorf(`ent: validator failed for field "UsageLog.wire_profile": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.UsageCompleteness(); ok {
+		if err := usagelog.UsageCompletenessValidator(v); err != nil {
+			return &ValidationError{Name: "usage_completeness", err: fmt.Errorf(`ent: validator failed for field "UsageLog.usage_completeness": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.ModelMappingChain(); ok {
 		if err := usagelog.ModelMappingChainValidator(v); err != nil {
 			return &ValidationError{Name: "model_mapping_chain", err: fmt.Errorf(`ent: validator failed for field "UsageLog.model_mapping_chain": %w`, err)}
@@ -964,6 +1134,48 @@ func (_u *UsageLogUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.UpstreamModelCleared() {
 		_spec.ClearField(usagelog.FieldUpstreamModel, field.TypeString)
+	}
+	if value, ok := _u.mutation.LogicalModel(); ok {
+		_spec.SetField(usagelog.FieldLogicalModel, field.TypeString, value)
+	}
+	if _u.mutation.LogicalModelCleared() {
+		_spec.ClearField(usagelog.FieldLogicalModel, field.TypeString)
+	}
+	if value, ok := _u.mutation.IngressProtocol(); ok {
+		_spec.SetField(usagelog.FieldIngressProtocol, field.TypeString, value)
+	}
+	if _u.mutation.IngressProtocolCleared() {
+		_spec.ClearField(usagelog.FieldIngressProtocol, field.TypeString)
+	}
+	if value, ok := _u.mutation.UpstreamProtocol(); ok {
+		_spec.SetField(usagelog.FieldUpstreamProtocol, field.TypeString, value)
+	}
+	if _u.mutation.UpstreamProtocolCleared() {
+		_spec.ClearField(usagelog.FieldUpstreamProtocol, field.TypeString)
+	}
+	if value, ok := _u.mutation.RouteIdentity(); ok {
+		_spec.SetField(usagelog.FieldRouteIdentity, field.TypeString, value)
+	}
+	if _u.mutation.RouteIdentityCleared() {
+		_spec.ClearField(usagelog.FieldRouteIdentity, field.TypeString)
+	}
+	if value, ok := _u.mutation.WireProfile(); ok {
+		_spec.SetField(usagelog.FieldWireProfile, field.TypeString, value)
+	}
+	if _u.mutation.WireProfileCleared() {
+		_spec.ClearField(usagelog.FieldWireProfile, field.TypeString)
+	}
+	if value, ok := _u.mutation.ConversionUsed(); ok {
+		_spec.SetField(usagelog.FieldConversionUsed, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.RawUpstreamUsage(); ok {
+		_spec.SetField(usagelog.FieldRawUpstreamUsage, field.TypeJSON, value)
+	}
+	if _u.mutation.RawUpstreamUsageCleared() {
+		_spec.ClearField(usagelog.FieldRawUpstreamUsage, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.UsageCompleteness(); ok {
+		_spec.SetField(usagelog.FieldUsageCompleteness, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.ChannelID(); ok {
 		_spec.SetField(usagelog.FieldChannelID, field.TypeInt64, value)
@@ -1425,6 +1637,146 @@ func (_u *UsageLogUpdateOne) SetNillableUpstreamModel(v *string) *UsageLogUpdate
 // ClearUpstreamModel clears the value of the "upstream_model" field.
 func (_u *UsageLogUpdateOne) ClearUpstreamModel() *UsageLogUpdateOne {
 	_u.mutation.ClearUpstreamModel()
+	return _u
+}
+
+// SetLogicalModel sets the "logical_model" field.
+func (_u *UsageLogUpdateOne) SetLogicalModel(v string) *UsageLogUpdateOne {
+	_u.mutation.SetLogicalModel(v)
+	return _u
+}
+
+// SetNillableLogicalModel sets the "logical_model" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableLogicalModel(v *string) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetLogicalModel(*v)
+	}
+	return _u
+}
+
+// ClearLogicalModel clears the value of the "logical_model" field.
+func (_u *UsageLogUpdateOne) ClearLogicalModel() *UsageLogUpdateOne {
+	_u.mutation.ClearLogicalModel()
+	return _u
+}
+
+// SetIngressProtocol sets the "ingress_protocol" field.
+func (_u *UsageLogUpdateOne) SetIngressProtocol(v string) *UsageLogUpdateOne {
+	_u.mutation.SetIngressProtocol(v)
+	return _u
+}
+
+// SetNillableIngressProtocol sets the "ingress_protocol" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableIngressProtocol(v *string) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetIngressProtocol(*v)
+	}
+	return _u
+}
+
+// ClearIngressProtocol clears the value of the "ingress_protocol" field.
+func (_u *UsageLogUpdateOne) ClearIngressProtocol() *UsageLogUpdateOne {
+	_u.mutation.ClearIngressProtocol()
+	return _u
+}
+
+// SetUpstreamProtocol sets the "upstream_protocol" field.
+func (_u *UsageLogUpdateOne) SetUpstreamProtocol(v string) *UsageLogUpdateOne {
+	_u.mutation.SetUpstreamProtocol(v)
+	return _u
+}
+
+// SetNillableUpstreamProtocol sets the "upstream_protocol" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableUpstreamProtocol(v *string) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetUpstreamProtocol(*v)
+	}
+	return _u
+}
+
+// ClearUpstreamProtocol clears the value of the "upstream_protocol" field.
+func (_u *UsageLogUpdateOne) ClearUpstreamProtocol() *UsageLogUpdateOne {
+	_u.mutation.ClearUpstreamProtocol()
+	return _u
+}
+
+// SetRouteIdentity sets the "route_identity" field.
+func (_u *UsageLogUpdateOne) SetRouteIdentity(v string) *UsageLogUpdateOne {
+	_u.mutation.SetRouteIdentity(v)
+	return _u
+}
+
+// SetNillableRouteIdentity sets the "route_identity" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableRouteIdentity(v *string) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetRouteIdentity(*v)
+	}
+	return _u
+}
+
+// ClearRouteIdentity clears the value of the "route_identity" field.
+func (_u *UsageLogUpdateOne) ClearRouteIdentity() *UsageLogUpdateOne {
+	_u.mutation.ClearRouteIdentity()
+	return _u
+}
+
+// SetWireProfile sets the "wire_profile" field.
+func (_u *UsageLogUpdateOne) SetWireProfile(v string) *UsageLogUpdateOne {
+	_u.mutation.SetWireProfile(v)
+	return _u
+}
+
+// SetNillableWireProfile sets the "wire_profile" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableWireProfile(v *string) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetWireProfile(*v)
+	}
+	return _u
+}
+
+// ClearWireProfile clears the value of the "wire_profile" field.
+func (_u *UsageLogUpdateOne) ClearWireProfile() *UsageLogUpdateOne {
+	_u.mutation.ClearWireProfile()
+	return _u
+}
+
+// SetConversionUsed sets the "conversion_used" field.
+func (_u *UsageLogUpdateOne) SetConversionUsed(v bool) *UsageLogUpdateOne {
+	_u.mutation.SetConversionUsed(v)
+	return _u
+}
+
+// SetNillableConversionUsed sets the "conversion_used" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableConversionUsed(v *bool) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetConversionUsed(*v)
+	}
+	return _u
+}
+
+// SetRawUpstreamUsage sets the "raw_upstream_usage" field.
+func (_u *UsageLogUpdateOne) SetRawUpstreamUsage(v map[string]interface{}) *UsageLogUpdateOne {
+	_u.mutation.SetRawUpstreamUsage(v)
+	return _u
+}
+
+// ClearRawUpstreamUsage clears the value of the "raw_upstream_usage" field.
+func (_u *UsageLogUpdateOne) ClearRawUpstreamUsage() *UsageLogUpdateOne {
+	_u.mutation.ClearRawUpstreamUsage()
+	return _u
+}
+
+// SetUsageCompleteness sets the "usage_completeness" field.
+func (_u *UsageLogUpdateOne) SetUsageCompleteness(v string) *UsageLogUpdateOne {
+	_u.mutation.SetUsageCompleteness(v)
+	return _u
+}
+
+// SetNillableUsageCompleteness sets the "usage_completeness" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableUsageCompleteness(v *string) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetUsageCompleteness(*v)
+	}
 	return _u
 }
 
@@ -2166,6 +2518,36 @@ func (_u *UsageLogUpdateOne) check() error {
 			return &ValidationError{Name: "upstream_model", err: fmt.Errorf(`ent: validator failed for field "UsageLog.upstream_model": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.LogicalModel(); ok {
+		if err := usagelog.LogicalModelValidator(v); err != nil {
+			return &ValidationError{Name: "logical_model", err: fmt.Errorf(`ent: validator failed for field "UsageLog.logical_model": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.IngressProtocol(); ok {
+		if err := usagelog.IngressProtocolValidator(v); err != nil {
+			return &ValidationError{Name: "ingress_protocol", err: fmt.Errorf(`ent: validator failed for field "UsageLog.ingress_protocol": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.UpstreamProtocol(); ok {
+		if err := usagelog.UpstreamProtocolValidator(v); err != nil {
+			return &ValidationError{Name: "upstream_protocol", err: fmt.Errorf(`ent: validator failed for field "UsageLog.upstream_protocol": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.RouteIdentity(); ok {
+		if err := usagelog.RouteIdentityValidator(v); err != nil {
+			return &ValidationError{Name: "route_identity", err: fmt.Errorf(`ent: validator failed for field "UsageLog.route_identity": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.WireProfile(); ok {
+		if err := usagelog.WireProfileValidator(v); err != nil {
+			return &ValidationError{Name: "wire_profile", err: fmt.Errorf(`ent: validator failed for field "UsageLog.wire_profile": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.UsageCompleteness(); ok {
+		if err := usagelog.UsageCompletenessValidator(v); err != nil {
+			return &ValidationError{Name: "usage_completeness", err: fmt.Errorf(`ent: validator failed for field "UsageLog.usage_completeness": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.ModelMappingChain(); ok {
 		if err := usagelog.ModelMappingChainValidator(v); err != nil {
 			return &ValidationError{Name: "model_mapping_chain", err: fmt.Errorf(`ent: validator failed for field "UsageLog.model_mapping_chain": %w`, err)}
@@ -2260,6 +2642,48 @@ func (_u *UsageLogUpdateOne) sqlSave(ctx context.Context) (_node *UsageLog, err 
 	}
 	if _u.mutation.UpstreamModelCleared() {
 		_spec.ClearField(usagelog.FieldUpstreamModel, field.TypeString)
+	}
+	if value, ok := _u.mutation.LogicalModel(); ok {
+		_spec.SetField(usagelog.FieldLogicalModel, field.TypeString, value)
+	}
+	if _u.mutation.LogicalModelCleared() {
+		_spec.ClearField(usagelog.FieldLogicalModel, field.TypeString)
+	}
+	if value, ok := _u.mutation.IngressProtocol(); ok {
+		_spec.SetField(usagelog.FieldIngressProtocol, field.TypeString, value)
+	}
+	if _u.mutation.IngressProtocolCleared() {
+		_spec.ClearField(usagelog.FieldIngressProtocol, field.TypeString)
+	}
+	if value, ok := _u.mutation.UpstreamProtocol(); ok {
+		_spec.SetField(usagelog.FieldUpstreamProtocol, field.TypeString, value)
+	}
+	if _u.mutation.UpstreamProtocolCleared() {
+		_spec.ClearField(usagelog.FieldUpstreamProtocol, field.TypeString)
+	}
+	if value, ok := _u.mutation.RouteIdentity(); ok {
+		_spec.SetField(usagelog.FieldRouteIdentity, field.TypeString, value)
+	}
+	if _u.mutation.RouteIdentityCleared() {
+		_spec.ClearField(usagelog.FieldRouteIdentity, field.TypeString)
+	}
+	if value, ok := _u.mutation.WireProfile(); ok {
+		_spec.SetField(usagelog.FieldWireProfile, field.TypeString, value)
+	}
+	if _u.mutation.WireProfileCleared() {
+		_spec.ClearField(usagelog.FieldWireProfile, field.TypeString)
+	}
+	if value, ok := _u.mutation.ConversionUsed(); ok {
+		_spec.SetField(usagelog.FieldConversionUsed, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.RawUpstreamUsage(); ok {
+		_spec.SetField(usagelog.FieldRawUpstreamUsage, field.TypeJSON, value)
+	}
+	if _u.mutation.RawUpstreamUsageCleared() {
+		_spec.ClearField(usagelog.FieldRawUpstreamUsage, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.UsageCompleteness(); ok {
+		_spec.SetField(usagelog.FieldUsageCompleteness, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.ChannelID(); ok {
 		_spec.SetField(usagelog.FieldChannelID, field.TypeInt64, value)

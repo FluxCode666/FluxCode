@@ -157,6 +157,34 @@ func ResponsesEventToChatChunks(evt *ResponsesStreamEvent, state *ResponsesEvent
 	}
 }
 
+// ResponsesEventToChatChunksChecked is the fail-closed variant used by the
+// adapter registry. Legacy callers keep the permissive function above until
+// they are moved behind an explicit compatibility profile.
+func ResponsesEventToChatChunksChecked(evt *ResponsesStreamEvent, state *ResponsesEventToChatState) ([]ChatCompletionsChunk, error) {
+	if evt == nil {
+		return nil, fmt.Errorf("nil Responses stream event")
+	}
+	switch evt.Type {
+	case "response.created",
+		"response.output_text.delta",
+		"response.output_item.added",
+		"response.function_call_arguments.delta",
+		"response.custom_tool_call_input.delta",
+		"response.reasoning_summary_text.delta",
+		"response.reasoning_text.delta",
+		"response.reasoning_summary_text.done",
+		"response.completed",
+		"response.done",
+		"response.incomplete",
+		"response.failed",
+		"response.cancelled",
+		"response.canceled":
+		return ResponsesEventToChatChunks(evt, state), nil
+	default:
+		return nil, fmt.Errorf("unsupported Responses stream event %q", evt.Type)
+	}
+}
+
 // FinalizeResponsesChatStream emits a final chunk with finish_reason if the
 // stream ended without a proper completion event (e.g. upstream disconnect).
 // It is idempotent: if a completion event already emitted the finish chunk,

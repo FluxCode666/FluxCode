@@ -14,7 +14,7 @@ import (
 	"github.com/dgraph-io/ristretto"
 )
 
-const apiKeyAuthSnapshotVersion = 7 // v7: added API key/group system prompt fields and group fallback flag
+const apiKeyAuthSnapshotVersion = 8 // v8: added provider route snapshot pointers
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int
@@ -256,6 +256,8 @@ func (s *APIKeyService) snapshotFromAPIKey(apiKey *APIKey) *APIKeyAuthSnapshot {
 			ClaudeCodeOnly:                  apiKey.Group.ClaudeCodeOnly,
 			FallbackGroupID:                 apiKey.Group.FallbackGroupID,
 			IsFallbackGroup:                 apiKey.Group.IsFallbackGroup,
+			ActiveRouteSnapshotVersion:      apiKey.Group.ActiveRouteSnapshotVersion,
+			PreviousRouteSnapshotVersion:    apiKey.Group.PreviousRouteSnapshotVersion,
 			FallbackGroupIDOnInvalidRequest: apiKey.Group.FallbackGroupIDOnInvalidRequest,
 			ModelRouting:                    apiKey.Group.ModelRouting,
 			ModelRoutingEnabled:             apiKey.Group.ModelRoutingEnabled,
@@ -325,6 +327,8 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 			ClaudeCodeOnly:                  snapshot.Group.ClaudeCodeOnly,
 			FallbackGroupID:                 snapshot.Group.FallbackGroupID,
 			IsFallbackGroup:                 snapshot.Group.IsFallbackGroup,
+			ActiveRouteSnapshotVersion:      snapshot.Group.ActiveRouteSnapshotVersion,
+			PreviousRouteSnapshotVersion:    snapshot.Group.PreviousRouteSnapshotVersion,
 			FallbackGroupIDOnInvalidRequest: snapshot.Group.FallbackGroupIDOnInvalidRequest,
 			ModelRouting:                    snapshot.Group.ModelRouting,
 			ModelRoutingEnabled:             snapshot.Group.ModelRoutingEnabled,

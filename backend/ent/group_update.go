@@ -623,6 +623,60 @@ func (_u *GroupUpdate) SetNillableMessagesDispatchModelConfig(v *domain.OpenAIMe
 	return _u
 }
 
+// SetActiveRouteSnapshotVersion sets the "active_route_snapshot_version" field.
+func (_u *GroupUpdate) SetActiveRouteSnapshotVersion(v int64) *GroupUpdate {
+	_u.mutation.ResetActiveRouteSnapshotVersion()
+	_u.mutation.SetActiveRouteSnapshotVersion(v)
+	return _u
+}
+
+// SetNillableActiveRouteSnapshotVersion sets the "active_route_snapshot_version" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableActiveRouteSnapshotVersion(v *int64) *GroupUpdate {
+	if v != nil {
+		_u.SetActiveRouteSnapshotVersion(*v)
+	}
+	return _u
+}
+
+// AddActiveRouteSnapshotVersion adds value to the "active_route_snapshot_version" field.
+func (_u *GroupUpdate) AddActiveRouteSnapshotVersion(v int64) *GroupUpdate {
+	_u.mutation.AddActiveRouteSnapshotVersion(v)
+	return _u
+}
+
+// ClearActiveRouteSnapshotVersion clears the value of the "active_route_snapshot_version" field.
+func (_u *GroupUpdate) ClearActiveRouteSnapshotVersion() *GroupUpdate {
+	_u.mutation.ClearActiveRouteSnapshotVersion()
+	return _u
+}
+
+// SetPreviousRouteSnapshotVersion sets the "previous_route_snapshot_version" field.
+func (_u *GroupUpdate) SetPreviousRouteSnapshotVersion(v int64) *GroupUpdate {
+	_u.mutation.ResetPreviousRouteSnapshotVersion()
+	_u.mutation.SetPreviousRouteSnapshotVersion(v)
+	return _u
+}
+
+// SetNillablePreviousRouteSnapshotVersion sets the "previous_route_snapshot_version" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillablePreviousRouteSnapshotVersion(v *int64) *GroupUpdate {
+	if v != nil {
+		_u.SetPreviousRouteSnapshotVersion(*v)
+	}
+	return _u
+}
+
+// AddPreviousRouteSnapshotVersion adds value to the "previous_route_snapshot_version" field.
+func (_u *GroupUpdate) AddPreviousRouteSnapshotVersion(v int64) *GroupUpdate {
+	_u.mutation.AddPreviousRouteSnapshotVersion(v)
+	return _u
+}
+
+// ClearPreviousRouteSnapshotVersion clears the value of the "previous_route_snapshot_version" field.
+func (_u *GroupUpdate) ClearPreviousRouteSnapshotVersion() *GroupUpdate {
+	_u.mutation.ClearPreviousRouteSnapshotVersion()
+	return _u
+}
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by IDs.
 func (_u *GroupUpdate) AddAPIKeyIDs(ids ...int64) *GroupUpdate {
 	_u.mutation.AddAPIKeyIDs(ids...)
@@ -1102,6 +1156,24 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.MessagesDispatchModelConfig(); ok {
 		_spec.SetField(group.FieldMessagesDispatchModelConfig, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.ActiveRouteSnapshotVersion(); ok {
+		_spec.SetField(group.FieldActiveRouteSnapshotVersion, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedActiveRouteSnapshotVersion(); ok {
+		_spec.AddField(group.FieldActiveRouteSnapshotVersion, field.TypeInt64, value)
+	}
+	if _u.mutation.ActiveRouteSnapshotVersionCleared() {
+		_spec.ClearField(group.FieldActiveRouteSnapshotVersion, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.PreviousRouteSnapshotVersion(); ok {
+		_spec.SetField(group.FieldPreviousRouteSnapshotVersion, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedPreviousRouteSnapshotVersion(); ok {
+		_spec.AddField(group.FieldPreviousRouteSnapshotVersion, field.TypeInt64, value)
+	}
+	if _u.mutation.PreviousRouteSnapshotVersionCleared() {
+		_spec.ClearField(group.FieldPreviousRouteSnapshotVersion, field.TypeInt64)
 	}
 	if _u.mutation.APIKeysCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -2004,6 +2076,60 @@ func (_u *GroupUpdateOne) SetNillableMessagesDispatchModelConfig(v *domain.OpenA
 	return _u
 }
 
+// SetActiveRouteSnapshotVersion sets the "active_route_snapshot_version" field.
+func (_u *GroupUpdateOne) SetActiveRouteSnapshotVersion(v int64) *GroupUpdateOne {
+	_u.mutation.ResetActiveRouteSnapshotVersion()
+	_u.mutation.SetActiveRouteSnapshotVersion(v)
+	return _u
+}
+
+// SetNillableActiveRouteSnapshotVersion sets the "active_route_snapshot_version" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableActiveRouteSnapshotVersion(v *int64) *GroupUpdateOne {
+	if v != nil {
+		_u.SetActiveRouteSnapshotVersion(*v)
+	}
+	return _u
+}
+
+// AddActiveRouteSnapshotVersion adds value to the "active_route_snapshot_version" field.
+func (_u *GroupUpdateOne) AddActiveRouteSnapshotVersion(v int64) *GroupUpdateOne {
+	_u.mutation.AddActiveRouteSnapshotVersion(v)
+	return _u
+}
+
+// ClearActiveRouteSnapshotVersion clears the value of the "active_route_snapshot_version" field.
+func (_u *GroupUpdateOne) ClearActiveRouteSnapshotVersion() *GroupUpdateOne {
+	_u.mutation.ClearActiveRouteSnapshotVersion()
+	return _u
+}
+
+// SetPreviousRouteSnapshotVersion sets the "previous_route_snapshot_version" field.
+func (_u *GroupUpdateOne) SetPreviousRouteSnapshotVersion(v int64) *GroupUpdateOne {
+	_u.mutation.ResetPreviousRouteSnapshotVersion()
+	_u.mutation.SetPreviousRouteSnapshotVersion(v)
+	return _u
+}
+
+// SetNillablePreviousRouteSnapshotVersion sets the "previous_route_snapshot_version" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillablePreviousRouteSnapshotVersion(v *int64) *GroupUpdateOne {
+	if v != nil {
+		_u.SetPreviousRouteSnapshotVersion(*v)
+	}
+	return _u
+}
+
+// AddPreviousRouteSnapshotVersion adds value to the "previous_route_snapshot_version" field.
+func (_u *GroupUpdateOne) AddPreviousRouteSnapshotVersion(v int64) *GroupUpdateOne {
+	_u.mutation.AddPreviousRouteSnapshotVersion(v)
+	return _u
+}
+
+// ClearPreviousRouteSnapshotVersion clears the value of the "previous_route_snapshot_version" field.
+func (_u *GroupUpdateOne) ClearPreviousRouteSnapshotVersion() *GroupUpdateOne {
+	_u.mutation.ClearPreviousRouteSnapshotVersion()
+	return _u
+}
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by IDs.
 func (_u *GroupUpdateOne) AddAPIKeyIDs(ids ...int64) *GroupUpdateOne {
 	_u.mutation.AddAPIKeyIDs(ids...)
@@ -2513,6 +2639,24 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	}
 	if value, ok := _u.mutation.MessagesDispatchModelConfig(); ok {
 		_spec.SetField(group.FieldMessagesDispatchModelConfig, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.ActiveRouteSnapshotVersion(); ok {
+		_spec.SetField(group.FieldActiveRouteSnapshotVersion, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedActiveRouteSnapshotVersion(); ok {
+		_spec.AddField(group.FieldActiveRouteSnapshotVersion, field.TypeInt64, value)
+	}
+	if _u.mutation.ActiveRouteSnapshotVersionCleared() {
+		_spec.ClearField(group.FieldActiveRouteSnapshotVersion, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.PreviousRouteSnapshotVersion(); ok {
+		_spec.SetField(group.FieldPreviousRouteSnapshotVersion, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedPreviousRouteSnapshotVersion(); ok {
+		_spec.AddField(group.FieldPreviousRouteSnapshotVersion, field.TypeInt64, value)
+	}
+	if _u.mutation.PreviousRouteSnapshotVersionCleared() {
+		_spec.ClearField(group.FieldPreviousRouteSnapshotVersion, field.TypeInt64)
 	}
 	if _u.mutation.APIKeysCleared() {
 		edge := &sqlgraph.EdgeSpec{

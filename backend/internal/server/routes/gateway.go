@@ -48,14 +48,18 @@ func RegisterGatewayRoutes(
 	gateway.Use(embeddingPlatformGuard())
 	gateway.Use(successfulRecorder)
 	{
-		gateway.POST("/embeddings", h.OpenAIGateway.Embeddings)
+		gateway.POST("/embeddings", func(c *gin.Context) {
+			handleProviderOrFallback(h.ProviderGateway, c, service.ProtocolEmbeddings, h.OpenAIGateway.Embeddings)
+		})
 		// /v1/messages: auto-route based on group platform
 		gateway.POST("/messages", func(c *gin.Context) {
-			if isOpenAICompatibleGroup(c) {
-				h.OpenAIGateway.Messages(c)
-				return
-			}
-			h.Gateway.Messages(c)
+			handleProviderOrFallback(h.ProviderGateway, c, service.ProtocolAnthropicMessages, func(c *gin.Context) {
+				if isOpenAICompatibleGroup(c) {
+					h.OpenAIGateway.Messages(c)
+					return
+				}
+				h.Gateway.Messages(c)
+			})
 		})
 		// /v1/messages/count_tokens: OpenAI groups get 404
 		gateway.POST("/messages/count_tokens", func(c *gin.Context) {
@@ -81,11 +85,13 @@ func RegisterGatewayRoutes(
 		gateway.GET("/usage", h.Gateway.Usage)
 		// OpenAI Responses API: auto-route based on group platform
 		gateway.POST("/responses", func(c *gin.Context) {
-			if isOpenAICompatibleGroup(c) {
-				h.OpenAIGateway.Responses(c)
-				return
-			}
-			h.Gateway.Responses(c)
+			handleProviderOrFallback(h.ProviderGateway, c, service.ProtocolResponses, func(c *gin.Context) {
+				if isOpenAICompatibleGroup(c) {
+					h.OpenAIGateway.Responses(c)
+					return
+				}
+				h.Gateway.Responses(c)
+			})
 		})
 		gateway.POST("/responses/*subpath", func(c *gin.Context) {
 			if isOpenAICompatibleGroup(c) {
@@ -124,11 +130,13 @@ func RegisterGatewayRoutes(
 		gateway.GET("/responses", h.OpenAIGateway.ResponsesWebSocket)
 		// OpenAI Chat Completions API: auto-route based on group platform
 		gateway.POST("/chat/completions", func(c *gin.Context) {
-			if isOpenAICompatibleGroup(c) {
-				h.OpenAIGateway.ChatCompletions(c)
-				return
-			}
-			h.Gateway.ChatCompletions(c)
+			handleProviderOrFallback(h.ProviderGateway, c, service.ProtocolChatCompletions, func(c *gin.Context) {
+				if isOpenAICompatibleGroup(c) {
+					h.OpenAIGateway.ChatCompletions(c)
+					return
+				}
+				h.Gateway.ChatCompletions(c)
+			})
 		})
 	}
 
@@ -151,6 +159,15 @@ func RegisterGatewayRoutes(
 
 	// OpenAI Responses API（不带v1前缀的别名）— auto-route based on group platform
 	responsesHandler := func(c *gin.Context) {
+		handleProviderOrFallback(h.ProviderGateway, c, service.ProtocolResponses, func(c *gin.Context) {
+			if isOpenAICompatibleGroup(c) {
+				h.OpenAIGateway.Responses(c)
+				return
+			}
+			h.Gateway.Responses(c)
+		})
+	}
+	responsesSubpathHandler := func(c *gin.Context) {
 		if isOpenAICompatibleGroup(c) {
 			h.OpenAIGateway.Responses(c)
 			return
@@ -158,15 +175,17 @@ func RegisterGatewayRoutes(
 		h.Gateway.Responses(c)
 	}
 	r.POST("/responses", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, embeddingPlatformGuard(), successfulRecorder, responsesHandler)
-	r.POST("/responses/*subpath", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, embeddingPlatformGuard(), successfulRecorder, responsesHandler)
+	r.POST("/responses/*subpath", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, embeddingPlatformGuard(), successfulRecorder, responsesSubpathHandler)
 	r.GET("/responses", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, embeddingPlatformGuard(), h.OpenAIGateway.ResponsesWebSocket)
 	// OpenAI Chat Completions API（不带v1前缀的别名）— auto-route based on group platform
 	r.POST("/chat/completions", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, embeddingPlatformGuard(), successfulRecorder, func(c *gin.Context) {
-		if isOpenAICompatibleGroup(c) {
-			h.OpenAIGateway.ChatCompletions(c)
-			return
-		}
-		h.Gateway.ChatCompletions(c)
+		handleProviderOrFallback(h.ProviderGateway, c, service.ProtocolChatCompletions, func(c *gin.Context) {
+			if isOpenAICompatibleGroup(c) {
+				h.OpenAIGateway.ChatCompletions(c)
+				return
+			}
+			h.Gateway.ChatCompletions(c)
+		})
 	})
 
 	// OpenAI Images API（不带v1前缀的别名）
@@ -236,6 +255,19 @@ func RegisterGatewayRoutes(
 
 }
 
+func handleProviderOrFallback(
+	h *handler.ProviderGatewayHandler,
+	c *gin.Context,
+	protocol service.ProtocolFamily,
+	fallback gin.HandlerFunc,
+) {
+	if h == nil {
+		fallback(c)
+		return
+	}
+	h.HandleOrFallback(c, protocol, fallback)
+}
+
 // getGroupPlatform extracts the group platform from the API Key stored in context.
 func getGroupPlatform(c *gin.Context) string {
 	apiKey, ok := middleware.GetAPIKeyFromContext(c)
@@ -267,6 +299,11 @@ func isEmbeddingPlatformEndpointAllowed(method, path string) bool {
 // forced-platform groups registered elsewhere in this file.
 func embeddingPlatformGuard() gin.HandlerFunc {
 	return func(c *gin.Context) {
+		if apiKey, ok := middleware.GetAPIKeyFromContext(c); ok && apiKey.Group != nil &&
+			apiKey.Group.ActiveRouteSnapshotVersion != nil && *apiKey.Group.ActiveRouteSnapshotVersion > 0 {
+			c.Next()
+			return
+		}
 		if getGroupPlatform(c) != service.PlatformEmbedding {
 			c.Next()
 			return

@@ -50,6 +50,14 @@ func TestUsageLogRepositoryCreateSyncRequestTypeAndLegacyFields(t *testing.T) {
 			log.Model,
 			log.RequestedModel,
 			sqlmock.AnyArg(), // upstream_model
+			sqlmock.AnyArg(), // logical_model
+			sqlmock.AnyArg(), // ingress_protocol
+			sqlmock.AnyArg(), // upstream_protocol
+			sqlmock.AnyArg(), // route_identity
+			sqlmock.AnyArg(), // wire_profile
+			false,            // conversion_used
+			sqlmock.AnyArg(), // raw_upstream_usage
+			"complete",       // usage_completeness
 			sqlmock.AnyArg(), // group_id
 			sqlmock.AnyArg(), // original_group_id
 			sqlmock.AnyArg(), // subscription_id
@@ -132,6 +140,14 @@ func TestUsageLogRepositoryCreate_PersistsServiceTier(t *testing.T) {
 			log.Model,
 			log.RequestedModel,
 			sqlmock.AnyArg(),
+			sqlmock.AnyArg(),
+			sqlmock.AnyArg(),
+			sqlmock.AnyArg(),
+			sqlmock.AnyArg(),
+			sqlmock.AnyArg(),
+			false,
+			sqlmock.AnyArg(),
+			"complete",
 			sqlmock.AnyArg(),
 			sqlmock.AnyArg(),
 			sqlmock.AnyArg(),
@@ -254,8 +270,8 @@ func TestPrepareUsageLogInsert_PersistsOriginalGroupID(t *testing.T) {
 	})
 
 	require.Len(t, prepared.args, len(usageLogInsertArgTypes))
-	require.Equal(t, sql.NullInt64{Int64: fallbackGroupID, Valid: true}, prepared.args[8])
-	require.Equal(t, sql.NullInt64{Int64: originalGroupID, Valid: true}, prepared.args[9])
+	require.Equal(t, sql.NullInt64{Int64: fallbackGroupID, Valid: true}, prepared.args[16])
+	require.Equal(t, sql.NullInt64{Int64: originalGroupID, Valid: true}, prepared.args[17])
 }
 
 func TestCoalesceTrimmedString(t *testing.T) {
@@ -606,6 +622,14 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			"gpt-5", // model
 			sql.NullString{Valid: true, String: "gpt-5"}, // requested_model
 			sql.NullString{},  // upstream_model
+			sql.NullString{},  // logical_model
+			sql.NullString{},  // ingress_protocol
+			sql.NullString{},  // upstream_protocol
+			sql.NullString{},  // route_identity
+			sql.NullString{},  // wire_profile
+			false,             // conversion_used
+			[]byte(nil),       // raw_upstream_usage
+			"complete",        // usage_completeness
 			sql.NullInt64{},   // group_id
 			sql.NullInt64{},   // original_group_id
 			sql.NullInt64{},   // subscription_id
@@ -668,6 +692,14 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			"gpt-5",
 			sql.NullString{Valid: true, String: "gpt-5"},
 			sql.NullString{},
+			sql.NullString{},
+			sql.NullString{},
+			sql.NullString{},
+			sql.NullString{},
+			sql.NullString{},
+			false,
+			[]byte(nil),
+			"complete",
 			sql.NullInt64{},
 			sql.NullInt64{},
 			sql.NullInt64{},
@@ -719,6 +751,14 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			"gpt-5.4",
 			sql.NullString{Valid: true, String: "gpt-5.4"},
 			sql.NullString{},
+			sql.NullString{},
+			sql.NullString{},
+			sql.NullString{},
+			sql.NullString{},
+			sql.NullString{},
+			false,
+			[]byte(nil),
+			"complete",
 			sql.NullInt64{},
 			sql.NullInt64{},
 			sql.NullInt64{},

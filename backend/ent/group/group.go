@@ -84,6 +84,10 @@ const (
 	FieldDefaultMappedModel = "default_mapped_model"
 	// FieldMessagesDispatchModelConfig holds the string denoting the messages_dispatch_model_config field in the database.
 	FieldMessagesDispatchModelConfig = "messages_dispatch_model_config"
+	// FieldActiveRouteSnapshotVersion holds the string denoting the active_route_snapshot_version field in the database.
+	FieldActiveRouteSnapshotVersion = "active_route_snapshot_version"
+	// FieldPreviousRouteSnapshotVersion holds the string denoting the previous_route_snapshot_version field in the database.
+	FieldPreviousRouteSnapshotVersion = "previous_route_snapshot_version"
 	// EdgeAPIKeys holds the string denoting the api_keys edge name in mutations.
 	EdgeAPIKeys = "api_keys"
 	// EdgeRedeemCodes holds the string denoting the redeem_codes edge name in mutations.
@@ -193,6 +197,8 @@ var Columns = []string{
 	FieldRequirePrivacySet,
 	FieldDefaultMappedModel,
 	FieldMessagesDispatchModelConfig,
+	FieldActiveRouteSnapshotVersion,
+	FieldPreviousRouteSnapshotVersion,
 }
 
 var (
@@ -443,6 +449,16 @@ func ByRequirePrivacySet(opts ...sql.OrderTermOption) OrderOption {
 // ByDefaultMappedModel orders the results by the default_mapped_model field.
 func ByDefaultMappedModel(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldDefaultMappedModel, opts...).ToFunc()
+}
+
+// ByActiveRouteSnapshotVersion orders the results by the active_route_snapshot_version field.
+func ByActiveRouteSnapshotVersion(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldActiveRouteSnapshotVersion, opts...).ToFunc()
+}
+
+// ByPreviousRouteSnapshotVersion orders the results by the previous_route_snapshot_version field.
+func ByPreviousRouteSnapshotVersion(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldPreviousRouteSnapshotVersion, opts...).ToFunc()
 }
 
 // ByAPIKeysCount orders the results by api_keys count.

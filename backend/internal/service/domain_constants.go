@@ -27,6 +27,10 @@ const (
 	PlatformGemini      = domain.PlatformGemini
 	PlatformAntigravity = domain.PlatformAntigravity
 	PlatformEmbedding   = domain.PlatformEmbedding
+	// PlatformProvider is the neutral backing-account platform for provider
+	// profiles. It is an implementation compatibility value, not a vendor or
+	// protocol identity.
+	PlatformProvider = "provider"
 )
 
 const (
@@ -64,6 +68,9 @@ func AccountPlatformGroupPlatform(platform string) string {
 }
 
 func AccountCanBelongToGroupPlatform(accountPlatform, groupPlatform string) bool {
+	if accountPlatform == PlatformProvider {
+		return true
+	}
 	if accountPlatform == PlatformAntigravity && (groupPlatform == PlatformAnthropic || groupPlatform == PlatformGemini) {
 		return true
 	}

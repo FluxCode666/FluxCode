@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -115,6 +116,16 @@ type UsageLog struct {
 	// UpstreamModel is the actual model sent to the upstream provider after mapping.
 	// Nil means no mapping was applied (requested model was used as-is).
 	UpstreamModel *string
+	// Provider route dimensions are populated by the capability-driven gateway.
+	// Empty values preserve backward compatibility for legacy usage rows.
+	LogicalModel      string
+	IngressProtocol   ProtocolFamily
+	UpstreamProtocol  ProtocolFamily
+	RouteIdentity     string
+	WireProfile       WireProfile
+	ConversionUsed    bool
+	RawUpstreamUsage  json.RawMessage
+	UsageCompleteness string
 	// ChannelID 渠道 ID
 	ChannelID *int64
 	// ModelMappingChain 模型映射链，如 "a→b→c"
