@@ -2980,6 +2980,26 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 						turnPromptCacheKey != "",
 					)
 				}
+				// 入站 WebSocket 的首轮尚未写下游时，可以安全重放到另一账号。
+				// 后续 turn 或已写事件的流不能重放，否则会向客户端重复或截断内容。
+				if turn == 1 && !wroteDownstream && fallbackReason == "selected_model_at_capacity" {
+					lease.MarkBroken()
+					logOpenAIWSModeInfo(
+						"ingress_ws_selected_model_at_capacity failover=true account_id=%d turn=%d conn_id=%s",
+						account.ID,
+						turn,
+						truncateOpenAIWSLogValue(lease.ConnID(), openAIWSIDValueMaxLen),
+					)
+					return nil, wrapOpenAIWSIngressTurnError(
+						"selected_model_at_capacity",
+						&UpstreamFailoverError{
+							StatusCode:      http.StatusBadRequest,
+							ResponseBody:    append([]byte(nil), upstreamMessage...),
+							ResponseHeaders: lease.HandshakeHeaders().Clone(),
+						},
+						false,
+					)
+				}
 				// previous_response_not_found 在 ingress 模式支持单次恢复重试：
 				// 不把该 error 直接下发客户端，而是由上层去掉 previous_response_id 后重放当前 turn。
 				if recoverablePrevNotFound {

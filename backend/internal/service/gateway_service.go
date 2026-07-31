@@ -3582,10 +3582,10 @@ const (
 	// 用于防止极端情况下 goroutine 长时间堆积导致资源耗尽。
 	maxRetryElapsed = 10 * time.Second
 
-	// selectedModelAtCapacityMessage 是当前账号的上游模型容量不足提示。
+	// SelectedModelAtCapacityMessage 是当前账号的上游模型容量不足提示。
 	// 它不同于共享模型池的容量耗尽：切换账号可能恢复，因此应由 Handler
 	// 走既有的有界账号切换流程，而不是立即返回下游。
-	selectedModelAtCapacityMessage = "Selected model is at capacity. Please try a different model."
+	SelectedModelAtCapacityMessage = "Selected model is at capacity. Please try a different model."
 )
 
 func (s *GatewayService) shouldRetryUpstreamError(account *Account, statusCode int) bool {
@@ -6386,7 +6386,7 @@ func (s *GatewayService) shouldFailoverOn400(respBody []byte) bool {
 // isSelectedModelAtCapacityError 判断上游是否明确表示当前账号的已选模型容量不足。
 // 使用精确匹配，避免把其他客户端请求错误误判为账号故障。
 func isSelectedModelAtCapacityError(message string) bool {
-	return strings.EqualFold(strings.TrimSpace(message), selectedModelAtCapacityMessage)
+	return strings.EqualFold(strings.TrimSpace(message), SelectedModelAtCapacityMessage)
 }
 
 // isSelectedModelAtCapacityResponse 支持标准错误对象、v1internal 包装和纯文本响应。
@@ -6394,6 +6394,13 @@ func isSelectedModelAtCapacityResponse(respBody []byte) bool {
 	return isSelectedModelAtCapacityError(extractUpstreamErrorMessage(respBody)) ||
 		isSelectedModelAtCapacityError(gjson.GetBytes(respBody, "response.error.message").String()) ||
 		isSelectedModelAtCapacityError(string(respBody))
+}
+
+// IsSelectedModelAtCapacityResponse reports whether an upstream response is the
+// account-specific selected-model capacity error. Handlers use this to enter a
+// bounded account-switch loop before anything has been sent downstream.
+func IsSelectedModelAtCapacityResponse(respBody []byte) bool {
+	return isSelectedModelAtCapacityResponse(respBody)
 }
 
 // selectedModelAtCapacityFailover 将当前账号特有的模型容量错误转换为账号切换信号。
