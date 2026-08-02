@@ -1104,6 +1104,39 @@
         </div>
       </div>
 
+      <!-- OpenAI API Key 强制 Chat Completions 开关 -->
+      <div
+        v-if="account?.platform === 'openai' && account?.type === 'apikey'"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600"
+      >
+        <div class="flex items-center justify-between">
+          <div>
+            <label class="input-label mb-0">{{ t('admin.accounts.openai.forceChatCompletions') }}</label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.openai.forceChatCompletionsDesc') }}
+            </p>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            :aria-checked="openaiForceChatCompletions"
+            data-testid="edit-openai-force-chat-completions"
+            @click="openaiForceChatCompletions = !openaiForceChatCompletions"
+            :class="[
+              'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+              openaiForceChatCompletions ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+            ]"
+          >
+            <span
+              :class="[
+                'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                openaiForceChatCompletions ? 'translate-x-5' : 'translate-x-0'
+              ]"
+            />
+          </button>
+        </div>
+      </div>
+
       <!-- OpenAI WS Mode 三态（off/ctx_pool/passthrough） -->
       <div
         v-if="account?.platform === 'openai' && (account?.type === 'oauth' || account?.type === 'apikey')"
@@ -1924,7 +1957,7 @@ import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
 import { adminAPI } from '@/api/admin'
 import { useQuotaNotifyState } from '@/composables/useQuotaNotifyState'
-import type { Account, Proxy, AdminGroup, CheckMixedChannelResponse } from '@/types'
+import type { Account, Proxy, AdminGroup, CheckMixedChannelResponse, OpenAIResponsesMode } from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import Select from '@/components/common/Select.vue'
@@ -2069,6 +2102,8 @@ const customBaseUrl = ref('')
 
 // OpenAI 自动透传开关（OAuth/API Key）
 const openaiPassthroughEnabled = ref(false)
+const openaiForceChatCompletions = ref(false)
+const OPENAI_FORCE_CHAT_COMPLETIONS_MODE: OpenAIResponsesMode = 'force_chat_completions'
 const openaiOAuthResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const openaiAPIKeyResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 type OpenAIImageResponseURLMode = 'base64_url' | 'http_url'
@@ -2287,6 +2322,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
 
   // Load OpenAI passthrough toggle (OpenAI OAuth/API Key)
   openaiPassthroughEnabled.value = false
+  openaiForceChatCompletions.value = false
   openaiOAuthResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
   openaiAPIKeyResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
   openaiImageResponseURLMode.value = resolveOpenAIImageResponseURLMode(extra?.openai_image_response_url_mode)
@@ -2297,6 +2333,9 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   webSearchEmulationMode.value = 'default'
   if (newAccount.platform === 'openai' && (newAccount.type === 'oauth' || newAccount.type === 'apikey')) {
     openaiPassthroughEnabled.value = extra?.openai_passthrough === true || extra?.openai_oauth_passthrough === true
+    if (newAccount.type === 'apikey') {
+      openaiForceChatCompletions.value = extra?.openai_responses_mode === 'force_chat_completions'
+    }
     codexImageGenerationBridgeMode.value = resolveCodexImageGenerationBridgeMode(extra)
     openaiOAuthResponsesWebSocketV2Mode.value = resolveOpenAIWSModeFromExtra(extra, {
       modeKey: 'openai_oauth_responses_websockets_v2_mode',
@@ -3374,6 +3413,13 @@ const handleSubmit = async () => {
       } else {
         delete newExtra.openai_passthrough
         delete newExtra.openai_oauth_passthrough
+      }
+      if (props.account.type === 'apikey') {
+        if (openaiForceChatCompletions.value) {
+          newExtra.openai_responses_mode = OPENAI_FORCE_CHAT_COMPLETIONS_MODE
+        } else {
+          delete newExtra.openai_responses_mode
+        }
       }
       applyCodexImageGenerationBridgeOverride(newExtra)
 

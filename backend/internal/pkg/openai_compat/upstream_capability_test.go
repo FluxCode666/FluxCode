@@ -13,7 +13,19 @@ func TestResolveResponsesSupport(t *testing.T) {
 		{"key missing", map[string]any{"other": "value"}, ResponsesSupportUnknown},
 		{"value true", map[string]any{ExtraKeyResponsesSupported: true}, ResponsesSupportYes},
 		{"value false", map[string]any{ExtraKeyResponsesSupported: false}, ResponsesSupportNo},
+		{"force chat overrides supported", map[string]any{
+			ExtraKeyResponsesMode:      string(ResponsesSupportModeForceChatCompletions),
+			ExtraKeyResponsesSupported: true,
+		}, ResponsesSupportNo},
+		{"auto follows supported", map[string]any{
+			ExtraKeyResponsesMode:      string(ResponsesSupportModeAuto),
+			ExtraKeyResponsesSupported: false,
+		}, ResponsesSupportNo},
 		{"value wrong type string", map[string]any{ExtraKeyResponsesSupported: "true"}, ResponsesSupportUnknown},
+		{"mode wrong type falls back to probe", map[string]any{
+			ExtraKeyResponsesMode:      1,
+			ExtraKeyResponsesSupported: true,
+		}, ResponsesSupportYes},
 		{"value wrong type number", map[string]any{ExtraKeyResponsesSupported: 1}, ResponsesSupportUnknown},
 		{"value nil", map[string]any{ExtraKeyResponsesSupported: nil}, ResponsesSupportUnknown},
 	}
@@ -42,6 +54,14 @@ func TestShouldUseResponsesAPI(t *testing.T) {
 		// 已探测：标记决定
 		{"explicitly supported", map[string]any{ExtraKeyResponsesSupported: true}, true},
 		{"explicitly unsupported", map[string]any{ExtraKeyResponsesSupported: false}, false},
+		{"force chat overrides supported", map[string]any{
+			ExtraKeyResponsesMode:      string(ResponsesSupportModeForceChatCompletions),
+			ExtraKeyResponsesSupported: true,
+		}, false},
+		{"auto follows supported", map[string]any{
+			ExtraKeyResponsesMode:      string(ResponsesSupportModeAuto),
+			ExtraKeyResponsesSupported: true,
+		}, true},
 	}
 
 	for _, tc := range tests {

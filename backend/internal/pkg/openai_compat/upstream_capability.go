@@ -17,7 +17,7 @@
 //     pensieve/short-term/maxims/preserve-existing-runtime-behavior-when-replacing-logic-in-stateful-systems）
 package openai_compat
 
-// AccountResponsesSupport 描述账号上游对 OpenAI Responses API 的支持状态。
+// AccountResponsesSupport 描述账号上游对 OpenAI Responses API 的有效支持状态。
 //
 // 仅用于 platform=openai + type=apikey 的账号；其他账号类型不应调用本包判定。
 type AccountResponsesSupport int
@@ -35,17 +35,46 @@ const (
 	ResponsesSupportNo
 )
 
+// ResponsesSupportMode 描述账号级 Responses API 路由覆盖模式。
+type ResponsesSupportMode string
+
+const (
+	// ResponsesSupportModeAuto 表示跟随自动探测结果。
+	ResponsesSupportModeAuto ResponsesSupportMode = "auto"
+
+	// ResponsesSupportModeForceChatCompletions 强制使用 /v1/chat/completions。
+	ResponsesSupportModeForceChatCompletions ResponsesSupportMode = "force_chat_completions"
+)
+
+// ExtraKeyResponsesMode 是 accounts.extra JSON 中存储手动覆盖模式的键名。
+const ExtraKeyResponsesMode = "openai_responses_mode"
+
 // ExtraKeyResponsesSupported 是 accounts.extra JSON 中存储探测结果的键名。
 // 值类型为 bool：true=支持、false=不支持、键缺失=未探测。
 const ExtraKeyResponsesSupported = "openai_responses_supported"
 
-// ResolveResponsesSupport 从账号的 extra map 中读取探测标记。
+// NormalizeResponsesSupportMode 归一化账号级 Responses API 路由覆盖模式。
+// 缺失或非法值按 auto 处理，以保持存量行为。
+func NormalizeResponsesSupportMode(mode string) ResponsesSupportMode {
+	if ResponsesSupportMode(mode) == ResponsesSupportModeForceChatCompletions {
+		return ResponsesSupportModeForceChatCompletions
+	}
+	return ResponsesSupportModeAuto
+}
+
+// ResolveResponsesSupport 从账号的 extra map 中读取手动覆盖模式与探测标记。
 //
+// 手动模式为 force_chat_completions 时优先返回 ResponsesSupportNo；其余情况下，
 // 标记缺失或类型不匹配时返回 ResponsesSupportUnknown——调用方应按
 // "未探测=保留旧行为=走 Responses" 处理（参见 ShouldUseResponsesAPI）。
 func ResolveResponsesSupport(extra map[string]any) AccountResponsesSupport {
 	if extra == nil {
 		return ResponsesSupportUnknown
+	}
+	if mode, ok := extra[ExtraKeyResponsesMode].(string); ok {
+		if NormalizeResponsesSupportMode(mode) == ResponsesSupportModeForceChatCompletions {
+			return ResponsesSupportNo
+		}
 	}
 	v, ok := extra[ExtraKeyResponsesSupported]
 	if !ok {
@@ -68,8 +97,9 @@ func ResolveResponsesSupport(extra map[string]any) AccountResponsesSupport {
 //  1. 账号已探测确认支持 Responses
 //  2. 账号未探测（标记缺失）——按"现状即证据"原则保留旧行为
 //
-// 仅当账号已探测且确认不支持时返回 false，此时调用方应走 CC 直转路径
-// （详见 internal/service/openai_gateway_chat_completions_raw.go）。
+// 手动模式 force_chat_completions 也会返回 false；自动模式下仅当账号已探测
+// 且确认不支持时返回 false，此时调用方应走 CC 直转路径（详见
+// internal/service/openai_gateway_chat_completions_raw.go）。
 func ShouldUseResponsesAPI(extra map[string]any) bool {
 	return ResolveResponsesSupport(extra) != ResponsesSupportNo
 }

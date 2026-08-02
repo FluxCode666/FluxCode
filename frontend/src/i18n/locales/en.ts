@@ -3560,6 +3560,9 @@ export default {
           'Only applies to OpenAI API Key. This account can use OpenAI WebSocket Mode only when enabled.',
         responsesWebsocketsV2PassthroughHint:
           'Automatic passthrough is currently enabled: it only affects HTTP passthrough and does not disable WS mode.',
+        forceChatCompletions: 'Force Chat Completions protocol',
+        forceChatCompletionsDesc:
+          'Only applies to OpenAI API Key accounts. When enabled, requests from /v1/chat/completions always go directly to the upstream /v1/chat/completions endpoint, regardless of probe results; disable to return to automatic probing.',
         imageResponseURLMode: 'Image URL response mode',
         imageResponseURLModeDesc:
           'When downstream response_format=url, return either a base64 data URL or an HTTP temporary link cached and proxied by this system.',

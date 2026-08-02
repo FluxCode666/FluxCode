@@ -57,6 +57,40 @@ func TestForwardAsChatCompletions_APIKeyWithoutResponsesUsesRawChatEndpoint(t *t
 	require.Contains(t, recorder.Body.String(), `"object":"chat.completion"`)
 }
 
+func TestForwardAsChatCompletions_APIKeyForceChatUsesRawChatEndpoint(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	body := []byte(`{"model":"compat-model","messages":[{"role":"user","content":"hello"}],"stream":false}`)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
+
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": {"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(`{"id":"chatcmpl_1","object":"chat.completion","model":"compat-model","choices":[{"index":0,"message":{"role":"assistant","content":"hi"},"finish_reason":"stop"}],"usage":{"prompt_tokens":11,"completion_tokens":7}}`)),
+	}}
+	svc := &OpenAIGatewayService{cfg: &config.Config{}, httpUpstream: upstream}
+	account := &Account{
+		ID:          9,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Concurrency: 1,
+		Credentials: map[string]any{"api_key": "sk-test", "base_url": "https://compat.example/v1"},
+		Extra: map[string]any{
+			openai_compat.ExtraKeyResponsesMode:      string(openai_compat.ResponsesSupportModeForceChatCompletions),
+			openai_compat.ExtraKeyResponsesSupported: true,
+		},
+	}
+
+	result, err := svc.ForwardAsChatCompletions(context.Background(), c, account, body, "", "compat-model")
+
+	require.NoError(t, err)
+	require.Equal(t, "https://compat.example/v1/chat/completions", upstream.lastReq.URL.String())
+	require.JSONEq(t, string(body), string(upstream.lastBody))
+	require.Equal(t, 11, result.Usage.InputTokens)
+	require.Equal(t, 7, result.Usage.OutputTokens)
+}
+
 func TestForwardAsChatCompletions_APIKeyWithoutResponsesStreamsRawChatSSE(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	recorder := httptest.NewRecorder()

@@ -214,6 +214,27 @@ describe('CreateAccountModal', () => {
     expect(createAccountMock.mock.calls[0]?.[0]?.extra?.openai_image_response_url_mode).toBe('http_url')
   })
 
+  it('creates OpenAI API Key accounts with force Chat Completions enabled', async () => {
+    createAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    createAccountMock.mockResolvedValue({})
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+
+    const wrapper = mountModal()
+
+    await wrapper.findAll('button').find((button) => button.text().includes('OpenAI'))?.trigger('click')
+    await wrapper.findAll('button').find((button) => button.text().includes('API Key'))?.trigger('click')
+    await wrapper.get('[data-testid="create-openai-force-chat-completions"]').trigger('click')
+
+    const textInputs = wrapper.findAll<HTMLInputElement>('form#create-account-form input[type="text"]')
+    await textInputs[0].setValue('OpenAI Key')
+    await wrapper.get<HTMLInputElement>('form#create-account-form input[type="password"]').setValue('sk-test')
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+
+    expect(createAccountMock).toHaveBeenCalledTimes(1)
+    expect(createAccountMock.mock.calls[0]?.[0]?.extra?.openai_responses_mode).toBe('force_chat_completions')
+  })
+
   it('creates OpenAI API Key accounts with a Codex image bridge override', async () => {
     createAccountMock.mockReset()
     checkMixedChannelRiskMock.mockReset()

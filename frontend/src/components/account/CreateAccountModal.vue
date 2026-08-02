@@ -2395,6 +2395,39 @@
         </div>
       </div>
 
+      <!-- OpenAI API Key 强制 Chat Completions 开关 -->
+      <div
+        v-if="form.platform === 'openai' && accountCategory === 'apikey'"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600"
+      >
+        <div class="flex items-center justify-between">
+          <div>
+            <label class="input-label mb-0">{{ t('admin.accounts.openai.forceChatCompletions') }}</label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.openai.forceChatCompletionsDesc') }}
+            </p>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            :aria-checked="openaiForceChatCompletions"
+            data-testid="create-openai-force-chat-completions"
+            @click="openaiForceChatCompletions = !openaiForceChatCompletions"
+            :class="[
+              'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+              openaiForceChatCompletions ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+            ]"
+          >
+            <span
+              :class="[
+                'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                openaiForceChatCompletions ? 'translate-x-5' : 'translate-x-0'
+              ]"
+            />
+          </button>
+        </div>
+      </div>
+
       <!-- OpenAI WS Mode 三态（off/ctx_pool/passthrough） -->
       <div
         v-if="form.platform === 'openai' && (accountCategory === 'oauth-based' || accountCategory === 'apikey')"
@@ -3035,7 +3068,8 @@ import type {
   AccountPlatform,
   AccountType,
   CheckMixedChannelResponse,
-  CreateAccountRequest
+  CreateAccountRequest,
+  OpenAIResponsesMode
 } from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
@@ -3192,6 +3226,8 @@ const customErrorCodeInput = ref<number | null>(null)
 const interceptWarmupRequests = ref(false)
 const autoPauseOnExpired = ref(true)
 const openaiPassthroughEnabled = ref(false)
+const openaiForceChatCompletions = ref(false)
+const OPENAI_FORCE_CHAT_COMPLETIONS_MODE: OpenAIResponsesMode = 'force_chat_completions'
 const openaiOAuthResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const openaiAPIKeyResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 type OpenAIImageResponseURLMode = 'base64_url' | 'http_url'
@@ -3570,6 +3606,7 @@ watch(
     }
     if (newPlatform !== 'openai') {
       openaiPassthroughEnabled.value = false
+      openaiForceChatCompletions.value = false
       openaiOAuthResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
       openaiAPIKeyResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
       codexCLIOnlyEnabled.value = false
@@ -3592,6 +3629,9 @@ watch(
 watch(
   [accountCategory, () => form.platform],
   ([category, platform]) => {
+    if (platform !== 'openai' || category !== 'apikey') {
+      openaiForceChatCompletions.value = false
+    }
     if (platform === 'openai' && category !== 'oauth-based') {
       codexCLIOnlyEnabled.value = false
     }
@@ -3959,6 +3999,7 @@ const resetForm = () => {
   interceptWarmupRequests.value = false
   autoPauseOnExpired.value = true
   openaiPassthroughEnabled.value = false
+  openaiForceChatCompletions.value = false
   openaiOAuthResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
   openaiAPIKeyResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
   openaiImageResponseURLMode.value = 'http_url'
@@ -4034,6 +4075,11 @@ const buildOpenAIExtra = (base?: Record<string, unknown>): Record<string, unknow
     } else {
       delete extra.openai_passthrough
       delete extra.openai_oauth_passthrough
+    }
+    if (accountCategory.value === 'apikey' && openaiForceChatCompletions.value) {
+      extra.openai_responses_mode = OPENAI_FORCE_CHAT_COMPLETIONS_MODE
+    } else {
+      delete extra.openai_responses_mode
     }
     applyCodexImageGenerationBridgeOverride(extra)
 
