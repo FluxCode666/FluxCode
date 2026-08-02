@@ -294,6 +294,52 @@ describe('EditAccountModal', () => {
     expect(modeSelect.element.value).toBe('http_url')
   })
 
+  it('edits the OpenAI API Key force Chat Completions switch', async () => {
+    const account = buildAccount()
+    account.extra = {
+      openai_responses_supported: true
+    }
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+    const forceChatSwitch = wrapper.get<HTMLButtonElement>('[data-testid="edit-openai-force-chat-completions"]')
+
+    expect(forceChatSwitch.attributes('aria-checked')).toBe('false')
+    await forceChatSwitch.trigger('click')
+    expect(forceChatSwitch.attributes('aria-checked')).toBe('true')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.openai_responses_mode).toBe('force_chat_completions')
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.openai_responses_supported).toBe(true)
+  })
+
+  it('clears the OpenAI API Key force Chat Completions switch', async () => {
+    const account = buildAccount()
+    account.extra = {
+      openai_responses_mode: 'force_chat_completions',
+      openai_responses_supported: false
+    }
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+    const forceChatSwitch = wrapper.get<HTMLButtonElement>('[data-testid="edit-openai-force-chat-completions"]')
+
+    expect(forceChatSwitch.attributes('aria-checked')).toBe('true')
+    await forceChatSwitch.trigger('click')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra).not.toHaveProperty('openai_responses_mode')
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.openai_responses_supported).toBe(false)
+  })
+
   it('edits the OpenAI Codex image bridge override in account extra', async () => {
     const account = buildAccount()
     account.extra = {
