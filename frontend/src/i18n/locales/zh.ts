@@ -3717,7 +3717,7 @@ export default {
         responsesWebsocketsV2PassthroughHint: '当前已开启自动透传：仅影响 HTTP 透传链路，不影响 WS mode。',
         forceChatCompletions: '强制使用 Chat Completions 协议',
         forceChatCompletionsDesc:
-          '仅对 OpenAI API Key 生效。开启后，来自 /v1/chat/completions 的请求始终直转上游 /v1/chat/completions，不受自动探测结果影响；关闭后恢复自动探测。',
+          '仅对 OpenAI API Key 生效。开启后请求上游 /v1/chat/completions；关闭后请求上游 /v1/responses。能力探测结果仅作提示，不会自动切换协议。',
         imageResponseURLMode: '生图 URL 返回模式',
         imageResponseURLModeDesc:
           '当下游 response_format=url 时，选择返回 data URL 形式的 base64，或返回由本系统缓存代理的 HTTP 临时链接。',

@@ -3566,7 +3566,7 @@ export default {
           'Automatic passthrough is currently enabled: it only affects HTTP passthrough and does not disable WS mode.',
         forceChatCompletions: 'Force Chat Completions protocol',
         forceChatCompletionsDesc:
-          'Only applies to OpenAI API Key accounts. When enabled, requests from /v1/chat/completions always go directly to the upstream /v1/chat/completions endpoint, regardless of probe results; disable to return to automatic probing.',
+          'Only applies to OpenAI API Key accounts. When enabled, requests use the upstream /v1/chat/completions endpoint; when disabled, they use /v1/responses. Capability probe results are informational and never switch protocols automatically.',
         imageResponseURLMode: 'Image URL response mode',
         imageResponseURLModeDesc:
           'When downstream response_format=url, return either a base64 data URL or an HTTP temporary link cached and proxied by this system.',

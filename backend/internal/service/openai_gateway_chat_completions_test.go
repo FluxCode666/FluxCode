@@ -17,7 +17,7 @@ import (
 	"github.com/tidwall/gjson"
 )
 
-func TestForwardAsChatCompletions_APIKeyWithoutResponsesUsesRawChatEndpoint(t *testing.T) {
+func TestForwardAsChatCompletions_APIKeyChatSwitchUsesRawChatEndpoint(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
@@ -41,7 +41,10 @@ func TestForwardAsChatCompletions_APIKeyWithoutResponsesUsesRawChatEndpoint(t *t
 		Type:        AccountTypeAPIKey,
 		Concurrency: 1,
 		Credentials: map[string]any{"api_key": "sk-test", "base_url": "https://compat.example/v1"},
-		Extra:       map[string]any{openai_compat.ExtraKeyResponsesSupported: false},
+		Extra: map[string]any{
+			openai_compat.ExtraKeyResponsesMode:      string(openai_compat.ResponsesSupportModeForceChatCompletions),
+			openai_compat.ExtraKeyResponsesSupported: false,
+		},
 	}
 
 	result, err := svc.ForwardAsChatCompletions(context.Background(), c, account, body, "", "compat-model")
@@ -55,6 +58,37 @@ func TestForwardAsChatCompletions_APIKeyWithoutResponsesUsesRawChatEndpoint(t *t
 	require.Equal(t, 11, result.Usage.InputTokens)
 	require.Equal(t, 7, result.Usage.OutputTokens)
 	require.Contains(t, recorder.Body.String(), `"object":"chat.completion"`)
+}
+
+func TestForwardAsChatCompletions_APIKeyUnsupportedProbeWithoutChatSwitchUsesResponsesEndpoint(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	body := []byte(`{"model":"compat-model","messages":[{"role":"user","content":"hello"}],"stream":false}`)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
+
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusBadRequest,
+		Header:     http.Header{"Content-Type": {"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(`{"error":{"message":"stop"}}`)),
+	}}
+	svc := &OpenAIGatewayService{cfg: &config.Config{}, httpUpstream: upstream}
+	account := &Account{
+		ID:          10,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Concurrency: 1,
+		Credentials: map[string]any{"api_key": "sk-test", "base_url": "https://compat.example/v1"},
+		Extra:       map[string]any{openai_compat.ExtraKeyResponsesSupported: false},
+	}
+
+	result, err := svc.ForwardAsChatCompletions(context.Background(), c, account, body, "", "compat-model")
+
+	require.Error(t, err)
+	require.Nil(t, result)
+	require.Equal(t, "https://compat.example/v1/responses", upstream.lastReq.URL.String())
+	require.True(t, gjson.GetBytes(upstream.lastBody, "input").Exists())
+	require.False(t, gjson.GetBytes(upstream.lastBody, "messages").Exists())
 }
 
 func TestForwardAsChatCompletions_APIKeyForceChatUsesRawChatEndpoint(t *testing.T) {
@@ -91,7 +125,7 @@ func TestForwardAsChatCompletions_APIKeyForceChatUsesRawChatEndpoint(t *testing.
 	require.Equal(t, 7, result.Usage.OutputTokens)
 }
 
-func TestForwardAsChatCompletions_APIKeyWithoutResponsesStreamsRawChatSSE(t *testing.T) {
+func TestForwardAsChatCompletions_APIKeyChatSwitchStreamsRawChatSSE(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
@@ -112,7 +146,10 @@ func TestForwardAsChatCompletions_APIKeyWithoutResponsesStreamsRawChatSSE(t *tes
 		Type:        AccountTypeAPIKey,
 		Concurrency: 1,
 		Credentials: map[string]any{"api_key": "sk-test", "base_url": "https://compat.example"},
-		Extra:       map[string]any{openai_compat.ExtraKeyResponsesSupported: false},
+		Extra: map[string]any{
+			openai_compat.ExtraKeyResponsesMode:      string(openai_compat.ResponsesSupportModeForceChatCompletions),
+			openai_compat.ExtraKeyResponsesSupported: false,
+		},
 	}
 
 	result, err := svc.ForwardAsChatCompletions(context.Background(), c, account, body, "", "compat-model")

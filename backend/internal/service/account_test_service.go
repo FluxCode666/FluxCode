@@ -511,6 +511,7 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 	var authToken string
 	var apiURL string
 	var isOAuth bool
+	useResponsesAPI := true
 
 	if account.IsOAuth() {
 		isOAuth = true
@@ -542,16 +543,12 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 		if err != nil {
 			return s.sendErrorAndEnd(c, fmt.Sprintf("Invalid base URL: %s", err.Error()))
 		}
-		// 账号已被探测为不支持 Responses（如 DeepSeek/Kimi 等）时，丢出明确提示。
-		// 账号本身可用（网关会走 CC 直转），仅测试入口需要补齐 CC SSE 处理逻辑。
-		// TODO：实现 CC 格式的账号测试路径（需专门的 CC SSE handler）。
-		if !openai_compat.ShouldUseResponsesAPI(account.Extra) {
-			return s.sendErrorAndEnd(c,
-				"账号已被探测为不支持 OpenAI Responses API（如 DeepSeek/Kimi 等三方兼容上游），"+
-					"账号本身可正常使用，但当前测试接口仅支持 Responses API 路径。请直接通过实际 API 调用验证。",
-			)
+		useResponsesAPI = openai_compat.ShouldUseResponsesAPI(account.Extra)
+		if useResponsesAPI {
+			apiURL = buildOpenAIResponsesURL(normalizedBaseURL)
+		} else {
+			apiURL = buildOpenAIChatCompletionsURL(normalizedBaseURL)
 		}
-		apiURL = buildOpenAIResponsesURL(normalizedBaseURL)
 	} else {
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Unsupported account type: %s", account.Type))
 	}
@@ -563,8 +560,12 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 	c.Writer.Header().Set("X-Accel-Buffering", "no")
 	c.Writer.Flush()
 
-	// Create OpenAI Responses API payload
-	payload := createOpenAITestPayload(testModelID, isOAuth)
+	var payload map[string]any
+	if useResponsesAPI {
+		payload = createOpenAITestPayload(testModelID, isOAuth)
+	} else {
+		payload = createOpenAIChatCompletionsTestPayload(testModelID, prompt)
+	}
 	payloadBytes, _ := json.Marshal(payload)
 
 	// Send test_start event once. A task-invalid Agent Identity response may
@@ -593,8 +594,18 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 	} else {
 		req.Header.Set("Authorization", "Bearer "+authToken)
 	}
-	// 发往 OpenAI 上游统一强制覆写 UA，与线上转发行为保持一致。
-	req.Header.Set("User-Agent", resolveCodexCLIUserAgent())
+	// Chat Completions 直连路径优先使用账号自定义 UA，与实际网关链路保持一致。
+	if !useResponsesAPI {
+		req.Header.Set("Accept", "application/json")
+		if customUA := strings.TrimSpace(account.GetOpenAIUserAgent()); customUA != "" {
+			req.Header.Set("User-Agent", customUA)
+		} else {
+			req.Header.Set("User-Agent", resolveCodexCLIUserAgent())
+		}
+	} else {
+		// 发往 Responses 上游统一强制覆写 UA，与线上转发行为保持一致。
+		req.Header.Set("User-Agent", resolveCodexCLIUserAgent())
+	}
 
 	// Set OAuth-specific headers for ChatGPT internal API
 	if isOAuth {
@@ -642,7 +653,10 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 		return s.sendErrorAndEnd(c, fmt.Sprintf("API returned %d: %s", resp.StatusCode, string(body)))
 	}
 
-	// Process SSE stream
+	if !useResponsesAPI {
+		return s.processOpenAIChatCompletionsResponse(c, resp.Body)
+	}
+
 	return s.processOpenAIStream(c, resp.Body)
 }
 
@@ -1028,6 +1042,91 @@ func createOpenAITestPayload(modelID string, isOAuth bool) map[string]any {
 	payload["instructions"] = openai.DefaultInstructions
 
 	return payload
+}
+
+// createOpenAIChatCompletionsTestPayload creates a minimal non-streaming test
+// request for accounts whose Chat Completions switch is enabled.
+func createOpenAIChatCompletionsTestPayload(modelID string, prompt string) map[string]any {
+	testPrompt := strings.TrimSpace(prompt)
+	if testPrompt == "" {
+		testPrompt = "hi"
+	}
+	return map[string]any{
+		"model": modelID,
+		"messages": []map[string]any{
+			{
+				"role":    "user",
+				"content": testPrompt,
+			},
+		},
+		"stream": false,
+	}
+}
+
+// processOpenAIChatCompletionsResponse converts a non-streaming upstream Chat
+// Completions response into the SSE events consumed by the account-test page.
+func (s *AccountTestService) processOpenAIChatCompletionsResponse(c *gin.Context, body io.Reader) error {
+	responseBody, err := io.ReadAll(io.LimitReader(body, 2<<20))
+	if err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Failed to read Chat Completions response: %s", err.Error()))
+	}
+
+	var result struct {
+		Choices []struct {
+			Message struct {
+				Content          any    `json:"content"`
+				ReasoningContent string `json:"reasoning_content"`
+			} `json:"message"`
+			Text string `json:"text"`
+		} `json:"choices"`
+		Error struct {
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(responseBody, &result); err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Failed to parse Chat Completions response: %s", err.Error()))
+	}
+	if result.Error.Message != "" {
+		return s.sendErrorAndEnd(c, result.Error.Message)
+	}
+	if len(result.Choices) == 0 {
+		return s.sendErrorAndEnd(c, "Chat Completions response contains no choices")
+	}
+
+	text := extractOpenAIChatTestContent(result.Choices[0].Message.Content)
+	if text == "" {
+		text = result.Choices[0].Message.ReasoningContent
+	}
+	if text == "" {
+		text = result.Choices[0].Text
+	}
+	if text == "" {
+		text = "(empty response)"
+	}
+	s.sendEvent(c, TestEvent{Type: "content", Text: text})
+	s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
+	return nil
+}
+
+func extractOpenAIChatTestContent(content any) string {
+	switch value := content.(type) {
+	case string:
+		return value
+	case []any:
+		var parts []string
+		for _, item := range value {
+			part, ok := item.(map[string]any)
+			if !ok {
+				continue
+			}
+			if text, ok := part["text"].(string); ok && text != "" {
+				parts = append(parts, text)
+			}
+		}
+		return strings.Join(parts, "")
+	default:
+		return ""
+	}
 }
 
 // processClaudeStream processes the SSE stream from Claude API

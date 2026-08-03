@@ -58,7 +58,8 @@ func openaiResponsesProbePayload(modelID string) []byte {
 // 该方法是幂等的：重复调用会以最新探测结果覆盖标记。
 //
 // 关于失败处理：探测本身的失败不应阻塞账号创建——账号能创建/更新成功就够了，
-// 探测结果只影响后续路由优化。所有错误都仅记录日志，不向调用方传播。
+// 探测结果仅用于能力展示，不影响后续协议路由。所有错误都仅记录日志，
+// 不向调用方传播。
 func (s *AccountTestService) ProbeOpenAIAPIKeyResponsesSupport(ctx context.Context, accountID int64) {
 	account, err := s.accountRepo.GetByID(ctx, accountID)
 	if err != nil {

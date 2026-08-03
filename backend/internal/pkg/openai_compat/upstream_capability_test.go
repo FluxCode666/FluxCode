@@ -13,11 +13,11 @@ func TestResolveResponsesSupport(t *testing.T) {
 		{"key missing", map[string]any{"other": "value"}, ResponsesSupportUnknown},
 		{"value true", map[string]any{ExtraKeyResponsesSupported: true}, ResponsesSupportYes},
 		{"value false", map[string]any{ExtraKeyResponsesSupported: false}, ResponsesSupportNo},
-		{"force chat overrides supported", map[string]any{
+		{"force chat does not change probed capability", map[string]any{
 			ExtraKeyResponsesMode:      string(ResponsesSupportModeForceChatCompletions),
 			ExtraKeyResponsesSupported: true,
-		}, ResponsesSupportNo},
-		{"auto follows supported", map[string]any{
+		}, ResponsesSupportYes},
+		{"auto does not change probed capability", map[string]any{
 			ExtraKeyResponsesMode:      string(ResponsesSupportModeAuto),
 			ExtraKeyResponsesSupported: false,
 		}, ResponsesSupportNo},
@@ -46,21 +46,25 @@ func TestShouldUseResponsesAPI(t *testing.T) {
 		extra map[string]any
 		want  bool
 	}{
-		// 关键不变量：未探测必须返回 true（保留旧行为）
+		// 关键不变量：除非显式打开 Chat 开关，否则始终使用 Responses。
 		{"unknown defaults to true (preserve old behavior)", nil, true},
 		{"unknown empty defaults to true", map[string]any{}, true},
 		{"unknown wrong type defaults to true", map[string]any{ExtraKeyResponsesSupported: "yes"}, true},
 
-		// 已探测：标记决定
+		// 探测结果只描述能力，不改变协议路由。
 		{"explicitly supported", map[string]any{ExtraKeyResponsesSupported: true}, true},
-		{"explicitly unsupported", map[string]any{ExtraKeyResponsesSupported: false}, false},
+		{"explicitly unsupported still uses responses", map[string]any{ExtraKeyResponsesSupported: false}, true},
 		{"force chat overrides supported", map[string]any{
 			ExtraKeyResponsesMode:      string(ResponsesSupportModeForceChatCompletions),
 			ExtraKeyResponsesSupported: true,
 		}, false},
-		{"auto follows supported", map[string]any{
+		{"force chat also overrides unsupported", map[string]any{
+			ExtraKeyResponsesMode:      string(ResponsesSupportModeForceChatCompletions),
+			ExtraKeyResponsesSupported: false,
+		}, false},
+		{"auto ignores unsupported probe", map[string]any{
 			ExtraKeyResponsesMode:      string(ResponsesSupportModeAuto),
-			ExtraKeyResponsesSupported: true,
+			ExtraKeyResponsesSupported: false,
 		}, true},
 	}
 

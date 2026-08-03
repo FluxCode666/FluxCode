@@ -12,8 +12,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/openai_compat"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 )
@@ -141,4 +144,70 @@ func TestAccountTestService_OpenAI429PersistsSnapshotWithoutRateLimit(t *testing
 	require.Zero(t, repo.rateLimitedID)
 	require.Nil(t, repo.rateLimitedAt)
 	require.Nil(t, account.RateLimitResetAt)
+}
+
+func TestAccountTestService_OpenAIAPIKeyUnsupportedProbeWithoutChatSwitchTestsResponses(t *testing.T) {
+	ctx, recorder := newTestContext()
+	resp := newJSONResponse(http.StatusOK, "data: {\"type\":\"response.output_text.delta\",\"delta\":\"hi\"}\n\ndata: {\"type\":\"response.completed\"}\n\n")
+	upstream := &queuedHTTPUpstream{responses: []*http.Response{resp}}
+	svc := &AccountTestService{httpUpstream: upstream, cfg: &config.Config{}}
+	account := &Account{
+		ID:          90,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"api_key":  "sk-test",
+			"base_url": "https://compat.example/v1",
+		},
+		Extra: map[string]any{openai_compat.ExtraKeyResponsesSupported: false},
+	}
+
+	err := svc.testOpenAIAccountConnection(ctx, account, "compat-model", "")
+
+	require.NoError(t, err)
+	require.Len(t, upstream.requests, 1)
+	require.Equal(t, "https://compat.example/v1/responses", upstream.requests[0].URL.String())
+	requestBody, readErr := io.ReadAll(upstream.requests[0].Body)
+	require.NoError(t, readErr)
+	require.True(t, gjson.GetBytes(requestBody, "input").Exists())
+	require.False(t, gjson.GetBytes(requestBody, "messages").Exists())
+	require.Contains(t, recorder.Body.String(), "test_complete")
+}
+
+func TestAccountTestService_OpenAIAPIKeyChatSwitchTestsChatCompletions(t *testing.T) {
+	ctx, recorder := newTestContext()
+	resp := newJSONResponse(http.StatusOK, `{"choices":[{"message":{"role":"assistant","content":"chat works"},"finish_reason":"stop"}]}`)
+	upstream := &queuedHTTPUpstream{responses: []*http.Response{resp}}
+	svc := &AccountTestService{httpUpstream: upstream, cfg: &config.Config{}}
+	account := &Account{
+		ID:          91,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"api_key":    "sk-test",
+			"base_url":   "https://compat.example/v1",
+			"user_agent": "compat-tester/1.0",
+		},
+		Extra: map[string]any{
+			openai_compat.ExtraKeyResponsesMode:      string(openai_compat.ResponsesSupportModeForceChatCompletions),
+			openai_compat.ExtraKeyResponsesSupported: true,
+		},
+	}
+
+	err := svc.testOpenAIAccountConnection(ctx, account, "compat-model", "test prompt")
+
+	require.NoError(t, err)
+	require.Len(t, upstream.requests, 1)
+	require.Equal(t, "https://compat.example/v1/chat/completions", upstream.requests[0].URL.String())
+	require.Equal(t, "application/json", upstream.requests[0].Header.Get("Accept"))
+	require.Equal(t, "compat-tester/1.0", upstream.requests[0].Header.Get("User-Agent"))
+	requestBody, readErr := io.ReadAll(upstream.requests[0].Body)
+	require.NoError(t, readErr)
+	require.Equal(t, "test prompt", gjson.GetBytes(requestBody, "messages.0.content").String())
+	require.False(t, gjson.GetBytes(requestBody, "input").Exists())
+	require.False(t, gjson.GetBytes(requestBody, "stream").Bool())
+	require.Contains(t, recorder.Body.String(), "chat works")
+	require.Contains(t, recorder.Body.String(), "test_complete")
 }
