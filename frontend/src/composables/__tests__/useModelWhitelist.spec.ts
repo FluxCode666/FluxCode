@@ -4,7 +4,12 @@ vi.mock('@/api/admin/accounts', () => ({
   getAntigravityDefaultModelMapping: vi.fn()
 }))
 
-import { buildModelMappingObject, getModelsByPlatform } from '../useModelWhitelist'
+import {
+  buildModelMappingObject,
+  getDefaultModelsForAccount,
+  getModelsByPlatform,
+  openAIAPIKeyDefaultModels
+} from '../useModelWhitelist'
 
 describe('useModelWhitelist', () => {
   it('openai 模型列表包含 GPT-5.5 与 GPT-5.4 官方快照', () => {
@@ -27,6 +32,22 @@ describe('useModelWhitelist', () => {
     expect(models).toContain('gpt-5.6-sol')
     expect(models).toContain('gpt-5.6-terra')
     expect(models).toContain('gpt-5.6-luna')
+  })
+
+  it('OpenAI API Key 账号只默认启用指定模型', () => {
+    expect(getDefaultModelsForAccount('openai', 'apikey')).toEqual([
+      'gpt-5.4',
+      'gpt-5.4-mini',
+      'gpt-5.5',
+      'gpt-5.6-luna',
+      'gpt-5.6-terra',
+      'gpt-5.6-sol'
+    ])
+    expect(getDefaultModelsForAccount('openai', 'apikey')).toBe(openAIAPIKeyDefaultModels)
+  })
+
+  it('OpenAI OAuth 账号仍默认启用完整模型列表', () => {
+    expect(getDefaultModelsForAccount('openai', 'oauth-based')).toEqual(getModelsByPlatform('openai'))
   })
 
   it('antigravity 模型列表包含图片模型兼容项', () => {

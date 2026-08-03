@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   DEFAULT_CCSWITCH_CLAUDE_MODEL_ID,
+  DEFAULT_CCSWITCH_CODEX_MODEL_ID,
   buildCcswitchProviderDeepLink
 } from '../ccswitchDeepLink'
 
@@ -18,7 +19,7 @@ const baseOptions = {
 }
 
 describe('buildCcswitchProviderDeepLink', () => {
-  it('adds GPT-5.5 as the default Codex model', () => {
+  it('adds GPT-5.6 Sol as the default Codex model', () => {
     const params = paramsFor(buildCcswitchProviderDeepLink({
       ...baseOptions,
       app: 'codex',
@@ -27,8 +28,18 @@ describe('buildCcswitchProviderDeepLink', () => {
 
     expect(params.get('resource')).toBe('provider')
     expect(params.get('app')).toBe('codex')
-    expect(params.get('model')).toBe('gpt-5.5')
+    expect(params.get('model')).toBe(DEFAULT_CCSWITCH_CODEX_MODEL_ID)
     expect(params.has('opusModel')).toBe(false)
+  })
+
+  it('migrates the previous OpenAI default model for Codex imports', () => {
+    const params = paramsFor(buildCcswitchProviderDeepLink({
+      ...baseOptions,
+      app: 'codex',
+      openaiModelId: 'gpt-5.5'
+    }))
+
+    expect(params.get('model')).toBe(DEFAULT_CCSWITCH_CODEX_MODEL_ID)
   })
 
   it('uses configured OpenAI model id for Codex imports', () => {

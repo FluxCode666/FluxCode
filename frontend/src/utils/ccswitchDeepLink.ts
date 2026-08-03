@@ -1,8 +1,17 @@
-import { resolveOpenAIUseKeyModelId } from './openaiUseKeyModel'
+import {
+  DEFAULT_OPENAI_USE_KEY_MODEL_ID,
+  resolveOpenAIUseKeyModelId
+} from './openaiUseKeyModel'
 
 export type CcswitchProviderApp = 'claude' | 'codex' | 'gemini'
 
 export const DEFAULT_CCSWITCH_CLAUDE_MODEL_ID = 'claude-opus-4-7'
+export const DEFAULT_CCSWITCH_CODEX_MODEL_ID = 'gpt-5.6-sol'
+
+function resolveCcswitchCodexModelId(raw?: string | null): string {
+  const modelId = resolveOpenAIUseKeyModelId(raw)
+  return modelId === DEFAULT_OPENAI_USE_KEY_MODEL_ID ? DEFAULT_CCSWITCH_CODEX_MODEL_ID : modelId
+}
 
 interface BuildCcswitchProviderDeepLinkOptions {
   app: CcswitchProviderApp
@@ -31,7 +40,7 @@ export function buildCcswitchProviderDeepLink(
   })
 
   if (options.app === 'codex') {
-    params.set('model', resolveOpenAIUseKeyModelId(options.openaiModelId))
+    params.set('model', resolveCcswitchCodexModelId(options.openaiModelId))
   }
 
   if (options.app === 'claude') {

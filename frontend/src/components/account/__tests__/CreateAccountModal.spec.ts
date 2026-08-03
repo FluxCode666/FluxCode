@@ -212,6 +212,14 @@ describe('CreateAccountModal', () => {
 
     expect(createAccountMock).toHaveBeenCalledTimes(1)
     expect(createAccountMock.mock.calls[0]?.[0]?.extra?.openai_image_response_url_mode).toBe('http_url')
+    expect(createAccountMock.mock.calls[0]?.[0]?.credentials?.model_mapping).toEqual({
+      'gpt-5.4': 'gpt-5.4',
+      'gpt-5.4-mini': 'gpt-5.4-mini',
+      'gpt-5.5': 'gpt-5.5',
+      'gpt-5.6-luna': 'gpt-5.6-luna',
+      'gpt-5.6-terra': 'gpt-5.6-terra',
+      'gpt-5.6-sol': 'gpt-5.6-sol'
+    })
   })
 
   it('creates OpenAI API Key accounts with force Chat Completions enabled', async () => {
