@@ -424,7 +424,7 @@ export function getModelsByPlatform(platform: string): string[] {
 }
 
 export function getDefaultModelsForAccount(platform: string, accountCategory: string): string[] {
-  if (platform === 'openai' && accountCategory === 'apikey') {
+  if (platform === 'openai' && (accountCategory === 'apikey' || accountCategory === 'oauth-based')) {
     return openAIAPIKeyDefaultModels
   }
   return getModelsByPlatform(platform)

@@ -46,8 +46,9 @@ describe('useModelWhitelist', () => {
     expect(getDefaultModelsForAccount('openai', 'apikey')).toBe(openAIAPIKeyDefaultModels)
   })
 
-  it('OpenAI OAuth 账号仍默认启用完整模型列表', () => {
-    expect(getDefaultModelsForAccount('openai', 'oauth-based')).toEqual(getModelsByPlatform('openai'))
+  it('OpenAI OAuth 账号也默认启用指定模型', () => {
+    expect(getDefaultModelsForAccount('openai', 'oauth-based')).toEqual(openAIAPIKeyDefaultModels)
+    expect(getDefaultModelsForAccount('openai', 'oauth-based')).not.toEqual(getModelsByPlatform('openai'))
   })
 
   it('antigravity 模型列表包含图片模型兼容项', () => {
