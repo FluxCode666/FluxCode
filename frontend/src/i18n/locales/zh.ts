@@ -2686,6 +2686,7 @@ export default {
       failedToDelete: '删除分组失败',
       allPlatforms: '全部平台',
       allStatus: '全部状态',
+      allBillingTypes: '全部计费类型',
       allGroups: '全部分组',
       exclusiveFilter: '专属',
       nonExclusive: '公开',

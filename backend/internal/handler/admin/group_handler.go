@@ -172,6 +172,10 @@ func (h *GroupHandler) List(c *gin.Context) {
 		search = search[:100]
 	}
 	isExclusiveStr := c.Query("is_exclusive")
+	subscriptionType := c.Query("subscription_type")
+	if subscriptionType != "standard" && subscriptionType != "subscription" {
+		subscriptionType = ""
+	}
 	sortBy := c.DefaultQuery("sort_by", "sort_order")
 	sortOrder := c.DefaultQuery("sort_order", "asc")
 
@@ -181,7 +185,7 @@ func (h *GroupHandler) List(c *gin.Context) {
 		isExclusive = &val
 	}
 
-	groups, total, err := h.adminService.ListGroups(c.Request.Context(), page, pageSize, platform, status, search, isExclusive, sortBy, sortOrder)
+	groups, total, err := h.adminService.ListGroups(c.Request.Context(), page, pageSize, platform, status, search, isExclusive, sortBy, sortOrder, subscriptionType)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

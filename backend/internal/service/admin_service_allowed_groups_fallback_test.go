@@ -49,7 +49,7 @@ func (s *groupRepoStubForAllowedGroups) DeleteCascade(context.Context, int64) ([
 func (s *groupRepoStubForAllowedGroups) List(context.Context, pagination.PaginationParams) ([]Group, *pagination.PaginationResult, error) {
 	panic("unexpected")
 }
-func (s *groupRepoStubForAllowedGroups) ListWithFilters(context.Context, pagination.PaginationParams, string, string, string, *bool) ([]Group, *pagination.PaginationResult, error) {
+func (s *groupRepoStubForAllowedGroups) ListWithFilters(context.Context, pagination.PaginationParams, string, string, string, *bool, string) ([]Group, *pagination.PaginationResult, error) {
 	panic("unexpected")
 }
 func (s *groupRepoStubForAllowedGroups) ListActive(context.Context) ([]Group, error) {

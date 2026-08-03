@@ -2552,6 +2552,7 @@ export default {
       failedToUpdateSortOrder: 'Failed to update sort order',
       allPlatforms: 'All Platforms',
       allStatus: 'All Status',
+      allBillingTypes: 'All Billing Types',
       allGroups: 'All Groups',
       exclusive: 'Exclusive',
       nonExclusive: 'Non-Exclusive',

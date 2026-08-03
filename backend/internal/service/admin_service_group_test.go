@@ -23,15 +23,16 @@ type groupRepoStubForAdmin struct {
 	getByID *Group // GetByID 返回值
 	getErr  error  // GetByID 返回的错误
 
-	listWithFiltersCalls       int
-	listWithFiltersParams      pagination.PaginationParams
-	listWithFiltersPlatform    string
-	listWithFiltersStatus      string
-	listWithFiltersSearch      string
-	listWithFiltersIsExclusive *bool
-	listWithFiltersGroups      []Group
-	listWithFiltersResult      *pagination.PaginationResult
-	listWithFiltersErr         error
+	listWithFiltersCalls            int
+	listWithFiltersParams           pagination.PaginationParams
+	listWithFiltersPlatform         string
+	listWithFiltersStatus           string
+	listWithFiltersSearch           string
+	listWithFiltersIsExclusive      *bool
+	listWithFiltersSubscriptionType string
+	listWithFiltersGroups           []Group
+	listWithFiltersResult           *pagination.PaginationResult
+	listWithFiltersErr              error
 }
 
 func (s *groupRepoStubForAdmin) Create(_ context.Context, g *Group) error {
@@ -70,13 +71,14 @@ func (s *groupRepoStubForAdmin) List(_ context.Context, _ pagination.PaginationP
 	panic("unexpected List call")
 }
 
-func (s *groupRepoStubForAdmin) ListWithFilters(_ context.Context, params pagination.PaginationParams, platform, status, search string, isExclusive *bool) ([]Group, *pagination.PaginationResult, error) {
+func (s *groupRepoStubForAdmin) ListWithFilters(_ context.Context, params pagination.PaginationParams, platform, status, search string, isExclusive *bool, subscriptionType string) ([]Group, *pagination.PaginationResult, error) {
 	s.listWithFiltersCalls++
 	s.listWithFiltersParams = params
 	s.listWithFiltersPlatform = platform
 	s.listWithFiltersStatus = status
 	s.listWithFiltersSearch = search
 	s.listWithFiltersIsExclusive = isExclusive
+	s.listWithFiltersSubscriptionType = subscriptionType
 
 	if s.listWithFiltersErr != nil {
 		return nil, nil, s.listWithFiltersErr
@@ -132,7 +134,7 @@ func TestAdminService_ListGroups_PassesSortParams(t *testing.T) {
 	}
 	svc := &adminServiceImpl{groupRepo: repo}
 
-	_, _, err := svc.ListGroups(context.Background(), 3, 25, PlatformOpenAI, StatusActive, "needle", nil, "account_count", "ASC")
+	_, _, err := svc.ListGroups(context.Background(), 3, 25, PlatformOpenAI, StatusActive, "needle", nil, "account_count", "ASC", SubscriptionTypeStandard)
 	require.NoError(t, err)
 	require.Equal(t, pagination.PaginationParams{
 		Page:      3,
@@ -140,6 +142,7 @@ func TestAdminService_ListGroups_PassesSortParams(t *testing.T) {
 		SortBy:    "account_count",
 		SortOrder: "ASC",
 	}, repo.listWithFiltersParams)
+	require.Equal(t, SubscriptionTypeStandard, repo.listWithFiltersSubscriptionType)
 }
 
 // TestAdminService_CreateGroup_WithImagePricing 测试创建分组时 ImagePrice 字段正确传递
@@ -396,7 +399,7 @@ func TestAdminService_ListGroups_WithSearch(t *testing.T) {
 		}
 		svc := &adminServiceImpl{groupRepo: repo}
 
-		groups, total, err := svc.ListGroups(context.Background(), 1, 20, "", "", "alpha", nil, "", "")
+		groups, total, err := svc.ListGroups(context.Background(), 1, 20, "", "", "alpha", nil, "", "", "")
 		require.NoError(t, err)
 		require.Equal(t, int64(1), total)
 		require.Equal(t, []Group{{ID: 1, Name: "alpha"}}, groups)
@@ -414,7 +417,7 @@ func TestAdminService_ListGroups_WithSearch(t *testing.T) {
 		}
 		svc := &adminServiceImpl{groupRepo: repo}
 
-		groups, total, err := svc.ListGroups(context.Background(), 2, 10, "", "", "", nil, "", "")
+		groups, total, err := svc.ListGroups(context.Background(), 2, 10, "", "", "", nil, "", "", "")
 		require.NoError(t, err)
 		require.Empty(t, groups)
 		require.Equal(t, int64(0), total)
@@ -433,7 +436,7 @@ func TestAdminService_ListGroups_WithSearch(t *testing.T) {
 		}
 		svc := &adminServiceImpl{groupRepo: repo}
 
-		groups, total, err := svc.ListGroups(context.Background(), 3, 50, PlatformAntigravity, StatusActive, "beta", &isExclusive, "", "")
+		groups, total, err := svc.ListGroups(context.Background(), 3, 50, PlatformAntigravity, StatusActive, "beta", &isExclusive, "", "", "")
 		require.NoError(t, err)
 		require.Equal(t, int64(42), total)
 		require.Equal(t, []Group{{ID: 2, Name: "beta"}}, groups)
@@ -505,7 +508,7 @@ func (s *groupRepoStubForFallbackCycle) List(_ context.Context, _ pagination.Pag
 	panic("unexpected List call")
 }
 
-func (s *groupRepoStubForFallbackCycle) ListWithFilters(_ context.Context, _ pagination.PaginationParams, _, _, _ string, _ *bool) ([]Group, *pagination.PaginationResult, error) {
+func (s *groupRepoStubForFallbackCycle) ListWithFilters(_ context.Context, _ pagination.PaginationParams, _, _, _ string, _ *bool, _ string) ([]Group, *pagination.PaginationResult, error) {
 	panic("unexpected ListWithFilters call")
 }
 
@@ -679,7 +682,7 @@ func (s *groupRepoStubForInvalidRequestFallback) List(_ context.Context, _ pagin
 	panic("unexpected List call")
 }
 
-func (s *groupRepoStubForInvalidRequestFallback) ListWithFilters(_ context.Context, _ pagination.PaginationParams, _, _, _ string, _ *bool) ([]Group, *pagination.PaginationResult, error) {
+func (s *groupRepoStubForInvalidRequestFallback) ListWithFilters(_ context.Context, _ pagination.PaginationParams, _, _, _ string, _ *bool, _ string) ([]Group, *pagination.PaginationResult, error) {
 	panic("unexpected ListWithFilters call")
 }
 

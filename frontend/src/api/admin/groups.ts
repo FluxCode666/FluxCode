@@ -16,7 +16,7 @@ import type {
  * List all groups with pagination
  * @param page - Page number (default: 1)
  * @param pageSize - Items per page (default: 20)
- * @param filters - Optional filters (platform, status, is_exclusive, search)
+ * @param filters - Optional filters (platform, status, subscription_type, is_exclusive, search)
  * @returns Paginated list of groups
  */
 export async function list(
@@ -25,6 +25,7 @@ export async function list(
   filters?: {
     platform?: GroupPlatform
     status?: 'active' | 'inactive'
+    subscription_type?: 'standard' | 'subscription'
     is_exclusive?: boolean
     search?: string
     sort_by?: string
