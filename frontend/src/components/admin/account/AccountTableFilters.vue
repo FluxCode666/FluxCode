@@ -80,9 +80,25 @@
     <Select
       v-if="isFilterVisible('group')"
       :model-value="filters.group"
+      data-test="account-group-filter"
       class="w-44"
       :options="groupOptions"
+      searchable
+      :search-placeholder="t('admin.accounts.searchGroups')"
       @update:model-value="updateGroup"
+      @change="$emit('change')"
+    />
+    <Select
+      v-if="isFilterVisible('model')"
+      :model-value="filters.model"
+      data-test="account-model-filter"
+      class="w-52"
+      :options="modelOptions"
+      searchable
+      creatable
+      :search-placeholder="t('admin.accounts.searchModels')"
+      :creatable-prefix="t('admin.accounts.queryModel')"
+      @update:model-value="updateModel"
       @change="$emit('change')"
     />
     <div v-if="isFilterVisible('proxy_ids')" class="w-full min-w-[14rem] sm:w-56">
@@ -118,6 +134,7 @@ import Icon from '@/components/icons/Icon.vue'
 import ProxyMultiSelectFilter from '@/components/common/ProxyMultiSelectFilter.vue'
 import SearchInput from '@/components/common/SearchInput.vue'
 import Select from '@/components/common/Select.vue'
+import { allModels } from '@/composables/useModelWhitelist'
 import type { AccountSchedulingState, AdminGroup, Proxy } from '@/types'
 
 const props = defineProps<{
@@ -142,6 +159,7 @@ type FilterKey =
   | 'privacy_mode'
   | 'schedulable_status'
   | 'group'
+  | 'model'
   | 'proxy_ids'
   | 'created_at'
 
@@ -154,6 +172,7 @@ const allFilterKeys: FilterKey[] = [
   'privacy_mode',
   'schedulable_status',
   'group',
+  'model',
   'proxy_ids',
   'created_at'
 ]
@@ -209,6 +228,7 @@ const configurableFilters = computed<Array<{ key: FilterKey; label: string }>>((
   { key: 'privacy_mode', label: t('admin.accounts.filterLabels.privacyMode') },
   { key: 'schedulable_status', label: t('admin.accounts.filterLabels.schedulingStatus') },
   { key: 'group', label: t('admin.accounts.filterLabels.group') },
+  { key: 'model', label: t('admin.accounts.filterLabels.model') },
   { key: 'proxy_ids', label: t('admin.accounts.filterLabels.proxy') },
   { key: 'created_at', label: t('admin.accounts.filterLabels.createdAt') }
 ])
@@ -253,6 +273,10 @@ const updateSchedulingStatus = (value: string | number | boolean | null) => {
 
 const updateGroup = (value: string | number | boolean | null) => {
   emitFilters({ group: value ?? '' })
+}
+
+const updateModel = (value: string | number | boolean | null) => {
+  emitFilters({ model: value ?? '' })
 }
 
 const updateProxyIDs = (value: number[]) => {
@@ -324,4 +348,13 @@ const groupOptions = computed(() => [
   { value: 'ungrouped', label: t('admin.accounts.ungroupedGroup') },
   ...(props.groups || []).map((group) => ({ value: String(group.id), label: group.name }))
 ])
+
+const modelOptions = computed(() => {
+  const options = [{ value: '', label: t('admin.accounts.allModels') }, ...allModels]
+  const selectedModel = typeof props.filters.model === 'string' ? props.filters.model.trim() : ''
+  if (selectedModel && !options.some((option) => option.value === selectedModel)) {
+    options.push({ value: selectedModel, label: selectedModel })
+  }
+  return options
+})
 </script>

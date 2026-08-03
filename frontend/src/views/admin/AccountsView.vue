@@ -383,6 +383,7 @@ type AccountTableParams = {
   status: string
   privacy_mode: string
   group: string
+  model: string
   search: string
   schedulable_status: '' | AccountSchedulingState
   proxy_ids: number[]
@@ -647,6 +648,7 @@ const {
     status: '',
     privacy_mode: '',
     group: '',
+    model: '',
     search: '',
     schedulable_status: '',
     proxy_ids: [],
@@ -1242,6 +1244,7 @@ const buildAccountQueryFilters = () => ({
   type: params.type || '',
   status: params.status || '',
   group: params.group || '',
+  model: params.model || '',
   privacy_mode: params.privacy_mode || '',
   search: params.search || '',
   sort_by: params.sort_by,
@@ -1267,6 +1270,23 @@ const accountMatchesCurrentFilters = (account: Account) => {
     if (params.group === ACCOUNT_UNGROUPED_GROUP_QUERY_VALUE) {
       if (groupIds.length > 0) return false
     } else if (!groupIds.includes(Number(params.group))) {
+      return false
+    }
+  }
+  if (params.model) {
+    const rawMapping = account.credentials?.model_mapping
+    const mapping = rawMapping && typeof rawMapping === 'object' && !Array.isArray(rawMapping)
+      ? rawMapping as Record<string, unknown>
+      : null
+    const patterns = mapping
+      ? Object.entries(mapping)
+        .filter(([, target]) => typeof target === 'string')
+        .map(([pattern]) => pattern)
+      : []
+    if (
+      patterns.length > 0 &&
+      !patterns.some((pattern) => pattern === params.model || (pattern.endsWith('*') && params.model.startsWith(pattern.slice(0, -1))))
+    ) {
       return false
     }
   }

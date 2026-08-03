@@ -19,7 +19,7 @@ type stubAccountListAdminService struct {
 		page, pageSize int,
 		platform, accountType, status, schedulableStatus string,
 		groupID int64,
-		search, sortBy, sortOrder string,
+		search, model, sortBy, sortOrder string,
 		proxyIDs []int64,
 		createdStart, createdEndExclusive *time.Time,
 	) ([]service.Account, int64, error)
@@ -30,14 +30,14 @@ func (s stubAccountListAdminService) ListAccountsAdvanced(
 	page, pageSize int,
 	platform, accountType, status, schedulableStatus string,
 	groupID int64,
-	search, sortBy, sortOrder string,
+	search, model, sortBy, sortOrder string,
 	proxyIDs []int64,
 	createdStart, createdEndExclusive *time.Time,
 ) ([]service.Account, int64, error) {
 	if s.listAccountsAdvancedFn == nil {
 		return []service.Account{}, 0, nil
 	}
-	return s.listAccountsAdvancedFn(ctx, page, pageSize, platform, accountType, status, schedulableStatus, groupID, search, sortBy, sortOrder, proxyIDs, createdStart, createdEndExclusive)
+	return s.listAccountsAdvancedFn(ctx, page, pageSize, platform, accountType, status, schedulableStatus, groupID, search, model, sortBy, sortOrder, proxyIDs, createdStart, createdEndExclusive)
 }
 
 func newAccountListTestRouter(adminSvc service.AdminService) *gin.Engine {
@@ -57,7 +57,7 @@ func TestAccountHandlerList_ProxyIDsZeroNoProxy(t *testing.T) {
 			page, pageSize int,
 			platform, accountType, status, schedulableStatus string,
 			groupID int64,
-			search, sortBy, sortOrder string,
+			search, model, sortBy, sortOrder string,
 			proxyIDs []int64,
 			createdStart, createdEndExclusive *time.Time,
 		) ([]service.Account, int64, error) {
@@ -83,7 +83,7 @@ func TestAccountHandlerList_ProxyIDsZeroWithOthers(t *testing.T) {
 			page, pageSize int,
 			platform, accountType, status, schedulableStatus string,
 			groupID int64,
-			search, sortBy, sortOrder string,
+			search, model, sortBy, sortOrder string,
 			proxyIDs []int64,
 			createdStart, createdEndExclusive *time.Time,
 		) ([]service.Account, int64, error) {
@@ -154,7 +154,7 @@ func TestAccountHandlerList_SortByCreatedAtIsAllowedAndForwarded(t *testing.T) {
 			page, pageSize int,
 			platform, accountType, status, schedulableStatus string,
 			groupID int64,
-			search, sortBy, sortOrder string,
+			search, model, sortBy, sortOrder string,
 			proxyIDs []int64,
 			createdStart, createdEndExclusive *time.Time,
 		) ([]service.Account, int64, error) {
@@ -183,6 +183,7 @@ func TestAccountHandlerList_PassNewFiltersToService(t *testing.T) {
 	var gotCreatedEndExclusive *time.Time
 	var gotSchedulableStatus string
 	var gotGroupID int64
+	var gotModel string
 
 	r := newAccountListTestRouter(stubAccountListAdminService{
 		listAccountsAdvancedFn: func(
@@ -190,7 +191,7 @@ func TestAccountHandlerList_PassNewFiltersToService(t *testing.T) {
 			page, pageSize int,
 			platform, accountType, status, schedulableStatus string,
 			groupID int64,
-			search, sortBy, sortOrder string,
+			search, model, sortBy, sortOrder string,
 			proxyIDs []int64,
 			createdStart, createdEndExclusive *time.Time,
 		) ([]service.Account, int64, error) {
@@ -199,13 +200,14 @@ func TestAccountHandlerList_PassNewFiltersToService(t *testing.T) {
 			gotCreatedEndExclusive = createdEndExclusive
 			gotSchedulableStatus = schedulableStatus
 			gotGroupID = groupID
+			gotModel = model
 			return []service.Account{}, 0, nil
 		},
 	})
 
 	req := httptest.NewRequest(
 		http.MethodGet,
-		"/api/v1/admin/accounts?group_id=42&proxy_ids=2,5,2&created_start_date=2026-02-01&created_end_date=2026-02-03&schedulable_status=available",
+		"/api/v1/admin/accounts?group_id=42&model=gpt-5.6-sol&proxy_ids=2,5,2&created_start_date=2026-02-01&created_end_date=2026-02-03&schedulable_status=available",
 		nil,
 	)
 	w := httptest.NewRecorder()
@@ -216,6 +218,7 @@ func TestAccountHandlerList_PassNewFiltersToService(t *testing.T) {
 	require.NotNil(t, gotCreatedStart)
 	require.NotNil(t, gotCreatedEndExclusive)
 	require.Equal(t, int64(42), gotGroupID)
+	require.Equal(t, "gpt-5.6-sol", gotModel)
 	require.Equal(t, "available", gotSchedulableStatus)
 	require.Equal(t, "2026-02-01", gotCreatedStart.Format("2006-01-02"))
 	require.Equal(t, "2026-02-04", gotCreatedEndExclusive.Format("2006-01-02"))

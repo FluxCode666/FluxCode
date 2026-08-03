@@ -590,7 +590,7 @@ func (r *accountRepository) ListWithAdvancedFilters(
 	params pagination.PaginationParams,
 	platform, accountType, status, schedulableStatus string,
 	groupID int64,
-	search, sortBy, sortOrder string,
+	search, model, sortBy, sortOrder string,
 	proxyIDs []int64,
 	createdStart, createdEndExclusive *time.Time,
 ) ([]service.Account, *pagination.PaginationResult, error) {
@@ -654,6 +654,36 @@ func (r *accountRepository) ListWithAdvancedFilters(
 	}
 	if createdEndExclusive != nil {
 		q = q.Where(dbaccount.CreatedAtLT(*createdEndExclusive))
+	}
+
+	model = strings.TrimSpace(model)
+	if model != "" {
+		// 模型支持关系包含平台默认映射和通配符，无法只通过持久化 JSON 精确判断。
+		// 因此先应用数据库筛选与排序，再按领域规则过滤，最后分页以保证 total 和跨页结果正确。
+		accounts, err := q.Order(accountListOrders(sortBy, sortOrder)...).All(ctx)
+		if err != nil {
+			return nil, nil, err
+		}
+		outAccounts, err := r.accountsToService(ctx, accounts)
+		if err != nil {
+			return nil, nil, err
+		}
+		filtered := make([]service.Account, 0, len(outAccounts))
+		for i := range outAccounts {
+			if outAccounts[i].IsModelSupported(model) {
+				filtered = append(filtered, outAccounts[i])
+			}
+		}
+		total := int64(len(filtered))
+		start := params.Offset()
+		if start >= len(filtered) {
+			return []service.Account{}, paginationResultFromTotal(total, params), nil
+		}
+		end := start + params.Limit()
+		if end > len(filtered) {
+			end = len(filtered)
+		}
+		return filtered[start:end], paginationResultFromTotal(total, params), nil
 	}
 
 	total, err := q.Count(ctx)

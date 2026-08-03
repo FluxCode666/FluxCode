@@ -28,6 +28,7 @@ export interface AccountListFilters {
   status?: string
   group?: string
   group_id?: number
+  model?: string
   search?: string
   privacy_mode?: string
   lite?: string

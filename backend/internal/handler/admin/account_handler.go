@@ -68,7 +68,7 @@ type accountListAdvancedAdminService interface {
 		page, pageSize int,
 		platform, accountType, status, schedulableStatus string,
 		groupID int64,
-		search, sortBy, sortOrder string,
+		search, model, sortBy, sortOrder string,
 		proxyIDs []int64,
 		createdStart, createdEndExclusive *time.Time,
 	) ([]service.Account, int64, error)
@@ -306,6 +306,7 @@ func (h *AccountHandler) List(c *gin.Context) {
 		return
 	}
 	search := c.Query("search")
+	model := strings.TrimSpace(c.Query("model"))
 	privacyMode := strings.TrimSpace(c.Query("privacy_mode"))
 	sortBy := c.DefaultQuery("sort_by", "name")
 	sortOrder := c.DefaultQuery("sort_order", "asc")
@@ -313,6 +314,9 @@ func (h *AccountHandler) List(c *gin.Context) {
 	search = strings.TrimSpace(search)
 	if len(search) > 100 {
 		search = search[:100]
+	}
+	if len(model) > 200 {
+		model = model[:200]
 	}
 	lite := parseBoolQueryWithDefault(c.Query("lite"), false)
 
@@ -404,6 +408,7 @@ func (h *AccountHandler) List(c *gin.Context) {
 			string(schedulableStatus),
 			groupID,
 			search,
+			model,
 			sortBy,
 			sortOrder,
 			proxyIDs,

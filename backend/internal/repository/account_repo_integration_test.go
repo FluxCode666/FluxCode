@@ -544,6 +544,7 @@ func (s *AccountRepoSuite) TestListWithAdvancedFilters_FilterBySchedulingStatus(
 				"",
 				"",
 				"",
+				"",
 				nil,
 				nil,
 				nil,
@@ -574,6 +575,7 @@ func (s *AccountRepoSuite) TestListWithAdvancedFilters_FilterByAccountID() {
 		strconv.FormatInt(target.ID, 10),
 		"",
 		"",
+		"",
 		nil,
 		nil,
 		nil,
@@ -582,6 +584,51 @@ func (s *AccountRepoSuite) TestListWithAdvancedFilters_FilterByAccountID() {
 	s.Require().NoError(err)
 	s.Require().Len(accounts, 1)
 	s.Require().Equal(target.ID, accounts[0].ID)
+}
+
+func (s *AccountRepoSuite) TestListWithAdvancedFilters_FilterByModelBeforePagination() {
+	mustCreateAccount(s.T(), s.client, &service.Account{Name: "a-unrestricted", Platform: service.PlatformOpenAI})
+	mustCreateAccount(s.T(), s.client, &service.Account{
+		Name:     "b-exact",
+		Platform: service.PlatformOpenAI,
+		Credentials: map[string]any{
+			"model_mapping": map[string]any{"gpt-5": "gpt-5"},
+		},
+	})
+	mustCreateAccount(s.T(), s.client, &service.Account{
+		Name:     "c-wildcard",
+		Platform: service.PlatformOpenAI,
+		Credentials: map[string]any{
+			"model_mapping": map[string]any{"gpt-*": "gpt-5"},
+		},
+	})
+	mustCreateAccount(s.T(), s.client, &service.Account{
+		Name:     "d-other-model",
+		Platform: service.PlatformOpenAI,
+		Credentials: map[string]any{
+			"model_mapping": map[string]any{"claude-*": "gpt-5"},
+		},
+	})
+
+	pageOne, result, err := s.repo.ListWithAdvancedFilters(
+		s.ctx,
+		pagination.PaginationParams{Page: 1, PageSize: 2},
+		"", "", "", "", 0, "", "gpt-5", "name", "asc", nil, nil, nil,
+	)
+	s.Require().NoError(err)
+	s.Require().Equal(int64(3), result.Total)
+	s.Require().Len(pageOne, 2)
+	s.Require().Equal([]string{"a-unrestricted", "b-exact"}, []string{pageOne[0].Name, pageOne[1].Name})
+
+	pageTwo, result, err := s.repo.ListWithAdvancedFilters(
+		s.ctx,
+		pagination.PaginationParams{Page: 2, PageSize: 2},
+		"", "", "", "", 0, "", "gpt-5", "name", "asc", nil, nil, nil,
+	)
+	s.Require().NoError(err)
+	s.Require().Equal(int64(3), result.Total)
+	s.Require().Len(pageTwo, 1)
+	s.Require().Equal("c-wildcard", pageTwo[0].Name)
 }
 
 func (s *AccountRepoSuite) TestGetAccountSummary() {

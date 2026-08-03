@@ -112,7 +112,7 @@ type accountListAdvancedRepository interface {
 		params pagination.PaginationParams,
 		platform, accountType, status, schedulableStatus string,
 		groupID int64,
-		search, sortBy, sortOrder string,
+		search, model, sortBy, sortOrder string,
 		proxyIDs []int64,
 		createdStart, createdEndExclusive *time.Time,
 	) ([]Account, *pagination.PaginationResult, error)
@@ -1724,7 +1724,7 @@ func (s *adminServiceImpl) ListAccountsAdvanced(
 	page, pageSize int,
 	platform, accountType, status, schedulableStatus string,
 	groupID int64,
-	search, sortBy, sortOrder string,
+	search, model, sortBy, sortOrder string,
 	proxyIDs []int64,
 	createdStart, createdEndExclusive *time.Time,
 ) ([]Account, int64, error) {
@@ -1743,6 +1743,7 @@ func (s *adminServiceImpl) ListAccountsAdvanced(
 		schedulableStatus,
 		groupID,
 		search,
+		model,
 		sortBy,
 		sortOrder,
 		proxyIDs,

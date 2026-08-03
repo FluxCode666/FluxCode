@@ -98,6 +98,7 @@ const AccountTableFiltersStub = defineComponent({
       @click="$emit('update:filters', {
         ...filters,
         schedulable_status: 'manual_unschedulable',
+        model: 'gpt-5.6-sol',
         proxy_ids: [2, 5],
         created_start_date: '2026-02-01',
         created_end_date: '2026-02-03'
@@ -216,6 +217,7 @@ describe('admin AccountsView', () => {
       expect.any(Number),
       expect.objectContaining({
         schedulable_status: 'manual_unschedulable',
+        model: 'gpt-5.6-sol',
         proxy_ids: [2, 5],
         created_start_date: '2026-02-01',
         created_end_date: '2026-02-03',
