@@ -1,9 +1,10 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import {
   DEFAULT_CCSWITCH_CLAUDE_MODEL_ID,
   DEFAULT_CCSWITCH_CODEX_MODEL_ID,
-  buildCcswitchProviderDeepLink
+  buildCcswitchProviderDeepLink,
+  openCcswitchDeepLink
 } from '../ccswitchDeepLink'
 
 function paramsFor(link: string) {
@@ -70,5 +71,41 @@ describe('buildCcswitchProviderDeepLink', () => {
 
     expect(params.has('model')).toBe(false)
     expect(params.has('opusModel')).toBe(false)
+  })
+})
+
+describe('openCcswitchDeepLink', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('uses a temporary native link to launch the Windows protocol handler', () => {
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+    const deepLink = 'ccswitch://v1/import?resource=provider&app=codex'
+
+    openCcswitchDeepLink(deepLink)
+
+    expect(click).toHaveBeenCalledOnce()
+    const link = click.mock.instances[0] as HTMLAnchorElement
+    expect(link.getAttribute('href')).toBe(deepLink)
+    expect(link.getAttribute('aria-hidden')).toBe('true')
+    expect(link.tabIndex).toBe(-1)
+    expect(link.isConnected).toBe(false)
+  })
+
+  it('removes the temporary link when protocol launch throws', () => {
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {
+      throw new Error('Protocol launch blocked')
+    })
+
+    expect(() => openCcswitchDeepLink('ccswitch://v1/import?resource=provider'))
+      .toThrow('Protocol launch blocked')
+    expect(document.querySelector('a[href^="ccswitch://"]')).toBeNull()
+  })
+
+  it('rejects non-CC-Switch links', () => {
+    expect(() => openCcswitchDeepLink('https://example.com')).toThrow(
+      'Invalid CC-Switch deep link'
+    )
   })
 })

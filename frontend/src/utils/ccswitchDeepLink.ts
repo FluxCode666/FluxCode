@@ -50,3 +50,22 @@ export function buildCcswitchProviderDeepLink(
 
   return `ccswitch://v1/import?${params.toString()}`
 }
+
+export function openCcswitchDeepLink(deepLink: string): void {
+  if (!deepLink.startsWith('ccswitch://')) {
+    throw new TypeError('Invalid CC-Switch deep link')
+  }
+
+  const link = document.createElement('a')
+  link.href = deepLink
+  link.tabIndex = -1
+  link.setAttribute('aria-hidden', 'true')
+  link.style.display = 'none'
+  document.body.appendChild(link)
+
+  try {
+    link.click()
+  } finally {
+    link.remove()
+  }
+}

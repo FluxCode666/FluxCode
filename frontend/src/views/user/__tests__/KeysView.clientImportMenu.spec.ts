@@ -21,6 +21,7 @@ describe('KeysView client import menu', () => {
     expect(keysViewSource).toContain("selectClientImportTarget('chatbox')")
     expect(keysViewSource).toContain('await fetchClientImportModelIds(options)')
     expect(keysViewSource).toContain('const importOptions = { ...options, modelIds }')
+    expect(keysViewSource).toContain('openCcswitchDeepLink(deeplink)')
   })
 
   it('supports hover, keyboard navigation, and a teleported unclipped menu', () => {
