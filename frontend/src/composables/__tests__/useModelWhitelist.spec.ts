@@ -36,12 +36,9 @@ describe('useModelWhitelist', () => {
 
   it('OpenAI API Key 账号只默认启用指定模型', () => {
     expect(getDefaultModelsForAccount('openai', 'apikey')).toEqual([
-      'gpt-5.4',
-      'gpt-5.4-mini',
       'gpt-5.5',
-      'gpt-5.6-luna',
-      'gpt-5.6-terra',
-      'gpt-5.6-sol'
+      'gpt-5.6-sol',
+      'gpt-5.6-terra'
     ])
     expect(getDefaultModelsForAccount('openai', 'apikey')).toBe(openAIAPIKeyDefaultModels)
   })
