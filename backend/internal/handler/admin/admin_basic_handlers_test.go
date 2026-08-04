@@ -114,12 +114,13 @@ func TestUserHandlerEndpoints(t *testing.T) {
 }
 
 func TestGroupHandlerEndpoints(t *testing.T) {
-	router, _ := setupAdminRouter()
+	router, adminSvc := setupAdminRouter()
 
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/groups", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/groups?subscription_type=standard", nil)
 	router.ServeHTTP(rec, req)
 	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "standard", adminSvc.lastListGroupsSubscriptionType)
 
 	rec = httptest.NewRecorder()
 	req = httptest.NewRequest(http.MethodGet, "/api/v1/admin/groups/all", nil)

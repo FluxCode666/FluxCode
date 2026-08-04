@@ -37,6 +37,15 @@ const openaiModels = [
   'gpt-4o-audio-preview', 'gpt-4o-realtime-preview'
 ]
 
+export const openAIAPIKeyDefaultModels = [
+  'gpt-5.4',
+  'gpt-5.4-mini',
+  'gpt-5.5',
+  'gpt-5.6-luna',
+  'gpt-5.6-terra',
+  'gpt-5.6-sol'
+]
+
 // 常见 OpenAI-compatible embedding 模型；管理员仍可通过自定义输入添加任意模型。
 const embeddingModels = [
   'text-embedding-3-small',
@@ -412,6 +421,13 @@ export function getModelsByPlatform(platform: string): string[] {
     case 'perplexity': return perplexityModels
     default: return claudeModels
   }
+}
+
+export function getDefaultModelsForAccount(platform: string, accountCategory: string): string[] {
+  if (platform === 'openai' && (accountCategory === 'apikey' || accountCategory === 'oauth-based')) {
+    return openAIAPIKeyDefaultModels
+  }
+  return getModelsByPlatform(platform)
 }
 
 // 按平台获取预设映射

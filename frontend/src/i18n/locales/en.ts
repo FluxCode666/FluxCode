@@ -2552,6 +2552,7 @@ export default {
       failedToUpdateSortOrder: 'Failed to update sort order',
       allPlatforms: 'All Platforms',
       allStatus: 'All Status',
+      allBillingTypes: 'All Billing Types',
       allGroups: 'All Groups',
       exclusive: 'Exclusive',
       nonExclusive: 'Non-Exclusive',
@@ -3833,6 +3834,7 @@ export default {
         generateAuthUrl: 'Generate Auth URL',
         generating: 'Generating...',
         regenerate: 'Regenerate',
+        openBrowser: 'Open Browser',
         step2OpenUrl: 'Open the URL in your browser and complete authorization',
         openUrlDesc:
           'Open the authorization URL in a new tab, log in to your Claude account and authorize.',

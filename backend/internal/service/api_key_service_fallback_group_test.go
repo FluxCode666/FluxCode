@@ -240,7 +240,7 @@ func (s *apiKeyFallbackGroupRepoStub) List(context.Context, pagination.Paginatio
 	return nil, &pagination.PaginationResult{}, nil
 }
 
-func (s *apiKeyFallbackGroupRepoStub) ListWithFilters(context.Context, pagination.PaginationParams, string, string, string, *bool) ([]Group, *pagination.PaginationResult, error) {
+func (s *apiKeyFallbackGroupRepoStub) ListWithFilters(context.Context, pagination.PaginationParams, string, string, string, *bool, string) ([]Group, *pagination.PaginationResult, error) {
 	return nil, &pagination.PaginationResult{}, nil
 }
 

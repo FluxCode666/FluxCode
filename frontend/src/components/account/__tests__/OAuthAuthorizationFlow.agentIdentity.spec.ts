@@ -12,7 +12,28 @@ vi.mock('vue-i18n', async () => {
   }
 })
 
-describe('OAuthAuthorizationFlow Agent Identity', () => {
+describe('OAuthAuthorizationFlow', () => {
+  it('shows an accessible browser action after generating an authorization URL', () => {
+    const wrapper = mount(OAuthAuthorizationFlow, {
+      props: {
+        addMethod: 'oauth',
+        authUrl: 'https://auth.example/authorize?state=test',
+        platform: 'openai',
+        showCookieOption: false
+      },
+      global: {
+        plugins: [createPinia()],
+        stubs: { Icon: true }
+      }
+    })
+
+    const openBrowser = wrapper.get<HTMLAnchorElement>('[data-testid="open-oauth-url"]')
+    expect(openBrowser.text()).toContain('admin.accounts.oauth.openBrowser')
+    expect(openBrowser.attributes('href')).toBe('https://auth.example/authorize?state=test')
+    expect(openBrowser.attributes('target')).toBe('_blank')
+    expect(openBrowser.attributes('rel')).toBe('noopener noreferrer')
+  })
+
   it('shows the import method and emits trimmed auth.json content', async () => {
     const wrapper = mount(OAuthAuthorizationFlow, {
       props: {

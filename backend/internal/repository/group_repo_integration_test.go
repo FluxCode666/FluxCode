@@ -196,6 +196,7 @@ func (s *GroupRepoSuite) TestListWithFilters_Platform() {
 		"",
 		"",
 		nil,
+		"",
 	)
 	s.Require().NoError(err, "ListWithFilters base")
 
@@ -216,7 +217,7 @@ func (s *GroupRepoSuite) TestListWithFilters_Platform() {
 		SubscriptionType: service.SubscriptionTypeStandard,
 	}))
 
-	groups, _, err := s.repo.ListWithFilters(s.ctx, pagination.PaginationParams{Page: 1, PageSize: 10}, service.PlatformOpenAI, "", "", nil)
+	groups, _, err := s.repo.ListWithFilters(s.ctx, pagination.PaginationParams{Page: 1, PageSize: 10}, service.PlatformOpenAI, "", "", nil, "")
 	s.Require().NoError(err)
 	s.Require().Len(groups, len(baseGroups)+1)
 	// Verify all groups are OpenAI platform
@@ -243,10 +244,41 @@ func (s *GroupRepoSuite) TestListWithFilters_Status() {
 		SubscriptionType: service.SubscriptionTypeStandard,
 	}))
 
-	groups, _, err := s.repo.ListWithFilters(s.ctx, pagination.PaginationParams{Page: 1, PageSize: 10}, "", service.StatusDisabled, "", nil)
+	groups, _, err := s.repo.ListWithFilters(s.ctx, pagination.PaginationParams{Page: 1, PageSize: 10}, "", service.StatusDisabled, "", nil, "")
 	s.Require().NoError(err)
 	s.Require().Len(groups, 1)
 	s.Require().Equal(service.StatusDisabled, groups[0].Status)
+}
+
+func (s *GroupRepoSuite) TestListWithFilters_SubscriptionType() {
+	s.Require().NoError(s.repo.Create(s.ctx, &service.Group{
+		Name:             "standard-group",
+		Platform:         service.PlatformAnthropic,
+		RateMultiplier:   1.0,
+		Status:           service.StatusActive,
+		SubscriptionType: service.SubscriptionTypeStandard,
+	}))
+	s.Require().NoError(s.repo.Create(s.ctx, &service.Group{
+		Name:             "subscription-group",
+		Platform:         service.PlatformAnthropic,
+		RateMultiplier:   1.0,
+		Status:           service.StatusActive,
+		SubscriptionType: service.SubscriptionTypeSubscription,
+	}))
+
+	groups, page, err := s.repo.ListWithFilters(
+		s.ctx,
+		pagination.PaginationParams{Page: 1, PageSize: 10},
+		service.PlatformAnthropic,
+		"",
+		"",
+		nil,
+		service.SubscriptionTypeSubscription,
+	)
+	s.Require().NoError(err)
+	s.Require().Equal(int64(1), page.Total)
+	s.Require().Len(groups, 1)
+	s.Require().Equal(service.SubscriptionTypeSubscription, groups[0].SubscriptionType)
 }
 
 func (s *GroupRepoSuite) TestListWithFilters_IsExclusive() {
@@ -268,7 +300,7 @@ func (s *GroupRepoSuite) TestListWithFilters_IsExclusive() {
 	}))
 
 	isExclusive := true
-	groups, _, err := s.repo.ListWithFilters(s.ctx, pagination.PaginationParams{Page: 1, PageSize: 10}, "", "", "", &isExclusive)
+	groups, _, err := s.repo.ListWithFilters(s.ctx, pagination.PaginationParams{Page: 1, PageSize: 10}, "", "", "", &isExclusive, "")
 	s.Require().NoError(err)
 	s.Require().Len(groups, 1)
 	s.Require().True(groups[0].IsExclusive)
@@ -312,7 +344,7 @@ func (s *GroupRepoSuite) TestListWithFilters_Search() {
 		target := mustCreate(repo, ctx, newGroup("it-group-search-name-target"))
 		other := mustCreate(repo, ctx, newGroup("it-group-search-name-other"))
 
-		groups, _, err := repo.ListWithFilters(ctx, pagination.PaginationParams{Page: 1, PageSize: 50}, "", "", "name-target", nil)
+		groups, _, err := repo.ListWithFilters(ctx, pagination.PaginationParams{Page: 1, PageSize: 50}, "", "", "name-target", nil, "")
 		s.Require().NoError(err)
 		s.Require().True(containsID(groups, target.ID), "expected target group to match by name")
 		s.Require().False(containsID(groups, other.ID), "expected other group to be filtered out")
@@ -329,7 +361,7 @@ func (s *GroupRepoSuite) TestListWithFilters_Search() {
 		other.Description = "nothing to see here"
 		other = mustCreate(repo, ctx, other)
 
-		groups, _, err := repo.ListWithFilters(ctx, pagination.PaginationParams{Page: 1, PageSize: 50}, "", "", "desc-needle", nil)
+		groups, _, err := repo.ListWithFilters(ctx, pagination.PaginationParams{Page: 1, PageSize: 50}, "", "", "desc-needle", nil, "")
 		s.Require().NoError(err)
 		s.Require().True(containsID(groups, target.ID), "expected target group to match by description")
 		s.Require().False(containsID(groups, other.ID), "expected other group to be filtered out")
@@ -341,7 +373,7 @@ func (s *GroupRepoSuite) TestListWithFilters_Search() {
 		_ = mustCreate(repo, ctx, newGroup("it-group-search-nonexistent-baseline"))
 
 		search := s.T().Name() + "__no_such_group__"
-		groups, _, err := repo.ListWithFilters(ctx, pagination.PaginationParams{Page: 1, PageSize: 50}, "", "", search, nil)
+		groups, _, err := repo.ListWithFilters(ctx, pagination.PaginationParams{Page: 1, PageSize: 50}, "", "", search, nil, "")
 		s.Require().NoError(err)
 		s.Require().Empty(groups)
 	})
@@ -352,7 +384,7 @@ func (s *GroupRepoSuite) TestListWithFilters_Search() {
 		target := mustCreate(repo, ctx, newGroup("MiXeDCaSe-Needle"))
 		other := mustCreate(repo, ctx, newGroup("it-group-search-case-other"))
 
-		groups, _, err := repo.ListWithFilters(ctx, pagination.PaginationParams{Page: 1, PageSize: 50}, "", "", "mixedcase-needle", nil)
+		groups, _, err := repo.ListWithFilters(ctx, pagination.PaginationParams{Page: 1, PageSize: 50}, "", "", "mixedcase-needle", nil, "")
 		s.Require().NoError(err)
 		s.Require().True(containsID(groups, target.ID), "expected case-insensitive match")
 		s.Require().False(containsID(groups, other.ID), "expected other group to be filtered out")
@@ -364,7 +396,7 @@ func (s *GroupRepoSuite) TestListWithFilters_Search() {
 		percentTarget := mustCreate(repo, ctx, newGroup("it-group-search-100%-target"))
 		percentOther := mustCreate(repo, ctx, newGroup("it-group-search-100X-other"))
 
-		groups, _, err := repo.ListWithFilters(ctx, pagination.PaginationParams{Page: 1, PageSize: 50}, "", "", "100%", nil)
+		groups, _, err := repo.ListWithFilters(ctx, pagination.PaginationParams{Page: 1, PageSize: 50}, "", "", "100%", nil, "")
 		s.Require().NoError(err)
 		s.Require().True(containsID(groups, percentTarget.ID), "expected literal %% match")
 		s.Require().False(containsID(groups, percentOther.ID), "expected %% not to act as wildcard")
@@ -372,7 +404,7 @@ func (s *GroupRepoSuite) TestListWithFilters_Search() {
 		underscoreTarget := mustCreate(repo, ctx, newGroup("it-group-search-ab_cd-target"))
 		underscoreOther := mustCreate(repo, ctx, newGroup("it-group-search-abXcd-other"))
 
-		groups, _, err = repo.ListWithFilters(ctx, pagination.PaginationParams{Page: 1, PageSize: 50}, "", "", "ab_cd", nil)
+		groups, _, err = repo.ListWithFilters(ctx, pagination.PaginationParams{Page: 1, PageSize: 50}, "", "", "ab_cd", nil, "")
 		s.Require().NoError(err)
 		s.Require().True(containsID(groups, underscoreTarget.ID), "expected literal _ match")
 		s.Require().False(containsID(groups, underscoreOther.ID), "expected _ not to act as wildcard")
@@ -488,7 +520,7 @@ func (s *GroupRepoSuite) TestListWithFilters_AccountCount() {
 	s.Require().NoError(err)
 
 	isExclusive := true
-	groups, page, err := s.repo.ListWithFilters(s.ctx, pagination.PaginationParams{Page: 1, PageSize: 10}, service.PlatformAnthropic, service.StatusActive, "", &isExclusive)
+	groups, page, err := s.repo.ListWithFilters(s.ctx, pagination.PaginationParams{Page: 1, PageSize: 10}, service.PlatformAnthropic, service.StatusActive, "", &isExclusive, "")
 	s.Require().NoError(err, "ListWithFilters")
 	s.Require().Equal(int64(1), page.Total)
 	s.Require().Len(groups, 1)

@@ -36,6 +36,13 @@
               @change="loadGroups"
             />
             <Select
+              v-model="filters.subscription_type"
+              :options="subscriptionTypeFilterOptions"
+              :placeholder="t('admin.groups.allBillingTypes')"
+              class="w-44"
+              @change="loadGroups"
+            />
+            <Select
               v-model="filters.is_exclusive"
               :options="exclusiveOptions"
               :placeholder="t('admin.groups.allGroups')"
@@ -2909,6 +2916,11 @@ const subscriptionTypeOptions = computed(() => [
   { value: "subscription", label: t("admin.groups.subscription.subscription") },
 ]);
 
+const subscriptionTypeFilterOptions = computed(() => [
+  { value: "", label: t("admin.groups.allBillingTypes") },
+  ...subscriptionTypeOptions.value,
+]);
+
 const systemPromptModeOptions = computed(() => [
   { value: "inherit" as SystemPromptMode, label: t("systemPrompt.modes.inherit"), description: t("systemPrompt.modeTooltips.inherit") },
   { value: "passthrough" as SystemPromptMode, label: t("systemPrompt.modes.passthrough"), description: t("systemPrompt.modeTooltips.passthrough") },
@@ -2986,6 +2998,7 @@ const filters = reactive({
   platform: "",
   status: "",
   is_exclusive: "",
+  subscription_type: "standard" as SubscriptionType | "",
 });
 const pagination = reactive({
   page: 1,
@@ -3368,6 +3381,7 @@ const loadGroups = async () => {
       {
         platform: (filters.platform as GroupPlatform) || undefined,
         status: filters.status as any,
+        subscription_type: filters.subscription_type || undefined,
         is_exclusive: filters.is_exclusive
           ? filters.is_exclusive === "true"
           : undefined,

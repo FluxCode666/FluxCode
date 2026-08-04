@@ -1,8 +1,17 @@
-import { resolveOpenAIUseKeyModelId } from './openaiUseKeyModel'
+import {
+  DEFAULT_OPENAI_USE_KEY_MODEL_ID,
+  resolveOpenAIUseKeyModelId
+} from './openaiUseKeyModel'
 
 export type CcswitchProviderApp = 'claude' | 'codex' | 'gemini'
 
 export const DEFAULT_CCSWITCH_CLAUDE_MODEL_ID = 'claude-opus-4-7'
+export const DEFAULT_CCSWITCH_CODEX_MODEL_ID = 'gpt-5.6-sol'
+
+function resolveCcswitchCodexModelId(raw?: string | null): string {
+  const modelId = resolveOpenAIUseKeyModelId(raw)
+  return modelId === DEFAULT_OPENAI_USE_KEY_MODEL_ID ? DEFAULT_CCSWITCH_CODEX_MODEL_ID : modelId
+}
 
 interface BuildCcswitchProviderDeepLinkOptions {
   app: CcswitchProviderApp
@@ -31,7 +40,7 @@ export function buildCcswitchProviderDeepLink(
   })
 
   if (options.app === 'codex') {
-    params.set('model', resolveOpenAIUseKeyModelId(options.openaiModelId))
+    params.set('model', resolveCcswitchCodexModelId(options.openaiModelId))
   }
 
   if (options.app === 'claude') {
@@ -40,4 +49,23 @@ export function buildCcswitchProviderDeepLink(
   }
 
   return `ccswitch://v1/import?${params.toString()}`
+}
+
+export function openCcswitchDeepLink(deepLink: string): void {
+  if (!deepLink.startsWith('ccswitch://')) {
+    throw new TypeError('Invalid CC-Switch deep link')
+  }
+
+  const link = document.createElement('a')
+  link.href = deepLink
+  link.tabIndex = -1
+  link.setAttribute('aria-hidden', 'true')
+  link.style.display = 'none'
+  document.body.appendChild(link)
+
+  try {
+    link.click()
+  } finally {
+    link.remove()
+  }
 }

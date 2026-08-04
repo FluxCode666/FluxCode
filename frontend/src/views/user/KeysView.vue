@@ -1187,7 +1187,11 @@ import TablePageLayout from '@/components/layout/TablePageLayout.vue'
 import { isSelectableApiKeyGroup } from './KeysView.groups'
 import type { Column } from '@/components/common/types'
 import type { BatchApiKeyUsageStats } from '@/api/usage'
-import { buildCcswitchProviderDeepLink, type CcswitchProviderApp } from '@/utils/ccswitchDeepLink'
+import {
+  buildCcswitchProviderDeepLink,
+  openCcswitchDeepLink,
+  type CcswitchProviderApp
+} from '@/utils/ccswitchDeepLink'
 import {
   buildChatboxDeepLink,
   buildCherryStudioDeepLink,
@@ -2134,7 +2138,11 @@ const executeCcsImport = (row: ApiKey, clientType: 'claude' | 'gemini') => {
     openaiModelId: publicSettings.value?.openai_use_key_model_id
   })
 
-  openClientDeepLink(deeplink, 'keys.ccSwitchNotInstalled')
+  try {
+    openCcswitchDeepLink(deeplink)
+  } catch {
+    appStore.showError(t('keys.ccSwitchNotInstalled'))
+  }
 }
 
 const handleClientTypeSelect = (clientType: 'claude' | 'gemini') => {
