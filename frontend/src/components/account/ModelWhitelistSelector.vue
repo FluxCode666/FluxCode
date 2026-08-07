@@ -125,7 +125,11 @@ import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import ModelIcon from '@/components/common/ModelIcon.vue'
 import Icon from '@/components/icons/Icon.vue'
-import { allModels, getModelsByPlatform } from '@/composables/useModelWhitelist'
+import {
+  allModels,
+  getModelsByPlatform,
+  openAIAPIKeyDefaultModels
+} from '@/composables/useModelWhitelist'
 
 const { t } = useI18n()
 
@@ -220,7 +224,12 @@ const handleEnter = () => {
 const fillRelated = () => {
   const newModels = [...props.modelValue]
   for (const platform of normalizedPlatforms.value) {
-    for (const model of getModelsByPlatform(platform)) {
+    // OpenAI 账号的快捷填充只保留当前支持的模型；下拉列表仍展示完整模型库，
+    // 方便需要其他模型时手动选择或输入。
+    const models = platform === 'openai'
+      ? openAIAPIKeyDefaultModels
+      : getModelsByPlatform(platform)
+    for (const model of models) {
       if (!newModels.includes(model)) {
         newModels.push(model)
       }

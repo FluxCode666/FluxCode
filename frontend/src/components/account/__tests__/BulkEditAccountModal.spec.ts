@@ -112,6 +112,26 @@ describe('BulkEditAccountModal', () => {
     expect(wrapper.text()).not.toContain('GPT-5.3 Codex Spark')
   })
 
+  it('OpenAI 账号填入相关模型时只添加指定模型', async () => {
+    const wrapper = mountModal({
+      selectedPlatforms: ['openai'],
+      selectedTypes: ['oauth']
+    })
+    const selector = wrapper.findComponent(ModelWhitelistSelector)
+    const fillButton = selector
+      .findAll('button')
+      .find((button) => button.text().includes('admin.accounts.fillRelatedModels'))
+
+    expect(fillButton).toBeTruthy()
+    await fillButton!.trigger('click')
+
+    expect(selector.props('modelValue')).toEqual([
+      'gpt-5.5',
+      'gpt-5.6-sol',
+      'gpt-5.6-terra'
+    ])
+  })
+
   it('仅勾选模型限制且白名单留空时，应提交空 model_mapping 以支持所有模型', async () => {
     const wrapper = mountModal({
       selectedPlatforms: ['anthropic'],
