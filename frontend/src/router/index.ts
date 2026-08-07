@@ -77,13 +77,53 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/legal/terms',
+    name: 'LegalTerms',
+    component: () => import('@/views/legal/LegalDocumentView.vue'),
+    meta: {
+      requiresAuth: false,
+      title: '用户服务条款',
+      legalDocument: 'terms'
+    }
+  },
+  {
+    path: '/legal/usage-policy',
+    name: 'LegalUsagePolicy',
+    component: () => import('@/views/legal/LegalDocumentView.vue'),
+    meta: {
+      requiresAuth: false,
+      title: '合理使用政策',
+      legalDocument: 'usage-policy'
+    }
+  },
+  {
+    path: '/legal/supported-regions',
+    name: 'LegalSupportedRegions',
+    component: () => import('@/views/legal/LegalDocumentView.vue'),
+    meta: {
+      requiresAuth: false,
+      title: '支持的国家和地区',
+      legalDocument: 'supported-regions'
+    }
+  },
+  {
+    path: '/legal/service-specific-terms',
+    name: 'LegalServiceSpecificTerms',
+    component: () => import('@/views/legal/LegalDocumentView.vue'),
+    meta: {
+      requiresAuth: false,
+      title: '服务专项条款',
+      legalDocument: 'service-specific-terms'
+    }
+  },
+  {
     path: '/login',
     name: 'Login',
     component: () => import('@/views/auth/LoginView.vue'),
     meta: {
       requiresAuth: false,
       title: 'Login',
-      titleKey: 'common.login'
+      titleKey: 'home.login'
     }
   },
   {
@@ -682,10 +722,13 @@ const routes: RouteRecordRaw[] = [
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes,
-  scrollBehavior(_to, _from, savedPosition) {
+  scrollBehavior(to, _from, savedPosition) {
     // Scroll to saved position when using browser back/forward
     if (savedPosition) {
       return savedPosition
+    }
+    if (to.hash) {
+      return { el: to.hash, top: 96, behavior: 'smooth' }
     }
     // Scroll to top for new routes
     return { top: 0 }
@@ -701,7 +744,7 @@ let authInitialized = false
 const navigationLoading = useNavigationLoadingState()
 // 延迟初始化预加载，传入 router 实例
 let routePrefetch: ReturnType<typeof useRoutePrefetch> | null = null
-const BACKEND_MODE_ALLOWED_PATHS = ['/login', '/key-usage', '/setup']
+const BACKEND_MODE_ALLOWED_PATHS = ['/login', '/key-usage', '/setup', '/legal']
 
 router.beforeEach((to, _from, next) => {
   // 开始导航加载状态

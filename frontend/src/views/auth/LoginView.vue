@@ -11,15 +11,15 @@
         </p>
       </div>
 
-  <div v-if="!backendModeEnabled && (linuxdoOAuthEnabled || oidcOAuthEnabled)" class="space-y-4">
+      <div v-if="!backendModeEnabled && (linuxdoOAuthEnabled || oidcOAuthEnabled)" class="space-y-4">
         <LinuxDoOAuthSection
           v-if="linuxdoOAuthEnabled"
-          :disabled="isLoading"
+          :disabled="isLoading || !legalAccepted"
           :show-divider="false"
         />
         <OidcOAuthSection
           v-if="oidcOAuthEnabled"
-          :disabled="isLoading"
+          :disabled="isLoading || !legalAccepted"
           :provider-name="oidcOAuthProviderName"
           :show-divider="false"
         />
@@ -139,7 +139,7 @@
         <!-- Submit Button -->
         <button
           type="submit"
-          :disabled="isLoading || (turnstileEnabled && !turnstileToken)"
+          :disabled="isLoading || !legalAccepted || (turnstileEnabled && !turnstileToken)"
           class="btn btn-primary w-full"
         >
           <svg
@@ -165,6 +165,8 @@
           <Icon v-else name="login" size="md" class="mr-2" />
           {{ isLoading ? t('auth.signingIn') : t('auth.signIn') }}
         </button>
+
+        <LegalConsent v-model="legalAccepted" input-id="login-legal-consent" />
       </form>
     </div>
 
@@ -203,11 +205,12 @@ import OidcOAuthSection from '@/components/auth/OidcOAuthSection.vue'
 import TotpLoginModal from '@/components/auth/TotpLoginModal.vue'
 import Icon from '@/components/icons/Icon.vue'
 import TurnstileWidget from '@/components/TurnstileWidget.vue'
+import LegalConsent from '@/components/legal/LegalConsent.vue'
 import { useAuthStore, useAppStore } from '@/stores'
 import { getPublicSettings, isTotp2FARequired } from '@/api/auth'
 import type { TotpLoginResponse } from '@/types'
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 
 // ==================== Router & Stores ====================
 
@@ -220,6 +223,7 @@ const appStore = useAppStore()
 const isLoading = ref<boolean>(false)
 const errorMessage = ref<string>('')
 const showPassword = ref<boolean>(false)
+const legalAccepted = ref<boolean>(false)
 
 // Public settings
 const turnstileEnabled = ref<boolean>(false)
@@ -303,6 +307,13 @@ function validateForm(): boolean {
   errors.turnstile = ''
 
   let isValid = true
+
+  if (!legalAccepted.value) {
+    errorMessage.value = String(locale.value).toLowerCase().startsWith('zh')
+      ? '请先阅读并同意服务条款及相关政策'
+      : 'Please read and accept the terms and related policies first'
+    isValid = false
+  }
 
   // Email validation
   if (!formData.email.trim()) {

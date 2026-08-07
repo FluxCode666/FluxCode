@@ -1,8 +1,8 @@
 <template>
-  <div class="min-h-screen overflow-x-hidden bg-[#faf7f2] text-gray-900 dark:bg-dark-950 dark:text-gray-100">
+  <div class="flex min-h-screen flex-col overflow-x-hidden bg-[#faf7f2] text-gray-900 dark:bg-dark-950 dark:text-gray-100">
     <PublicHeader :site-name="siteName" :site-logo="siteLogo" />
 
-    <main class="mx-auto w-full max-w-7xl px-4 pb-16 pt-24 sm:px-6 lg:px-8">
+    <main class="mx-auto w-full max-w-7xl flex-1 px-4 pb-16 pt-24 sm:px-6 lg:px-8">
       <div class="mb-8 flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
         <div class="max-w-5xl">
           <h1 class="text-3xl font-semibold tracking-tight text-gray-950 dark:text-white sm:text-4xl">
@@ -151,6 +151,14 @@
         </div>
       </section>
     </main>
+
+    <footer class="border-t border-[#7b6857]/15 bg-white/25 px-6 py-2 dark:border-white/10 dark:bg-dark-900/20">
+      <div class="mx-auto max-w-7xl text-center">
+        <p class="text-xs text-gray-500 dark:text-dark-400">
+          &copy; {{ currentYear }} {{ siteName }}. {{ t('home.footer.allRightsReserved') }}
+        </p>
+      </div>
+    </footer>
 
     <BaseDialog
       :show="detailModalOpen"
@@ -338,6 +346,7 @@ const { copyToClipboard } = useClipboard()
 
 const siteName = computed(() => appStore.siteName || 'FluxCode')
 const siteLogo = computed(() => appStore.siteLogo || '')
+const currentYear = new Date().getFullYear()
 const models = ref<ModelPricingSummary[]>([])
 const groups = ref<ModelPricingGroupOption[]>([])
 const detail = ref<ModelPricingDetail | null>(null)

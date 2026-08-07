@@ -1,8 +1,8 @@
 <template>
-  <div class="min-h-screen bg-[#f6f1e8] text-gray-900 dark:bg-dark-950 dark:text-gray-100">
+  <div class="flex min-h-screen flex-col bg-[#f6f1e8] text-gray-900 dark:bg-dark-950 dark:text-gray-100">
     <PublicHeader :site-name="siteName" :site-logo="siteLogo" />
 
-    <main class="pt-24 pb-20">
+    <main class="flex-1 pb-20 pt-24">
       <section class="relative overflow-hidden border-b border-black/5 dark:border-white/10">
         <div class="pointer-events-none absolute inset-0">
           <div class="absolute left-1/2 top-0 h-[420px] w-[420px] -translate-x-1/2 rounded-full bg-[#b89a7a]/20 blur-3xl dark:bg-primary-500/10"></div>
@@ -485,6 +485,14 @@
         </div>
       </section>
     </main>
+
+    <footer class="border-t border-[#7b6857]/15 bg-white/25 px-6 py-2 dark:border-white/10 dark:bg-dark-900/20">
+      <div class="mx-auto max-w-6xl text-center">
+        <p class="text-xs text-gray-500 dark:text-dark-400">
+          &copy; {{ currentYear }} {{ siteName }}. {{ t('home.footer.allRightsReserved') }}
+        </p>
+      </div>
+    </footer>
   </div>
 </template>
 
@@ -555,6 +563,7 @@ const defaultExampleTab: ExampleTabId = 'curl'
 
 const siteName = computed(() => appStore.siteName || 'FluxCode')
 const siteLogo = computed(() => appStore.siteLogo || '')
+const currentYear = new Date().getFullYear()
 const docsLocale = computed<'zh' | 'en'>(() => (locale.value || '').startsWith('zh') ? 'zh' : 'en')
 const { copyToClipboard } = useClipboard()
 
