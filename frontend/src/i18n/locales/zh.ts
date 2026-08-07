@@ -353,6 +353,12 @@ export default {
   modelPricing: {
     title: '模型定价',
     description: '按模型查看不同分组的调用价格',
+    filters: '筛选模型',
+    filterHint: '按条件快速找到模型',
+    resetFilters: '重置',
+    model: '模型',
+    platform: '平台',
+    capability: '能力',
     searchPlaceholder: '搜索模型、平台或能力',
     allPlatforms: '全部平台',
     allCapabilities: '全部能力',

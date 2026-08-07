@@ -355,6 +355,12 @@ export default {
   modelPricing: {
     title: 'Model Pricing',
     description: 'Browse model prices across available groups',
+    filters: 'Filter models',
+    filterHint: 'Find models by criteria',
+    resetFilters: 'Reset',
+    model: 'Model',
+    platform: 'Platform',
+    capability: 'Capability',
     searchPlaceholder: 'Search model, platform, or capability',
     allPlatforms: 'All Platforms',
     allCapabilities: 'All Capabilities',
