@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { config, flushPromises, mount } from '@vue/test-utils'
+import { config, flushPromises, mount, RouterLinkStub } from '@vue/test-utils'
 
 import ModelPricingPage from '../ModelPricingPage.vue'
 
@@ -62,7 +62,8 @@ describe('ModelPricingPage', () => {
     vi.useFakeTimers()
     config.global.stubs = {
       ...config.global.stubs,
-      ModelPerformanceTrendChart: ModelPerformanceTrendChartStub
+      ModelPerformanceTrendChart: ModelPerformanceTrendChartStub,
+      RouterLink: RouterLinkStub
     }
     listModels.mockReset()
     getModel.mockReset()
@@ -187,6 +188,7 @@ describe('ModelPricingPage', () => {
     vi.useRealTimers()
     vi.clearAllMocks()
     delete config.global.stubs.ModelPerformanceTrendChart
+    delete config.global.stubs.RouterLink
   })
 
   it('renders model cards and loads model detail after click', async () => {

@@ -135,13 +135,7 @@
       </section>
     </main>
 
-    <footer class="border-t border-[#7b6857]/15 bg-white/25 px-6 py-2 dark:border-white/10 dark:bg-dark-900/20">
-      <div class="mx-auto max-w-6xl text-center">
-        <p class="text-xs text-gray-500 dark:text-dark-400">
-          &copy; {{ currentYear }} {{ siteName }}. {{ t('home.footer.allRightsReserved') }}
-        </p>
-      </div>
-    </footer>
+    <PublicFooter :site-name="siteName" />
   </div>
 </template>
 
@@ -150,6 +144,7 @@ import { computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore, useAuthStore } from '@/stores'
 import PublicHeader from '@/components/layout/PublicHeader.vue'
+import PublicFooter from '@/components/layout/PublicFooter.vue'
 
 const { t } = useI18n()
 
@@ -159,7 +154,6 @@ const authStore = useAuthStore()
 // Site settings
 const siteName = computed(() => appStore.siteName || 'FluxCode')
 const siteLogo = computed(() => appStore.siteLogo || '')
-const currentYear = new Date().getFullYear()
 
 // Auth state
 const isAuthenticated = computed(() => authStore.isAuthenticated)

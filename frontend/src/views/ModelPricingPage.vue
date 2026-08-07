@@ -249,13 +249,7 @@
       </div>
     </main>
 
-    <footer class="border-t border-[#7b6857]/15 bg-white/25 px-6 py-2 dark:border-white/10 dark:bg-dark-900/20">
-      <div class="mx-auto max-w-7xl text-center">
-        <p class="text-xs text-gray-500 dark:text-dark-400">
-          &copy; {{ currentYear }} {{ siteName }}. {{ t('home.footer.allRightsReserved') }}
-        </p>
-      </div>
-    </footer>
+    <PublicFooter :site-name="siteName" />
 
     <BaseDialog
       :show="detailModalOpen"
@@ -422,6 +416,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import PublicHeader from '@/components/layout/PublicHeader.vue'
+import PublicFooter from '@/components/layout/PublicFooter.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Icon from '@/components/icons/Icon.vue'
 import ModelPerformanceTrendChart from '@/components/charts/ModelPerformanceTrendChart.vue'
@@ -442,7 +437,6 @@ const { copyToClipboard } = useClipboard()
 
 const siteName = computed(() => appStore.siteName || 'FluxCode')
 const siteLogo = computed(() => appStore.siteLogo || '')
-const currentYear = new Date().getFullYear()
 const models = ref<ModelPricingSummary[]>([])
 const groups = ref<ModelPricingGroupOption[]>([])
 const detail = ref<ModelPricingDetail | null>(null)

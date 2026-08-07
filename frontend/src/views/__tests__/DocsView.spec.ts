@@ -104,6 +104,10 @@ async function mountAt(path: string) {
         path: '/docs/:clientId?',
         name: 'Docs',
         component: { template: '<div />' }
+      },
+      {
+        path: '/legal/:document',
+        component: { template: '<div />' }
       }
     ]
   })

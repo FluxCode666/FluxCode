@@ -110,13 +110,7 @@
       </section>
     </main>
 
-    <footer class="border-t border-slate-900/10 bg-white/20 px-6 py-2 dark:border-white/10 dark:bg-dark-900/20">
-      <div class="mx-auto max-w-7xl text-center">
-        <p class="text-xs text-slate-500 dark:text-slate-400">
-          &copy; {{ currentYear }} {{ siteName }}. {{ t('home.footer.allRightsReserved') }}
-        </p>
-      </div>
-    </footer>
+    <PublicFooter :site-name="siteName" />
   </div>
 </template>
 
@@ -126,6 +120,7 @@ import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
 import { useAppStore } from '@/stores'
 import PublicHeader from '@/components/layout/PublicHeader.vue'
+import PublicFooter from '@/components/layout/PublicFooter.vue'
 import { clientDocs, findClientDoc } from '@/docs/clientRegistry'
 import { resolveOpenAIUseKeyModelId } from '@/utils/openaiUseKeyModel'
 
@@ -138,7 +133,6 @@ const defaultClient = clientDocs.find((client) => client.id === defaultClientId)
 
 const siteName = computed(() => appStore.siteName || 'FluxCode')
 const siteLogo = computed(() => appStore.siteLogo || '')
-const currentYear = new Date().getFullYear()
 const requestedClientId = computed(() => {
   const param = route.params.clientId
   return typeof param === 'string' ? param : undefined

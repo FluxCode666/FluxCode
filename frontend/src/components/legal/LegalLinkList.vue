@@ -17,7 +17,7 @@ import { useI18n } from 'vue-i18n'
 import { legalDocumentNavigation, type LegalDocumentKey } from '@/content/legalDocuments'
 
 const { locale } = useI18n()
-const isZh = computed(() => String(locale.value).toLowerCase().startsWith('zh'))
+const isZh = computed(() => String(locale?.value ?? 'zh-CN').toLowerCase().startsWith('zh'))
 
 const links = legalDocumentNavigation
 const englishLabels: Record<LegalDocumentKey, string> = {

@@ -486,13 +486,7 @@
       </section>
     </main>
 
-    <footer class="border-t border-[#7b6857]/15 bg-white/25 px-6 py-2 dark:border-white/10 dark:bg-dark-900/20">
-      <div class="mx-auto max-w-6xl text-center">
-        <p class="text-xs text-gray-500 dark:text-dark-400">
-          &copy; {{ currentYear }} {{ siteName }}. {{ t('home.footer.allRightsReserved') }}
-        </p>
-      </div>
-    </footer>
+    <PublicFooter :site-name="siteName" />
   </div>
 </template>
 
@@ -501,6 +495,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores'
 import PublicHeader from '@/components/layout/PublicHeader.vue'
+import PublicFooter from '@/components/layout/PublicFooter.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { useClipboard } from '@/composables/useClipboard'
 import { resolveOpenAIUseKeyModelId } from '@/utils/openaiUseKeyModel'
@@ -563,7 +558,6 @@ const defaultExampleTab: ExampleTabId = 'curl'
 
 const siteName = computed(() => appStore.siteName || 'FluxCode')
 const siteLogo = computed(() => appStore.siteLogo || '')
-const currentYear = new Date().getFullYear()
 const docsLocale = computed<'zh' | 'en'>(() => (locale.value || '').startsWith('zh') ? 'zh' : 'en')
 const { copyToClipboard } = useClipboard()
 

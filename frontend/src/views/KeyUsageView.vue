@@ -334,29 +334,21 @@
       </div>
     </main>
 
-    <!-- Footer (same pattern as HomeView) -->
-    <footer class="relative z-10 border-t border-gray-200/50 px-6 py-8 dark:border-dark-800/50">
-      <div class="mx-auto flex max-w-6xl flex-col items-center justify-center gap-4 text-center sm:flex-row sm:text-left">
-        <p class="text-sm text-gray-500 dark:text-dark-400">
-          &copy; {{ currentYear }} {{ siteName }}. {{ t('home.footer.allRightsReserved') }}
-        </p>
-        <div class="flex items-center gap-4">
-          <a
-            v-if="docUrl"
-            :href="docUrl"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="text-sm text-gray-500 transition-colors hover:text-gray-700 dark:text-dark-400 dark:hover:text-white"
-          >{{ t('home.docs') }}</a>
-          <a
-            :href="githubUrl"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="text-sm text-gray-500 transition-colors hover:text-gray-700 dark:text-dark-400 dark:hover:text-white"
-          >GitHub</a>
-        </div>
-      </div>
-    </footer>
+    <PublicFooter :site-name="siteName">
+      <a
+        v-if="docUrl"
+        :href="docUrl"
+        target="_blank"
+        rel="noopener noreferrer"
+        class="text-[11px] text-gray-500 transition-colors hover:text-gray-700 dark:text-dark-400 dark:hover:text-white"
+      >{{ t('home.docs') }}</a>
+      <a
+        :href="githubUrl"
+        target="_blank"
+        rel="noopener noreferrer"
+        class="text-[11px] text-gray-500 transition-colors hover:text-gray-700 dark:text-dark-400 dark:hover:text-white"
+      >GitHub</a>
+    </PublicFooter>
   </div>
 </template>
 
@@ -366,6 +358,7 @@ import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores'
 import LocaleSwitcher from '@/components/common/LocaleSwitcher.vue'
 import Icon from '@/components/icons/Icon.vue'
+import PublicFooter from '@/components/layout/PublicFooter.vue'
 
 const { t, locale } = useI18n()
 const appStore = useAppStore()
@@ -386,8 +379,6 @@ function toggleTheme() {
   document.documentElement.classList.toggle('dark', isDark.value)
   localStorage.setItem('theme', isDark.value ? 'dark' : 'light')
 }
-
-const currentYear = computed(() => new Date().getFullYear())
 
 // ==================== Key Query State ====================
 
