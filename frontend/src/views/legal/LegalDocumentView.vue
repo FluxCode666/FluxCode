@@ -2,7 +2,7 @@
   <div class="min-h-screen bg-[#faf7f2] text-slate-900 dark:bg-dark-950 dark:text-slate-100">
     <PublicHeader :site-name="siteName" :site-logo="siteLogo" />
 
-    <main class="relative overflow-hidden pb-20 pt-24 sm:pt-28">
+    <main class="relative pb-20 pt-24 sm:pt-28">
       <div class="pointer-events-none absolute inset-x-0 top-0 h-[34rem] overflow-hidden" aria-hidden="true">
         <div class="absolute -right-40 top-0 h-80 w-80 rounded-full bg-primary-300/20 blur-3xl dark:bg-primary-500/10"></div>
         <div class="absolute -left-48 top-32 h-96 w-96 rounded-full bg-amber-200/25 blur-3xl dark:bg-amber-500/5"></div>
@@ -56,7 +56,7 @@
         </div>
 
         <div class="grid items-start gap-12 lg:grid-cols-[14rem_minmax(0,1fr)] lg:gap-16">
-          <aside class="sticky top-24 hidden max-h-[calc(100vh-7rem)] overflow-y-auto pr-5 lg:block">
+          <aside class="sticky top-24 hidden max-h-[calc(100vh-7rem)] self-start overflow-y-auto pr-5 lg:block">
             <div>
               <h2 class="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400 dark:text-dark-500">法律文件</h2>
               <nav class="mt-4 border-l border-slate-200 dark:border-dark-700" aria-label="法律文件">
