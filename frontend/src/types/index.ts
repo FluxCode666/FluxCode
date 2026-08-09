@@ -52,6 +52,9 @@ export interface User {
   balance_notify_enabled: boolean
   balance_notify_threshold: number | null
   balance_notify_extra_emails: NotifyEmailEntry[]
+  legal_terms_accepted: boolean
+  legal_terms_version?: string
+  legal_terms_accepted_at?: string | null
   subscriptions?: UserSubscription[] // User's active subscriptions
   created_at: string
   updated_at: string

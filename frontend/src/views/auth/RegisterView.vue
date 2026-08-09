@@ -11,15 +11,17 @@
         </p>
       </div>
 
+      <LegalConsent v-model="legalAccepted" input-id="register-legal-consent" />
+
       <div v-if="linuxdoOAuthEnabled || oidcOAuthEnabled" class="space-y-4">
         <LinuxDoOAuthSection
           v-if="linuxdoOAuthEnabled"
-          :disabled="isLoading"
+          :disabled="isLoading || !legalAccepted"
           :show-divider="false"
         />
         <OidcOAuthSection
           v-if="oidcOAuthEnabled"
-          :disabled="isLoading"
+          :disabled="isLoading || !legalAccepted"
           :provider-name="oidcOAuthProviderName"
           :show-divider="false"
         />
@@ -304,7 +306,7 @@
         <!-- Submit Button -->
         <button
           type="submit"
-          :disabled="isLoading || (turnstileEnabled && !turnstileToken)"
+          :disabled="isLoading || !legalAccepted || (turnstileEnabled && !turnstileToken)"
           class="btn btn-primary w-full"
         >
           <svg
@@ -363,6 +365,7 @@ import LinuxDoOAuthSection from '@/components/auth/LinuxDoOAuthSection.vue'
 import OidcOAuthSection from '@/components/auth/OidcOAuthSection.vue'
 import Icon from '@/components/icons/Icon.vue'
 import TurnstileWidget from '@/components/TurnstileWidget.vue'
+import LegalConsent from '@/components/legal/LegalConsent.vue'
 import { useAuthStore, useAppStore } from '@/stores'
 import { getPublicSettings, validatePromoCode, validateInvitationCode, validateReferralCode } from '@/api/auth'
 import { buildAuthErrorMessage } from '@/utils/authError'
@@ -386,6 +389,7 @@ const isLoading = ref<boolean>(false)
 const settingsLoaded = ref<boolean>(false)
 const errorMessage = ref<string>('')
 const showPassword = ref<boolean>(false)
+const legalAccepted = ref<boolean>(false)
 
 // Public settings
 const registrationEnabled = ref<boolean>(true)
@@ -743,6 +747,13 @@ function validateForm(): boolean {
 
   let isValid = true
 
+  if (!legalAccepted.value) {
+    errorMessage.value = String(locale.value).toLowerCase().startsWith('zh')
+      ? '请先阅读并同意服务条款及相关政策'
+      : 'Please read and accept the terms and related policies first'
+    isValid = false
+  }
+
   // Email validation
   if (!formData.email.trim()) {
     errors.email = t('auth.emailRequired')
@@ -876,6 +887,7 @@ async function handleRegister(): Promise<void> {
       invitation_code: formData.invitation_code || undefined,
       referral_code: formData.referral_code || undefined
     })
+    await recordLegalConsent()
 
     // Show success toast
     appStore.showSuccess(t('auth.accountCreatedSuccess', { siteName: siteName.value }))
@@ -898,6 +910,18 @@ async function handleRegister(): Promise<void> {
     appStore.showError(errorMessage.value)
   } finally {
     isLoading.value = false
+  }
+}
+
+async function recordLegalConsent(): Promise<void> {
+  try {
+    await authStore.acceptLegalTerms()
+  } catch (error) {
+    await authStore.logout().catch((logoutError) => {
+      console.error('Failed to revoke session after legal consent error:', logoutError)
+    })
+    console.error('Failed to record legal consent:', error)
+    throw new Error(t('auth.legalConsentSaveFailed'))
   }
 }
 </script>

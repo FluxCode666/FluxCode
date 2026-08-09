@@ -9,6 +9,7 @@ const mockLogout = vi.fn()
 const mockGetCurrentUser = vi.fn()
 const mockRegister = vi.fn()
 const mockRefreshToken = vi.fn()
+const mockAcceptLegalTerms = vi.fn()
 
 vi.mock('@/api', () => ({
   authAPI: {
@@ -18,6 +19,9 @@ vi.mock('@/api', () => ({
     getCurrentUser: (...args: any[]) => mockGetCurrentUser(...args),
     register: (...args: any[]) => mockRegister(...args),
     refreshToken: (...args: any[]) => mockRefreshToken(...args),
+  },
+  userAPI: {
+    acceptLegalTerms: (...args: any[]) => mockAcceptLegalTerms(...args),
   },
   isTotp2FARequired: (response: any) => response?.requires_2fa === true,
 }))
@@ -33,6 +37,7 @@ const fakeUser = {
   allowed_groups: null,
   created_at: '2024-01-01',
   updated_at: '2024-01-01',
+  legal_terms_accepted: false,
 }
 
 const fakeAdminUser = {
@@ -155,6 +160,22 @@ describe('useAuthStore', () => {
       expect(localStorage.getItem('auth_user')).toBeNull()
       expect(localStorage.getItem('refresh_token')).toBeNull()
       expect(localStorage.getItem('token_expires_at')).toBeNull()
+    })
+  })
+
+  describe('acceptLegalTerms', () => {
+    it('records acceptance and updates the persisted user', async () => {
+      const acceptedUser = { ...fakeUser, legal_terms_accepted: true, legal_terms_version: '1.1' }
+      mockAcceptLegalTerms.mockResolvedValue(acceptedUser)
+      const store = useAuthStore()
+
+      await store.login({ email: 'test@example.com', password: '123456' })
+      const result = await store.acceptLegalTerms()
+
+      expect(mockAcceptLegalTerms).toHaveBeenCalledOnce()
+      expect(result).toEqual(acceptedUser)
+      expect(store.user).toEqual(acceptedUser)
+      expect(localStorage.getItem('auth_user')).toBe(JSON.stringify(acceptedUser))
     })
   })
 

@@ -35,6 +35,7 @@ func RegisterUserRoutes(
 			user.POST("/access-key", h.UserAccessKey.CreateAccessKey)
 			user.PUT("/password", h.User.ChangePassword)
 			user.PUT("", h.User.UpdateProfile)
+			user.POST("/legal-consent", h.User.AcceptLegalTerms)
 			user.GET("/ui-preferences", h.User.GetUIPreferences)
 			user.PUT("/ui-preferences", h.User.UpdateUIPreferences)
 

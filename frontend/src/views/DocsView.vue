@@ -1,8 +1,8 @@
 <template>
-  <div class="min-h-screen bg-[#f5f4f0] text-gray-900 dark:bg-dark-950 dark:text-gray-100">
+  <div class="flex min-h-screen flex-col bg-[#f5f4f0] text-gray-900 dark:bg-dark-950 dark:text-gray-100">
     <PublicHeader :site-name="siteName" :site-logo="siteLogo" />
 
-    <main class="pt-20 sm:pt-24">
+    <main class="flex-1 pt-20 sm:pt-24">
       <section class="mx-auto max-w-7xl px-4 pb-16 sm:px-6 sm:pb-20">
         <header class="border-b border-slate-900/10 py-8 dark:border-white/10 sm:grid sm:grid-cols-[minmax(0,1fr)_15rem] sm:items-end sm:gap-12 sm:py-11">
           <div class="max-w-3xl">
@@ -109,6 +109,8 @@
         </div>
       </section>
     </main>
+
+    <PublicFooter :site-name="siteName" />
   </div>
 </template>
 
@@ -118,6 +120,7 @@ import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
 import { useAppStore } from '@/stores'
 import PublicHeader from '@/components/layout/PublicHeader.vue'
+import PublicFooter from '@/components/layout/PublicFooter.vue'
 import { clientDocs, findClientDoc } from '@/docs/clientRegistry'
 import { resolveOpenAIUseKeyModelId } from '@/utils/openaiUseKeyModel'
 

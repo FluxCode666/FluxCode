@@ -38,12 +38,9 @@ const openaiModels = [
 ]
 
 export const openAIAPIKeyDefaultModels = [
-  'gpt-5.4',
-  'gpt-5.4-mini',
   'gpt-5.5',
-  'gpt-5.6-luna',
-  'gpt-5.6-terra',
-  'gpt-5.6-sol'
+  'gpt-5.6-sol',
+  'gpt-5.6-terra'
 ]
 
 // 常见 OpenAI-compatible embedding 模型；管理员仍可通过自定义输入添加任意模型。

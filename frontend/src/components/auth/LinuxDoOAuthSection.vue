@@ -42,6 +42,7 @@
 <script setup lang="ts">
 import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
+import { markOAuthLegalConsentPending } from '@/utils/legalConsent'
 
 withDefaults(defineProps<{
   disabled?: boolean
@@ -54,6 +55,7 @@ const route = useRoute()
 const { t } = useI18n()
 
 function startLogin(): void {
+  markOAuthLegalConsentPending()
   const redirectTo = (route.query.redirect as string) || '/dashboard'
   const apiBase = (import.meta.env.VITE_API_BASE_URL as string | undefined) || '/api/v1'
   const normalized = apiBase.replace(/\/$/, '')

@@ -123,6 +123,24 @@ func (h *UserHandler) UpdateProfile(c *gin.Context) {
 	response.Success(c, dto.UserFromService(updatedUser))
 }
 
+// AcceptLegalTerms records acceptance of the currently published legal documents.
+// POST /api/v1/user/legal-consent
+func (h *UserHandler) AcceptLegalTerms(c *gin.Context) {
+	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+
+	updatedUser, err := h.userService.AcceptLegalTerms(c.Request.Context(), subject.UserID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	response.Success(c, dto.UserFromService(updatedUser))
+}
+
 // GetUIPreferences handles getting current user's UI preferences
 // GET /api/v1/user/ui-preferences
 func (h *UserHandler) GetUIPreferences(c *gin.Context) {

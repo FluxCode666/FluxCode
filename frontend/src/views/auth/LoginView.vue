@@ -11,15 +11,15 @@
         </p>
       </div>
 
-  <div v-if="!backendModeEnabled && (linuxdoOAuthEnabled || oidcOAuthEnabled)" class="space-y-4">
+      <div v-if="!backendModeEnabled && (linuxdoOAuthEnabled || oidcOAuthEnabled)" class="space-y-4">
         <LinuxDoOAuthSection
           v-if="linuxdoOAuthEnabled"
-          :disabled="isLoading"
+          :disabled="isLoading || !legalAccepted"
           :show-divider="false"
         />
         <OidcOAuthSection
           v-if="oidcOAuthEnabled"
-          :disabled="isLoading"
+          :disabled="isLoading || !legalAccepted"
           :provider-name="oidcOAuthProviderName"
           :show-divider="false"
         />
@@ -139,7 +139,7 @@
         <!-- Submit Button -->
         <button
           type="submit"
-          :disabled="isLoading || (turnstileEnabled && !turnstileToken)"
+          :disabled="isLoading || !legalAccepted || (turnstileEnabled && !turnstileToken)"
           class="btn btn-primary w-full"
         >
           <svg
@@ -165,6 +165,8 @@
           <Icon v-else name="login" size="md" class="mr-2" />
           {{ isLoading ? t('auth.signingIn') : t('auth.signIn') }}
         </button>
+
+        <LegalConsent v-model="legalAccepted" input-id="login-legal-consent" />
       </form>
     </div>
 
@@ -203,6 +205,7 @@ import OidcOAuthSection from '@/components/auth/OidcOAuthSection.vue'
 import TotpLoginModal from '@/components/auth/TotpLoginModal.vue'
 import Icon from '@/components/icons/Icon.vue'
 import TurnstileWidget from '@/components/TurnstileWidget.vue'
+import LegalConsent from '@/components/legal/LegalConsent.vue'
 import { useAuthStore, useAppStore } from '@/stores'
 import { getPublicSettings, isTotp2FARequired } from '@/api/auth'
 import type { TotpLoginResponse } from '@/types'
@@ -220,6 +223,7 @@ const appStore = useAppStore()
 const isLoading = ref<boolean>(false)
 const errorMessage = ref<string>('')
 const showPassword = ref<boolean>(false)
+const legalAccepted = ref<boolean>(false)
 
 // Public settings
 const turnstileEnabled = ref<boolean>(false)
@@ -304,6 +308,11 @@ function validateForm(): boolean {
 
   let isValid = true
 
+  if (!legalAccepted.value) {
+    errorMessage.value = t('auth.legalConsentRequired')
+    isValid = false
+  }
+
   // Email validation
   if (!formData.email.trim()) {
     errors.email = t('auth.emailRequired')
@@ -362,6 +371,8 @@ async function handleLogin(): Promise<void> {
       return
     }
 
+    await recordLegalConsent()
+
     // Show success toast
     appStore.showSuccess(t('auth.loginSuccess'))
 
@@ -402,6 +413,7 @@ async function handle2FAVerify(code: string): Promise<void> {
 
   try {
     await authStore.login2FA(totpTempToken.value, code)
+    await recordLegalConsent()
 
     // Close modal and show success
     show2FAModal.value = false
@@ -418,6 +430,19 @@ async function handle2FAVerify(code: string): Promise<void> {
       totpModalRef.value.setError(message)
       totpModalRef.value.setVerifying(false)
     }
+  }
+}
+
+async function recordLegalConsent(): Promise<void> {
+  try {
+    await authStore.acceptLegalTerms()
+  } catch (error) {
+    // Do not leave a session active when the checked consent could not be stored.
+    await authStore.logout().catch((logoutError) => {
+      console.error('Failed to revoke session after legal consent error:', logoutError)
+    })
+    console.error('Failed to record legal consent:', error)
+    throw new Error(t('auth.legalConsentSaveFailed'))
   }
 }
 

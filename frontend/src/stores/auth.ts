@@ -5,7 +5,7 @@
 
 import { defineStore } from 'pinia'
 import { ref, computed, readonly } from 'vue'
-import { authAPI, isTotp2FARequired, type LoginResponse } from '@/api'
+import { authAPI, isTotp2FARequired, type LoginResponse, userAPI } from '@/api'
 import type { User, LoginRequest, RegisterRequest, AuthResponse } from '@/types'
 
 const AUTH_TOKEN_KEY = 'auth_token'
@@ -363,6 +363,18 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
+  /** Record acceptance of the currently published legal documents. */
+  async function acceptLegalTerms(): Promise<User> {
+    const updatedUser = await userAPI.acceptLegalTerms()
+    // The consent endpoint intentionally returns the standard user DTO without
+    // route-specific capability fields. Merge it into the current session so
+    // accepting the documents does not discard fields loaded during login.
+    const mergedUser = user.value ? { ...user.value, ...updatedUser } : updatedUser
+    user.value = mergedUser
+    localStorage.setItem(AUTH_USER_KEY, JSON.stringify(mergedUser))
+    return mergedUser
+  }
+
   /**
    * Clear all authentication state
    * Internal helper function
@@ -403,6 +415,7 @@ export const useAuthStore = defineStore('auth', () => {
     setToken,
     logout,
     checkAuth,
-    refreshUser
+    refreshUser,
+    acceptLegalTerms
   }
 })

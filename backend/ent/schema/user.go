@@ -73,6 +73,16 @@ func (User) Fields() []ent.Field {
 			Optional().
 			Nillable(),
 
+		// 用户服务条款同意记录。新迁移默认全部为 false，接受时记录当前版本和时间。
+		field.Bool("legal_terms_accepted").
+			Default(false),
+		field.String("legal_terms_version").
+			MaxLen(32).
+			Default(""),
+		field.Time("legal_terms_accepted_at").
+			Optional().
+			Nillable(),
+
 		// 余额不足通知
 		field.Bool("balance_notify_enabled").
 			Default(true),

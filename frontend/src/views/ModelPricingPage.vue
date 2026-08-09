@@ -1,156 +1,255 @@
 <template>
-  <div class="min-h-screen overflow-x-hidden bg-[#faf7f2] text-gray-900 dark:bg-dark-950 dark:text-gray-100">
+  <div class="flex min-h-screen flex-col overflow-x-hidden bg-[#faf7f2] text-gray-900 dark:bg-dark-950 dark:text-gray-100">
     <PublicHeader :site-name="siteName" :site-logo="siteLogo" />
 
-    <main class="mx-auto w-full max-w-7xl px-4 pb-16 pt-24 sm:px-6 lg:px-8">
-      <div class="mb-8 flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-        <div class="max-w-5xl">
-          <h1 class="text-3xl font-semibold tracking-tight text-gray-950 dark:text-white sm:text-4xl">
-            {{ t('modelPricing.title', '模型定价') }}
-          </h1>
-          <p class="mt-3 max-w-2xl text-sm leading-6 text-gray-600 dark:text-dark-300">
-            {{ t('modelPricing.description', '按模型查看不同分组的调用价格') }}
-          </p>
-        </div>
-
-        <div class="grid w-full gap-2 sm:grid-cols-[minmax(220px,1fr)_minmax(140px,160px)_minmax(150px,180px)_minmax(170px,200px)] lg:max-w-4xl">
-          <input
-            v-model="searchInput"
-            data-testid="model-pricing-search"
-            class="input"
-            :placeholder="t('modelPricing.searchPlaceholder', '搜索模型、平台或能力')"
-          />
-          <Select
-            :model-value="platformFilter"
-            :options="platformOptions"
-            @update:modelValue="setPlatformFilter"
-          />
-          <Select
-            :model-value="capabilityFilter"
-            :options="capabilityOptions"
-            @update:modelValue="setCapabilityFilter"
-          />
-          <Select
-            data-testid="model-pricing-group-filter"
-            :model-value="groupFilter"
-            :options="groupOptions"
-            @update:modelValue="setGroupFilter"
-          />
-        </div>
+    <main class="mx-auto w-full max-w-7xl flex-1 px-4 pb-16 pt-24 sm:px-6 lg:px-8">
+      <div class="mb-8">
+        <h1 class="text-3xl font-semibold tracking-tight text-gray-950 dark:text-white sm:text-4xl">
+          {{ t('modelPricing.title', '模型定价') }}
+        </h1>
+        <p class="mt-3 max-w-2xl text-sm leading-6 text-gray-600 dark:text-dark-300">
+          {{ t('modelPricing.description', '按模型查看不同分组的调用价格') }}
+        </p>
       </div>
 
-      <div
-        v-if="error"
-        class="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900/40 dark:bg-red-950/30 dark:text-red-300"
-      >
-        <div class="flex items-center justify-between gap-3">
-          <span>{{ t('modelPricing.queryError', '查询异常') }}</span>
-          <button
-            data-testid="model-pricing-retry"
-            type="button"
-            class="btn btn-secondary"
-            @click="loadModels"
-          >
-            {{ t('common.retry', '重试') }}
-          </button>
-        </div>
-      </div>
-
-      <section v-else>
-        <div v-if="loading" class="rounded-2xl border border-black/5 bg-white/70 p-8 text-sm text-gray-500 shadow-sm dark:border-white/10 dark:bg-dark-900/40 dark:text-dark-300">
-          {{ t('common.loading', '加载中...') }}
-        </div>
-        <div v-else-if="models.length === 0" class="rounded-2xl border border-black/5 bg-white/70 p-8 text-sm text-gray-500 shadow-sm dark:border-white/10 dark:bg-dark-900/40 dark:text-dark-300">
-          {{ t('modelPricing.empty', '未找到匹配模型') }}
-        </div>
-
-        <div v-else class="grid grid-flow-dense gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          <article
-            v-for="model in models"
-            :key="model.id"
-            :data-testid="`model-card-${model.id}`"
-            role="button"
-            tabindex="0"
-            class="group relative flex min-h-[290px] w-full cursor-pointer flex-col overflow-hidden rounded-2xl border border-black/5 bg-white/75 p-5 text-left shadow-sm transition duration-300 hover:-translate-y-1 hover:border-primary-300 hover:bg-white hover:shadow-xl hover:shadow-black/5 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 dark:border-white/10 dark:bg-dark-900/45 dark:hover:bg-dark-900/70"
-            @click="selectModel(model.id)"
-            @keydown.enter="selectModel(model.id)"
-            @keydown.space.prevent="selectModel(model.id)"
-          >
-            <div class="pointer-events-none absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-primary-100/50 to-transparent opacity-0 transition-opacity duration-500 group-hover:opacity-100 dark:from-primary-900/20"></div>
-
-            <div class="relative flex items-start justify-between gap-3">
-              <div class="min-w-0">
-                <div class="truncate text-lg font-semibold text-gray-950 dark:text-white">
-                  {{ model.display_name || model.id }}
-                </div>
-                <div class="mt-2 text-xs uppercase tracking-[0.2em] text-gray-500 dark:text-dark-400">
-                  {{ model.platform }}
-                </div>
+      <div class="grid items-start gap-6 lg:grid-cols-[18rem_minmax(0,1fr)]">
+        <aside
+          data-testid="model-pricing-filters"
+          class="lg:sticky lg:top-20"
+          :aria-label="t('modelPricing.filters', '筛选模型')"
+        >
+          <div class="rounded-2xl border border-black/5 bg-white/75 p-4 shadow-sm dark:border-white/10 dark:bg-dark-900/45">
+            <div class="mb-4 flex items-center justify-between gap-3">
+              <div>
+                <h2 class="text-sm font-semibold text-gray-950 dark:text-white">
+                  {{ t('modelPricing.filters', '筛选模型') }}
+                </h2>
+                <p class="mt-1 text-xs text-gray-500 dark:text-dark-400">
+                  {{ t('modelPricing.filterHint', '按条件快速找到模型') }}
+                </p>
               </div>
-              <div class="shrink-0">
-                <button
-                  type="button"
-                  :data-testid="`model-copy-${model.id}`"
-                  class="rounded-lg p-1.5 text-gray-500 transition hover:bg-black/5 hover:text-gray-950 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 dark:text-dark-300 dark:hover:bg-white/10 dark:hover:text-white"
-                  :title="t('modelPricing.copyModelId', '复制模型 ID')"
-                  :aria-label="t('modelPricing.copyModelId', '复制模型 ID')"
-                  @click.stop="copyModelId(model.id)"
-                >
-                  <Icon name="copy" size="sm" />
-                </button>
-              </div>
-            </div>
-
-            <div class="relative mt-5 flex flex-wrap gap-1.5">
-              <span
-                v-for="capability in model.capabilities"
-                :key="capability"
-                class="rounded-full bg-black/5 px-2.5 py-1 text-xs text-gray-700 dark:bg-white/10 dark:text-dark-100"
+              <button
+                v-if="hasActiveFilters"
+                type="button"
+                data-testid="model-pricing-reset-filters"
+                class="shrink-0 rounded-lg px-2 py-1 text-xs font-medium text-primary-700 transition hover:bg-primary-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 dark:text-primary-300 dark:hover:bg-primary-500/10"
+                @click="resetFilters"
               >
-                {{ capabilityLabel(capability) }}
-              </span>
+                {{ t('modelPricing.resetFilters', '重置') }}
+              </button>
             </div>
 
-            <div class="relative mt-auto space-y-3 pt-6">
-              <div :data-testid="`model-card-price-${model.id}`" class="grid grid-cols-2 gap-3 text-xs">
-                <div class="rounded-xl bg-black/[0.03] p-3 dark:bg-white/[0.06]">
-                  <div class="text-gray-500 dark:text-dark-400">{{ t('modelPricing.input', '输入') }}</div>
-                  <div class="mt-1 font-semibold text-gray-950 dark:text-white">
-                    {{ formatTokenPrice(summaryDisplayPrice(model).input_price) }}
-                  </div>
+            <input
+              v-model="searchInput"
+              data-testid="model-pricing-search"
+              class="input"
+              :placeholder="t('modelPricing.searchPlaceholder', '搜索模型、平台或能力')"
+              type="search"
+              :aria-label="t('modelPricing.searchPlaceholder', '搜索模型、平台或能力')"
+            />
+
+            <div v-if="!detailModalOpen" class="mt-5 space-y-6">
+              <fieldset v-if="models.length > 0">
+                <legend class="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-dark-400">
+                  {{ t('modelPricing.model', '模型') }}
+                </legend>
+                <div class="flex max-h-60 flex-wrap gap-2 overflow-y-auto pr-1">
+                  <button
+                    v-for="model in models"
+                    :key="`model-${model.id}`"
+                    type="button"
+                    :data-testid="`model-pricing-model-option-${model.id}`"
+                    :class="filterPillClass(selectedModelId === model.id)"
+                    :aria-pressed="selectedModelId === model.id"
+                    :title="model.display_name || model.id"
+                    @click="selectModel(model.id)"
+                  >
+                    <Icon v-if="selectedModelId === model.id" name="check" size="xs" :stroke-width="2.5" aria-hidden="true" />
+                    <span class="min-w-0 truncate">{{ model.display_name || model.id }}</span>
+                  </button>
                 </div>
-                <div class="rounded-xl bg-black/[0.03] p-3 dark:bg-white/[0.06]">
-                  <div class="text-gray-500 dark:text-dark-400">{{ t('modelPricing.output', '输出') }}</div>
-                  <div class="mt-1 font-semibold text-gray-950 dark:text-white">
-                    {{ formatTokenPrice(summaryDisplayPrice(model).output_price) }}
-                  </div>
+              </fieldset>
+
+              <fieldset>
+                <legend class="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-dark-400">
+                  {{ t('modelPricing.platform', '平台') }}
+                </legend>
+                <div class="flex flex-wrap gap-2">
+                  <button
+                    v-for="option in platformOptions"
+                    :key="`platform-${option.value || 'all'}`"
+                    type="button"
+                    :data-testid="`model-pricing-platform-option-${option.value || 'all'}`"
+                    :class="filterPillClass(option.value === platformFilter)"
+                    :aria-pressed="option.value === platformFilter"
+                    @click="setPlatformFilter(option.value)"
+                  >
+                    <Icon v-if="option.value === platformFilter" name="check" size="xs" :stroke-width="2.5" aria-hidden="true" />
+                    <span class="min-w-0 truncate">{{ option.label }}</span>
+                  </button>
                 </div>
-              </div>
-              <div class="grid grid-cols-3 gap-2 text-xs">
-                <div class="rounded-xl bg-primary-50 p-3 dark:bg-primary-500/10">
-                  <div class="text-gray-500 dark:text-dark-400">{{ t('modelPricing.performance.latency', '延迟') }}</div>
-                  <div :data-testid="`model-card-latency-${model.id}`" class="mt-1 font-semibold text-gray-950 dark:text-white">
-                    {{ formatMilliseconds(model.performance?.average_first_token_ms) }}
-                  </div>
+              </fieldset>
+
+              <fieldset>
+                <legend class="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-dark-400">
+                  {{ t('modelPricing.capability', '能力') }}
+                </legend>
+                <div class="flex max-h-72 flex-wrap gap-2 overflow-y-auto pr-1">
+                  <button
+                    v-for="option in capabilityOptions"
+                    :key="`capability-${option.value || 'all'}`"
+                    type="button"
+                    :data-testid="`model-pricing-capability-option-${option.value || 'all'}`"
+                    :class="filterPillClass(option.value === capabilityFilter)"
+                    :aria-pressed="option.value === capabilityFilter"
+                    @click="setCapabilityFilter(option.value)"
+                  >
+                    <Icon v-if="option.value === capabilityFilter" name="check" size="xs" :stroke-width="2.5" aria-hidden="true" />
+                    <span class="min-w-0 truncate">{{ option.label }}</span>
+                  </button>
                 </div>
-                <div class="rounded-xl bg-primary-50 p-3 dark:bg-primary-500/10">
-                  <div class="text-gray-500 dark:text-dark-400">{{ t('modelPricing.performance.throughput', '吞吐') }}</div>
-                  <div :data-testid="`model-card-tps-${model.id}`" class="mt-1 font-semibold text-gray-950 dark:text-white">
-                    {{ formatTps(model.performance?.tps) }}
-                  </div>
+              </fieldset>
+
+              <fieldset>
+                <legend class="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-dark-400">
+                  {{ t('modelPricing.group', '分组') }}
+                </legend>
+                <div class="flex max-h-60 flex-wrap gap-2 overflow-y-auto pr-1">
+                  <button
+                    v-for="option in groupOptions"
+                    :key="`group-${option.value || 'all'}`"
+                    type="button"
+                    :data-testid="`model-pricing-group-option-${option.value || 'all'}`"
+                    :class="filterPillClass(option.value === groupFilter)"
+                    :aria-pressed="option.value === groupFilter"
+                    @click="setGroupFilter(option.value)"
+                  >
+                    <Icon v-if="option.value === groupFilter" name="check" size="xs" :stroke-width="2.5" aria-hidden="true" />
+                    <span class="min-w-0 truncate">{{ option.label }}</span>
+                  </button>
                 </div>
-                <div class="rounded-xl bg-primary-50 p-3 dark:bg-primary-500/10">
-                  <div class="text-gray-500 dark:text-dark-400">{{ t('modelPricing.performance.status', '状态') }}</div>
-                  <div :data-testid="`model-card-availability-${model.id}`" class="mt-1 font-semibold text-gray-950 dark:text-white">
-                    {{ formatPercentage(model.performance?.availability) }}
-                  </div>
-                </div>
-              </div>
+              </fieldset>
             </div>
-          </article>
-        </div>
-      </section>
+          </div>
+        </aside>
+
+        <section class="min-w-0">
+          <div
+            v-if="error"
+            class="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900/40 dark:bg-red-950/30 dark:text-red-300"
+          >
+            <div class="flex items-center justify-between gap-3">
+              <span>{{ t('modelPricing.queryError', '查询异常') }}</span>
+              <button
+                data-testid="model-pricing-retry"
+                type="button"
+                class="btn btn-secondary"
+                @click="loadModels"
+              >
+                {{ t('common.retry', '重试') }}
+              </button>
+            </div>
+          </div>
+
+          <div v-else>
+            <div v-if="loading" class="rounded-2xl border border-black/5 bg-white/70 p-8 text-sm text-gray-500 shadow-sm dark:border-white/10 dark:bg-dark-900/40 dark:text-dark-300">
+              {{ t('common.loading', '加载中...') }}
+            </div>
+            <div v-else-if="models.length === 0" class="rounded-2xl border border-black/5 bg-white/70 p-8 text-sm text-gray-500 shadow-sm dark:border-white/10 dark:bg-dark-900/40 dark:text-dark-300">
+              {{ t('modelPricing.empty', '未找到匹配模型') }}
+            </div>
+
+            <div v-else class="grid grid-flow-dense gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              <article
+                v-for="model in models"
+                :key="model.id"
+                :data-testid="`model-card-${model.id}`"
+                role="button"
+                tabindex="0"
+                class="group relative flex min-h-[290px] w-full cursor-pointer flex-col overflow-hidden rounded-2xl border border-black/5 bg-white/75 p-5 text-left shadow-sm transition duration-300 hover:-translate-y-1 hover:border-primary-300 hover:bg-white hover:shadow-xl hover:shadow-black/5 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 dark:border-white/10 dark:bg-dark-900/45 dark:hover:bg-dark-900/70"
+                @click="selectModel(model.id)"
+                @keydown.enter="selectModel(model.id)"
+                @keydown.space.prevent="selectModel(model.id)"
+              >
+                <div class="pointer-events-none absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-primary-100/50 to-transparent opacity-0 transition-opacity duration-500 group-hover:opacity-100 dark:from-primary-900/20"></div>
+
+                <div class="relative flex items-start justify-between gap-3">
+                  <div class="min-w-0">
+                    <div class="truncate text-lg font-semibold text-gray-950 dark:text-white">
+                      {{ model.display_name || model.id }}
+                    </div>
+                    <div class="mt-2 text-xs uppercase tracking-[0.2em] text-gray-500 dark:text-dark-400">
+                      {{ model.platform }}
+                    </div>
+                  </div>
+                  <div class="shrink-0">
+                    <button
+                      type="button"
+                      :data-testid="`model-copy-${model.id}`"
+                      class="rounded-lg p-1.5 text-gray-500 transition hover:bg-black/5 hover:text-gray-950 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 dark:text-dark-300 dark:hover:bg-white/10 dark:hover:text-white"
+                      :title="t('modelPricing.copyModelId', '复制模型 ID')"
+                      :aria-label="t('modelPricing.copyModelId', '复制模型 ID')"
+                      @click.stop="copyModelId(model.id)"
+                    >
+                      <Icon name="copy" size="sm" />
+                    </button>
+                  </div>
+                </div>
+
+                <div class="relative mt-5 flex flex-wrap gap-1.5">
+                  <span
+                    v-for="capability in model.capabilities"
+                    :key="capability"
+                    class="rounded-full bg-black/5 px-2.5 py-1 text-xs text-gray-700 dark:bg-white/10 dark:text-dark-100"
+                  >
+                    {{ capabilityLabel(capability) }}
+                  </span>
+                </div>
+
+                <div class="relative mt-auto space-y-3 pt-6">
+                  <div :data-testid="`model-card-price-${model.id}`" class="grid grid-cols-2 gap-3 text-xs">
+                    <div class="rounded-xl bg-black/[0.03] p-3 dark:bg-white/[0.06]">
+                      <div class="text-gray-500 dark:text-dark-400">{{ t('modelPricing.input', '输入') }}</div>
+                      <div class="mt-1 font-semibold text-gray-950 dark:text-white">
+                        {{ formatTokenPrice(summaryDisplayPrice(model).input_price) }}
+                      </div>
+                    </div>
+                    <div class="rounded-xl bg-black/[0.03] p-3 dark:bg-white/[0.06]">
+                      <div class="text-gray-500 dark:text-dark-400">{{ t('modelPricing.output', '输出') }}</div>
+                      <div class="mt-1 font-semibold text-gray-950 dark:text-white">
+                        {{ formatTokenPrice(summaryDisplayPrice(model).output_price) }}
+                      </div>
+                    </div>
+                  </div>
+                  <div class="grid grid-cols-3 gap-2 text-xs">
+                    <div class="rounded-xl bg-primary-50 p-3 dark:bg-primary-500/10">
+                      <div class="text-gray-500 dark:text-dark-400">{{ t('modelPricing.performance.latency', '延迟') }}</div>
+                      <div :data-testid="`model-card-latency-${model.id}`" class="mt-1 font-semibold text-gray-950 dark:text-white">
+                        {{ formatMilliseconds(model.performance?.average_first_token_ms) }}
+                      </div>
+                    </div>
+                    <div class="rounded-xl bg-primary-50 p-3 dark:bg-primary-500/10">
+                      <div class="text-gray-500 dark:text-dark-400">{{ t('modelPricing.performance.throughput', '吞吐') }}</div>
+                      <div :data-testid="`model-card-tps-${model.id}`" class="mt-1 font-semibold text-gray-950 dark:text-white">
+                        {{ formatTps(model.performance?.tps) }}
+                      </div>
+                    </div>
+                    <div class="rounded-xl bg-primary-50 p-3 dark:bg-primary-500/10">
+                      <div class="text-gray-500 dark:text-dark-400">{{ t('modelPricing.performance.status', '状态') }}</div>
+                      <div :data-testid="`model-card-availability-${model.id}`" class="mt-1 font-semibold text-gray-950 dark:text-white">
+                        {{ formatPercentage(model.performance?.availability) }}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </article>
+            </div>
+          </div>
+        </section>
+      </div>
     </main>
+
+    <PublicFooter :site-name="siteName" />
 
     <BaseDialog
       :show="detailModalOpen"
@@ -317,8 +416,8 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import PublicHeader from '@/components/layout/PublicHeader.vue'
+import PublicFooter from '@/components/layout/PublicFooter.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
-import Select from '@/components/common/Select.vue'
 import Icon from '@/components/icons/Icon.vue'
 import ModelPerformanceTrendChart from '@/components/charts/ModelPerformanceTrendChart.vue'
 import { useClipboard } from '@/composables/useClipboard'
@@ -395,6 +494,13 @@ const groupOptions = computed(() => [
   }))
 ])
 
+const hasActiveFilters = computed(() =>
+  searchInput.value.trim() !== '' ||
+  platformFilter.value !== '' ||
+  capabilityFilter.value !== '' ||
+  groupFilter.value !== ''
+)
+
 const detailTitle = computed(() => detail.value?.display_name || selectedModelId.value || t('modelPricing.title', '模型定价'))
 const performanceRangeLabel = computed(() => detailPerformanceRange.value === '7d'
   ? t('modelPricing.performance.last7Days', '最近 7 天')
@@ -446,6 +552,26 @@ function setGroupFilter(value: string | number | boolean | null) {
     groupFilter.value = Number.isFinite(nextValue) ? nextValue : ''
     return
   }
+  groupFilter.value = ''
+}
+
+function filterPillClass(selected: boolean): string {
+  const base = 'inline-flex max-w-full items-center gap-1.5 rounded-full border px-3 py-1.5 text-left text-xs font-medium leading-5 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-dark-900'
+  return selected
+    ? `${base} border-primary-300 bg-primary-50 text-primary-700 shadow-sm dark:border-primary-700 dark:bg-primary-500/15 dark:text-primary-200`
+    : `${base} border-black/10 bg-white/60 text-gray-600 hover:border-primary-200 hover:bg-primary-50/70 hover:text-primary-700 dark:border-white/10 dark:bg-white/[0.04] dark:text-dark-200 dark:hover:border-primary-800 dark:hover:bg-primary-500/10 dark:hover:text-primary-200`
+}
+
+function resetFilters() {
+  if (searchTimer) {
+    window.clearTimeout(searchTimer)
+    searchTimer = null
+  }
+
+  searchInput.value = ''
+  debouncedSearch.value = ''
+  platformFilter.value = ''
+  capabilityFilter.value = ''
   groupFilter.value = ''
 }
 

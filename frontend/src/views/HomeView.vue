@@ -1,8 +1,8 @@
 <template>
-  <div class="min-h-screen bg-[#faf7f2] text-gray-900 dark:bg-dark-950 dark:text-gray-100">
+  <div class="flex min-h-screen flex-col bg-[#faf7f2] text-gray-900 dark:bg-dark-950 dark:text-gray-100">
     <PublicHeader :site-name="siteName" :site-logo="siteLogo" />
 
-    <main id="top">
+    <main id="top" class="flex-1">
       <!-- Hero（参考 HOPCC：居中排版 + 暖色背景） -->
       <section class="relative overflow-hidden">
         <div class="pointer-events-none absolute inset-0">
@@ -134,6 +134,8 @@
         </div>
       </section>
     </main>
+
+    <PublicFooter :site-name="siteName" />
   </div>
 </template>
 
@@ -142,6 +144,7 @@ import { computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore, useAuthStore } from '@/stores'
 import PublicHeader from '@/components/layout/PublicHeader.vue'
+import PublicFooter from '@/components/layout/PublicFooter.vue'
 
 const { t } = useI18n()
 

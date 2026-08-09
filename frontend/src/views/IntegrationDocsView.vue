@@ -1,8 +1,8 @@
 <template>
-  <div class="min-h-screen bg-[#f6f1e8] text-gray-900 dark:bg-dark-950 dark:text-gray-100">
+  <div class="flex min-h-screen flex-col bg-[#f6f1e8] text-gray-900 dark:bg-dark-950 dark:text-gray-100">
     <PublicHeader :site-name="siteName" :site-logo="siteLogo" />
 
-    <main class="pt-24 pb-20">
+    <main class="flex-1 pb-20 pt-24">
       <section class="relative overflow-hidden border-b border-black/5 dark:border-white/10">
         <div class="pointer-events-none absolute inset-0">
           <div class="absolute left-1/2 top-0 h-[420px] w-[420px] -translate-x-1/2 rounded-full bg-[#b89a7a]/20 blur-3xl dark:bg-primary-500/10"></div>
@@ -485,6 +485,8 @@
         </div>
       </section>
     </main>
+
+    <PublicFooter :site-name="siteName" />
   </div>
 </template>
 
@@ -493,6 +495,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores'
 import PublicHeader from '@/components/layout/PublicHeader.vue'
+import PublicFooter from '@/components/layout/PublicFooter.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { useClipboard } from '@/composables/useClipboard'
 import { resolveOpenAIUseKeyModelId } from '@/utils/openaiUseKeyModel'

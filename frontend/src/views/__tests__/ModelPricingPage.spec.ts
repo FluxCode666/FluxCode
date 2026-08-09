@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { config, flushPromises, mount } from '@vue/test-utils'
+import { config, flushPromises, mount, RouterLinkStub } from '@vue/test-utils'
 
 import ModelPricingPage from '../ModelPricingPage.vue'
 
@@ -52,16 +52,6 @@ const BaseDialogStub = {
   `
 }
 
-const SelectStub = {
-  props: ['modelValue', 'options'],
-  emits: ['update:modelValue'],
-  template: `
-    <button type="button" :data-testid="$attrs['data-testid']" @click="$emit('update:modelValue', options?.[1]?.value ?? '')">
-      {{ options?.[0]?.label }}
-    </button>
-  `
-}
-
 const ModelPerformanceTrendChartStub = {
   props: ['metric', 'points', 'range'],
   template: '<div data-testid="model-performance-trend-stub" />'
@@ -72,7 +62,8 @@ describe('ModelPricingPage', () => {
     vi.useFakeTimers()
     config.global.stubs = {
       ...config.global.stubs,
-      ModelPerformanceTrendChart: ModelPerformanceTrendChartStub
+      ModelPerformanceTrendChart: ModelPerformanceTrendChartStub,
+      RouterLink: RouterLinkStub
     }
     listModels.mockReset()
     getModel.mockReset()
@@ -197,6 +188,7 @@ describe('ModelPricingPage', () => {
     vi.useRealTimers()
     vi.clearAllMocks()
     delete config.global.stubs.ModelPerformanceTrendChart
+    delete config.global.stubs.RouterLink
   })
 
   it('renders model cards and loads model detail after click', async () => {
@@ -235,21 +227,73 @@ describe('ModelPricingPage', () => {
     expect(wrapper.text()).not.toContain('$6.00000/M · 2.00x')
   })
 
-  it('提供文本嵌入能力筛选项', async () => {
+  it('以胶囊平铺形式提供文本嵌入能力筛选项', async () => {
     const wrapper = mount(ModelPricingPage, {
       global: {
         stubs: {
           PublicHeader: true,
-          BaseDialog: BaseDialogStub,
-          Select: SelectStub
+          BaseDialog: BaseDialogStub
         }
       }
     })
 
     await flushPromises()
 
-    const capabilitySelect = wrapper.findAllComponents(SelectStub)[1]
-    expect(capabilitySelect.props('options')).toContainEqual({ value: 'embedding', label: '文本嵌入' })
+    const embeddingOption = wrapper.get('[data-testid="model-pricing-capability-option-embedding"]')
+    expect(embeddingOption.text()).toContain('文本嵌入')
+    expect(embeddingOption.classes()).toContain('rounded-full')
+  })
+
+  it('在左侧展开筛选枚举并支持直接切换', async () => {
+    const wrapper = mount(ModelPricingPage, {
+      global: {
+        stubs: {
+          PublicHeader: true,
+          BaseDialog: BaseDialogStub
+        }
+      }
+    })
+
+    await flushPromises()
+
+    const filters = wrapper.get('[data-testid="model-pricing-filters"]')
+    expect(filters.text()).toContain('平台')
+    expect(filters.text()).toContain('能力')
+    expect(filters.text()).toContain('分组')
+    expect(filters.text()).toContain('模型')
+    expect(filters.get('[data-testid="model-pricing-capability-option-embedding"]').text()).toContain('文本嵌入')
+    expect(filters.get('[data-testid="model-pricing-platform-option-anthropic"]').classes()).toContain('rounded-full')
+
+    await filters.get('[data-testid="model-pricing-platform-option-anthropic"]').trigger('click')
+    await flushPromises()
+
+    expect(listModels).toHaveBeenLastCalledWith(
+      { q: '', platform: 'anthropic', capability: '', range: '24h' },
+      expect.any(Object)
+    )
+
+    await filters.get('[data-testid="model-pricing-group-option-1"]').trigger('click')
+    await flushPromises()
+
+    expect(listModels).toHaveBeenLastCalledWith(
+      { q: '', platform: 'anthropic', capability: '', group_id: 1, range: '24h' },
+      expect.any(Object)
+    )
+    expect(filters.get('[data-testid="model-pricing-group-option-1"]').attributes('aria-pressed')).toBe('true')
+
+    await filters.get('[data-testid="model-pricing-reset-filters"]').trigger('click')
+    await flushPromises()
+
+    expect(listModels).toHaveBeenLastCalledWith(
+      { q: '', platform: '', capability: '', range: '24h' },
+      expect.any(Object)
+    )
+
+    await filters.get('[data-testid="model-pricing-model-option-claude-sonnet-4"]').trigger('click')
+    await flushPromises()
+
+    expect(getModel).toHaveBeenLastCalledWith('claude-sonnet-4', '24h', expect.any(Object))
+    expect(wrapper.get('[data-testid="model-pricing-detail-modal"]').exists()).toBe(true)
   })
 
   it('copies model id from list cards and detail modal', async () => {
@@ -309,8 +353,7 @@ describe('ModelPricingPage', () => {
       global: {
         stubs: {
           PublicHeader: true,
-          BaseDialog: BaseDialogStub,
-          Select: SelectStub
+          BaseDialog: BaseDialogStub
         }
       }
     })
@@ -320,7 +363,7 @@ describe('ModelPricingPage', () => {
     expect(listGroups).toHaveBeenCalledTimes(1)
     expect(wrapper.text()).toContain('全部分组')
 
-    await wrapper.get('[data-testid="model-pricing-group-filter"]').trigger('click')
+    await wrapper.get('[data-testid="model-pricing-group-option-1"]').trigger('click')
     await flushPromises()
 
     expect(listModels).toHaveBeenLastCalledWith(
@@ -335,7 +378,6 @@ describe('ModelPricingPage', () => {
         stubs: {
           PublicHeader: true,
           BaseDialog: BaseDialogStub,
-          Select: SelectStub,
           ModelPerformanceTrendChart: {
             props: ['metric', 'points', 'range'],
             template: '<div :data-testid="`trend-${metric}`">{{ range }} {{ points.length }}</div>'

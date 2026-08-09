@@ -407,6 +407,7 @@ async function handleVerify(): Promise<void> {
       invitation_code: invitationCode.value || undefined,
       referral_code: referralCode.value || undefined
     })
+    await recordLegalConsent()
 
     // Clear session data
     sessionStorage.removeItem('register_data')
@@ -424,6 +425,18 @@ async function handleVerify(): Promise<void> {
     appStore.showError(errorMessage.value)
   } finally {
     isLoading.value = false
+  }
+}
+
+async function recordLegalConsent(): Promise<void> {
+  try {
+    await authStore.acceptLegalTerms()
+  } catch (error) {
+    await authStore.logout().catch((logoutError) => {
+      console.error('Failed to revoke session after legal consent error:', logoutError)
+    })
+    console.error('Failed to record legal consent:', error)
+    throw new Error(t('auth.legalConsentSaveFailed'))
   }
 }
 

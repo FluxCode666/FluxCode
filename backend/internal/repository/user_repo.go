@@ -168,6 +168,9 @@ func (r *userRepository) Update(ctx context.Context, userIn *service.User) error
 		SetBalance(userIn.Balance).
 		SetConcurrency(userIn.Concurrency).
 		SetStatus(userIn.Status).
+		SetLegalTermsAccepted(userIn.LegalTermsAccepted).
+		SetLegalTermsVersion(userIn.LegalTermsVersion).
+		SetNillableLegalTermsAcceptedAt(userIn.LegalTermsAcceptedAt).
 		SetBalanceNotifyEnabled(userIn.BalanceNotifyEnabled).
 		SetBalanceNotifyThresholdType(userIn.BalanceNotifyThresholdType).
 		SetNillableBalanceNotifyThreshold(userIn.BalanceNotifyThreshold).
@@ -604,6 +607,9 @@ func applyUserEntityToService(dst *service.User, src *dbent.User) {
 	dst.SalesCommissionMinMonthlySales = src.SalesCommissionMinMonthlySales
 	dst.CreatedAt = src.CreatedAt
 	dst.UpdatedAt = src.UpdatedAt
+	dst.LegalTermsAccepted = src.LegalTermsAccepted
+	dst.LegalTermsVersion = src.LegalTermsVersion
+	dst.LegalTermsAcceptedAt = src.LegalTermsAcceptedAt
 }
 
 func (r *userRepository) syncUserSalesCommissionTiersWithClient(ctx context.Context, client *dbent.Client, userID int64, tiers []service.SalesCommissionTier) error {

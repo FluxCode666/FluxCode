@@ -72,6 +72,10 @@ import { AuthLayout } from '@/components/layout'
 import Icon from '@/components/icons/Icon.vue'
 import { useAuthStore, useAppStore } from '@/stores'
 import { completeLinuxDoOAuthRegistration } from '@/api/auth'
+import {
+  clearOAuthLegalConsentPending,
+  hasOAuthLegalConsentPending
+} from '@/utils/legalConsent'
 
 const route = useRoute()
 const router = useRouter()
@@ -106,6 +110,24 @@ function sanitizeRedirectPath(path: string | null | undefined): string {
   return path
 }
 
+async function recordOAuthLegalConsent(): Promise<void> {
+  if (!hasOAuthLegalConsentPending()) {
+    await authStore.logout()
+    throw new Error(t('auth.legalConsentRequired'))
+  }
+
+  try {
+    await authStore.acceptLegalTerms()
+    clearOAuthLegalConsentPending()
+  } catch (error) {
+    await authStore.logout().catch((logoutError) => {
+      console.error('Failed to revoke OAuth session after legal consent error:', logoutError)
+    })
+    console.error('Failed to record OAuth legal consent:', error)
+    throw new Error(t('auth.legalConsentSaveFailed'))
+  }
+}
+
 async function handleSubmitInvitation() {
   invitationError.value = ''
   if (!invitationCode.value.trim()) return
@@ -123,6 +145,7 @@ async function handleSubmitInvitation() {
       localStorage.setItem('token_expires_at', String(Date.now() + tokenData.expires_in * 1000))
     }
     await authStore.setToken(tokenData.access_token)
+    await recordOAuthLegalConsent()
     appStore.showSuccess(t('auth.loginSuccess'))
     await router.replace(redirectTo.value)
   } catch (e: unknown) {
@@ -186,6 +209,7 @@ onMounted(async () => {
     }
 
     await authStore.setToken(token)
+    await recordOAuthLegalConsent()
     appStore.showSuccess(t('auth.loginSuccess'))
     await router.replace(redirect)
   } catch (e: unknown) {
@@ -209,4 +233,3 @@ onMounted(async () => {
   transform: translateY(-8px);
 }
 </style>
-

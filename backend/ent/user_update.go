@@ -243,6 +243,54 @@ func (_u *UserUpdate) ClearTotpEnabledAt() *UserUpdate {
 	return _u
 }
 
+// SetLegalTermsAccepted sets the "legal_terms_accepted" field.
+func (_u *UserUpdate) SetLegalTermsAccepted(v bool) *UserUpdate {
+	_u.mutation.SetLegalTermsAccepted(v)
+	return _u
+}
+
+// SetNillableLegalTermsAccepted sets the "legal_terms_accepted" field if the given value is not nil.
+func (_u *UserUpdate) SetNillableLegalTermsAccepted(v *bool) *UserUpdate {
+	if v != nil {
+		_u.SetLegalTermsAccepted(*v)
+	}
+	return _u
+}
+
+// SetLegalTermsVersion sets the "legal_terms_version" field.
+func (_u *UserUpdate) SetLegalTermsVersion(v string) *UserUpdate {
+	_u.mutation.SetLegalTermsVersion(v)
+	return _u
+}
+
+// SetNillableLegalTermsVersion sets the "legal_terms_version" field if the given value is not nil.
+func (_u *UserUpdate) SetNillableLegalTermsVersion(v *string) *UserUpdate {
+	if v != nil {
+		_u.SetLegalTermsVersion(*v)
+	}
+	return _u
+}
+
+// SetLegalTermsAcceptedAt sets the "legal_terms_accepted_at" field.
+func (_u *UserUpdate) SetLegalTermsAcceptedAt(v time.Time) *UserUpdate {
+	_u.mutation.SetLegalTermsAcceptedAt(v)
+	return _u
+}
+
+// SetNillableLegalTermsAcceptedAt sets the "legal_terms_accepted_at" field if the given value is not nil.
+func (_u *UserUpdate) SetNillableLegalTermsAcceptedAt(v *time.Time) *UserUpdate {
+	if v != nil {
+		_u.SetLegalTermsAcceptedAt(*v)
+	}
+	return _u
+}
+
+// ClearLegalTermsAcceptedAt clears the value of the "legal_terms_accepted_at" field.
+func (_u *UserUpdate) ClearLegalTermsAcceptedAt() *UserUpdate {
+	_u.mutation.ClearLegalTermsAcceptedAt()
+	return _u
+}
+
 // SetBalanceNotifyEnabled sets the "balance_notify_enabled" field.
 func (_u *UserUpdate) SetBalanceNotifyEnabled(v bool) *UserUpdate {
 	_u.mutation.SetBalanceNotifyEnabled(v)
@@ -938,6 +986,11 @@ func (_u *UserUpdate) check() error {
 			return &ValidationError{Name: "username", err: fmt.Errorf(`ent: validator failed for field "User.username": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.LegalTermsVersion(); ok {
+		if err := user.LegalTermsVersionValidator(v); err != nil {
+			return &ValidationError{Name: "legal_terms_version", err: fmt.Errorf(`ent: validator failed for field "User.legal_terms_version": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.UserAccessKeyHash(); ok {
 		if err := user.UserAccessKeyHashValidator(v); err != nil {
 			return &ValidationError{Name: "user_access_key_hash", err: fmt.Errorf(`ent: validator failed for field "User.user_access_key_hash": %w`, err)}
@@ -1026,6 +1079,18 @@ func (_u *UserUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.TotpEnabledAtCleared() {
 		_spec.ClearField(user.FieldTotpEnabledAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.LegalTermsAccepted(); ok {
+		_spec.SetField(user.FieldLegalTermsAccepted, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.LegalTermsVersion(); ok {
+		_spec.SetField(user.FieldLegalTermsVersion, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.LegalTermsAcceptedAt(); ok {
+		_spec.SetField(user.FieldLegalTermsAcceptedAt, field.TypeTime, value)
+	}
+	if _u.mutation.LegalTermsAcceptedAtCleared() {
+		_spec.ClearField(user.FieldLegalTermsAcceptedAt, field.TypeTime)
 	}
 	if value, ok := _u.mutation.BalanceNotifyEnabled(); ok {
 		_spec.SetField(user.FieldBalanceNotifyEnabled, field.TypeBool, value)
@@ -1787,6 +1852,54 @@ func (_u *UserUpdateOne) ClearTotpEnabledAt() *UserUpdateOne {
 	return _u
 }
 
+// SetLegalTermsAccepted sets the "legal_terms_accepted" field.
+func (_u *UserUpdateOne) SetLegalTermsAccepted(v bool) *UserUpdateOne {
+	_u.mutation.SetLegalTermsAccepted(v)
+	return _u
+}
+
+// SetNillableLegalTermsAccepted sets the "legal_terms_accepted" field if the given value is not nil.
+func (_u *UserUpdateOne) SetNillableLegalTermsAccepted(v *bool) *UserUpdateOne {
+	if v != nil {
+		_u.SetLegalTermsAccepted(*v)
+	}
+	return _u
+}
+
+// SetLegalTermsVersion sets the "legal_terms_version" field.
+func (_u *UserUpdateOne) SetLegalTermsVersion(v string) *UserUpdateOne {
+	_u.mutation.SetLegalTermsVersion(v)
+	return _u
+}
+
+// SetNillableLegalTermsVersion sets the "legal_terms_version" field if the given value is not nil.
+func (_u *UserUpdateOne) SetNillableLegalTermsVersion(v *string) *UserUpdateOne {
+	if v != nil {
+		_u.SetLegalTermsVersion(*v)
+	}
+	return _u
+}
+
+// SetLegalTermsAcceptedAt sets the "legal_terms_accepted_at" field.
+func (_u *UserUpdateOne) SetLegalTermsAcceptedAt(v time.Time) *UserUpdateOne {
+	_u.mutation.SetLegalTermsAcceptedAt(v)
+	return _u
+}
+
+// SetNillableLegalTermsAcceptedAt sets the "legal_terms_accepted_at" field if the given value is not nil.
+func (_u *UserUpdateOne) SetNillableLegalTermsAcceptedAt(v *time.Time) *UserUpdateOne {
+	if v != nil {
+		_u.SetLegalTermsAcceptedAt(*v)
+	}
+	return _u
+}
+
+// ClearLegalTermsAcceptedAt clears the value of the "legal_terms_accepted_at" field.
+func (_u *UserUpdateOne) ClearLegalTermsAcceptedAt() *UserUpdateOne {
+	_u.mutation.ClearLegalTermsAcceptedAt()
+	return _u
+}
+
 // SetBalanceNotifyEnabled sets the "balance_notify_enabled" field.
 func (_u *UserUpdateOne) SetBalanceNotifyEnabled(v bool) *UserUpdateOne {
 	_u.mutation.SetBalanceNotifyEnabled(v)
@@ -2495,6 +2608,11 @@ func (_u *UserUpdateOne) check() error {
 			return &ValidationError{Name: "username", err: fmt.Errorf(`ent: validator failed for field "User.username": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.LegalTermsVersion(); ok {
+		if err := user.LegalTermsVersionValidator(v); err != nil {
+			return &ValidationError{Name: "legal_terms_version", err: fmt.Errorf(`ent: validator failed for field "User.legal_terms_version": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.UserAccessKeyHash(); ok {
 		if err := user.UserAccessKeyHashValidator(v); err != nil {
 			return &ValidationError{Name: "user_access_key_hash", err: fmt.Errorf(`ent: validator failed for field "User.user_access_key_hash": %w`, err)}
@@ -2600,6 +2718,18 @@ func (_u *UserUpdateOne) sqlSave(ctx context.Context) (_node *User, err error) {
 	}
 	if _u.mutation.TotpEnabledAtCleared() {
 		_spec.ClearField(user.FieldTotpEnabledAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.LegalTermsAccepted(); ok {
+		_spec.SetField(user.FieldLegalTermsAccepted, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.LegalTermsVersion(); ok {
+		_spec.SetField(user.FieldLegalTermsVersion, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.LegalTermsAcceptedAt(); ok {
+		_spec.SetField(user.FieldLegalTermsAcceptedAt, field.TypeTime, value)
+	}
+	if _u.mutation.LegalTermsAcceptedAtCleared() {
+		_spec.ClearField(user.FieldLegalTermsAcceptedAt, field.TypeTime)
 	}
 	if value, ok := _u.mutation.BalanceNotifyEnabled(); ok {
 		_spec.SetField(user.FieldBalanceNotifyEnabled, field.TypeBool, value)

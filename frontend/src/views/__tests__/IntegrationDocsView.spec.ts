@@ -1,5 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { flushPromises, mount } from '@vue/test-utils'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { config, flushPromises, mount, RouterLinkStub } from '@vue/test-utils'
 
 import IntegrationDocsView from '../IntegrationDocsView.vue'
 
@@ -110,9 +110,14 @@ vi.mock('vue-i18n', async () => {
 
 describe('IntegrationDocsView', () => {
   beforeEach(() => {
+    config.global.stubs.RouterLink = RouterLinkStub
     fetchPublicSettings.mockReset()
     copyToClipboard.mockReset()
     copyToClipboard.mockResolvedValue(true)
+  })
+
+  afterEach(() => {
+    delete config.global.stubs.RouterLink
   })
 
   it('renders supported parameter names for each protocol section', async () => {

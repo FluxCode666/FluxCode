@@ -23,6 +23,7 @@
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
+import { markOAuthLegalConsentPending } from '@/utils/legalConsent'
 
 const props = withDefaults(defineProps<{
   disabled?: boolean
@@ -44,6 +45,7 @@ const normalizedProviderName = computed(() => {
 const providerInitial = computed(() => normalizedProviderName.value.charAt(0).toUpperCase() || 'O')
 
 function startLogin(): void {
+  markOAuthLegalConsentPending()
   const redirectTo = (route.query.redirect as string) || '/dashboard'
   const apiBase = (import.meta.env.VITE_API_BASE_URL as string | undefined) || '/api/v1'
   const normalized = apiBase.replace(/\/$/, '')

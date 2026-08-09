@@ -22,6 +22,9 @@ var (
 const (
 	maxNotifyEmails = 3 // Maximum number of notification emails per user
 
+	// CurrentLegalTermsVersion is bumped whenever the legal documents require renewed consent.
+	CurrentLegalTermsVersion = "1.1"
+
 	// User-level rate limiting for notify email verification codes
 	notifyCodeUserRateLimit  = 5
 	notifyCodeUserRateWindow = 10 * time.Minute
@@ -83,6 +86,24 @@ type UpdateProfileRequest struct {
 	Concurrency            *int     `json:"concurrency"`
 	BalanceNotifyEnabled   *bool    `json:"balance_notify_enabled"`
 	BalanceNotifyThreshold *float64 `json:"balance_notify_threshold"`
+}
+
+// AcceptLegalTerms records acceptance of the currently published legal documents.
+func (s *UserService) AcceptLegalTerms(ctx context.Context, userID int64) (*User, error) {
+	user, err := s.userRepo.GetByID(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("get user: %w", err)
+	}
+
+	now := time.Now().UTC()
+	user.LegalTermsAccepted = true
+	user.LegalTermsVersion = CurrentLegalTermsVersion
+	user.LegalTermsAcceptedAt = &now
+	if err := s.userRepo.Update(ctx, user); err != nil {
+		return nil, fmt.Errorf("record legal terms acceptance: %w", err)
+	}
+
+	return user, nil
 }
 
 // ChangePasswordRequest 修改密码请求
