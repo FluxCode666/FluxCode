@@ -211,6 +211,48 @@ func (_c *UserCreate) SetNillableTotpEnabledAt(v *time.Time) *UserCreate {
 	return _c
 }
 
+// SetLegalTermsAccepted sets the "legal_terms_accepted" field.
+func (_c *UserCreate) SetLegalTermsAccepted(v bool) *UserCreate {
+	_c.mutation.SetLegalTermsAccepted(v)
+	return _c
+}
+
+// SetNillableLegalTermsAccepted sets the "legal_terms_accepted" field if the given value is not nil.
+func (_c *UserCreate) SetNillableLegalTermsAccepted(v *bool) *UserCreate {
+	if v != nil {
+		_c.SetLegalTermsAccepted(*v)
+	}
+	return _c
+}
+
+// SetLegalTermsVersion sets the "legal_terms_version" field.
+func (_c *UserCreate) SetLegalTermsVersion(v string) *UserCreate {
+	_c.mutation.SetLegalTermsVersion(v)
+	return _c
+}
+
+// SetNillableLegalTermsVersion sets the "legal_terms_version" field if the given value is not nil.
+func (_c *UserCreate) SetNillableLegalTermsVersion(v *string) *UserCreate {
+	if v != nil {
+		_c.SetLegalTermsVersion(*v)
+	}
+	return _c
+}
+
+// SetLegalTermsAcceptedAt sets the "legal_terms_accepted_at" field.
+func (_c *UserCreate) SetLegalTermsAcceptedAt(v time.Time) *UserCreate {
+	_c.mutation.SetLegalTermsAcceptedAt(v)
+	return _c
+}
+
+// SetNillableLegalTermsAcceptedAt sets the "legal_terms_accepted_at" field if the given value is not nil.
+func (_c *UserCreate) SetNillableLegalTermsAcceptedAt(v *time.Time) *UserCreate {
+	if v != nil {
+		_c.SetLegalTermsAcceptedAt(*v)
+	}
+	return _c
+}
+
 // SetBalanceNotifyEnabled sets the "balance_notify_enabled" field.
 func (_c *UserCreate) SetBalanceNotifyEnabled(v bool) *UserCreate {
 	_c.mutation.SetBalanceNotifyEnabled(v)
@@ -636,6 +678,14 @@ func (_c *UserCreate) defaults() error {
 		v := user.DefaultTotpEnabled
 		_c.mutation.SetTotpEnabled(v)
 	}
+	if _, ok := _c.mutation.LegalTermsAccepted(); !ok {
+		v := user.DefaultLegalTermsAccepted
+		_c.mutation.SetLegalTermsAccepted(v)
+	}
+	if _, ok := _c.mutation.LegalTermsVersion(); !ok {
+		v := user.DefaultLegalTermsVersion
+		_c.mutation.SetLegalTermsVersion(v)
+	}
 	if _, ok := _c.mutation.BalanceNotifyEnabled(); !ok {
 		v := user.DefaultBalanceNotifyEnabled
 		_c.mutation.SetBalanceNotifyEnabled(v)
@@ -734,6 +784,17 @@ func (_c *UserCreate) check() error {
 	}
 	if _, ok := _c.mutation.TotpEnabled(); !ok {
 		return &ValidationError{Name: "totp_enabled", err: errors.New(`ent: missing required field "User.totp_enabled"`)}
+	}
+	if _, ok := _c.mutation.LegalTermsAccepted(); !ok {
+		return &ValidationError{Name: "legal_terms_accepted", err: errors.New(`ent: missing required field "User.legal_terms_accepted"`)}
+	}
+	if _, ok := _c.mutation.LegalTermsVersion(); !ok {
+		return &ValidationError{Name: "legal_terms_version", err: errors.New(`ent: missing required field "User.legal_terms_version"`)}
+	}
+	if v, ok := _c.mutation.LegalTermsVersion(); ok {
+		if err := user.LegalTermsVersionValidator(v); err != nil {
+			return &ValidationError{Name: "legal_terms_version", err: fmt.Errorf(`ent: validator failed for field "User.legal_terms_version": %w`, err)}
+		}
 	}
 	if _, ok := _c.mutation.BalanceNotifyEnabled(); !ok {
 		return &ValidationError{Name: "balance_notify_enabled", err: errors.New(`ent: missing required field "User.balance_notify_enabled"`)}
@@ -864,6 +925,18 @@ func (_c *UserCreate) createSpec() (*User, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.TotpEnabledAt(); ok {
 		_spec.SetField(user.FieldTotpEnabledAt, field.TypeTime, value)
 		_node.TotpEnabledAt = &value
+	}
+	if value, ok := _c.mutation.LegalTermsAccepted(); ok {
+		_spec.SetField(user.FieldLegalTermsAccepted, field.TypeBool, value)
+		_node.LegalTermsAccepted = value
+	}
+	if value, ok := _c.mutation.LegalTermsVersion(); ok {
+		_spec.SetField(user.FieldLegalTermsVersion, field.TypeString, value)
+		_node.LegalTermsVersion = value
+	}
+	if value, ok := _c.mutation.LegalTermsAcceptedAt(); ok {
+		_spec.SetField(user.FieldLegalTermsAcceptedAt, field.TypeTime, value)
+		_node.LegalTermsAcceptedAt = &value
 	}
 	if value, ok := _c.mutation.BalanceNotifyEnabled(); ok {
 		_spec.SetField(user.FieldBalanceNotifyEnabled, field.TypeBool, value)
@@ -1320,6 +1393,48 @@ func (u *UserUpsert) UpdateTotpEnabledAt() *UserUpsert {
 // ClearTotpEnabledAt clears the value of the "totp_enabled_at" field.
 func (u *UserUpsert) ClearTotpEnabledAt() *UserUpsert {
 	u.SetNull(user.FieldTotpEnabledAt)
+	return u
+}
+
+// SetLegalTermsAccepted sets the "legal_terms_accepted" field.
+func (u *UserUpsert) SetLegalTermsAccepted(v bool) *UserUpsert {
+	u.Set(user.FieldLegalTermsAccepted, v)
+	return u
+}
+
+// UpdateLegalTermsAccepted sets the "legal_terms_accepted" field to the value that was provided on create.
+func (u *UserUpsert) UpdateLegalTermsAccepted() *UserUpsert {
+	u.SetExcluded(user.FieldLegalTermsAccepted)
+	return u
+}
+
+// SetLegalTermsVersion sets the "legal_terms_version" field.
+func (u *UserUpsert) SetLegalTermsVersion(v string) *UserUpsert {
+	u.Set(user.FieldLegalTermsVersion, v)
+	return u
+}
+
+// UpdateLegalTermsVersion sets the "legal_terms_version" field to the value that was provided on create.
+func (u *UserUpsert) UpdateLegalTermsVersion() *UserUpsert {
+	u.SetExcluded(user.FieldLegalTermsVersion)
+	return u
+}
+
+// SetLegalTermsAcceptedAt sets the "legal_terms_accepted_at" field.
+func (u *UserUpsert) SetLegalTermsAcceptedAt(v time.Time) *UserUpsert {
+	u.Set(user.FieldLegalTermsAcceptedAt, v)
+	return u
+}
+
+// UpdateLegalTermsAcceptedAt sets the "legal_terms_accepted_at" field to the value that was provided on create.
+func (u *UserUpsert) UpdateLegalTermsAcceptedAt() *UserUpsert {
+	u.SetExcluded(user.FieldLegalTermsAcceptedAt)
+	return u
+}
+
+// ClearLegalTermsAcceptedAt clears the value of the "legal_terms_accepted_at" field.
+func (u *UserUpsert) ClearLegalTermsAcceptedAt() *UserUpsert {
+	u.SetNull(user.FieldLegalTermsAcceptedAt)
 	return u
 }
 
@@ -1810,6 +1925,55 @@ func (u *UserUpsertOne) UpdateTotpEnabledAt() *UserUpsertOne {
 func (u *UserUpsertOne) ClearTotpEnabledAt() *UserUpsertOne {
 	return u.Update(func(s *UserUpsert) {
 		s.ClearTotpEnabledAt()
+	})
+}
+
+// SetLegalTermsAccepted sets the "legal_terms_accepted" field.
+func (u *UserUpsertOne) SetLegalTermsAccepted(v bool) *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.SetLegalTermsAccepted(v)
+	})
+}
+
+// UpdateLegalTermsAccepted sets the "legal_terms_accepted" field to the value that was provided on create.
+func (u *UserUpsertOne) UpdateLegalTermsAccepted() *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateLegalTermsAccepted()
+	})
+}
+
+// SetLegalTermsVersion sets the "legal_terms_version" field.
+func (u *UserUpsertOne) SetLegalTermsVersion(v string) *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.SetLegalTermsVersion(v)
+	})
+}
+
+// UpdateLegalTermsVersion sets the "legal_terms_version" field to the value that was provided on create.
+func (u *UserUpsertOne) UpdateLegalTermsVersion() *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateLegalTermsVersion()
+	})
+}
+
+// SetLegalTermsAcceptedAt sets the "legal_terms_accepted_at" field.
+func (u *UserUpsertOne) SetLegalTermsAcceptedAt(v time.Time) *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.SetLegalTermsAcceptedAt(v)
+	})
+}
+
+// UpdateLegalTermsAcceptedAt sets the "legal_terms_accepted_at" field to the value that was provided on create.
+func (u *UserUpsertOne) UpdateLegalTermsAcceptedAt() *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateLegalTermsAcceptedAt()
+	})
+}
+
+// ClearLegalTermsAcceptedAt clears the value of the "legal_terms_accepted_at" field.
+func (u *UserUpsertOne) ClearLegalTermsAcceptedAt() *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.ClearLegalTermsAcceptedAt()
 	})
 }
 
@@ -2504,6 +2668,55 @@ func (u *UserUpsertBulk) UpdateTotpEnabledAt() *UserUpsertBulk {
 func (u *UserUpsertBulk) ClearTotpEnabledAt() *UserUpsertBulk {
 	return u.Update(func(s *UserUpsert) {
 		s.ClearTotpEnabledAt()
+	})
+}
+
+// SetLegalTermsAccepted sets the "legal_terms_accepted" field.
+func (u *UserUpsertBulk) SetLegalTermsAccepted(v bool) *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.SetLegalTermsAccepted(v)
+	})
+}
+
+// UpdateLegalTermsAccepted sets the "legal_terms_accepted" field to the value that was provided on create.
+func (u *UserUpsertBulk) UpdateLegalTermsAccepted() *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateLegalTermsAccepted()
+	})
+}
+
+// SetLegalTermsVersion sets the "legal_terms_version" field.
+func (u *UserUpsertBulk) SetLegalTermsVersion(v string) *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.SetLegalTermsVersion(v)
+	})
+}
+
+// UpdateLegalTermsVersion sets the "legal_terms_version" field to the value that was provided on create.
+func (u *UserUpsertBulk) UpdateLegalTermsVersion() *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateLegalTermsVersion()
+	})
+}
+
+// SetLegalTermsAcceptedAt sets the "legal_terms_accepted_at" field.
+func (u *UserUpsertBulk) SetLegalTermsAcceptedAt(v time.Time) *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.SetLegalTermsAcceptedAt(v)
+	})
+}
+
+// UpdateLegalTermsAcceptedAt sets the "legal_terms_accepted_at" field to the value that was provided on create.
+func (u *UserUpsertBulk) UpdateLegalTermsAcceptedAt() *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateLegalTermsAcceptedAt()
+	})
+}
+
+// ClearLegalTermsAcceptedAt clears the value of the "legal_terms_accepted_at" field.
+func (u *UserUpsertBulk) ClearLegalTermsAcceptedAt() *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.ClearLegalTermsAcceptedAt()
 	})
 }
 

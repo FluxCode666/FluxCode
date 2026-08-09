@@ -30,6 +30,12 @@ export async function updateProfile(profile: {
   return data
 }
 
+/** Record acceptance of the currently published legal documents. */
+export async function acceptLegalTerms(): Promise<User> {
+  const { data } = await apiClient.post<User>('/user/legal-consent')
+  return data
+}
+
 /**
  * Change current user password
  * @param passwords - Old and new password
@@ -108,6 +114,7 @@ export async function toggleNotifyEmail(email: string, disabled: boolean): Promi
 export const userAPI = {
   getProfile,
   updateProfile,
+  acceptLegalTerms,
   changePassword,
   getUiPreferences,
   updateUiPreferences,

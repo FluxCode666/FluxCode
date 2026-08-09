@@ -43,6 +43,12 @@ const (
 	FieldTotpEnabled = "totp_enabled"
 	// FieldTotpEnabledAt holds the string denoting the totp_enabled_at field in the database.
 	FieldTotpEnabledAt = "totp_enabled_at"
+	// FieldLegalTermsAccepted holds the string denoting the legal_terms_accepted field in the database.
+	FieldLegalTermsAccepted = "legal_terms_accepted"
+	// FieldLegalTermsVersion holds the string denoting the legal_terms_version field in the database.
+	FieldLegalTermsVersion = "legal_terms_version"
+	// FieldLegalTermsAcceptedAt holds the string denoting the legal_terms_accepted_at field in the database.
+	FieldLegalTermsAcceptedAt = "legal_terms_accepted_at"
 	// FieldBalanceNotifyEnabled holds the string denoting the balance_notify_enabled field in the database.
 	FieldBalanceNotifyEnabled = "balance_notify_enabled"
 	// FieldBalanceNotifyThresholdType holds the string denoting the balance_notify_threshold_type field in the database.
@@ -189,6 +195,9 @@ var Columns = []string{
 	FieldTotpSecretEncrypted,
 	FieldTotpEnabled,
 	FieldTotpEnabledAt,
+	FieldLegalTermsAccepted,
+	FieldLegalTermsVersion,
+	FieldLegalTermsAcceptedAt,
 	FieldBalanceNotifyEnabled,
 	FieldBalanceNotifyThresholdType,
 	FieldBalanceNotifyThreshold,
@@ -259,6 +268,12 @@ var (
 	DefaultNotes string
 	// DefaultTotpEnabled holds the default value on creation for the "totp_enabled" field.
 	DefaultTotpEnabled bool
+	// DefaultLegalTermsAccepted holds the default value on creation for the "legal_terms_accepted" field.
+	DefaultLegalTermsAccepted bool
+	// DefaultLegalTermsVersion holds the default value on creation for the "legal_terms_version" field.
+	DefaultLegalTermsVersion string
+	// LegalTermsVersionValidator is a validator for the "legal_terms_version" field. It is called by the builders before save.
+	LegalTermsVersionValidator func(string) error
 	// DefaultBalanceNotifyEnabled holds the default value on creation for the "balance_notify_enabled" field.
 	DefaultBalanceNotifyEnabled bool
 	// DefaultBalanceNotifyThresholdType holds the default value on creation for the "balance_notify_threshold_type" field.
@@ -363,6 +378,21 @@ func ByTotpEnabled(opts ...sql.OrderTermOption) OrderOption {
 // ByTotpEnabledAt orders the results by the totp_enabled_at field.
 func ByTotpEnabledAt(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldTotpEnabledAt, opts...).ToFunc()
+}
+
+// ByLegalTermsAccepted orders the results by the legal_terms_accepted field.
+func ByLegalTermsAccepted(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldLegalTermsAccepted, opts...).ToFunc()
+}
+
+// ByLegalTermsVersion orders the results by the legal_terms_version field.
+func ByLegalTermsVersion(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldLegalTermsVersion, opts...).ToFunc()
+}
+
+// ByLegalTermsAcceptedAt orders the results by the legal_terms_accepted_at field.
+func ByLegalTermsAcceptedAt(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldLegalTermsAcceptedAt, opts...).ToFunc()
 }
 
 // ByBalanceNotifyEnabled orders the results by the balance_notify_enabled field.

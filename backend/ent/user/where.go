@@ -125,6 +125,21 @@ func TotpEnabledAt(v time.Time) predicate.User {
 	return predicate.User(sql.FieldEQ(FieldTotpEnabledAt, v))
 }
 
+// LegalTermsAccepted applies equality check predicate on the "legal_terms_accepted" field. It's identical to LegalTermsAcceptedEQ.
+func LegalTermsAccepted(v bool) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldLegalTermsAccepted, v))
+}
+
+// LegalTermsVersion applies equality check predicate on the "legal_terms_version" field. It's identical to LegalTermsVersionEQ.
+func LegalTermsVersion(v string) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldLegalTermsVersion, v))
+}
+
+// LegalTermsAcceptedAt applies equality check predicate on the "legal_terms_accepted_at" field. It's identical to LegalTermsAcceptedAtEQ.
+func LegalTermsAcceptedAt(v time.Time) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldLegalTermsAcceptedAt, v))
+}
+
 // BalanceNotifyEnabled applies equality check predicate on the "balance_notify_enabled" field. It's identical to BalanceNotifyEnabledEQ.
 func BalanceNotifyEnabled(v bool) predicate.User {
 	return predicate.User(sql.FieldEQ(FieldBalanceNotifyEnabled, v))
@@ -928,6 +943,131 @@ func TotpEnabledAtIsNil() predicate.User {
 // TotpEnabledAtNotNil applies the NotNil predicate on the "totp_enabled_at" field.
 func TotpEnabledAtNotNil() predicate.User {
 	return predicate.User(sql.FieldNotNull(FieldTotpEnabledAt))
+}
+
+// LegalTermsAcceptedEQ applies the EQ predicate on the "legal_terms_accepted" field.
+func LegalTermsAcceptedEQ(v bool) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldLegalTermsAccepted, v))
+}
+
+// LegalTermsAcceptedNEQ applies the NEQ predicate on the "legal_terms_accepted" field.
+func LegalTermsAcceptedNEQ(v bool) predicate.User {
+	return predicate.User(sql.FieldNEQ(FieldLegalTermsAccepted, v))
+}
+
+// LegalTermsVersionEQ applies the EQ predicate on the "legal_terms_version" field.
+func LegalTermsVersionEQ(v string) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldLegalTermsVersion, v))
+}
+
+// LegalTermsVersionNEQ applies the NEQ predicate on the "legal_terms_version" field.
+func LegalTermsVersionNEQ(v string) predicate.User {
+	return predicate.User(sql.FieldNEQ(FieldLegalTermsVersion, v))
+}
+
+// LegalTermsVersionIn applies the In predicate on the "legal_terms_version" field.
+func LegalTermsVersionIn(vs ...string) predicate.User {
+	return predicate.User(sql.FieldIn(FieldLegalTermsVersion, vs...))
+}
+
+// LegalTermsVersionNotIn applies the NotIn predicate on the "legal_terms_version" field.
+func LegalTermsVersionNotIn(vs ...string) predicate.User {
+	return predicate.User(sql.FieldNotIn(FieldLegalTermsVersion, vs...))
+}
+
+// LegalTermsVersionGT applies the GT predicate on the "legal_terms_version" field.
+func LegalTermsVersionGT(v string) predicate.User {
+	return predicate.User(sql.FieldGT(FieldLegalTermsVersion, v))
+}
+
+// LegalTermsVersionGTE applies the GTE predicate on the "legal_terms_version" field.
+func LegalTermsVersionGTE(v string) predicate.User {
+	return predicate.User(sql.FieldGTE(FieldLegalTermsVersion, v))
+}
+
+// LegalTermsVersionLT applies the LT predicate on the "legal_terms_version" field.
+func LegalTermsVersionLT(v string) predicate.User {
+	return predicate.User(sql.FieldLT(FieldLegalTermsVersion, v))
+}
+
+// LegalTermsVersionLTE applies the LTE predicate on the "legal_terms_version" field.
+func LegalTermsVersionLTE(v string) predicate.User {
+	return predicate.User(sql.FieldLTE(FieldLegalTermsVersion, v))
+}
+
+// LegalTermsVersionContains applies the Contains predicate on the "legal_terms_version" field.
+func LegalTermsVersionContains(v string) predicate.User {
+	return predicate.User(sql.FieldContains(FieldLegalTermsVersion, v))
+}
+
+// LegalTermsVersionHasPrefix applies the HasPrefix predicate on the "legal_terms_version" field.
+func LegalTermsVersionHasPrefix(v string) predicate.User {
+	return predicate.User(sql.FieldHasPrefix(FieldLegalTermsVersion, v))
+}
+
+// LegalTermsVersionHasSuffix applies the HasSuffix predicate on the "legal_terms_version" field.
+func LegalTermsVersionHasSuffix(v string) predicate.User {
+	return predicate.User(sql.FieldHasSuffix(FieldLegalTermsVersion, v))
+}
+
+// LegalTermsVersionEqualFold applies the EqualFold predicate on the "legal_terms_version" field.
+func LegalTermsVersionEqualFold(v string) predicate.User {
+	return predicate.User(sql.FieldEqualFold(FieldLegalTermsVersion, v))
+}
+
+// LegalTermsVersionContainsFold applies the ContainsFold predicate on the "legal_terms_version" field.
+func LegalTermsVersionContainsFold(v string) predicate.User {
+	return predicate.User(sql.FieldContainsFold(FieldLegalTermsVersion, v))
+}
+
+// LegalTermsAcceptedAtEQ applies the EQ predicate on the "legal_terms_accepted_at" field.
+func LegalTermsAcceptedAtEQ(v time.Time) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldLegalTermsAcceptedAt, v))
+}
+
+// LegalTermsAcceptedAtNEQ applies the NEQ predicate on the "legal_terms_accepted_at" field.
+func LegalTermsAcceptedAtNEQ(v time.Time) predicate.User {
+	return predicate.User(sql.FieldNEQ(FieldLegalTermsAcceptedAt, v))
+}
+
+// LegalTermsAcceptedAtIn applies the In predicate on the "legal_terms_accepted_at" field.
+func LegalTermsAcceptedAtIn(vs ...time.Time) predicate.User {
+	return predicate.User(sql.FieldIn(FieldLegalTermsAcceptedAt, vs...))
+}
+
+// LegalTermsAcceptedAtNotIn applies the NotIn predicate on the "legal_terms_accepted_at" field.
+func LegalTermsAcceptedAtNotIn(vs ...time.Time) predicate.User {
+	return predicate.User(sql.FieldNotIn(FieldLegalTermsAcceptedAt, vs...))
+}
+
+// LegalTermsAcceptedAtGT applies the GT predicate on the "legal_terms_accepted_at" field.
+func LegalTermsAcceptedAtGT(v time.Time) predicate.User {
+	return predicate.User(sql.FieldGT(FieldLegalTermsAcceptedAt, v))
+}
+
+// LegalTermsAcceptedAtGTE applies the GTE predicate on the "legal_terms_accepted_at" field.
+func LegalTermsAcceptedAtGTE(v time.Time) predicate.User {
+	return predicate.User(sql.FieldGTE(FieldLegalTermsAcceptedAt, v))
+}
+
+// LegalTermsAcceptedAtLT applies the LT predicate on the "legal_terms_accepted_at" field.
+func LegalTermsAcceptedAtLT(v time.Time) predicate.User {
+	return predicate.User(sql.FieldLT(FieldLegalTermsAcceptedAt, v))
+}
+
+// LegalTermsAcceptedAtLTE applies the LTE predicate on the "legal_terms_accepted_at" field.
+func LegalTermsAcceptedAtLTE(v time.Time) predicate.User {
+	return predicate.User(sql.FieldLTE(FieldLegalTermsAcceptedAt, v))
+}
+
+// LegalTermsAcceptedAtIsNil applies the IsNil predicate on the "legal_terms_accepted_at" field.
+func LegalTermsAcceptedAtIsNil() predicate.User {
+	return predicate.User(sql.FieldIsNull(FieldLegalTermsAcceptedAt))
+}
+
+// LegalTermsAcceptedAtNotNil applies the NotNil predicate on the "legal_terms_accepted_at" field.
+func LegalTermsAcceptedAtNotNil() predicate.User {
+	return predicate.User(sql.FieldNotNull(FieldLegalTermsAcceptedAt))
 }
 
 // BalanceNotifyEnabledEQ applies the EQ predicate on the "balance_notify_enabled" field.

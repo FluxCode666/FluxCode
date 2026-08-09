@@ -46747,6 +46747,9 @@ type UserMutation struct {
 	totp_secret_encrypted                 *string
 	totp_enabled                          *bool
 	totp_enabled_at                       *time.Time
+	legal_terms_accepted                  *bool
+	legal_terms_version                   *string
+	legal_terms_accepted_at               *time.Time
 	balance_notify_enabled                *bool
 	balance_notify_threshold_type         *string
 	balance_notify_threshold              *float64
@@ -47481,6 +47484,127 @@ func (m *UserMutation) TotpEnabledAtCleared() bool {
 func (m *UserMutation) ResetTotpEnabledAt() {
 	m.totp_enabled_at = nil
 	delete(m.clearedFields, user.FieldTotpEnabledAt)
+}
+
+// SetLegalTermsAccepted sets the "legal_terms_accepted" field.
+func (m *UserMutation) SetLegalTermsAccepted(b bool) {
+	m.legal_terms_accepted = &b
+}
+
+// LegalTermsAccepted returns the value of the "legal_terms_accepted" field in the mutation.
+func (m *UserMutation) LegalTermsAccepted() (r bool, exists bool) {
+	v := m.legal_terms_accepted
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLegalTermsAccepted returns the old "legal_terms_accepted" field's value of the User entity.
+// If the User object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserMutation) OldLegalTermsAccepted(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLegalTermsAccepted is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLegalTermsAccepted requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLegalTermsAccepted: %w", err)
+	}
+	return oldValue.LegalTermsAccepted, nil
+}
+
+// ResetLegalTermsAccepted resets all changes to the "legal_terms_accepted" field.
+func (m *UserMutation) ResetLegalTermsAccepted() {
+	m.legal_terms_accepted = nil
+}
+
+// SetLegalTermsVersion sets the "legal_terms_version" field.
+func (m *UserMutation) SetLegalTermsVersion(s string) {
+	m.legal_terms_version = &s
+}
+
+// LegalTermsVersion returns the value of the "legal_terms_version" field in the mutation.
+func (m *UserMutation) LegalTermsVersion() (r string, exists bool) {
+	v := m.legal_terms_version
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLegalTermsVersion returns the old "legal_terms_version" field's value of the User entity.
+// If the User object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserMutation) OldLegalTermsVersion(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLegalTermsVersion is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLegalTermsVersion requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLegalTermsVersion: %w", err)
+	}
+	return oldValue.LegalTermsVersion, nil
+}
+
+// ResetLegalTermsVersion resets all changes to the "legal_terms_version" field.
+func (m *UserMutation) ResetLegalTermsVersion() {
+	m.legal_terms_version = nil
+}
+
+// SetLegalTermsAcceptedAt sets the "legal_terms_accepted_at" field.
+func (m *UserMutation) SetLegalTermsAcceptedAt(t time.Time) {
+	m.legal_terms_accepted_at = &t
+}
+
+// LegalTermsAcceptedAt returns the value of the "legal_terms_accepted_at" field in the mutation.
+func (m *UserMutation) LegalTermsAcceptedAt() (r time.Time, exists bool) {
+	v := m.legal_terms_accepted_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLegalTermsAcceptedAt returns the old "legal_terms_accepted_at" field's value of the User entity.
+// If the User object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserMutation) OldLegalTermsAcceptedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLegalTermsAcceptedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLegalTermsAcceptedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLegalTermsAcceptedAt: %w", err)
+	}
+	return oldValue.LegalTermsAcceptedAt, nil
+}
+
+// ClearLegalTermsAcceptedAt clears the value of the "legal_terms_accepted_at" field.
+func (m *UserMutation) ClearLegalTermsAcceptedAt() {
+	m.legal_terms_accepted_at = nil
+	m.clearedFields[user.FieldLegalTermsAcceptedAt] = struct{}{}
+}
+
+// LegalTermsAcceptedAtCleared returns if the "legal_terms_accepted_at" field was cleared in this mutation.
+func (m *UserMutation) LegalTermsAcceptedAtCleared() bool {
+	_, ok := m.clearedFields[user.FieldLegalTermsAcceptedAt]
+	return ok
+}
+
+// ResetLegalTermsAcceptedAt resets all changes to the "legal_terms_accepted_at" field.
+func (m *UserMutation) ResetLegalTermsAcceptedAt() {
+	m.legal_terms_accepted_at = nil
+	delete(m.clearedFields, user.FieldLegalTermsAcceptedAt)
 }
 
 // SetBalanceNotifyEnabled sets the "balance_notify_enabled" field.
@@ -48728,7 +48852,7 @@ func (m *UserMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *UserMutation) Fields() []string {
-	fields := make([]string, 0, 28)
+	fields := make([]string, 0, 31)
 	if m.created_at != nil {
 		fields = append(fields, user.FieldCreatedAt)
 	}
@@ -48770,6 +48894,15 @@ func (m *UserMutation) Fields() []string {
 	}
 	if m.totp_enabled_at != nil {
 		fields = append(fields, user.FieldTotpEnabledAt)
+	}
+	if m.legal_terms_accepted != nil {
+		fields = append(fields, user.FieldLegalTermsAccepted)
+	}
+	if m.legal_terms_version != nil {
+		fields = append(fields, user.FieldLegalTermsVersion)
+	}
+	if m.legal_terms_accepted_at != nil {
+		fields = append(fields, user.FieldLegalTermsAcceptedAt)
 	}
 	if m.balance_notify_enabled != nil {
 		fields = append(fields, user.FieldBalanceNotifyEnabled)
@@ -48849,6 +48982,12 @@ func (m *UserMutation) Field(name string) (ent.Value, bool) {
 		return m.TotpEnabled()
 	case user.FieldTotpEnabledAt:
 		return m.TotpEnabledAt()
+	case user.FieldLegalTermsAccepted:
+		return m.LegalTermsAccepted()
+	case user.FieldLegalTermsVersion:
+		return m.LegalTermsVersion()
+	case user.FieldLegalTermsAcceptedAt:
+		return m.LegalTermsAcceptedAt()
 	case user.FieldBalanceNotifyEnabled:
 		return m.BalanceNotifyEnabled()
 	case user.FieldBalanceNotifyThresholdType:
@@ -48914,6 +49053,12 @@ func (m *UserMutation) OldField(ctx context.Context, name string) (ent.Value, er
 		return m.OldTotpEnabled(ctx)
 	case user.FieldTotpEnabledAt:
 		return m.OldTotpEnabledAt(ctx)
+	case user.FieldLegalTermsAccepted:
+		return m.OldLegalTermsAccepted(ctx)
+	case user.FieldLegalTermsVersion:
+		return m.OldLegalTermsVersion(ctx)
+	case user.FieldLegalTermsAcceptedAt:
+		return m.OldLegalTermsAcceptedAt(ctx)
 	case user.FieldBalanceNotifyEnabled:
 		return m.OldBalanceNotifyEnabled(ctx)
 	case user.FieldBalanceNotifyThresholdType:
@@ -49048,6 +49193,27 @@ func (m *UserMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetTotpEnabledAt(v)
+		return nil
+	case user.FieldLegalTermsAccepted:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLegalTermsAccepted(v)
+		return nil
+	case user.FieldLegalTermsVersion:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLegalTermsVersion(v)
+		return nil
+	case user.FieldLegalTermsAcceptedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLegalTermsAcceptedAt(v)
 		return nil
 	case user.FieldBalanceNotifyEnabled:
 		v, ok := value.(bool)
@@ -49273,6 +49439,9 @@ func (m *UserMutation) ClearedFields() []string {
 	if m.FieldCleared(user.FieldTotpEnabledAt) {
 		fields = append(fields, user.FieldTotpEnabledAt)
 	}
+	if m.FieldCleared(user.FieldLegalTermsAcceptedAt) {
+		fields = append(fields, user.FieldLegalTermsAcceptedAt)
+	}
 	if m.FieldCleared(user.FieldBalanceNotifyThreshold) {
 		fields = append(fields, user.FieldBalanceNotifyThreshold)
 	}
@@ -49310,6 +49479,9 @@ func (m *UserMutation) ClearField(name string) error {
 		return nil
 	case user.FieldTotpEnabledAt:
 		m.ClearTotpEnabledAt()
+		return nil
+	case user.FieldLegalTermsAcceptedAt:
+		m.ClearLegalTermsAcceptedAt()
 		return nil
 	case user.FieldBalanceNotifyThreshold:
 		m.ClearBalanceNotifyThreshold()
@@ -49375,6 +49547,15 @@ func (m *UserMutation) ResetField(name string) error {
 		return nil
 	case user.FieldTotpEnabledAt:
 		m.ResetTotpEnabledAt()
+		return nil
+	case user.FieldLegalTermsAccepted:
+		m.ResetLegalTermsAccepted()
+		return nil
+	case user.FieldLegalTermsVersion:
+		m.ResetLegalTermsVersion()
+		return nil
+	case user.FieldLegalTermsAcceptedAt:
+		m.ResetLegalTermsAcceptedAt()
 		return nil
 	case user.FieldBalanceNotifyEnabled:
 		m.ResetBalanceNotifyEnabled()

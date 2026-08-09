@@ -45,6 +45,12 @@ type User struct {
 	TotpEnabled bool `json:"totp_enabled,omitempty"`
 	// TotpEnabledAt holds the value of the "totp_enabled_at" field.
 	TotpEnabledAt *time.Time `json:"totp_enabled_at,omitempty"`
+	// LegalTermsAccepted holds the value of the "legal_terms_accepted" field.
+	LegalTermsAccepted bool `json:"legal_terms_accepted,omitempty"`
+	// LegalTermsVersion holds the value of the "legal_terms_version" field.
+	LegalTermsVersion string `json:"legal_terms_version,omitempty"`
+	// LegalTermsAcceptedAt holds the value of the "legal_terms_accepted_at" field.
+	LegalTermsAcceptedAt *time.Time `json:"legal_terms_accepted_at,omitempty"`
 	// BalanceNotifyEnabled holds the value of the "balance_notify_enabled" field.
 	BalanceNotifyEnabled bool `json:"balance_notify_enabled,omitempty"`
 	// BalanceNotifyThresholdType holds the value of the "balance_notify_threshold_type" field.
@@ -212,15 +218,15 @@ func (*User) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case user.FieldTotpEnabled, user.FieldBalanceNotifyEnabled, user.FieldIsSales:
+		case user.FieldTotpEnabled, user.FieldLegalTermsAccepted, user.FieldBalanceNotifyEnabled, user.FieldIsSales:
 			values[i] = new(sql.NullBool)
 		case user.FieldBalance, user.FieldBalanceNotifyThreshold, user.FieldTotalRecharged, user.FieldSalesCommissionRate, user.FieldSalesCommissionMinMonthlySales:
 			values[i] = new(sql.NullFloat64)
 		case user.FieldID, user.FieldConcurrency, user.FieldReferredBy:
 			values[i] = new(sql.NullInt64)
-		case user.FieldEmail, user.FieldPasswordHash, user.FieldRole, user.FieldStatus, user.FieldUsername, user.FieldNotes, user.FieldTotpSecretEncrypted, user.FieldBalanceNotifyThresholdType, user.FieldBalanceNotifyExtraEmails, user.FieldUserAccessKeyHash, user.FieldUserAccessKeyEncrypted, user.FieldSalesCommissionMode, user.FieldReferralCode:
+		case user.FieldEmail, user.FieldPasswordHash, user.FieldRole, user.FieldStatus, user.FieldUsername, user.FieldNotes, user.FieldTotpSecretEncrypted, user.FieldLegalTermsVersion, user.FieldBalanceNotifyThresholdType, user.FieldBalanceNotifyExtraEmails, user.FieldUserAccessKeyHash, user.FieldUserAccessKeyEncrypted, user.FieldSalesCommissionMode, user.FieldReferralCode:
 			values[i] = new(sql.NullString)
-		case user.FieldCreatedAt, user.FieldUpdatedAt, user.FieldDeletedAt, user.FieldTotpEnabledAt, user.FieldUserAccessKeyCreatedAt:
+		case user.FieldCreatedAt, user.FieldUpdatedAt, user.FieldDeletedAt, user.FieldTotpEnabledAt, user.FieldLegalTermsAcceptedAt, user.FieldUserAccessKeyCreatedAt:
 			values[i] = new(sql.NullTime)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -329,6 +335,25 @@ func (_m *User) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.TotpEnabledAt = new(time.Time)
 				*_m.TotpEnabledAt = value.Time
+			}
+		case user.FieldLegalTermsAccepted:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field legal_terms_accepted", values[i])
+			} else if value.Valid {
+				_m.LegalTermsAccepted = value.Bool
+			}
+		case user.FieldLegalTermsVersion:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field legal_terms_version", values[i])
+			} else if value.Valid {
+				_m.LegalTermsVersion = value.String
+			}
+		case user.FieldLegalTermsAcceptedAt:
+			if value, ok := values[i].(*sql.NullTime); !ok {
+				return fmt.Errorf("unexpected type %T for field legal_terms_accepted_at", values[i])
+			} else if value.Valid {
+				_m.LegalTermsAcceptedAt = new(time.Time)
+				*_m.LegalTermsAcceptedAt = value.Time
 			}
 		case user.FieldBalanceNotifyEnabled:
 			if value, ok := values[i].(*sql.NullBool); !ok {
@@ -555,6 +580,17 @@ func (_m *User) String() string {
 	builder.WriteString(", ")
 	if v := _m.TotpEnabledAt; v != nil {
 		builder.WriteString("totp_enabled_at=")
+		builder.WriteString(v.Format(time.ANSIC))
+	}
+	builder.WriteString(", ")
+	builder.WriteString("legal_terms_accepted=")
+	builder.WriteString(fmt.Sprintf("%v", _m.LegalTermsAccepted))
+	builder.WriteString(", ")
+	builder.WriteString("legal_terms_version=")
+	builder.WriteString(_m.LegalTermsVersion)
+	builder.WriteString(", ")
+	if v := _m.LegalTermsAcceptedAt; v != nil {
+		builder.WriteString("legal_terms_accepted_at=")
 		builder.WriteString(v.Format(time.ANSIC))
 	}
 	builder.WriteString(", ")

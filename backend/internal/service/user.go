@@ -30,6 +30,11 @@ type User struct {
 	TotpEnabled         bool       // 是否启用 TOTP
 	TotpEnabledAt       *time.Time // TOTP 启用时间
 
+	// LegalTermsAccepted 记录用户是否接受当前版本的用户服务条款及相关政策。
+	LegalTermsAccepted   bool
+	LegalTermsVersion    string
+	LegalTermsAcceptedAt *time.Time
+
 	// UserAccessKey* 是用户级开发者接口的访问密钥元数据。
 	// 密钥原文只在专用服务中解密，绝不能出现在普通用户 DTO 中。
 	UserAccessKeyHash      *string

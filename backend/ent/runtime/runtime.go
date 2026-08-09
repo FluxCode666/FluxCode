@@ -2039,48 +2039,58 @@ func init() {
 	userDescTotpEnabled := userFields[9].Descriptor()
 	// user.DefaultTotpEnabled holds the default value on creation for the totp_enabled field.
 	user.DefaultTotpEnabled = userDescTotpEnabled.Default.(bool)
+	// userDescLegalTermsAccepted is the schema descriptor for legal_terms_accepted field.
+	userDescLegalTermsAccepted := userFields[11].Descriptor()
+	// user.DefaultLegalTermsAccepted holds the default value on creation for the legal_terms_accepted field.
+	user.DefaultLegalTermsAccepted = userDescLegalTermsAccepted.Default.(bool)
+	// userDescLegalTermsVersion is the schema descriptor for legal_terms_version field.
+	userDescLegalTermsVersion := userFields[12].Descriptor()
+	// user.DefaultLegalTermsVersion holds the default value on creation for the legal_terms_version field.
+	user.DefaultLegalTermsVersion = userDescLegalTermsVersion.Default.(string)
+	// user.LegalTermsVersionValidator is a validator for the "legal_terms_version" field. It is called by the builders before save.
+	user.LegalTermsVersionValidator = userDescLegalTermsVersion.Validators[0].(func(string) error)
 	// userDescBalanceNotifyEnabled is the schema descriptor for balance_notify_enabled field.
-	userDescBalanceNotifyEnabled := userFields[11].Descriptor()
+	userDescBalanceNotifyEnabled := userFields[14].Descriptor()
 	// user.DefaultBalanceNotifyEnabled holds the default value on creation for the balance_notify_enabled field.
 	user.DefaultBalanceNotifyEnabled = userDescBalanceNotifyEnabled.Default.(bool)
 	// userDescBalanceNotifyThresholdType is the schema descriptor for balance_notify_threshold_type field.
-	userDescBalanceNotifyThresholdType := userFields[12].Descriptor()
+	userDescBalanceNotifyThresholdType := userFields[15].Descriptor()
 	// user.DefaultBalanceNotifyThresholdType holds the default value on creation for the balance_notify_threshold_type field.
 	user.DefaultBalanceNotifyThresholdType = userDescBalanceNotifyThresholdType.Default.(string)
 	// userDescBalanceNotifyExtraEmails is the schema descriptor for balance_notify_extra_emails field.
-	userDescBalanceNotifyExtraEmails := userFields[14].Descriptor()
+	userDescBalanceNotifyExtraEmails := userFields[17].Descriptor()
 	// user.DefaultBalanceNotifyExtraEmails holds the default value on creation for the balance_notify_extra_emails field.
 	user.DefaultBalanceNotifyExtraEmails = userDescBalanceNotifyExtraEmails.Default.(string)
 	// userDescTotalRecharged is the schema descriptor for total_recharged field.
-	userDescTotalRecharged := userFields[15].Descriptor()
+	userDescTotalRecharged := userFields[18].Descriptor()
 	// user.DefaultTotalRecharged holds the default value on creation for the total_recharged field.
 	user.DefaultTotalRecharged = userDescTotalRecharged.Default.(float64)
 	// userDescUserAccessKeyHash is the schema descriptor for user_access_key_hash field.
-	userDescUserAccessKeyHash := userFields[16].Descriptor()
+	userDescUserAccessKeyHash := userFields[19].Descriptor()
 	// user.UserAccessKeyHashValidator is a validator for the "user_access_key_hash" field. It is called by the builders before save.
 	user.UserAccessKeyHashValidator = userDescUserAccessKeyHash.Validators[0].(func(string) error)
 	// userDescIsSales is the schema descriptor for is_sales field.
-	userDescIsSales := userFields[19].Descriptor()
+	userDescIsSales := userFields[22].Descriptor()
 	// user.DefaultIsSales holds the default value on creation for the is_sales field.
 	user.DefaultIsSales = userDescIsSales.Default.(bool)
 	// userDescSalesCommissionRate is the schema descriptor for sales_commission_rate field.
-	userDescSalesCommissionRate := userFields[20].Descriptor()
+	userDescSalesCommissionRate := userFields[23].Descriptor()
 	// user.DefaultSalesCommissionRate holds the default value on creation for the sales_commission_rate field.
 	user.DefaultSalesCommissionRate = userDescSalesCommissionRate.Default.(float64)
 	// user.SalesCommissionRateValidator is a validator for the "sales_commission_rate" field. It is called by the builders before save.
 	user.SalesCommissionRateValidator = userDescSalesCommissionRate.Validators[0].(func(float64) error)
 	// userDescSalesCommissionMode is the schema descriptor for sales_commission_mode field.
-	userDescSalesCommissionMode := userFields[21].Descriptor()
+	userDescSalesCommissionMode := userFields[24].Descriptor()
 	// user.DefaultSalesCommissionMode holds the default value on creation for the sales_commission_mode field.
 	user.DefaultSalesCommissionMode = userDescSalesCommissionMode.Default.(string)
 	// user.SalesCommissionModeValidator is a validator for the "sales_commission_mode" field. It is called by the builders before save.
 	user.SalesCommissionModeValidator = userDescSalesCommissionMode.Validators[0].(func(string) error)
 	// userDescSalesCommissionMinMonthlySales is the schema descriptor for sales_commission_min_monthly_sales field.
-	userDescSalesCommissionMinMonthlySales := userFields[22].Descriptor()
+	userDescSalesCommissionMinMonthlySales := userFields[25].Descriptor()
 	// user.DefaultSalesCommissionMinMonthlySales holds the default value on creation for the sales_commission_min_monthly_sales field.
 	user.DefaultSalesCommissionMinMonthlySales = userDescSalesCommissionMinMonthlySales.Default.(float64)
 	// userDescReferralCode is the schema descriptor for referral_code field.
-	userDescReferralCode := userFields[23].Descriptor()
+	userDescReferralCode := userFields[26].Descriptor()
 	// user.DefaultReferralCode holds the default value on creation for the referral_code field.
 	user.DefaultReferralCode = userDescReferralCode.Default.(string)
 	// user.ReferralCodeValidator is a validator for the "referral_code" field. It is called by the builders before save.
