@@ -210,7 +210,7 @@ import { useAuthStore, useAppStore } from '@/stores'
 import { getPublicSettings, isTotp2FARequired } from '@/api/auth'
 import type { TotpLoginResponse } from '@/types'
 
-const { t, locale } = useI18n()
+const { t } = useI18n()
 
 // ==================== Router & Stores ====================
 
@@ -309,9 +309,7 @@ function validateForm(): boolean {
   let isValid = true
 
   if (!legalAccepted.value) {
-    errorMessage.value = String(locale.value).toLowerCase().startsWith('zh')
-      ? '请先阅读并同意服务条款及相关政策'
-      : 'Please read and accept the terms and related policies first'
+    errorMessage.value = t('auth.legalConsentRequired')
     isValid = false
   }
 
@@ -373,6 +371,8 @@ async function handleLogin(): Promise<void> {
       return
     }
 
+    await recordLegalConsent()
+
     // Show success toast
     appStore.showSuccess(t('auth.loginSuccess'))
 
@@ -413,6 +413,7 @@ async function handle2FAVerify(code: string): Promise<void> {
 
   try {
     await authStore.login2FA(totpTempToken.value, code)
+    await recordLegalConsent()
 
     // Close modal and show success
     show2FAModal.value = false
@@ -429,6 +430,19 @@ async function handle2FAVerify(code: string): Promise<void> {
       totpModalRef.value.setError(message)
       totpModalRef.value.setVerifying(false)
     }
+  }
+}
+
+async function recordLegalConsent(): Promise<void> {
+  try {
+    await authStore.acceptLegalTerms()
+  } catch (error) {
+    // Do not leave a session active when the checked consent could not be stored.
+    await authStore.logout().catch((logoutError) => {
+      console.error('Failed to revoke session after legal consent error:', logoutError)
+    })
+    console.error('Failed to record legal consent:', error)
+    throw new Error(t('auth.legalConsentSaveFailed'))
   }
 }
 

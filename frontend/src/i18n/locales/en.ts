@@ -853,6 +853,8 @@ export default {
     loginSuccess: 'Login successful! Welcome back.',
     accountCreatedSuccess: 'Account created successfully! Welcome to {siteName}.',
     reloginRequired: 'Session expired. Please log in again.',
+    legalConsentRequired: 'Please read and accept the terms and related policies first.',
+    legalConsentSaveFailed: 'We could not record your acceptance. Please log in and try again.',
     turnstileExpired: 'Verification expired, please try again',
     turnstileFailed: 'Verification failed, please try again',
     completeVerification: 'Please complete the verification',

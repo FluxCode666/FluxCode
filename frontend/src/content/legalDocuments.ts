@@ -45,15 +45,15 @@ export const legalDocuments: Record<LegalDocumentKey, LegalDocument> = {
     title: '用户服务条款',
     eyebrow: 'Terms of Service',
     description: `本条款说明您与 ${SITE_NAME_TOKEN} 运营方之间的权利与义务，以及账户、计费、内容和争议处理规则。`,
-    version: '1.0',
-    updatedAt: '2026 年 8 月 7 日',
+    version: '1.1',
+    updatedAt: '2026 年 8 月 8 日',
     sections: [
       {
         id: 'agreement',
         title: '1. 协议范围与接受',
         paragraphs: [
           `本条款由您与实际运营 ${SITE_NAME_TOKEN} 并向您提供服务的主体（以下简称“我们”或“运营方”）订立。运营主体及联系方式以站点公示、订单或付款页面载明的信息为准。`,
-          '您注册账户、勾选同意、充值、创建 API Key、发起 API 请求或以其他方式使用服务，即表示您已阅读并同意本条款、合理使用政策、支持地区说明以及适用于具体功能的专项条款。',
+          '您提交注册信息或身份认证信息本身，仅用于创建或验证账户，不代表您已完成对本条款的明确接受。注册或每次登录时，在提交注册或登录操作前，您必须在页面中阅读并勾选同意本条款、合理使用政策、支持地区说明以及适用于具体功能的专项条款；认证成功后，我们将记录您接受的文件版本和时间。仅访问网站、查看公开页面或下载文档，不代表您已接受本条款，也不代表我们向您开放或授权服务。',
           '如您代表公司、组织或其他主体使用服务，您确认自己有权代表该主体接受本条款。若您不具备相应民事行为能力，或不同意本条款，请勿注册或使用服务。'
         ],
         notice: '与您所在地消费者权益保护等强制性法律相冲突的约定，以适用的强制性法律规定为准。'
@@ -62,7 +62,7 @@ export const legalDocuments: Record<LegalDocumentKey, LegalDocument> = {
         id: 'services',
         title: '2. 服务内容与定位',
         paragraphs: [
-          `${SITE_NAME_TOKEN} 提供多模型 API 的统一接入、路由转发、密钥管理、用量统计、计费结算及相关技术支持。实际开放的模型、协议、通道和功能以控制台当时展示为准。`,
+          `${SITE_NAME_TOKEN} 提供多模型 API 的统一接入、路由转发、密钥管理、用量统计、计费结算及相关技术支持。实际开放的模型、协议、通道和功能以控制台当时展示为准。服务当前不向中国大陆用户开放；中国大陆用户能够访问网站、注册页或接口，不代表服务已向其开放，也不构成注册、充值、调用或获得其他服务授权。`,
           '除非页面另有明确说明，我们通常不训练或运营上游基础模型。您的请求可能被转发给相应的上游模型或基础设施提供商处理，输出由相关模型生成。'
         ],
         bullets: [
@@ -197,8 +197,8 @@ export const legalDocuments: Record<LegalDocumentKey, LegalDocument> = {
     title: '合理使用政策',
     eyebrow: 'Acceptable Use Policy',
     description: `本政策列明使用 ${SITE_NAME_TOKEN} API、模型和相关工具时允许与禁止的行为，以及违规处理原则。`,
-    version: '1.0',
-    updatedAt: '2026 年 8 月 7 日',
+    version: '1.1',
+    updatedAt: '2026 年 8 月 8 日',
     sections: [
       {
         id: 'purpose',
@@ -295,14 +295,15 @@ export const legalDocuments: Record<LegalDocumentKey, LegalDocument> = {
     title: '支持的国家和地区',
     eyebrow: 'Supported Regions',
     description: `说明 ${SITE_NAME_TOKEN} 的地区可用性、受限情形，以及上游模型、支付与跨境处理可能带来的差异。`,
-    version: '1.0',
-    updatedAt: '2026 年 8 月 7 日',
+    version: '1.1',
+    updatedAt: '2026 年 8 月 8 日',
     sections: [
       {
         id: 'availability',
         title: '1. 可用性原则',
         paragraphs: [
           '服务是否在某一国家或地区开放，以注册页、控制台、支付页面及对应模型当时可用状态为准。能够访问网站不代表所有模型、充值方式或功能均可使用。',
+          '服务当前不向中国大陆用户开放。中国大陆境内的个人、组织、企业、付款方或最终受益人，以及主要业务或使用地在中国大陆的用户，均不在当前支持范围内。即使能够访问网站、注册页或接口，也不代表服务已向其开放、邀请或授权，不得据此注册、充值、调用或以其他方式使用服务。',
           '地区可用性可能因当地法律、出口管制与制裁要求、上游提供商政策、支付渠道、网络条件和合规能力而变化。'
         ],
         notice: '本页面不是任何政府制裁或出口管制名单的替代品，也不构成对特定交易合法性的确认。'
@@ -311,6 +312,7 @@ export const legalDocuments: Record<LegalDocumentKey, LegalDocument> = {
         id: 'restricted',
         title: '2. 受限或不支持的情形',
         bullets: [
+          '中国大陆用户不在当前服务开放范围内，不得通过虚假身份、代付、VPN、代理或其他手段规避该限制；',
           '适用法律、政府命令、制裁或出口管制禁止提供服务；',
           '用户、付款方、受益人或使用目的属于依法受限对象；',
           '上游模型、云服务、支付机构或其他关键供应商不支持该地区；',
@@ -366,8 +368,8 @@ export const legalDocuments: Record<LegalDocumentKey, LegalDocument> = {
     title: '服务专项条款',
     eyebrow: 'Service-specific Terms',
     description: `针对 ${SITE_NAME_TOKEN} 的 API 网关、模型路由、缓存、计费和数据处理功能作出补充说明。`,
-    version: '1.0',
-    updatedAt: '2026 年 8 月 7 日',
+    version: '1.1',
+    updatedAt: '2026 年 8 月 8 日',
     sections: [
       {
         id: 'gateway',

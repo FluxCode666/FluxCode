@@ -887,6 +887,7 @@ async function handleRegister(): Promise<void> {
       invitation_code: formData.invitation_code || undefined,
       referral_code: formData.referral_code || undefined
     })
+    await recordLegalConsent()
 
     // Show success toast
     appStore.showSuccess(t('auth.accountCreatedSuccess', { siteName: siteName.value }))
@@ -909,6 +910,18 @@ async function handleRegister(): Promise<void> {
     appStore.showError(errorMessage.value)
   } finally {
     isLoading.value = false
+  }
+}
+
+async function recordLegalConsent(): Promise<void> {
+  try {
+    await authStore.acceptLegalTerms()
+  } catch (error) {
+    await authStore.logout().catch((logoutError) => {
+      console.error('Failed to revoke session after legal consent error:', logoutError)
+    })
+    console.error('Failed to record legal consent:', error)
+    throw new Error(t('auth.legalConsentSaveFailed'))
   }
 }
 </script>

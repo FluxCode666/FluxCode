@@ -850,6 +850,8 @@ export default {
     loginSuccess: '登录成功！欢迎回来。',
     accountCreatedSuccess: '账户创建成功！欢迎使用 {siteName}。',
     reloginRequired: '会话已过期，请重新登录。',
+    legalConsentRequired: '请先阅读并同意服务条款及相关政策。',
+    legalConsentSaveFailed: '暂时无法记录您的条款同意信息，请重新登录后重试。',
     turnstileExpired: '验证已过期，请重试',
     turnstileFailed: '验证失败，请重试',
     completeVerification: '请完成验证',
