@@ -223,8 +223,8 @@ func chatAssistantToResponses(m ChatMessage) ([]ResponsesInputItem, error) {
 	if err != nil {
 		return nil, err
 	}
-	if m.ReasoningContent != "" {
-		s = "<thinking>" + m.ReasoningContent + "</thinking>" + s
+	if reasoning := m.reasoningText(); reasoning != "" {
+		s = "<thinking>" + reasoning + "</thinking>" + s
 	}
 	if s != "" {
 		parts := []ResponsesContentPart{{Type: "output_text", Text: s}}

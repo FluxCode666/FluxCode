@@ -454,6 +454,37 @@ func TestChatCompletionsToResponses_AssistantReasoningContentPreserved(t *testin
 	require.Contains(t, string(resp.Input), "answer")
 }
 
+func TestChatCompletionsToResponses_AssistantReasoningAliasAccepted(t *testing.T) {
+	var req ChatCompletionsRequest
+	require.NoError(t, json.Unmarshal([]byte(`{
+		"model":"gpt-5.6",
+		"messages":[{"role":"assistant","content":"answer","reasoning":"fallback plan"}]
+	}`), &req))
+
+	resp, err := ChatCompletionsToResponses(&req)
+	require.NoError(t, err)
+	require.Contains(t, string(resp.Input), "<thinking>fallback plan</thinking>")
+	require.Contains(t, string(resp.Input), "answer")
+}
+
+func TestChatCompletionsToResponses_ReasoningContentTakesPrecedence(t *testing.T) {
+	var req ChatCompletionsRequest
+	require.NoError(t, json.Unmarshal([]byte(`{
+		"model":"gpt-5.6",
+		"messages":[{
+			"role":"assistant",
+			"content":"answer",
+			"reasoning_content":"preferred plan",
+			"reasoning":"fallback plan"
+		}]
+	}`), &req))
+
+	resp, err := ChatCompletionsToResponses(&req)
+	require.NoError(t, err)
+	require.Contains(t, string(resp.Input), "<thinking>preferred plan</thinking>")
+	require.NotContains(t, string(resp.Input), "fallback plan")
+}
+
 // ---------------------------------------------------------------------------
 // ResponsesToChatCompletions tests
 // ---------------------------------------------------------------------------

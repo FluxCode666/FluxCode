@@ -710,6 +710,17 @@ func (s *RateLimitService) handle403(ctx context.Context, account *Account, upst
 	if account.Platform == PlatformAntigravity {
 		return s.handleAntigravity403(ctx, account, upstreamMsg, responseBody)
 	}
+	// An HTML 403 is commonly produced by an upstream proxy/CDN before the
+	// request reaches OpenAI. It is endpoint/transport evidence, not proof that
+	// the selected OpenAI credential is invalid, so keep failover behavior while
+	// skipping account-level punishment.
+	if account.Platform == PlatformOpenAI && isHTMLResponse(responseBody) {
+		slog.Warn("openai_403_html_body_skips_account_penalty",
+			"account_id", account.ID,
+			"upstream_message", upstreamMsg,
+		)
+		return false
+	}
 	// 非 Antigravity 平台：保持原有行为
 	msg := "Access forbidden (403): account may be suspended or lack permissions"
 	if upstreamMsg != "" {
@@ -717,6 +728,12 @@ func (s *RateLimitService) handle403(ctx context.Context, account *Account, upst
 	}
 	s.handleAuthError(ctx, account, msg)
 	return true
+}
+
+func isHTMLResponse(body []byte) bool {
+	trimmed := strings.TrimSpace(strings.ToLower(string(body)))
+	return strings.HasPrefix(trimmed, "<!doctype html") ||
+		strings.HasPrefix(trimmed, "<html")
 }
 
 // handleAntigravity403 处理 Antigravity 平台的 403 错误

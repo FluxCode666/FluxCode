@@ -3590,6 +3590,13 @@ export default {
         codexCLIOnly: 'Codex official clients only',
         codexCLIOnlyDesc:
           'Only applies to OpenAI OAuth. When enabled, only Codex official client families are allowed; when disabled, the gateway bypasses this restriction and keeps existing behavior.',
+        codexFingerprintMode: 'Codex device fingerprint convergence',
+        codexFingerprintModeDesc:
+          'Only applies to OpenAI OAuth. Converges Codex device/session identifiers per account to reduce the number of devices and sessions visible upstream. Defaults to session.',
+        codexFingerprintOff: 'Off (off)',
+        codexFingerprintDevice: 'Device only (device)',
+        codexFingerprintSession: 'Device + session (session, default)',
+        codexFingerprintFull: 'All identifiers (full)',
         modelRestrictionDisabledByPassthrough: 'Automatic passthrough is enabled: model whitelist/mapping will not take effect.',
       },
       codex2api: {
@@ -3647,6 +3654,9 @@ export default {
       poolModeRetryCount: 'Same-Account Retries',
       poolModeRetryCountHint:
         'Only applies in pool mode. Use 0 to disable in-place retry. Default {default}, maximum {max}.',
+      poolModeRetryStatusCodes: 'Same-Account Retry Status Codes',
+      poolModeRetryStatusCodesHint:
+        'Only applies in pool mode. Comma- or space-separated HTTP status codes. Defaults to {default}.',
       customErrorCodes: 'Custom Error Codes',
       customErrorCodesHint: 'Only stop scheduling for selected error codes',
       customErrorCodesWarning:

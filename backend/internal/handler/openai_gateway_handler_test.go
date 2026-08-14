@@ -27,6 +27,43 @@ import (
 	"go.uber.org/zap"
 )
 
+func TestNormalizeOpenAIResponsesCompactRequestFromBodySignal(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler := &OpenAIGatewayHandler{}
+	tests := []struct {
+		name          string
+		body          string
+		betaFeature   string
+		wantPath      string
+		wantClientSSE bool
+		wantBodyEqual bool
+	}{
+		{name: "stream rewrites to compact and records SSE bridge", body: `{"stream":true,"input":[{"type":"compaction_trigger"}]}`, wantPath: "/v1/responses/compact", wantClientSSE: true},
+		{name: "non-stream rewrites to compact", body: `{"stream":false,"input":[{"type":"compaction_trigger"}]}`, wantPath: "/v1/responses/compact"},
+		{name: "remote v2 keeps responses path and body", body: `{"stream":true,"input":[{"type":"compaction_trigger"}]}`, betaFeature: "remote_compaction_v2", wantPath: "/v1/responses", wantBodyEqual: true},
+		{name: "ordinary responses unchanged", body: `{"stream":true,"input":[{"role":"user","content":"hi"}]}`, wantPath: "/v1/responses", wantBodyEqual: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c, _ := gin.CreateTestContext(httptest.NewRecorder())
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(tt.body))
+			if tt.betaFeature != "" {
+				c.Request.Header.Set("x-codex-beta-features", tt.betaFeature)
+			}
+
+			got, ok := handler.normalizeOpenAIResponsesCompactRequest(c, zap.NewNop(), []byte(tt.body))
+			require.True(t, ok)
+			require.Equal(t, tt.wantPath, c.Request.URL.Path)
+			if tt.wantBodyEqual {
+				require.JSONEq(t, tt.body, string(got))
+			}
+			_, marked := c.Get("openai_compact_client_stream")
+			require.Equal(t, tt.wantClientSSE, marked)
+		})
+	}
+}
+
 func TestOpenAIHandleStreamingAwareError_JSONEscaping(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -1542,6 +1579,44 @@ func TestOpenAIEnsureForwardErrorResponse_DoesNotOverrideWrittenResponse(t *test
 	require.False(t, wrote)
 	require.Equal(t, http.StatusTeapot, w.Code)
 	assert.Equal(t, "already written", w.Body.String())
+}
+
+func TestOpenAIEnsureForwardErrorResponse_CompactKeepaliveOnlyWritesResponseFailed(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, EndpointResponses, nil)
+	service.MarkOpenAICompactClientStream(c)
+
+	stop := service.StartOpenAICompactSSEKeepalive(c, 5*time.Millisecond)
+	defer stop()
+	before := service.OpenAICompactKeepaliveAdjustedWrittenSize(c)
+	require.Eventually(t, c.Writer.Written, time.Second, time.Millisecond)
+	require.Equal(t, before, service.OpenAICompactKeepaliveAdjustedWrittenSize(c))
+
+	h := &OpenAIGatewayHandler{}
+	require.True(t, h.ensureForwardErrorResponse(c, false))
+	require.Equal(t, http.StatusOK, w.Code)
+	require.Contains(t, w.Body.String(), "event: response.failed\n")
+	require.NotContains(t, w.Body.String(), "event: error\n")
+}
+
+func TestOpenAIEnsureForwardErrorResponse_CompactMeaningfulOutputIsPreserved(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, EndpointResponses, nil)
+	service.MarkOpenAICompactClientStream(c)
+
+	stop := service.StartOpenAICompactSSEKeepalive(c, time.Hour)
+	defer stop()
+	_, err := c.Writer.WriteString("event: response.completed\ndata: {\"type\":\"response.completed\"}\n\n")
+	require.NoError(t, err)
+
+	h := &OpenAIGatewayHandler{}
+	require.False(t, h.ensureForwardErrorResponse(c, false))
+	require.Equal(t, 1, strings.Count(w.Body.String(), "event: response.completed\n"))
+	require.NotContains(t, w.Body.String(), "event: response.failed\n")
 }
 
 func TestShouldLogOpenAIForwardFailureAsWarn(t *testing.T) {

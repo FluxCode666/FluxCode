@@ -169,6 +169,7 @@ describe('CreateAccountModal', () => {
     expect(poolSection).toBeDefined()
     await poolSection!.get('button').trigger('click')
     await poolSection!.get<HTMLInputElement>('input[type="number"]').setValue('99')
+    await poolSection!.get<HTMLInputElement>('input[type="text"]').setValue('502, 429, 502')
 
     const name = wrapper.get<HTMLInputElement>('[data-tour="account-form-name"]')
     await name.setValue('Embedding Key')
@@ -186,12 +187,53 @@ describe('CreateAccountModal', () => {
         api_key: 'sk-embed',
         model_mapping: { 'text-embedding-3-small': 'text-embedding-3-small' },
         pool_mode: true,
-        pool_mode_retry_count: 10
+        pool_mode_retry_count: 10,
+        pool_mode_retry_status_codes: [429, 502]
       }
     })
     expect(Object.keys(createAccountMock.mock.calls[0]?.[0]?.credentials || {}).sort()).toEqual([
-      'api_key', 'base_url', 'model_mapping', 'pool_mode', 'pool_mode_retry_count'
+      'api_key', 'base_url', 'model_mapping', 'pool_mode', 'pool_mode_retry_count',
+      'pool_mode_retry_status_codes'
     ])
+  })
+
+  it('creates Bedrock with account-specific pool retry status codes', async () => {
+    createAccountMock.mockReset().mockResolvedValue({})
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+    const wrapper = mountModal()
+
+    await wrapper.findAll('button').find((button) => button.text().includes('admin.accounts.bedrockLabel'))?.trigger('click')
+    await wrapper.get<HTMLInputElement>('[data-tour="account-form-name"]').setValue('Bedrock Pool')
+    await wrapper.get<HTMLInputElement>('input[placeholder="AKIA..."]').setValue('AKIA_TEST')
+
+    const bedrockSection = wrapper
+      .findAll('div.space-y-4')
+      .find((section) => section.text().includes('admin.accounts.bedrockAuthMode'))
+    expect(bedrockSection).toBeDefined()
+    await bedrockSection!.findAll<HTMLInputElement>('input[type="password"]')[0].setValue('secret-test')
+
+    const poolSection = wrapper
+      .findAll('div.border-t')
+      .find((section) => section.text().includes('admin.accounts.poolModeHint'))
+    expect(poolSection).toBeDefined()
+    await poolSection!.get('button').trigger('click')
+    await poolSection!.get<HTMLInputElement>('input[type="text"]').setValue('503 401 503')
+
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+
+    expect(createAccountMock).toHaveBeenCalledTimes(1)
+    expect(createAccountMock.mock.calls[0]?.[0]).toMatchObject({
+      platform: 'anthropic',
+      type: 'bedrock',
+      credentials: {
+        auth_mode: 'sigv4',
+        aws_access_key_id: 'AKIA_TEST',
+        aws_secret_access_key: 'secret-test',
+        pool_mode: true,
+        pool_mode_retry_count: 3,
+        pool_mode_retry_status_codes: [401, 503]
+      }
+    })
   })
 
   it('creates OpenAI API Key accounts with HTTP image response URLs by default', async () => {
@@ -259,6 +301,35 @@ describe('CreateAccountModal', () => {
 
     expect(createAccountMock).toHaveBeenCalledTimes(1)
     expect(createAccountMock.mock.calls[0]?.[0]?.extra?.codex_image_generation_bridge).toBe(true)
+  })
+
+  it('defaults OpenAI OAuth fingerprint mode to session and imports a non-default mode', async () => {
+    importAgentIdentityMock.mockReset().mockResolvedValue({
+      total: 1,
+      created: 1,
+      updated: 0,
+      failed: 0,
+      items: [{ index: 1, action: 'created', account_id: 42 }]
+    })
+
+    const wrapper = mountModal()
+    await wrapper.findAll('button').find((button) => button.text().includes('OpenAI'))?.trigger('click')
+
+    const modeSelect = wrapper.get<HTMLSelectElement>('[data-testid="create-codex-fingerprint-mode-select"]')
+    expect(modeSelect.element.value).toBe('session')
+    await modeSelect.setValue('full')
+
+    await wrapper.get<HTMLInputElement>('[data-tour="account-form-name"]').setValue('Fingerprint account')
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await wrapper.get('[data-testid="emit-agent-identity-import"]').trigger('click')
+
+    expect(importAgentIdentityMock).toHaveBeenCalledTimes(1)
+    expect(importAgentIdentityMock.mock.calls[0]?.[0]?.extra).toEqual({
+      openai_oauth_responses_websockets_v2_mode: 'off',
+      openai_oauth_responses_websockets_v2_enabled: false,
+      openai_image_response_url_mode: 'http_url',
+      codex_fingerprint_mode: 'full'
+    })
   })
 
   it('imports Agent Identity auth.json through the dedicated endpoint', async () => {

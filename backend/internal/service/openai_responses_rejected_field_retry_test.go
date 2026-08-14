@@ -86,18 +86,18 @@ func TestNormalizeOpenAIResponsesRejectedFieldRetryBodyRejectsAmbiguousErrors(t 
 func TestShouldFailoverOpenAIUpstreamResponseForAccountSpecificBodyLimit(t *testing.T) {
 	service := &OpenAIGatewayService{}
 	capacityMessage := "Selected model is at capacity. Please try a different model."
-	require.True(t, service.shouldFailoverOpenAIUpstreamResponse(
+	require.True(t, service.shouldFailoverOpenAIUpstreamResponse(nil,
 		http.StatusBadRequest,
 		capacityMessage,
 		[]byte(`{"error":{"message":"Selected model is at capacity. Please try a different model."}}`),
 	))
-	require.True(t, shouldFailoverOpenAIPassthroughResponse(http.StatusBadRequest, capacityMessage, nil))
-	require.True(t, service.shouldFailoverOpenAIUpstreamResponse(
+	require.True(t, shouldFailoverOpenAIPassthroughResponse(nil, http.StatusBadRequest, capacityMessage, nil))
+	require.True(t, service.shouldFailoverOpenAIUpstreamResponse(nil,
 		http.StatusRequestEntityTooLarge,
 		"request body is too large",
 		[]byte(`{"error":{"message":"request body is too large"}}`),
 	))
-	require.False(t, service.shouldFailoverOpenAIUpstreamResponse(
+	require.False(t, service.shouldFailoverOpenAIUpstreamResponse(nil,
 		http.StatusRequestEntityTooLarge,
 		"maximum context length exceeded",
 		[]byte(`{"error":{"code":"context_length_exceeded"}}`),

@@ -791,6 +791,9 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthNonStreamingResponse(
 ) (OpenAIUsage, int, error) {
 	body, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, openAITooLargeError)
 	if err != nil {
+		if shouldClassifyOpenAIUpstreamStreamReadError(err, c.Request.Context()) {
+			err = newOpenAIUpstreamStreamReadError(err)
+		}
 		return OpenAIUsage{}, 0, err
 	}
 
@@ -1024,7 +1027,9 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponse(
 			break
 		}
 		if err != nil {
-			_ = s.writeOpenAIImagesStreamEvent(c, flusher, "error", buildOpenAIImagesStreamErrorBody(err.Error()))
+			if shouldClassifyOpenAIUpstreamStreamReadError(err, c.Request.Context()) {
+				err = newOpenAIUpstreamStreamReadError(err)
+			}
 			return OpenAIUsage{}, imageCount, firstTokenMs, err
 		}
 	}
@@ -1162,7 +1167,7 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuth(
 		resp.Body = io.NopCloser(bytes.NewReader(respBody))
 		upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(respBody))
 		upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
-		if s.shouldFailoverOpenAIUpstreamResponse(resp.StatusCode, upstreamMsg, respBody) {
+		if s.shouldFailoverOpenAIUpstreamResponse(account, resp.StatusCode, upstreamMsg, respBody) {
 			appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
 				Platform:           account.Platform,
 				AccountID:          account.ID,
@@ -1177,12 +1182,13 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuth(
 			return nil, &UpstreamFailoverError{
 				StatusCode:             resp.StatusCode,
 				ResponseBody:           respBody,
-				RetryableOnSameAccount: account.IsPoolMode() && isPoolModeRetryableStatus(resp.StatusCode),
+				RetryableOnSameAccount: account.IsPoolMode() && account.IsPoolModeRetryableStatus(resp.StatusCode),
 			}
 		}
 		return s.handleErrorResponse(ctx, resp, c, account, responsesBody)
 	}
 	defer func() { _ = resp.Body.Close() }()
+	writerSizeBeforeResponse := c.Writer.Size()
 
 	var (
 		usage        OpenAIUsage
@@ -1194,13 +1200,17 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuth(
 		recordCtx = normalizeGeneratedImageRecordContext(ctx, recordMeta, account, parsed, requestModel, resp.Header.Get("x-request-id"))
 		usage, imageCount, firstTokenMs, err = s.handleOpenAIImagesOAuthStreamingResponse(resp, c, startTime, parsed.ResponseFormat, openAIImagesStreamPrefix(parsed), requestModel, recordCtx)
 		if err != nil {
-			return nil, err
+			return nil, s.handleOpenAIImagesOAuthStreamReadError(
+				ctx, c, account, safeUpstreamURL(upstreamReq.URL.String()), resp, writerSizeBeforeResponse, err,
+			)
 		}
 	} else {
 		recordCtx = normalizeGeneratedImageRecordContext(ctx, recordMeta, account, parsed, requestModel, resp.Header.Get("x-request-id"))
 		usage, imageCount, err = s.handleOpenAIImagesOAuthNonStreamingResponse(resp, c, parsed.ResponseFormat, requestModel, recordCtx)
 		if err != nil {
-			return nil, err
+			return nil, s.handleOpenAIImagesOAuthStreamReadError(
+				ctx, c, account, safeUpstreamURL(upstreamReq.URL.String()), resp, writerSizeBeforeResponse, err,
+			)
 		}
 	}
 	if imageCount <= 0 {
@@ -1218,4 +1228,47 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuth(
 		ImageCount:      imageCount,
 		ImageSize:       parsed.SizeTier,
 	}, nil
+}
+
+func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamReadError(
+	ctx context.Context,
+	c *gin.Context,
+	account *Account,
+	upstreamURL string,
+	resp *http.Response,
+	writerSizeBeforeResponse int,
+	err error,
+) error {
+	code, message, ok := OpenAIUpstreamStreamReadErrorDetails(err)
+	if !ok {
+		return err
+	}
+	responseWritten := c != nil && c.Writer != nil && c.Writer.Size() != writerSizeBeforeResponse
+	headers := http.Header(nil)
+	requestID := ""
+	if resp != nil {
+		headers = resp.Header.Clone()
+		requestID = strings.TrimSpace(resp.Header.Get("x-request-id"))
+	}
+	kind := "failover"
+	if responseWritten {
+		kind = "retry_exhausted_failover"
+	}
+	appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+		Platform: account.Platform, AccountID: account.ID, AccountName: account.Name,
+		UpstreamStatusCode: http.StatusBadGateway, UpstreamRequestID: requestID, UpstreamURL: upstreamURL,
+		Kind: kind, Message: message,
+	})
+	if responseWritten {
+		return err
+	}
+	responseBody := []byte(fmt.Sprintf(`{"error":{"type":"upstream_error","code":%q,"message":%q}}`, code, message))
+	shouldDisable := false
+	if s.rateLimitService != nil {
+		shouldDisable = s.rateLimitService.HandleUpstreamError(ctx, account, http.StatusBadGateway, headers, responseBody)
+	}
+	return &UpstreamFailoverError{
+		StatusCode: http.StatusBadGateway, ResponseBody: responseBody, ResponseHeaders: headers,
+		RetryableOnSameAccount: !shouldDisable && account.IsPoolMode() && account.IsPoolModeRetryableStatus(http.StatusBadGateway),
+	}
 }

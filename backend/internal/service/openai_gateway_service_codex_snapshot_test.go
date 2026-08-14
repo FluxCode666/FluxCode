@@ -167,6 +167,55 @@ func TestBuildCodexUsageExtraUpdates_NilSnapshot(t *testing.T) {
 	}
 }
 
+func TestCodexRateLimitResetAtFromExtraSkipsStaleAndResetSnapshots(t *testing.T) {
+	now := time.Date(2026, 8, 13, 12, 0, 0, 0, time.UTC)
+	futureReset := now.Add(3 * time.Hour).Format(time.RFC3339)
+
+	t.Run("stale exhausted snapshot is ignored for scheduling", func(t *testing.T) {
+		extra := map[string]any{
+			"codex_usage_updated_at": now.Add(-2 * time.Hour).Format(time.RFC3339),
+			"codex_5h_used_percent":  100.0,
+			"codex_5h_reset_at":      futureReset,
+		}
+		if got := codexRateLimitResetAtFromExtra(extra, now); got != nil {
+			t.Fatalf("expected stale snapshot to be ignored, got %v", got)
+		}
+	})
+
+	t.Run("reset window is ignored", func(t *testing.T) {
+		extra := map[string]any{
+			"codex_usage_updated_at": now.Add(-time.Minute).Format(time.RFC3339),
+			"codex_5h_used_percent":  100.0,
+			"codex_5h_reset_at":      now.Add(-time.Second).Format(time.RFC3339),
+		}
+		if got := codexRateLimitResetAtFromExtra(extra, now); got != nil {
+			t.Fatalf("expected reset window to be ignored, got %v", got)
+		}
+	})
+
+	t.Run("fresh exhausted snapshot pauses until reset", func(t *testing.T) {
+		extra := map[string]any{
+			"codex_usage_updated_at": now.Add(-time.Minute).Format(time.RFC3339),
+			"codex_5h_used_percent":  100.0,
+			"codex_5h_reset_at":      futureReset,
+		}
+		got := codexRateLimitResetAtFromExtra(extra, now)
+		if got == nil || !got.Equal(now.Add(3*time.Hour)) {
+			t.Fatalf("got %v, want %v", got, now.Add(3*time.Hour))
+		}
+	})
+
+	t.Run("missing timestamp remains conservative", func(t *testing.T) {
+		extra := map[string]any{
+			"codex_5h_used_percent": 100.0,
+			"codex_5h_reset_at":     futureReset,
+		}
+		if got := codexRateLimitResetAtFromExtra(extra, now); got == nil {
+			t.Fatal("expected snapshot without update time to remain eligible")
+		}
+	})
+}
+
 func TestBuildCodexUsageExtraUpdates_WithoutNormalizedWindowFields(t *testing.T) {
 	primaryUsed := 42.0
 	fallbackNow := time.Date(2026, 2, 20, 9, 15, 0, 0, time.UTC)

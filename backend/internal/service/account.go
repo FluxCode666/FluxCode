@@ -6,6 +6,7 @@ import (
 	"errors"
 	"hash/fnv"
 	"log/slog"
+	"math"
 	"reflect"
 	"sort"
 	"strconv"
@@ -842,14 +843,88 @@ func parsePoolModeRetryCount(value any) int {
 	return defaultPoolModeRetryCount
 }
 
-// isPoolModeRetryableStatus 池模式下应触发同账号重试的状态码
+var defaultPoolModeRetryableStatusCodes = []int{401, 403, 429}
+
+// isPoolModeRetryableStatus 池模式下应触发同账号重试的默认状态码。
 func isPoolModeRetryableStatus(statusCode int) bool {
-	switch statusCode {
-	case 401, 403, 429:
-		return true
-	default:
-		return false
+	for _, code := range defaultPoolModeRetryableStatusCodes {
+		if code == statusCode {
+			return true
+		}
 	}
+	return false
+}
+
+// GetPoolModeRetryStatusCodes returns the account-specific pool retry status
+// codes. nil means use the default list; an explicit empty list disables
+// status-code based same-account retries.
+func (a *Account) GetPoolModeRetryStatusCodes() []int {
+	if a == nil || a.Credentials == nil {
+		return nil
+	}
+	raw, ok := a.Credentials["pool_mode_retry_status_codes"]
+	if !ok || raw == nil {
+		return nil
+	}
+	values, ok := raw.([]any)
+	if !ok {
+		return nil
+	}
+	seen := make(map[int]struct{}, len(values))
+	codes := make([]int, 0, len(values))
+	for _, value := range values {
+		var code int
+		switch typed := value.(type) {
+		case int:
+			code = typed
+		case int64:
+			code = int(typed)
+		case float64:
+			if math.Trunc(typed) != typed {
+				continue
+			}
+			code = int(typed)
+		case json.Number:
+			parsed, err := typed.Int64()
+			if err != nil {
+				continue
+			}
+			code = int(parsed)
+		case string:
+			parsed, err := strconv.Atoi(strings.TrimSpace(typed))
+			if err != nil {
+				continue
+			}
+			code = parsed
+		default:
+			continue
+		}
+		if code < 100 || code > 599 {
+			continue
+		}
+		if _, exists := seen[code]; exists {
+			continue
+		}
+		seen[code] = struct{}{}
+		codes = append(codes, code)
+	}
+	sort.Ints(codes)
+	return codes
+}
+
+// IsPoolModeRetryableStatus checks the account override before falling back to
+// the default pool retry status list.
+func (a *Account) IsPoolModeRetryableStatus(statusCode int) bool {
+	codes := a.GetPoolModeRetryStatusCodes()
+	if codes == nil {
+		return isPoolModeRetryableStatus(statusCode)
+	}
+	for _, code := range codes {
+		if code == statusCode {
+			return true
+		}
+	}
+	return false
 }
 
 func (a *Account) GetCustomErrorCodes() []int {
@@ -1010,6 +1085,16 @@ func (a *Account) GetOpenAIUserAgent() string {
 		return ""
 	}
 	return a.GetCredential("user_agent")
+}
+
+// GetOpenAIDeviceID returns the configured Codex installation/device ID for
+// OAuth accounts. Empty means the fingerprint convergence helper derives a
+// stable account-scoped ID instead.
+func (a *Account) GetOpenAIDeviceID() string {
+	if !a.IsOpenAIOAuth() {
+		return ""
+	}
+	return strings.TrimSpace(a.GetExtraString("openai_device_id"))
 }
 
 func (a *Account) GetChatGPTAccountID() string {

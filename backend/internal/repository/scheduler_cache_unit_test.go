@@ -55,8 +55,68 @@ func TestBuildSchedulerMetadataAccount_KeepsEmbeddingEligibilityCredentials(t *t
 	require.Equal(t, "upstream-key", got.GetCredential("api_key"))
 	require.Equal(t, map[string]any{"embed-public": "embed-upstream"}, got.Credentials["model_mapping"])
 	require.Equal(t, []any{"legacy-embed"}, got.Credentials["model_whitelist"])
-	require.Nil(t, got.Credentials["pool_mode"])
+	require.Equal(t, true, got.Credentials["pool_mode"])
 	require.Nil(t, got.Credentials["unused_secret"])
+}
+
+func TestBuildSchedulerMetadataAccount_KeepsPoolRetryAndCodexFingerprintSettings(t *testing.T) {
+	account := service.Account{
+		ID:       44,
+		Platform: service.PlatformOpenAI,
+		Type:     service.AccountTypeOAuth,
+		Credentials: map[string]any{
+			"pool_mode":                    true,
+			"pool_mode_retry_count":        float64(5),
+			"pool_mode_retry_status_codes": []any{float64(401), float64(429), float64(502)},
+			"refresh_token":                "drop-me",
+		},
+		Extra: map[string]any{
+			"codex_fingerprint_mode": "full",
+			"openai_device_id":       "device-44",
+			"unused_large_field":     "drop-me",
+		},
+	}
+
+	got := buildSchedulerMetadataAccount(account)
+
+	require.Equal(t, true, got.Credentials["pool_mode"])
+	require.Equal(t, float64(5), got.Credentials["pool_mode_retry_count"])
+	require.Equal(t, []any{float64(401), float64(429), float64(502)}, got.Credentials["pool_mode_retry_status_codes"])
+	require.Equal(t, "full", got.Extra["codex_fingerprint_mode"])
+	require.Equal(t, "device-44", got.Extra["openai_device_id"])
+	require.Nil(t, got.Credentials["refresh_token"])
+	require.Nil(t, got.Extra["unused_large_field"])
+}
+
+func TestMetadataRoundTrip_PreservesPoolRetryAndCodexFingerprintSettings(t *testing.T) {
+	poolAccount := service.Account{
+		ID:       45,
+		Platform: service.PlatformEmbedding,
+		Type:     service.AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"pool_mode":                    true,
+			"pool_mode_retry_count":        float64(4),
+			"pool_mode_retry_status_codes": []any{float64(403), float64(500)},
+		},
+	}
+	fingerprintAccount := service.Account{
+		ID:       46,
+		Platform: service.PlatformOpenAI,
+		Type:     service.AccountTypeOAuth,
+		Extra: map[string]any{
+			"codex_fingerprint_mode": "session",
+			"openai_device_id":       "device-46",
+		},
+	}
+
+	cached := simulateSnapshotRoundTrip(t, []service.Account{poolAccount, fingerprintAccount})
+	require.Len(t, cached, 2)
+
+	require.True(t, cached[0].IsPoolMode())
+	require.Equal(t, 4, cached[0].GetPoolModeRetryCount())
+	require.Equal(t, []int{403, 500}, cached[0].GetPoolModeRetryStatusCodes())
+	require.Equal(t, "session", string(cached[1].GetCodexFingerprintMode()))
+	require.Equal(t, "device-46", cached[1].GetOpenAIDeviceID())
 }
 
 // ---------------------------------------------------------------------------

@@ -240,7 +240,7 @@ func (s *OpenAIGatewayService) ForwardEmbeddings(ctx context.Context, input Embe
 				typed.UpstreamModel = candidate.UpstreamModel
 			}
 			upstreamErr, ok := forwardErr.(*EmbeddingForwardError)
-			if !ok || !upstreamErr.Retryable || !isPoolModeRetryableStatus(upstreamErr.StatusCode) || poolRetryCount >= poolRetryLimit {
+			if !ok || !upstreamErr.Retryable || !candidate.Account.IsPoolModeRetryableStatus(upstreamErr.StatusCode) || poolRetryCount >= poolRetryLimit {
 				break
 			}
 			if !waitEmbeddingPoolRetry(ctx) {
@@ -336,7 +336,7 @@ func (s *OpenAIGatewayService) forwardEmbeddingCandidate(
 		return nil, &EmbeddingForwardError{
 			Category:   embeddingStatusCategory(resp.StatusCode),
 			StatusCode: resp.StatusCode,
-			Retryable:  resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= http.StatusInternalServerError,
+			Retryable:  (candidate.Account.IsPoolMode() && candidate.Account.IsPoolModeRetryableStatus(resp.StatusCode)) || resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= http.StatusInternalServerError,
 		}
 	}
 

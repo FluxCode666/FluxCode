@@ -483,6 +483,9 @@ func filterSchedulerCredentials(credentials map[string]any) map[string]any {
 		"api_key",
 		"project_id",
 		"oauth_type",
+		"pool_mode",
+		"pool_mode_retry_count",
+		"pool_mode_retry_status_codes",
 	}
 	filtered := make(map[string]any)
 	for _, key := range keys {
@@ -513,6 +516,8 @@ func filterSchedulerExtra(extra map[string]any) map[string]any {
 		"responses_websockets_v2_enabled",
 		"openai_ws_enabled",
 		"openai_ws_force_http",
+		"codex_fingerprint_mode",
+		"openai_device_id",
 	}
 	filtered := make(map[string]any)
 	for _, key := range keys {

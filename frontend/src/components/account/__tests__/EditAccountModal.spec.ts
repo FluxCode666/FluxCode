@@ -205,6 +205,7 @@ describe('EditAccountModal', () => {
         model_mapping: { 'text-embedding-3-small': 'upstream-embed' },
         pool_mode: true,
         pool_mode_retry_count: 7,
+        pool_mode_retry_status_codes: [502],
         custom_error_codes_enabled: true,
         custom_error_codes: [429]
       }
@@ -221,6 +222,8 @@ describe('EditAccountModal', () => {
       .find((section) => section.text().includes('admin.accounts.poolModeHint'))
     expect(poolSection).toBeDefined()
     expect(poolSection!.get<HTMLInputElement>('input[type="number"]').element.value).toBe('7')
+    expect(poolSection!.get<HTMLInputElement>('input[type="text"]').element.value).toBe('502')
+    await poolSection!.get<HTMLInputElement>('input[type="text"]').setValue('504, 502, 504')
     await wrapper.get('form#edit-account-form').trigger('submit.prevent')
 
     const credentials = updateAccountMock.mock.calls[0]?.[1]?.credentials
@@ -229,11 +232,47 @@ describe('EditAccountModal', () => {
       base_url: 'https://embedding.example.com/v1',
       model_mapping: { 'text-embedding-3-small': 'upstream-embed' },
       pool_mode: true,
-      pool_mode_retry_count: 7
+      pool_mode_retry_count: 7,
+      pool_mode_retry_status_codes: [502, 504]
     })
     expect(Object.keys(credentials).sort()).toEqual([
-      'api_key', 'base_url', 'model_mapping', 'pool_mode', 'pool_mode_retry_count'
+      'api_key', 'base_url', 'model_mapping', 'pool_mode', 'pool_mode_retry_count',
+      'pool_mode_retry_status_codes'
     ])
+  })
+
+  it('clears a Bedrock pool retry status override to restore defaults', async () => {
+    const account = {
+      ...buildAccount(),
+      name: 'Bedrock Pool',
+      platform: 'anthropic',
+      type: 'bedrock',
+      credentials: {
+        auth_mode: 'sigv4',
+        aws_region: 'us-east-1',
+        aws_access_key_id: 'AKIA_TEST',
+        aws_secret_access_key: 'secret-test',
+        pool_mode: true,
+        pool_mode_retry_count: 2,
+        pool_mode_retry_status_codes: [502]
+      }
+    }
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+    const wrapper = mountModal(account)
+
+    const poolSection = wrapper
+      .findAll('div.border-t')
+      .find((section) => section.text().includes('admin.accounts.poolModeHint'))
+    expect(poolSection).toBeDefined()
+    expect(poolSection!.get<HTMLInputElement>('input[type="text"]').element.value).toBe('502')
+    await poolSection!.get<HTMLInputElement>('input[type="text"]').setValue('')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    const credentials = updateAccountMock.mock.calls[0]?.[1]?.credentials
+    expect(credentials.pool_mode).toBe(true)
+    expect(credentials.pool_mode_retry_count).toBe(2)
+    expect(credentials).not.toHaveProperty('pool_mode_retry_status_codes')
   })
 
   it('reopening the same account rehydrates the OpenAI whitelist from props', async () => {
@@ -360,5 +399,32 @@ describe('EditAccountModal', () => {
 
     expect(updateAccountMock).toHaveBeenCalledTimes(1)
     expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.codex_image_generation_bridge).toBe(true)
+  })
+
+  it('rehydrates and saves the OpenAI OAuth Codex fingerprint mode', async () => {
+    const account = {
+      ...buildAccount(),
+      name: 'OpenAI OAuth',
+      type: 'oauth',
+      credentials: {
+        access_token: 'access-token',
+        refresh_token: 'refresh-token'
+      },
+      extra: {
+        codex_fingerprint_mode: 'device'
+      }
+    }
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+
+    const wrapper = mountModal(account)
+    const modeSelect = wrapper.get<HTMLSelectElement>('[data-testid="edit-codex-fingerprint-mode-select"]')
+
+    expect(modeSelect.element.value).toBe('device')
+    await modeSelect.setValue('off')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.codex_fingerprint_mode).toBe('off')
   })
 })

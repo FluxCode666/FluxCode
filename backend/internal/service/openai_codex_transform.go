@@ -455,6 +455,46 @@ func applyInstructions(reqBody map[string]any, isCodexCLI bool) bool {
 	return true
 }
 
+// applyCodexClientMetadata adds the configured installation identifier to
+// OAuth Responses requests without replacing existing client metadata. This
+// is independent of fingerprint convergence, so explicit off mode keeps the
+// configured device identity just like upstream.
+func applyCodexClientMetadata(reqBody map[string]any, account *Account) bool {
+	if account == nil {
+		return false
+	}
+	deviceID := strings.TrimSpace(account.GetOpenAIDeviceID())
+	if deviceID == "" {
+		return false
+	}
+	const key = "x-codex-installation-id"
+	switch existing := reqBody["client_metadata"].(type) {
+	case map[string]any:
+		if value, ok := existing[key].(string); ok && strings.TrimSpace(value) != "" {
+			return false
+		}
+		existing[key] = deviceID
+		reqBody["client_metadata"] = existing
+		return true
+	case map[string]string:
+		if strings.TrimSpace(existing[key]) != "" {
+			return false
+		}
+		next := make(map[string]any, len(existing)+1)
+		for k, v := range existing {
+			next[k] = v
+		}
+		next[key] = deviceID
+		reqBody["client_metadata"] = next
+		return true
+	case nil:
+		reqBody["client_metadata"] = map[string]any{key: deviceID}
+		return true
+	default:
+		return false
+	}
+}
+
 // isInstructionsEmpty 检查 instructions 字段是否为空
 // 处理以下情况：字段不存在、nil、空字符串、纯空白字符串
 func isInstructionsEmpty(reqBody map[string]any) bool {

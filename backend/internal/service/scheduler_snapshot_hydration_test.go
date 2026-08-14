@@ -135,6 +135,103 @@ func TestOpenAISelectAccountWithLoadAwareness_HydratesSelectedAccountFromSchedul
 	}
 }
 
+func TestEmbeddingSelectAccountWithLoadAwareness_FallbackWaitPreservesPoolRetrySettings(t *testing.T) {
+	account := &Account{
+		ID:          2,
+		Platform:    PlatformEmbedding,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Priority:    1,
+		Credentials: map[string]any{
+			"api_key":                      "sk-embed",
+			"model_mapping":                map[string]any{"text-embedding-3-small": "upstream-embed"},
+			"pool_mode":                    true,
+			"pool_mode_retry_count":        float64(5),
+			"pool_mode_retry_status_codes": []any{float64(429), float64(502)},
+		},
+	}
+	cache := &snapshotHydrationCache{
+		snapshot: []*Account{account},
+		accounts: map[int64]*Account{account.ID: account},
+	}
+	svc := &OpenAIGatewayService{
+		schedulerSnapshot:  NewSchedulerSnapshotService(cache, nil, nil, nil, nil),
+		cache:              &stubGatewayCache{},
+		concurrencyService: NewConcurrencyService(stubConcurrencyCache{acquireResults: map[int64]bool{account.ID: false}}),
+	}
+	groupID := int64(2)
+
+	selection, err := svc.SelectAccountWithLoadAwarenessForPlatform(
+		context.Background(),
+		PlatformEmbedding,
+		&groupID,
+		"",
+		"text-embedding-3-small",
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("SelectAccountWithLoadAwarenessForPlatform error = %v", err)
+	}
+	if selection == nil || selection.Account == nil || selection.WaitPlan == nil {
+		t.Fatal("expected fallback wait selection")
+	}
+	if !selection.Account.IsPoolMode() {
+		t.Fatal("expected pool mode to survive fallback wait selection")
+	}
+	if got := selection.Account.GetPoolModeRetryCount(); got != 5 {
+		t.Fatalf("expected retry count 5, got %d", got)
+	}
+	codes := selection.Account.GetPoolModeRetryStatusCodes()
+	if len(codes) != 2 || codes[0] != 429 || codes[1] != 502 {
+		t.Fatalf("expected retry status codes [429 502], got %v", codes)
+	}
+}
+
+func TestOpenAISelectAccountWithLoadAwareness_FallbackWaitPreservesCodexFingerprintSettings(t *testing.T) {
+	account := &Account{
+		ID:          3,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Priority:    1,
+		Credentials: map[string]any{
+			"model_mapping": map[string]any{"gpt-5": "gpt-5"},
+		},
+		Extra: map[string]any{
+			"codex_fingerprint_mode": "full",
+			"openai_device_id":       "configured-device",
+		},
+	}
+	cache := &snapshotHydrationCache{
+		snapshot: []*Account{account},
+		accounts: map[int64]*Account{account.ID: account},
+	}
+	svc := &OpenAIGatewayService{
+		schedulerSnapshot:  NewSchedulerSnapshotService(cache, nil, nil, nil, nil),
+		cache:              &stubGatewayCache{},
+		concurrencyService: NewConcurrencyService(stubConcurrencyCache{acquireResults: map[int64]bool{account.ID: false}}),
+	}
+	groupID := int64(3)
+
+	selection, err := svc.SelectAccountWithLoadAwareness(context.Background(), &groupID, "", "gpt-5", nil)
+	if err != nil {
+		t.Fatalf("SelectAccountWithLoadAwareness error = %v", err)
+	}
+	if selection == nil || selection.Account == nil || selection.WaitPlan == nil {
+		t.Fatal("expected fallback wait selection")
+	}
+	if got := selection.Account.GetCodexFingerprintMode(); got != codexFingerprintFull {
+		t.Fatalf("expected full fingerprint mode, got %q", got)
+	}
+	if got := selection.Account.GetOpenAIDeviceID(); got != "configured-device" {
+		t.Fatalf("expected configured device ID, got %q", got)
+	}
+}
+
 func TestGatewaySelectAccountWithLoadAwareness_HydratesSelectedAccountFromSchedulerSnapshot(t *testing.T) {
 	cache := &snapshotHydrationCache{
 		snapshot: []*Account{

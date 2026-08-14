@@ -40,6 +40,25 @@ func newTestFailoverErr(statusCode int, retryable, forceBilling bool) *service.U
 	}
 }
 
+func TestSameAccountRetryDelayFor(t *testing.T) {
+	capacityErr := &service.UpstreamFailoverError{RequestScopedTransient: true}
+	for _, tt := range []struct {
+		retryCount int
+		want       time.Duration
+	}{
+		{retryCount: 1, want: 500 * time.Millisecond},
+		{retryCount: 2, want: time.Second},
+		{retryCount: 3, want: 2 * time.Second},
+		{retryCount: 4, want: 4 * time.Second},
+		{retryCount: 5, want: 8 * time.Second},
+		{retryCount: 10, want: 8 * time.Second},
+	} {
+		require.Equal(t, tt.want, sameAccountRetryDelayFor(capacityErr, tt.retryCount))
+	}
+	require.Equal(t, 500*time.Millisecond, sameAccountRetryDelayFor(&service.UpstreamFailoverError{}, 10))
+	require.Equal(t, 500*time.Millisecond, sameAccountRetryDelayFor(nil, 10))
+}
+
 // ---------------------------------------------------------------------------
 // NewFailoverState 测试
 // ---------------------------------------------------------------------------

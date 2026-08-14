@@ -289,6 +289,26 @@ func TestForwardEmbeddingsPoolModeDoesNotRetrySameAccountForServerErrors(t *test
 	require.NotEqual(t, gjson.GetBytes(upstream.calls[0].body, "model").String(), gjson.GetBytes(upstream.calls[1].body, "model").String())
 }
 
+func TestForwardEmbeddingsPoolModeRetriesCustomStatusOnSameAccount(t *testing.T) {
+	withEmbeddingDNS(t, net.ParseIP("8.8.8.8"))
+	upstream := &embeddingUpstreamStub{steps: []embeddingUpstreamStep{
+		{status: http.StatusNotFound, body: `{"error":"missing"}`},
+		{status: http.StatusOK, body: `{"data":[{"embedding":[0.1]}],"usage":{"prompt_tokens":3}}`},
+	}}
+	first := embeddingPoolAccount(1, map[string]any{"embed-public": "upstream-a"}, 2)
+	first.Credentials["pool_mode_retry_status_codes"] = []any{float64(http.StatusNotFound)}
+	svc := newEmbeddingForwardTestService(t, []Account{
+		first,
+	}, upstream)
+	groupID := embeddingEligibilityTestGroupID
+
+	result, err := svc.ForwardEmbeddings(context.Background(), EmbeddingForwardInput{GroupID: &groupID, Body: []byte(`{"model":"embed-public","input":"safe"}`)})
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Len(t, upstream.calls, 2)
+	require.Equal(t, gjson.GetBytes(upstream.calls[0].body, "model").String(), gjson.GetBytes(upstream.calls[1].body, "model").String())
+}
+
 func TestForwardEmbeddingsNeverFailsOverAfterUnknownTransportWrite(t *testing.T) {
 	withEmbeddingDNS(t, net.ParseIP("8.8.8.8"))
 	upstream := &embeddingUpstreamStub{steps: []embeddingUpstreamStep{{err: errors.New("connection reset")}}}
