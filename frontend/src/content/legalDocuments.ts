@@ -45,8 +45,8 @@ export const legalDocuments: Record<LegalDocumentKey, LegalDocument> = {
     title: '用户服务条款',
     eyebrow: 'Terms of Service',
     description: `本条款说明您与 ${SITE_NAME_TOKEN} 运营方之间的权利与义务，以及账户、计费、内容和争议处理规则。`,
-    version: '1.1',
-    updatedAt: '2026 年 8 月 8 日',
+    version: '1.2',
+    updatedAt: '2026 年 8 月 20 日',
     sections: [
       {
         id: 'agreement',
@@ -122,7 +122,7 @@ export const legalDocuments: Record<LegalDocumentKey, LegalDocument> = {
         id: 'acceptable-use',
         title: '6. 合理使用义务',
         paragraphs: [
-          '您使用服务时必须遵守适用法律、本条款、合理使用政策、上游提供商规则及控制台公示的技术限制。'
+          '您使用服务时必须遵守适用法律、本条款、合理使用政策、上游提供商规则及控制台公示的技术限制。您不得使用本站服务从事任何违法乱纪、违反公序良俗或规避监管的活动，也不得利用本站服务实施、协助、教唆、组织、宣传、传播或掩盖违法犯罪行为，或为他人实施上述行为提供帮助。您应确保提交的输入、生成的输出、API 调用及最终使用目的均合法合规。'
         ],
         bullets: [
           '不得利用服务从事违法犯罪、欺诈、侵权、骚扰、恶意自动化或危害他人安全的活动；',
